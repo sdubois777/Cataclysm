@@ -26151,4 +26151,249 @@ bool FCataclysmPlagueClearsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Celestial_Divine_Wrath. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName DivineWrathRow(UCataclysmDungeonModifierEffects::DivineWrathKey);
+
+	/** A dungeon carrying only Divine Wrath, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AWrathFloor(FAutomationTestBase& Test, UWorld* World,
+										   const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {DivineWrathRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** Beat until a beam is due and has come; null, with a failure, when none did. */
+	ACataclysmGroundZone* ABeamCame(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode)
+	{
+		Beat(Mode, BeatsFor(UCataclysmDungeonModifierEffects::DivineWrathSecondsBetween));
+		ACataclysmGroundZone* Beam = Mode->DivineWrathBeamOnTheFloor();
+		return Test.TestNotNull(TEXT("a beam came"), Beam) ? Beam : nullptr;
+	}
+
+	/** Whether the beam is aimed at `Toward`: moving at the ruled speed, straight at it. */
+	bool AimedAt(const ACataclysmGroundZone* Beam, const FVector& Toward)
+	{
+		FVector Away = Toward - Beam->GetActorLocation();
+		Away.Z = 0.0f;
+		return FMath::IsNearlyEqual(Beam->TravelPerSecond.Size(),
+									UCataclysmDungeonModifierEffects::DivineWrathSpeedCmPerSecond, 0.1f)
+			&& FVector::DotProduct(Beam->TravelPerSecond.GetSafeNormal(), Away.GetSafeNormal()) > 0.999f;
+	}
+}
+
+// A BEAM EVERY THIRTY SECONDS, TWELVE METRES FROM THE PLAYER, AIMED AT THEM AND RE-AIMED EVERY BEAT;
+// ONE AT A TIME; HORDE WAVES TOO.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrathArrivesTest,
+	"Cataclysm.DungeonModifierEffects.DivineWrathSendsABeamEveryThirtySecondsThatChasesThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWrathArrivesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestFalse(TEXT("29.75 seconds is not due"), Effects::DivineWrathIsDue(29.75f));
+	TestTrue(TEXT("30 seconds is"), Effects::DivineWrathIsDue(30.0f));
+	TestTrue(TEXT("the velocity is level, at the ruled speed, straight at the target"),
+			 Effects::DivineWrathVelocity(FVector::ZeroVector, FVector(1000.0f, 0.0f, 50.0f))
+				 .Equals(FVector(Effects::DivineWrathSpeedCmPerSecond, 0.0f, 0.0f), 0.01f));
+	TestTrue(TEXT("and nothing when already there"),
+			 Effects::DivineWrathVelocity(FVector(5.0f, 5.0f, 0.0f), FVector(5.0f, 5.0f, 0.0f)).IsZero());
+	TestEqual(TEXT("a sweep burns a fifth of maximum health"), Effects::DivineWrathBurn(1000.0f), 200.0f, 0.01f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWrathFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const int32 Beats = BeatsFor(Effects::DivineWrathSecondsBetween);
+	Beat(Mode, Beats - 1);
+	if (!TestNull(TEXT("no beam a beat before thirty seconds"), Mode->DivineWrathBeamOnTheFloor()))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Beam = Mode->DivineWrathBeamOnTheFloor();
+	if (!TestNotNull(TEXT("a beam at thirty seconds"), Beam))
+	{
+		return false;
+	}
+	TestEqual(TEXT("twelve metres from the player"),
+			  static_cast<float>(FVector::Dist2D(Beam->GetActorLocation(), Player.Character->GetActorLocation())),
+			  Effects::DivineWrathAppearsAwayCm, 1.0f);
+	TestTrue(TEXT("aimed at the player at the ruled speed"), AimedAt(Beam, Player.Character->GetActorLocation()));
+	TestEqual(TEXT("marked as the row's, so beams do not stack"), Beam->BurnsOnceASecondAs, DivineWrathRow);
+	TestTrue(TEXT("the panel says a beam is chasing"),
+			 Mode->LiveCountsForTheFloor().FindRef(DivineWrathRow).Contains(TEXT("chasing")));
+
+	// THE PLAYER MOVES AND THE NEXT BEAT AIMS AT WHERE THEY ARE NOW.
+	Player.Character->SetActorLocation(Player.Character->GetActorLocation() + FVector(0.0f, 800.0f, 0.0f));
+	Beat(Mode, 1);
+	TestTrue(TEXT("re-aimed at where the player moved to"), AimedAt(Beam, Player.Character->GetActorLocation()));
+
+	// ONE AT A TIME: another thirty seconds with the beam still alight brings no second.
+	Beat(Mode, Beats);
+	TestEqual(TEXT("still one beam while the first is alight"), ZonesOnTheFloor(World), 1);
+
+	// HORDE WAVES TOO.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, Beats);
+	TestNotNull(TEXT("a Horde wave has its beam at thirty seconds"), Mode->DivineWrathBeamOnTheFloor());
+	return true;
+}
+
+// A BEAM DESTROYS THE CREATURES IT COVERS, NAMING NO KILLER AND PAYING AS ANY DEATH DOES; NEVER A
+// FLOOR'S BOSS, A CREATURE THAT CANNOT BE HURT, OR ONE OUTSIDE IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrathDestroysTest,
+	"Cataclysm.DungeonModifierEffects.ADivineWrathBeamDestroysTheCreaturesItCoversButNeverAFloorsBoss",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWrathDestroysTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWrathFloor(*this, World, Player);
+	ACataclysmGroundZone* Beam = Mode ? ABeamCame(*this, Mode) : nullptr;
+	if (!Beam)
+	{
+		return false;
+	}
+	const FVector Under = Beam->GetActorLocation();
+
+	ACataclysmEnemyCharacter* Covered = PlaceCreatureAtRung(World, Mode, Under, 0);
+	ACataclysmEnemyCharacter* Unhurtable = PlaceCreatureAtRung(World, Mode, Under + FVector(50.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Outside = PlaceCreatureAtRung(World, Mode, Under + FVector(0.0f, 1000.0f, 0.0f), 0);
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(), Under + FVector(-50.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a creature under the beam"), Covered) || !TestNotNull(TEXT("an unhurtable one"), Unhurtable)
+		|| !TestNotNull(TEXT("one outside it"), Outside) || !TestNotNull(TEXT("a Gatekeeper under it"), Gatekeeper))
+	{
+		return false;
+	}
+	Unhurtable->bCannotBeHurt = true;
+	Gatekeeper->SetRarityStep(0);
+	Mode->FloorEnemies.Add(Gatekeeper);
+	if (!TestTrue(TEXT("the beam covers the creature under it"), Beam->Covers(Covered->GetActorLocation()))
+		|| !TestTrue(TEXT("and the Gatekeeper"), Beam->Covers(Gatekeeper->GetActorLocation()))
+		|| !TestFalse(TEXT("and not the one outside"), Beam->Covers(Outside->GetActorLocation())))
+	{
+		return false;
+	}
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the world announces deaths"), Events))
+	{
+		return false;
+	}
+	bool bNamedAKiller = false;
+	const FDelegateHandle Heard = Events->OnDeath.AddLambda(
+		[&bNamedAKiller, Covered](const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == Covered)
+			{
+				bNamedAKiller |= Notice.Killer != nullptr;
+			}
+		});
+	Beat(Mode, 1);
+	Events->OnDeath.Remove(Heard);
+
+	TestTrue(TEXT("the creature under the beam was destroyed"), UCataclysmSkillEffects::IsDead(Covered));
+	TestFalse(TEXT("naming no killer"), bNamedAKiller);
+	TestTrue(TEXT("and it pays as any death does"), Covered->PaysForItsDeath());
+	TestFalse(TEXT("the Gatekeeper, a floor's boss, lives"), UCataclysmSkillEffects::IsDead(Gatekeeper));
+	TestFalse(TEXT("the one that cannot be hurt lives"), UCataclysmSkillEffects::IsDead(Unhurtable));
+	TestFalse(TEXT("the one outside lives"), UCataclysmSkillEffects::IsDead(Outside));
+	TestEqual(TEXT("one destroyed"), Mode->DivineWrathDestroyedCount(), 1);
+	return true;
+}
+
+// A BEAM BURNS THE PLAYER FOR A FIFTH OF MAXIMUM HEALTH A SWEEP, AS CELESTIAL DAMAGE: CELESTIAL
+// RESISTANCE MEETS IT AND VOID RESISTANCE DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrathBurnsTest,
+	"Cataclysm.DungeonModifierEffects.ADivineWrathBeamBurnsAFifthOfMaximumHealthAsCelestial",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWrathBurnsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWrathFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Beam = ABeamCame(*this, Mode);
+	if (!Beam)
+	{
+		return false;
+	}
+	TestEqual(TEXT("it burns a fifth of the player's hundred thousand"), Beam->DamagePerTick,
+			  Effects::DivineWrathBurn(HealthForTypedDamage), 0.01f);
+
+	const auto SweepThePlayer = [this, &Player, Beam]() -> bool
+	{
+		return StandInAndSweep(*this, Player, Beam);
+	};
+	const TOptional<float> LostWithCelestial =
+		LostWithResistanceRaised(*this, Player, Resist::GetCelestialResistanceAttribute(), SweepThePlayer);
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Resist::GetVoidResistanceAttribute(), SweepThePlayer);
+	if (!LostWithCelestial.IsSet() || !LostWithVoid.IsSet())
+	{
+		return false;
+	}
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Divine Wrath beam"), Resist::GetCelestialResistanceAttribute(),
+									LostWithCelestial.GetValue(), Resist::GetVoidResistanceAttribute(),
+									LostWithVoid.GetValue());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

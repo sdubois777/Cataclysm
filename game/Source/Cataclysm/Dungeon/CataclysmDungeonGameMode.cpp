@@ -2455,6 +2455,87 @@ void ACataclysmDungeonGameMode::NoteDeathForPlagueConvergence(const FCataclysmDe
 	}
 }
 
+void ACataclysmDungeonGameMode::StepDivineWrath(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !Player || !AbilitySystem || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	DivineWrathSecondsSinceLast += SecondsBetweenWaveChecks;
+
+	if (ACataclysmGroundZone* Beam = DivineWrathBeam.Get())
+	{
+		// IT CHASES: aimed again at where the player stands now, every beat.
+		Beam->TravelAt(Effects::DivineWrathVelocity(Beam->GetActorLocation(),
+													 Player->GetActorLocation()));
+
+		// AND IT DESTROYS THE CREATURES IT COVERS, by the game mode and not by the zone, which
+		// burns only its owner's enemies. The ordinary death, with an emptied last blow so no
+		// killer is named; it pays as any death does. Never a floor's boss -- a beam that ended
+		// one for nothing would skip the floor -- and never a creature that cannot be hurt.
+		TArray<ACataclysmEnemyCharacter*> Covered;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !Enemy->bCannotBeHurt
+				&& !DiedAsAFloorsBoss(Enemy) && Beam->Covers(Enemy->GetActorLocation()))
+			{
+				Covered.Add(Enemy);
+			}
+		}
+		for (ACataclysmEnemyCharacter* Enemy : Covered)
+		{
+			if (UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Enemy)))
+			{
+				Its->RecordLastBlow(FCataclysmLastBlow());
+				Its->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.0f);
+				++DivineWrathDestroyed;
+			}
+		}
+		return;
+	}
+
+	if (!Effects::DivineWrathIsDue(DivineWrathSecondsSinceLast))
+	{
+		return;
+	}
+
+	const float Burn = Effects::DivineWrathBurn(
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source || Burn <= 0.0f)
+	{
+		return;
+	}
+
+	// A BEAM, AWAY FROM THE PLAYER AT A RANDOM ANGLE, setting off towards them at once.
+	const FVector Centre = Player->GetActorLocation();
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Where(Centre.X + Effects::DivineWrathAppearsAwayCm * FMath::Cos(Angle),
+						Centre.Y + Effects::DivineWrathAppearsAwayCm * FMath::Sin(Angle), Centre.Z);
+	ACataclysmGroundZone* Beam = ACataclysmGroundZone::Spawn(
+		Source, Where, Effects::DivineWrathRadiusCm, Effects::DivineWrathBeamSeconds, Burn,
+		DungeonGameModeTypeOfRow(Effects::DivineWrathKey));
+	if (!Beam)
+	{
+		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again.
+		return;
+	}
+	Beam->BurnsOnceASecondAs = FName(Effects::DivineWrathKey);
+	Beam->TravelAt(Effects::DivineWrathVelocity(Where, Centre));
+	DivineWrathBeam = Beam;
+	DivineWrathSecondsSinceLast = 0.0f;
+	UE_LOG(LogCataclysm, Log, TEXT("Divine Wrath: a beam appeared %.0f cm from the player on floor %d"),
+		   Effects::DivineWrathAppearsAwayCm, FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::AddAChaosTouch()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -3677,6 +3758,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bPlagueConvergence = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::PlagueConvergenceKey))
 		&& !FloorBrief.bOneWave;
+	// AND DIVINE WRATH, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bDivineWrath = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::DivineWrathKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -3691,7 +3775,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
-		&& !bTheReaper && !bBloodBond && !bPlagueConvergence)
+		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath)
 	{
 		return;
 	}
@@ -3857,6 +3941,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPlagueConvergence)
 	{
 		StepPlagueConvergence(Player, AbilitySystem);
+	}
+
+	// AND DIVINE WRATH, WHICH PLACES A ZONE AND KILLS CREATURES. Issues #1820 and #41.
+	if (bDivineWrath)
+	{
+		StepDivineWrath(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -6428,6 +6518,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Effects::HolyRepercussionsJudgmentMostStacks));
 	}
 
+	// AND DIVINE WRATH: whether a beam is chasing, and how many creatures beams have destroyed.
+	// Issues #1820 and #41.
+	const FName Wrath(Effects::DivineWrathKey);
+	if (FloorBrief.Modifiers.Contains(Wrath))
+	{
+		Counting.Add(Wrath, DivineWrathBeam.IsValid()
+			? FString::Printf(TEXT("divine wrath: a beam is chasing you; %d creature(s) destroyed"),
+							  DivineWrathDestroyed)
+			: FString::Printf(TEXT("divine wrath: a beam every %.0f seconds; %d creature(s) destroyed"),
+							  Effects::DivineWrathSecondsBetween, DivineWrathDestroyed));
+	}
+
 	// AND PLAGUE CONVERGENCE: when it begins, or how many have come and how sick the player is.
 	// Issues #1820 and #41.
 	const FName Plague(Effects::PlagueConvergenceKey);
@@ -8574,6 +8676,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		PlagueConvergenceCreatures.Reset();
 		PlagueConvergenceStacks = 0;
 		PlagueConvergenceSecondsSinceBurn = 0.0f;
+
+		// AND DIVINE WRATH STARTS ITS CLOCK AGAIN; the last floor's beam went with its zones.
+		// Issues #1820 and #41.
+		DivineWrathSecondsSinceLast = 0.0f;
+		DivineWrathBeam.Reset();
+		DivineWrathDestroyed = 0;
 
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already

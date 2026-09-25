@@ -1795,6 +1795,32 @@ public:
 	static const TCHAR* PlagueConvergenceKey;
 
 	/**
+	 * The row whose beams of light chase the player, destroy creatures and burn the player.
+	 * Issues #1820 and #41.
+	 *
+	 * "Players are periodically targeted by massive beams of radiant light that chase them
+	 * across the floor. These beams destroy enemies in their path but deal devastating damage
+	 * to players if they fail to avoid them."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24. Every figure
+	 * is a play-test value:
+	 * - ONE BEAM AT A TIME, every `DivineWrathSecondsBetween`, appearing `DivineWrathAppearsAwayCm`
+	 *   from the player at a random angle and lasting `DivineWrathBeamSeconds`. Horde waves too.
+	 * - IT CHASES: re-aimed at the player on every beat, at `DivineWrathSpeedCmPerSecond`, which
+	 *   is slower than every class, so a player who keeps moving escapes it.
+	 * - `DivineWrathRadiusCm` wide; it burns the player for `DivineWrathMaxHealthPercent` of
+	 *   maximum health a sweep, once a second, typed as the row, and beams of it do not stack
+	 *   (issue #2074).
+	 * - IT DESTROYS THE CREATURES IT COVERS, killed by the game mode on the beat with no killer
+	 *   named; they pay as any death does, and Blood Gates does not count them. Never a floor's
+	 *   boss, and never a creature that cannot be hurt. The zone itself burns only its owner's
+	 *   enemies, so `ACataclysmGroundZone::bBurnsEveryone` stays unset: the owner's rule that a
+	 *   creature does not burn itself or its own side is about a creature's fire, and this beam
+	 *   is the dungeon's.
+	 */
+	static const TCHAR* DivineWrathKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4086,6 +4112,20 @@ public:
 	static constexpr int32 PlagueConvergenceMostStacks = 6;
 	static constexpr float PlagueConvergenceSecondsBetweenBurns = 1.0f;
 
+	/** Divine Wrath's figures. Ruled; every one a play-test value. See the key. */
+	static constexpr float DivineWrathSecondsBetween = 30.0f;
+	static constexpr float DivineWrathBeamSeconds = 10.0f;
+	static constexpr float DivineWrathAppearsAwayCm = 1200.0f;
+	static constexpr float DivineWrathSpeedCmPerSecond = 300.0f;
+	static constexpr float DivineWrathRadiusCm = 300.0f;
+	static constexpr float DivineWrathMaxHealthPercent = 20.0f;
+
+	static_assert(
+		DivineWrathSecondsBetween > DivineWrathBeamSeconds && DivineWrathBeamSeconds > 0.0f
+			&& DivineWrathAppearsAwayCm > DivineWrathRadiusCm && DivineWrathSpeedCmPerSecond > 0.0f,
+		"One beam at a time needs each to fade before the next, and a beam that appeared on the "
+		"player or never moved is not the row.");
+
 	static_assert(
 		PlagueConvergenceBeginsAfterSeconds > 0.0f && PlagueConvergenceSecondsBetweenWaves > 0.0f
 			&& PlagueConvergenceCreaturesPerWave > 0
@@ -4896,6 +4936,18 @@ public:
 	 * base at one, and twice the last for each further stack up to the cap.
 	 */
 	static float PlagueConvergenceDiseasePercentPerSecond(int32 Stacks);
+
+	/** Whether a Divine Wrath beam is due after this long since the last. */
+	static bool DivineWrathIsDue(float SecondsSinceLast);
+
+	/**
+	 * The velocity that aims a beam at `Toward` from `From`, level and at
+	 * `DivineWrathSpeedCmPerSecond`; nothing when the two are within a centimetre.
+	 */
+	static FVector DivineWrathVelocity(const FVector& From, const FVector& Toward);
+
+	/** What one sweep of a beam burns, from this maximum health. */
+	static float DivineWrathBurn(float MaximumHealth);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

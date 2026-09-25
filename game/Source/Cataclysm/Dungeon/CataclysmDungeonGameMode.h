@@ -1939,6 +1939,12 @@ public:
 	/** Plague Convergence's disease stacks on the player. */
 	int32 PlagueConvergenceDiseaseStacks() const { return PlagueConvergenceStacks; }
 
+	/** Divine Wrath's beam on this floor, or null between beams. For the panel and tests. */
+	class ACataclysmGroundZone* DivineWrathBeamOnTheFloor() const { return DivineWrathBeam.Get(); }
+
+	/** How many creatures Divine Wrath's beams have destroyed on this floor. */
+	int32 DivineWrathDestroyedCount() const { return DivineWrathDestroyed; }
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2035,6 +2041,10 @@ private:
 
 	/** Plague Convergence, on every death: the player's own clears the disease. */
 	void NoteDeathForPlagueConvergence(const struct FCataclysmDeathNotice& Notice);
+
+	/** Divine Wrath, on the beat: a beam when one is due, aimed at the player, killing creatures. */
+	void StepDivineWrath(class ACataclysmPlayerCharacter* Player,
+						 class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Soul Harvest, on every death: a soul to the nearest living creature within reach. */
 	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
@@ -2912,6 +2922,14 @@ private:
 	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> PlagueConvergenceCreatures;
 	int32 PlagueConvergenceStacks = 0;
 	float PlagueConvergenceSecondsSinceBurn = 0.0f;
+
+	/**
+	 * Divine Wrath: the seconds since the last beam, the beam now chasing, and the creatures
+	 * the floor's beams destroyed. The floor's: all go back when a floor begins.
+	 */
+	float DivineWrathSecondsSinceLast = 0.0f;
+	TWeakObjectPtr<class ACataclysmGroundZone> DivineWrathBeam;
+	int32 DivineWrathDestroyed = 0;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

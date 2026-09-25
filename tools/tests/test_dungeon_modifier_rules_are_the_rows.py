@@ -3935,3 +3935,53 @@ def test_plague_convergence_row_still_converges_after_too_long_with_an_exponenti
     assert not any(character.isdigit() for character in words), (
         "Pestilence_Plague_Convergence now states a figure; the rule's figures are rulings. "
         + words)
+
+def test_divine_wrath_row_still_sends_chasing_beams_that_destroy_enemies_and_hurt_players():
+    """The phrases the rule's readings rest on.
+
+    "Players are periodically targeted by massive beams of radiant light that chase them across
+    the floor. These beams destroy enemies in their path but deal devastating damage to players
+    if they fail to avoid them." PERIODICALLY is why a beam comes on a cadence; CHASE is why it is
+    aimed at the player on every beat; DESTROY ENEMIES IN THEIR PATH is why it kills the creatures
+    it covers; FAIL TO AVOID is why it is slower than every class; and the row gives no figure,
+    which is why every number is a ruling. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Celestial_Divine_Wrath"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("periodically targeted", "chase them across the floor",
+                   "destroy enemies in their path", "fail to avoid them"):
+        assert phrase in lower, (
+            f"Celestial_Divine_Wrath no longer says {phrase.upper()!r}. A reading of the rule rests "
+            "on it; see DivineWrathKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert not any(character.isdigit() for character in words), (
+        "Celestial_Divine_Wrath now states a figure; the rule's figures are rulings. " + words)
+
+
+def test_a_divine_wrath_beam_is_slower_than_every_class():
+    """"Fail to avoid them" is only fair if a player who keeps moving escapes, so the beam's speed
+    must stay below every class's movement speed.
+
+    Read from the two places each number lives: `DivineWrathSpeedCmPerSecond` in the header, in
+    centimetres a second, and `movement_speed` in `game/Data/ClassStats.csv`, in metres a second. A
+    class with no row of its own takes the `Default` row, as `UCataclysmClassStats::BaseFor` does.
+    """
+    match = re.search(r"DivineWrathSpeedCmPerSecond\s*=\s*([0-9.]+)f",
+                      EFFECTS_HEADER.read_text(encoding="utf-8"))
+    assert match, "DivineWrathSpeedCmPerSecond was not found in the header."
+    beam_metres = float(match.group(1)) / 100.0
+
+    table = REPO_ROOT / "game" / "Data" / "ClassStats.csv"
+    with table.open(encoding="utf-8", newline="") as handle:
+        stats = list(csv.DictReader(handle))
+    speeds = {row["ClassName"]: float(row["Base"]) for row in stats
+              if row["Stat"] == "movement_speed"}
+    classes = {row["ClassName"] for row in stats} - {"Default"}
+    assert classes, "ClassStats.csv names no class."
+    for name in sorted(classes):
+        speed = speeds.get(name, speeds.get("Default"))
+        assert speed is not None, f"{name} has no movement speed, and neither does Default."
+        assert beam_metres < speed, (
+            f"A Divine Wrath beam moves at {beam_metres} m/s and {name} at {speed} m/s, so a "
+            f"{name} who keeps moving cannot escape it. The row says players take damage when they "
+            "\"fail to avoid them\"; slow the beam or rule again.")
