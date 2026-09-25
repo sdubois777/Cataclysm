@@ -2,6 +2,158 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Pestilent Empowerment: every plague beacon left standing when the player leaves its floor makes the creatures of every later floor of that dungeon deal 10% more, summed, at most double
+
+**Affects:** a new beacon class `game/Source/Cataclysm/Character/CataclysmBeaconCharacter.h`;
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a fifth key of the damage
+multiplier map, and its setter); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp` (the row's key, its figures and the multiplier for a count of beacons);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing and forgetting the beacons,
+counting those left standing as a floor is left, the count carried and cleared, the damage on the beat,
+the panel line); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Beacon" under a
+beacon's health bar); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one new check, and the damage multiplier check
+given the fifth key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The row
+
+`Pestilence_Pestilent_Empowerment` in `game/Data/DungeonModifiers.csv`, weight 10: "Players must find and
+destroy the plague beacons on each floor if they want to lower the power of enemies on later floors." It
+states no figure. The design document and this log do not mention a plague beacon.
+
+### What the rule does
+
+When a floor carrying the row is placed, two beacons stand where Eternal Chorus's sources would -- at least
+twenty metres from the entrance and from each other -- and a Horde arena has one, placed with its first
+wave and kept. Each beacon is a creature that does nothing, with the Imp's health, "Beacon" under its
+health bar, paying nothing when destroyed and not one of the floor's creatures. When the player leaves a
+floor, every beacon still standing on it is added to a count the dungeon carries; a destroyed beacon adds
+nothing. Every creature on a later floor deals 10% more damage for each beacon in that count, summed and at
+most double. A Horde arena's beacon is counted once, at the first wave change after it is placed. The count
+clears when the player leaves the dungeon. The panel says how many beacons stand here, what this floor has
+from earlier ones, and what later floors would have if the player left now.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every
+figure is a play-test value:**
+
+- **"Lower" is read as "keep lower than it would be"**: every beacon still standing when the player leaves
+  its floor adds to the damage of the creatures on every later floor of that dungeon, and a destroyed beacon
+  adds nothing. The coordinating session's reason: with every beacon destroyed both readings give the same
+  result, and only this one avoids raising later floors before the player has met a single beacon.
+- **A beacon is a floor source**, `ACataclysmBeaconCharacter`, with the Imp's health, 87, and "Beacon" under
+  its bar: it pays nothing, is raised by the rule, is not one of the floor's creatures and is not saved.
+- **Two a floor on Eternal Chorus's rule for where things stand**, placed once a floor.
+- **+10% damage a beacon left standing, summed, capped at +100%**, through the damage multiplier map under
+  its own key, `PlagueBeacons`, swept each beat as March of Progress sweeps its own. The cap is the named
+  constant `PestilentEmpowermentMostPercent`.
+- **Damage only.**
+- **A Horde arena has one beacon**, placed with the first wave and kept, and counted once, at the first wave
+  change after it is placed: at most +10% to the later waves.
+- **The panel shows "this floor +Y%" and "later floors +X%"**, and the count resets in
+  `LeaveEmpireDungeon`, beside Echoes of the Past's.
+- **The carried count is not saved**, as Echoes of the Past's carried dead are not: nothing loads a save in
+  play (`FCataclysmSaveApply::FloorInto` has test callers only).
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The count is taken in `GoToFloor`, after the next floor is built and before the last floor's creatures
+  are cleared.** `UCataclysmFloorContents::ClearTheFloor` destroys every enemy character, beacons included,
+  before the next floor is populated, so a count taken while populating would find none standing; and a floor
+  that fails to build counts nothing.
+- **The floor sources themselves are left out of the sweep**, as Golden Spires leaves them out of its own:
+  they do nothing, so a multiplier on them would change nothing a player can see.
+- **"Later floors" on the panel counts the beacons standing here that have not yet been counted**, so it
+  says what leaving now would give.
+- **In play a killed beacon is destroyed on the next tick**: `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`
+  keeps a body only for its death clip (`CorpseSeconds = PlayDeathAnimation()`, line 389), a floor source has
+  none, and a creature with none is destroyed through `SetTimerForNextTick` (line 416). So the `IsDead` half of
+  the count's condition guards only a beacon killed on the same tick as the floor change. The test's "three
+  carried: the destroyed one added nothing" passes through that `IsDead` half, because the test world never
+  ticks the timer that destroys the beacon; for that reason the guard proof that stops the count reaching the
+  creatures was chosen instead of one that removes `IsDead`.
+
+### The research: strengthening that carries forward
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was
+quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Last Epoch, Corruption | https://maxroll.gg/last-epoch/monolith/beginner-guide | "Increasing Corruption also increases the health and damage of every enemy in the Timeline, including bosses and additional encounters of the Shade." |
+| Path of Exile, Delirium | https://maxroll.gg/poe/currency/delirium-mirror-farming-guide | "monsters will also become harder the deeper you go" |
+
+**What it settles and what it does not.** Shipped games do raise the strength of every enemy met later from
+something that happened earlier -- Last Epoch from each Shade of Orobyss killed, which raises the Timeline's
+Corruption, and Path of Exile with depth into the fog -- so a count carried forward that strengthens later
+enemies is a known shape. Neither ties the rise to something the player left undone; in Last Epoch it
+follows from what the player chose to do. Neither page states a cap or a per-step figure. The per-beacon
+figure, the cap, the count and that only damage rises are this game's own.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `PestilentEmpowermentSumsTenPercentABeaconAndStopsAtDouble`: the four figures; the multiplier for 0, 1, 3
+  (1.30, where compounding would give 1.331), 10, 11, 25 and a negative count.
+- `PestilentEmpowermentPlacesTwoBeaconsThatDoNothing`: two beacons, each a beacon with no controller and no
+  ability, paying nothing, raised by the rule, not one of the floor's creatures, saying exactly "Beacon", at
+  full health equal to the Imp's and far enough from the entrance; nothing carried; the panel says leaving
+  both would add 20%, and after one is destroyed, 10%.
+- `EveryBeaconLeftStandingStrengthensLaterFloorsAndADestroyedOneDoesNot`: a creature on floor 2 deals its
+  own 100; floor 2 left with both standing, a creature on floor 3 deals 120 and the panel says so; floor 3
+  left with one destroyed, the count is three and a creature on floor 4 deals 130, not 133.1; floor 4 left with
+  both destroyed, the count stays three and floor 5's creature deals 130, under the beacons' own key.
+- `TheBeaconCountCarriesAcrossFloorsCapsAndClearsOnLeavingTheDungeon`: floors 2 to 6 left with every beacon
+  standing carry ten; floor 7 left as well carries twelve and floor 8's creature deals 200, not 220; the panel
+  says +100% both ways; leaving the dungeon clears the count and the beacons.
+- `AHordeArenasBeaconIsCountedOnceAtItsFirstWaveChange`: a Horde arena has one beacon, the next wave keeps
+  it, the first wave change adds one to the count and the one after adds nothing.
+- `Cataclysm.SaveApply.ABeaconDoesNotTakeTheTrainingDummysEmptyName`: the beacon names no row, and the empty
+  name maps to the base enemy class.
+
+One new Python check: the row still says "destroy the plague beacons", "on each floor", "lower the power of
+enemies" and "on later floors". The damage multiplier check now also requires the beacons' setter to write
+its own distinct key.
+
+### Run
+
+One editor window on 2026-09-25, on development 9f74732e as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on 91c198ed: "Build: Succeeded - 29 actions, 26 files compiled"; "2497 tests performed,
+  2497 succeeded, 0 failed", every declared test reported (2497 declared, gap 0).
+- **On the head**, 91c198ed: `Cataclysm.DungeonModifierEffects.` 318 performed, 318 succeeded;
+  `Cataclysm.SaveApply.` 13 performed, 13 succeeded.
+- **On the base**, 9f74732e: `Cataclysm.DungeonModifierEffects.` 313 performed, 313 succeeded;
+  `Cataclysm.SaveApply.` 12 performed, 12 succeeded -- each group with every one of its declared tests
+  reported.
+- **The Python suite of record**, on 689ad1b5, whose tree is the head's: 5,481 passed and 8 skipped of
+  5,489, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **No cap** (`const float Percent = Summed;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.PestilentEmpowermentSums`. With the break in, 1 failed, on "eleven: still
+  double" (2.1, not 2.0) and "twenty-five: still double" (3.5, not 2.0).
+- **The carried count never reaching a creature** (`SetPlagueBeaconsDamageMultiplier(1.0f)` in the sweep), on
+  the prefix `Cataclysm.DungeonModifierEffects.EveryBeaconLeftStanding`. With the break in, 1 failed, on
+  "floor 3's creatures deal 20% more", "floor 4's creatures deal 30% more, not 1.1 cubed" and "floor 5's
+  creatures deal 30% more still" (each 100) and "under the beacons' own key" (1.0, not 1.3); the counts and the
+  panel passed. This replaced a break that removed the count's `IsDead` half, for the reason under the
+  judgements above.
+- **A beacon counted at every floor change** (the `bCounted` guard removed), on the prefix
+  `Cataclysm.DungeonModifierEffects.AHordeArenas`. With the break in, 1 failed, on "and not again at the
+  next" (4, not 3).
+
+---
+
 ## 2026-09-25 — Golden Spires: two spires on a floor heal the creatures within six metres as Field Medic's medic does and make them deal 20% more damage, until destroyed; a creature's damage multipliers become one map
 
 **Affects:** a new spire class `game/Source/Cataclysm/Character/CataclysmSpireCharacter.h`;

@@ -158,6 +158,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::NecroticBloomKey =
 const TCHAR* UCataclysmDungeonModifierEffects::GoldenSpiresKey =
 	TEXT("Celestial_Golden_Spires");
 
+const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
+	TEXT("Pestilence_Pestilent_Empowerment");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -449,7 +452,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(WingsOfTheHostKey)
 		|| RowKey == FName(EternalChorusKey)
 		|| RowKey == FName(NecroticBloomKey)
-		|| RowKey == FName(GoldenSpiresKey))
+		|| RowKey == FName(GoldenSpiresKey)
+		|| RowKey == FName(PestilentEmpowermentKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -641,6 +645,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(EternalChorusKey),
 		FName(NecroticBloomKey),
 		FName(GoldenSpiresKey),
+		FName(PestilentEmpowermentKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1699,6 +1704,14 @@ bool UCataclysmDungeonModifierEffects::NecroticBloomWaveIsDue(float SecondsSince
 		return false;
 	}
 	return SecondsSinceLastWave >= NecroticBloomSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::PestilentEmpowermentDamageMultiplier(int32 BeaconsLeftStanding)
+{
+	const float Summed =
+		static_cast<float>(FMath::Max(0, BeaconsLeftStanding)) * PestilentEmpowermentPercentPerBeacon;
+	const float Percent = FMath::Min(Summed, PestilentEmpowermentMostPercent);
+	return 1.0f + Percent / 100.0f;
 }
 
 int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)

@@ -29,6 +29,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
@@ -1471,6 +1472,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// AND GOLDEN SPIRES, FOR THE SAME REASON. Issues #1820 and #41.
 		ForgetTheSpires();
 		PlaceTheSpires();
+
+		// AND PESTILENT EMPOWERMENT'S BEACONS, FOR THE SAME REASON. The last floor's were counted in
+		// `GoToFloor` before its creatures were cleared. Issues #1820 and #41.
+		ForgetTheBeacons();
+		PlaceTheBeacons();
 	}
 	else
 	{
@@ -3631,6 +3637,132 @@ void ACataclysmDungeonGameMode::StepGoldenSpires(ACataclysmPlayerCharacter* Play
 	}
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::PlagueBeaconsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FPlagueBeacon& One : PlagueBeacons)
+	{
+		ACataclysmEnemyCharacter* Beacon = One.Beacon.Get();
+		if (IsValid(Beacon) && !UCataclysmSkillEffects::IsDead(Beacon))
+		{
+			Standing.Add(Beacon);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheBeacons()
+{
+	for (const FPlagueBeacon& One : PlagueBeacons)
+	{
+		if (ACataclysmEnemyCharacter* Beacon = One.Beacon.Get())
+		{
+			Beacon->Destroy();
+		}
+	}
+	PlagueBeacons.Reset();
+	PestilentPanelStanding = -1;
+}
+
+void ACataclysmDungeonGameMode::CountThePlagueBeaconsLeftStanding()
+{
+	int32 Counted = 0;
+	for (FPlagueBeacon& One : PlagueBeacons)
+	{
+		// A DESTROYED BEACON ADDS NOTHING, and a Horde arena's beacon, kept for the waves after its first,
+		// is counted once.
+		const ACataclysmEnemyCharacter* Beacon = One.Beacon.Get();
+		if (!IsValid(Beacon) || UCataclysmSkillEffects::IsDead(Beacon) || One.bCounted)
+		{
+			continue;
+		}
+		One.bCounted = true;
+		++Counted;
+	}
+	if (Counted > 0)
+	{
+		PestilentBeaconsLeftStanding += Counted;
+		UE_LOG(LogCataclysm, Log, TEXT("Pestilent Empowerment: %d beacon(s) left standing, %d in this dungeon"),
+			   Counted, PestilentBeaconsLeftStanding);
+	}
+}
+
+void ACataclysmDungeonGameMode::PlaceTheBeacons()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::PestilentEmpowermentKey)))
+	{
+		return;
+	}
+
+	// TWO ON A FLOOR, ONE ON A HORDE ARENA, WHERE ETERNAL CHORUS'S SOURCES WOULD STAND, as ruled.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::PestilentEmpowermentBeaconsPerHordeArena
+											: Effects::PestilentEmpowermentBeaconsPerFloor;
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmBeaconCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Beacon =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Beacon)
+		{
+			continue;
+		}
+		// THE IMP'S HEALTH AT COMMON, a play-test value. It pays nothing and is not one of the floor's
+		// creatures, as the other floor sources are not.
+		Beacon->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Beacon->SetHealth(PlagueBeaconHealth());
+		Beacon->SetRarityStep(0);
+		Beacon->bDiesUnpaid = true;
+		Beacon->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Beacon);
+		FPlagueBeacon One;
+		One.Beacon = Beacon;
+		PlagueBeacons.Add(One);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Pestilent Empowerment: %d beacon(s) placed on floor %d"),
+		   PlagueBeacons.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE, the sweep March of Progress makes, at what the earlier
+	// floors' standing beacons add; the floor sources themselves are left alone, since they do nothing.
+	const float Multiplier = Effects::PestilentEmpowermentDamageMultiplier(PestilentBeaconsLeftStanding);
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+		Creature->SetPlagueBeaconsDamageMultiplier(Multiplier);
+	}
+
+	const int32 Standing = PlagueBeaconsStanding().Num();
+	if (Standing != PestilentPanelStanding)
+	{
+		PestilentPanelStanding = Standing;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepDivineWrath(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -4498,6 +4630,11 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBlooms();
 	ForgetTheSpires();
 
+	// AND PESTILENT EMPOWERMENT'S BEACONS AND THE COUNT CARRIED BETWEEN FLOORS, beside Echoes' reset:
+	// no beacon of this dungeon strengthens the next one. Issues #1820 and #41.
+	ForgetTheBeacons();
+	PestilentBeaconsLeftStanding = 0;
+
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
 	// maximums, gives back the resistance The Nihil's Embrace had taken, stops
@@ -4967,6 +5104,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND GOLDEN SPIRES, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bGoldenSpires = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::GoldenSpiresKey));
+	// AND PESTILENT EMPOWERMENT, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bPestilentEmpowerment = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::PestilentEmpowermentKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -4983,7 +5123,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
-		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires)
+		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires
+		&& !bPestilentEmpowerment)
 	{
 		return;
 	}
@@ -5192,6 +5333,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bGoldenSpires)
 	{
 		StepGoldenSpires(Player);
+	}
+
+	// AND PESTILENT EMPOWERMENT, WHICH CHANGES CREATURES' DAMAGE. Issues #1820 and #41.
+	if (bPestilentEmpowerment)
+	{
+		StepPestilentEmpowerment(Player);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -7790,6 +7937,26 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 											  EternalChorusSourcesNow().Num()));
 	}
 
+	// AND PESTILENT EMPOWERMENT: this floor's beacons standing, what earlier floors left, and what later
+	// floors would get if the player left now. Issues #1820 and #41.
+	const FName Beacons(Effects::PestilentEmpowermentKey);
+	if (FloorBrief.Modifiers.Contains(Beacons))
+	{
+		int32 Uncounted = 0;
+		for (const FPlagueBeacon& One : PlagueBeacons)
+		{
+			const ACataclysmEnemyCharacter* Beacon = One.Beacon.Get();
+			Uncounted += (IsValid(Beacon) && !UCataclysmSkillEffects::IsDead(Beacon) && !One.bCounted) ? 1 : 0;
+		}
+		const float ThisFloor =
+			(Effects::PestilentEmpowermentDamageMultiplier(PestilentBeaconsLeftStanding) - 1.0f) * 100.0f;
+		const float Later =
+			(Effects::PestilentEmpowermentDamageMultiplier(PestilentBeaconsLeftStanding + Uncounted) - 1.0f) * 100.0f;
+		Counting.Add(Beacons, FString::Printf(
+			TEXT("pestilent empowerment: %d beacons here; this floor +%.0f%%; later floors +%.0f%%"),
+			PlagueBeaconsStanding().Num(), ThisFloor, Later));
+	}
+
 	// AND GOLDEN SPIRES: how many stand. Issues #1820 and #41.
 	const FName Spires(Effects::GoldenSpiresKey);
 	if (FloorBrief.Modifiers.Contains(Spires))
@@ -10308,6 +10475,14 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 		// has its creatures on it, which is a better place to be left than on a
 		// floor that does not exist.
 		return false;
+	}
+
+	// PESTILENT EMPOWERMENT COUNTS THE BEACONS LEFT STANDING ON THE FLOOR OR WAVE BEING LEFT, here: after
+	// the next floor is built, so a floor that fails to build counts nothing, and before the block below
+	// clears the last floor's creatures, the beacons among them. Issues #1820 and #41.
+	if (bReplacingAFloor)
+	{
+		CountThePlagueBeaconsLeftStanding();
 	}
 
 	// THE LAST FLOOR'S CONTENTS COME OUT OF THE WORLD. Every floor is built at

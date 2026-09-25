@@ -27,6 +27,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
@@ -28330,6 +28331,327 @@ bool FCataclysmDamageMultiplierMapTest::RunTest(const FString& Parameters)
 	One->SetSpireDamageMultiplier(1.0f);
 	TestEqual(TEXT("every source let go: its own damage"), AttackDamageOf(One), Own, 0.01f);
 	TestEqual(TEXT("and the product is one"), One->DamageMultiplierProduct(), 1.0f, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Pestilent_Empowerment. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BeaconsRow(UCataclysmDungeonModifierEffects::PestilentEmpowermentKey);
+
+	/** A dungeon carrying only Pestilent Empowerment, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* ABeaconFloor(FAutomationTestBase& Test, UWorld* World,
+											const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {BeaconsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** A beacon destroyed by the player's blow. */
+	bool DestroyTheBeacon(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Beacon)
+	{
+		WoundCreatureTo(Beacon, 100.0f, 0.0f);
+		Beacon->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Beacon, 100000.0f);
+		return Test.TestTrue(TEXT("the beacon was destroyed"), UCataclysmSkillEffects::IsDead(Beacon));
+	}
+
+	/**
+	 * Goes to `Floor`, clears the floor's own creatures, places one Common creature with 100 attack damage,
+	 * beats once, and answers what it deals now: 100 times the floor's beacon multiplier.
+	 */
+	float ACreaturesDamageOnFloor(FAutomationTestBase& Test, UWorld* World, ACataclysmDungeonGameMode* Mode,
+								  int32 Floor)
+	{
+		if (!Test.TestTrue(FString::Printf(TEXT("floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return -1.0f;
+		}
+		Mode->ClearFloorEnemies();
+		ACataclysmEnemyCharacter* Creature = PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->EntranceWorld(), 0);
+		if (!Test.TestNotNull(TEXT("a creature on the floor"), Creature))
+		{
+			return -1.0f;
+		}
+		Beat(Mode, 1);
+		return AttackDamageOf(Creature);
+	}
+}
+
+// TEN PERCENT A BEACON, SUMMED AND NOT COMPOUNDED, AND NEVER MORE THAN DOUBLE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeaconsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PestilentEmpowermentSumsTenPercentABeaconAndStopsAtDouble",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBeaconsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two beacons a floor"), Effects::PestilentEmpowermentBeaconsPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::PestilentEmpowermentBeaconsPerHordeArena, 1);
+	TestEqual(TEXT("ten percent a beacon"), Effects::PestilentEmpowermentPercentPerBeacon, 10.0f, 0.001f);
+	TestEqual(TEXT("a hundred percent at most"), Effects::PestilentEmpowermentMostPercent, 100.0f, 0.001f);
+
+	TestEqual(TEXT("none left standing: its own damage"), Effects::PestilentEmpowermentDamageMultiplier(0), 1.0f, 0.0001f);
+	TestEqual(TEXT("one: 10% more"), Effects::PestilentEmpowermentDamageMultiplier(1), 1.1f, 0.0001f);
+	// THREE, WHERE SUMMING AND COMPOUNDING PART: 1.30 summed against 1.331 compounded.
+	TestEqual(TEXT("three: 30% more, summed and not 1.1 cubed"), Effects::PestilentEmpowermentDamageMultiplier(3), 1.3f, 0.0001f);
+	TestEqual(TEXT("ten: double"), Effects::PestilentEmpowermentDamageMultiplier(10), 2.0f, 0.0001f);
+	TestEqual(TEXT("eleven: still double"), Effects::PestilentEmpowermentDamageMultiplier(11), 2.0f, 0.0001f);
+	TestEqual(TEXT("twenty-five: still double"), Effects::PestilentEmpowermentDamageMultiplier(25), 2.0f, 0.0001f);
+	TestEqual(TEXT("a negative count is none"), Effects::PestilentEmpowermentDamageMultiplier(-4), 1.0f, 0.0001f);
+	return true;
+}
+
+// TWO BEACONS ON A FLOOR, EACH A CREATURE THAT DOES NOTHING, SAYS "BEACON" AND PAYS NOTHING; THE PANEL SAYS
+// WHAT LEAVING THEM WOULD ADD.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeaconsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.PestilentEmpowermentPlacesTwoBeaconsThatDoNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBeaconsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+
+	const TArray<ACataclysmEnemyCharacter*> Beacons = Mode->PlagueBeaconsStanding();
+	if (!TestEqual(TEXT("two beacons on the floor"), Beacons.Num(), Effects::PestilentEmpowermentBeaconsPerFloor))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Beacon : Beacons)
+	{
+		TestTrue(TEXT("a beacon"), Beacon->IsA<ACataclysmBeaconCharacter>());
+		TestNull(TEXT("with no brain"), Beacon->GetController());
+		TestTrue(TEXT("with no ability"), Beacon->EnemyAbilities().IsEmpty());
+		TestTrue(TEXT("that pays nothing"), !Beacon->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Beacon->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Beacon));
+		TestEqual(TEXT("\"Beacon\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Beacon),
+				  FString(TEXT("Beacon")));
+		TestEqual(TEXT("at full health"), HealthOf(Beacon), MaxHealthOf(Beacon), 0.5f);
+		TestEqual(TEXT("which is the Imp's"), MaxHealthOf(Beacon), Mode->PlagueBeaconHealth(), 0.5f);
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Beacon->GetActorLocation(), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+	}
+	TestEqual(TEXT("none carried yet"), Mode->PlagueBeaconsLeftStanding(), 0);
+	TestEqual(TEXT("the panel says what leaving both would add"), Mode->LiveCountsForTheFloor().FindRef(BeaconsRow),
+			  FString(TEXT("pestilent empowerment: 2 beacons here; this floor +0%; later floors +20%")));
+
+	// ONE DESTROYED: THE PANEL SAYS ONE, AND LATER FLOORS +10%.
+	if (!DestroyTheBeacon(*this, Player, Beacons[0]))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and it paid nothing"), Beacons[0]->PaysForItsDeath());
+	Beat(Mode, 1);
+	TestEqual(TEXT("the panel says one"), Mode->LiveCountsForTheFloor().FindRef(BeaconsRow),
+			  FString(TEXT("pestilent empowerment: 1 beacons here; this floor +0%; later floors +10%")));
+	return true;
+}
+
+// BOTH LEFT STANDING: THE NEXT FLOOR'S CREATURES DEAL 20% MORE. ONE DESTROYED ON THAT FLOOR: THE ONE LEFT
+// STANDING MAKES 30% ON THE FLOOR AFTER, SUMMED. BOTH DESTROYED: NOTHING MORE IS ADDED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeaconsCarriedTest,
+	"Cataclysm.DungeonModifierEffects.EveryBeaconLeftStandingStrengthensLaterFloorsAndADestroyedOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBeaconsCarriedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Creature = ACataclysmEnemyCharacter;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	// ON FLOOR 2 ITSELF, NOTHING IS CARRIED YET. Placed here rather than through `ACreaturesDamageOnFloor`,
+	// which would go to floor 2 again and count its beacons as left behind.
+	ACataclysmEnemyCharacter* OnTwo = PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->EntranceWorld(), 0);
+	if (!TestNotNull(TEXT("a creature on floor 2"), OnTwo))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("floor 2's creatures deal their own damage"), AttackDamageOf(OnTwo), 100.0f, 0.01f);
+
+	// FLOOR 2 LEFT WITH BOTH STANDING.
+	const float Third = ACreaturesDamageOnFloor(*this, World, Mode, 3);
+	TestEqual(TEXT("two carried"), Mode->PlagueBeaconsLeftStanding(), 2);
+	TestEqual(TEXT("floor 3's creatures deal 20% more"), Third, 120.0f, 0.01f);
+	TestEqual(TEXT("the panel on floor 3"), Mode->LiveCountsForTheFloor().FindRef(BeaconsRow),
+			  FString(TEXT("pestilent empowerment: 2 beacons here; this floor +20%; later floors +40%")));
+
+	// FLOOR 3 LEFT WITH ONE DESTROYED AND ONE STANDING: THREE, SUMMED.
+	TArray<ACataclysmEnemyCharacter*> Beacons = Mode->PlagueBeaconsStanding();
+	if (!TestEqual(TEXT("two beacons on floor 3"), Beacons.Num(), 2) || !DestroyTheBeacon(*this, Player, Beacons[0]))
+	{
+		return false;
+	}
+	const float Fourth = ACreaturesDamageOnFloor(*this, World, Mode, 4);
+	TestEqual(TEXT("three carried: the destroyed one added nothing"), Mode->PlagueBeaconsLeftStanding(), 3);
+	TestEqual(TEXT("floor 4's creatures deal 30% more, not 1.1 cubed"), Fourth, 130.0f, 0.01f);
+
+	// FLOOR 4 LEFT WITH BOTH DESTROYED: STILL THREE.
+	Beacons = Mode->PlagueBeaconsStanding();
+	if (!TestEqual(TEXT("two beacons on floor 4"), Beacons.Num(), 2) || !DestroyTheBeacon(*this, Player, Beacons[0])
+		|| !DestroyTheBeacon(*this, Player, Beacons[1]))
+	{
+		return false;
+	}
+	const float Fifth = ACreaturesDamageOnFloor(*this, World, Mode, 5);
+	TestEqual(TEXT("still three carried"), Mode->PlagueBeaconsLeftStanding(), 3);
+	TestEqual(TEXT("floor 5's creatures deal 30% more still"), Fifth, 130.0f, 0.01f);
+	for (ACataclysmEnemyCharacter* One : Mode->FloorEnemies)
+	{
+		TestEqual(TEXT("under the beacons' own key"), One->DamageMultiplierFrom(Creature::PlagueBeaconsDamageSource),
+				  1.3f, 0.0001f);
+	}
+	return true;
+}
+
+// THE COUNT CARRIES FLOOR AFTER FLOOR, STOPS AT DOUBLE, AND CLEARS WHEN THE PLAYER LEAVES THE DUNGEON.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeaconsCapTest,
+	"Cataclysm.DungeonModifierEffects.TheBeaconCountCarriesAcrossFloorsCapsAndClearsOnLeavingTheDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBeaconsCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// FLOORS 2 TO 6 LEFT ONE BY ONE WITH EVERY BEACON STANDING: TEN, WHICH IS DOUBLE.
+	for (int32 Floor = 3; Floor <= 7; ++Floor)
+	{
+		if (!TestTrue(FString::Printf(TEXT("floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("five floors' beacons left standing: ten carried"), Mode->PlagueBeaconsLeftStanding(), 10);
+
+	// FLOOR 7 LEFT AS WELL: TWELVE, AND STILL ONLY DOUBLE.
+	const float Eighth = ACreaturesDamageOnFloor(*this, World, Mode, 8);
+	TestEqual(TEXT("twelve carried"), Mode->PlagueBeaconsLeftStanding(), 12);
+	TestEqual(TEXT("and still only double"), Eighth, 200.0f, 0.01f);
+	TestEqual(TEXT("the panel on floor 8"), Mode->LiveCountsForTheFloor().FindRef(BeaconsRow),
+			  FString(TEXT("pestilent empowerment: 2 beacons here; this floor +100%; later floors +100%")));
+
+	// LEAVING THE DUNGEON CLEARS THE COUNT AND THE BEACONS.
+	const TArray<ACataclysmEnemyCharacter*> Beacons = Mode->PlagueBeaconsStanding();
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("no count after leaving the dungeon"), Mode->PlagueBeaconsLeftStanding(), 0);
+	TestEqual(TEXT("no beacon standing"), Mode->PlagueBeaconsStanding().Num(), 0);
+	for (ACataclysmEnemyCharacter* Gone : Beacons)
+	{
+		TestFalse(TEXT("the last floor's beacons are gone"), IsValid(Gone) && !Gone->IsActorBeingDestroyed());
+	}
+	return true;
+}
+
+// A HORDE ARENA HAS ONE BEACON, KEPT, AND IT IS COUNTED ONCE: AT THE FIRST WAVE CHANGE AND NOT THE NEXT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeaconsHordeTest,
+	"Cataclysm.DungeonModifierEffects.AHordeArenasBeaconIsCountedOnceAtItsFirstWaveChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBeaconsHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// FLOOR 1 OF A HORDE DUNGEON IS ITS ONE NEW ARENA, as Eternal Chorus's test explains. Going there from
+	// floor 2 counts floor 2's two, so the Horde's own count is read as what it adds after that.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const int32 Before = Mode->PlagueBeaconsLeftStanding();
+	TestEqual(TEXT("floor 2's two were counted on the way in"), Before, 2);
+	const TArray<ACataclysmEnemyCharacter*> Horde = Mode->PlagueBeaconsStanding();
+	if (!TestEqual(TEXT("one beacon in a Horde arena"), Horde.Num(), Effects::PestilentEmpowermentBeaconsPerHordeArena))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the next wave keeps the same beacon"),
+			 Mode->PlagueBeaconsStanding().Num() == 1 && Mode->PlagueBeaconsStanding()[0] == Horde[0]);
+	TestEqual(TEXT("counted at the first wave change"), Mode->PlagueBeaconsLeftStanding(), Before + 1);
+
+	if (!TestTrue(TEXT("the wave after was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and not again at the next"), Mode->PlagueBeaconsLeftStanding(), Before + 1);
 	return true;
 }
 

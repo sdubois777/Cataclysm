@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "AbilitySystem/CataclysmTerrain.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
@@ -1029,6 +1030,27 @@ bool FCataclysmSaveSpireClaimsNothing::RunTest(const FString&)
 {
 	const ACataclysmSpireCharacter* Default = GetDefault<ACataclysmSpireCharacter>();
 	if (!TestNotNull(TEXT("a spire class"), Default))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it names no archetype row, as the dummy names none"), Default->ArchetypeRow.IsNone());
+	TestTrue(TEXT("the empty name is the training dummy's"),
+		FCataclysmSaveApply::ClassForArchetype(NAME_None) == ACataclysmEnemyCharacter::StaticClass());
+	return true;
+}
+
+/**
+ * A plague beacon names no archetype row and is not mapped to one either: the save system skips every
+ * floor source, so the empty name stays the sandbox training dummy's. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveBeaconClaimsNothing,
+	"Cataclysm.SaveApply.ABeaconDoesNotTakeTheTrainingDummysEmptyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveBeaconClaimsNothing::RunTest(const FString&)
+{
+	const ACataclysmBeaconCharacter* Default = GetDefault<ACataclysmBeaconCharacter>();
+	if (!TestNotNull(TEXT("a beacon class"), Default))
 	{
 		return false;
 	}
