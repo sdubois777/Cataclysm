@@ -2748,3 +2748,78 @@ class TestAgainstTheRealWorkbook:
             identifiers = sorted({int(float(row["Weight"])) for row in sets})
             assert identifiers == list(range(5, 19)), (
                 f"{name} set identifiers are {identifiers}, not 5 to 18")
+
+
+class TestAnAtNPointsRowStatesItsThreshold:
+    """ISSUE #1755. A node sentence's "At 4 points: ..." clause -- Set Stance's
+    and Scarred Plate's -- is a row with a `Min Points` column: it applies from
+    that many points in its own node, and then once rather than per point.
+
+    OPTIONAL UNTIL THE ROWS ARRIVE. The column is declared in `OPTIONAL_COLUMNS`
+    while the design workbook is with another session, so a sheet without it
+    reads every row as 0, which is the rule every row followed before it.
+
+    A THRESHOLD IS A WHOLE NUMBER OF POINTS FROM 1, and one the node cannot
+    reach is reported, because no player could ever earn the row.
+    """
+
+    @staticmethod
+    def sheet(rows: list[list]) -> list[list]:
+        return [["Node", "Stat", "Value Kind", "Value Per Point",
+                 "Min Points", "Required Tags", "Condition", "Condition Value",
+                 "Scale", "Scale Step", "Option", "Reach Metres"]] + rows
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "threshold.xlsx", {"Passive Effects": self.sheet(rows)}))
+
+    def test_a_threshold_reaches_the_output_and_an_empty_one_is_nought(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Ravager_basic_spine_008", "armor", "increased", 1.5, None],
+            ["Ravager_basic_spine_008", "crowd_control_resistance", "increased", 5, 4],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert [(r["Stat"], r["MinPoints"]) for r in out] == [
+            ("armor", 0), ("crowd_control_resistance", 4)]
+
+    def test_the_same_stat_per_point_and_from_a_threshold_are_two_rows(self, tmp_path):
+        """The threshold is part of what makes a row distinct, since a node could
+        grant a stat per point and the same stat again, whole, from four."""
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 1, None],
+            ["A_node", "armor", "increased", 5, 4],
+        ])
+        assert len(gen.passive_effects(rows)) == 2
+
+    @pytest.mark.parametrize("written", [0, -1, 2.5])
+    def test_a_threshold_that_is_not_a_whole_number_from_one_is_refused(
+            self, tmp_path, written):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 5, written],
+        ])
+        with pytest.raises(gen.DataError, match="whole number of points from 1"):
+            gen.passive_effects(rows)
+
+    def test_a_sheet_without_the_column_reads_every_row_as_nought(self, tmp_path):
+        """What the committed workbook is until the rows change adds the column."""
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "without.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Condition", "Condition Value",
+                                  "Scale", "Scale Step", "Option", "Reach Metres"],
+                                 ["A_node", "armor", "increased", 5]]}))
+        assert [r["MinPoints"] for r in gen.passive_effects(book)] == [0]
+
+    def test_a_threshold_the_node_cannot_reach_is_reported(self):
+        def tables(min_points):
+            return {
+                "PassiveEffects": [{"Name": "Real_node#1", "Node": "Real_node",
+                                    "Stat": "armor", "ValueKind": "increased",
+                                    "RequiredTags": "", "MinPoints": min_points}],
+                "PassiveNodes": [{"Name": "Real_node", "MaxPoints": 8}],
+                "ClassStats": [{"Stat": "armor"}],
+            }
+        assert gen.validate_passive_effects(tables(8), set()) == []
+        problems = gen.validate_passive_effects(tables(9), set())
+        assert len(problems) == 1 and "no player can ever earn it" in problems[0], problems

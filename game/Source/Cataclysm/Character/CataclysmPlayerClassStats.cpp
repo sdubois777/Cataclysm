@@ -280,6 +280,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// A Second Self, above zero meaning held, read by
 		// UCataclysmSecondSelf::Step. Issue #1515.
 		TEXT("minion_held_longest_becomes_your_equal"),
+		// Set Stance's "cannot be knocked back", above zero meaning held, read
+		// by UCataclysmSkillEffects::ApplyKnockback. Issue #1755.
+		TEXT("knockback_suppressed"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.

@@ -1592,7 +1592,13 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: EVERY NTH JOINED ON 2026-09-24 for issue #1833's "every Nth" rows, built
 #: ahead of them while the design workbook is with another session, and LEFT
 #: with those rows. The table is empty again.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#:
+#: MIN POINTS JOINED ON 2026-09-25 for issue #1755's two "At 4 points:" clauses,
+#: Set Stance's and Scarred Plate's, built ahead of their rows while the design
+#: workbook is with another session. It leaves with those rows.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Passive Effects": {"Min Points": "issue #1755"},
+}
 
 
 class _Headers(dict):
@@ -4527,6 +4533,21 @@ def passive_effects(book) -> list[dict]:
                     f"{option}, and a capstone offers {CAPSTONE_OPTIONS}. Leave "
                     f"the column empty for a row that is not a capstone option.")
 
+        # FROM HOW MANY POINTS IN ITS OWN NODE THE ROW APPLIES, AND THEN ONCE.
+        # Issue #1755. Empty is 0, which is every row before the column: the
+        # row applies from the first point and is paid per point. Above 0 is a
+        # node sentence's "At 4 points: ..." clause, which the node grants whole
+        # from that point on and never multiplies by the points.
+        min_points = 0
+        if clean(_cell(raw, headers, "Min Points")):
+            written = number(_cell(raw, headers, "Min Points"), "Min Points", index)
+            if written != int(written) or written < 1:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a Min Points of "
+                    f"{written}, and it takes a whole number of points from 1 "
+                    f"up. Leave the column empty for a row paid per point.")
+            min_points = int(written)
+
         counts[node] = counts.get(node, 0) + 1
 
         out.append({
@@ -4543,6 +4564,7 @@ def passive_effects(book) -> list[dict]:
             "ScaleStep": scale_step,
             "Option": option,
             "ReachMetres": reach_metres,
+            "MinPoints": min_points,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -4562,11 +4584,14 @@ def passive_effects(book) -> list[dict]:
     # things a player may pick, and two of them may reasonably move the same
     # stat by different amounts. Without the option in this key the second would
     # read as a duplicated row and the sheet would refuse to be written at all.
-    pairs: dict[tuple[str, str, str, float, str, float, int], int] = {}
+    #
+    # AND SO IS THE POINT THRESHOLD, since issue #1755: a node could grant a
+    # stat per point and the same stat again, whole, from "At 4 points".
+    pairs: dict[tuple[str, str, str, float, str, float, int, int], int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
-               row["Option"])
+               row["Option"], row["MinPoints"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:
@@ -5922,6 +5947,10 @@ def validate_passive_effects(tables: dict[str, list[dict]],
 
     node_names = {row["Name"] for row in nodes}
 
+    # HOW MANY POINTS EACH NODE HOLDS, for the threshold check below. Issue
+    # #1755.
+    max_points = {row["Name"]: int(row.get("MaxPoints", 0) or 0) for row in nodes}
+
     # WHICH NODES ARE CAPSTONES, for the option check below. Issue #1029. The
     # `Kind` column is the same one `UCataclysmPassiveTree::CapstoneKind` matches
     # against in the engine.
@@ -5977,6 +6006,17 @@ def validate_passive_effects(tables: dict[str, list[dict]],
         # place that can be caught. If a capstone ever legitimately wants a row
         # that applies whatever is chosen, this is the check to relax, and the
         # relaxation should say which node needed it.
+        # A THRESHOLD THE NODE CANNOT REACH GRANTS NOTHING, EVER. Issue #1755.
+        # "At 4 points" on a node that holds three is a row nobody can earn, and
+        # nothing at run time says so.
+        min_points = int(row.get("MinPoints", 0) or 0)
+        most = max_points.get(row["Node"])
+        if min_points and most is not None and min_points > most:
+            problems.append(
+                f"PassiveEffects/{row['Name']}: applies from {min_points} "
+                f"points and {row['Node']} holds at most {most}, so no player "
+                f"can ever earn it")
+
         option = int(row.get("Option", 0) or 0)
         is_capstone = row["Node"] in capstones
         if option and not is_capstone:

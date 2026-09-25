@@ -1771,6 +1771,22 @@ public:
 	 */
 	static const TCHAR* CrowdControlResistanceStat;
 
+	/**
+	 * A flag above zero meaning a knockback does not move the character.
+	 * Issue #1755, for Set Stance's "At 4 points: you cannot be knocked back
+	 * while an enemy is within 4 metres."
+	 *
+	 * KNOCKBACK ONLY, NOT A PULL, A DRAG OR A LAUNCH. Ruled 2026-09-25 under the
+	 * owner's delegation: the sentence names knockback, and Unstoppable's wider
+	 * sentence covers the rest through crowd control resistance. So it is read
+	 * in `ApplyKnockback` and not in the displacement body the four share.
+	 *
+	 * ASKED THROUGH `StatForSkill`, NOT READ OFF AN ATTRIBUTE, because the row
+	 * that grants it carries a condition, and a conditioned row reaches only a
+	 * stat whose consumer asks the pipeline.
+	 */
+	static const TCHAR* KnockbackSuppressedStat;
+
 	/** Whether this actor is stunned right now and may not act. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsStunned(const AActor* Actor);

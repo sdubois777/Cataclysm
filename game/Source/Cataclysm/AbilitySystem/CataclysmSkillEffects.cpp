@@ -293,6 +293,8 @@ const TCHAR* UCataclysmSkillEffects::KnockdownSecondsStat =
 	TEXT("knockdown_seconds");
 const TCHAR* UCataclysmSkillEffects::CrowdControlResistanceStat =
 	TEXT("crowd_control_resistance");
+const TCHAR* UCataclysmSkillEffects::KnockbackSuppressedStat =
+	TEXT("knockback_suppressed");
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
@@ -2451,6 +2453,21 @@ bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 		// and picking one arbitrarily would shove a target somewhere nobody could
 		// have predicted.
 		return false;
+	}
+
+	// A TARGET THAT CANNOT BE KNOCKED BACK IS NOT MOVED, AND NOT STAGGERED
+	// EITHER. Issue #1755, Set Stance. Asked of the target through the pipeline
+	// so a row that holds only while an enemy is near reaches it, and before the
+	// displacement so a refused shove spends none of the target's window.
+	if (const UCataclysmAbilitySystemComponent* Held =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Target)))
+	{
+		if (Held->StatForSkill(FName(KnockbackSuppressedStat),
+							   FGameplayTagContainer(), 0.0f) > 0.0f)
+		{
+			return false;
+		}
 	}
 
 	if (!CataclysmDisplace(Target, Away.GetSafeNormal() * DistanceCm))

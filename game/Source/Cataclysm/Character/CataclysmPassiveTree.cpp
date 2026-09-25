@@ -899,9 +899,20 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 				continue;
 			}
 
+			// AN "AT N POINTS" ROW APPLIES FROM N POINTS, AND ONCE. Issue #1755.
+			// Below its threshold it grants nothing; from it, its value whole
+			// rather than times the points, so eight points in Scarred Plate
+			// grant its 5 crowd control resistance and not 10.
+			if (Effect->MinPoints > 0 && Spent.Points < Effect->MinPoints)
+			{
+				continue;
+			}
+
 			FCataclysmStatModifier Modifier;
 			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
-			Modifier.Value = Effect->ValuePerPoint * Spent.Points;
+			Modifier.Value = Effect->MinPoints > 0
+				? Effect->ValuePerPoint
+				: Effect->ValuePerPoint * Spent.Points;
 
 			if (Effect->ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
 			{
