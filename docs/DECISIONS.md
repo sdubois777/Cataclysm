@@ -83,8 +83,8 @@ passed in 0.20s", the one failure being `test_a_single_value_appears_in_its_word
 
 **Affects:** a new shared class for a creature a rule places that does nothing,
 `game/Source/Cataclysm/Character/CataclysmFloorSourceCharacter.h` and `.cpp`; Eternal Chorus's source
-`game/Source/Cataclysm/Character/CataclysmChorusSourceCharacter.h` (now built on that class; its `.cpp`,
-which held only the constructor that moved, is deleted); a new flower class
+`game/Source/Cataclysm/Character/CataclysmChorusSourceCharacter.h` and `.cpp` (now built on that class,
+whose constructor its own was moved into, so the `.cpp` keeps only its include); a new flower class
 `game/Source/Cataclysm/Character/CataclysmBloomCharacter.h`;
 `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures
 and when a wave is due); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing
