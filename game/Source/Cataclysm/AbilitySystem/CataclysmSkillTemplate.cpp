@@ -66,10 +66,12 @@ bool UCataclysmSkillTemplate::DeliversDamageItself() const
 float UCataclysmSkillTemplate::SpendHeldNextUseCharges(
 	UCataclysmAbilitySystemComponent* AbilitySystem)
 {
+	LastNextUseMoreMultiplier = 1.0f;
 	LastNextUseIncreasePercent =
 		AbilitySystem && DeliversDamageItself()
 			? AbilitySystem->SpendNextUseCharges(
-				  UCataclysmSkillEffects::IsSpell(SkillTags))
+				  UCataclysmSkillEffects::IsSpell(SkillTags),
+				  &LastNextUseMoreMultiplier)
 			: 0.0f;
 	return LastNextUseIncreasePercent;
 }
@@ -77,13 +79,15 @@ float UCataclysmSkillTemplate::SpendHeldNextUseCharges(
 float UCataclysmSkillTemplate::WithSpentIncrease(
 	const UAbilitySystemComponent* AbilitySystem) const
 {
+	// AND ANY EFFECTIVENESS SPENT, a "more" on the whole figure. Issue #1833.
+	const float More = FMath::Max(0.0f, LastNextUseMoreMultiplier);
 	if (LastNextUseIncreasePercent <= 0.0f)
 	{
-		return 1.0f;
+		return More;
 	}
 	const float Folded = UCataclysmSkillEffects::IncreasesBehindAttackDamage(AbilitySystem);
 	return (1.0f + Folded + LastNextUseIncreasePercent / 100.0f)
-		/ FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER);
+		/ FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER) * More;
 }
 
 float UCataclysmSkillTemplate::GetDamagePercent() const
@@ -287,6 +291,7 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// the condition refuses on rather than treating as no distance.
 		LastMetresMovedBeforeUse = -1.0f;
 		LastNextUseIncreasePercent = 0.0f;
+		LastNextUseMoreMultiplier = 1.0f;
 	}
 
 	// THE BURST AT THE CASTER, AND THIS IS THE ONLY PLACE IT IS ASKED FOR.
@@ -1957,6 +1962,7 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// AND WHAT THIS USE SPENT FROM NEXT-USE CHARGES, into the same sum. Issue
 	// #1833, phase 2.
 	Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+	Delivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
 
 	float Total = 0.0f;
 

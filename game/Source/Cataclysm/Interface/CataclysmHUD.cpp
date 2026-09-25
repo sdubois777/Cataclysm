@@ -382,8 +382,17 @@ void ACataclysmHUD::DrawSkillBar()
 		int32 AttackCount = 0;
 		Cataclysm->NextUseChargesByKind(SkillPercent, SkillCount,
 										AttackPercent, AttackCount);
+		// AND OWN STACKS, one entry per enchantment. Issue #1833.
+		TArray<FString> OwnStacks;
+		for (const UCataclysmAbilitySystemComponent::FHeldOwnStacks& Held :
+			 Cataclysm->OwnStacksByEnchantment())
+		{
+			OwnStacks.Add(UCataclysmSkillBar::OwnStacksEntry(
+				Held.Stats, Held.Held, Held.Cap));
+		}
 		const FString Line = UCataclysmSkillBar::NextUseLine(
-			SkillPercent, SkillCount, AttackPercent, AttackCount);
+			SkillPercent, SkillCount, AttackPercent, AttackCount,
+			Cataclysm->NextUseEffectivenessHeld(), OwnStacks);
 		if (!Line.IsEmpty())
 		{
 			const FVector2D First = UCataclysmSkillBar::BoxOriginFor(

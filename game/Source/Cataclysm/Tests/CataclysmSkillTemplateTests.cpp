@@ -17702,4 +17702,163 @@ bool FCataclysmNextUseGrantTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTimedGrantTest,
+	"Cataclysm.Skills.ATimedRowGrantsOncePerPeriodOfCombatAndNeverOutOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row granting "every 10 seconds" is granted once for every whole 10 seconds
+ * of the current combat, the first at 10 and not at 9; never out of combat; and
+ * from nothing again when a new combat begins. Ruled 2026-09-24. Issue #1833,
+ * timed grants. Two rows of one enchantment, on attack and spell damage, show
+ * as one entry for the line above the skill bar.
+ */
+bool FCataclysmTimedGrantTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	const FName Timed(UCataclysmAbilitySystemComponent::TimedEvent);
+	const FName AttackStacks(TEXT("Momentum:attack_damage"));
+	const FName SpellStacks(TEXT("Momentum:spell_damage"));
+
+	TArray<FCataclysmPoolAction> Actions;
+	for (const FName& Key : {AttackStacks, SpellStacks})
+	{
+		FCataclysmPoolAction Stack;
+		Stack.Event = Timed;
+		Stack.StackKey = Key;
+		Stack.StackSeconds = 20.0f;
+		Stack.StackCap = 5;
+		Stack.EverySeconds = 10.0f;
+		Actions.Add(Stack);
+	}
+	FCataclysmPoolAction Charge;
+	Charge.Event = Timed;
+	Charge.Pool = FName(UCataclysmAbilitySystemComponent::NextAttackDamageAction);
+	Charge.Percent = 200.0f;
+	Charge.NextUseKey = AttackCharge;
+	Charge.NextUseCap = 1;
+	Charge.bNextUseIsAttack = true;
+	Charge.EverySeconds = 10.0f;
+	Actions.Add(Charge);
+	ASC->SetPoolActions(MoveTemp(Actions));
+
+	// OUT OF COMBAT, however long.
+	World->TimeSeconds = 50.0f;
+	ASC->StepTimedGrants();
+	TestEqual(TEXT("fifty seconds out of combat grant nothing"),
+		ASC->OwnStacksHeld(AttackStacks) + ASC->NextUseChargesHeld(AttackCharge), 0);
+
+	// IN COMBAT, kept there by a blow every second.
+	const float Began = World->TimeSeconds;
+	const auto FightUntil = [&](float Seconds)
+	{
+		while (World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			ASC->NoteHitDealt();
+			ASC->StepTimedGrants();
+		}
+	};
+	ASC->NoteHitDealt();
+	FightUntil(9.0f);
+	TestEqual(TEXT("nine seconds into a fight: no stack yet"),
+		ASC->OwnStacksHeld(AttackStacks), 0);
+	FightUntil(10.0f);
+	TestEqual(TEXT("ten seconds in: one stack"), ASC->OwnStacksHeld(AttackStacks), 1);
+	TestEqual(TEXT("and one on the spell damage row"), ASC->OwnStacksHeld(SpellStacks), 1);
+	TestEqual(TEXT("and one next-attack charge"), ASC->NextUseChargesHeld(AttackCharge), 1);
+	FightUntil(20.0f);
+	TestEqual(TEXT("twenty seconds in: two stacks"), ASC->OwnStacksHeld(AttackStacks), 2);
+	TestEqual(TEXT("and still one charge, its cap"), ASC->NextUseChargesHeld(AttackCharge), 1);
+
+	const TArray<UCataclysmAbilitySystemComponent::FHeldOwnStacks> Shown =
+		ASC->OwnStacksByEnchantment();
+	TestTrue(TEXT("the two rows show as one entry: 2 of 5, on attack and spell damage"),
+		Shown.Num() == 1 && Shown[0].Held == 2 && Shown[0].Cap == 5
+			&& Shown[0].Stats.Num() == 2);
+
+	// COMBAT LAPSES, AND THE COUNT STARTS AGAIN.
+	World->TimeSeconds += UCataclysmAbilitySystemComponent::CombatLapseSeconds + 1.0f;
+	ASC->StepTimedGrants();
+	const int32 AfterLapse = ASC->OwnStacksHeld(AttackStacks);
+	const float Again = World->TimeSeconds;
+	ASC->NoteHitDealt();
+	while (World->TimeSeconds < Again + 9.0f - 0.001f)
+	{
+		World->TimeSeconds += 1.0f;
+		ASC->NoteHitDealt();
+		ASC->StepTimedGrants();
+	}
+	TestEqual(TEXT("nine seconds into the next fight: nothing more"),
+		ASC->OwnStacksHeld(AttackStacks), AfterLapse);
+	World->TimeSeconds += 1.0f;
+	ASC->NoteHitDealt();
+	ASC->StepTimedGrants();
+	TestEqual(TEXT("ten seconds into it: one more"),
+		ASC->OwnStacksHeld(AttackStacks), AfterLapse + 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseEffectivenessTest,
+	"Cataclysm.Skills.AnEffectivenessChargeMultipliesTheUsesHitsAndNotItsBurn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your next skill is cast at 300% effectiveness": the strike that spends the
+ * charge deals three times the Heavy slot's 250 to each enemy, 750, and the
+ * burn it leaves ticks at the plain figure (the owner's decision of 2026-08-25).
+ * Issue #1833, timed grants.
+ */
+bool FCataclysmNextUseEffectivenessTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Ahead(World, FVector(2 * M, 0, 0));
+	FScopedFighter Behind(World, FVector(-2 * M, 0, 0));
+	FScopedFighter OutOfReach(World, FVector(9 * M, 0, 0));
+	Caster.AbilitySystem->GrantNextUseCharge(FName(TEXT("Test:next_skill_effectiveness")),
+		/*bAttack=*/false, 300.0f, /*Cap=*/1, /*bEffectiveness=*/true);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; Burn=1"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float AheadBefore = Ahead.Health();
+	const float BehindBefore = Behind.Health();
+	TestTrue(TEXT("it activates"), Activate(Caster, Strike));
+
+	const float Expected = WeaponDamage * 250.0f / 100.0f * 3.0f;
+	TestEqual(TEXT("the enemy ahead takes three times 250: 750"),
+		AheadBefore - Ahead.Health(), Expected, 0.01f);
+	TestEqual(TEXT("and so does the enemy behind"),
+		BehindBefore - Behind.Health(), Expected, 0.01f);
+	TestEqual(TEXT("the strike recorded the multiplier it spent"),
+		Strike->LastNextUseMoreMultiplier, 3.0f, 0.001f);
+
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, OutOfReach.Actor,
+		/*HitDamage=*/0.0f, /*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+	const float Charged = BurnPerTickOn(Ahead);
+	const float Plain = BurnPerTickOn(OutOfReach);
+	TestTrue(FString::Printf(
+			TEXT("the burn the tripled strike left ticks at the plain figure: "
+				 "%.3f against %.3f"), Charged, Plain),
+		Plain > 0.0f && FMath::IsNearlyEqual(Charged, Plain, 0.001f));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

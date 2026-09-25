@@ -403,6 +403,15 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	float IncreasedDamageSpentPercent = 0.0f;
 
 	/**
+	 * What the use's spent effectiveness charges multiply every blow by: 3
+	 * for "your next skill is cast at 300% effectiveness", 1 for none. Issue
+	 * #1833, timed grants. A "more", so it multiplies the finished figure
+	 * rather than joining the increases above.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float DamageMultiplierSpent = 1.0f;
+
+	/**
 	 * The attacker's chance to apply each ailment with this blow, in percent,
 	 * keyed by the name it travels under on the damage effect. Issue #899.
 	 *

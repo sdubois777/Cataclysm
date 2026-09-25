@@ -297,8 +297,28 @@ public:
 	 *
 	 * PURE, so a test can read the exact words the HUD draws.
 	 */
+	//
+	// AND, SINCE ISSUE #1833'S TIMED GRANTS, an effectiveness charge ("Next
+	// skill 300% effectiveness") and one entry per enchantment holding own
+	// stacks, each already worded by `OwnStacksEntry`. The seven own-stack
+	// enchantments of #2083 shipped with nothing on screen; this is where they
+	// show.
 	static FString NextUseLine(float SkillPercent, int32 SkillCount,
-							  float AttackPercent, int32 AttackCount);
+							  float AttackPercent, int32 AttackCount,
+							  float EffectivenessPercent = 0.0f,
+							  const TArray<FString>& OwnStacks = TArray<FString>());
+
+	/**
+	 * One enchantment's own stacks as the line names them: its stats and the
+	 * count against the cap, "armor 2/10". Issue #1833.
+	 *
+	 * NAMED BY THE STATS, not by the enchantment. Its row name is a key cut
+	 * from its sentence ("Positive_Every_10_seconds_gain_a_stack_of_momentum_
+	 * granti") and not readable. Attack and spell damage together, which is
+	 * how every damage sentence is written, read "attack/spell damage"; any
+	 * other stats are joined with a slash, underscores read as spaces.
+	 */
+	static FString OwnStacksEntry(const TArray<FName>& Stats, int32 Held, int32 Cap);
 
 	/**
 	 * A key written short enough to fit in a box.

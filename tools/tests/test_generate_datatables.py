@@ -1835,7 +1835,8 @@ class TestEnchantmentEffects:
     HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
               "Value High", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
-              "Scale Max Steps", "Stack Seconds", "Scale Offset"]
+              "Scale Max Steps", "Stack Seconds", "Scale Offset",
+              "Every Seconds"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1861,7 +1862,8 @@ class TestEnchantmentEffects:
             "ValueLow": 100.0, "ValueHigh": 100.0, "RequiredTags": "",
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
-            "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0}]
+            "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
+            "EverySeconds": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
@@ -1935,6 +1937,49 @@ class TestEnchantmentEffects:
             gen.enchantment_effects(self.book(tmp_path, [
                 self.row(self.NEXT),
                 self.row({**self.NEXT, "Action Event": "block"})]))
+
+    # A ROW THAT GRANTS ON A CLOCK. Issue #1833, timed grants: the event is
+    # every_seconds and Every Seconds is the period.
+    TIMED = {"Action Event": "every_seconds", "Every Seconds": 8}
+
+    def test_a_timed_next_use_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.NEXT, **self.TIMED})]))
+        assert (out[0]["ActionEvent"], out[0]["EverySeconds"]) == ("every_seconds", 8.0)
+
+    def test_a_timed_own_stack_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.OWN, **self.TIMED})]))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["EverySeconds"]) == (
+            "own_stacks", "every_seconds", 8.0)
+
+    def test_every_seconds_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Every Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Action Event": "every_seconds"})]))
+
+    def test_a_period_on_any_other_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only every_seconds reads a period"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Every Seconds": 8})]))
+
+    @pytest.mark.parametrize("period", [0, 61])
+    def test_a_period_outside_its_bounds_is_refused(self, tmp_path, period):
+        with pytest.raises(gen.DataError, match="A period is above 0"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, **self.TIMED, "Every Seconds": period})]))
+
+    def test_every_seconds_is_not_an_event_the_game_fires_by_name(self):
+        """Issue #1833: the timed event is accepted beside the named ones, and is
+        kept out of the list the engine's named `ActOnEvent` calls are held to."""
+        assert gen.TIMED_EVENT == "every_seconds"
+        assert gen.TIMED_EVENT not in gen.action_events()
+        assert gen.TIMED_EVENT in gen.granting_events()
+
+    def test_a_next_skill_effectiveness_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.NEXT, "Action": "next_skill_effectiveness"})]))
+        assert out[0]["Action"] == "next_skill_effectiveness"
 
     def test_an_event_on_a_stat_row_that_counts_no_stacks_is_refused(self, tmp_path):
         """Before issue #1833 such an event was read by nothing and dropped."""

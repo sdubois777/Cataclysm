@@ -825,7 +825,10 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float Damage = ModifiedDamage(
 		Source,
 		(BeforeIncreases * DamagePercent / 100.0f + Flat)
-			* (1.0f + Applying + Conditional + Bought),
+			* (1.0f + Applying + Conditional + Bought)
+			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
+			// Issue #1833, timed grants. One for every other blow.
+			* FMath::Max(0.0f, Delivery.DamageMultiplierSpent),
 		SkillTags,
 		Delivery.SkillHealthCostPercent,
 		Delivery.MetresMovedBeforeBlow,

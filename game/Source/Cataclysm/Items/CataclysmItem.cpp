@@ -1027,6 +1027,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				Stack.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(*Effect);
 				Stack.StackSeconds = Effect->StackSeconds;
 				Stack.StackCap = Effect->ScaleMaxSteps;
+				// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
+				Stack.EverySeconds = Effect->EverySeconds;
 				Actions->Add(Stack);
 			}
 
@@ -1058,12 +1060,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					const bool bNextAttack = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::NextAttackDamageAction,
 						ESearchCase::IgnoreCase);
-					if (bNextSkill || bNextAttack)
+					const bool bNextEffectiveness = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::NextSkillEffectivenessAction,
+						ESearchCase::IgnoreCase);
+					// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
+					Action.EverySeconds = Effect->EverySeconds;
+					if (bNextSkill || bNextAttack || bNextEffectiveness)
 					{
 						Action.NextUseKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						Action.NextUseCap = FMath::Max(1, Effect->ScaleMaxSteps);
 						Action.bNextUseIsAttack = bNextAttack;
+						Action.bNextUseIsEffectiveness = bNextEffectiveness;
 					}
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes

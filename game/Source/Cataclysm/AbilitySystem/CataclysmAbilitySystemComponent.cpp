@@ -2728,9 +2728,69 @@ const TCHAR* UCataclysmAbilitySystemComponent::NextSkillDamageAction =
 	TEXT("next_skill_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::NextAttackDamageAction =
 	TEXT("next_attack_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::NextSkillEffectivenessAction =
+	TEXT("next_skill_effectiveness");
+const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
+	TEXT("every_seconds");
+
+void UCataclysmAbilitySystemComponent::StepTimedGrants()
+{
+	const float InCombat = SecondsInCombat();
+
+	// A NEW COMBAT, OR NONE, STARTS EVERY COUNT AGAIN, ruled 2026-09-24.
+	if (InCombat < 0.0f || CombatStartedAtSeconds != TimedGrantsCombatStartedAt)
+	{
+		TimedGrantsGiven.Reset();
+		TimedGrantsCombatStartedAt = CombatStartedAtSeconds;
+	}
+	if (InCombat < 0.0f || PoolActions.IsEmpty())
+	{
+		return;
+	}
+
+	// A COPY, for the reason `ActOnEvent` gives: a grant can reach the
+	// equipment refresh that replaces this very list.
+	const FName Timed(TimedEvent);
+	const TArray<FCataclysmPoolAction> Firing = PoolActions;
+	for (const FCataclysmPoolAction& Action : Firing)
+	{
+		if (Action.Event != Timed || Action.EverySeconds <= 0.0f
+			|| !PoolActionAllowed(Action, nullptr))
+		{
+			continue;
+		}
+		const FName Key = !Action.NextUseKey.IsNone() ? Action.NextUseKey
+			: !Action.StackKey.IsNone() ? Action.StackKey
+			: FName(*FString::Printf(TEXT("%s@%g"), *Action.Pool.ToString(),
+									 Action.EverySeconds));
+
+		// ONCE FOR EVERY WHOLE PERIOD OF THIS COMBAT, N seconds in first.
+		const int32 Due = FMath::FloorToInt(InCombat / Action.EverySeconds);
+		int32& Given = TimedGrantsGiven.FindOrAdd(Key);
+		while (Given < Due)
+		{
+			++Given;
+			if (!Action.NextUseKey.IsNone())
+			{
+				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
+								   Action.Percent, Action.NextUseCap,
+								   Action.bNextUseIsEffectiveness);
+			}
+			else if (!Action.StackKey.IsNone())
+			{
+				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+			}
+			else
+			{
+				ApplyPoolAction(Action, nullptr, 0.0f);
+			}
+		}
+	}
+}
 
 void UCataclysmAbilitySystemComponent::GrantNextUseCharge(FName Key, bool bAttack,
-													   float Percent, int32 Cap)
+													   float Percent, int32 Cap,
+													   bool bEffectiveness)
 {
 	if (Key.IsNone() || Cap <= 0)
 	{
@@ -2741,11 +2801,14 @@ void UCataclysmAbilitySystemComponent::GrantNextUseCharge(FName Key, bool bAttac
 	Held.Cap = Cap;
 	Held.Percent = Percent;
 	Held.bAttack = bAttack;
+	Held.bEffectiveness = bEffectiveness;
 }
 
-float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell)
+float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell,
+															float* OutMoreMultiplier)
 {
 	float Spent = 0.0f;
+	float More = 1.0f;
 	for (auto It = NextUseCharges.CreateIterator(); It; ++It)
 	{
 		const FNextUseCharge& Held = It.Value();
@@ -2755,10 +2818,84 @@ float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell)
 		{
 			continue;
 		}
-		Spent += Held.Count * Held.Percent;
+		// AN EFFECTIVENESS CHARGE MULTIPLIES, A DAMAGE CHARGE ADDS. Issue #1833:
+		// 300% effectiveness is three times the use's damage, a "more".
+		if (Held.bEffectiveness)
+		{
+			More *= FMath::Pow(FMath::Max(0.0f, Held.Percent) / 100.0f, Held.Count);
+		}
+		else
+		{
+			Spent += Held.Count * Held.Percent;
+		}
 		It.RemoveCurrent();
 	}
+	if (OutMoreMultiplier)
+	{
+		*OutMoreMultiplier = More;
+	}
 	return Spent;
+}
+
+float UCataclysmAbilitySystemComponent::NextUseEffectivenessHeld() const
+{
+	float Multiplier = 1.0f;
+	bool bAny = false;
+	for (const TPair<FName, FNextUseCharge>& Each : NextUseCharges)
+	{
+		if (Each.Value.bEffectiveness && Each.Value.Count > 0)
+		{
+			Multiplier *= FMath::Pow(Each.Value.Percent / 100.0f, Each.Value.Count);
+			bAny = true;
+		}
+	}
+	return bAny ? Multiplier * 100.0f : 0.0f;
+}
+
+TArray<UCataclysmAbilitySystemComponent::FHeldOwnStacks>
+UCataclysmAbilitySystemComponent::OwnStacksByEnchantment() const
+{
+	// KEYED "ENCHANTMENT:STAT" by `UCataclysmItemModifiers::OwnStackKeyFor`, so
+	// the part before the colon groups one enchantment's rows together.
+	TMap<FString, FHeldOwnStacks> ByEnchantment;
+	for (const TPair<FName, FOwnStack>& Each : OwnStacks)
+	{
+		const int32 Held = OwnStacksHeld(Each.Key);
+		if (Held <= 0)
+		{
+			continue;
+		}
+		FString Enchantment;
+		FString Stat;
+		if (!Each.Key.ToString().Split(TEXT(":"), &Enchantment, &Stat))
+		{
+			Stat = Each.Key.ToString();
+		}
+		FHeldOwnStacks& Entry = ByEnchantment.FindOrAdd(Enchantment);
+		Entry.Stats.AddUnique(FName(*Stat));
+		Entry.Held = FMath::Max(Entry.Held, Held);
+		for (const FCataclysmPoolAction& Action : PoolActions)
+		{
+			if (Action.StackKey == Each.Key)
+			{
+				Entry.Cap = FMath::Max(Entry.Cap, Action.StackCap);
+			}
+		}
+	}
+
+	// IN A FIXED ORDER, by enchantment name, so the line does not reorder
+	// itself from one frame to the next.
+	TArray<FString> Order;
+	ByEnchantment.GetKeys(Order);
+	Order.Sort();
+	TArray<FHeldOwnStacks> Out;
+	for (const FString& Enchantment : Order)
+	{
+		FHeldOwnStacks Entry = ByEnchantment[Enchantment];
+		Entry.Stats.Sort(FNameLexicalLess());
+		Out.Add(MoveTemp(Entry));
+	}
+	return Out;
 }
 
 int32 UCataclysmAbilitySystemComponent::NextUseChargesHeld(FName Key) const
@@ -2775,6 +2912,12 @@ void UCataclysmAbilitySystemComponent::NextUseChargesByKind(
 	OutSkillCount = OutAttackCount = 0;
 	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
 	{
+		// AN EFFECTIVENESS CHARGE IS SHOWN ON ITS OWN, by
+		// `NextUseEffectivenessHeld`, not added into a damage percentage.
+		if (Held.Value.bEffectiveness)
+		{
+			continue;
+		}
 		float& Percent = Held.Value.bAttack ? OutAttackPercent : OutSkillPercent;
 		int32& Count = Held.Value.bAttack ? OutAttackCount : OutSkillCount;
 		Percent += Held.Value.Count * Held.Value.Percent;
