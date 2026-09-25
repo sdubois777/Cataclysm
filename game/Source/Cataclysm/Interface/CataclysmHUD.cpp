@@ -73,7 +73,7 @@ void ACataclysmHUD::DrawHUD()
 	// UNDER THE BAR, WHICH THE RARITY NAME DOES NOT USE. Issue #1515.
 	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
 	{
-		DrawArmourRemoved();
+		DrawStatusLines();
 	}
 
 	DrawDamageNumbers();
@@ -622,7 +622,7 @@ void ACataclysmHUD::DrawRarityNames()
 	}
 }
 
-void ACataclysmHUD::DrawArmourRemoved()
+void ACataclysmHUD::DrawStatusLines()
 {
 	UWorld* World = GetWorld();
 	if (!World)
@@ -642,7 +642,7 @@ void ACataclysmHUD::DrawArmourRemoved()
 			continue;
 		}
 
-		const FString Words = UCataclysmCombatOverlay::ArmourRemovedTextFor(Enemy);
+		const FString Words = UCataclysmCombatOverlay::StatusLineFor(Enemy);
 		if (Words.IsEmpty())
 		{
 			continue;

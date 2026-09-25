@@ -402,4 +402,32 @@ public:
 	 *         keystone
 	 */
 	static int32 HoldAppliedNearbyStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * Ground Down's radius in metres and its share of both speeds, the
+	 * `Ravager_capstone_100` option 1 stats its row will carry. Issue #1515:
+	 * "Enemies within 4 metres of you have 15% reduced Movement Speed and 15%
+	 * reduced Attack Speed." Both above zero means the option is held.
+	 */
+	static const TCHAR* GroundDownMetresStat;
+	static const TCHAR* GroundDownPercentStat;
+
+	/** How many steps a creature stays slowed after it was last within the
+	 *  radius: three, so one missed step cannot make it flicker, which is the
+	 *  Succubus's Dominion rule. 0.75 s at the regeneration step. */
+	static constexpr int32 GroundDownHeldSteps = 3;
+
+	/**
+	 * Slow, for `GroundDownHeldSteps` steps, every creature within `Character`'s
+	 * Ground Down radius. Issue #1515.
+	 *
+	 * CREATURES ONLY. The search returns hostile actors, which excludes the
+	 * player's minions, thralls and a second player unless something has
+	 * Maddened them, and a hostile actor that is not a creature has no speed
+	 * multiplier, so each is cast.
+	 *
+	 * @return how many creatures were slowed, zero for every character without
+	 *         the option
+	 */
+	static int32 GroundDownStep(AActor* Character, float StepSeconds);
 };

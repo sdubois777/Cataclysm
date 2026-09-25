@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Engine/World.h"
@@ -444,6 +445,30 @@ FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
 		return FString();
 	}
 	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
+}
+
+FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	const float Slowed = Creature ? Creature->GroundDownPercentNow() : 0.0f;
+	if (Slowed <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Slowed -%d%%"), FMath::RoundToInt(Slowed));
+}
+
+FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
+{
+	TArray<FString> Parts;
+	for (const FString& Part : {ArmourRemovedTextFor(Actor), SlowedTextFor(Actor)})
+	{
+		if (!Part.IsEmpty())
+		{
+			Parts.Add(Part);
+		}
+	}
+	return FString::Join(Parts, TEXT("  "));
 }
 
 bool UCataclysmCombatOverlay::VitalsOf(const AActor* Actor, float& OutHealth,

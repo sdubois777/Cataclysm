@@ -473,6 +473,23 @@ public:
 	static FString ArmourRemovedTextFor(const AActor* Actor);
 
 	/**
+	 * What is said under a creature's health bar while Ground Down slows it,
+	 * such as "Slowed -15%", or empty while nothing does. Issue #1515.
+	 *
+	 * STATE ON THE CREATURE, like the armour removed, so nothing else on screen
+	 * would say it was there. Cripple is not said here: it is a tagged debuff,
+	 * and no screen shows those yet.
+	 */
+	static FString SlowedTextFor(const AActor* Actor);
+
+	/**
+	 * The one line drawn under a creature's health bar: every non-empty text
+	 * above, in that order, joined by two spaces, or empty. One line rather
+	 * than one each, so two never draw over each other. Issue #1515.
+	 */
+	static FString StatusLineFor(const AActor* Actor);
+
+	/**
 	 * Whether an actor is a candidate for an overhead bar at all.
 	 *
 	 * NOT THE PLAYER'S OWN PAWN, which has its bar on the frame instead, and

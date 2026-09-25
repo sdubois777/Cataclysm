@@ -942,8 +942,39 @@ public:
 	 */
 	float SpeedMultiplier() const
 	{
-		return CommanderMultiplier() * CrippleMultiplier() * WraithMultiplier();
+		return CommanderMultiplier() * CrippleMultiplier() * WraithMultiplier()
+			* GroundDownMultiplier();
 	}
+
+	/**
+	 * Ground Down, the Ravager's `Ravager_capstone_100` option 1. Issue #1515:
+	 * "Enemies within 4 metres of you have 15% reduced Movement Speed and 15%
+	 * reduced Attack Speed." It names BOTH stats, so it is a factor of
+	 * `SpeedMultiplier` above, by that function's own rule.
+	 *
+	 * A SEPARATE SLOW, SO IT MULTIPLIES with Cripple and Commander: a crippled
+	 * creature near the holder is at 0.7 x 0.85. That is the genre's shape --
+	 * Path of Exile's Hinder and Maim both apply, and Temporal Chains multiplies
+	 * with Chill. Ruled 2026-09-24.
+	 *
+	 * STATE ON THE CREATURE, NOT A TAG, so nothing counts it as a debuff.
+	 * `UCataclysmDebuffs::GroundDownStep` notes it on every creature within a
+	 * holder's radius each step, for three steps.
+	 */
+	float GroundDownMultiplier() const;
+
+	/**
+	 * Note that a holder of Ground Down has this creature within its radius, for
+	 * `Percent` until the world's clock reaches `UntilSeconds`.
+	 *
+	 * SEVERAL HOLDERS DO NOT STACK: while one runs, the larger percent holds,
+	 * as only the strongest Hinder takes effect in Path of Exile. Ruled
+	 * 2026-09-24. The later end time is kept.
+	 */
+	void NoteGroundDown(float Percent, float UntilSeconds);
+
+	/** The share Ground Down takes off both speeds right now, 0 to 100. */
+	float GroundDownPercentNow() const;
 
 	/**
 	 * Whether this creature stood back up under the Vengeful Wraiths floor rule.
@@ -1078,6 +1109,10 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float DesignedWalkSpeedCmPerSecond = 0.0f;
+
+	/** Ground Down's share and when it ends, in world seconds. Issue #1515. */
+	float GroundDownPercent = 0.0f;
+	float GroundDownUntil = -1.0f;
 
 	/**
 	 * Bring this creature's walk speed back into line with the buffs it holds.

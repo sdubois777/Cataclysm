@@ -10,6 +10,7 @@
 // For refusing a corpse, which `HoldStep` does. Issue #1070.
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 // For FGameplayEffectQuery, which is how the debuffs running on a character are
@@ -306,6 +307,50 @@ bool UCataclysmDebuffs::DoNotExpireOn(
 	// is casting, the same argument `DurationOn` makes.
 	return Asking->StatForSkill(FName(DoNotExpireStat), FGameplayTagContainer(),
 								0.0f) > 0.0f;
+}
+
+const TCHAR* UCataclysmDebuffs::GroundDownMetresStat =
+	TEXT("enemies_near_slowed_within_metres");
+const TCHAR* UCataclysmDebuffs::GroundDownPercentStat =
+	TEXT("enemies_near_slowed_percent");
+
+int32 UCataclysmDebuffs::GroundDownStep(AActor* Character, float StepSeconds)
+{
+	if (!Character || StepSeconds <= 0.0f || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	UWorld* World = Character->GetWorld();
+	if (!Mine || !World)
+	{
+		return 0;
+	}
+
+	const float Metres = Mine->StatForSkill(
+		FName(GroundDownMetresStat), FGameplayTagContainer(), 0.0f);
+	const float Percent = Mine->StatForSkill(
+		FName(GroundDownPercentStat), FGameplayTagContainer(), 0.0f);
+	if (Metres <= 0.0f || Percent <= 0.0f)
+	{
+		return 0;
+	}
+
+	const float Until = World->GetTimeSeconds() + GroundDownHeldSteps * StepSeconds;
+	int32 Slowed = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Character, Character->GetActorLocation(), Metres * 100.0f))
+	{
+		if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Enemy))
+		{
+			Creature->NoteGroundDown(Percent, Until);
+			++Slowed;
+		}
+	}
+	return Slowed;
 }
 
 const TCHAR* UCataclysmDebuffs::AppliedHeldWithinMetresStat =
