@@ -2882,6 +2882,154 @@ void ACataclysmDungeonGameMode::NoteDeathForPlagueHarbingers(const FCataclysmDea
 	RefreshFloorModifierPanel();
 }
 
+TArray<ACataclysmGroundZone*> ACataclysmDungeonGameMode::WingsOfTheHostMarksNow() const
+{
+	TArray<ACataclysmGroundZone*> Marks;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Mark : WingsOfTheHostMarks)
+	{
+		if (ACataclysmGroundZone* Standing = Mark.Get())
+		{
+			Marks.Add(Standing);
+		}
+	}
+	return Marks;
+}
+
+TArray<FVector> ACataclysmDungeonGameMode::WingsOfTheHostFeathers(
+	const ACataclysmDungeonFloor& Floor, const FVector& Through, const FVector& Direction)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TArray<FVector> Feathers;
+	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+	const FVector Along = FVector(Direction.X, Direction.Y, 0.0f).GetSafeNormal();
+	if (Plan.Width <= 0 || Plan.Height <= 0 || Along.IsZero())
+	{
+		return Feathers;
+	}
+
+	// FAR ENOUGH EACH WAY TO LEAVE THE FLOOR: the distance from `Through` to the floor's middle
+	// and then half its diagonal. Points past its edge are off the grid, and `IsFloor` answers
+	// false for them, so walking too far costs only the tests.
+	const float CellCm = static_cast<float>(
+		FVector::Dist2D(Floor.WorldOfCell(FIntPoint(0, 0)), Floor.WorldOfCell(FIntPoint(1, 0))));
+	const float Reach = static_cast<float>(FVector::Dist2D(Through, Floor.GetActorLocation()))
+		+ 0.5f * CellCm * FMath::Sqrt(static_cast<float>(Plan.Width * Plan.Width + Plan.Height * Plan.Height));
+	const int32 Steps = FMath::CeilToInt(Reach / Effects::WingsOfTheHostFeatherEveryCm);
+	for (int32 Step = -Steps; Step <= Steps; ++Step)
+	{
+		const FVector Point = Through + Along * (Effects::WingsOfTheHostFeatherEveryCm * Step);
+		// FLOOR CELLS ONLY: where the line crosses rock, no feather is marked and it goes on.
+		if (Plan.IsFloor(Floor.CellOfWorld(Point)))
+		{
+			Feathers.Add(FVector(Point.X, Point.Y, Through.Z));
+		}
+	}
+	return Feathers;
+}
+
+void ACataclysmDungeonGameMode::StepWingsOfTheHost(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// A FLYOVER IS MARKED: COUNT ITS WARNING, then every feather lands together.
+	if (!WingsOfTheHostMarksNow().IsEmpty())
+	{
+		WingsOfTheHostWarningSoFar += SecondsBetweenWaveChecks;
+		if (!Effects::WingsOfTheHostHasLanded(WingsOfTheHostWarningSoFar))
+		{
+			return;
+		}
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::WingsOfTheHostKey);
+
+		// THE PLAYER ONLY, and once however the marks lie. The hazard source's enemies are the
+		// player's side, which includes the player's minions; the row names neither them nor any
+		// creature, so only a player character is struck. NO LINE OF SIGHT IS ASKED, as no area
+		// damage in this game asks it: the row's feathers "pierce terrain".
+		TSet<AActor*> Struck;
+		for (ACataclysmGroundZone* Mark : WingsOfTheHostMarksNow())
+		{
+			const FVector Where = Mark->GetActorLocation();
+			if (Source)
+			{
+				for (AActor* Target : UCataclysmTargeting::FindEnemiesInLine(
+						 World, Source, Where, Where, Effects::WingsOfTheHostFeatherRadiusCm))
+				{
+					if (!Cast<ACataclysmPlayerCharacter>(Target) || Struck.Contains(Target))
+					{
+						continue;
+					}
+					Struck.Add(Target);
+					const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Target);
+					const float Damage = Theirs
+						? Effects::WingsOfTheHostDamage(Theirs->GetNumericAttribute(Vital::GetMaxHealthAttribute()))
+						: 0.0f;
+					if (Damage > 0.0f)
+					{
+						UCataclysmSkillEffects::ApplyDirectDamage(Source, Target, Damage, Delivery);
+					}
+				}
+			}
+			Mark->Destroy();
+		}
+		WingsOfTheHostMarks.Reset();
+		WingsOfTheHostWarningSoFar = 0.0f;
+		WingsOfTheHostSecondsSinceLast = 0.0f;
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	WingsOfTheHostSecondsSinceLast += SecondsBetweenWaveChecks;
+	if (!Effects::WingsOfTheHostIsDue(WingsOfTheHostSecondsSinceLast))
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	// A STRAIGHT LINE AT A RANDOM ANGLE through a point within reach of the player, across the
+	// whole floor, marked with harmless circles drawn in the row's type, as Artillery Strike
+	// marks its one.
+	const FVector Centre = Player->GetActorLocation();
+	const float Aside = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float Away = FMath::FRandRange(0.0f, Effects::WingsOfTheHostPassesWithinCm);
+	const FVector Through(Centre.X + Away * FMath::Cos(Aside), Centre.Y + Away * FMath::Sin(Aside), Centre.Z);
+	const float Heading = FMath::FRandRange(0.0f, PI);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::WingsOfTheHostKey);
+	for (const FVector& Where : WingsOfTheHostFeathers(
+			 *CurrentFloor, Through, FVector(FMath::Cos(Heading), FMath::Sin(Heading), 0.0f)))
+	{
+		if (ACataclysmGroundZone* Mark = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::WingsOfTheHostFeatherRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type))
+		{
+			WingsOfTheHostMarks.Add(Mark);
+		}
+	}
+	WingsOfTheHostWarningSoFar = 0.0f;
+	if (WingsOfTheHostMarks.IsEmpty())
+	{
+		// A LINE THAT CROSSED NO FLOOR marks nothing; the next beat tries again.
+		return;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Wings of the Host: %d feathers marked on floor %d"),
+		   WingsOfTheHostMarks.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepDivineWrath(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -4202,6 +4350,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// and #41.
 	const bool bPlagueHarbingers = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PlagueHarbingersKey));
+	// AND WINGS OF THE HOST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
+	// and #41.
+	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::WingsOfTheHostKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -4217,7 +4369,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
-		&& !bEchoes && !bPlagueHarbingers)
+		&& !bEchoes && !bPlagueHarbingers
+		&& !bWingsOfTheHost)
 	{
 		return;
 	}
@@ -4402,6 +4555,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPlagueHarbingers)
 	{
 		StepPlagueHarbingers(Player, AbilitySystem);
+	}
+
+	// AND WINGS OF THE HOST, WHICH PLACES ZONES. Issues #1820 and #41.
+	if (bWingsOfTheHost)
+	{
+		StepWingsOfTheHost(Player);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -6975,6 +7134,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Effects::HolyRepercussionsJudgmentMostStacks));
 	}
 
+	// AND WINGS OF THE HOST: when the next flyover comes, or that its feathers are falling.
+	// Issues #1820 and #41.
+	const FName Wings(Effects::WingsOfTheHostKey);
+	if (FloorBrief.Modifiers.Contains(Wings))
+	{
+		const int32 Falling = WingsOfTheHostMarksNow().Num();
+		Counting.Add(Wings, Falling > 0
+			? FString::Printf(TEXT("wings of the host: %d feathers falling"), Falling)
+			: FString::Printf(TEXT("wings of the host: next flyover in %.0f seconds"),
+							  FMath::Max(0.0f, Effects::WingsOfTheHostSecondsBetween
+												- WingsOfTheHostSecondsSinceLast)));
+	}
+
 	// AND PLAGUE HARBINGERS: how many are alive and how many trail patches stand. Issues #1820
 	// and #41.
 	const FName Harbingers(Effects::PlagueHarbingersKey);
@@ -9309,6 +9481,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		ArtilleryStrikeCircle = nullptr;
 		ArtilleryStrikeWarningSoFar = 0.0f;
 		ArtilleryStrikeSecondsSinceLast = 0.0f;
+
+		// AND WINGS OF THE HOST, FOR THE SAME REASON: a flyover marked on the last floor never
+		// lands on this one, and this floor's first comes thirty seconds in. The marks themselves
+		// go with the floor's other zones. Issues #1820 and #41.
+		WingsOfTheHostMarks.Reset();
+		WingsOfTheHostWarningSoFar = 0.0f;
+		WingsOfTheHostSecondsSinceLast = 0.0f;
 
 		// AND HALLOWED GROUNDFALL FORGETS ITS CRATERS AND ITS CLOCK. Issues
 		// #1820 and #41. The list because those actors are already destroyed -- see

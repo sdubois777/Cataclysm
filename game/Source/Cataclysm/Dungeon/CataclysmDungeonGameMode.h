@@ -1968,6 +1968,17 @@ public:
 	/** The trail patches standing now, of every Harbinger, or of `Harbinger` alone. */
 	int32 PlagueHarbingerTrailPatches(const ACataclysmEnemyCharacter* Harbinger = nullptr) const;
 
+	/** Wings of the Host, for the panel and tests: the feather marks counting down now. */
+	TArray<class ACataclysmGroundZone*> WingsOfTheHostMarksNow() const;
+
+	/**
+	 * Where a flyover's feathers fall: every `WingsOfTheHostFeatherEveryCm` along the straight
+	 * line through `Through` in the level direction `Direction`, as far as the floor reaches both
+	 * ways, keeping only the points on floor cells. At `Through`'s height. Issues #1820 and #41.
+	 */
+	static TArray<FVector> WingsOfTheHostFeathers(const ACataclysmDungeonFloor& Floor,
+												  const FVector& Through, const FVector& Direction);
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2084,6 +2095,9 @@ private:
 
 	/** Every Harbinger unmarked and every trail forgotten; the zones go with the floor. */
 	void ForgetThePlagueHarbingers();
+
+	/** Wings of the Host, on the beat: a flyover marked every thirty seconds, landing three later. */
+	void StepWingsOfTheHost(class ACataclysmPlayerCharacter* Player);
 
 	void StepDivineWrath(class ACataclysmPlayerCharacter* Player,
 						 class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -3014,6 +3028,11 @@ private:
 	/** What the panel last said, so it is refreshed only when a count changes. */
 	int32 PlagueHarbingersPanelAlive = -1;
 	int32 PlagueHarbingersPanelPatches = -1;
+
+	/** Wings of the Host: the marks counting down, the warning so far and the time since the last. */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> WingsOfTheHostMarks;
+	float WingsOfTheHostWarningSoFar = 0.0f;
+	float WingsOfTheHostSecondsSinceLast = 0.0f;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

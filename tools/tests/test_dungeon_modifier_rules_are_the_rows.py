@@ -4029,3 +4029,29 @@ def test_plague_harbingers_row_still_has_harbingers_lay_trails_that_their_deaths
             "rests on it; see PlagueHarbingersKey in CataclysmDungeonModifierEffects.h. " + words)
     assert not any(character.isdigit() for character in words), (
         "Pestilence_Plague_Harbingers now states a figure; the rule's figures are rulings. " + words)
+
+
+def test_wings_of_the_host_row_still_carpet_bombs_with_feathers_that_pierce_terrain():
+    """The phrases the rule's readings rest on.
+
+    "Angelic flyovers carpet-bomb the map with radiant feathers that pierce terrain and deal % max HP
+    damage." FLYOVERS is why a flyover comes on a cadence; CARPET-BOMB THE MAP is why its feathers lie
+    along a line across the whole floor; PIERCE TERRAIN is why a wall protects nothing, which is
+    already true of every area hit in this game; % MAX HP is the shape of the damage; the row gives
+    no figure, which is why every number is a ruling. It names no creature, which is why feathers
+    strike the player only. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Celestial_Wings_of_the_Host"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("flyovers", "carpet-bomb the map", "radiant feathers", "pierce terrain",
+                   "% max hp damage"):
+        assert phrase in lower, (
+            f"Celestial_Wings_of_the_Host no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see WingsOfTheHostKey in CataclysmDungeonModifierEffects.h. " + words)
+    for creature in ("enem", "monster", "creature"):
+        assert creature not in lower, (
+            f"Celestial_Wings_of_the_Host now names {creature!r}; feathers strike the player only "
+            "because the row named no creature. Rule again. " + words)
+    assert not any(character.isdigit() for character in words), (
+        "Celestial_Wings_of_the_Host now states a figure; the rule's figures are rulings. " + words)
