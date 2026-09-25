@@ -1381,4 +1381,59 @@ bool FCataclysmEnchantmentOldSaveIsNotACrash::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRetiredEnchantmentsNeverDrop,
+	"Cataclysm.Enchantments.ARetiredEnchantmentIsNeverADropCandidate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The three enchantments the owner removed on 2026-09-25 are RETIRED with a
+ * Weight of 0 rather than deleted, so they keep their row names and positions
+ * and never drop. Issue #1833. Read from the real table: each is present, carries
+ * a weight of 0, and is a candidate for no slot, while an ordinary row beside
+ * them still is.
+ */
+bool FCataclysmRetiredEnchantmentsNeverDrop::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentTest;
+	UDataTable* Positive = Positives();
+	if (!TestNotNull(TEXT("EnchantmentsPositive.csv loads"), Positive))
+	{
+		return false;
+	}
+	const TCHAR* Retired[] = {
+		TEXT("Positive_Your_HP_regeneration_continues_at_50_effectiven"),
+		TEXT("Positive_100_of_your_block_value_is_added_to_your_retali"),
+		TEXT("Positive_Class_points_spent_in_your_primary_tree_are_10"),
+	};
+	const TCHAR* Slots[] = {TEXT("Weapon"), TEXT("Chest"), TEXT("Head"), TEXT("Ring"),
+							TEXT("Belt"), TEXT("Boots"), TEXT("Gloves"), TEXT("Necklace")};
+	for (const TCHAR* Name : Retired)
+	{
+		const FCataclysmEnchantmentRow* Row = Positive->FindRow<FCataclysmEnchantmentRow>(
+			FName(Name), TEXT("Test"), /*bWarnIfMissing=*/false);
+		if (!TestNotNull(FString::Printf(TEXT("'%s' is still a row"), Name), Row))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("'%s' carries a weight of 0"), Name), Row->Weight, 0.0f);
+		TestEqual(FString::Printf(TEXT("'%s' is priced at nothing"), Name),
+			FDrop::EnchantmentDrawWeight(Row->Weight), 0.0f);
+		for (const TCHAR* Slot : Slots)
+		{
+			TArray<FName> Candidates;
+			FDrop::EnchantmentCandidatesFor(Positive, Slot, Candidates);
+			TestFalse(FString::Printf(TEXT("'%s' is no candidate on %s"), Name, Slot),
+				Candidates.Contains(FName(Name)));
+		}
+	}
+
+	// THE POSITIVE CONTROL: an ordinary row still is a candidate, so the loop
+	// above is not passing on an empty pool.
+	TArray<FName> OnAChest;
+	FDrop::EnchantmentCandidatesFor(Positive, TEXT("Chest"), OnAChest);
+	TestTrue(TEXT("'Double your energy shield' is still a candidate on a chest"),
+		OnAChest.Contains(FName(TEXT("Positive_Double_your_energy_shield"))));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
