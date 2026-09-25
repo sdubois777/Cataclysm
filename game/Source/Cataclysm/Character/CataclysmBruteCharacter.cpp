@@ -336,8 +336,18 @@ void ACataclysmBruteCharacter::ApplyChaseSpeed()
 	const float ChaseSpeed = Override > 0.0f
 		? Override : DesignedChaseSpeedCmPerSecond;
 
-	Movement->MaxWalkSpeed = IsChasing()
-		? ChaseSpeed : DesignedWalkSpeedCmPerSecond;
+	// AND EVERYTHING ACTING ON ITS SPEED, as every other creature's walk has.
+	// Issue #1515, found while building Ground Down: until 2026-09-24 this wrote
+	// the designed figure straight over the base's scaled one every frame, so a
+	// Cripple, a Commander and a Vengeful Wraith's speed changed a Brute's
+	// attacks and never its walk.
+	const float Designed = IsChasing() ? ChaseSpeed : DesignedWalkSpeedCmPerSecond;
+	Movement->MaxWalkSpeed = Designed * SpeedMultiplier();
+}
+
+void ACataclysmBruteCharacter::RefreshWalkSpeed()
+{
+	ApplyChaseSpeed();
 }
 
 TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const

@@ -807,6 +807,9 @@ public:
 	 */
 	void ApplyChaseSpeed();
 
+	/** The Brute's walk, chasing or not, rather than the base's. Issue #1515. */
+	virtual void RefreshWalkSpeed() override;
+
 	/** What it plays when it swings. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> AttackAnimation;

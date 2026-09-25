@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmProjectileEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -3997,6 +3998,110 @@ bool FCataclysmMedicStillWalksToThePlayerTest::RunTest(const FString&)
 	// taken away along with the walking and the facing.
 	TestNotNull(TEXT("and it has chosen a target"), Brain->CurrentTarget.Get());
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteCrippledWalksSlowerTest,
+	"Cataclysm.AI.ACrippledBruteWalksSlowerChasingAndNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A crippled Brute walks at its designed speed times Cripple's 0.7, chasing or
+ * not, and goes back when the Cripple is lifted. Issue #1515.
+ *
+ * WHY THIS EXISTS. Until 2026-09-24 the Brute wrote its designed walk straight
+ * over the base's scaled one every frame, so a Cripple, a Commander and a
+ * Vengeful Wraith's speed changed its attacks and never its walk. Found while
+ * building Ground Down, whose slow would have missed the Brute the same way.
+ * The walk is read after `RefreshWalkSpeed`, which every caller reaches, rather
+ * than after `ApplyChaseSpeed` alone.
+ */
+bool FCataclysmBruteCrippledWalksSlowerTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	IConsoleVariable* ChaseSpeed = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.Brute.ChaseSpeed"));
+	if (!ChaseSpeed)
+	{
+		AddError(TEXT("Cataclysm.Brute.ChaseSpeed is not registered."));
+		return false;
+	}
+	const float Original = ChaseSpeed->GetFloat();
+	ON_SCOPE_EXIT { ChaseSpeed->Set(Original); };
+	ChaseSpeed->Set(0.0f);
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	UCharacterMovementComponent* Movement = Brute.Actor->GetCharacterMovement();
+	if (!Brain || !Movement)
+	{
+		AddError(TEXT("A spawned Brute has no controller or no movement."));
+		return false;
+	}
+
+	const FGameplayTag Cripple = UCataclysmSkillShapes::StatusTagFor(TEXT("Cripple"));
+	if (!TestTrue(TEXT("Cripple is in the tag vocabulary"), Cripple.IsValid()))
+	{
+		return false;
+	}
+	const float Crippled = Brute.Actor->CrippleMultiplier();
+	const float Walk = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
+	const float Chase = ACataclysmBruteCharacter::DesignedChaseSpeedCmPerSecond;
+
+	FScopedFighter Player(World, FVector(5 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+	if (!TestTrue(TEXT("the Brute is crippled"),
+				  UCataclysmSkillEffects::ApplyNamedEffect(
+					  Player.Actor, Brute.Actor, Cripple,
+					  UCataclysmSkillEffects::NumbersForEffectTag(Cripple).DurationSeconds)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and its multiplier is below one, which every figure below "
+					   "depends on"),
+				  Brute.Actor->CrippleMultiplier() < 1.0f))
+	{
+		return false;
+	}
+	const float Slowed = Brute.Actor->CrippleMultiplier();
+	TestEqual(TEXT("before the Cripple it was not slowed"), Crippled, 1.0f);
+
+	// NOT CHASING: the brain has not yet thought about the player.
+	Brute.Actor->RefreshWalkSpeed();
+	TestFalse(TEXT("it has not started chasing"), Brute.Actor->IsChasing());
+	TestEqual(TEXT("crippled and not chasing, it walks at its designed walk times "
+				   "the Cripple"),
+			  Movement->MaxWalkSpeed, Walk * Slowed, 0.01f);
+
+	// CHASING, once its abilities are spent, as the chase test does.
+	SpendAbilities(World, Brain, 5 * M);
+	TestEqual(TEXT("with its abilities cooling down it chases"),
+			  static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::Chasing));
+	Brute.Actor->RefreshWalkSpeed();
+	TestEqual(TEXT("crippled and chasing, it runs at its designed chase times the "
+				   "Cripple"),
+			  Movement->MaxWalkSpeed, Chase * Slowed, 0.01f);
+
+	// AND BACK WHEN IT IS LIFTED.
+	if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Brute.Actor))
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(Cripple);
+		System->RemoveActiveEffectsWithGrantedTags(Tags);
+	}
+	Brute.Actor->RefreshWalkSpeed();
+	TestEqual(TEXT("with the Cripple lifted it chases at its designed chase speed"),
+			  Movement->MaxWalkSpeed, Chase, 0.01f);
 	return true;
 }
 

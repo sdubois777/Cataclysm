@@ -1098,8 +1098,14 @@ public:
 	 * 2026-09-04. It was `RefreshCommanderBuff` and it now applies the
 	 * Cripple curse as well, so a name saying "commander" would send the
 	 * next reader looking in the wrong place. Issue #1152.
+	 *
+	 * VIRTUAL SINCE 2026-09-24, FOR THE BRUTE. It has a second designed speed
+	 * for chasing and writes its walk itself; overriding this is what makes
+	 * every caller -- Tick, the Vengeful Wraiths rule, a test -- reach that
+	 * code rather than the base's, which the Brute's own write would then
+	 * undo. Issue #1515, found while building Ground Down.
 	 */
-	void RefreshWalkSpeed();
+	virtual void RefreshWalkSpeed();
 
 	// ----------------------------------------------------------------------
 	// Phases
