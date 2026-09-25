@@ -619,6 +619,16 @@ public:
 	static int32 NoteBlowLanded(AActor* Attacker, AActor* Target,
 								const FVector& Where, bool bFromBehind = false);
 
+	/**
+	 * The reach a `Requires` condition is judged over, in centimetres.
+	 *
+	 * Shared by the gate and by the Movement template, so the enemy a skill was
+	 * allowed to activate for is the same one it then travels to. PUBLIC since
+	 * issue #1515, because Follow Through's repeat looks for its enemy within
+	 * the killing skill's own reach (`UCataclysmFollowThrough::MakePendingRepeat`).
+	 */
+	float RequirementReachCm() const;
+
 protected:
 	/**
 	 * Spend the cost, start the cooldown, and say whether the skill may run.
@@ -932,14 +942,6 @@ protected:
 	 * is Flashpoint's "only something already alight can be reached".
 	 */
 	bool RequiresCondition(const TCHAR* Condition) const;
-
-	/**
-	 * The reach a `Requires` condition is judged over, in centimetres.
-	 *
-	 * Shared by the gate and by the Movement template, so the enemy a skill was
-	 * allowed to activate for is the same one it then travels to.
-	 */
-	float RequirementReachCm() const;
 
 	/**
 	 * Whether this creature's health has run out.
