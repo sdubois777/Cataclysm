@@ -73,6 +73,9 @@ figure is a play-test value:**
   cell -- and are drawn from the floor's population, as Grave Tide's and the Bloom's creatures are.
 - **Once the guardians have come the panel reads "N standing; M destroyed; the guardians have come"**, since
   "of 3 before the guardians come" is no longer true.
+- **It works in play, where a killed vein is destroyed on the next tick** (as the Pestilent Empowerment entry
+  records for every floor source): a vein that is no longer valid is counted as destroyed, as a dead one is,
+  and the guardians and the regrown vein are placed from the stored cell, never from the vein's actor.
 
 ### The research: growths the player destroys
 
