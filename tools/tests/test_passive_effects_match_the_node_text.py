@@ -630,7 +630,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 321 ON 2026-09-25, for the last six Demonic options built engine
 #: first, one flat row each: Nowhere to Run, Both Hands Full, Shoulder Through,
 #: Follow Through, A Second Self and Chorus. Issue #1515.
-AUTHORED_ROWS = 321
+#:
+#: AND TO 323 ON 2026-09-25, for the two "At 4 points:" clauses, each a row
+#: with `MinPoints` 4 on a node that already had one: Scarred Plate's
+#: `crowd_control_resistance` and Set Stance's `knockback_suppressed`. The
+#: nodes already counted, so `AUTHORED_NODES` does not move. Issue #1755.
+AUTHORED_ROWS = 323
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -3333,3 +3338,52 @@ def test_at_least_one_effect_is_scoped_by_a_tag(effects):
         "tags. If the last scoped node was deliberately removed, delete this "
         "test with it rather than leaving the column untested."
     )
+
+
+#: A NODE SENTENCE'S THRESHOLD CLAUSE, "At 4 points: ...". Issue #1755.
+AT_N_POINTS = re.compile(r"\bAt (\d+) points:")
+
+
+def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
+        effects, nodes):
+    """A row with `MinPoints` belongs to a node that says "At N points:", with
+    that N. Issue #1755.
+
+    THE THRESHOLD IS A NUMBER NOTHING ELSE CHECKS. The value check looks for the
+    row's figure in the sentence, and "At 4 points: +5%" holds the 5 whether the
+    row applies from 4 points, from 3, or per point from the first. So a
+    threshold written as 3, or left out, passes every other check here and
+    grants the clause at the wrong point, or eight times over.
+    """
+    wrong = []
+    for row in effects:
+        min_points = int(float(row.get("MinPoints", 0) or 0))
+        if not min_points:
+            continue
+        said = [int(n) for n in AT_N_POINTS.findall(
+            nodes.get(row["Node"], {}).get("Description", ""))]
+        if min_points not in said:
+            wrong.append(f"{row['Name']} applies from {min_points} points and "
+                         f"its node's sentence says {said or 'no threshold'}")
+    assert not wrong, wrong
+
+
+def test_every_demonic_at_n_points_clause_has_a_row_from_n_points(effects, nodes):
+    """The other direction, for the three Demonic trees. Issue #1755.
+
+    A clause with no threshold row is either unauthored or authored per point,
+    and both grant it wrongly. The other trees are not held to it: their
+    clauses are unauthored and the War trees are not being built.
+    """
+    demonic = {"Masochist", "Ravager", "Ritualist"}
+    missing = []
+    for name, node in nodes.items():
+        if node.get("Tree") not in demonic:
+            continue
+        for n in {int(x) for x in AT_N_POINTS.findall(node.get("Description", ""))}:
+            if not any(row["Node"] == name
+                       and int(float(row.get("MinPoints", 0) or 0)) == n
+                       for row in effects):
+                missing.append(f"{name} says 'At {n} points:' and no row applies "
+                               f"from {n} points")
+    assert not missing, missing
