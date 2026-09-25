@@ -97,6 +97,35 @@ where the two figures are equal.
 **The stat is given by hand**, so none of these can see a missing or wrong row. When the rows land,
 that change must add a test that wears the real `Ritualist_capstone_50` option 1 row.
 
+### THE WINDOW, 2026-09-24, ON 30561009
+
+**This change's C++ was compiled for the first time here, beside the hits-in-a-row (#2092) and Plague
+Harbingers (#2093) changes, and it built. Every registered figure matched except one assertion of the
+first proof, which is recorded below.** No data row changed, and no continuous-integration compile
+overlapped the window.
+
+| Step | Printed |
+|---|---|
+| Python of record, on tree 11e0a8b5 | `5447 passed, 8 skipped in 333.40s`; JUnit 5455 tests, 0 failures, 0 errors, 8 skipped |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2428 tests performed, 2428 succeeded, 0 failed`; 2428 declared, gap 0 |
+
+Three proofs with `prove_cpp_guard` on 30561009, each anchor re-checked immediately before and each
+begun with no Unreal run in progress. **Every one was registered before the window, test and assertion
+alike.**
+
+| Break | Printed with the break in | Restored | Assertions that failed |
+|---|---|---|---|
+| a. the minion's maximum is written only at the summoning | `3 tests performed, 2 succeeded, 1 failed: ItFollowsTheSummonersMaximumAndRechargesWhenItsShieldDoes` | `3 tests performed, 3 succeeded, 0 failed` | "the summoner's maximum raised to 1000 gives the imp 200 after one step", 100 where 200; "lowered to 250, the imp's maximum is 50", 100 where 50 |
+| b. the minion refills at the summoner's regeneration attribute, ignoring its wait | `3 tests performed, 2 succeeded, 1 failed: ItFollowsTheSummonersMaximumAndRechargesWhenItsShieldDoes` | `3 tests performed, 3 succeeded, 0 failed` | "with the summoner hurt a second ago, the imp's shield does not refill", 5 where 0; "once the summoner's shield refills, the imp's gains the same share ...", 10 where 5 |
+| c. a refill stops at the unscaled `MaxEnergyShield` attribute again | `7 tests performed, 6 succeeded, 1 failed: ARefillReachesAMaximumAScaledRowRaised` | `7 tests performed, 7 succeeded, 0 failed` | "two seconds of refill at 100 a second fill the shield to the raised 125, not the attribute's 100", 100 where 125 |
+
+**A missed prediction in proof a.** It was registered to fail three assertions and failed two. The third,
+"and its shield is clamped down to it", passed. `SharedBloodStep` compares the shield with the step's
+local `Maximum`, which the break still computed as 50, and not with the `MaxEnergyShield` attribute the
+break stopped writing, so the shield was still set down to 50. The prediction read the comparison as
+the attribute's. The code is not at fault.
+
 ---
 
 ## 2026-09-24 — Plague Harbingers: one creature in ten lays a disease trail as it walks that burns the player and speeds up creatures standing in it, and killing it clears the trail and weakens the creatures near it
