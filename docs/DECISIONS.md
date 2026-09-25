@@ -16,9 +16,8 @@ beacon's health bar); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one new check, and the damage multiplier check
 given the fifth key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -122,10 +121,36 @@ One new Python check: the row still says "destroy the plague beacons", "on each 
 enemies" and "on later floors". The damage multiplier check now also requires the beacons' setter to write
 its own distinct key.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development 9f74732e as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on 91c198ed: "Build: Succeeded - 29 actions, 26 files compiled"; "2497 tests performed,
+  2497 succeeded, 0 failed", every declared test reported (2497 declared, gap 0).
+- **On the head**, 91c198ed: `Cataclysm.DungeonModifierEffects.` 318 performed, 318 succeeded;
+  `Cataclysm.SaveApply.` 13 performed, 13 succeeded.
+- **On the base**, 9f74732e: `Cataclysm.DungeonModifierEffects.` 313 performed, 313 succeeded;
+  `Cataclysm.SaveApply.` 12 performed, 12 succeeded -- each group with every one of its declared tests
+  reported.
+- **The Python suite of record**, on 689ad1b5, whose tree is the head's: 5,481 passed and 8 skipped of
+  5,489, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **No cap** (`const float Percent = Summed;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.PestilentEmpowermentSums`. With the break in, 1 failed, on "eleven: still
+  double" (2.1, not 2.0) and "twenty-five: still double" (3.5, not 2.0).
+- **The carried count never reaching a creature** (`SetPlagueBeaconsDamageMultiplier(1.0f)` in the sweep), on
+  the prefix `Cataclysm.DungeonModifierEffects.EveryBeaconLeftStanding`. With the break in, 1 failed, on
+  "floor 3's creatures deal 20% more", "floor 4's creatures deal 30% more, not 1.1 cubed" and "floor 5's
+  creatures deal 30% more still" (each 100) and "under the beacons' own key" (1.0, not 1.3); the counts and the
+  panel passed. This replaced a break that removed the count's `IsDead` half, for the reason under the
+  judgements above.
+- **A beacon counted at every floor change** (the `bCounted` guard removed), on the prefix
+  `Cataclysm.DungeonModifierEffects.AHordeArenas`. With the break in, 1 failed, on "and not again at the
+  next" (4, not 3).
 
 ---
 
