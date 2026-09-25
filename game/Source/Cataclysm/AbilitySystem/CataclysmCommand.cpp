@@ -450,16 +450,16 @@ namespace
 	 * Zero when it follows nobody, when its commander has no such gear, and when
 	 * the commander is an enemy -- enemies carry no character stat line.
 	 *
-	 * AN EMPTY TAG CONTAINER, AND THAT IS CORRECT TODAY RATHER THAN LAZY. A
+	 * THE MINION'S OWN TYPE TAGS, SINCE ISSUE #1833'S DEPLOYABLE PART 1. A
 	 * modifier with no required tags applies to everything, which is what all
 	 * four minion affixes in `game/Data/Affixes.csv` are. A narrower one --
-	 * "increased minion melee damage" -- would need the minion's own tags, and
-	 * a minion carries none. The `Tags` column of `game/Data/MinionTypes.csv`
-	 * is imported into `FCataclysmMinionTypeRow::Tags` and nothing reads that
-	 * field: `CataclysmMinion.cpp` never mentions it, and the test that checks
-	 * every referenced tag resolves covers `WeaponSkills.csv` and the two
-	 * enchantment files, not this one. That is a separate piece of work and it
-	 * is why this passes an empty container rather than pretending to filter.
+	 * "Gadgets fire 20%-40% faster", scoped to `Type.Deployable` -- reaches
+	 * only a minion whose type row carries that tag. Until then the `Tags`
+	 * column of `game/Data/MinionTypes.csv` was imported and read by nothing,
+	 * and this passed an empty container. The test that checks every
+	 * referenced tag resolves still covers `WeaponSkills.csv` and the two
+	 * enchantment files and not this one, so a misspelled tag in that column
+	 * would match nothing without an error.
 	 */
 	float MinionAttackSpeedFor(const AActor* Follower)
 	{
@@ -477,8 +477,13 @@ namespace
 			return 0.0f;
 		}
 
+		// WITH THE MINION'S OWN TYPE TAGS, since issue #1833's deployable Part 1,
+		// so "Gadgets fire 20%-40% faster" reaches a machine and not an imp. A
+		// thrall is no minion actor and carries none.
+		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
 		return FMath::Max(0.0f, Theirs->IncreasesForStat(
-			FName(TEXT("minion_attack_speed")), FGameplayTagContainer()));
+			FName(TEXT("minion_attack_speed")),
+			Minion ? Minion->TypeTags : FGameplayTagContainer()));
 	}
 }
 

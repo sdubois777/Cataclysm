@@ -167,12 +167,13 @@ namespace
 	 * the multiplier only stops a figure below -100% turning into negative
 	 * damage or negative health.
 	 *
-	 * AN EMPTY TAG CONTAINER, for the reason `CataclysmCommand.cpp` records: all
-	 * four minion affix rows carry no scope tags, the affix table has no column
-	 * for them, and a minion carries no gameplay tags to test a narrower one
-	 * against.
+	 * ASKED WITH THE MINION'S OWN TYPE TAGS, since issue #1833's deployable
+	 * Part 1, for the reason `CataclysmCommand.cpp` records: the four minion
+	 * affix rows carry no scope tags and apply to every minion, and a row scoped
+	 * to `Type.Deployable` now reaches a machine and not an imp.
 	 */
-	float SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat)
+	float SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
+								const FGameplayTagContainer& MinionTags)
 	{
 		const UCataclysmAbilitySystemComponent* Theirs =
 			Cast<UCataclysmAbilitySystemComponent>(
@@ -189,8 +190,12 @@ namespace
 		// what `MultiplierForStatAgainst` answers. No target: these figures
 		// are read when the minion is made or when it dies, not against
 		// anything it is striking.
+		// AND WITH THE MINION'S OWN TYPE TAGS, since deployable Part 1, so a row
+		// scoped to `Type.Deployable` reaches a machine and not an imp.
+		// Measured 2026-09-25: no minion row in the enchantment or passive
+		// sheets carried required tags before, so none changes.
 		return Theirs->MultiplierForStatAgainst(
-			FName(Stat), FGameplayTagContainer(), /*Target=*/nullptr);
+			FName(Stat), MinionTags, /*Target=*/nullptr);
 	}
 
 	/**
@@ -211,7 +216,8 @@ namespace
 	 * measured 2026-09-23.
 	 */
 	float SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
-									const AActor* Target)
+									const AActor* Target,
+									const FGameplayTagContainer& MinionTags)
 	{
 		const UCataclysmAbilitySystemComponent* Theirs =
 			Cast<UCataclysmAbilitySystemComponent>(
@@ -222,8 +228,7 @@ namespace
 			return 1.0f;
 		}
 
-		return Theirs->MultiplierForStatAgainst(
-			FName(Stat), FGameplayTagContainer(), Target);
+		return Theirs->MultiplierForStatAgainst(FName(Stat), MinionTags, Target);
 	}
 
 	/**
@@ -489,6 +494,21 @@ void ACataclysmMinion::BeginPlay()
 	}
 }
 
+namespace
+{
+	FGameplayTag DeployableTag()
+	{
+		return FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	}
+}
+
+bool ACataclysmMinion::IsDeployable() const
+{
+	const FGameplayTag Deployable = DeployableTag();
+	return Deployable.IsValid() && TypeTags.HasTagExact(Deployable);
+}
+
 ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Location,
 										  float Lifetime, bool bBurns,
 										  const FString& InTypeName,
@@ -536,6 +556,21 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	{
 		Minion->TypeName = InTypeName;
 		Minion->bIsMachine = Type->Family.Equals(TEXT("Machine"), ESearchCase::IgnoreCase);
+
+		// ITS TYPE ROW'S TAGS, which every summoner lookup below is asked with.
+		// Issue #1833, deployable Part 1.
+		TArray<FString> Named;
+		Type->Tags.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Each : Named)
+		{
+			Each.TrimStartAndEndInline();
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
+				FName(*Each), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Minion->TypeTags.AddTag(Tag);
+			}
+		}
 		Minion->ReachCm = Type->ReachCm;
 		Minion->NoticeRadiusCm = Type->NoticeRadiusCm;
 		Minion->AttackIntervalSeconds = Type->AttackIntervalSeconds;
@@ -601,7 +636,7 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		// rather than adding a floor nobody chose.
 		const float OwnHealth =
 			RaisedByLevel(Type->BaseHealth, Type->HealthPerLevel, Level)
-			* SummonerMultiplierFor(InSummoner, TEXT("minion_health"));
+			* SummonerMultiplierFor(InSummoner, TEXT("minion_health"), Minion->TypeTags);
 		if (Minion->AbilitySystemComponent && OwnHealth > 0.0f)
 		{
 			Minion->AbilitySystemComponent->SetNumericAttributeBase(
@@ -653,7 +688,7 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	// minion permanent. No shipped row reduces the duration; this says what
 	// would happen rather than leaving it to the engine's meaning of zero.
 	const float Duration =
-		Lifetime * SummonerMultiplierFor(InSummoner, TEXT("minion_duration"));
+		Lifetime * SummonerMultiplierFor(InSummoner, TEXT("minion_duration"), Minion->TypeTags);
 	Minion->SetLifeSpan(Duration > 0.0f ? Duration : Lifetime);
 
 	return Minion;
@@ -708,10 +743,11 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// THE THIRD CHANNEL IS STILL NOT BUILT. `game/Data/MinionScaling.csv` names
 	// one primary attribute per minion type and is read by nothing in the
 	// engine. Issue #898 carries it -- "three models of minion scaling
-	// disagree" -- and it is blocked on the same thing a scoped modifier is: it
-	// matches on `RequiresTag` and a minion carries no gameplay tags. So after
-	// this change two of the three channels work and the attribute one does
-	// not.
+	// disagree". It matches on `RequiresTag`, and the blocker this paragraph
+	// used to name -- a minion carried no gameplay tags -- is gone since issue
+	// #1833's deployable Part 1, which gives a minion its type row's Tags. What
+	// remains is building the channel itself. So two of the three channels work
+	// and the attribute one does not.
 	//
 	// IT IS NOT A PATH INVENTED FOR MINIONS. `ACataclysmGroundZone` uses the
 	// same one in `ACataclysmGroundZone::Sweep` for a damaging area on the
@@ -763,8 +799,26 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// AND AGAINST THE CHARACTER STRUCK, SINCE ISSUE #1515, so a row asking
 		// whether the summoner damaged it recently -- Set Upon, Set the Pack
 		// On -- can hold, and a "more" row counts.
-		const float Damage = OwnDamagePerHit
-			* SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target);
+		//
+		// AND A MACHINE'S BLOW TAKES ITS SUMMONER'S attack_damage ROWS THAT NAME
+		// `Type.Deployable`, AND ONLY THOSE. Issue #1833, deployable Part 1,
+		// ruled 2026-09-25: a modifier naming gadgets reaches a gadget's blow.
+		// attack_damage alone, because "Gadgets deal 20%-40% increased damage"
+		// is written on attack_damage and spell_damage both, and reading both
+		// would count one sentence twice; a machine's bolt is an attack.
+		float Own = OwnDamagePerHit;
+		if (IsDeployable())
+		{
+			if (const UCataclysmAbilitySystemComponent* Theirs =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(Summoner)))
+			{
+				Own = Theirs->StatNamingTagAppliedTo(
+					FName(TEXT("attack_damage")), DeployableTag(), Own, TypeTags, Target);
+			}
+		}
+		const float Damage = Own
+			* SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags);
 
 		// THE MINION IS THE INSTIGATOR OF ITS OWN BLOW, SINCE ISSUE #1515. It
 		// was the summoner until 2026-09-17, which is why everything read off
@@ -908,7 +962,7 @@ void ACataclysmMinion::Explode()
 		// `CataclysmSkillTemplates.cpp` records for issues #910 and #340.
 		// This stat is the damage and only the damage.
 		const float Scaled = Damage
-			* SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"));
+			* SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags);
 
 		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
 			GetWorld(), this, GetActorLocation(),

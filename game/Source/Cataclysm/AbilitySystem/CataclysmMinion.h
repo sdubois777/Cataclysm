@@ -129,6 +129,21 @@ public:
 	FString TypeName;
 
 	/**
+	 * Its type row's Tags, such as `Type.Minion, Type.Deployable,
+	 * Minion.Machine`. Issue #1833, deployable Part 1. Empty for a minion with
+	 * no type row.
+	 *
+	 * WHAT A SUMMONER'S ROW IS ASKED WITH, so a row scoped to `Type.Deployable`
+	 * reaches a ballista and not an imp. Until this the type row's Tags column
+	 * was imported and read by nothing, and every summoner lookup passed no tags.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	FGameplayTagContainer TypeTags;
+
+	/** Whether this minion is a placed machine: its type carries `Type.Deployable`. */
+	bool IsDeployable() const;
+
+	/**
 	 * Percent of its type's own health the skill that deployed it asked for, or
 	 * zero for that type's health unchanged.
 	 *
