@@ -670,6 +670,16 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay)
 
 	/**
+	 * Whether this character's death also ends its running auras. Issue #1833:
+	 * "When you die all your buffs are removed", a drawback kept by the owner on
+	 * 2026-09-25. A flag. `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds`
+	 * is the one reader.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_AurasEndAtDeath)
+	FGameplayAttributeData AurasEndAtDeath;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, AurasEndAtDeath)
+
+	/**
 	 * Whether this character's mana regeneration also restores its energy
 	 * shield. Issue #1515.
 	 *
@@ -1231,6 +1241,7 @@ protected:
 	UFUNCTION() void OnRep_ShieldAbsorbsDamageOverTime(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargesWhileDamaged(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargeHasNoDelay(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_AurasEndAtDeath(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaRegenRestoresShield(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ArmorPenetrationSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MeleeEvasionSuppressed(const FGameplayAttributeData& OldValue);

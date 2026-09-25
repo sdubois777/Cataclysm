@@ -7094,4 +7094,66 @@ bool FCataclysmGadgetBodyRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAurasEndAtDeathRowTest,
+	"Cataclysm.Enchantments.TheBuffsRemovedOnDeathRowEndsARunningAura",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When you die all your buffs are removed", worn, ends a running aura when a
+ * death is cleared, and a wearer without it keeps its aura. Issue #1833, kept by
+ * the owner on 2026-09-25: death already ends every self buff, and leaves an
+ * aura running, which is what this drawback changes.
+ */
+bool FCataclysmAurasEndAtDeathRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto AuraRunsAfterDeath = [&](const TCHAR* Drawback, int32& OutEnded) -> int32
+	{
+		FWearer Wearer(World);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, Drawback),
+								Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(ASC);
+
+		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
+			UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura,
+			/*Level=*/100, Wearer.Actor);
+		FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromHandle(Handle);
+		UCataclysmAuraSkill* Ring = Spec ? Cast<UCataclysmAuraSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Ring)
+		{
+			return -1;
+		}
+		Ring->ManaCostOverride = 0.0f;
+		if (!ASC->TryActivateAbility(Handle))
+		{
+			return -1;
+		}
+		OutEnded = ASC->ClearWhatDeathEnds().AurasEnded;
+		const FGameplayAbilitySpec* After = ASC->FindAbilitySpecFromHandle(Handle);
+		return After && After->IsActive() ? 1 : 0;
+	};
+
+	int32 Ended = -1;
+	TestEqual(TEXT("without the drawback the aura still runs after a death"),
+		AuraRunsAfterDeath(DrawbackWithNoEffect, Ended), 1);
+	TestEqual(TEXT("and no aura was counted as ended"), Ended, 0);
+
+	Ended = -1;
+	TestEqual(TEXT("with it the aura has ended"),
+		AuraRunsAfterDeath(TEXT("Negative_When_you_die_all_your_buffs_are_removed"), Ended), 0);
+	TestEqual(TEXT("and one aura was counted as ended"), Ended, 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

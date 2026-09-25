@@ -1589,9 +1589,9 @@ void ACataclysmPlayerCharacter::Revive()
 		UE_LOG(LogCataclysm, Log,
 			   TEXT("%s stood back up. The respawn removed %d timed effects, %d "
 					"of them cooldowns, and %d stacks, cleared %.0f health owed, "
-					"and ended %d running buffs."),
+					"and ended %d running buffs and %d running auras."),
 			   *GetName(), Ended.TimedEffects, Ended.Cooldowns, Ended.Stacks,
-			   Ended.HealthOwed, Ended.BuffsEnded);
+			   Ended.HealthOwed, Ended.BuffsEnded, Ended.AurasEnded);
 	}
 
 	// THE THREE VITALS COME BACK FULL, NOT PARTIAL. No document says what a player

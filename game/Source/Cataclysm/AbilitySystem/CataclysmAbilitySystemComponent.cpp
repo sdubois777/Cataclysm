@@ -2045,6 +2045,34 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	Ended.BuffsEnded = RunningBuffs.Num();
 
+	// AND THE RUNNING AURAS, FOR A CHARACTER WHOSE DRAWBACK SAYS SO. Issue #1833:
+	// "When you die all your buffs are removed", kept by the owner on 2026-09-25.
+	// Death leaves an aura running for everybody else -- an aura is its own
+	// skill class and not a self buff -- which is what this drawback changes.
+	// Ended the same way, and for the same reason, as the self buffs above.
+	const FGameplayAttribute Flag =
+		UCataclysmCombatAttributeSet::GetAurasEndAtDeathAttribute();
+	const bool bAurasEnd = HasAttributeSetForAttribute(Flag)
+		&& StatForSkill(FName(AurasEndAtDeathStat), FGameplayTagContainer(),
+						GetNumericAttribute(Flag)) > 0.0f;
+	if (bAurasEnd)
+	{
+		TArray<FGameplayAbilitySpecHandle> RunningAuras;
+		for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+		{
+			if (Spec.IsActive()
+				&& Cast<UCataclysmAuraSkill>(Spec.GetPrimaryInstance()))
+			{
+				RunningAuras.Add(Spec.Handle);
+			}
+		}
+		for (const FGameplayAbilitySpecHandle& Handle : RunningAuras)
+		{
+			CancelAbilityHandle(Handle);
+		}
+		Ended.AurasEnded = RunningAuras.Num();
+	}
+
 	// EVERY TIMED GAMEPLAY EFFECT, A SKILL'S COOLDOWN INCLUDED. Nothing permanent
 	// is at risk here: every effect that can reach a player today is built at run
 	// time with a duration or is instant, and the passive tree and gear are
@@ -3025,6 +3053,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::NthHitTakenDamageAction =
 	TEXT("nth_hit_taken_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::NthSpellManaCostAction =
 	TEXT("nth_spell_mana_cost");
+const TCHAR* UCataclysmAbilitySystemComponent::AurasEndAtDeathStat =
+	TEXT("auras_end_at_death");
 const TCHAR* UCataclysmAbilitySystemComponent::NthAttackNoDamageAction =
 	TEXT("nth_attack_no_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =

@@ -597,6 +597,10 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 			  "the regeneration step adds a second source to the shield")},
 		// Issue #1833, the small engine halves. A flag for the same reason as
 		// the three above, from an enchantment rather than a node.
+		// Issue #1833. A drawback's flag, for the same reason.
+		{TEXT("auras_end_at_death"),
+		 TEXT("the enchantment \"When you die all your buffs are removed\", as a "
+			  "flat flag, read where a death decides what it ends")},
 		{TEXT("shield_recharge_has_no_delay"),
 		 TEXT("the enchantment \"Energy shield regeneration begins immediately "
 			  "after taking damage with no delay\", as a flat flag, read where "

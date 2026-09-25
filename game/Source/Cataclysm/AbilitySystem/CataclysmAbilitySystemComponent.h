@@ -44,6 +44,13 @@ struct FCataclysmWhatDeathEnded
 
 	/** Self buffs that were still running and were ended. */
 	int32 BuffsEnded = 0;
+
+	/**
+	 * Auras that were still running and were ended, which happens only for a
+	 * character holding `auras_end_at_death`. Issue #1833: "When you die all
+	 * your buffs are removed", kept by the owner on 2026-09-25.
+	 */
+	int32 AurasEnded = 0;
 };
 
 /**
@@ -1751,6 +1758,14 @@ public:
 	 * before the maximum is read.
 	 */
 	FCataclysmWhatDeathEnded ClearWhatDeathEnds();
+
+	/**
+	 * The stat saying a death also ends this character's running auras. Issue
+	 * #1833: "When you die all your buffs are removed", kept by the owner on
+	 * 2026-09-25. A flag, like the three energy-shield keystones: above zero or
+	 * not. Death ends self buffs for everybody and auras for nobody else.
+	 */
+	static const TCHAR* AurasEndAtDeathStat;
 
 	/**
 	 * Record that this character has just taken damage of a Cataclysm type

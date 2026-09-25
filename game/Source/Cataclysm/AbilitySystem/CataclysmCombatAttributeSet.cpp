@@ -117,6 +117,7 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitShieldAbsorbsDamageOverTime(0.0f);
 	InitShieldRechargesWhileDamaged(0.0f);
 	InitShieldRechargeHasNoDelay(0.0f);
+	InitAurasEndAtDeath(0.0f);
 	InitManaRegenRestoresShield(0.0f);
 
 	// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515. Both
@@ -251,6 +252,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AurasEndAtDeath);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ManaRegenRestoresShield);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed);
@@ -459,6 +461,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetShieldAbsorbsDamageOverTimeAttribute(),
 		GetShieldRechargesWhileDamagedAttribute(),
 		GetShieldRechargeHasNoDelayAttribute(),
+		GetAurasEndAtDeathAttribute(),
 		GetManaRegenRestoresShieldAttribute(),
 		GetArmorPenetrationSuppressedAttribute(),
 		GetMeleeEvasionSuppressedAttribute(),
@@ -529,6 +532,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionCapBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AurasEndAtDeath)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed)
