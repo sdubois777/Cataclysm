@@ -35172,4 +35172,70 @@ bool FCataclysmCleanseTimedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A CLEANSE LEAVES WASTING SICKNESS AND VOID PARASITE, whose rows name another remedy: a floor's boss, and the light.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseLeavesTest,
+	"Cataclysm.Cleanse.ItLeavesWastingSicknessAndVoidParasite",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseLeavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// A FLOOR CARRYING BOTH ROWS, the player on its entrance, as `AParasiteFloor` sets one up.
+	Mode->DungeonModifiers = {ParasiteRow, WastingSickness};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.Character->GetActorLocation().Z));
+
+	// A VOIDLING, ATTACHED.
+	ACataclysmEnemyCharacter* Voidling =
+		KillForAVoidling(*this, World, Mode, Player, Entrance + FVector(0.0f, 0.0f, 100.0f));
+	if (!Voidling)
+	{
+		return false;
+	}
+	const FVector At = Voidling->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(At.X + 100.0f, At.Y, Player.Character->GetActorLocation().Z));
+	Beat(Mode, 1);
+
+	// A WASTING SICKNESS STACK FROM A CREATURE'S BLOW, the roll pinned so the chance cannot decide.
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	ACataclysmEnemyCharacter* Striker = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable)
+		|| !TestNotNull(TEXT("a creature that can hit"), Striker)
+		|| !TestTrue(TEXT("its blow landed"), UCataclysmSkillEffects::ApplyHit(Striker, Player.Character, 50.0f) > 0.0f))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: one voidling attached"), Mode->VoidParasiteStacksHeld(), 1)
+		|| !TestEqual(TEXT("set-up: one Wasting Sickness stack"), Mode->WastingSicknessStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("the voidling stays attached"), Mode->VoidParasiteStacksHeld(), 1);
+	TestEqual(TEXT("the Wasting Sickness stack stays"), Mode->WastingSicknessStacksHeld(), 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

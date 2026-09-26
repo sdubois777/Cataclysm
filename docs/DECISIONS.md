@@ -88,7 +88,7 @@ category named, and whether dungeon-rule stacks count. Those are the rulings bel
 
 ### Tests
 
-Six automation tests in `Cataclysm.Cleanse.`:
+Seven automation tests in `Cataclysm.Cleanse.`:
 
 - `ItRemovesTheBurnCurseAndStunACreaturePutOnThePlayer`: a burn, Cripple and a stun an Imp put on the player; a
   cleanse removes three effects, and the stun's immunity stays.
@@ -100,9 +100,10 @@ Six automation tests in `Cataclysm.Cleanse.`:
 - `ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs`: a stack of more health and one of less; the second is cleared.
 - `ATimedCleanseActionFiresEveryFiveSecondsOfAFight`: a hand-built timed pool action; fifty seconds out of combat
   cleanse nothing; four seconds into a fight the Imp's burn remains; at five it is gone.
-
-Not tested: that the stacks the rows do not offer to a cleanse are kept. The listener does not touch them, and a test
-would pass whatever the listener did to the three it names.
+- `ItLeavesWastingSicknessAndVoidParasite`: with a voidling attached and a Wasting Sickness stack from a creature's
+  blow, a cleanse leaves both. Added at the coordinating session's request, 2026-09-26: the listener does not touch
+  them, and this is what holds a later edit to that. It reads Wasting Sickness through a new
+  `ACataclysmDungeonGameMode::WastingSicknessStacksHeld`, beside the other rules' counts.
 
 One Python check: the three rows still say "must be cleansed", "persist unless cleansed" and "unless cleansed".
 
