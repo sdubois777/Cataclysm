@@ -4693,7 +4693,9 @@ void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
 			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
 		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
 		int32 Placed = 0;
-		for (int32 Which = 0; Which < Effects::IllusionPhantasms && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
+		// A PAIR, CUT TO WHAT FITS UNDER THE MOST: at five standing, one comes.
+		const int32 ToSend = Effects::IllusionPhantasmsToSend(PhantasmsStanding().Num());
+		for (int32 Which = 0; Which < ToSend && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
 			 ++Which)
 		{
 			FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];

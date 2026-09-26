@@ -31,8 +31,8 @@ creatures do and deal their damage, but each has one point of health, so any hit
 nothing, are raised by the rule and are not the floor's creatures. When a phantasm's blow lands on the player, the
 player's movement speed is 30% less for two seconds; a second blow starts the two seconds again. A new floor, or a
 Horde dungeon's next wave, takes the phantasms away, ends the slow and starts the clock again. The panel reads
-"mind-shattering illusions: next in 12 s; 2 of 6 phantasms standing". A new pair appears only while fewer than six
-of the rule's phantasms stand; the clock runs on while six stand, so a pair comes on the beat after one falls.
+"mind-shattering illusions: next in 12 s; 2 of 6 phantasms standing". At most six of the rule's phantasms stand; a
+due pair is cut to what fits, and the clock runs on while six stand, so one comes on the beat after one falls.
 
 ### Rulings
 
@@ -43,10 +43,10 @@ play-test value:**
 - **They deal damage, pay nothing, are not the floor's creatures, and die to any one hit**: "discern reality from
   illusion" is that they fall at a touch.
 - **A phantasm's hit slows the player 30% for 2 s**: "disorient".
-- **A new pair appears only while fewer than 6 of the rule's phantasms stand**, ruled on 2026-09-26 after this rule
-  was registered: they pay nothing and come without end, so a player who walks away from them would otherwise meet
-  forty after ten minutes. Portal Unleashing caps its creatures at four for the same reason. Read as written, five
-  standing and a new pair make seven.
+- **At most 6 stand; a due pair is cut to what fits**, ruled on 2026-09-26 after this rule was registered: they pay
+  nothing and come without end, so a player who walks away from them would otherwise meet forty after ten minutes.
+  Portal Unleashing caps its creatures at four for the same reason. At five standing, one comes, so the panel never
+  reads more than six.
 
 **Judgements of this change, under the same delegation, not ruled separately:**
 
@@ -77,7 +77,7 @@ metres, one point of health, 30% and two seconds are this game's own.
 Five automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 - `MindShatteringIllusionsFiguresPhantasmsAndSlow`: the figures; not due at 29.75 s and due at 30; due with five
-  standing and not with six.
+  standing and not with six; a pair with none standing, one with five, none with six.
 - `TwoPhantasmsAppearEveryThirtySecondsAndFallToOneHit`: none at 29.75 s; two at 30 s of the floor's kinds, with a
   brain, paying nothing, not the floor's, with one point of health, near the player, with the panel; a hit of 5 fells
   one, and one stands.

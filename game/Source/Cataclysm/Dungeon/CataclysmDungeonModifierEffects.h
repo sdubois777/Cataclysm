@@ -4601,10 +4601,10 @@ public:
 	static constexpr int32 IllusionPhantasms = 2;
 
 	/**
-	 * A new pair appears only while fewer than this many of the rule's phantasms stand. Ruled by the coordinating
+	 * At most this many of the rule's phantasms stand; a due pair is cut to what fits. Ruled by the coordinating
 	 * session under the owner's delegation, 2026-09-26, a play-test value: phantasms pay nothing and come without end,
 	 * so a player who walks away from them would otherwise meet forty after ten minutes. Portal Unleashing caps its
-	 * creatures for the same reason. Read as written, five standing and a new pair make seven.
+	 * creatures for the same reason. At five standing, one comes.
 	 */
 	static constexpr int32 IllusionMostStanding = 6;
 	static constexpr float IllusionAppearsAwayCm = 800.0f;
@@ -5242,8 +5242,11 @@ public:
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
 
-	/** Whether a pair of phantasms appears now: its time has come and fewer than the most stand. */
+	/** Whether phantasms appear now: their time has come and fewer than the most stand. */
 	static bool IllusionPhantasmsAreDue(float SecondsSinceLast, int32 Standing);
+
+	/** How many phantasms a due pair sends with this many standing: the pair cut to what fits under the most. */
+	static int32 IllusionPhantasmsToSend(int32 Standing);
 
 	/** The player's Raw Sewage stacks after one more is added: one more, never past the most. */
 	static int32 RawSewageStacksAfterAdding(int32 Stacks);

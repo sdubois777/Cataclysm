@@ -1786,6 +1786,11 @@ float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
 	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
 }
 
+int32 UCataclysmDungeonModifierEffects::IllusionPhantasmsToSend(int32 Standing)
+{
+	return FMath::Clamp(IllusionMostStanding - Standing, 0, IllusionPhantasms);
+}
+
 bool UCataclysmDungeonModifierEffects::IllusionPhantasmsAreDue(float SecondsSinceLast, int32 Standing)
 {
 	return SecondsSinceLast >= IllusionSecondsBetween && Standing < IllusionMostStanding;

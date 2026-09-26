@@ -31094,6 +31094,9 @@ bool FCataclysmIllusionsFiguresTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("due at 30 s"), Effects::IllusionPhantasmsAreDue(30.0f, 0));
 	TestTrue(TEXT("due with five standing"), Effects::IllusionPhantasmsAreDue(30.0f, 5));
 	TestFalse(TEXT("not with six standing"), Effects::IllusionPhantasmsAreDue(300.0f, 6));
+	TestEqual(TEXT("none standing: a pair"), Effects::IllusionPhantasmsToSend(0), 2);
+	TestEqual(TEXT("five standing: one, so six and not seven"), Effects::IllusionPhantasmsToSend(5), 1);
+	TestEqual(TEXT("six standing: none"), Effects::IllusionPhantasmsToSend(6), 0);
 	return true;
 }
 
