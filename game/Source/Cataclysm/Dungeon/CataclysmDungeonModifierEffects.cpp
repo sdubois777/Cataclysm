@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InsanityBurstsKey =
+	TEXT("Void_Insanity_Bursts");
+
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
 
@@ -516,7 +519,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
-		|| RowKey == FName(SingularityWellsKey))
+		|| RowKey == FName(SingularityWellsKey)
+		// INSANITY BURSTS. The skill lock and the stun work; "attack allies" does nothing, because the game has no
+		// player allies but the player's own minions. Issues #1820 and #41.
+		|| RowKey == FName(InsanityBurstsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -679,6 +685,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(InsanityBurstsKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
@@ -1771,6 +1778,16 @@ int32 UCataclysmDungeonModifierEffects::RawSewageStacksAfterAdding(int32 Stacks)
 float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
 {
 	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::InsanityBurstsIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= InsanityBurstsSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::InsanityBurstsLocksSkills(float Roll)
+{
+	return Roll < InsanityBurstsLockChancePercent;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

@@ -765,6 +765,14 @@ static TAutoConsoleVariable<float> CVarTrickOrTreatRoll(
 	TEXT("raises two creatures, from 50 hastes the player. -1 rolls normally."),
 	ECVF_Cheat);
 
+/** Pins which burst Insanity Bursts sends, 0 to 100: below 50 the skill lock, from 50 the stun. Issues #1820, #41. */
+static TAutoConsoleVariable<float> CVarInsanityBurstsRoll(
+	TEXT("Cataclysm.InsanityBurstsRoll"),
+	-1.0f,
+	TEXT("Pin which burst Insanity Bursts sends, 0 to 100: below 50 every skill is locked, from 50 the player is ")
+	TEXT("stunned. -1 rolls normally."),
+	ECVF_Cheat);
+
 /**
  * The draw that decides which kind a floor carrying Chaos Touched adds, pinned for tests.
  */
@@ -888,6 +896,12 @@ namespace
 	float DungeonGameModeTrickOrTreatRoll()
 	{
 		const float Pinned = CVarTrickOrTreatRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeInsanityBurstsRoll()
+	{
+		const float Pinned = CVarInsanityBurstsRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -4607,6 +4621,76 @@ void ACataclysmDungeonGameMode::NoteDeathForRawSewage(const FCataclysmDeathNotic
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::StepInsanityBursts(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+	const bool bRowHere = FloorBrief.Modifiers.Contains(FName(Effects::InsanityBurstsKey));
+
+	// A LOCK RUNNING COUNTS DOWN, on a floor with the row or not.
+	if (InsanityBurstsLockLeft > 0.0f)
+	{
+		InsanityBurstsLockLeft = FMath::Max(0.0f, InsanityBurstsLockLeft - SecondsBetweenWaveChecks);
+	}
+	else if (bRowHere && bInsanityBurstsWarning)
+	{
+		// THE WARNING RUNS, and at its end the burst: every skill locked, or a stun. A designed stun, so it skips the
+		// damage threshold; it does not skip the immunity window.
+		InsanityBurstsWarningSoFar += SecondsBetweenWaveChecks;
+		if (InsanityBurstsWarningSoFar >= Effects::InsanityBurstsWarningSeconds)
+		{
+			bInsanityBurstsWarning = false;
+			InsanityBurstsWarningSoFar = 0.0f;
+			InsanityBurstsSecondsSinceLast = 0.0f;
+			if (bInsanityBurstsWillLock)
+			{
+				InsanityBurstsLockLeft = Effects::InsanityBurstsLockSeconds;
+			}
+			else if (AActor* Source = ACataclysmFloorHazardSource::ForFloor(World))
+			{
+				UCataclysmSkillEffects::ApplyStun(Source, Player, Effects::InsanityBurstsStunSeconds, 0.0f,
+												  /*bStunIsDesigned=*/true);
+			}
+			UE_LOG(LogCataclysm, Log, TEXT("Insanity Bursts: a burst on floor %d: %s"), FloorNumber,
+				   bInsanityBurstsWillLock ? TEXT("skills locked") : TEXT("stunned"));
+		}
+	}
+	else if (bRowHere)
+	{
+		// THE CLOCK, AND THE WARNING WHEN IT COMES DUE. Which burst it will be is drawn as the warning begins.
+		InsanityBurstsSecondsSinceLast += SecondsBetweenWaveChecks;
+		if (Effects::InsanityBurstsIsDue(InsanityBurstsSecondsSinceLast))
+		{
+			bInsanityBurstsWarning = true;
+			InsanityBurstsWarningSoFar = 0.0f;
+			bInsanityBurstsWillLock = Effects::InsanityBurstsLocksSkills(DungeonGameModeInsanityBurstsRoll());
+		}
+	}
+
+	// THE LOCK WRITTEN ON THE PLAYER ONLY WHEN IT CHANGED, as Edict of Silence writes its own.
+	const float Wanted = Effects::SkillsLockedWhile(InsanityBurstsLockLeft > 0.0f);
+	if (!FMath::IsNearlyEqual(Wanted, InsanityBurstsLockApplied))
+	{
+		InsanityBurstsLockApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	const int32 Second = InsanityBurstsLockLeft > 0.0f ? 1000 + FMath::CeilToInt(InsanityBurstsLockLeft)
+		: bInsanityBurstsWarning ? 500 + FMath::CeilToInt(InsanityBurstsWarningSoFar)
+		: FMath::CeilToInt(InsanityBurstsSecondsSinceLast);
+	if (Second != InsanityBurstsPanelSecond)
+	{
+		InsanityBurstsPanelSecond = Second;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6351,6 +6435,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND INSANITY BURSTS, ON EVERY FLOOR CARRYING IT, AND WHILE ITS LOCK IS STILL ON THE CHARACTER. Issues #1820
+	// and #41.
+	const bool bInsanityBursts = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::InsanityBurstsKey))
+		|| InsanityBurstsLockApplied > 0.0f;
 	// AND RAW SEWAGE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHILE A STACK OR THE TAG IS HELD: the stacks
 	// are the dungeon's and burn on every floor. Issues #1820 and #41.
 	const bool bRawSewage = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RawSewageKey))
@@ -6386,6 +6475,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bInsanityBursts
 		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
@@ -6609,6 +6699,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND INSANITY BURSTS, WHICH LOCKS THE PLAYER'S SKILLS OR STUNS THEM. Issues #1820 and #41.
+	if (bInsanityBursts)
+	{
+		StepInsanityBursts(Player, AbilitySystem);
 	}
 
 	// AND RAW SEWAGE, WHICH DRAWS RIVERS, ADDS STACKS, BURNS AND TAGS THE PLAYER. Issues #1820 and #41.
@@ -7626,7 +7722,10 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// AND WHETHER THE EDICT OF SILENCE HAS THE PLAYER'S SKILLS LOCKED. Issues
 	// #1786 and #41. Read unconditionally like the rest: a floor without that row
 	// never sets it, and nothing is what the effects already hold.
-	Effects.SkillsLockedValue = EdictOfSilenceLockApplied;
+	//
+	// AND WHETHER AN INSANITY BURST HAS THEM LOCKED, ON THE SAME FIELD, because both lock every skill: the larger of
+	// the two, so neither rule's ending takes the other's lock off. Issues #1820 and #41.
+	Effects.SkillsLockedValue = FMath::Max(EdictOfSilenceLockApplied, InsanityBurstsLockApplied);
 
 	// AND WHETHER AN ANTI-MAGIC ZONE HAS THE PLAYER'S SPELLS LOCKED. Issues #1820 and #41.
 	// Read unconditionally like the rest. ITS OWN FIELD AND NOT `SkillsLockedValue`: the
@@ -9345,6 +9444,27 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  RawSewageStacks, RawSewageStacks == 1 ? TEXT("") : TEXT("s"),
 							  Effects::RawSewagePercentPerSecond(RawSewageStacks))
 			: FString(TEXT("raw sewage: no disease stacks")));
+	}
+
+	// AND INSANITY BURSTS: when the next comes, a warning under way, or a lock running. Issues #1820 and #41.
+	const FName Insanity(Effects::InsanityBurstsKey);
+	if (FloorBrief.Modifiers.Contains(Insanity))
+	{
+		if (InsanityBurstsLockLeft > 0.0f)
+		{
+			Counting.Add(Insanity, FString::Printf(TEXT("insanity bursts: skills locked for %d s"),
+												   FMath::CeilToInt(InsanityBurstsLockLeft)));
+		}
+		else if (bInsanityBurstsWarning)
+		{
+			Counting.Add(Insanity, FString::Printf(TEXT("insanity bursts: a burst in %d s"),
+				FMath::Max(0, FMath::CeilToInt(Effects::InsanityBurstsWarningSeconds - InsanityBurstsWarningSoFar))));
+		}
+		else
+		{
+			Counting.Add(Insanity, FString::Printf(TEXT("insanity bursts: next in %d s"),
+				FMath::Max(0, FMath::CeilToInt(Effects::InsanityBurstsSecondsBetween - InsanityBurstsSecondsSinceLast))));
+		}
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -11791,6 +11911,16 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// lock off the character and the next beat has to put it back while the
 		// silence is still running.
 		EdictOfSilenceLockApplied = 0.0f;
+
+		// AND INSANITY BURSTS STARTS AGAIN ON EVERY FLOOR, as ruled: exposure is time on this floor. A warning or a lock
+		// under way ends with the floor; the call above has already taken the lock off the character. Issues #1820
+		// and #41.
+		InsanityBurstsSecondsSinceLast = 0.0f;
+		bInsanityBurstsWarning = false;
+		InsanityBurstsWarningSoFar = 0.0f;
+		InsanityBurstsLockLeft = 0.0f;
+		InsanityBurstsLockApplied = 0.0f;
+		InsanityBurstsPanelSecond = -1;
 
 		// AND THE ARTILLERY STRIKE FORGETS THE CIRCLE, THE WARNING AND THE
 		// CLOCK. Issues #1820 and #41. The circle because it is already destroyed

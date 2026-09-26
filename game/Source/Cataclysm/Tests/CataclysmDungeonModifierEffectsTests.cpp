@@ -31041,4 +31041,176 @@ bool FCataclysmSewageMasochistNothingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Void_Insanity_Bursts. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName InsanityRow(UCataclysmDungeonModifierEffects::InsanityBurstsKey);
+
+	/** A dungeon carrying only Insanity Bursts, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AnInsanityFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {InsanityRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** Whether the player's skills with no particular tags are locked: the Edict's and a burst's lock. */
+	bool EverySkillLocked(const FPossessedPlayer& Player)
+	{
+		return IsLockedFor(Player, FGameplayTagContainer());
+	}
+}
+
+// THE FIGURES: A BURST EVERY 40 S AFTER A 3 S WARNING; A 5 S LOCK OR A 1.5 S STUN, HALF AND HALF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInsanityFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InsanityBurstsFiguresCadenceWarningLockAndStun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInsanityFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("every 40 s"), Effects::InsanityBurstsSecondsBetween, 40.0f, 0.001f);
+	TestEqual(TEXT("a 3 s warning"), Effects::InsanityBurstsWarningSeconds, 3.0f, 0.001f);
+	TestEqual(TEXT("a 5 s lock"), Effects::InsanityBurstsLockSeconds, 5.0f, 0.001f);
+	TestEqual(TEXT("a 1.5 s stun"), Effects::InsanityBurstsStunSeconds, 1.5f, 0.001f);
+	TestFalse(TEXT("not due at 39.75 s"), Effects::InsanityBurstsIsDue(39.75f));
+	TestTrue(TEXT("due at 40 s"), Effects::InsanityBurstsIsDue(40.0f));
+	TestTrue(TEXT("a roll of 49.9 locks"), Effects::InsanityBurstsLocksSkills(49.9f));
+	TestFalse(TEXT("a roll of 50 stuns"), Effects::InsanityBurstsLocksSkills(50.0f));
+	return true;
+}
+
+// AT 40 S A 3 S WARNING; THEN, WITH THE ROLL PINNED BELOW 50, EVERY SKILL LOCKED FOR 5 S; THEN THE CLOCK AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInsanityLocksTest,
+	"Cataclysm.DungeonModifierEffects.AnInsanityBurstWarnsThenLocksEverySkillForFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInsanityLocksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Pinned(TEXT("Cataclysm.InsanityBurstsRoll"), TEXT("10"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInsanityFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsSecondsBetween) - 1);
+	TestEqual(TEXT("the panel at 39.75 s"), Mode->LiveCountsForTheFloor().FindRef(InsanityRow),
+			  FString(TEXT("insanity bursts: next in 1 s")));
+	Beat(Mode, 1);
+	TestEqual(TEXT("the warning at 40 s"), Mode->LiveCountsForTheFloor().FindRef(InsanityRow),
+			  FString(TEXT("insanity bursts: a burst in 3 s")));
+	TestFalse(TEXT("not locked during the warning"), EverySkillLocked(Player));
+
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsWarningSeconds) - 1);
+	TestFalse(TEXT("not locked at 2.75 s into the warning"), EverySkillLocked(Player));
+	Beat(Mode, 1);
+	TestTrue(TEXT("every skill locked when the warning ends"), EverySkillLocked(Player));
+	TestFalse(TEXT("and no stun"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	TestEqual(TEXT("the panel while locked"), Mode->LiveCountsForTheFloor().FindRef(InsanityRow),
+			  FString(TEXT("insanity bursts: skills locked for 5 s")));
+
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsLockSeconds) - 1);
+	TestTrue(TEXT("still locked at 4.75 s"), EverySkillLocked(Player));
+	Beat(Mode, 1);
+	TestFalse(TEXT("unlocked at 5 s"), EverySkillLocked(Player));
+	TestEqual(TEXT("and the clock starts again"), Mode->LiveCountsForTheFloor().FindRef(InsanityRow),
+			  FString(TEXT("insanity bursts: next in 40 s")));
+	return true;
+}
+
+// WITH THE ROLL PINNED FROM 50, THE BURST STUNS THE PLAYER AND LOCKS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInsanityStunsTest,
+	"Cataclysm.DungeonModifierEffects.AnInsanityBurstCanStunThePlayerInstead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInsanityStunsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Pinned(TEXT("Cataclysm.InsanityBurstsRoll"), TEXT("90"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInsanityFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsSecondsBetween) + BeatsFor(Effects::InsanityBurstsWarningSeconds) - 1);
+	TestFalse(TEXT("not stunned before the warning ends"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	Beat(Mode, 1);
+	TestTrue(TEXT("stunned when it ends"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	TestFalse(TEXT("and nothing locked"), EverySkillLocked(Player));
+	return true;
+}
+
+// A NEW FLOOR ENDS A LOCK UNDER WAY AND STARTS THE CLOCK AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInsanityFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorEndsAnInsanityLockAndStartsItsClock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInsanityFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Pinned(TEXT("Cataclysm.InsanityBurstsRoll"), TEXT("10"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInsanityFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsSecondsBetween) + BeatsFor(Effects::InsanityBurstsWarningSeconds));
+	if (!TestTrue(TEXT("locked on floor 2"), EverySkillLocked(Player))
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("the new floor ends the lock"), EverySkillLocked(Player));
+	TestEqual(TEXT("and its clock starts again"), Mode->LiveCountsForTheFloor().FindRef(InsanityRow),
+			  FString(TEXT("insanity bursts: next in 40 s")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

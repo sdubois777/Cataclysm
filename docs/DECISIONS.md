@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Insanity Bursts, PARTLY BUILT: every 40 seconds on a floor, after a 3-second warning, a burst either locks every skill for 5 seconds or stuns the player for 1.5; "attack allies" is not built
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, when a burst is due, which burst a roll makes, and the row listed as partly built);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the clock, the warning, the burst, the lock
+written on the player beside Edict of Silence's, the per-floor reset, a pinned roll, the panel line); the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and only in part: "attack allies" is not built.**
+The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of
+this entry when they have.
+
+### The row
+
+`Void_Insanity_Bursts` in `game/Data/DungeonModifiers.csv`, weight 15: "Prolonged exposure to the Void's influence
+triggers bursts of insanity, causing players to lose control over their abilities, attack allies, or experience
+debilitating effects. Players must regain composure or rely on teamwork to overcome these moments of chaos" It states
+no figure.
+
+### What the rule does
+
+Forty seconds into a floor carrying the row, a burst's warning begins: for three seconds the panel reads "insanity
+bursts: a burst in 3 s". Then the burst comes, one of two, drawn at random as the warning begins: every one of the
+player's skills is locked for five seconds, as Edict of Silence locks them, or the player is stunned for a second and
+a half. The clock starts again when the burst comes, so the next warning begins forty seconds after it, and a new floor
+starts the clock again and ends a lock under way. The panel otherwise reads "insanity bursts: next in 12 s", or
+"insanity bursts: skills locked for 5 s".
+
+**NOT BUILT: "attack allies".** The game has no allies of the player except the player's own minions, and making
+those attack the player is its own ruling. Until then `BuiltStateOf` answers `Partly` for the row. **Do not read this
+row as done.**
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **Exposure is time on the floor: every 40 s on a floor, a 3 s warning, then a burst.**
+- **The burst is either all skills locked for 5 s or a 1.5 s stun, chosen at random.**
+- **"Attack allies" is not built**; the game has no player allies except the player's own minions, and turning those is
+  its own ruling. The row is partly built.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Half and half.** "Chosen at random" names no weighting, so each burst is equally likely; a console variable,
+  `Cataclysm.InsanityBurstsRoll`, pins the roll for tests.
+- **The lock shares Edict of Silence's field, `SkillsLockedValue`, and the larger of the two is written**, so neither
+  rule's lock ending takes the other's off. Both lock every skill, so one field is enough; Anti-Magic Zones has its own
+  field because it locks spells only.
+- **The stun is a designed stun** (`ApplyStun` with `bStunIsDesigned`), so it skips the damage threshold a stun
+  otherwise needs; it keeps the five-second immunity window, which is longer than the stun and shorter than the forty
+  seconds between bursts, so it never blocks a burst's stun.
+- **The clock does not run during a warning or a lock**, and starts again when the burst comes, so a burst comes forty
+  seconds after the last one rather than forty seconds after the last warning began.
+
+### The research: a map modifier that acts on the player on a cadence
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile 2, waystone modifiers | https://poe2db.tw/us/Waystones | "Players are periodically Cursed with Enfeeble"; "Players are periodically Cursed with Temporal Chains"; "Players are periodically Cursed with Elemental Weakness" |
+
+**What it settles and what it does not.** Path of Exile 2 ships an area modifier that does something to the player on a
+cadence, from the area and not from a monster. That settles a periodic effect on the player as a shape players accept.
+The page does not say how often or for how long, and a curse weakens rather than taking control, so the forty seconds,
+the three-second warning, the skill lock, the stun and their lengths are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `InsanityBurstsFiguresCadenceWarningLockAndStun`: the figures; not due at 39.75 s and due at 40; a roll of 49.9
+  locks and one of 50 stuns.
+- `AnInsanityBurstWarnsThenLocksEverySkillForFiveSeconds`: with the roll pinned to 10, the panel at 39.75 s; the
+  warning at 40 s, nothing locked; nothing locked 2.75 s into it; every skill locked when it ends, no stun, with the
+  panel; still locked at 4.75 s; unlocked at 5 s, and the clock at 40 s again.
+- `AnInsanityBurstCanStunThePlayerInstead`: with the roll pinned to 90, not stunned a beat before the warning ends,
+  stunned when it ends, and nothing locked.
+- `ANewFloorEndsAnInsanityLockAndStartsItsClock`: locked on floor 2; on floor 3 nothing is locked and the clock is at
+  40 s.
+
+One Python check: the row still says "prolonged exposure", "bursts of insanity", "lose control over their abilities",
+"attack allies" and "debilitating effects".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Set Stance and Scarred Plate: their "At 4 points:" clauses are rows, from four points and once
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv` and

@@ -2318,6 +2318,9 @@ private:
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
 
+	/** Insanity Bursts, on the beat: its clock, its warning, the burst, and the lock written on the player. */
+	void StepInsanityBursts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
 	/** Raw Sewage: this arena's rivers chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheRivers();
 
@@ -3425,6 +3428,18 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Insanity Bursts: the clock, the warning under way, which burst it will be, the lock's seconds left, the lock last
+	 * written on the player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	float InsanityBurstsSecondsSinceLast = 0.0f;
+	bool bInsanityBurstsWarning = false;
+	float InsanityBurstsWarningSoFar = 0.0f;
+	bool bInsanityBurstsWillLock = false;
+	float InsanityBurstsLockLeft = 0.0f;
+	float InsanityBurstsLockApplied = 0.0f;
+	int32 InsanityBurstsPanelSecond = -1;
 
 	/**
 	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether
