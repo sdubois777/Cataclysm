@@ -2811,12 +2811,12 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 				  FName(UCataclysmDungeonModifierEffects::InfernalRainKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
-	// SWARM OF LOCUSTS IS PARTLY BUILT, and #2129 listed it as built. Nothing obscures vision, which the row names.
-	// Issues #1820 and #41.
-	TestEqual(TEXT("Swarm of Locusts is partly built: nothing obscures vision"),
+	// SWARM OF LOCUSTS IS BUILT since its swarm obscures vision through the vision system; until then it was partly
+	// built, and #2129 had listed it as built by mistake. Issues #1820 and #41.
+	TestEqual(TEXT("Swarm of Locusts is built: its swarm obscures vision"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
 				  FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey))),
-			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 
 	// THE NOT-BUILT CONTROL USED TO BE Void_Singularity_Wells AND THAT ROW IS NOW
 	// PARTLY BUILT, so it had to be replaced. Chaos_Echo_Chamber takes its place
@@ -31876,6 +31876,65 @@ bool FCataclysmFogLiftsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the camera is not darkened"), Player.Character->SightDarknessRadiusCm(), 0.0f, 0.001f);
 	TestTrue(TEXT("an Imp 20 m away on a floor without fog is seen"), Stranger && !Stranger->IsHidden());
 	TestTrue(TEXT("and the one the fog hid still stands and is shown"), IsValid(Far) && !Far->IsHidden());
+	return true;
+}
+
+// A TRAVELLING SWARM COVERING THE PLAYER CUTS THEIR SIGHT TO 4 M AND HIDES WHAT IS BEYOND; OUT OF IT, SIGHT RETURNS.
+// Famine_Swarm_of_Locusts' "obscuring vision", through the vision system. Issues #1820 and #41.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLocustsObscureTest,
+	"Cataclysm.DungeonModifierEffects.ASwarmOfLocustsCoveringThePlayerCutsTheirSightToFourMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLocustsObscureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("4 m of sight under a swarm"), Effects::SwarmOfLocustsSightCm, 400.0f, 0.001f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ALocustFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Swarm = ATravellingSwarm(*this, Mode);
+	if (!Swarm)
+	{
+		return false;
+	}
+
+	// UNDER THE SWARM, WITH AN IMP 5 M AWAY: SIGHT IS 4 M AND THE IMP IS HIDDEN.
+	const float Z = Player.Character->GetActorLocation().Z;
+	const FVector Under = Swarm->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(Under.X, Under.Y, Z));
+	ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(World, FVector(Under.X + 500.0f, Under.Y, Z), 100.0f);
+	if (!TestNotNull(TEXT("an Imp 5 m away"), Imp) || !TestTrue(TEXT("the swarm covers the player"), Swarm->Covers(Under)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("under the swarm the player sees 4 m"), Mode->PlayerSightRadiusCm(), 400.0f, 0.001f);
+	TestTrue(TEXT("and the Imp 5 m away is hidden"), Imp->IsHidden());
+
+	// FAR OUT OF THE SWARM, THE IMP BESIDE THEM AGAIN: SIGHT IS UNLIMITED AND THE IMP IS SEEN.
+	const FVector Clear = Under + FVector(0.0f, Effects::SwarmOfLocustsRadiusCm * 4.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Clear.X, Clear.Y, Z));
+	Imp->SetActorLocation(FVector(Clear.X + 500.0f, Clear.Y, Imp->GetActorLocation().Z));
+	if (!TestFalse(TEXT("out of the swarm"), Swarm->Covers(Clear)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("out of the swarm sight is unlimited"), Mode->PlayerSightRadiusCm(), 0.0f, 0.001f);
+	TestFalse(TEXT("and the Imp is seen"), Imp->IsHidden());
 	return true;
 }
 

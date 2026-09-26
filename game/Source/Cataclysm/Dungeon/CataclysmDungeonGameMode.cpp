@@ -2314,6 +2314,18 @@ void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
 
 	// THE SIGHT, FROM THE ROWS IN FORCE, and nothing else writes it.
 	PlayerSightRadius = Effects::SightRadiusFor(FloorBrief.Modifiers);
+
+	// AND A SWARM OF LOCUSTS COVERING THE PLAYER WHILE IT TRAVELS, the row's "obscuring vision": the shorter of the two.
+	// A shelter does not lift it; a shelter stops the burn, and the player is still inside the swarm. Issues #1820 and
+	// #41.
+	const ACataclysmGroundZone* Swarm = SwarmOfLocusts.Get();
+	if (FloorBrief.Modifiers.Contains(FName(Effects::SwarmOfLocustsKey)) && bSwarmOfLocustsTravelling && Swarm
+		&& Swarm->Covers(Player->GetActorLocation()))
+	{
+		PlayerSightRadius = PlayerSightRadius > 0.0f
+			? FMath::Min(PlayerSightRadius, Effects::SwarmOfLocustsSightCm)
+			: Effects::SwarmOfLocustsSightCm;
+	}
 	Player->SetSightDarkness(PlayerSightRadius);
 
 	// EVERY CREATURE BEYOND IT HIDDEN, measured flat, and every one within it, or on a floor with unlimited sight,
@@ -6820,6 +6832,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND THE VISION SYSTEM, ON EVERY FLOOR WHOSE ROWS LIMIT SIGHT, AND ON THE FIRST FLOOR AFTER ONE, so what it hid is
 	// shown and the camera lightened. Issues #1820 and #41.
 	const bool bVision = UCataclysmDungeonModifierEffects::SightRadiusFor(FloorBrief.Modifiers) > 0.0f
+		|| FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey))
 		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0;
 	// AND VOID PARASITE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON
 	// THE CHARACTER, as Chaos Touched is stepped. Issues #1820 and #41.

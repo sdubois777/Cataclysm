@@ -512,6 +512,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
 		|| RowKey == FName(AbyssalRiftsKey)
+		// SWARM OF LOCUSTS, BUILT SINCE ITS SWARM OBSCURES VISION through the vision system. Issues #1820 and #41.
+		|| RowKey == FName(SwarmOfLocustsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
@@ -548,11 +550,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
-		|| RowKey == FName(SingularityWellsKey)
-		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
-		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
-		// while its entry and its key's comment both said partly built. Issues #1820 and #41.
-		|| RowKey == FName(SwarmOfLocustsKey))
+		|| RowKey == FName(SingularityWellsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}

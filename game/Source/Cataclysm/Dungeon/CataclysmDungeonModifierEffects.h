@@ -2098,8 +2098,10 @@ public:
 	 *   `SwarmOfLocustsShelterRadiusCm` across, doing nothing, placed by Eternal Chorus's picker. A player inside
 	 *   one takes nothing from a swarm.
 	 * - CREATURES ARE NOT BURNED.
-	 * - NOT BUILT: "obscuring vision", which needs the vision system. "Use specific abilities" has no rule of its
-	 *   own: moving out of the swarm's line escapes it, and resistances meet its damage.
+	 * - "OBSCURING VISION": while a travelling swarm covers the player, the player's sight is
+	 *   `SwarmOfLocustsSightCm`, through the vision system; a shelter does not lift it. Accepted by the coordinating
+	 *   session, 2026-09-26. "Use specific abilities" has no rule of its own: moving out of the swarm's line escapes
+	 *   it, and resistances meet its damage.
 	 */
 	static const TCHAR* SwarmOfLocustsKey;
 
@@ -4680,6 +4682,9 @@ public:
 	static constexpr int32 SwarmOfLocustsSheltersPerFloor = 2;
 	static constexpr int32 SwarmOfLocustsSheltersPerHordeArena = 1;
 	static constexpr float SwarmOfLocustsShelterRadiusCm = 300.0f;
+
+	/** The player's sight while a travelling swarm covers them, a play-test value. */
+	static constexpr float SwarmOfLocustsSightCm = 400.0f;
 
 	static_assert(
 		SwarmOfLocustsSecondsBetween > SwarmOfLocustsWarningSeconds + SwarmOfLocustsTravelsCm / SwarmOfLocustsSpeedCmPerSecond,
