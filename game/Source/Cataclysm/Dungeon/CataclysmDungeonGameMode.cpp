@@ -4607,6 +4607,99 @@ void ACataclysmDungeonGameMode::NoteDeathForRawSewage(const FCataclysmDeathNotic
 	RefreshFloorModifierPanel();
 }
 
+ACataclysmGroundZone* ACataclysmDungeonGameMode::FunerealProcessionNow() const
+{
+	return FunerealProcession.Get();
+}
+
+void ACataclysmDungeonGameMode::StepFunerealProcession(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FVector Feet = Player->GetActorLocation();
+
+	if (ACataclysmGroundZone* Line = FunerealProcession.Get())
+	{
+		FunerealProcessionSecondsIntoIt += SecondsBetweenWaveChecks;
+
+		// CROSSED: GONE, AND THE NEXT ONE'S CLOCK STARTS.
+		if (FunerealProcessionSecondsIntoIt >= Effects::FunerealProcessionLastsSeconds())
+		{
+			Line->Destroy();
+			FunerealProcession = nullptr;
+			FunerealProcessionVelocity = FVector::ZeroVector;
+			FunerealProcessionSecondsSinceLast = 0.0f;
+			RefreshFloorModifierPanel();
+			return;
+		}
+
+		// CONTACT, ONCE A SECOND, FOR THE PLAYER IT TOUCHES AT THAT BEAT: dealt by the rule's own step, as Swarm of
+		// Locusts' burn is, and typed by the row. Creatures are not touched.
+		FunerealProcessionSecondsSinceBurn += SecondsBetweenWaveChecks;
+		if (FunerealProcessionSecondsSinceBurn >= 1.0f)
+		{
+			FunerealProcessionSecondsSinceBurn = 0.0f;
+			const float Burn =
+				Effects::FunerealProcessionBurn(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+			if (Source && Burn > 0.0f && Line->Covers(Feet) && !UCataclysmSkillEffects::IsDead(Player))
+			{
+				FCataclysmHitDelivery Delivery;
+				Delivery.bIsArea = true;
+				Delivery.bIsDamageOverTime = true;
+				Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::FunerealProcessionKey);
+				UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Burn, Delivery);
+			}
+		}
+		return;
+	}
+
+	FunerealProcessionSecondsSinceLast += SecondsBetweenWaveChecks;
+	const int32 Second =
+		FMath::CeilToInt(Effects::FunerealProcessionSecondsBetween - FunerealProcessionSecondsSinceLast);
+	if (Second != FunerealProcessionPanelSecond)
+	{
+		FunerealProcessionPanelSecond = Second;
+		RefreshFloorModifierPanel();
+	}
+	if (!Effects::FunerealProcessionIsDue(FunerealProcessionSecondsSinceLast) || !Source)
+	{
+		return;
+	}
+
+	// A PROCESSION: ITS HEAD AWAY FROM THE PLAYER AT A RANDOM ANGLE, WALKING SINGLE FILE THROUGH WHERE THE PLAYER STANDS
+	// NOW, its line trailing behind its head. It does no damage of its own; it lasts its crossing.
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Head(Feet.X + Effects::FunerealProcessionAppearsAwayCm * FMath::Cos(Angle),
+					   Feet.Y + Effects::FunerealProcessionAppearsAwayCm * FMath::Sin(Angle), Feet.Z);
+	FVector Toward = Feet - Head;
+	Toward.Z = 0.0f;
+	Toward = Toward.GetSafeNormal();
+	const FVector Tail = Head - Toward * Effects::FunerealProcessionLengthCm;
+	ACataclysmGroundZone* Line = ACataclysmGroundZone::SpawnAlong(
+		Source, Head, Tail, Effects::FunerealProcessionHalfWidthCm, Effects::FunerealProcessionLastsSeconds() + 1.0f,
+		0.0f, /*bBurnsEveryone=*/false, DungeonGameModeTypeOfRow(Effects::FunerealProcessionKey));
+	if (!Line)
+	{
+		return;
+	}
+	FunerealProcessionVelocity = Toward * Effects::FunerealProcessionSpeedCmPerSecond;
+	Line->TravelAt(FunerealProcessionVelocity);
+	FunerealProcession = Line;
+	FunerealProcessionSecondsIntoIt = 0.0f;
+	FunerealProcessionSecondsSinceBurn = 0.0f;
+	UE_LOG(LogCataclysm, Log, TEXT("Funereal Procession: a procession set out %.0f cm from the player on floor %d"),
+		   Effects::FunerealProcessionAppearsAwayCm, FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6351,6 +6444,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND FUNEREAL PROCESSION, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bFunerealProcession = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::FunerealProcessionKey));
 	// AND RAW SEWAGE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHILE A STACK OR THE TAG IS HELD: the stacks
 	// are the dungeon's and burn on every floor. Issues #1820 and #41.
 	const bool bRawSewage = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RawSewageKey))
@@ -6386,6 +6482,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bFunerealProcession
 		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
@@ -6609,6 +6706,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND FUNEREAL PROCESSION, WHICH SENDS A LINE ACROSS THE FLOOR AND HURTS THE PLAYER IT TOUCHES. Issues #1820 and #41.
+	if (bFunerealProcession)
+	{
+		StepFunerealProcession(Player, AbilitySystem);
 	}
 
 	// AND RAW SEWAGE, WHICH DRAWS RIVERS, ADDS STACKS, BURNS AND TAGS THE PLAYER. Issues #1820 and #41.
@@ -9347,6 +9450,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString(TEXT("raw sewage: no disease stacks")));
 	}
 
+	// AND FUNEREAL PROCESSION: when the next sets out, or that one is crossing. Issues #1820 and #41.
+	const FName Procession(Effects::FunerealProcessionKey);
+	if (FloorBrief.Modifiers.Contains(Procession))
+	{
+		Counting.Add(Procession, FunerealProcession.IsValid()
+			? FString(TEXT("funereal procession: a procession is crossing; its touch burns"))
+			: FString::Printf(TEXT("funereal procession: next in %d s"),
+				FMath::Max(0, FMath::CeilToInt(Effects::FunerealProcessionSecondsBetween
+											   - FunerealProcessionSecondsSinceLast))));
+	}
+
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
 	// summed over them. Issues #1820 and #41.
 	const FName Portals(Effects::PortalUnleashingKey);
@@ -11815,6 +11929,15 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		WingsOfTheHostMarks.Reset();
 		WingsOfTheHostWarningSoFar = 0.0f;
 		WingsOfTheHostSecondsSinceLast = 0.0f;
+
+		// AND FUNEREAL PROCESSION, FOR THE SAME REASON: a procession crossing the last floor does not cross this one,
+		// and this floor's first sets out sixty seconds in. Issues #1820 and #41.
+		FunerealProcession = nullptr;
+		FunerealProcessionVelocity = FVector::ZeroVector;
+		FunerealProcessionSecondsIntoIt = 0.0f;
+		FunerealProcessionSecondsSinceLast = 0.0f;
+		FunerealProcessionSecondsSinceBurn = 0.0f;
+		FunerealProcessionPanelSecond = -1;
 
 		// AND HALLOWED GROUNDFALL FORGETS ITS CRATERS AND ITS CLOCK. Issues
 		// #1820 and #41. The list because those actors are already destroyed -- see

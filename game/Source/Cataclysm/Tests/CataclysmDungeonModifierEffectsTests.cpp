@@ -31041,4 +31041,194 @@ bool FCataclysmSewageMasochistNothingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Death_Funereal_Procession. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ProcessionRow(UCataclysmDungeonModifierEffects::FunerealProcessionKey);
+
+	/** A dungeon carrying only Funereal Procession, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AProcessionFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {ProcessionRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+}
+
+// THE FIGURES: ONE EVERY 60 S AT 150 CM A SECOND, CROSSING 4800 CM IN 32 S, 5% OF MAXIMUM HEALTH A SECOND OF CONTACT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProcessionFiguresTest,
+	"Cataclysm.DungeonModifierEffects.FunerealProcessionFiguresCadenceSpeedAndContact",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProcessionFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one every 60 s"), Effects::FunerealProcessionSecondsBetween, 60.0f, 0.001f);
+	TestEqual(TEXT("at 150 cm a second"), Effects::FunerealProcessionSpeedCmPerSecond, 150.0f, 0.001f);
+	TestEqual(TEXT("5% a second of contact"), Effects::FunerealProcessionPercentPerSecond, 5.0f, 0.001f);
+	TestFalse(TEXT("not due at 59.75 s"), Effects::FunerealProcessionIsDue(59.75f));
+	TestTrue(TEXT("due at 60 s"), Effects::FunerealProcessionIsDue(60.0f));
+	TestEqual(TEXT("it crosses in 32 s"), Effects::FunerealProcessionLastsSeconds(), 32.0f, 0.001f);
+	TestEqual(TEXT("a second's contact costs 50 of 1000"), Effects::FunerealProcessionBurn(1000.0f), 50.0f, 0.001f);
+	TestEqual(TEXT("and nothing with no maximum"), Effects::FunerealProcessionBurn(0.0f), 0.0f, 0.001f);
+	return true;
+}
+
+// AT 60 S A PROCESSION SETS OUT 2400 CM FROM THE PLAYER, WALKING AT 150 CM A SECOND TOWARD WHERE THEY STOOD; 32 S LATER
+// IT IS GONE AND THE NEXT ONE'S CLOCK HAS STARTED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProcessionSetsOutTest,
+	"Cataclysm.DungeonModifierEffects.AFunerealProcessionSetsOutEverySixtySecondsTowardThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProcessionSetsOutTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AProcessionFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::FunerealProcessionSecondsBetween) - 1);
+	TestNull(TEXT("none at 59.75 s"), Mode->FunerealProcessionNow());
+	TestEqual(TEXT("the panel before"), Mode->LiveCountsForTheFloor().FindRef(ProcessionRow),
+			  FString(TEXT("funereal procession: next in 1 s")));
+	const FVector Feet = Player.Character->GetActorLocation();
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Line = Mode->FunerealProcessionNow();
+	if (!TestNotNull(TEXT("one sets out at 60 s"), Line))
+	{
+		return false;
+	}
+	const FVector Head = Line->GetActorLocation();
+	TestEqual(TEXT("its head 2400 cm from the player"), FVector::Dist2D(Head, Feet),
+			  Effects::FunerealProcessionAppearsAwayCm, 1.0f);
+	const FVector Velocity = Mode->FunerealProcessionVelocityNow();
+	TestEqual(TEXT("walking at 150 cm a second"), Velocity.Size2D(), Effects::FunerealProcessionSpeedCmPerSecond, 0.01f);
+	FVector ToPlayer = Feet - Head;
+	ToPlayer.Z = 0.0f;
+	TestTrue(TEXT("toward where the player stood"),
+			 FVector::DotProduct(Velocity.GetSafeNormal2D(), ToPlayer.GetSafeNormal()) > 0.999f);
+	TestTrue(TEXT("its line trails 400 cm behind its head"),
+			 Line->Covers(Head - Velocity.GetSafeNormal2D() * 400.0f));
+	TestFalse(TEXT("and no further than its half-width to the side"),
+			  Line->Covers(Head + FVector(-Velocity.Y, Velocity.X, 0.0f).GetSafeNormal() * 150.0f));
+	TestEqual(TEXT("the panel while it crosses"), Mode->LiveCountsForTheFloor().FindRef(ProcessionRow),
+			  FString(TEXT("funereal procession: a procession is crossing; its touch burns")));
+
+	Beat(Mode, BeatsFor(Effects::FunerealProcessionLastsSeconds()));
+	TestNull(TEXT("32 s later it is gone"), Mode->FunerealProcessionNow());
+	TestFalse(TEXT("and its zone with it"), IsValid(Line));
+	TestEqual(TEXT("the next one's clock has started"), Mode->LiveCountsForTheFloor().FindRef(ProcessionRow),
+			  FString(TEXT("funereal procession: next in 60 s")));
+	return true;
+}
+
+// ITS TOUCH COSTS THE PLAYER 5% OF MAXIMUM HEALTH A SECOND; A PLAYER IT DOES NOT TOUCH LOSES NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProcessionBurnsTest,
+	"Cataclysm.DungeonModifierEffects.AFunerealProcessionBurnsThePlayerItTouches",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProcessionBurnsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AProcessionFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::FunerealProcessionSecondsBetween));
+	ACataclysmGroundZone* Line = Mode->FunerealProcessionNow();
+	if (!TestNotNull(TEXT("a procession crossing"), Line))
+	{
+		return false;
+	}
+	const float PerSecond = HealthForTypedDamage * Effects::FunerealProcessionPercentPerSecond / 100.0f;
+
+	// NOT TOUCHED: NOTHING LOST IN TWO SECONDS.
+	float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	TestEqual(TEXT("untouched, nothing lost"), HealthOf(Player.Character), Before, 0.01f);
+
+	// TOUCHED: THE PLAYER STANDING ON ITS HEAD FOR TWO SECONDS.
+	const float Z = Player.Character->GetActorLocation().Z;
+	const FVector Head = Line->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(Head.X, Head.Y, Z));
+	Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	const float Lost = Before - HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("its touch burns (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(FString::Printf(TEXT("once a second, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
+			 Lost <= 2.0f * PerSecond + 0.5f);
+	return true;
+}
+
+// A NEW FLOOR TAKES A CROSSING PROCESSION AWAY AND STARTS ITS CLOCK AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProcessionFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorEndsAFunerealProcessionAndItsClock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProcessionFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AProcessionFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::FunerealProcessionSecondsBetween));
+	if (!TestNotNull(TEXT("a procession crossing"), Mode->FunerealProcessionNow())
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestNull(TEXT("the new floor has none"), Mode->FunerealProcessionNow());
+	TestEqual(TEXT("and its clock starts again"), Mode->LiveCountsForTheFloor().FindRef(ProcessionRow),
+			  FString(TEXT("funereal procession: next in 60 s")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -2047,6 +2047,21 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose slow line of pallbearers crosses the floor and hurts the player it touches. Issues #1820 and #41.
+	 *
+	 * "A slow-moving line of spectral pallbearers moves through the dungeon; contact causes heavy damage and fear."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, AND PARTLY BUILT. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - A PROCESSION EVERY `FunerealProcessionSecondsBetween`, travelling at `FunerealProcessionSpeedCmPerSecond`.
+	 * - CONTACT: `FunerealProcessionPercentPerSecond` of the player's maximum health each second it touches them,
+	 *   typed Death.
+	 * - "AND FEAR" IS NOT BUILT. There is no fear in the game yet; it waits on the fleeing and fear system the Demonic
+	 *   session is building (`ApplyFear`), and is wired in when that merges.
+	 */
+	static const TCHAR* FunerealProcessionKey;
+
+	/**
 	 * The row whose rivers of waste give the player disease stacks that burn and never run out. Issues #1820 and
 	 * #41.
 	 *
@@ -4572,6 +4587,19 @@ public:
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
 	/**
+	 * Funereal Procession's figures, every one a play-test value. See the key. The procession is a line walking along
+	 * its own length, single file; it appears as far from the player as Swarm of Locusts' swarm does and crosses as
+	 * far.
+	 */
+	static constexpr float FunerealProcessionSecondsBetween = 60.0f;
+	static constexpr float FunerealProcessionSpeedCmPerSecond = 150.0f;
+	static constexpr float FunerealProcessionPercentPerSecond = 5.0f;
+	static constexpr float FunerealProcessionLengthCm = 800.0f;
+	static constexpr float FunerealProcessionHalfWidthCm = 100.0f;
+	static constexpr float FunerealProcessionAppearsAwayCm = 2400.0f;
+	static constexpr float FunerealProcessionTravelsCm = 4800.0f;
+
+	/**
 	 * Raw Sewage's figures, every one a play-test value. See the key. 2.5% a second at five stacks is the drain the
 	 * owner chose for Suffering Aura (2026-09-23).
 	 */
@@ -5201,6 +5229,15 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** Whether a procession sets out now. */
+	static bool FunerealProcessionIsDue(float SecondsSinceLast);
+
+	/** How long a procession lasts: its crossing at its speed. */
+	static float FunerealProcessionLastsSeconds();
+
+	/** What a second's contact costs the player, from their maximum health. */
+	static float FunerealProcessionBurn(float MaximumHealth);
 
 	/** The player's Raw Sewage stacks after one more is added: one more, never past the most. */
 	static int32 RawSewageStacksAfterAdding(int32 Stacks);

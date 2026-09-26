@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Funereal Procession, PARTLY BUILT: every 60 seconds a line of pallbearers crosses toward where the player stood at 150 cm a second, and its touch burns 5% of maximum health a second; "and fear" waits on the fear system
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, when a procession is due, how long it crosses, what its touch costs, and the row listed as partly built);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the procession, its crossing, its touch, the
+per-floor reset, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and only in part: "and fear" is not built.** The
+Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
+entry when they have.
+
+### The row
+
+`Death_Funereal_Procession` in `game/Data/DungeonModifiers.csv`, weight 5: "A slow-moving line of spectral pallbearers
+moves through the dungeon; contact causes heavy damage and fear." It states no figure.
+
+### What the rule does
+
+Sixty seconds into a floor carrying the row, and every sixty seconds after the last one has crossed, a procession sets
+out: a line 800 cm long and 100 cm either side of its centre, its head 2400 cm from the player at a random angle. It
+walks single file, along its own length, at 150 cm a second, toward where the player stood when it set out, and after
+4800 cm, thirty-two seconds, it is gone. While it crosses, once a second, a player it touches loses 5% of maximum
+health, dealt as damage over time typed Death, which death resistance meets. Creatures are not touched. A new floor,
+or a Horde dungeon's next wave, ends a crossing procession and starts the clock again. The panel reads "funereal
+procession: next in 12 s", or "funereal procession: a procession is crossing; its touch burns".
+
+**NOT BUILT, AND WAITING ON THE FEAR SYSTEM: "and fear".** The game has no fear yet. The Demonic session is building
+it (`State.Feared`, `ApplyFear`), and this row's touch is wired to it when that change merges. Until then
+`BuiltStateOf` answers `Partly` for the row. **Do not read this row as done.**
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **One procession every 60 s, at 150 cm a second.**
+- **Its touch: 5% of maximum health per second of contact.**
+- **Fear is not built now**; it waits on the fleeing and fear system, which the Demonic session builds.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The procession's shape and path are Swarm of Locusts'**: it appears 2400 cm from the player at a random angle and
+  crosses 4800 cm through where the player stood, so it is thirty-two seconds on the floor at its ruled speed. It is
+  a line 800 cm long and 100 cm to either side, walking along its own length, because a funeral procession walks in
+  file; it is a `SpawnAlong` zone, moved by the zone's own travel (`TravelAt`), which Divine Wrath's beam also uses.
+- **There is no warning.** At 150 cm a second it is slower than every class, and it is on the floor for thirty-two
+  seconds; Swarm of Locusts has a warning because it arrives faster.
+- **Its touch is dealt by the rule's own step, once a second**, as Swarm of Locusts' burn is, and not by the zone,
+  so fear can be added at the same place when it exists.
+- **The first comes sixty seconds into a floor**, and a floor change ends a crossing one, as Wings of the Host's
+  flyover does.
+
+### The research: a hazard that crosses the dungeon and hurts on contact
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, Nightmare Dungeon affixes | https://maxroll.gg/d4/resources/nightmare-dungeons | Drifting Shades: "Drifting Shades chase players. On contact, they explode for heavy damage and create a Nightmare Field that Dazes victims." |
+
+**What it settles and what it does not.** Diablo IV ships the row's pairing: something moving through the dungeon
+whose contact deals heavy damage and puts a control effect on the player. That settles contact damage as the core of
+the rule and a control effect as its second half, which is why fear is recorded as waiting rather than dropped. The
+page describes shades that chase and explode, not a line that crosses and walks on, so the 800 cm line, the 2400 cm
+start, the 4800 cm crossing and the absence of a warning are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `FunerealProcessionFiguresCadenceSpeedAndContact`: the figures; not due at 59.75 s and due at 60; it crosses in 32 s;
+  a second's touch costs 50 of 1000.
+- `AFunerealProcessionSetsOutEverySixtySecondsTowardThePlayer`: none at 59.75 s, with the panel; at 60 s its head
+  2400 cm from the player, walking at 150 cm a second toward where they stood, its line covering 400 cm behind its
+  head and not 150 cm to its side, with the panel; 32 s later it and its zone are gone, and the panel shows the next
+  one's clock at 60 s.
+- `AFunerealProcessionBurnsThePlayerItTouches`: untouched, nothing lost in two seconds; standing on its head, at least
+  one second's 5% and at most two seconds' lost in two seconds.
+- `ANewFloorEndsAFunerealProcessionAndItsClock`: a crossing procession is gone on the next floor, whose clock starts at
+  60 s.
+
+A test world does not tick a zone, so no test watches the procession walk; its velocity is checked directly, and the
+walking is the zone's own travel, as for Divine Wrath's beam.
+
+One Python check: the row still says "slow-moving line", "moves through the dungeon", "contact causes heavy damage" and
+"and fear".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Cooldown reset: six actions that clear skill cooldowns, and eight enchantments written on them
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`

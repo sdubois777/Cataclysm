@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::FunerealProcessionKey =
+	TEXT("Death_Funereal_Procession");
+
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
 
@@ -516,7 +519,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
-		|| RowKey == FName(SingularityWellsKey))
+		|| RowKey == FName(SingularityWellsKey)
+		// FUNEREAL PROCESSION. The line crosses and its contact burns, but "and fear" does nothing: the game has no
+		// fear until the Demonic session's `ApplyFear` merges. Issues #1820 and #41.
+		|| RowKey == FName(FunerealProcessionKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -679,6 +685,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(FunerealProcessionKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
@@ -1771,6 +1778,21 @@ int32 UCataclysmDungeonModifierEffects::RawSewageStacksAfterAdding(int32 Stacks)
 float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
 {
 	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::FunerealProcessionIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= FunerealProcessionSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionLastsSeconds()
+{
+	return FunerealProcessionTravelsCm / FunerealProcessionSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * FunerealProcessionPercentPerSecond / 100.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)
