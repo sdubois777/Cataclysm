@@ -32637,4 +32637,319 @@ bool FCataclysmQuarantineSpreadsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// War_Blood_Debt. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName DebtRow(UCataclysmDungeonModifierEffects::BloodDebtKey);
+
+	/** A dungeon of `Floors` floors carrying only Blood Debt, on floor 1 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* ABloodDebtDungeon(FAutomationTestBase& Test, UWorld* World,
+												 const FPossessedPlayer& Player, int32 Floors)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->TotalFloors = Floors;
+		Mode->DungeonModifiers = {DebtRow};
+		if (!Test.TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The player kills `Count` Imps that pay, or that pay nothing when `bUnpaid`. */
+	bool ThePlayerKillsImps(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player, int32 Count,
+							bool bUnpaid = false)
+	{
+		for (int32 Which = 0; Which < Count; ++Which)
+		{
+			ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(
+				World, Player.Character->GetActorLocation() + FVector(400.0f, 0.0f, 0.0f), 100.0f);
+			if (!Test.TestNotNull(TEXT("an Imp to kill"), Imp))
+			{
+				return false;
+			}
+			Imp->bDiesUnpaid = bUnpaid;
+			Imp->GetAbilitySystemComponent()->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			UCataclysmSkillEffects::ApplyHit(Player.Character, Imp, 100000.0f);
+			if (!Test.TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Imp)))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** What the dungeon's rules add to or take from this stat, in percent: more positive, less negative, 0 for none. */
+	float DebtRuleOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, Stat);
+		return Rule ? Rule->Value : 0.0f;
+	}
+}
+
+// THE FIGURES: 30 KILLS A FLOOR TO 300; A BLESSING OF 5% A QUARTER PAID; 30% LESS ON THE FINAL BOSS'S FLOOR UNPAID.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtFiguresTest,
+	"Cataclysm.DungeonModifierEffects.BloodDebtFiguresOwedBlessingsAndCurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one floor owes 30"), Effects::BloodDebtOwedFor(1), 30);
+	TestEqual(TEXT("five floors owe 150"), Effects::BloodDebtOwedFor(5), 150);
+	TestEqual(TEXT("ten owe 300"), Effects::BloodDebtOwedFor(10), 300);
+	TestEqual(TEXT("twenty owe 300, the most"), Effects::BloodDebtOwedFor(20), 300);
+
+	TestEqual(TEXT("nothing paid: no blessing"), Effects::BloodDebtBlessingsFor(0, 300), 0);
+	TestEqual(TEXT("74 of 300: none yet"), Effects::BloodDebtBlessingsFor(74, 300), 0);
+	TestEqual(TEXT("75 of 300: one"), Effects::BloodDebtBlessingsFor(75, 300), 1);
+	TestEqual(TEXT("150 of 300: two"), Effects::BloodDebtBlessingsFor(150, 300), 2);
+	TestEqual(TEXT("299 of 300: three"), Effects::BloodDebtBlessingsFor(299, 300), 3);
+	TestEqual(TEXT("300 of 300: four"), Effects::BloodDebtBlessingsFor(300, 300), 4);
+	TestEqual(TEXT("more than owed: still four"), Effects::BloodDebtBlessingsFor(500, 300), 4);
+	TestEqual(TEXT("four blessings: 20% more"), Effects::BloodDebtDamageMorePercentFor(4), 20.0f, 0.001f);
+
+	TestEqual(TEXT("unpaid on the final boss's floor: 30% less"),
+			  Effects::BloodDebtCurseLessPercentFor(299, 300, true), 30.0f, 0.001f);
+	TestEqual(TEXT("paid there: nothing"), Effects::BloodDebtCurseLessPercentFor(300, 300, true), 0.0f, 0.001f);
+	TestEqual(TEXT("unpaid elsewhere: nothing"), Effects::BloodDebtCurseLessPercentFor(0, 300, false), 0.0f, 0.001f);
+	return true;
+}
+
+// KILLS PAY THE DEBT AND EACH QUARTER PAID BLESSES THE PLAYER WITH 5% MORE DAMAGE; A CREATURE THAT PAYS NOTHING PAYS
+// NOTHING OFF IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtBlessesTest,
+	"Cataclysm.DungeonModifierEffects.KillsPayTheBloodDebtAndEachQuarterBlessesTheBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtBlessesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodDebtDungeon(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+	TestEqual(TEXT("two floors owe 60"), Mode->BloodDebtOwed(), 60);
+	TestEqual(TEXT("the panel with nothing paid"), Mode->LiveCountsForTheFloor().FindRef(DebtRow),
+			  FString(TEXT("blood debt: 0 of 60 paid, +0% damage")));
+
+	// FOURTEEN: NO BLESSING YET. FIFTEEN: A QUARTER, 5% MORE ON ATTACK AND SPELL DAMAGE.
+	if (!ThePlayerKillsImps(*this, World, Player, 14))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("fourteen paid"), Mode->BloodDebtPaidHeld(), 14);
+	TestEqual(TEXT("no blessing at fourteen"), DebtRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	if (!ThePlayerKillsImps(*this, World, Player, 1))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("fifteen paid"), Mode->BloodDebtPaidHeld(), 15);
+	TestEqual(TEXT("5% more attack damage"), DebtRuleOn(Player, TEXT("attack_damage")), 5.0f, 0.001f);
+	TestEqual(TEXT("5% more spell damage"), DebtRuleOn(Player, TEXT("spell_damage")), 5.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(DebtRow),
+			  FString(TEXT("blood debt: 15 of 60 paid, +5% damage")));
+
+	// A CREATURE THAT PAYS NOTHING PAYS NOTHING OFF THE DEBT.
+	if (!ThePlayerKillsImps(*this, World, Player, 3, /*bUnpaid=*/true))
+	{
+		return false;
+	}
+	TestEqual(TEXT("still fifteen"), Mode->BloodDebtPaidHeld(), 15);
+	return true;
+}
+
+// UNPAID ON THE FINAL BOSS'S FLOOR, THE PLAYER DEALS 30% LESS THERE; PAID IN FULL, THE CURSE GOES AND THE WHOLE
+// BLESSING COMES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtCursesTest,
+	"Cataclysm.DungeonModifierEffects.AnUnpaidBloodDebtCursesTheFinalBossFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtCursesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodDebtDungeon(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// FLOOR 1 IS NOT THE FINAL BOSS'S: NO CURSE.
+	Beat(Mode, 1);
+	TestEqual(TEXT("no curse on floor 1"), DebtRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	// FLOOR 2 IS, AND NOTHING IS PAID: 30% LESS.
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestEqual(TEXT("30% less attack damage"), DebtRuleOn(Player, TEXT("attack_damage")), -30.0f, 0.001f);
+	TestEqual(TEXT("30% less spell damage"), DebtRuleOn(Player, TEXT("spell_damage")), -30.0f, 0.001f);
+	TestEqual(TEXT("the cursed panel"), Mode->LiveCountsForTheFloor().FindRef(DebtRow),
+			  FString(TEXT("blood debt: 0 of 60 paid; unpaid, 30% less damage on this floor")));
+
+	// PAID IN FULL THERE: THE CURSE GOES, AND FOUR BLESSINGS, 20% MORE.
+	if (!ThePlayerKillsImps(*this, World, Player, 60))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("paid in full: 20% more attack damage and no less"), DebtRuleOn(Player, TEXT("attack_damage")),
+			  20.0f, 0.001f);
+	TestEqual(TEXT("the paid panel"), Mode->LiveCountsForTheFloor().FindRef(DebtRow),
+			  FString(TEXT("blood debt: 60 of 60 paid, +20% damage")));
+	return true;
+}
+
+// THE DEBT IS THE DUNGEON'S: IT CARRIES TO THE NEXT FLOOR AND ENDS, WITH ITS BLESSING, ON LEAVING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtLeavingTest,
+	"Cataclysm.DungeonModifierEffects.TheBloodDebtCarriesAcrossFloorsAndEndsOnLeaving",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtLeavingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodDebtDungeon(*this, World, Player, 4);
+	if (!Mode || !ThePlayerKillsImps(*this, World, Player, 30))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("thirty carried to floor 2"), Mode->BloodDebtPaidHeld(), 30);
+	TestEqual(TEXT("its blessing written back: 5% more"), DebtRuleOn(Player, TEXT("attack_damage")), 5.0f, 0.001f);
+
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving ends the debt"), Mode->BloodDebtPaidHeld(), 0);
+	TestEqual(TEXT("and its blessing"), DebtRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	return true;
+}
+
+// THE PLAYER'S DEATH ENDS THE DEBT'S PAYMENTS AND THEIR BLESSING, AS EVERYTHING THAT LASTS ONLY FOR THE DUNGEON ENDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersDeathEndsWhatWasPaidOffTheBloodDebt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodDebtDungeon(*this, World, Player, 2);
+	if (!Mode || !ThePlayerKillsImps(*this, World, Player, 15))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("fifteen paid"), Mode->BloodDebtPaidHeld(), 15))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Killer = SpawnCreatureThatCanHit(World, Player.Character->GetActorLocation().X + 600.0f);
+	if (!TestNotNull(TEXT("a creature that can hit"), Killer))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player.Character, 10000000.0f);
+	TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("the player's death ends what was paid"), Mode->BloodDebtPaidHeld(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(DebtRow),
+			  FString(TEXT("blood debt: 0 of 60 paid, +0% damage")));
+	return true;
+}
+
+// A ONE-FLOOR ELITE DUNGEON HAS A BOSS FIGHT, SO AN UNPAID DEBT CURSES ITS ONE FLOOR; A ONE-FLOOR ORDINARY DUNGEON HAS
+// NONE, SO IT IS NEVER CURSED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtOneFloorTest,
+	"Cataclysm.DungeonModifierEffects.AOneFloorEliteDungeonIsCursedAndAnOrdinaryOneIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtOneFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodDebtDungeon(*this, World, Player, 1);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// ORDINARY, ONE FLOOR: NO BOSS AT ITS EXIT, SO NO CURSE.
+	Beat(Mode, 1);
+	TestFalse(TEXT("an ordinary one-floor dungeon has no boss at its exit"), Mode->FloorBrief.bBossAtTheExit);
+	TestEqual(TEXT("so no curse"), DebtRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	// ELITE, ONE FLOOR: A BOSS AT ITS EXIT, AND NOTHING PAID: 30% LESS.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Elite;
+	if (!TestTrue(TEXT("the Elite floor 1 was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestTrue(TEXT("an Elite floor has a boss at its exit"), Mode->FloorBrief.bBossAtTheExit);
+	TestEqual(TEXT("30% less attack damage on it"), DebtRuleOn(Player, TEXT("attack_damage")), -30.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
