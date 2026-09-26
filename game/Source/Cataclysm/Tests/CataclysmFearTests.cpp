@@ -288,16 +288,33 @@ CATACLYSM_FEAR_TEST(FCataclysmFearHeldTest,
 	{
 		return false;
 	}
+	// THE CONTROL FIRST: the same creature in the same place, feared and not yet
+	// held, flees, and the brain says the hold did not stop it. `bLastFleeHeld`
+	// and not `LastFleeGoal` is what tells the two apart: the goal is zero both
+	// when the hold stops the flight and when both moves fail, and a world built
+	// for a test has no navigation system, so there every move fails or reports
+	// it is already at its goal. Measured 2026-09-26; recorded in docs/DECISIONS.md.
+	const FVector Source = Holder->GetActorLocation();
+	if (!TestTrue(TEXT("set-up: the creature is feared"),
+				  Fear::ApplyFear(Holder, Creature, 2.0f, Source)))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("control: feared and not held, it flees"), Did(Brain), Fleeing)
+		|| !TestFalse(TEXT("control: and the hold did not stop it"), Brain->bLastFleeHeld))
+	{
+		return false;
+	}
+
+	// AND THEN THE HOLD, with nothing else changed.
 	Creature->NoteHeldBy(Holder, World->GetTimeSeconds() + 10.0f, 8.0f * M);
-	if (!TestTrue(TEXT("set-up: the creature is held"), Creature->IsHeld())
-		|| !TestTrue(TEXT("and feared"),
-					 Fear::ApplyFear(Holder, Creature, 2.0f, Holder->GetActorLocation())))
+	if (!TestTrue(TEXT("set-up: the creature is held"), Creature->IsHeld()))
 	{
 		return false;
 	}
 	TestEqual(TEXT("it still reports fleeing"), Did(Brain), Fleeing);
-	TestTrue(TEXT("but aims nowhere: the hold wins and it stands still"),
-			 Brain->LastFleeGoal.IsZero());
+	TestTrue(TEXT("but the hold stopped the flight: it stands still"), Brain->bLastFleeHeld);
+	TestTrue(TEXT("and aims nowhere"), Brain->LastFleeGoal.IsZero());
 	return true;
 }
 

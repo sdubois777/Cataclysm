@@ -580,6 +580,19 @@ public:
 	 */
 	FVector LastFleeGoal = FVector::ZeroVector;
 
+	/**
+	 * Whether the last flee pass stood still because the creature is held --
+	 * `ACataclysmEnemyCharacter::IsHeld`, Nowhere to Run, not the `Pinned` action
+	 * above. Written only in Think's flee branch: true when the hold stopped the
+	 * flight, false on every other flee pass. Read by tests.
+	 *
+	 * WHY `LastFleeGoal` IS NOT ENOUGH: it is zero both when the hold stops the
+	 * flight and when both moves fail, and a world built for a test has no
+	 * navigation system, so there every move fails or reports it is already at
+	 * its goal. Measured 2026-09-26; recorded in docs/DECISIONS.md.
+	 */
+	bool bLastFleeHeld = false;
+
 	/** How many times it has told its pawn to attack. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	int32 AttacksOrdered = 0;

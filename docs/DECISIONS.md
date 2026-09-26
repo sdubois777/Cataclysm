@@ -2,6 +2,67 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The brain says when Nowhere to Run stopped a flight, because a test world has no navigation system and a zero flee goal could not show it
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and `.cpp` (the brain's new
+`bLastFleeHeld`); `game/Source/Cataclysm/Tests/CataclysmFearTests.cpp`
+(`Cataclysm.Fear.NowhereToRunHoldsAFearedCreatureStill`). The follow-up the fear entry below names.
+
+### WHAT WAS WRONG
+
+The fear change's third proof removed the Nowhere to Run check from the brain's flee branch and no test failed. The
+hold test read `LastFleeGoal`, which is zero both when the hold stops the flight and when both of the brain's moves
+fail. A control half was added first: the same creature in the same place, feared and not held, must aim six metres
+out. **The control failed**, reading the goal as zero with no hold at all, so a log was put in the flee branch for
+one run and removed after it, uncommitted.
+
+What that run showed, in all nine `Cataclysm.Fear.` tests:
+
+- **A world built for a test has no navigation system.** Every flee pass logged no navigation system, no abstract
+  navigation data and no navigation data. The engine's `AAIController::MoveTo` cannot build a path query without a
+  navigation system, even with pathfinding off, so in a test world it returns only Failed or AlreadyAtGoal and never
+  requests a move.
+- **So every fear and flee test measures the goal the brain computes, not movement.** In the hold test both moves
+  returned Failed, and the brain zeroes the goal on that.
+- **The two "moves away" tests pass on AlreadyAtGoal, and that is unexplained.**
+  `AFearedCreatureMovesAwayFromTheSourceAndDoesNotAttack` and `FleeFromMovesACreatureAwayWithoutFearingIt` got
+  AlreadyAtGoal for a goal six metres off, which is not Failed, so the goal they check is kept. Why the engine's
+  `HasReached` called that goal reached was not measured.
+
+The game is a different world: `DefaultEngine.ini` builds the navigation mesh at run time and
+`CataclysmDungeonFloor.cpp` registers the floor and walls with it. Whether a feared creature actually runs away on a
+dungeon floor is on the owner's list of things to check in play; no automation test can show it.
+
+### THE RULING, AND WHAT CHANGED
+
+**Ruled 2026-09-26 under the owner's delegation:** the brain gains `bLastFleeHeld`, written only in Think's flee
+branch, true when the hold stopped the flight and false on every other flee pass. The test asserts it false for the
+same creature feared and not held, and true once held. The six-metre aim check is dropped from this test, because
+without a navigation system it cannot pass here. "and aims nowhere" stays as a plain line; it passes with the hold
+check removed too, because both moves fail in a test world, and that is expected.
+
+### Run
+
+One window on 2026-09-26, with the build machine, on development 92c71a61. Every figure below is what `pytest`,
+`python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the observable | `5522 passed, 8 skipped` (JUnit 5,530, no failures) |
+| Build, the control half alone | `Build: Succeeded - 22 actions, 19 files compiled` |
+| `Cataclysm.Fear.`, the control half alone | `9 tests performed, 8 succeeded, 1 failed`: "control: and aims six metres further from the source", -300 against 600 |
+| Build, with `bLastFleeHeld` | `Build: Succeeded - 16 actions, 13 files compiled` |
+| Whole suite, started with no CI run in progress | `2635 tests performed, 2635 succeeded, 0 failed`; 2635 declared, gap 0 |
+
+One proof with `prove_cpp_guard`, prefix `Cataclysm.Fear.` (nine tests), the same break as the fear change's
+third: the hold check in the flee branch made `if (false && Fleer && Fleer->IsHeld())`, its anchor re-checked
+immediately before the run. With the break in it printed `9 tests performed, 8 succeeded, 1 failed:
+NowhereToRunHoldsAFearedCreatureStill`, on the one assertion registered, "but the hold stopped the flight: it stands
+still". Restored, it printed `9 tests performed, 9 succeeded, 0 failed`. "and aims nowhere" passed with the break in,
+as registered, because both moves fail in a test world.
+
+---
+
 ## 2026-09-25 — Quarantine Breach: one containment a floor says what it holds; breaking it releases five of that kind at rung 2, and each leaves a burning patch where it dies
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
