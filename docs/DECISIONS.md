@@ -16,8 +16,8 @@ the waves, the surge, the panel line); `game/Source/Cataclysm/Interface/Cataclys
 `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
 (a row check, and the new key in the damage-source check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and run: the figures are at the end of this
+entry.
 
 ### The row
 
@@ -110,10 +110,35 @@ Five automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Catacly
 Python: a row check that the row still says "slowly spread", "empowering nearby enemies", "release waves", "halts its
 spread", "weakens affected enemies" and "final surge"; and the damage-source check now names the eighth key.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-26, with the build machine and the editor, on development e99e872b. Every figure below is what
+`pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+**The first build failed, on one test line.** `TestEqual(TEXT("one patch-width from the first"),
+FVector::Dist2D(...), Effects::InfectionBloomSpreadCm, 1.0f)` stopped the build with `error C2666:
+'FAutomationTestBase::TestEqual': overloaded functions have similar conversions`: in Unreal Engine 5.8 `FVector::Dist2D`
+returns a double, and the expected value and tolerance are floats. It had been in the branch since it was written and
+survived two moves, because the Python suite reads C++ as text. The line now casts the distance with
+`static_cast<float>`, as seven other lines in the same file already do; fixed in the window with the coordinating
+session's approval. No game code changed.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window | `5521 passed, 8 skipped` (JUnit 5,529, no failures), as registered |
+| First build | `Result: Failed (OtherCompilationError)`, the one error above |
+| Build after the cast | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.25.cpp` |
+| Whole suite, started with no CI run in progress | `2621 tests performed, 2621 succeeded, 0 failed`; 2621 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, each on its one test, each anchor re-checked immediately before its run. Each
+printed `1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests performed, 1 succeeded, 0 failed`
+restored, and each failed on exactly the one check registered for it.
+
+| Break | The test that failed, and on what |
+|---|---|
+| No patch ever spreads | `AnInfectionBloomSpreadsAPatchEveryTwentySecondsToEight`: "two patches at twenty seconds", 1 |
+| A creature on a patch is written as 1.0 | `ACreatureOnAnInfectionPatchDealsTwentyPercentMore`: "on the patch: 20% more", 1.0 |
+| Destroying the bloom sends no surge | `DestroyingAnInfectionBloomHaltsItsSpreadAndSendsASurge`: "a surge of four", 0 |
 
 ---
 
