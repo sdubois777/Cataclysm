@@ -72,6 +72,19 @@ public:
 	static bool IsFeared(const AActor* Actor);
 
 	/**
+	 * Whether the two rules fear and madness share refuse this target: it is
+	 * inside the 5 second window stun and knockdown open, or it is a boss.
+	 * Asked by `ApplyFear` and by `UCataclysmSkillEffects::ApplyNamedEffect` for
+	 * the Madness tag. Section "Stun and the Anti-Stun-Lock Rule" of the design
+	 * document gives both to Madness; they were stated and not built for it
+	 * until this change.
+	 */
+	static bool RefusedByTheRedirectionRules(const AActor* Target);
+
+	/** Open the 5 second window on a target a fear or a madness just landed on. */
+	static void OpenTheSharedWindow(AActor* Instigator, AActor* Target);
+
+	/**
 	 * The point a character is moving away from right now: the source of its
 	 * fear, or the point a rule told a creature to flee from.
 	 *

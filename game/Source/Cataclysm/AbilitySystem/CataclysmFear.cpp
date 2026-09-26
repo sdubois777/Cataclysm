@@ -40,9 +40,11 @@ bool UCataclysmFear::ApplyFear(AActor* Instigator, AActor* Target, float Seconds
 		return false;
 	}
 
-	// THE WINDOW STUN AND KNOCKDOWN SHARE, as madness shares it, so the three
-	// cannot be alternated to hold a target continuously.
-	if (UCataclysmSkillEffects::HasTag(Target, UCataclysmSkillEffects::StunImmuneTag()))
+	// THE WINDOW STUN AND KNOCKDOWN SHARE, AND BOSS IMMUNITY, the two rules fear
+	// takes as madness does. Diablo III: "Bosses are immune to any kind of Charm,
+	// Fear, Hex, Knockback or Taunt effect"; Diablo IV: "Fear has no effect on
+	// bosses".
+	if (RefusedByTheRedirectionRules(Target))
 	{
 		return false;
 	}
@@ -54,17 +56,6 @@ bool UCataclysmFear::ApplyFear(AActor* Instigator, AActor* Target, float Seconds
 		return false;
 	}
 
-	// A BOSS CANNOT BE FEARED. Diablo III: "Bosses are immune to any kind of
-	// Charm, Fear, Hex, Knockback or Taunt effect"; Diablo IV: "Fear has no
-	// effect on bosses".
-	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Target))
-	{
-		if (Enemy->IsBoss())
-		{
-			return false;
-		}
-	}
-
 	// THE SOURCE BEFORE THE TAG, so nothing that reacts to the tag reads a stale
 	// point.
 	Character->FearSource = From;
@@ -72,9 +63,7 @@ bool UCataclysmFear::ApplyFear(AActor* Instigator, AActor* Target, float Seconds
 	{
 		return false;
 	}
-	UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
-												UCataclysmSkillEffects::StunImmuneTag(),
-												UCataclysmSkillEffects::StunImmunityWindowSeconds);
+	OpenTheSharedWindow(Instigator, Target);
 
 	// AND IT IS CROWD CONTROL APPLIED, for the rows that read that event.
 	if (UCataclysmAbilitySystemComponent* Applier = Cast<UCataclysmAbilitySystemComponent>(
@@ -83,6 +72,23 @@ bool UCataclysmFear::ApplyFear(AActor* Instigator, AActor* Target, float Seconds
 		Applier->NoteCrowdControlApplied();
 	}
 	return true;
+}
+
+bool UCataclysmFear::RefusedByTheRedirectionRules(const AActor* Target)
+{
+	if (UCataclysmSkillEffects::HasTag(Target, UCataclysmSkillEffects::StunImmuneTag()))
+	{
+		return true;
+	}
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Target);
+	return Enemy && Enemy->IsBoss();
+}
+
+void UCataclysmFear::OpenTheSharedWindow(AActor* Instigator, AActor* Target)
+{
+	UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
+												UCataclysmSkillEffects::StunImmuneTag(),
+												UCataclysmSkillEffects::StunImmunityWindowSeconds);
 }
 
 bool UCataclysmFear::IsFeared(const AActor* Actor)

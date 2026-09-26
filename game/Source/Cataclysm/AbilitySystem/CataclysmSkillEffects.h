@@ -2290,6 +2290,15 @@ public:
 	static bool IsCrowdControlled(const AActor* Actor);
 
 private:
+	/**
+	 * `ApplyNamedEffect` without the rules Madness takes. The public function asks
+	 * those rules first for the Madness tag, then calls this. Fear change,
+	 * 2026-09-25.
+	 */
+	static bool ApplyNamedEffectOnly(AActor* Instigator, AActor* Target,
+									 const FGameplayTag& EffectTag, float DurationSeconds,
+									 float Magnitude, FName DamageType);
+
 	/** Where the imported status effect table lives. */
 	static const TCHAR* StatusEffectTableAssetPath;
 
