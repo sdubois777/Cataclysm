@@ -117,6 +117,8 @@ One Python check: the row still says "infested", "only be harmed when exposed to
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
 when the build machine is granted, after The Blackest Shadow's change.
 
+---
+
 ## 2026-09-26 — The Blackest Shadow: the player sees six metres, and a creature outside that light is hidden and, while outside it, deals 100% more damage and attacks 50% faster
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, figures, its
