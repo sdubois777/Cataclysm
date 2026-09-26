@@ -64,6 +64,11 @@ every figure is a play-test value:**
 - **"+10% resistance" is ten points on each of the eight resistances**, added as an item's resistance is, because a
   resistance is itself a percentage; the other rules that change resistances multiply them, and a multiplier of a
   player's zero resistance would give nothing.
+- **A wave placed where there is no floor falls back to the cells around the control point.** A wave's creatures
+  stand on cells within six metres of a point eight metres from the control point at a random angle; a point with no
+  floor within reach used to lose that beat's wave in play, and the wave came only on a later beat whose point landed
+  on the floor. So this is a fix to what the player meets and not only to the test that expects a wave on the first
+  beat inside. Approved by the coordinating session, 2026-09-26.
 - **The creatures notice the player from anywhere on the floor**, as Plague Convergence's arrivals do, so a wave
   attacks the point rather than waiting to be found.
 - **A Horde arena keeps its points' cells across waves, and each wave's points are captured afresh**, because the row's

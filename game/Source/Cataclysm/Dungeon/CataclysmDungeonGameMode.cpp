@@ -4725,7 +4725,14 @@ int32 ACataclysmDungeonGameMode::SendWarzoneWave(const FVector& Point)
 						Point.Y + Effects::WarzoneWaveAwayCm * FMath::Sin(Angle), Point.Z);
 	const FCataclysmFloorPopulation Population =
 		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
-	const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+	// A POINT WITH NO FLOOR WITHIN REACH FALLS BACK TO THE CELLS AROUND THE CONTROL POINT, which stands on the floor.
+	// Until this, such a point lost that beat's wave in play and the wave came only when a later beat's point landed on
+	// the floor. Ruled by the coordinating session, 2026-09-26.
+	TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+	if (Cells.IsEmpty())
+	{
+		Cells = NecroticBloomWaveCells(*CurrentFloor, Point);
+	}
 	int32 Placed = 0;
 	for (int32 Which = 0; Which < Effects::WarzoneCreaturesPerWave && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
 		 ++Which)
