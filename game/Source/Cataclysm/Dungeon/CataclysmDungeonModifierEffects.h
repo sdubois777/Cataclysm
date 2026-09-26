@@ -4700,16 +4700,6 @@ public:
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
 	/**
-	 * Quarantine Breach's figures, every one a play-test value. See the key. The patch is Necrotic Ground's in size
-	 * and burns what Infested Veins' toxic ground burns.
-	 */
-	static constexpr int32 QuarantineBreachPerFloor = 1;
-	static constexpr int32 QuarantineBreachHeld = 5;
-	static constexpr int32 QuarantineBreachRung = 2;
-	static constexpr float QuarantineBreachPatchRadiusCm = NecroticGroundPatchRadiusCm;
-	static constexpr float QuarantineBreachPatchPercentPerSecond = InfestedVeinsPercentPerSecond;
-
-	/**
 	 * Infection Bloom's figures, every one a play-test value. See the key. A patch is Necrotic Ground's patch, and a
 	 * later one stands where Necrotic Ground's spread puts it.
 	 */
@@ -4837,6 +4827,16 @@ public:
 			&& InfestedVeinsPercentPerSecond > 0.0f && InfestedVeinsRegrowSeconds > 0.0f
 			&& InfestedVeinsDestroyedBeforeGuardians > 1 && InfestedVeinsGuardians > 0,
 		"A vein that hurt nothing or never grew back, or guardians on the first vein, is not the row.");
+
+	/**
+	 * Quarantine Breach's figures, every one a play-test value. See the key. The patch is Necrotic Ground's in size
+	 * and burns what Infested Veins' toxic ground burns.
+	 */
+	static constexpr int32 QuarantineBreachPerFloor = 1;
+	static constexpr int32 QuarantineBreachHeld = 5;
+	static constexpr int32 QuarantineBreachRung = 2;
+	static constexpr float QuarantineBreachPatchRadiusCm = NecroticGroundPatchRadiusCm;
+	static constexpr float QuarantineBreachPatchPercentPerSecond = InfestedVeinsPercentPerSecond;
 
 	/**
 	 * Trial of Endurance's figures. The two multipliers are the row's "doubled"; the time is a play-test
