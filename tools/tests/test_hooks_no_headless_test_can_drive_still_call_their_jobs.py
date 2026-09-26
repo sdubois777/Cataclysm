@@ -290,6 +290,10 @@ HOOKS = {
         },
         "questions": {
             "UCataclysmMovementSkill::AdvanceDirectionFor",
+            # Whether the player is feared, and which way it walks them: the
+            # JOB is the engine's AddMovementInput beside them. Fear, 2026-09-25.
+            "UCataclysmFear::FleeDirectionFor",
+            "UCataclysmFear::IsFeared",
         },
     },
 }
