@@ -32164,9 +32164,9 @@ bool FCataclysmShadowyFireTest::RunTest(const FString& Parameters)
 // AN EVADED FIRE HIT EXPOSES NOTHING; THE SAME HIT NOT EVADED DOES. As ruled on 2026-09-26, after the decision of
 // 2026-09-05 that an evaded attack applies nothing it was carrying.
 //
-// THE NOTICE IS BUILT AND ANNOUNCED HERE, NOT DEALT: evasion is a random roll against a soft cap, so no blow a test
-// deals is certain to be evaded. The second notice, the same but not evaded, is the control: it shows a notice built
-// this way reaches the rule, so the first exposing nothing is the evasion and not the notice.
+// REAL BLOWS, SO THE TEST SHOWS AN EVADED DEMONIC BLOW ARRIVES MARKED EVADED, and not only that the rule reads the
+// mark. A creature holds no stat line, so its evasion is its attribute: at 100 the blow is evaded, which is asserted as
+// set-up; at 0 it is not, and that second blow is the control that shows a real fire blow exposes it.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyEvadedTest,
 	"Cataclysm.DungeonModifierEffects.AnEvadedFireHitExposesNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -32184,13 +32184,13 @@ bool FCataclysmShadowyEvadedTest::RunTest(const FString& Parameters)
 
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
-	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
-	if (!Mode || !TestNotNull(TEXT("the world announces blows"), Events))
+	if (!Mode)
 	{
 		return false;
 	}
 	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
-	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp))
+	UAbilitySystemComponent* ImpSystem = Imp ? Imp->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestNotNull(TEXT("with an ability system"), ImpSystem))
 	{
 		return false;
 	}
@@ -32200,20 +32200,28 @@ bool FCataclysmShadowyEvadedTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	FGameplayTagContainer FireTags;
-	FireTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic"))));
-	FCataclysmHitNotice Notice;
-	Notice.Attacker = Player.Character;
-	Notice.DealtBy = Player.Character;
-	Notice.Target = Imp;
-	Notice.EffectTags = &FireTags;
-	Notice.bEvaded = true;
-	Events->OnHit.Broadcast(Notice);
+	FCataclysmHitDelivery Fire;
+	Fire.SkillElement = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+
+	// EVASION 100: THE FIRE BLOW IS EVADED, and it leaves the Imp shrouded.
+	ImpSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	FCataclysmDamageResult Evaded;
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f, Fire, &Evaded);
+	if (!TestTrue(TEXT("set-up: the fire blow was evaded"), Evaded.bEvaded))
+	{
+		return false;
+	}
 	TestTrue(TEXT("an evaded fire hit leaves it shrouded"), Imp->bShrouded);
 
-	Notice.bEvaded = false;
-	Events->OnHit.Broadcast(Notice);
-	TestFalse(TEXT("the same hit not evaded exposes it"), Imp->bShrouded);
+	// EVASION 0: THE SAME FIRE BLOW LANDS, and exposes it.
+	ImpSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	FCataclysmDamageResult Landed;
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f, Fire, &Landed);
+	if (!TestFalse(TEXT("set-up: the control fire blow was not evaded"), Landed.bEvaded))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the same fire blow not evaded exposes it"), Imp->bShrouded);
 	return true;
 }
 

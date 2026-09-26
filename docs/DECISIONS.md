@@ -102,10 +102,10 @@ Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
   shrouded, keeps the 90 health it has, and a blow takes nothing.
 - `AFireHitExposesAShroudedCreatureForFourSeconds`: the fire hit takes nothing and exposes the Imp at once; the next
   blow takes 10; it is still exposed after fifteen beats and shrouded on the sixteenth.
-- `AnEvadedFireHitExposesNothing`: a fire hit's announcement marked evaded leaves the Imp shrouded, and the same
-  announcement not evaded exposes it. The announcement is built by the test and not dealt, because evasion is a random
-  roll against a soft cap and no blow is certain to be evaded; the second announcement shows one built this way reaches
-  the rule. Added at the coordinating session's request, 2026-09-26.
+- `AnEvadedFireHitExposesNothing`: with the Imp's evasion at 100, a real fire blow is evaded, which is asserted as
+  set-up, and the Imp stays shrouded; with its evasion at 0 the same blow lands and exposes it. Real blows and not a
+  notice the test builds, so it shows an evaded Demonic blow arrives marked evaded, and not only that the rule reads the
+  mark. Added at the coordinating session's request, 2026-09-26.
 - `TheBlackestShadowsLightExposesAShroudedCreature`: with both rows, an Imp five metres away is exposed and one seven
   metres away is shrouded.
 - `AFloorWithoutShadowyEnemiesTakesEveryShroudOff`: on the next floor without the row the Imp is not shrouded, and there
