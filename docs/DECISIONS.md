@@ -2,6 +2,97 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Cooldown reduction: running cooldowns lose seconds, a spell cast shortens the next spell's, and four enchantments written on them
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`
+(`ReduceCooldowns`, the three action names, `SpendNextSpellCooldownSeconds` and
+`NextSpellCooldownSecondsHeld`), `CataclysmStatPipeline.h` (`CooldownReduce` and
+`bNextUseIsSpellCooldown` on `FCataclysmPoolAction`), `CataclysmGameplayAbility.cpp` (`ApplyCooldown`
+spends the next-spell charge), `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the names read from a
+row), the skill bar and `CataclysmHUD.cpp` (the line "Next spell cooldown -1.5s"),
+`tools/generate_datatables.py` (`COOLDOWN_REDUCE_ACTIONS`, `next_spell_cooldown_reduced` in
+`NEXT_USE_ACTIONS`, and a bound of 60 seconds), `docs/All_Things_Cataclysm.xlsx` (the Enchantment
+Effects sheet), `game/Data/EnchantmentEffects.csv` and `game/Content/Data/DT_EnchantmentEffects.uasset`
+(regenerated), `game/Data/datatable_asset_sources.json`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (four tests),
+`CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_enchantment_effects_match_the_row_text.py`
+and `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+A cooldown is a duration effect granting its slot's `Cooldown.*` tag. `ReduceCooldowns` finds the
+running ones with the same owning-tag query `RemoveActiveEffectsWithGrantedTags` makes, so what is
+shortened is exactly what a reset would remove, and moves each one's start time back by the row's
+seconds (`ModifyActiveEffectStartTime`). A reduction no smaller than the time left removes the
+effect. Two actions name what they shorten, `cooldown_reduce_all` and `cooldown_reduce_heavy`; each
+row acts once per event, only on a landed event, and also from the timed grants' step. The third,
+`next_spell_cooldown_reduced`, is a next-use charge: it holds seconds that the next skill tagged
+`Type.Spell` takes off its own cooldown when `ApplyCooldown` applies it, after the cooldown
+reduction stat and floored at 0. The skill bar shows a held charge as "Next spell cooldown -1.5s".
+The generator refuses a reduction of 0 or less, or above 60 seconds.
+
+### THE ROWS
+
+| Enchantment | Row |
+| :-- | :-- |
+| When your class resource hits zero, all skill cooldowns are reduced by 2-4 seconds | `cooldown_reduce_all` 2 to 4, on `resource_empty` |
+| Each summon reduces all your skill cooldowns by 1-2 seconds | `cooldown_reduce_all` 1 to 2, on `summon` |
+| Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a critical strike | `cooldown_reduce_heavy` 0.5 to 1.5, on `critical_strike` |
+| Each spell cast reduces your next spell cooldown by 0.5-1.5 seconds | `next_spell_cooldown_reduced` 0.5 to 1.5, on `spell`, cap 1 |
+
+### FOUR LABELLED JUDGEMENTS, ACCEPTED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+- A reduction larger than the time left ends the cooldown, and nothing carries over.
+- "All" includes the ultimate, and a summon's own new cooldown.
+- The heavy row fires on any critical strike, not only a heavy attack's.
+- "Spell" means a skill tagged `Type.Spell`, today only the Demonic casters, so the next-spell row
+  does nothing for a character without one.
+
+### THE RUN
+
+On `305507c2`, the engine commit moved onto development `b9b68113`.
+
+| Step | Result |
+| :-- | :-- |
+| Build | "Build: Succeeded - 30 actions, 27 files compiled" |
+| Python of record, `305507c2` | "5510 passed, 8 skipped in 469.67s"; JUnit tests 5518, failures 0 |
+| Rows commit `2d9b8eff` | "EnchantmentEffects.csv 367 rows", from 363 |
+| Python after the rows | "1 failed, 5509 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp", the unity file holding `CataclysmDataTableTests.cpp` |
+| Stale-asset step | "129 tests performed, 124 succeeded, 5 failed": the asset-match guard and the four new tests |
+| Asset rebuild `f9778073` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The four new tests | "4 tests performed, 3 succeeded, 1 failed", NOT AS PREDICTED; see below |
+| Test correction `0dbc8912`, rebuilt | "4 tests performed, 4 succeeded, 0 failed" |
+| Whole suite, `0dbc8912` | "2582 tests performed, 2582 succeeded, 0 failed"; 2582 declared, gap 0 |
+| Proof A, the start-time shift not applied | PROVED: `TheReduceAllRowsTakeTheirSecondsOffEveryRunningCooldown` failed 10 assertions, five slots under each of the two rows, each reading 30; restored "1 tests performed, 1 succeeded" |
+| Proof B, the heavy row shortening every slot | PROVED: `TheCritHeavyReduceRowTakesItsSecondsOffHeavyOnly` failed 1 assertion, "special still has 30", reading 28.5; restored "1 tests performed, 1 succeeded" |
+| Proof C, the next-spell charge spent but not subtracted | PROVED: `TheNextSpellCooldownRowShortensOnlyTheNextSpellsCooldown` failed 1 assertion, "the next spell starts 8.5", reading 10; restored "1 tests performed, 1 succeeded" |
+| Python control, `MAX_COOLDOWN_REDUCE_SECONDS` raised from 60 to 1000 | PROVED: "3 failed, 326 passed" in `tools/tests/test_generate_datatables.py`; restored "329 passed". Registered 1 failure; see below |
+
+**A PREDICTION MISS IN THE PYTHON CONTROL, not a proof that missed its aim.** The control named
+three failures, `test_a_cooldown_reduction_outside_its_bounds_is_refused[0]`, `[-1]` and `[61]`,
+where one, `[61]`, was registered. `[61]` failed for the reason the control was built for: with the
+bound raised, 61 seconds was accepted. `[0]` and `[-1]` were still refused, but the test matches the
+error message on "up to 60" and the message prints the bound, which read 1000. No product code is
+wrong. The coordinating session accepted it as proved, with no rerun.
+
+**A MISS, FOUND BY THE FIRST UNREAL RUN.** `TheReduceAllRowsTakeTheirSecondsOffEveryRunningCooldown`
+listed the aura among the slots expected to lose seconds. The aura is a toggle and has no cooldown
+by design (`UCataclysmSkillSlots::CooldownTag`, `CataclysmSkillSlots.cpp` line 139), so the fixture
+never put it on one and it read 0 against 26 and 28. The engine was right. The Python rehearsal
+could not see this, because it does not run the Unreal tests. The coordinating session ruled the
+correction inside the window: the aura is left out of the list, and two new assertions check that
+it has no cooldown tag and is not cooling down after the row acts, so its exclusion is tested and
+not only omitted. Proof A was re-registered from 12 assertions to 10 before it ran.
+
+**An earlier miss, caught before the commit.** The four enchantment names in the tests were first
+written from memory and all four were wrong. The generator's `row_name` over the four sentences gave
+the right names.
+
+---
+
 ## 2026-09-25 — Set Stance and Scarred Plate: their "At 4 points:" clauses are rows, from four points and once
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv` and
