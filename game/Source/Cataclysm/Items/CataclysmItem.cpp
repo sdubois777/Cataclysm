@@ -1255,6 +1255,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.ResetKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 					}
+					// A CLEANSE. Ruled 2026-09-26. The row's value is not read: a cleanse has no size.
+					Action.bCleanse = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CleanseAction, ESearchCase::IgnoreCase);
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

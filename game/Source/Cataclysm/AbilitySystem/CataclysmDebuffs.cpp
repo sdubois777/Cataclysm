@@ -5,6 +5,7 @@
 // For asking a character what a stat is worth with its own state in hand,
 // rather than reading the attribute. Issue #1033.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 // For the attribute the duration stat is folded into. Issue #1033.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For refusing a corpse, which `HoldStep` does. Issue #1070.
@@ -136,6 +137,53 @@ int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
 int32 UCataclysmDebuffs::CountOnActor(const AActor* Actor)
 {
 	return CountOn(UCataclysmTargeting::AbilitySystemOf(Actor));
+}
+
+int32 UCataclysmDebuffs::Cleanse(AActor* Character)
+{
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Character);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	int32 Removed = 0;
+	const FGameplayTagContainer Roots = DebuffRoots();
+
+	// AN EMPTY CONTAINER WOULD MATCH EVERY EFFECT, buffs included, for the reason `HoldStep` gives, so nothing is
+	// removed when the vocabulary has lost every root. The announcement still goes, so the game mode's stacks clear.
+	if (!Roots.IsEmpty())
+	{
+		// THE CHARACTER, OR ITS ABILITY SYSTEM'S OWNER, IS ITSELF. A player's ability system belongs to its player
+		// state, and an effect the player put on itself names either the one or the other as its instigator.
+		const AActor* Owner = AbilitySystem->GetOwnerActor();
+
+		// MATCHED ON THE TAGS THE EFFECT GRANTS, as `HoldStep` matches them; the match honours parents, so the three
+		// roots find every bleed, burn, curse and stun without listing them. A copy of the handles, since removing
+		// one changes the container they were read from.
+		const TArray<FActiveGameplayEffectHandle> Handles =
+			AbilitySystem->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Roots));
+		for (const FActiveGameplayEffectHandle& Handle : Handles)
+		{
+			const FActiveGameplayEffect* Effect = AbilitySystem->GetActiveGameplayEffect(Handle);
+			if (!Effect)
+			{
+				continue;
+			}
+			const AActor* PutThereBy = Effect->Spec.GetContext().GetInstigator();
+			if (PutThereBy && (PutThereBy == Character || PutThereBy == Owner))
+			{
+				continue;
+			}
+			if (AbilitySystem->RemoveActiveGameplayEffect(Handle))
+			{
+				++Removed;
+			}
+		}
+	}
+
+	UCataclysmCombatEvents::NoteCleansed(Character);
+	return Removed;
 }
 
 bool UCataclysmDebuffs::ShareADebuff(const UAbilitySystemComponent* AbilitySystem,

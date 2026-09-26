@@ -693,6 +693,13 @@ public:
 	static const TCHAR* NextSpellCooldownReducedAction;
 
 	/**
+	 * The cleanse action name: a row whose Action is this cleanses its wearer, `UCataclysmDebuffs::Cleanse`. Ruled
+	 * 2026-09-26, for "You are cleansed every 5 seconds". The enchantment row and the name in
+	 * `tools/generate_datatables.py`'s action vocabulary are the enchantment session's, and are not written yet.
+	 */
+	static const TCHAR* CleanseAction;
+
+	/**
 	 * Take a reduction action's seconds off every running cooldown it names.
 	 * Issue #1833, the cooldown reduction action.
 	 *
