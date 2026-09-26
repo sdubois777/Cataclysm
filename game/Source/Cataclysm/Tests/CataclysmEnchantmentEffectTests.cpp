@@ -16,6 +16,7 @@
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "HAL/IConsoleManager.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 #include "GameplayEffect.h"
@@ -7279,6 +7280,271 @@ bool FCataclysmCooldownResetRangedKillTest::RunTest(const FString&)
 	TestFalse(TEXT("a ranged kill by the special slot: special is ready"),
 		Worn.Waiting(ESlot::Special));
 	TestTrue(TEXT("and heavy still waits"), Worn.Waiting(ESlot::Heavy));
+	return true;
+}
+
+namespace CataclysmCooldownReduceTest
+{
+	/** The time left on one slot's cooldown, or 0 when it is not cooling down. */
+	float SecondsLeft(const UCataclysmAbilitySystemComponent* ASC, ECataclysmAbilitySlot Slot)
+	{
+		const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
+		float Most = 0.0f;
+		for (const float Left : ASC->GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag))))
+		{
+			Most = FMath::Max(Most, Left);
+		}
+		return Most;
+	}
+
+	using ESlot = ECataclysmAbilitySlot;
+
+	/**
+	 * A bare wearer carrying one real enchantment, with two real strike skills
+	 * granted: a spell in the special slot, tagged `Type.Spell`, and a heavy
+	 * attack that is not a spell. Each has a stated ten-second cooldown and
+	 * nothing starts cooling down. Issue #1833, the cooldown reduction action.
+	 */
+	struct FSpellcaster
+	{
+		explicit FSpellcaster(const TCHAR* Enchantment)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			Wearer = MakeUnique<FWearer>(World);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot GearSlot = ECataclysmGearSlot::Count;
+			Wearer->Equipment->Equip(
+				Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+				Removed, AlsoRemoved, GearSlot);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+			Wearer->AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 100000.0f);
+			Wearer->AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetManaAttribute(), 100000.0f);
+			Spell = Grant(ESlot::Special, TEXT("Type.Spell"));
+			Heavy = Grant(ESlot::Heavy, FString());
+		}
+
+		~FSpellcaster()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmStrikeSkill* Grant(ESlot Slot, const FString& Tags) const
+		{
+			const FGameplayAbilitySpecHandle Handle = Wearer->AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), Slot, /*Level=*/1, Wearer->Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Wearer->AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmStrikeSkill* Skill =
+				Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->SkillName = TEXT("Test Strike");
+				Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=2"));
+				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(Tags);
+				Skill->CooldownOverride = 10.0f;
+			}
+			return Skill;
+		}
+
+		bool Ready() const
+		{
+			return Wearer && Spell && Heavy;
+		}
+
+		bool Use(UGameplayAbility* Skill) const
+		{
+			return Skill && Wearer->AbilitySystem->TryActivateAbility(
+				Skill->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+		}
+
+		void Clear(ESlot Slot) const
+		{
+			Wearer->AbilitySystem->RemoveActiveEffectsWithGrantedTags(
+				FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(Slot)));
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+		UCataclysmStrikeSkill* Spell = nullptr;
+		UCataclysmStrikeSkill* Heavy = nullptr;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownReduceAllRowsTest,
+	"Cataclysm.Enchantments.TheReduceAllRowsTakeTheirSecondsOffEveryRunningCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two rows that take seconds off every running cooldown, each worn alone with
+ * every slot that has a cooldown on a thirty-second one; the aura, a toggle,
+ * has none by design and is checked to be left alone. Issue #1833, the cooldown reduction
+ * action. "When your class resource hits zero, all skill cooldowns are reduced
+ * by 2-4 seconds" at 4 leaves 26 on every slot, the ultimate included, ruled
+ * 2026-09-25; "Each summon reduces all your skill cooldowns by 1-2 seconds" at 2
+ * leaves 28.
+ */
+bool FCataclysmCooldownReduceAllRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownReduceTest;
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		const TCHAR* Event;
+		float Left;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_When_your_class_resource_hits_zero_all_skill_co"),
+		 TEXT("resource_empty"), 26.0f},
+		{TEXT("Positive_Each_summon_reduces_all_your_skill_cooldowns_by"),
+		 TEXT("summon"), 28.0f},
+	};
+	for (const FCase& Case : Cases)
+	{
+		CataclysmCooldownResetTest::FWorn Worn(Case.Enchantment);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+			|| !TestEqual(TEXT("the ultimate starts at thirty"),
+					SecondsLeft(Worn.ASC(), ESlot::Ultimate), 30.0f, 0.01f))
+		{
+			return false;
+		}
+		Worn.ASC()->ActOnEvent(FName(Case.Event));
+		for (const ESlot Slot : {ESlot::Heavy, ESlot::Special, ESlot::Support,
+								 ESlot::Ultimate, ESlot::Movement})
+		{
+			TestEqual(FString::Printf(TEXT("%s: slot %d has %.0f left"), Case.Event,
+									  static_cast<int32>(Slot), Case.Left),
+				SecondsLeft(Worn.ASC(), Slot), Case.Left, 0.01f);
+		}
+		// THE AURA IS LEFT ALONE: it is a toggle with no cooldown tag by design
+		// (`UCataclysmSkillSlots::CooldownTag`), so the row has nothing on it
+		// to shorten and places nothing on it either.
+		TestFalse(FString::Printf(TEXT("%s: the aura slot has no cooldown tag"), Case.Event),
+			UCataclysmSkillSlots::CooldownTag(ESlot::Aura).IsValid());
+		TestEqual(FString::Printf(TEXT("%s: the aura slot is not cooling down"), Case.Event),
+			SecondsLeft(Worn.ASC(), ESlot::Aura), 0.0f, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownReduceHeavyRowTest,
+	"Cataclysm.Enchantments.TheCritHeavyReduceRowTakesItsSecondsOffHeavyOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a
+ * critical strike", at 1.5: a critical strike, by any skill, leaves heavy at
+ * 28.5 and special at 30. Issue #1833, the cooldown reduction action.
+ */
+bool FCataclysmCooldownReduceHeavyRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownReduceTest;
+	CataclysmCooldownResetTest::FWorn Worn(
+		TEXT("Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	Worn.ASC()->ActOnEvent(FName(TEXT("critical_strike")));
+	TestEqual(TEXT("heavy has 28.5 left"), SecondsLeft(Worn.ASC(), ESlot::Heavy), 28.5f, 0.01f);
+	TestEqual(TEXT("special still has 30"), SecondsLeft(Worn.ASC(), ESlot::Special), 30.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownReduceOverflowTest,
+	"Cataclysm.Enchantments.AReductionLargerThanTheTimeLeftEndsTheCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Overflow ends a cooldown and carries nothing over, ruled 2026-09-25. Issue
+ * #1833, the cooldown reduction action. Worn at 4, the class-resource row takes
+ * a thirty-second cooldown to 2 after seven reductions, and the eighth, larger
+ * than what is left, ends it.
+ */
+bool FCataclysmCooldownReduceOverflowTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownReduceTest;
+	CataclysmCooldownResetTest::FWorn Worn(
+		TEXT("Positive_When_your_class_resource_hits_zero_all_skill_co"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	for (int32 Time = 0; Time < 7; ++Time)
+	{
+		Worn.ASC()->ActOnEvent(FName(TEXT("resource_empty")));
+	}
+	TestEqual(TEXT("seven reductions of 4: 2 left"),
+		SecondsLeft(Worn.ASC(), ESlot::Heavy), 2.0f, 0.01f);
+	Worn.ASC()->ActOnEvent(FName(TEXT("resource_empty")));
+	TestFalse(TEXT("the eighth ends it"), Worn.Waiting(ESlot::Heavy));
+	TestEqual(TEXT("and nothing is left on it"),
+		SecondsLeft(Worn.ASC(), ESlot::Heavy), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextSpellCooldownRowTest,
+	"Cataclysm.Enchantments.TheNextSpellCooldownRowShortensOnlyTheNextSpellsCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each spell cast reduces your next spell cooldown by 0.5-1.5 seconds", at 1.5,
+ * with real skills granted and used. Issue #1833, the cooldown reduction action.
+ *
+ * A spell's first cast starts its full ten seconds, because the charge it
+ * grants is granted after its own cooldown. It then holds one charge, and a
+ * second spell event still holds one, the cap of 1. A heavy attack that is not
+ * a spell starts its full ten and leaves the charge. The next spell starts 8.5.
+ *
+ * "SPELL" FIRES ONLY FOR A SKILL TAGGED `Type.Spell`, which today is only the
+ * Demonic caster skills, so the row does nothing for a character without one.
+ */
+bool FCataclysmNextSpellCooldownRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownReduceTest;
+	FSpellcaster Caster(
+		TEXT("Positive_Each_spell_cast_reduces_your_next_spell_cooldown"));
+	if (!TestTrue(TEXT("a wearer with a spell and a heavy attack"), Caster.Ready()))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* ASC = Caster.ASC();
+
+	TestTrue(TEXT("the spell is used"), Caster.Use(Caster.Spell));
+	TestEqual(TEXT("the first spell starts its full ten"),
+		SecondsLeft(ASC, ESlot::Special), 10.0f, 0.01f);
+	TestEqual(TEXT("and one charge of 1.5 is held"), ASC->NextSpellCooldownSecondsHeld(), 1.5f, 0.001f);
+
+	ASC->ActOnEvent(FName(TEXT("spell")));
+	TestEqual(TEXT("a second spell event still holds one"),
+		ASC->NextSpellCooldownSecondsHeld(), 1.5f, 0.001f);
+
+	TestTrue(TEXT("the heavy attack is used"), Caster.Use(Caster.Heavy));
+	TestEqual(TEXT("a heavy attack that is no spell starts its full ten"),
+		SecondsLeft(ASC, ESlot::Heavy), 10.0f, 0.01f);
+	TestEqual(TEXT("and leaves the charge"), ASC->NextSpellCooldownSecondsHeld(), 1.5f, 0.001f);
+
+	Caster.Clear(ESlot::Special);
+	TestTrue(TEXT("the spell is used again"), Caster.Use(Caster.Spell));
+	TestEqual(TEXT("the next spell starts 8.5"),
+		SecondsLeft(ASC, ESlot::Special), 8.5f, 0.01f);
 	return true;
 }
 

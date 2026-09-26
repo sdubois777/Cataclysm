@@ -482,8 +482,10 @@ JUDGED_NUMBERS = {
 #: bucket through `MultiplierForStatAgainst` since this change.
 #: AND 363 OVER 287 SINCE THE COOLDOWN RESET ACTION,
 #: issue #1833, from 355 over 279: eight rows on eight enchantments.
-AUTHORED_ROWS = 363
-AUTHORED_ENCHANTMENTS = 287
+#: AND 367 OVER 291 SINCE THE COOLDOWN REDUCTION,
+#: issue #1833, from 363 over 287: four rows on four enchantments.
+AUTHORED_ROWS = 367
+AUTHORED_ENCHANTMENTS = 291
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

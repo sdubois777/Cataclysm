@@ -617,6 +617,39 @@ public:
 								const FGameplayTagContainer* EventTags);
 
 	/**
+	 * The two cooldown reduction action names and the next-spell cooldown
+	 * charge. Issue #1833, the cooldown reduction action.
+	 * `tools/generate_datatables.py` holds the first two in
+	 * `COOLDOWN_REDUCE_ACTIONS` and the third in `NEXT_USE_ACTIONS`.
+	 */
+	static const TCHAR* CooldownReduceAllAction;
+	static const TCHAR* CooldownReduceHeavyAction;
+	static const TCHAR* NextSpellCooldownReducedAction;
+
+	/**
+	 * Take a reduction action's seconds off every running cooldown it names.
+	 * Issue #1833, the cooldown reduction action.
+	 *
+	 * BY MOVING EACH COOLDOWN'S START EARLIER, which shortens what is left by
+	 * exactly that much (`ModifyActiveEffectStartTime`). A cooldown with no
+	 * more than that left is removed: an overflow ends it and nothing carries
+	 * over, ruled 2026-09-25. A slot not cooling down is untouched.
+	 *
+	 * @return how many cooldowns were shortened or ended
+	 */
+	int32 ReduceCooldowns(const FCataclysmPoolAction& Action);
+
+	/**
+	 * Spend every held next-spell cooldown charge and answer the seconds they
+	 * take off, for `UCataclysmGameplayAbility::ApplyCooldown` on a spell.
+	 * Issue #1833, the cooldown reduction action.
+	 */
+	float SpendNextSpellCooldownSeconds();
+
+	/** What the held next-spell cooldown charges are worth, in seconds, for the line above the skill bar. */
+	float NextSpellCooldownSecondsHeld() const;
+
+	/**
 	 * The event a row grants on when it grants on a clock. Issue #1833, timed
 	 * grants. `TIMED_EVENT` in `tools/generate_datatables.py`. Never raised
 	 * through `ActOnEvent`: `StepTimedGrants` fires each such action itself.
@@ -645,7 +678,8 @@ public:
 	 * @param Percent  what one charge is worth, as increased damage
 	 */
 	void GrantNextUseCharge(FName Key, bool bAttack, float Percent, int32 Cap,
-							bool bEffectiveness = false);
+							bool bEffectiveness = false,
+							bool bSpellCooldown = false);
 
 	/**
 	 * Spend every charge this use takes, and answer what they were worth in
@@ -2398,6 +2432,7 @@ protected:
 		float Percent = 0.0f;
 		bool bAttack = false;
 		bool bEffectiveness = false;
+		bool bSpellCooldown = false;
 	};
 
 	/**

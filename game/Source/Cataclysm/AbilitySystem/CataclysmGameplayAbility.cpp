@@ -667,8 +667,24 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	// LENGTH. UCataclysmCombatAttributeSet::FinalCooldown was written,
 	// documented and tested, and nothing called it, so every cooldown in the
 	// game waited its full time however much reduction the player was wearing.
-	const float Seconds = CooldownAfterReduction(
+	float Seconds = CooldownAfterReduction(
 		AbilitySystem, GetBaseCooldown(), SkillTagsForStats());
+
+	// AND A SPELL SPENDS ITS NEXT-SPELL COOLDOWN CHARGES, AFTER THE REDUCTION.
+	// Issue #1833, the cooldown reduction action: "Each spell cast reduces your
+	// next spell cooldown by 0.5-1.5 seconds". Seconds off the figure, floored
+	// at nothing. The cast that granted a charge has already been through here:
+	// `CommitAndBegin` commits the cooldown before it notes the spell cast.
+	const FGameplayTag SpellTag = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Spell")), /*ErrorIfNotFound=*/false);
+	if (SpellTag.IsValid() && SkillTagsForStats().HasTag(SpellTag))
+	{
+		if (UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			Seconds = FMath::Max(0.0f, Seconds - Cataclysm->SpendNextSpellCooldownSeconds());
+		}
+	}
 	if (Seconds <= 0.0f)
 	{
 		return;

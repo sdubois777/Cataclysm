@@ -1160,13 +1160,37 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.StackCap = Effect->ScaleMaxSteps;
 						Action.bPlacedCutsDamage = bDamageRemoved;
 					}
-					if (bNextSkill || bNextAttack || bNextEffectiveness)
+					// A NEXT-SPELL COOLDOWN CHARGE, the fourth next-use kind. Issue
+					// #1833, the cooldown reduction action.
+					const bool bNextSpellCooldown = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::NextSpellCooldownReducedAction,
+						ESearchCase::IgnoreCase);
+					if (bNextSkill || bNextAttack || bNextEffectiveness || bNextSpellCooldown)
 					{
 						Action.NextUseKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						Action.NextUseCap = FMath::Max(1, Effect->ScaleMaxSteps);
 						Action.bNextUseIsAttack = bNextAttack;
 						Action.bNextUseIsEffectiveness = bNextEffectiveness;
+						Action.bNextUseIsSpellCooldown = bNextSpellCooldown;
+					}
+					// A COOLDOWN REDUCTION, keyed like a reset. The value is seconds.
+					if (Effect->Action.Equals(
+							UCataclysmAbilitySystemComponent::CooldownReduceAllAction,
+							ESearchCase::IgnoreCase))
+					{
+						Action.CooldownReduce = ECataclysmCooldownReset::All;
+					}
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.CooldownReduce = ECataclysmCooldownReset::Heavy;
+					}
+					if (Action.CooldownReduce != ECataclysmCooldownReset::None)
+					{
+						Action.ResetKey = FName(*FString::Printf(
+							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 					}
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes

@@ -362,3 +362,7 @@ Positive_Critical_strikes_have_a_15_30_chance_to_reset#1,Positive_Critical_strik
 Positive_Dodging_an_attack_has_a_20_40_chance_to_reset#1,Positive_Dodging_an_attack_has_a_20_40_chance_to_reset,,,20.0,40.0,,,0.0,,0.0,cooldown_reset_movement,dodge,,0,0.0,0.0,0.0,0
 Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta#1,Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta,,,100.0,100.0,,target_is_staggered,0.0,,0.0,cooldown_reset_heavy,hit_dealt,,0,0.0,0.0,0.0,0
 Positive_Ranged_kills_have_a_20_40_chance_to_refund_the#1,Positive_Ranged_kills_have_a_20_40_chance_to_refund_the,,,20.0,40.0,Type.Ranged,,0.0,,0.0,cooldown_reset_event_skill,kill,,0,0.0,0.0,0.0,0
+Positive_When_your_class_resource_hits_zero_all_skill_co#1,Positive_When_your_class_resource_hits_zero_all_skill_co,,,2.0,4.0,,,0.0,,0.0,cooldown_reduce_all,resource_empty,,0,0.0,0.0,0.0,0
+Positive_Each_summon_reduces_all_your_skill_cooldowns_by#1,Positive_Each_summon_reduces_all_your_skill_cooldowns_by,,,1.0,2.0,,,0.0,,0.0,cooldown_reduce_all,summon,,0,0.0,0.0,0.0,0
+Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5#1,Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5,,,0.5,1.5,,,0.0,,0.0,cooldown_reduce_heavy,critical_strike,,0,0.0,0.0,0.0,0
+Positive_Each_spell_cast_reduces_your_next_spell_cooldown#1,Positive_Each_spell_cast_reduces_your_next_spell_cooldown,,,0.5,1.5,,,0.0,,0.0,next_spell_cooldown_reduced,spell,,1,0.0,0.0,0.0,0

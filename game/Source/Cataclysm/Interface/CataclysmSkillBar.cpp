@@ -309,6 +309,15 @@ FString UCataclysmSkillBar::StoredDamageLine(float Stored)
 						   FMath::Max(1, FMath::RoundToInt(Stored)));
 }
 
+FString UCataclysmSkillBar::NextSpellCooldownLine(float Seconds)
+{
+	if (Seconds <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Next spell cooldown -%.1fs"), Seconds);
+}
+
 FString UCataclysmSkillBar::NthEntry(ECataclysmEveryNth Kind, int32 Count,
 									int32 EveryNth)
 {

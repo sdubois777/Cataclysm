@@ -613,7 +613,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 355 SINCE THE SMALL ENGINE HALVES, issue #1833, from 347.
 	//
 	// AND 363 SINCE THE COOLDOWN RESET ACTION, issue #1833, from 355.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    363)
+	//
+	// AND 367 SINCE THE COOLDOWN REDUCTION, issue #1833, from 363.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    367)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
