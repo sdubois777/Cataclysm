@@ -288,10 +288,33 @@ CATACLYSM_FEAR_TEST(FCataclysmFearHeldTest,
 	{
 		return false;
 	}
+	// THE CONTROL FIRST: the same creature in the same place, feared and not yet
+	// held, aims six metres further from the source. A zero goal below is read as
+	// the hold, and the brain ALSO leaves the goal zero when both of its moves
+	// fail, so without this half the test passed with the hold check removed.
+	// Recorded in the fear entry of docs/DECISIONS.md, 2026-09-26.
+	const FVector Source = Holder->GetActorLocation();
+	if (!TestTrue(TEXT("set-up: the creature is feared"),
+				  Fear::ApplyFear(Holder, Creature, 2.0f, Source)))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("control: feared and not held, it flees"), Did(Brain), Fleeing))
+	{
+		return false;
+	}
+	const FVector Here = Creature->GetActorLocation();
+	const float Before = FVector::Dist2D(Here, Source);
+	const float Aimed = FVector::Dist2D(Brain->LastFleeGoal, Source);
+	if (!TestEqual(TEXT("control: and aims six metres further from the source"),
+				   Aimed - Before, 6.0f * M, 1.0f))
+	{
+		return false;
+	}
+
+	// AND THEN THE HOLD, with nothing else changed.
 	Creature->NoteHeldBy(Holder, World->GetTimeSeconds() + 10.0f, 8.0f * M);
-	if (!TestTrue(TEXT("set-up: the creature is held"), Creature->IsHeld())
-		|| !TestTrue(TEXT("and feared"),
-					 Fear::ApplyFear(Holder, Creature, 2.0f, Holder->GetActorLocation())))
+	if (!TestTrue(TEXT("set-up: the creature is held"), Creature->IsHeld()))
 	{
 		return false;
 	}
