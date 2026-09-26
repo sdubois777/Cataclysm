@@ -2,6 +2,62 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The deployable naming filter is tested: a moving summoner's unscoped "less damage while moving" row does not reach a ballista's blow
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(`TheGadgetDamageRowsReachAMachinesBlowAndNotAnImps`). Test only; no engine code, no rows. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHY
+
+Deployable Part 1's proof B, which removed the naming filter in
+`UCataclysmAbilitySystemComponent::StatNamingTagAppliedTo`, could not fail. The drawback the test
+wore, "Your direct damage is reduced by 25%", has no condition and no scale, so it is folded into
+the attribute and never recorded as a stat line, and the filter never sees it. The coordinating
+session ruled that the gap be closed by a separate, test-only change with one proof.
+
+### WHAT CHANGED
+
+A new summoner in the gadget-damage test wears "Gadgets deal 20%-40% increased damage" (40,
+`Type.Deployable`, no condition) and the drawback "While moving, your skills deal 15%-25% less
+damage" (`Negative_While_moving_your_skills_deal_15_25_less_damag#1`: `attack_damage` "more" -25 at
+a worn roll of 1.0, no required tags, condition `while_moving`). Because it has a condition, that
+row is recorded as a stat line, so the filter is what keeps it off a machine's blow. The summoner is
+then recorded as moving.
+
+- A set-up assertion reads the summoner's own `attack_damage` multiplier at 0.75, so the row is
+  live. The gadget row names `Type.Deployable` and is not asked there.
+- Then the ballista's blow is 1.4 times a plain summoner's. Without the filter it would be
+  1.4 x 0.75 = 1.05. Both figures were computed before the test was written.
+
+The comment above the test now says which summoner tests the filter and why the other does not.
+
+### THE RUN
+
+On `01b03767`, the test commit moved onto development `88832df8`. No workbook was needed.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `01b03767` | "5520 passed, 8 skipped in 418.70s"; JUnit tests 5528, failures 0 |
+| Build | "Build: Succeeded - 29 actions, 26 files compiled". **Registered as one unity file, and that was wrong**: this worktree's last build was on `48f8e9e3`, and development `48f8e9e3..88832df8` changed 25 game source files |
+| The changed test | "1 tests performed, 1 succeeded, 0 failed" |
+| Whole suite, `01b03767` | "2615 tests performed, 2614 succeeded, 1 failed: RoamTargetsStayInRangeAndAreNotAllTheSamePlace"; 2615 declared, gap 0. **Registered as 2615 of 2615**; see below |
+| The one proof, the naming filter removed | PROVED: `TheGadgetDamageRowsReachAMachinesBlowAndNotAnImps` failed 1 assertion, "moving: a ballista's blow is still 1.4 times, the unscoped row kept off it (1.05 if it reached it)", reading 1.05; restored "1 tests performed, 1 succeeded" |
+
+**THE ONE WHOLE-SUITE FAILURE IS UNRELATED TO THIS CHANGE**, which touches only
+`CataclysmEnchantmentEffectTests.cpp`; the coordinating session ruled so and the window continued.
+`Cataclysm.AI.RoamTargetsStayInRangeAndAreNotAllTheSamePlace` printed one error: "Expected 'every
+one of 200 roam targets is inside the roam radius (furthest was 600 cm of 600)' to be 0, but it was
+1." The test counts a point as outside when `FVector::Dist2D(Chosen, Brain->RoamAnchor) > Radius`,
+with no tolerance. `ACataclysmEnemyController::ChooseRoamTarget`'s fallback draws the distance as
+the radius times the square root of `FMath::FRand()`, which is below 1, and the direction from a
+single-precision cosine and sine, whose squares can sum a hair above 1. So a point drawn at the
+edge can measure a fraction of a millimetre beyond 600 cm. That is my reading of the code, not a
+reproduction. The coordinating session ruled that the test be fixed rather than filed, as the next
+change in this slot: a small stated tolerance on that comparison.
+
+---
+
 ## 2026-09-26 — Four potion slots on the keys 2 to 5: kills fill them by rarity, and a drink heals 35% of maximum health over 3 seconds
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPotions.h` and `.cpp` (new: the slots, the figures, a
