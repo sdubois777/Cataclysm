@@ -48,6 +48,9 @@ play-test value:**
 - **The pile's rolls are seeded from the floor**, so the same floor lays the same pile. Three rolls at the Legendary
   rung are expected to lay six drops, and lay none about one time in four hundred (e to the minus six); the test
   floor's seed is fixed, so its test cannot pass on one run and fail on the next.
+  **The way to remove the empty case:** Infested Hoard adds count arguments to `UCataclysmDropSpawner::SpawnDropsFor`
+  (`GearCountGiven`, `MaterialCountGiven`). When that change is on development, a hoard can be given a guaranteed
+  count instead of three rolled ones.
 - **The guards are drawn from the floor's own kinds**, as Necrotic Bloom's waves are, and stand on cells beside the
   pile.
 
