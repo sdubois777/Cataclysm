@@ -383,7 +383,12 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// the enchantment "Energy shield regeneration begins immediately after
 	// taking damage with no delay" is its only source. A FLAG, like the six above. It was
 	// missed the same way as the one above: the whole suite read 73 against 72.
-	constexpr int32 OffSheetCombatStats = 45;
+	// AND FORTY-SIX SINCE A DEATH CAN ALSO END THE WEARER'S RUNNING AURAS,
+	// issue #1833. The thirty-second time the rule is met: no affix grants it,
+	// nothing scales it, no class differs on it, and the drawback "When you die
+	// all your buffs are removed" is its only source. A FLAG again, raised here
+	// before the change's first build rather than after its whole suite.
+	constexpr int32 OffSheetCombatStats = 46;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

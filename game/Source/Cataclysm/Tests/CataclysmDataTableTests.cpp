@@ -619,7 +619,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 372 SINCE DEPLOYABLE PART 1, issue #1833, from 367.
 	//
 	// AND 373 SINCE THE DEPLOYABLE CAP, issue #1833, from 372.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    373)
+	//
+	// AND 374 SINCE THE AURAS-AT-DEATH ROW, issue #1833, from 373.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    374)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
