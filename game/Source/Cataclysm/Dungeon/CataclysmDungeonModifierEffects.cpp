@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InsanityBurstsKey =
+	TEXT("Void_Insanity_Bursts");
+
 const TCHAR* UCataclysmDungeonModifierEffects::FunerealProcessionKey =
 	TEXT("Death_Funereal_Procession");
 
@@ -550,6 +553,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
 		|| RowKey == FName(SingularityWellsKey)
+		// INSANITY BURSTS. The skill lock and the stun work; "attack allies" does nothing, because the game has no
+		// player allies but the player's own minions. Issues #1820 and #41.
+		|| RowKey == FName(InsanityBurstsKey)
 		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
 		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
 		// while its entry and its key's comment both said partly built. Issues #1820 and #41.
@@ -716,6 +722,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(InsanityBurstsKey),
 		FName(FunerealProcessionKey),
 		FName(BloodDebtKey),
 		FName(QuarantineBreachKey),
@@ -1960,6 +1967,16 @@ float UCataclysmDungeonModifierEffects::FunerealProcessionLastsSeconds()
 float UCataclysmDungeonModifierEffects::FunerealProcessionBurn(float MaximumHealth)
 {
 	return FMath::Max(0.0f, MaximumHealth) * FunerealProcessionPercentPerSecond / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::InsanityBurstsIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= InsanityBurstsSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::InsanityBurstsLocksSkills(float Roll)
+{
+	return Roll < InsanityBurstsLockChancePercent;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

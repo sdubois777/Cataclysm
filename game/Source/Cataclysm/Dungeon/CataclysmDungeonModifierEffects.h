@@ -2067,6 +2067,25 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose floor sends bursts of insanity that take the player's skills or their footing for a moment. Issues
+	 * #1820 and #41.
+	 *
+	 * "Prolonged exposure to the Void's influence triggers bursts of insanity, causing players to lose control over
+	 * their abilities, attack allies, or experience debilitating effects. Players must regain composure or rely on
+	 * teamwork to overcome these moments of chaos"
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, AND PARTLY BUILT. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - EXPOSURE IS TIME ON THE FLOOR: every `InsanityBurstsSecondsBetween` on a floor, a burst, after a warning of
+	 *   `InsanityBurstsWarningSeconds`.
+	 * - A BURST IS ONE OF TWO, AT RANDOM: every skill locked for `InsanityBurstsLockSeconds` ("lose control over their
+	 *   abilities", Edict of Silence's lock), or a stun of `InsanityBurstsStunSeconds` ("debilitating effects").
+	 * - "ATTACK ALLIES" IS NOT BUILT: the game has no player allies but the player's own minions, and turning those is
+	 *   its own ruling.
+	 */
+	static const TCHAR* InsanityBurstsKey;
+
+	/**
 	 * The row whose slow line of pallbearers crosses the floor and hurts the player it touches. Issues #1820 and #41.
 	 *
 	 * "A slow-moving line of spectral pallbearers moves through the dungeon; contact causes heavy damage and fear."
@@ -4742,6 +4761,13 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/** Insanity Bursts' figures, every one a play-test value. See the key. */
+	static constexpr float InsanityBurstsSecondsBetween = 40.0f;
+	static constexpr float InsanityBurstsWarningSeconds = 3.0f;
+	static constexpr float InsanityBurstsLockSeconds = 5.0f;
+	static constexpr float InsanityBurstsStunSeconds = 1.5f;
+	static constexpr float InsanityBurstsLockChancePercent = 50.0f;
+
 	/**
 	 * Funereal Procession's figures, every one a play-test value. See the key. The procession is a line walking along
 	 * its own length, single file; it appears as far from the player as Swarm of Locusts' swarm does and crosses as
@@ -5467,6 +5493,12 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** Whether a burst's warning begins now. */
+	static bool InsanityBurstsIsDue(float SecondsSinceLast);
+
+	/** Whether a roll of 0 to 100 makes this burst the skill lock rather than the stun: below the lock's chance. */
+	static bool InsanityBurstsLocksSkills(float Roll);
 
 	/** Whether a procession sets out now. */
 	static bool FunerealProcessionIsDue(float SecondsSinceLast);
