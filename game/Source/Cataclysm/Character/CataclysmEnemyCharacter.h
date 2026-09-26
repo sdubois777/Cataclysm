@@ -605,6 +605,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetObsidianSarcophagiDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies a carrion feeder's attack damage by the carcasses eaten on its floor. `Pestilence_Carrion_Feast`.
+	 * Issues #1820 and #41.
+	 *
+	 * AN EIGHTH KEY OF `DamageMultipliersBySource`. Everything the setters above say about the route, the designed
+	 * figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetCarrionFeastDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -613,6 +625,7 @@ public:
 	static constexpr const TCHAR* PlagueBeaconsDamageSource = TEXT("PlagueBeacons");
 	static constexpr const TCHAR* TrialOfEnduranceDamageSource = TEXT("TrialOfEndurance");
 	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
+	static constexpr const TCHAR* CarrionFeastDamageSource = TEXT("CarrionFeast");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -1120,6 +1133,13 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsAnAbomination = false;
+
+	/**
+	 * Whether a Carrion Feast carcass became this creature. Issues #1820 and #41. It puts "Feeder" under the health
+	 * bar. A flag on a creature of the floor's own kinds, as `bIsAnAbomination` is, for the same reason.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsACarrionFeeder = false;
 
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
@@ -1692,7 +1712,7 @@ protected:
 	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
 	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
 	 * `TrialOfEnduranceDamageSource` (Trial of Endurance) and `ObsidianSarcophagiDamageSource` (Obsidian
-	 * Sarcophagi). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
+	 * Sarcophagi) and `CarrionFeastDamageSource` (Carrion Feast). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
 	 * by every entry. Issues #1820 and #41.
 	 *
 	 * ONE MAP RATHER THAN A FIELD PER SOURCE, as ruled by the coordinating session on

@@ -31321,4 +31321,290 @@ bool FCataclysmLocustsBurnTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Pestilence_Carrion_Feast. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName CarrionRow(UCataclysmDungeonModifierEffects::CarrionFeastKey);
+
+	/** A dungeon carrying only Carrion Feast, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* ACarrionFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {CarrionRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/**
+	 * An Imp the player kills on a floor cell near the entrance, the first such cell or the last; where it died, or
+	 * null.
+	 */
+	ACataclysmEnemyCharacter* SlayForACarcass(FAutomationTestBase& Test, UWorld* World, ACataclysmDungeonGameMode* Mode,
+											  const FPossessedPlayer& Player, bool bTheLastCell, FVector& DiedAt)
+	{
+		const TArray<FIntPoint> Cells =
+			ACataclysmDungeonGameMode::NecroticBloomWaveCells(*Mode->CurrentFloor, Mode->CurrentFloor->EntranceWorld());
+		if (!Test.TestTrue(TEXT("floor cells near the entrance"), Cells.Num() > 1))
+		{
+			return nullptr;
+		}
+		const FVector Cell = Mode->CurrentFloor->WorldOfCell(bTheLastCell ? Cells.Last() : Cells[0]);
+		ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(World, Cell + FVector(0.0f, 0.0f, 100.0f), 100.0f);
+		if (!Test.TestNotNull(TEXT("an Imp to kill"), Imp))
+		{
+			return nullptr;
+		}
+		DiedAt = Imp->GetActorLocation();
+		return KillIt(Test, Player, Imp) ? Imp : nullptr;
+	}
+
+	/** A blow from the player carrying `Element.Demonic`, this project's fire. */
+	void BurnIt(const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Carcass)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.SkillElement = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Carcass, 10.0f, Delivery);
+	}
+}
+
+// THE FIGURES: EATEN AFTER 10 S; 10% STRONGER A CARCASS, UP TO 10; AT MOST 8 FEEDERS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarrionFiguresTest,
+	"Cataclysm.DungeonModifierEffects.CarrionFeastFiguresEatenStrongerAndMost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCarrionFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("eaten after 10 s"), Effects::CarrionFeastEatenAfterSeconds, 10.0f, 0.001f);
+	TestEqual(TEXT("10% stronger a carcass"), Effects::CarrionFeastStrongerPercentPerCarcass, 10.0f, 0.001f);
+	TestEqual(TEXT("up to 10 carcasses"), Effects::CarrionFeastMostStacks, 10);
+	TestEqual(TEXT("at most 8 feeders"), Effects::CarrionFeastMostFeeders, 8);
+	TestEqual(TEXT("a tenth carcass counts"), Effects::CarrionFeastStacksAfter(9), 10);
+	TestEqual(TEXT("an eleventh does not"), Effects::CarrionFeastStacksAfter(10), 10);
+	TestTrue(TEXT("a feeder comes to seven"), Effects::CarrionFeastFeederComes(7));
+	TestFalse(TEXT("and not to eight"), Effects::CarrionFeastFeederComes(8));
+	TestEqual(TEXT("three carcasses are 30% stronger"), Effects::CarrionFeastMultiplier(3), 1.3f, 0.001f);
+	TestEqual(TEXT("twelve are no more than ten"), Effects::CarrionFeastMultiplier(12), 2.0f, 0.001f);
+	return true;
+}
+
+// A CREATURE SLAIN LEAVES A CARCASS WHERE IT DIED, LABELLED AND UNHURTABLE; AT 10 S IT IS EATEN AND A FEEDER STANDS THERE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarrionCarcassTest,
+	"Cataclysm.DungeonModifierEffects.ASlainCreatureLeavesACarcassThatBecomesAFeederAfterTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCarrionCarcassTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Carcasses = Mode->CarrionCarcassesNow();
+	if (!TestEqual(TEXT("one carcass"), Carcasses.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Carcass = Carcasses[0];
+	TestTrue(FString::Printf(TEXT("where it died (%.0f cm away)"), FVector::Dist2D(Carcass->GetActorLocation(), DiedAt)),
+			 FVector::Dist2D(Carcass->GetActorLocation(), DiedAt) < 1.0f);
+	TestTrue(TEXT("it cannot be hurt"), Carcass->bCannotBeHurt);
+	TestTrue(TEXT("labelled"), UCataclysmCombatOverlay::StatusLineFor(Carcass).Contains(TEXT("Carcass")));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
+			  FString(TEXT("carrion feast: 1 carcasses lying, 0 feeders standing, feeders +0%")));
+
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds) - 1);
+	TestEqual(TEXT("still a carcass at 9.75 s"), Mode->CarrionCarcassesNow().Num(), 1);
+	TestEqual(TEXT("and no feeder"), Mode->CarrionFeedersNow().Num(), 0);
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("eaten at 10 s"), Mode->CarrionCarcassesNow().Num(), 0);
+	const TArray<ACataclysmEnemyCharacter*> Feeders = Mode->CarrionFeedersNow();
+	if (!TestEqual(TEXT("a feeder came"), Feeders.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Feeder = Feeders[0];
+	TestTrue(FString::Printf(TEXT("where the carcass lay (%.0f cm away)"), FVector::Dist2D(Feeder->GetActorLocation(), DiedAt)),
+			 FVector::Dist2D(Feeder->GetActorLocation(), DiedAt) < 400.0f);
+	TestTrue(TEXT("labelled a feeder"), UCataclysmCombatOverlay::StatusLineFor(Feeder).Contains(TEXT("Feeder")));
+	TestTrue(TEXT("it pays"), Feeder->PaysForItsDeath());
+	TestTrue(TEXT("raised by the rule"), Feeder->bRaisedByARule);
+	TestEqual(TEXT("one carcass eaten"), Mode->CarrionFeastStacksNow(), 1);
+	TestEqual(TEXT("10% more damage"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::CarrionFeastDamageSource), 1.1f, 0.001f);
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
+			  FString(TEXT("carrion feast: 0 carcasses lying, 1 feeders standing, feeders +10%")));
+	return true;
+}
+
+// ONLY FIRE BURNS A CARCASS: ANOTHER HIT LEAVES IT; A DEMONIC HIT REMOVES IT, AND NO FEEDER COMES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarrionFireTest,
+	"Cataclysm.DungeonModifierEffects.AFireHitBurnsACarcassAndNoFeederComes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCarrionFireTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt)
+		|| !TestEqual(TEXT("one carcass"), Mode->CarrionCarcassesNow().Num(), 1))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> Carcass = Mode->CarrionCarcassesNow()[0];
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Carcass.Get(), 10.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("a hit that is not fire leaves it"), Mode->CarrionCarcassesNow().Num(), 1);
+
+	BurnIt(Player, Carcass.Get());
+	Beat(Mode, 1);
+	TestEqual(TEXT("a fire hit burns it"), Mode->CarrionCarcassesNow().Num(), 0);
+	TestFalse(TEXT("and it is gone"), Carcass.IsValid());
+
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	TestEqual(TEXT("no feeder comes"), Mode->CarrionFeedersNow().Num(), 0);
+	TestEqual(TEXT("and nothing was eaten"), Mode->CarrionFeastStacksNow(), 0);
+	return true;
+}
+
+// EACH CARCASS EATEN MAKES EVERY FEEDER STRONGER, HEALTH AND DAMAGE; A FEEDER SLAIN LEAVES NO CARCASS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarrionStrongerTest,
+	"Cataclysm.DungeonModifierEffects.EachCarcassEatenMakesEveryFeederStronger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCarrionStrongerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("the first feeder"), Mode->CarrionFeedersNow().Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = Mode->CarrionFeedersNow()[0];
+	const float FirstMaximum = First->GetAbilitySystemComponent()->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+
+	if (!SlayForACarcass(*this, World, Mode, Player, true, DiedAt))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	TestEqual(TEXT("two carcasses eaten"), Mode->CarrionFeastStacksNow(), 2);
+	TestEqual(TEXT("two feeders"), Mode->CarrionFeedersNow().Num(), 2);
+	for (ACataclysmEnemyCharacter* Feeder : Mode->CarrionFeedersNow())
+	{
+		TestEqual(TEXT("each 20% more damage"),
+				  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::CarrionFeastDamageSource), 1.2f, 0.001f);
+	}
+	TestEqual(TEXT("the first feeder's health grew from a tenth more to a fifth more"),
+			  First->GetAbilitySystemComponent()->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+			  FirstMaximum / 1.1f * 1.2f, 0.5f);
+
+	// A FEEDER SLAIN LEAVES NO CARCASS.
+	if (!KillIt(*this, Player, First))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("a feeder slain leaves no carcass"), Mode->CarrionCarcassesNow().Num(), 0);
+	return true;
+}
+
+// A NEW FLOOR TAKES THE CARCASSES AWAY AND STARTS THE COUNT AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarrionFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorTakesTheCarcassesAway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCarrionFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!SlayForACarcass(*this, World, Mode, Player, true, DiedAt)
+		|| !TestEqual(TEXT("one eaten and one lying on floor 2"),
+					  Mode->CarrionFeastStacksNow() * 10 + Mode->CarrionCarcassesNow().Num(), 11))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> Carcass = Mode->CarrionCarcassesNow()[0];
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the carcass is gone"), Carcass.IsValid());
+	TestEqual(TEXT("none lying"), Mode->CarrionCarcassesNow().Num(), 0);
+	TestEqual(TEXT("the count starts again"), Mode->CarrionFeastStacksNow(), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

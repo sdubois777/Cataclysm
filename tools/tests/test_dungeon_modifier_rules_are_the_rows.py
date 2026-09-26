@@ -3037,7 +3037,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetSpireDamageMultiplier", "SpireDamageSource"),
                         ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource"),
                         ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource"),
-                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource")):
+                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource"),
+                        ("SetCarrionFeastDamageMultiplier", "CarrionFeastDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4310,3 +4311,22 @@ def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter()
         assert phrase in lower, (
             f"Famine_Swarm_of_Locusts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_carrion_feast_row_still_names_carcasses_feeders_fire_and_altars():
+    """The phrases the rule's readings rest on.
+
+    "Rotting carcasses attract swarms of carrion feeders that consume the bodies, growing stronger and more numerous
+    with each corpse. Players can prevent this by burning bodies with fire-based abilities or finding "purification
+    altars" to consecrate the area." CARRION FEEDERS THAT CONSUME THE BODIES is a carcass becoming a feeder; STRONGER
+    AND MORE NUMEROUS WITH EACH CORPSE is the count of carcasses eaten; FIRE-BASED ABILITIES is a hit carrying
+    Element.Demonic; PURIFICATION ALTARS is the part not built. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Carrion_Feast"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("carrion feeders that consume the bodies", "stronger and more numerous with each corpse",
+                   "fire-based abilities", "purification altars"):
+        assert phrase in lower, (
+            f"Pestilence_Carrion_Feast no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "CarrionFeastKey in CataclysmDungeonModifierEffects.h. " + words)

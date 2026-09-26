@@ -2120,6 +2120,27 @@ public:
 	static const TCHAR* InfestedVeinsKey;
 
 	/**
+	 * The row whose slain creatures leave carcasses that become carrion feeders unless burned, every carcass eaten
+	 * making the feeders stronger. Issues #1820 and #41.
+	 *
+	 * "Rotting carcasses attract swarms of carrion feeders that consume the bodies, growing stronger and more numerous
+	 * with each corpse. Players can prevent this by burning bodies with fire-based abilities or finding "purification
+	 * altars" to consecrate the area."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25 AND 2026-09-26, AND PARTLY BUILT.
+	 * The row states no figure; every figure here is a play-test value:
+	 * - A FLOOR CREATURE SLAIN LEAVES A CARCASS where it died: a floor source labelled "Carcass" that cannot be hurt.
+	 *   A creature a rule raised, a floor source and a feeder leave none.
+	 * - A CARCASS NOT BURNED WITHIN `CarrionFeastEatenAfterSeconds` IS EATEN: it goes, and a feeder of the floor's
+	 *   kinds at Common stands in its place, while fewer than `CarrionFeastMostFeeders` stand.
+	 * - EACH CARCASS EATEN MAKES EVERY FEEDER `CarrionFeastStrongerPercentPerCarcass` STRONGER in damage and health,
+	 *   up to `CarrionFeastMostStacks` carcasses. Feeders pay as the floor's creatures do.
+	 * - A HIT CARRYING `Element.Demonic`, THIS PROJECT'S FIRE, BURNS A CARCASS: it goes and no feeder comes.
+	 * - NOT BUILT: the "purification altars", which wait on the interaction screen.
+	 */
+	static const TCHAR* CarrionFeastKey;
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -4655,6 +4676,27 @@ public:
 	static constexpr int32 InfestedVeinsDestroyedBeforeGuardians = 3;
 	static constexpr int32 InfestedVeinsGuardians = 2;
 	static constexpr int32 InfestedVeinsGuardianRung = RoyalGuardLowestRungThatSummons;
+
+	/** Carrion Feast's figures, every one a play-test value. See the key. */
+	static constexpr float CarrionFeastEatenAfterSeconds = 10.0f;
+	static constexpr float CarrionFeastStrongerPercentPerCarcass = 10.0f;
+	static constexpr int32 CarrionFeastMostStacks = 10;
+	static constexpr int32 CarrionFeastMostFeeders = 8;
+
+	/** Carrion Feast: the carcasses eaten counted after one more, up to the most. */
+	static int32 CarrionFeastStacksAfter(int32 Stacks)
+	{
+		return FMath::Clamp(Stacks + 1, 0, CarrionFeastMostStacks);
+	}
+
+	/** Carrion Feast: whether a carcass eaten brings a feeder while this many stand. */
+	static bool CarrionFeastFeederComes(int32 Standing) { return Standing < CarrionFeastMostFeeders; }
+
+	/** Carrion Feast: what a feeder's damage and health are multiplied by at this many carcasses eaten. */
+	static float CarrionFeastMultiplier(int32 Stacks)
+	{
+		return 1.0f + FMath::Clamp(Stacks, 0, CarrionFeastMostStacks) * CarrionFeastStrongerPercentPerCarcass / 100.0f;
+	}
 
 	/**
 	 * Void Parasite's figures, every one a play-test value. See the key. The chance is Demon Prince's

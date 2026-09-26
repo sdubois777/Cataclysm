@@ -37,6 +37,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmCarcassCharacter.h"
 #include "GameplayTagsManager.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -4839,6 +4840,244 @@ ACataclysmGroundZone* ACataclysmDungeonGameMode::InfestedVeinZoneOf(const ACatac
 	return nullptr;
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::CarrionCarcassesNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Lying;
+	for (int32 Index = 0; Index < CarrionCarcasses.Num(); ++Index)
+	{
+		ACataclysmEnemyCharacter* Carcass = CarrionCarcasses[Index].Get();
+		if (IsValid(Carcass) && CarrionCarcassSeconds.IsValidIndex(Index) && CarrionCarcassSeconds[Index] >= 0.0f)
+		{
+			Lying.Add(Carcass);
+		}
+	}
+	return Lying;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::CarrionFeedersNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : CarrionFeeders)
+	{
+		ACataclysmEnemyCharacter* Feeder = One.Get();
+		if (IsValid(Feeder) && !UCataclysmSkillEffects::IsDead(Feeder))
+		{
+			Standing.Add(Feeder);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheCarrion()
+{
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : CarrionCarcasses)
+	{
+		if (ACataclysmEnemyCharacter* Carcass = One.Get())
+		{
+			Carcass->Destroy();
+		}
+	}
+	CarrionCarcasses.Reset();
+	CarrionCarcassSeconds.Reset();
+	CarrionFeeders.Reset();
+	CarrionFeederOwnMaxHealth.Reset();
+	CarrionFeastStacks = 0;
+	CarrionFeastPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForCarrionFeast(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	ACataclysmEnemyCharacter* Slain = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!World || !Slain || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::CarrionFeastKey)))
+	{
+		return;
+	}
+	// A FLOOR CREATURE'S BODY ONLY: a floor source, a creature a rule raised and a feeder leave none, so carcasses do
+	// not feed on themselves; and a creature this same death got back up is not dead and leaves none.
+	if (Slain->IsA<ACataclysmFloorSourceCharacter>() || Slain->bRaisedByARule || !UCataclysmSkillEffects::IsDead(Slain))
+	{
+		return;
+	}
+
+	// WHERE IT DIED, standing on the floor under it. The Imp's health at Common, paying nothing, not one of the
+	// floor's creatures, and cannot be hurt, as a portal is; fire burns it, and that is the hit rule's.
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmCarcassCharacter::StaticClass();
+	const FVector At = Slain->GetActorLocation();
+	const FVector Where(At.X, At.Y,
+						CurrentFloor->WorldOfCell(CurrentFloor->CellOfWorld(At)).Z
+							+ DungeonGameModeStandingHeightOfClass(Class));
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmEnemyCharacter* Carcass =
+		World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+	if (!Carcass)
+	{
+		return;
+	}
+	Carcass->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Carcass->SetHealth(ImpHealth);
+	Carcass->SetRarityStep(0);
+	Carcass->bCannotBeHurt = true;
+	Carcass->bDiesUnpaid = true;
+	Carcass->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Carcass);
+	CarrionCarcasses.Add(Carcass);
+	CarrionCarcassSeconds.Add(0.0f);
+	UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: %s left a carcass on floor %d"), *Slain->GetName(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteHitForCarrionFeast(const FCataclysmHitNotice& Notice)
+{
+	if (!Notice.Target || CarrionCarcasses.IsEmpty())
+	{
+		return;
+	}
+	const int32 Index = CarrionCarcasses.IndexOfByPredicate(
+		[&Notice](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Notice.Target; });
+	if (Index == INDEX_NONE || !CarrionCarcassSeconds.IsValidIndex(Index) || CarrionCarcassSeconds[Index] < 0.0f)
+	{
+		return;
+	}
+
+	// FIRE IS THE DEMONIC ELEMENT: "Burning Wrath carries Element.Demonic, which is this project's fire"
+	// (`UCataclysmSkillTemplates`). A player's hit carries its skill's element on the damage effect, for colour, and
+	// `HasTag` reads the effect's tags. A creature's own hit burns nothing: the row's burning is the player's.
+	static const FGameplayTag Fire = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+	if (!Notice.HasTag(Fire)
+		|| UCataclysmTeams::TeamOf(Notice.Attacker) == UCataclysmTeams::IdFor(ECataclysmTeam::Monsters))
+	{
+		return;
+	}
+	// MARKED, AND REMOVED ON THE NEXT BEAT rather than destroyed inside the blow that is still resolving on it.
+	CarrionCarcassSeconds[Index] = -1.0f;
+	UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: a carcass burned on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepCarrionFeast()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	bool bChanged = false;
+	TOptional<FCataclysmFloorPopulation> Population;
+	for (int32 Index = CarrionCarcasses.Num() - 1; Index >= 0; --Index)
+	{
+		ACataclysmEnemyCharacter* Carcass = CarrionCarcasses[Index].Get();
+		const bool bBurned = !CarrionCarcassSeconds.IsValidIndex(Index) || CarrionCarcassSeconds[Index] < 0.0f;
+		if (!IsValid(Carcass) || bBurned)
+		{
+			if (IsValid(Carcass))
+			{
+				Carcass->Destroy();
+			}
+			CarrionCarcasses.RemoveAt(Index);
+			if (CarrionCarcassSeconds.IsValidIndex(Index))
+			{
+				CarrionCarcassSeconds.RemoveAt(Index);
+			}
+			bChanged = true;
+			continue;
+		}
+
+		CarrionCarcassSeconds[Index] += SecondsBetweenWaveChecks;
+		if (CarrionCarcassSeconds[Index] < Effects::CarrionFeastEatenAfterSeconds - KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		// EATEN: the carcass goes, the count of carcasses eaten rises, and a feeder of the floor's kinds at Common
+		// stands where it lay while fewer than the most stand. It pays as the floor's creatures do, and is on the
+		// floor's list so a floor change disposes of it with the rest.
+		const FVector At = Carcass->GetActorLocation();
+		Carcass->Destroy();
+		CarrionCarcasses.RemoveAt(Index);
+		CarrionCarcassSeconds.RemoveAt(Index);
+		bChanged = true;
+		CarrionFeastStacks = Effects::CarrionFeastStacksAfter(CarrionFeastStacks);
+		if (!Effects::CarrionFeastFeederComes(CarrionFeedersNow().Num()))
+		{
+			continue;
+		}
+		if (!Population.IsSet())
+		{
+			Population = FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		}
+		if (Population->Enemies.IsEmpty())
+		{
+			continue;
+		}
+		FCataclysmEnemyPlacement Placement = Population->Enemies[FMath::RandRange(0, Population->Enemies.Num() - 1)];
+		Placement.Cell = CurrentFloor->CellOfWorld(At);
+		ACataclysmEnemyCharacter* Feeder =
+			SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0);
+		if (!Feeder)
+		{
+			continue;
+		}
+		Feeder->bRaisedByARule = true;
+		Feeder->bIsACarrionFeeder = true;
+		CreaturesRaisedByARule.Add(Feeder);
+		FloorEnemies.Add(Feeder);
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Feeder);
+		CarrionFeeders.Add(Feeder);
+		CarrionFeederOwnMaxHealth.Add(
+			Abilities ? Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f);
+		UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: a carcass eaten, %d in all, and a feeder came on floor %d"),
+			   CarrionFeastStacks, FloorNumber);
+	}
+
+	if (bChanged)
+	{
+		StrengthenTheFeeders();
+	}
+
+	const int32 Key = CarrionFeastStacks * 10000 + CarrionCarcassesNow().Num() * 100 + CarrionFeedersNow().Num();
+	if (Key != CarrionFeastPanelKey)
+	{
+		CarrionFeastPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::StrengthenTheFeeders()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// ONE MULTIPLIER ON DAMAGE AND ON HEALTH, from the carcasses eaten. Health keeps its share of the maximum, so a
+	// wounded feeder is as wounded after as before.
+	const float Multiplier = Effects::CarrionFeastMultiplier(CarrionFeastStacks);
+	for (int32 Index = 0; Index < CarrionFeeders.Num() && Index < CarrionFeederOwnMaxHealth.Num(); ++Index)
+	{
+		ACataclysmEnemyCharacter* Feeder = CarrionFeeders[Index].Get();
+		if (!IsValid(Feeder) || UCataclysmSkillEffects::IsDead(Feeder))
+		{
+			continue;
+		}
+		Feeder->SetCarrionFeastDamageMultiplier(Multiplier);
+		UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Feeder);
+		const float OldMaximum = Abilities ? Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute()) : 0.0f;
+		const float NewMaximum = CarrionFeederOwnMaxHealth[Index] * Multiplier;
+		if (OldMaximum <= 0.0f || NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
+		{
+			continue;
+		}
+		const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
+		Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
+		Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+	}
+}
+
 void ACataclysmDungeonGameMode::ForgetTheVeins()
 {
 	for (const FInfestedVein& One : InfestedVeins)
@@ -6049,6 +6288,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	bRawSewageInARiver = false;
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
+	ForgetTheCarrion();
 	ForgetTheSarcophagi();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
@@ -6536,6 +6776,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND INFESTED VEINS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bInfestedVeins = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::InfestedVeinsKey));
+	// AND CARRION FEAST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bCarrionFeast = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::CarrionFeastKey));
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
@@ -6566,7 +6809,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bSwarmOfLocusts
 		&& !bRawSewage
-		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
+		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
 	{
 		return;
@@ -6806,6 +7049,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bInfestedVeins)
 	{
 		StepInfestedVeins(Player, AbilitySystem);
+	}
+
+	// AND CARRION FEAST, WHICH TURNS CARCASSES NOT BURNED INTO FEEDERS AND MAKES THE FEEDERS STRONGER. Issues #1820
+	// and #41.
+	if (bCarrionFeast)
+	{
+		StepCarrionFeast();
 	}
 
 	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
@@ -7875,6 +8125,9 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
+	// AND CARRION FEAST AFTER IT, so a creature this same death got back up is standing again and leaves no carcass.
+	// Issues #1820 and #41.
+	NoteDeathForCarrionFeast(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
@@ -9252,6 +9505,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	// `CataclysmDungeonModifierEffects.cpp` already does where it says "Count the
 	// arms rather than reading a number here."
 	NoteHitForWastingSickness(Notice);
+	NoteHitForCarrionFeast(Notice);
 	NoteHitForBrandOfTheAggressor(Notice);
 	NoteHitForHolyRepercussions(Notice);
 	NoteHitForTheReaper(Notice);
@@ -9617,6 +9871,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  Standing, InfestedVeinsDestroyed)
 			: FString::Printf(TEXT("infested veins: %d standing; %d destroyed of %d before the guardians come"),
 							  Standing, InfestedVeinsDestroyed, Effects::InfestedVeinsDestroyedBeforeGuardians));
+	}
+
+	// AND CARRION FEAST: the carcasses lying, the feeders standing, and how much stronger the feeders are. Issues
+	// #1820 and #41.
+	const FName Carrion(Effects::CarrionFeastKey);
+	if (FloorBrief.Modifiers.Contains(Carrion))
+	{
+		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%"),
+											  CarrionCarcassesNow().Num(), CarrionFeedersNow().Num(),
+											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
 	}
 
 	// AND VOID PARASITE: how many voidlings the player carries, and what clears them. Issues #1820 and #41.
@@ -11697,6 +11961,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// it back.
 		WitheredGroundPatches.Empty();
 		WitheredGroundRecoveryLessApplied = 0.0f;
+
+		// AND CARRION FEAST: a floor's carcasses go with it and its count of carcasses eaten starts again. The feeders
+		// are the floor's creatures and go with them; a Horde wave's feeders keep the strength they had. Issues
+		// #1820 and #41.
+		ForgetTheCarrion();
 
 		// AND ETERNAL CHORUS'S EFFECTS ON THE PLAYER, for Withered Ground's reason: the call above has
 		// taken them off, and the next beat puts them back if the player is still within earshot. Its

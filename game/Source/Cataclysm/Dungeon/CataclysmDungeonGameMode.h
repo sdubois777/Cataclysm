@@ -2038,6 +2038,11 @@ public:
 	int32 InfestedVeinsDestroyedHere() const { return InfestedVeinsDestroyed; }
 	bool InfestedVeinsGuardiansCame() const { return bInfestedVeinsGuardiansCame; }
 
+	/** Carrion Feast, for the panel and tests: the carcasses lying, the feeders standing, and the carcasses eaten. */
+	TArray<ACataclysmEnemyCharacter*> CarrionCarcassesNow() const;
+	TArray<ACataclysmEnemyCharacter*> CarrionFeedersNow() const;
+	int32 CarrionFeastStacksNow() const { return CarrionFeastStacks; }
+
 	/** The health a vein is given: the Imp's at Common, 87, as the other floor sources have. A play-test value. */
 	float InfestedVeinHealth() const { return ImpHealth; }
 
@@ -2399,6 +2404,21 @@ private:
 	 */
 	void StepInfestedVeins(class ACataclysmPlayerCharacter* Player,
 						   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Carrion Feast: every carcass destroyed and forgotten, and the feeders and the carcasses eaten forgotten. */
+	void ForgetTheCarrion();
+
+	/** Carrion Feast, on the beat: burned carcasses removed, carcasses eaten at their seconds, and feeders brought. */
+	void StepCarrionFeast();
+
+	/** Carrion Feast: a floor creature's death leaves a carcass where it died. */
+	void NoteDeathForCarrionFeast(const struct FCataclysmDeathNotice& Notice);
+
+	/** Carrion Feast: a fire hit on a carcass burns it, and it is removed on the next beat. */
+	void NoteHitForCarrionFeast(const struct FCataclysmHitNotice& Notice);
+
+	/** Carrion Feast: every feeder standing given the damage and health of the carcasses eaten. */
+	void StrengthenTheFeeders();
 
 	/**
 	 * On every beat whatever the rules: the seconds on this floor, and the one log line the first time it
@@ -3491,6 +3511,18 @@ private:
 	float InfestedVeinsSecondsSinceBurn = 0.0f;
 	int32 InfestedVeinsPanelStanding = -1;
 	int32 InfestedVeinsPanelDestroyed = -1;
+
+	/**
+	 * Carrion Feast: the carcasses and the seconds each has lain (below zero once burned), the feeders and the
+	 * maximum health each had when it came, the carcasses eaten on this floor, and what the panel last showed.
+	 * Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> CarrionCarcasses;
+	TArray<float> CarrionCarcassSeconds;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> CarrionFeeders;
+	TArray<float> CarrionFeederOwnMaxHealth;
+	int32 CarrionFeastStacks = 0;
+	int32 CarrionFeastPanelKey = -1;
 
 	/** Every floor: seconds since it was placed, and when it was first found cleared (-1 not yet). */
 	float FloorSecondsSincePlaced = 0.0f;

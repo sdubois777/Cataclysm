@@ -551,6 +551,12 @@ public:
 	static FString PortalTextFor(const AActor* Actor);
 
 	/**
+	 * "Carcass" under the health bar of a Carrion Feast carcass, and "Feeder" under the bar of a creature one became,
+	 * or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString CarcassTextFor(const AActor* Actor);
+
+	/**
 	 * "Second Self" under the health bar of the minion or thrall A Second Self
 	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
 	 * it says what the creature is. Nothing else on screen marks a minion.

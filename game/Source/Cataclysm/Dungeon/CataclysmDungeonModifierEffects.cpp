@@ -170,6 +170,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
 
+const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
+	TEXT("Pestilence_Carrion_Feast");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -520,6 +523,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
+		// CARRION FEAST. Carcasses become feeders unless burned, and the feeders grow stronger; the "purification
+		// altars" do nothing, because they wait on the interaction screen. Issues #1820 and #41.
+		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(SingularityWellsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
@@ -686,6 +692,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SwarmOfLocustsKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
+		FName(CarrionFeastKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
 		FName(ObsidianSarcophagiKey),

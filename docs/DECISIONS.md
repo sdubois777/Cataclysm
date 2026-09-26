@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Carrion Feast: a slain creature leaves a carcass that becomes a carrion feeder after 10 seconds unless fire burns it, and every carcass eaten makes the feeders 10% stronger; the purification altars wait on the interaction screen
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures and their three small functions, and its place among the rows that are partly built); a new class
+`game/Source/Cataclysm/Character/CataclysmCarcassCharacter.h`; `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+and `.cpp` (a feeder's flag, and an eighth key of `DamageMultipliersBySource`, `CarrionFeastDamageSource`, with its
+setter); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (the "Carcass" and "Feeder" labels);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the carcass on a death, the burn on a fire hit,
+the beat, the per-floor reset, leaving the dungeon, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
+(one check, and the new damage source in the check that every source writes its own key). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and PARTLY built.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Pestilence_Carrion_Feast` in `game/Data/DungeonModifiers.csv`, weight 10: "Rotting carcasses attract swarms of
+carrion feeders that consume the bodies, growing stronger and more numerous with each corpse. Players can prevent this
+by burning bodies with fire-based abilities or finding "purification altars" to consecrate the area." It states no
+figure.
+
+### What the rule does
+
+On a floor carrying the row, a creature of the floor slain leaves a carcass where it died: a floor source labelled
+"Carcass" under its health bar, which cannot be hurt. A creature a rule raised, a floor source and a feeder leave none,
+and nor does a creature the same death got back up. A carcass not burned within ten seconds is eaten: it goes, and a
+carrion feeder of the floor's kinds at the Common rung stands where it lay, labelled "Feeder", while fewer than eight
+feeders stand. Every carcass eaten on the floor, up to ten, makes every feeder standing 10% stronger in attack damage
+and maximum health; a feeder's health keeps its share of its maximum. Feeders pay as the floor's creatures do. A hit
+from the player's side carrying `Element.Demonic` burns a carcass: it goes on the next beat and no feeder comes. A new
+floor, or a Horde dungeon's next wave, takes the carcasses away and starts the count again. The panel reads "carrion
+feast: 1 carcasses lying, 2 feeders standing, feeders +30%".
+
+**Not built: the "purification altars"**, which wait on the interaction screen. The row is listed among those partly
+built for that reason.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25 and 2026-09-26. The row states no figure;
+every figure is a play-test value:**
+
+- **Buildable in part: the carcasses, the feeders and the burning. The altars wait on the interaction screen.**
+- **Accepted 2026-09-26, replacing the outline accepted the day before:** a carcass is left where a floor creature
+  dies; one not burned within 10 s is eaten and a feeder of the floor's kinds at Common stands in its place; each
+  carcass eaten makes every feeder standing 10% stronger in damage and health, up to 10, with at most 8 feeders; a hit
+  carrying `Element.Demonic` burns a carcass and no feeder comes; feeders pay. The outline had a carcass last 20 s and a
+  feeder walk to it; the carcass becoming the feeder needs no second walking branch in the creature brain, and "attract
+  swarms that consume the bodies" is still what the player sees.
+- **Fire is `Element.Demonic`.** The outline said fire would be read from the hit notice's damage type, and
+  `FCataclysmHitNotice` has no damage type. This project's fire is the Demonic element: `UCataclysmSkillTemplates`
+  says "Burning Wrath carries Element.Demonic, which is this project's fire". A player's hit carries its skill's
+  element on the damage effect, and `FCataclysmHitNotice::HasTag` reads it there.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **A burned carcass is removed on the next beat**, not inside the blow that burned it, so no actor is destroyed while a
+  blow is still resolving on it.
+- **Only a hit from the player's side burns**: a hit whose attacker is on the monsters' team does not.
+- **The feeders' damage is an eighth key of `DamageMultipliersBySource`**, the route every rule that changes a
+  creature's damage takes; their health is written onto the maximum, as Nothing Is Forgotten writes its boss's.
+- **At eight feeders a carcass is still eaten and still counts**; only the feeder does not come.
+- **A Horde wave's feeders keep the strength they had** when the count starts again.
+
+### The research
+
+**Nothing could be quoted.** The pages that describe Diablo III's Wretched Mother, a creature that eats corpses and
+brings up new undead from them, refused the fetch with HTTP 403 on 2026-09-26: `www.diablowiki.net` (the Wretched
+Mother and Risen Dead pages), `en.namu.wiki` and `www.purediablo.com`. A search result summarised the Wretched Mother
+as feasting on cadavers and regurgitating them as risen dead; that is a search engine's summary and is not quoted as a
+source here. The shape of this rule, its ten seconds, its 10%, its caps and fire as the Demonic element, are this
+game's own.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `CarrionFeastFiguresEatenStrongerAndMost`: the figures, the stacks' cap, the feeders' cap and the multiplier.
+- `ASlainCreatureLeavesACarcassThatBecomesAFeederAfterTenSeconds`: a carcass where the Imp died, unhurtable and
+  labelled, with the panel; still a carcass at 9.75 s; at 10 s a feeder near where it lay, labelled, paying, raised by
+  the rule, with 10% more damage, with the panel.
+- `AFireHitBurnsACarcassAndNoFeederComes`: a hit that is not fire leaves it; a Demonic hit removes it; no feeder comes
+  and nothing is eaten.
+- `EachCarcassEatenMakesEveryFeederStronger`: two carcasses eaten, two feeders each with 20% more damage, the first
+  feeder's maximum health grown from a tenth more to a fifth more; a feeder slain leaves no carcass.
+- `ANewFloorTakesTheCarcassesAway`: the carcass is gone on the next floor and the count starts again.
+- `ACarcassDoesNotTakeTheTrainingDummysEmptyName`: the carcass class names no archetype row, as the portal's does.
+
+One Python check: the row still says "carrion feeders that consume the bodies", "stronger and more numerous with each
+corpse", "fire-based abilities" and "purification altars".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-26 — A hit on a player measures distance, reads the damage type and spreads Contagious Torment from the player's character, not from its player state
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` and
