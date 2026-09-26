@@ -1210,6 +1210,7 @@ FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 	// Unstable Dimensions extra, the enemy score -- treats the two the same.
 	Dungeon.Modifiers = ChooseModifiers(Dungeon.ModifierScore);
 	Dungeon.ModifierPool = DungeonModifierPool;
+	Dungeon.EveryBuiltModifier = DungeonEveryBuiltModifier;
 	return Dungeon;
 }
 
@@ -6187,6 +6188,18 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	DungeonModifierPool = UCataclysmDungeonModifierRules::PoolFor(
 		Run->ModifierPool, Run->ActiveCataclysms);
 
+	// AND EVERY ROW THAT DOES SOMETHING IN PLAY, OF ANY CATACLYSM, for Reality Twister, which draws "from any
+	// Cataclysm". Built and partly built: a partly built row still acts, and a row with no rule does nothing. Issues
+	// #1820 and #41.
+	DungeonEveryBuiltModifier.Reset();
+	for (const FCataclysmDungeonModifier& Row : Run->ModifierPool)
+	{
+		if (UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) != ECataclysmModifierBuilt::NotBuilt)
+		{
+			DungeonEveryBuiltModifier.Add(Row);
+		}
+	}
+
 	// AND THE PLAYER STARTS AT ITS ENTRANCE. Without this the floor being walked
 	// is whatever the last dungeon left behind, and entering a shallower one
 	// while standing deep in a deeper one makes `IsOnTheLastFloor` true straight
@@ -6238,6 +6251,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	DungeonModifierScore = 0.0f;
 	DungeonModifiers.Reset();
 	DungeonModifierPool.Reset();
+	DungeonEveryBuiltModifier.Reset();
 	FloorBrief = FCataclysmFloorBrief();
 
 	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR GOES WITH THE RUN. Issues #1820 and #41.
@@ -9773,6 +9787,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  RawSewageStacks, RawSewageStacks == 1 ? TEXT("") : TEXT("s"),
 							  Effects::RawSewagePercentPerSecond(RawSewageStacks))
 			: FString(TEXT("raw sewage: no disease stacks")));
+	}
+
+	// AND REALITY TWISTER: the row it added to this floor, by its name. Issues #1820 and #41.
+	const FName Twister(FCataclysmDungeonFloorRules::RealityTwisterKey);
+	if (FloorBrief.Modifiers.Contains(Twister))
+	{
+		const FCataclysmDungeonModifier* Added = DungeonEveryBuiltModifier.FindByPredicate(
+			[this](const FCataclysmDungeonModifier& Row) { return Row.RowKey == FloorBrief.TwistedIn; });
+		Counting.Add(Twister, FloorBrief.TwistedIn.IsNone()
+			? FString(TEXT("reality twister: nothing was left to add on this floor"))
+			: FString::Printf(TEXT("reality twister: %s added on this floor"),
+							  *(Added ? Added->ModifierName : FloorBrief.TwistedIn).ToString()));
 	}
 
 	// AND SWARM OF LOCUSTS: the next swarm's seconds, or that one is crossing and a shelter stops it. Issues #1820

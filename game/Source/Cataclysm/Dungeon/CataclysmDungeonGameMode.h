@@ -208,6 +208,13 @@ public:
 	 */
 	TArray<FCataclysmDungeonModifier> DungeonModifierPool;
 
+	/**
+	 * Every row of the whole modifier table that does something in play, whatever Cataclysm: what Reality Twister
+	 * draws from. Filled where `DungeonModifierPool` is, from the run's whole table, and emptied with it. Issues
+	 * #1820 and #41.
+	 */
+	TArray<FCataclysmDungeonModifier> DungeonEveryBuiltModifier;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;

@@ -8,6 +8,9 @@
 const TCHAR* FCataclysmDungeonFloorRules::UnstableDimensionsKey =
 	TEXT("Chaos_Unstable_Dimensions");
 
+const TCHAR* FCataclysmDungeonFloorRules::RealityTwisterKey =
+	TEXT("Chaos_Reality_Twister");
+
 namespace
 {
 	/**
@@ -161,14 +164,18 @@ int32 FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(int32 WaveSpawned)
 
 void FCataclysmDungeonFloorRules::ModifiersFor(
 	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber,
-	TArray<FName>& OutModifiers, float& OutScore)
+	TArray<FName>& OutModifiers, float& OutScore, FName* OutTwistedIn)
 {
 	// RULE 1. An ordinary dungeon's floor carries the dungeon's own modifiers,
-	// and so does every floor of a dungeon whose pool was never filled.
+	// and so does every floor of a dungeon whose pools were never filled.
 	OutModifiers = Dungeon.Modifiers;
 	OutScore = Dungeon.ModifierScore;
+	if (OutTwistedIn)
+	{
+		*OutTwistedIn = NAME_None;
+	}
 
-	if (Dungeon.ModifierPool.Num() == 0)
+	if (Dungeon.ModifierPool.Num() == 0 && Dungeon.EveryBuiltModifier.Num() == 0)
 	{
 		return;
 	}
@@ -204,28 +211,55 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 	// on the floors whose re-draw actually landed Unstable Dimensions, and not
 	// on the ones it did not. The two rules share a field and neither is
 	// written in terms of the other.
-	if (!OutModifiers.Contains(FName(UnstableDimensionsKey)))
+	if (OutModifiers.Contains(FName(UnstableDimensionsKey)))
 	{
-		return;
+		// NOT ONE THIS FLOOR ALREADY CARRIES. Two copies of one environmental
+		// effect read to a player as one effect that is worse, which is the
+		// reasoning `UCataclysmDungeonModifierRules::Draw` records for the same
+		// rule inside a single draw.
+		const TArray<FCataclysmDungeonModifier> Left =
+			CataclysmFloorBriefPoolWithout(Dungeon.ModifierPool, OutModifiers);
+
+		const TArray<FCataclysmDungeonModifier> Extra =
+			UCataclysmDungeonModifierRules::Draw(Left, 1, Stream);
+
+		if (Extra.Num() > 0)
+		{
+			OutModifiers.Append(UCataclysmDungeonModifierRules::KeysOf(Extra));
+			OutScore += UCataclysmDungeonModifierRules::DangerOf(Extra);
+		}
 	}
 
-	// NOT ONE THIS FLOOR ALREADY CARRIES. Two copies of one environmental
-	// effect read to a player as one effect that is worse, which is the
-	// reasoning `UCataclysmDungeonModifierRules::Draw` records for the same
-	// rule inside a single draw.
-	const TArray<FCataclysmDungeonModifier> Left =
-		CataclysmFloorBriefPoolWithout(Dungeon.ModifierPool, OutModifiers);
-
-	const TArray<FCataclysmDungeonModifier> Extra =
-		UCataclysmDungeonModifierRules::Draw(Left, 1, Stream);
-
-	if (Extra.Num() == 0)
+	// RULE 4. REALITY TWISTER, AS THE OWNER DECIDED ON 2026-09-26: "Each floor, one
+	// random dungeon modifier from any Cataclysm is added, even one this dungeon
+	// could not otherwise draw. It is replaced on the next floor."
+	//
+	// FROM EVERY ROW THAT DOES SOMETHING IN PLAY, not the dungeon's own pool, so
+	// a Cataclysm this run is not facing can be drawn. NEVER REALITY TWISTER ITSELF
+	// AND NEVER A ROW ALREADY IN FORCE, including rule 3's extra: this floor
+	// carries Reality Twister, so leaving out what it carries leaves out both.
+	// AFTER RULES 2 AND 3 AND READING THEIR RESULT, as rule 3 reads rule 2's, so a
+	// Volatile floor that drew this row is twisted and one that did not is not.
+	// ON THE SAME STREAM, so a floor always draws the same row and the next floor
+	// draws again. ITS DANGER IS ADDED, so it counts toward this floor's creatures.
+	if (OutModifiers.Contains(FName(RealityTwisterKey)))
 	{
-		return;
-	}
+		const TArray<FCataclysmDungeonModifier> Left =
+			CataclysmFloorBriefPoolWithout(Dungeon.EveryBuiltModifier, OutModifiers);
 
-	OutModifiers.Append(UCataclysmDungeonModifierRules::KeysOf(Extra));
-	OutScore += UCataclysmDungeonModifierRules::DangerOf(Extra);
+		const TArray<FCataclysmDungeonModifier> Twisted =
+			UCataclysmDungeonModifierRules::Draw(Left, 1, Stream);
+
+		if (Twisted.Num() > 0)
+		{
+			OutModifiers.Append(UCataclysmDungeonModifierRules::KeysOf(Twisted));
+			OutScore += UCataclysmDungeonModifierRules::DangerOf(Twisted);
+			if (OutTwistedIn)
+			{
+				*OutTwistedIn = Twisted[0].RowKey;
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -246,7 +280,7 @@ FCataclysmFloorBrief FCataclysmDungeonFloorRules::BriefFor(
 	Brief.bSameArenaAsLastFloor = SameArenaAsLastFloor(Dungeon, Floor);
 	Brief.CarvedAsFloorNumber = CarvedAsFloorNumber(Dungeon, Floor);
 	Brief.SightRadiusMultiplier = SightRadiusMultiplierFor(Dungeon, Floor);
-	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore);
+	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore, &Brief.TwistedIn);
 
 	return Brief;
 }

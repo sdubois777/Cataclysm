@@ -79,6 +79,16 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 * `UCataclysmDungeonModifierRules::PoolFor` is what narrows it.
 	 */
 	TArray<FCataclysmDungeonModifier> ModifierPool;
+
+	/**
+	 * Every row of the modifier table that does something in play, built or partly built, whatever Cataclysm it is.
+	 *
+	 * READ ONLY BY REALITY TWISTER, whose row the owner decided on 2026-09-26 draws "one random dungeon modifier from
+	 * any Cataclysm ... even one this dungeon could not otherwise draw". Filled by `EnterEmpireDungeon` from the whole
+	 * table; empty is the same real answer `ModifierPool` gives, and a floor carrying Reality Twister then draws
+	 * nothing more.
+	 */
+	TArray<FCataclysmDungeonModifier> EveryBuiltModifier;
 };
 
 /**
@@ -120,6 +130,12 @@ struct CATACLYSM_API FCataclysmFloorBrief
 
 	/** The sum of those modifiers' danger scores, for the enemy score model. */
 	float ModifierScore = 0.0f;
+
+	/**
+	 * The row Reality Twister added to this floor, or none. Also in `Modifiers`; kept apart so the floor panel can name
+	 * it. Issues #1820 and #41.
+	 */
+	FName TwistedIn = NAME_None;
 
 	/**
 	 * Whether a boss stands at this floor's exit.
@@ -443,11 +459,13 @@ public:
 	 * @param FloorNumber    counted from 1
 	 * @param OutModifiers   the row keys in force on this floor
 	 * @param OutScore       the sum of their danger scores
+	 * @param OutTwistedIn   when given, the row Reality Twister added, or none
 	 */
 	static void ModifiersFor(const FCataclysmDungeonIdentity& Dungeon,
 							 int32 FloorNumber,
 							 TArray<FName>& OutModifiers,
-							 float& OutScore);
+							 float& OutScore,
+							 FName* OutTwistedIn = nullptr);
 
 	// ----------------------------------------------------------------------
 
@@ -461,6 +479,12 @@ public:
 	 * `game/Data/DungeonModifiers.csv`.
 	 */
 	static const TCHAR* UnstableDimensionsKey;
+
+	/**
+	 * The row key of the dungeon modifier that adds one row of any Cataclysm to each floor, drawn again on the next.
+	 * Issues #1820 and #41. Decided by the owner on 2026-09-26; see `ModifiersFor`'s rule 4.
+	 */
+	static const TCHAR* RealityTwisterKey;
 
 	/**
 	 * Mixed into a floor's seed so a per-floor modifier draw is not taken from

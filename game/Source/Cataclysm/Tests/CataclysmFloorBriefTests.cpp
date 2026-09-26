@@ -6,6 +6,7 @@
 
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
@@ -2183,6 +2184,255 @@ bool FCataclysmFloorBriefUnstableIsARowTest::RunTest(const FString& Parameters)
 				 FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 			 bFound);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Reality_Twister. Issues #1820 and #41. Decided by the owner on 2026-09-26: "Each floor, one random dungeon
+// modifier from any Cataclysm is added, even one this dungeon could not otherwise draw. It is replaced on the next
+// floor."
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFloorBriefTest
+{
+	/** The Reality Twister row, as a pool holds it. */
+	FCataclysmDungeonModifier TwisterRow()
+	{
+		return Make(FCataclysmDungeonFloorRules::RealityTwisterKey, ECataclysmType::Chaos, 20.0f);
+	}
+
+	/**
+	 * A tier 4 War dungeon carrying Reality Twister beside its own four, whose every built row is its own twenty War
+	 * rows, ten Chaos rows it could not otherwise draw, and the Reality Twister row itself.
+	 */
+	FCataclysmDungeonIdentity TwistedDungeon()
+	{
+		FCataclysmDungeonIdentity Out = Dungeon(ECataclysmDungeonSubType::None);
+		Out.Modifiers.Add(TwisterRow().RowKey);
+		Out.ModifierScore += TwisterRow().Danger;
+		Out.EveryBuiltModifier = Out.ModifierPool;
+		for (int32 Index = 0; Index < 10; ++Index)
+		{
+			Out.EveryBuiltModifier.Add(Make(*FString::Printf(TEXT("Chaos_Modifier_%02d"), Index),
+											ECataclysmType::Chaos, 100.0f + Index));
+		}
+		Out.EveryBuiltModifier.Add(TwisterRow());
+		return Out;
+	}
+
+	/** The row of this key among every built row, or null. */
+	const FCataclysmDungeonModifier* BuiltRowOf(const FCataclysmDungeonIdentity& Of, FName Key)
+	{
+		return Of.EveryBuiltModifier.FindByPredicate(
+			[Key](const FCataclysmDungeonModifier& Row) { return Row.RowKey == Key; });
+	}
+}
+
+// EVERY FLOOR GAINS ONE ROW, NEVER REALITY TWISTER AND NEVER ONE IN FORCE, SOMETIMES OF ANOTHER CATACLYSM, THE SAME ON
+// THE SAME FLOOR, DIFFERENT ACROSS FLOORS, AND ITS DANGER COUNTED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterTest,
+	"Cataclysm.FloorBrief.RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	const FCataclysmDungeonIdentity Twisted = TwistedDungeon();
+	FCataclysmDungeonIdentity Plain = Dungeon(ECataclysmDungeonSubType::None);
+	Plain.EveryBuiltModifier = Twisted.EveryBuiltModifier;
+
+	TSet<FName> Drawn;
+	int32 FromAnotherCataclysm = 0;
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(Twisted, Floor);
+		if (!TestFalse(FString::Printf(TEXT("floor %d gained a row"), Floor), Brief.TwistedIn.IsNone()))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("floor %d carries one more than the dungeon"), Floor),
+				  Brief.Modifiers.Num(), Twisted.Modifiers.Num() + 1);
+		TestTrue(FString::Printf(TEXT("floor %d carries the row"), Floor), Brief.Modifiers.Contains(Brief.TwistedIn));
+		TestNotEqual(FString::Printf(TEXT("floor %d did not draw Reality Twister"), Floor),
+					 Brief.TwistedIn, TwisterRow().RowKey);
+		TestFalse(FString::Printf(TEXT("floor %d drew no row the dungeon carries"), Floor),
+				  Twisted.Modifiers.Contains(Brief.TwistedIn));
+		const FCataclysmDungeonModifier* Row = BuiltRowOf(Twisted, Brief.TwistedIn);
+		if (TestNotNull(FString::Printf(TEXT("floor %d's row is a built row"), Floor), Row))
+		{
+			TestEqual(FString::Printf(TEXT("floor %d counts its danger"), Floor), Brief.ModifierScore,
+					  Twisted.ModifierScore + Row->Danger, 0.001f);
+			FromAnotherCataclysm += Row->Cataclysm != ECataclysmType::War ? 1 : 0;
+		}
+		TestEqual(FString::Printf(TEXT("floor %d draws the same row again"), Floor),
+				  FCataclysmDungeonFloorRules::BriefFor(Twisted, Floor).TwistedIn, Brief.TwistedIn);
+		Drawn.Add(Brief.TwistedIn);
+
+		// THE CONTROL: THE SAME DUNGEON WITHOUT THE ROW GAINS NOTHING.
+		const FCataclysmFloorBrief Untwisted = FCataclysmDungeonFloorRules::BriefFor(Plain, Floor);
+		TestTrue(FString::Printf(TEXT("without the row floor %d gains nothing"), Floor), Untwisted.TwistedIn.IsNone());
+		TestEqual(FString::Printf(TEXT("and carries what the dungeon drew on floor %d"), Floor),
+				  Untwisted.Modifiers.Num(), Plain.Modifiers.Num());
+	}
+	TestTrue(FString::Printf(TEXT("%d of %d floors drew a Chaos row, which this War dungeon could not otherwise draw"),
+							 FromAnotherCataclysm, SweepFloors),
+			 FromAnotherCataclysm > 0);
+	TestTrue(FString::Printf(TEXT("%d different rows over %d floors: replaced on the next floor"), Drawn.Num(), SweepFloors),
+			 Drawn.Num() > 1);
+	return true;
+}
+
+// ONLY WHAT IS NOT IN FORCE: WITH ONE ROW LEFT EVERY FLOOR DRAWS IT; WITH NONE LEFT A FLOOR GAINS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterLeftTest,
+	"Cataclysm.FloorBrief.RealityTwisterDrawsOnlyARowNotAlreadyInForce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterLeftTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// EVERY BUILT ROW IS ONE THE FLOOR CARRIES, BUT ONE.
+	FCataclysmDungeonIdentity OneLeft = TwistedDungeon();
+	OneLeft.EveryBuiltModifier.Reset();
+	for (const FName Key : OneLeft.Modifiers)
+	{
+		OneLeft.EveryBuiltModifier.Add(Make(*Key.ToString(), ECataclysmType::War, 1.0f));
+	}
+	const FCataclysmDungeonModifier Other = Make(TEXT("Void_The_Only_Other"), ECataclysmType::Void, 7.0f);
+	OneLeft.EveryBuiltModifier.Add(Other);
+
+	// AND EVERY BUILT ROW IS ONE THE FLOOR CARRIES.
+	FCataclysmDungeonIdentity NoneLeft = OneLeft;
+	NoneLeft.EveryBuiltModifier.Pop();
+
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		TestEqual(FString::Printf(TEXT("floor %d draws the one row not in force"), Floor),
+				  FCataclysmDungeonFloorRules::BriefFor(OneLeft, Floor).TwistedIn, Other.RowKey);
+		const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(NoneLeft, Floor);
+		TestTrue(FString::Printf(TEXT("with none left floor %d gains nothing"), Floor), Brief.TwistedIn.IsNone());
+		TestEqual(FString::Printf(TEXT("and carries only the dungeon's own on floor %d"), Floor),
+				  Brief.Modifiers.Num(), NoneLeft.Modifiers.Num());
+	}
+	return true;
+}
+
+// ON A REAL FLOOR THE ROW IS IN FORCE, COUNTED, AND NAMED ON THE PANEL BY ITS NAME.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterPanelTest,
+	"Cataclysm.FloorBrief.AFloorCarryingRealityTwisterNamesTheRowItAdded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// SET ON THE GAME MODE DIRECTLY, as the Volatile test above does. The rows' names differ from their keys, so the
+	// panel is seen to use the name.
+	Mode->TotalFloors = 8;
+	Mode->DungeonModifiers = {TwisterRow().RowKey};
+	Mode->DungeonModifierScore = TwisterRow().Danger;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		FCataclysmDungeonModifier Row = Make(*FString::Printf(TEXT("Chaos_Test_Row_%d"), Index), ECataclysmType::Chaos,
+											 10.0f * (Index + 1));
+		Row.ModifierName = FName(*FString::Printf(TEXT("Test Row %d"), Index));
+		Mode->DungeonEveryBuiltModifier.Add(Row);
+	}
+
+	for (int32 Floor = 1; Floor <= 4; ++Floor)
+	{
+		if (!TestTrue(FString::Printf(TEXT("floor %d was built"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		const FName Added = Mode->FloorBrief.TwistedIn;
+		const FCataclysmDungeonModifier* Row = Mode->DungeonEveryBuiltModifier.FindByPredicate(
+			[Added](const FCataclysmDungeonModifier& One) { return One.RowKey == Added; });
+		if (!TestNotNull(FString::Printf(TEXT("floor %d added one of the rows"), Floor), Row))
+		{
+			continue;
+		}
+		TestTrue(FString::Printf(TEXT("floor %d has it in force"), Floor), Mode->FloorBrief.Modifiers.Contains(Added));
+		TestEqual(FString::Printf(TEXT("floor %d's creatures are worth its danger too"), Floor),
+				  Mode->RunModifierScore(), TwisterRow().Danger + Row->Danger, 0.001f);
+		TestEqual(FString::Printf(TEXT("floor %d's panel names it"), Floor),
+				  Mode->LiveCountsForTheFloor().FindRef(FName(FCataclysmDungeonFloorRules::RealityTwisterKey)),
+				  FString::Printf(TEXT("reality twister: %s added on this floor"), *Row->ModifierName.ToString()));
+	}
+	return true;
+}
+
+// ENTERING A DUNGEON CARRIES EVERY ROW THAT DOES SOMETHING, OF EVERY CATACLYSM, AND LEAVING EMPTIES IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterPoolTest,
+	"Cataclysm.FloorBrief.EnteringADungeonCarriesEveryBuiltRowForRealityTwister",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterPoolTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE REAL TABLE, as the test of the narrowed pool above uses.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	if (!TestTrue(TEXT("the modifier table loaded"), Run->ModifierPool.Num() > 0))
+	{
+		return false;
+	}
+	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+	if (!TestTrue(TEXT("the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+	Mode->SetEmpireRunForTests(Run);
+	if (!TestTrue(TEXT("the dungeon is entered"), Mode->EnterEmpireDungeon(Run->Dungeons[0].DungeonId)))
+	{
+		return false;
+	}
+
+	int32 Doing = 0;
+	for (const FCataclysmDungeonModifier& Row : Run->ModifierPool)
+	{
+		Doing += UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) != ECataclysmModifierBuilt::NotBuilt ? 1 : 0;
+	}
+	int32 DoingNothing = 0;
+	int32 NotFaced = 0;
+	for (const FCataclysmDungeonModifier& Row : Mode->DungeonEveryBuiltModifier)
+	{
+		DoingNothing += UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) == ECataclysmModifierBuilt::NotBuilt ? 1 : 0;
+		NotFaced += Run->ActiveCataclysms.Contains(Row.Cataclysm) ? 0 : 1;
+	}
+	TestEqual(TEXT("every row that does something is carried"), Mode->DungeonEveryBuiltModifier.Num(), Doing);
+	TestEqual(TEXT("and no row that does nothing"), DoingNothing, 0);
+	TestTrue(FString::Printf(TEXT("%d of them are of a Cataclysm this run is not facing"), NotFaced), NotFaced > 0);
+
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving empties it"), Mode->DungeonEveryBuiltModifier.Num(), 0);
 	return true;
 }
 

@@ -2,6 +2,108 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Reality Twister: each floor gains one random row of any Cataclysm that does something in play, drawn again on the next floor, as the owner decided
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (the row's key, a second pool on the
+dungeon's identity, the row a floor gained, and a fourth rule in `FCataclysmDungeonFloorRules::ModifiersFor`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp` (the row among those built, and among the keys with
+a rule); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the pool filled on entering a dungeon and
+emptied on leaving, and the panel line); and the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmFloorBriefTests.cpp`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The row's new text in the design workbook, the
+tables generated from it, the Python check of the text, the Unreal compile, the automation tests and the guard proofs
+have NOT been done yet; they are done in one window with the build machine and the workbook, and added at the end of
+this entry.
+
+### The row
+
+`Chaos_Reality_Twister` in `game/Data/DungeonModifiers.csv`, weight 20, until the window: "Every 30 seconds, a random
+modifier is added to the entire dungeon. The modifier can be anything from increased enemy damage to reduced player
+movement speed, or even a beneficial one like increased magic find. The modifiers are permanent for the duration of the
+dungeon."
+
+### The owner's decision, 2026-09-26, relayed by the coordinating session
+
+**It replaces both earlier readings.** Each floor, one random dungeon modifier is added, drawn from any Cataclysm type,
+including ones this dungeon could not otherwise draw; it is replaced by a new draw on the next floor. The owner
+confirmed "any Cataclysm, even if not in the current run". **The row's text becomes:** "Each floor, one random dungeon
+modifier from any Cataclysm is added, even one this dungeon could not otherwise draw. It is replaced on the next floor."
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **It draws only rows that do something in play, built or partly built**, never Reality Twister itself, and never a row
+  already in force on that floor. A partly built row still acts; a row with no rule does nothing.
+- **The panel names the added row. Its danger counts toward that floor's creatures.**
+- **It is built on the per-floor re-draw the Volatile sub-type and Unstable Dimensions already use.**
+
+### What the rule does
+
+Entering a dungeon from the empire map fills a second pool on the game mode: every row of the whole modifier table whose
+`BuiltStateOf` is not `NotBuilt`, whatever its Cataclysm. On each floor whose modifiers include Reality Twister,
+`ModifiersFor` draws one row from that pool, leaving out every row the floor already carries (Reality Twister among
+them), from the floor's own seeded stream: the same floor always gains the same row, and the next floor draws again.
+The row is added to the floor's modifiers, its danger is added to the floor's score, and `FCataclysmFloorBrief::TwistedIn`
+names it. The panel reads "reality twister: <the row's name> added on this floor", by the row's name and not its key. Leaving the dungeon
+empties the pool.
+
+**Rules 2 and 3 are unchanged in what they do.** Rule 3's early `return` became a block, so that rule 4 can follow it;
+its draw, its pool and its stream are the same.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **After Unstable Dimensions' extra, and reading it**, as Unstable Dimensions reads the Volatile re-draw: the extra is
+  among the rows left out, and a Volatile floor that re-drew Reality Twister is twisted while one that did not is not.
+  The other way round: an Unstable Dimensions that Reality Twister draws adds nothing on that floor, because its rule has
+  already run.
+- **When nothing is left to draw**, the floor gains nothing, and the panel says "reality twister: nothing was left to
+  add on this floor".
+- **The pool is filled from the run's whole table** where the dungeon's own pool is narrowed, once on entering.
+
+### What a rule that keeps a count across the dungeon does when it is drawn for one floor
+
+The coordinating session asked this to be named. **Read on development b399d403, not run.** What a rule places, times
+or checks on a floor happens only on a floor whose modifiers carry it. What a rule carries across the dungeon stays
+after that floor, exactly as it does when a Volatile dungeon re-draws the row onto one floor:
+
+- **Raw Sewage's disease stacks** keep burning on later floors: its step runs while any stack is held
+  (`|| RawSewageStacks > 0` beside the row test in `StepFloorRulesThatChange`), and only a floor's boss's death or the
+  player's clears them (`NoteDeathForRawSewage`), whether or not a later floor carries the row.
+- **Abyssal Rifts' successes** are the dungeon's and end only at the player's death or on leaving the dungeon, and
+  `ApplyChangingFloorEffects` writes their magic find from them without asking whether the floor carries the row.
+- **Blood Debt** is not on development yet; its branch ends the debt at death.
+
+So "it acts on that floor only" is true of what a rule does on a floor and not of what it carries between floors.
+
+### The research
+
+The shape is the owner's decision rather than a proposal, so no genre source was sought for it.
+
+### Tests
+
+Four automation tests in `Cataclysm.FloorBrief.`:
+
+- `RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor`: over twenty floors of a War dungeon, each floor gains one row,
+  carried, never Reality Twister, never one of the dungeon's own, a built row whose danger is counted, the same row when
+  the floor is asked again; at least one floor draws a Chaos row, and more than one row is drawn; the same dungeon
+  without the row gains nothing.
+- `RealityTwisterDrawsOnlyARowNotAlreadyInForce`: with one row left every floor draws it; with none left a floor gains
+  nothing.
+- `AFloorCarryingRealityTwisterNamesTheRowItAdded`: on four built floors the row is in force, the creatures' score counts
+  its danger, and the panel names it by its name rather than its key.
+- `EnteringADungeonCarriesEveryBuiltRowForRealityTwister`: with the real table, entering carries every row that does
+  something and none that does nothing, some of a Cataclysm the run is not facing; leaving empties it.
+
+### Not yet done
+
+The row's new text in `docs/All_Things_Cataclysm.xlsx`, the tables generated from it, a Python check of the new text,
+the compile, the automation tests, the whole-suite figure and the three guard proofs. They are done in one window with
+the build machine and the workbook.
+
+---
+
 ## 2026-09-25 — Abyssal Rifts: one rift a floor opens when the player comes near and sends three waves of four; killing them all within 60 seconds closes it in time for +10 magic find, and each success sends later rifts' creatures one rung higher
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
