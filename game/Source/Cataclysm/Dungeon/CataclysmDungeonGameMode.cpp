@@ -5546,12 +5546,20 @@ void ACataclysmDungeonGameMode::NoteDeathForQuarantineBreach(const FCataclysmDea
 	// the player standing in it once a second by a share of their maximum health, typed by the row.
 	const bool bReleased = QuarantineReleased.ContainsByPredicate(
 		[&Notice](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Notice.Victim; });
+
+	// ASKED FIRST, BEFORE THE SOURCE IS FETCHED: `ForFloor` spawns the floor's hazard source when there is none, so
+	// fetching it for every death left one behind on every floor. Withered Ground's test caught it in this change's
+	// window, 2026-09-26: "and makes no hazard source at all", on a floor carrying no hazard.
+	if (!bReleased)
+	{
+		return;
+	}
 	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
 	APlayerController* Controller = World->GetFirstPlayerController();
 	const ACataclysmPlayerCharacter* Player =
 		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
 	const UAbilitySystemComponent* AbilitySystem = Player ? Player->GetAbilitySystemComponent() : nullptr;
-	if (!bReleased || !Source || !AbilitySystem)
+	if (!Source || !AbilitySystem)
 	{
 		return;
 	}
