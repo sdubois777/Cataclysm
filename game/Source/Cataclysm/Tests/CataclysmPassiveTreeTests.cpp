@@ -9516,11 +9516,20 @@ namespace CataclysmPlainRowTest
 	constexpr int32 FewestRavager = 56;
 	constexpr int32 FewestRitualist = 63;
 
-	/** A row with no condition, no scale, no required tag and no capstone option. */
+	/**
+	 * A row with no condition, no scale, no required tag, no capstone option and
+	 * no Min Points.
+	 *
+	 * NO MIN POINTS since #2127, which gave Scarred Plate's crowd control
+	 * resistance row `MinPoints` 4: such a row pays its figure once from that many
+	 * points rather than per point, so "figure times the points" is not what it
+	 * does. It skips one Ravager row today, and the two rows with Min Points are
+	 * covered by `Cataclysm.AtPointsRows.*`.
+	 */
 	bool IsPlain(const FCataclysmPassiveEffectRow& Row)
 	{
 		return Row.Condition.IsEmpty() && Row.Scale.IsEmpty()
-			&& Row.RequiredTags.IsEmpty() && Row.Option == 0;
+			&& Row.RequiredTags.IsEmpty() && Row.Option == 0 && Row.MinPoints == 0;
 	}
 
 	/** A stat's recorded line, through the pipeline with no state in hand. */
@@ -17880,7 +17889,26 @@ bool FCataclysmNeverLetsGoRealHitTest::RunTest(const FString&)
 			return false;
 		}
 
-		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, 100.0f, Melee, Delivery);
+		// A BLOW OF A TENTH OF THE ENEMY'S MAXIMUM HEALTH OR MORE, AND NOT A KILLING ONE.
+		// An ailment that does not come from the skill's own row is rolled only on
+		// a blow that takes a tenth of the target's maximum health, the owner's rule
+		// of 2026-09-02 (#917), and never on a corpse. This test first hit for 100
+		// and rolled nothing. Both are set-up, asserted, so a wrong guess about the
+		// enemy's armour or the Ravager's multipliers fails here and not on "Crippled it".
+		const FGameplayAttribute EnemyHealth = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float MaxHealth = EnemySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float HealthBefore = EnemySystem->GetNumericAttribute(EnemyHealth);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, 250'000.0f, Melee, Delivery);
+		const float Taken = HealthBefore - EnemySystem->GetNumericAttribute(EnemyHealth);
+		if (!TestTrue(*FString::Printf(TEXT("set-up: the blow took %.0f, at least a tenth of %.0f"),
+									   Taken, MaxHealth),
+					  Taken >= MaxHealth * 0.1f)
+			|| !TestTrue(TEXT("set-up: and the enemy is still alive"),
+						 EnemySystem->GetNumericAttribute(EnemyHealth) > 0.0f))
+		{
+			return false;
+		}
 
 		TestTrue(TEXT("the Ravager's blow Crippled it"),
 				 EnemySystem->HasMatchingGameplayTag(Cripple));
@@ -18495,10 +18523,15 @@ bool FCataclysmPassiveInAmongThemOnARealCharacterTest::RunTest(const FString&)
 	{
 		return Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer());
 	};
+	// SPELL DAMAGE AS A MULTIPLIER, THROUGH A READ THAT COUNTS ENEMIES IN REACH.
+	// `StatAppliedTo` never counts them, so every per-enemy-in-reach row reads
+	// zero there; a skill's spell damage goes through `StatForSkill`, which does.
+	// `MultiplierForStatAgainst` builds the same state and returns the increases
+	// and the "more" product, so the ratio holds whatever base is recorded.
 	const auto Spell = [&Player]()
 	{
-		return Player.AbilitySystem->StatAppliedTo(
-			FName(TEXT("spell_damage")), FGameplayTagContainer(), 100.0f);
+		return Player.AbilitySystem->MultiplierForStatAgainst(
+			FName(TEXT("spell_damage")), FGameplayTagContainer(), nullptr);
 	};
 
 	const float AttackAlone = AttackMore();
@@ -18584,14 +18617,20 @@ bool FCataclysmPassiveWadeInOnARealCharacterTest::RunTest(const FString&)
 	FCataclysmPassiveAllocation Chosen = Unchosen;
 	Chosen.SetChosenOption(Capstone, 1);
 
+	// ARMOUR AS A HIT READS IT: `UCataclysmDamageCalculation` asks
+	// `StatForSkill` for "armor" with the attribute as its fallback, and that read
+	// counts enemies in reach. `StatAppliedTo`, which this test used first, never
+	// counts them, so the row read zero there.
 	const auto Armour = [&Player]()
 	{
-		return Player.AbilitySystem->StatAppliedTo(
-			FName(TEXT("armor")), FGameplayTagContainer(), 100.0f);
+		return Player.AbilitySystem->StatForSkill(
+			FName(TEXT("armor")), FGameplayTagContainer(),
+			Player.AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetArmorAttribute()));
 	};
 
 	// WHAT OPTION 1 ADDS, AS THINGS STAND: to attack damage as a fraction, and
-	// to armour worked out on a figure of 100.
+	// to armour as a hit reads it.
 	const auto OptionAdds = [&]()
 	{
 		Take(Player, Unchosen);
