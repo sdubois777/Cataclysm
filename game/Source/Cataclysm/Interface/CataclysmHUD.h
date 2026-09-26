@@ -129,6 +129,15 @@ private:
 	 */
 	void DrawSkillBar();
 
+	/**
+	 * The four potion slots, in the bottom-right corner. Issue #806. Each box
+	 * shows its key, a bar of its charges filled from the bottom, and the drinks
+	 * it holds; a box holding too few charges for a drink is dimmed.
+	 * `UCataclysmPotions` owns the layout and the numbers, for the reason the
+	 * skill bar's helpers give.
+	 */
+	void DrawPotions();
+
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
 

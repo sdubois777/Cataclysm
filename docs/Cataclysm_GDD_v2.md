@@ -218,6 +218,10 @@ The following are default controls. Players with multiple damage types can map m
 | I | Open and close the carried inventory |
 | C | Open and close the character creator |
 | P | Open and close the passive class tree |
+| 2 | Drink the potion in slot 1 |
+| 3 | Drink the potion in slot 2 |
+| 4 | Drink the potion in slot 3 |
+| 5 | Drink the potion in slot 4 |
 
   
 
@@ -243,6 +247,10 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | I | Open and close the carried inventory |
 | C | Open and close the character creator |
 | P | Open and close the passive class tree |
+| 2 | Drink the potion in slot 1 |
+| 3 | Drink the potion in slot 2 |
+| 4 | Drink the potion in slot 3 |
+| 5 | Drink the potion in slot 4 |
 
   
 
@@ -2379,6 +2387,8 @@ and evasion build new offensive slots to serve six skills.
   - Jewelry: 8 Rings, Necklace, Relic
   - Consumables: 4 Potion slots
   - Weapons: See weapon types above
+
+**The four potion slots each hold a health potion on the keys 2 to 5.** A drink heals 35% of maximum health over 3 seconds, and one potion heal runs at a time. Each slot holds up to 30 charges and a drink spends 10. Every kill adds charges to all four slots by the creature's rarity: Common 1, Elite 3.5, Legendary 6, and 11 for a Herald, a Boss or a Cataclysm Boss. A creature whose death pays no loot or experience adds none. Every slot is full on entering a dungeon and is not refilled on the stairs. A potion heal obeys every rule on healing, Point of No Return's ceiling included. The slots are identical until gems fill their sockets. These are play-test values chosen on 2026-09-25; `docs/DECISIONS.md` has the sources.
 
   
 

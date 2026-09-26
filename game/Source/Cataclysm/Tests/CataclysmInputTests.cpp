@@ -280,7 +280,7 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Seven native bindings, found by the names the controller uses.
+	// Eleven native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
@@ -294,6 +294,11 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		CataclysmInputActionNames::ToggleCharacterCreation,
 		// The passive class tree, issue #50. It joined on 2026-08-25.
 		CataclysmInputActionNames::TogglePassiveTree,
+		// The four potion slots, issue #806. They joined on 2026-09-25.
+		CataclysmInputActionNames::DrinkPotion1,
+		CataclysmInputActionNames::DrinkPotion2,
+		CataclysmInputActionNames::DrinkPotion3,
+		CataclysmInputActionNames::DrinkPotion4,
 	};
 
 	for (const FName& Name : NativeNames)
@@ -379,6 +384,16 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 	// key for anything else, so the two have nothing to disagree about either.
 	RequiredEverywhere.Add(
 		Config->FindNativeAction(CataclysmInputActionNames::ToggleInventory));
+
+	// The four potions are on 2 to 5 in both schemes, so a player who changes
+	// scheme finds them where they were. Issue #806.
+	for (const FName& Potion : {CataclysmInputActionNames::DrinkPotion1,
+								CataclysmInputActionNames::DrinkPotion2,
+								CataclysmInputActionNames::DrinkPotion3,
+								CataclysmInputActionNames::DrinkPotion4})
+	{
+		RequiredEverywhere.Add(Config->FindNativeAction(Potion));
+	}
 
 	// Click-to-move is the one binding the two schemes disagree about, and the
 	// disagreement is the design rather than an omission. Under keyboard movement

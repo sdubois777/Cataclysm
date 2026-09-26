@@ -18,6 +18,9 @@
 // For a weapon left standing in the ground, whose hands are drawn empty.
 // Issue #1141.
 #include "AbilitySystem/CataclysmPlantedWeapon.h"
+// For the potion heal paid on each step, and its step length. Issue #806.
+#include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
@@ -1321,6 +1324,11 @@ void ACataclysmPlayerCharacter::AfterRegenerationStep()
 	// same step takes the same allowance, for the reason it gives: a fraction
 	// of a second is not something a player can perceive.
 	RefreshMovementSpeedIfItCanChangeUnannounced();
+
+	// AND A POTION HEAL IS PAID A STEP AT A TIME. Issue #806. Here rather than
+	// beside leech in the shared step, because only a player drinks: this is
+	// the player's own override of that step, run on the same quarter-second.
+	UCataclysmPotions::HealStep(this, UCataclysmRegeneration::StepSeconds);
 }
 
 void ACataclysmPlayerCharacter::OnActionEvent(FName Event)

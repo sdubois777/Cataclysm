@@ -10,6 +10,8 @@
 // For refusing a charge out of a pit. The Warhammer's Crater: "enemies in
 // the pit cannot charge or leap."
 #include "AbilitySystem/CataclysmTerrain.h"
+// For the potion charges a kill adds. Issue #806.
+#include "AbilitySystem/CataclysmPotions.h"
 // For the stack a kill may build. Issue #1004.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -351,6 +353,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// health debt beside it. All three find the player through the same
 			// controller, and the two that touch attributes read the pawn.
 			UCataclysmStacks::NoteEnemyKilled(Watching->GetPawn());
+
+			// AND A KILL FILLS THE POTION SLOTS, by how strong this creature
+			// was. Issue #806. ONLY A DEATH THAT PAYS, like the experience and
+			// the drops above: a creature risen from the dead has already filled
+			// them once, and one marked to die unpaid pays nothing at all.
+			if (bPays)
+			{
+				UCataclysmPotions::NoteEnemyKilled(Watching->GetPawn(), RarityStep);
+			}
 
 			// AND THE KILLER'S RUNNING SKILLS ARE TOLD. Issue #37. The Axe's
 			// Butcher's Heat: "every enemy you kill while it lasts grants 1%
