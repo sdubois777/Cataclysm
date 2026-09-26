@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Fear: a crowd-control status that moves the target away and stops it attacking; and Madness now takes the boss immunity and the 5-second window the design gave it
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFear.h` and `.cpp` (new: applying fear, the shared
+refusal rules and the flee direction); `CataclysmSkillEffects.h` and `.cpp` (Madness goes through the same rules);
+`CataclysmBasicAttack.cpp`; `CataclysmCharacterBase.h`, `CataclysmEnemyCharacter.h` and `.cpp`,
+`CataclysmEnemyController.h` and `.cpp` (a creature flees, or is told to flee without fear);
+`CataclysmPlayerController.cpp` (a feared player is walked away and cannot act);
+`CataclysmDungeonGameMode.cpp` and `CataclysmDungeonModifierEffects.h` (Dirge Resonance's crescendo grants fear
+immunity); `CataclysmCombatOverlay.h` and `.cpp` and `CataclysmHUD.cpp` ("Feared" on screen);
+`docs/All_Things_Cataclysm.xlsx` and `game/Config/Tags/CataclysmTags.ini` (the tags `State.Feared` and
+`State.FearImmune`); `docs/Cataclysm_GDD_v2.md` (fear's row in the anti-stun-lock table and a paragraph).
+Tests in `CataclysmFearTests.cpp` and one changed in `CataclysmSkillTemplateTests.cpp`.
+
+### WHAT WAS DECIDED
+
+Proposed and ruled on 2026-09-25 under the owner's delegation.
+
+- **Fear** moves the target away from the point it came from and stops it attacking or using a skill. A creature
+  moves 6 metres further from the point, and stands still where it cannot go further, or while Nowhere to Run holds
+  it. A feared player is walked away every frame and cannot swing, cast or walk. Crowd-control resistance shortens
+  it. It is refused by a boss, by a target holding `State.FearImmune`, and inside the 5-second immunity window it
+  shares with stun and knockdown, and a fear that lands opens that window. It has no damage threshold, as madness
+  has none.
+- A creature can also be told to flee without the tag (`ACataclysmEnemyCharacter::FleeFrom`), for rules that make
+  creatures run without fearing them.
+- Dirge Resonance's crescendo now grants `State.FearImmune` for its ten seconds. That half of the row waited on
+  fear existing and is now built.
+
+### MADNESS: STATED AND NOT BUILT UNTIL THIS CHANGE
+
+The design document's anti-stun-lock table gives Madness "the immunity window and boss immunity". Neither was
+built: every madness reached `UCataclysmSkillEffects::ApplyNamedEffect`, which applied it to a boss and inside the
+window. Madness now goes through the same checks fear uses, and **a madness that lands opens the shared window, so
+a stun, a knockdown, a fear or a second madness on the same target within 5 seconds after it is refused.** Players
+will notice this: a Whisper of Madness followed at once by a stun no longer stuns.
+
+Measured before the change, on commit `d4824362`, which carries the two madness tests and not the code: `2 tests
+performed, 0 succeeded, 2 failed`. "madness on a boss is refused" and "and the boss is not maddened" were false,
+and so were "inside the five-second window madness is refused" and "and the creature is not maddened".
+
+### TESTS
+
+Nine in `Cataclysm.Fear.`: a feared creature moves away and does not attack; a feared player cannot attack and is
+walked away; a boss is not feared and the window refuses a second fear or a stun; crowd-control resistance shortens
+a fear in proportion; Nowhere to Run holds a feared creature still; Dirge's crescendo makes every creature immune to
+fear; fleeing without fear; madness is refused on a boss; madness is refused inside the window after a stun.
+
+### Run
+
+One window on 2026-09-26, with the build machine and the workbook, on development 1887eb5b. Every figure below is
+what `pytest`, the tag scripts, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record | `5521 passed, 8 skipped` (JUnit 5,529, no failures), as registered |
+| Tags | `Tags sheet: 141 rows before, 143 after`; `CataclysmTags.ini is up to date (197 tags)` |
+| Measurement, on `d4824362` | `2 tests performed, 0 succeeded, 2 failed`, as registered |
+| Head build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite, started with no CI run in progress | `2630 tests performed, 2628 succeeded, 2 failed`; 2630 declared, gap 0. **Not as registered** |
+| Rebuild after two test-only changes | `Build: Succeeded - 5 actions, 2 files compiled` |
+| `Cataclysm.Skills.ADebuffLastsTwiceAsLongOnABurningTarget` | `1 tests performed, 1 succeeded, 0 failed` |
+| `Cataclysm.Fear.` | `9 tests performed, 9 succeeded, 0 failed` |
+
+**The whole suite's two failures, and what was done.** Both changes are to tests only. The master ruled that the
+rerun is of the affected groups, not a second whole suite, since the whole suite had run once.
+
+- `Cataclysm.Skills.ADebuffLastsTwiceAsLongOnABurningTarget` maddened one target and then, once it was burning,
+  maddened it again at once to read the doubled duration. The first madness now opens the shared window, so the
+  second was refused: "And lasts twice as long on a burning enemy" read 0 against 6. That is the design working as
+  written. The burning half is now cast on a second, fresh target.
+- `Cataclysm.Fear.TheDirgeCrescendoMakesEveryCreatureImmuneToFear` spawned no player, and the dungeon game mode runs
+  no floor rule without a possessed player, so the crescendo never came ("set-up: the crescendo has come" was
+  false). The test now possesses a player, set up the way `FPossessedPlayer` in
+  `CataclysmDungeonModifierEffectsTests.cpp` does.
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.Fear.` (nine tests), each anchor re-checked immediately
+before its run. The owner's ruling of 2026-09-14 allows three per change, and a failed proof is not replaced.
+
+| Break | With the break in | Restored | Verdict |
+|---|---|---|---|
+| The shared boss check refuses nobody | `9 tests performed, 7 succeeded, 2 failed`: `ABossIsNotFearedAndTheWindowRefusesASecondFearOrAStun`, `MadnessIsRefusedOnABossAsFearIs` | `9 tests performed, 9 succeeded, 0 failed` | Proved |
+| The shared window check refuses nobody | `9 tests performed, 7 succeeded, 2 failed`: `ABossIsNotFearedAndTheWindowRefusesASecondFearOrAStun`, `MadnessIsRefusedInsideTheWindowAfterAStun` | `9 tests performed, 9 succeeded, 0 failed` | Proved |
+| A creature held by Nowhere to Run flees anyway | `9 tests performed, 9 succeeded, 0 failed` | `9 tests performed, 9 succeeded, 0 failed` | **NOT A PROOF** |
+
+**The third is not a proof, and the gap is real.** `NowhereToRunHoldsAFearedCreatureStill` checks that the brain
+reports fleeing and that `LastFleeGoal` is zero. `LastFleeGoal` is zero both when the creature is held and when
+`MoveTo` fails twice, once with pathfinding and once without, so the test cannot tell the two apart. With the hold
+check broken, the test still passed, so `MoveTo` failed for that creature in that set-up. **Why `MoveTo` failed
+there was NOT measured**; `AFearedCreatureMovesAwayFromTheSourceAndDoesNotAttack` gets a goal 6 metres out.
+The test is unchanged in this change. A small follow-up, `fix/nowhere-to-run-hold-test`, adds a control half: the
+same creature in the same place, feared and not held, must get a goal 6 metres out before the hold makes it zero.
+
+**A miss in the Python prediction, recorded.** The first Python run on this change failed the hooks check
+(`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`), because `PostProcessInput` gained
+calls to `UCataclysmFear::FleeDirectionFor` and `IsFeared`. Both are listed in that check as questions, which
+answer something and add no collected test.
+
+---
+
 ## 2026-09-25 — Infection Bloom: one bloom a floor spreads a patch every 20 seconds to eight, creatures on a patch deal 20% more, three come every 45 seconds while it stands, and destroying it clears the patches and sends a surge of four
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
