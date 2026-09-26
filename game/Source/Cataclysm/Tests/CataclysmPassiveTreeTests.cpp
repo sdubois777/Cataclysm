@@ -15917,6 +15917,520 @@ bool FCataclysmDemonicRowsGroundDownTest::RunTest(const FString&)
 		 {UCataclysmDebuffs::GroundDownPercentStat, 15.0f}});
 }
 
+// ---------------------------------------------------------------------------
+// Five Masochist rows that read the character's health or its stacks, each
+// through its real row on a real Masochist. Issue #2119, third batch.
+//
+// THE STACKS ARE EARNED THE WAY THE GAME EARNS THEM. Bloodlust and Carnivore's
+// Carnage come from real hits reaching the character's health, Carnage from a
+// real creature's `HandleDeath`, and Sanguine Momentum from the two recorders
+// `UCataclysmSkillTemplate::PayHealthCost` calls, in its order. Each count is
+// asserted through `UCataclysmStacks::Held` as set-up before a reading, so a
+// stack that was never granted fails there, named, and not as a bonus that
+// looks too small.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmStackRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	void Take(FRealCharacter& Player, const TCHAR* Node, int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(FName(Node), Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	bool Start(FAutomationTestBase& Test, UWorld* World, FRealCharacter& Player)
+	{
+		Player = Spawn(World);
+		if (!Test.TestTrue(TEXT("a possessed Masochist with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+
+	/** Health so deep a run of small hits never moves its percentage a step. */
+	void MakeHuge(FRealCharacter& Player)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+													  1'000'000.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+													  1'000'000.0f);
+	}
+
+	/** A creature's hit on the Masochist that reached its health. */
+	bool HitsHealth(ACataclysmEnemyCharacter* Creature, FRealCharacter& Player)
+	{
+		FCataclysmHitDelivery Blow;
+		Blow.bCannotCriticallyStrike = true;
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyDirectDamage(Creature, Player.Character, 10.0f,
+												  Blow, &Resolved);
+		return Resolved.DealtToHealth > 0.0f;
+	}
+
+	/** SET-UP: the character holds exactly this many stacks of a kind. */
+	bool Holds(FAutomationTestBase& Test, const FRealCharacter& Player,
+			   ECataclysmStackKind Kind, int32 Expected)
+	{
+		return Test.TestEqual(
+			*FString::Printf(TEXT("set-up: the Masochist holds %d %s"), Expected,
+							 UCataclysmStacks::NameOf(Kind)),
+			UCataclysmStacks::Held(Player.AbilitySystem, Kind), Expected);
+	}
+
+	FGameplayTagContainer MeleeTags()
+	{
+		FGameplayTagContainer Tags;
+		const FGameplayTag Melee = FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
+		if (Melee.IsValid())
+		{
+			Tags.AddTag(Melee);
+		}
+		return Tags;
+	}
+
+	/** The spell damage "more" multiplier, as the character stands now. */
+	float SpellMore(const FRealCharacter& Player)
+	{
+		const FCataclysmStatInputs* Inputs =
+			Player.AbilitySystem->GetStatInputs(FName(TEXT("spell_damage")));
+		return Inputs
+			? UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+											   FGameplayTagContainer(),
+											   Player.AbilitySystem->CurrentConditions())
+				  .MoreMultiplier
+			: -1.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmViciousOnslaughtTest,
+	"Cataclysm.MasochistStackRows.ViciousOnslaughtRaisesARealMasochistsAttackDamageForEachFivePercentMissing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_basic_fc_a0` Vicious Onslaught: "+1% increased Attack Damage per
+ *  point for every 5% of your maximum health that is missing." Twelve points,
+ *  12% a whole step. Health is set on a real Masochist and the increases a blow
+ *  carries are read through `AttackDamageIncreasesForSkill`. The figures avoid
+ *  exact multiples of 5%, so no reading sits on a rounding boundary. */
+bool FCataclysmViciousOnslaughtTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_fc_a0"), 12);
+	const auto AtHealth = [this, &Player](float Health, float& OutIncreases)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+													  1'000.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health);
+		OutIncreases =
+			Player.AbilitySystem->AttackDamageIncreasesForSkill(FGameplayTagContainer());
+		return TestEqual(*FString::Printf(TEXT("set-up: the Masochist is on %g of 1000"),
+										  Health),
+						 Player.AbilitySystem->GetNumericAttribute(
+							 Vital::GetHealthAttribute()),
+						 Health, 0.001f);
+	};
+
+	float Whole = 0.0f;
+	float FourMissing = 0.0f;
+	float TwentyFourMissing = 0.0f;
+	float ThirtyOneMissing = 0.0f;
+	if (!AtHealth(1'000.0f, Whole) || !AtHealth(960.0f, FourMissing)
+		|| !AtHealth(760.0f, TwentyFourMissing) || !AtHealth(690.0f, ThirtyOneMissing))
+	{
+		return false;
+	}
+	TestEqual(TEXT("4% missing is no whole step: nothing"), FourMissing - Whole, 0.0f,
+			  0.0001f);
+	TestEqual(TEXT("24% missing is four steps: 48%"), TwentyFourMissing - Whole, 0.48f,
+			  0.0001f);
+	TestEqual(TEXT("31% missing is six steps: 72%"), ThirtyOneMissing - Whole, 0.72f,
+			  0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodOfferingTest,
+	"Cataclysm.MasochistStackRows.BloodOfferingRaisesARealMasochistsMeleeDamageForEachHitTaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_basic_fc_a1` Blood Offering: "Taking damage grants a stack of
+ *  Bloodlust for 5 seconds, up to 5 stacks. Each stack gives +1% increased melee
+ *  damage per point." Ten points: three real hits are 30% on a melee blow and
+ *  nothing on one without the tag; eight hits stop at five stacks, 50%. */
+bool FCataclysmBloodOfferingTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = MeleeTags();
+	ACataclysmEnemyCharacter* Creature = SpawnHostile(
+		World, Player.Character->GetActorLocation() + FVector(6.0f * M, 0.0f, 0.0f));
+	if (!TestEqual(TEXT("the melee tag exists"), Melee.Num(), 1)
+		|| !TestNotNull(TEXT("a creature to hit the Masochist"), Creature))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_fc_a1"), 10);
+	MakeHuge(Player);
+	const auto Read = [&Player, &Melee]()
+	{
+		return TPair<float, float>(
+			Player.AbilitySystem->AttackDamageIncreasesForSkill(Melee),
+			Player.AbilitySystem->AttackDamageIncreasesForSkill(FGameplayTagContainer()));
+	};
+	if (!Holds(*this, Player, ECataclysmStackKind::Bloodlust, 0))
+	{
+		return false;
+	}
+	const TPair<float, float> Clean = Read();
+
+	for (int32 Hit = 0; Hit < 3; ++Hit)
+	{
+		if (!TestTrue(TEXT("set-up: the hit reached the Masochist's health"),
+					  HitsHealth(Creature, Player)))
+		{
+			return false;
+		}
+	}
+	if (!Holds(*this, Player, ECataclysmStackKind::Bloodlust, 3))
+	{
+		return false;
+	}
+	const TPair<float, float> Three = Read();
+	TestEqual(TEXT("three stacks: 30% increased melee damage"), Three.Key - Clean.Key,
+			  0.30f, 0.0001f);
+	TestEqual(TEXT("and nothing on a blow that is not melee"), Three.Value - Clean.Value,
+			  0.0f, 0.0001f);
+
+	for (int32 Hit = 0; Hit < 5; ++Hit)
+	{
+		if (!TestTrue(TEXT("set-up: the hit reached the Masochist's health"),
+					  HitsHealth(Creature, Player)))
+		{
+			return false;
+		}
+	}
+	if (!Holds(*this, Player, ECataclysmStackKind::Bloodlust, 5))
+	{
+		return false;
+	}
+	TestEqual(TEXT("eight hits hold five stacks: 50%"), Read().Key - Clean.Key, 0.50f,
+			  0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarnageTest,
+	"Cataclysm.MasochistStackRows.CarnageMultipliesARealMasochistsMeleeDamageAfterAKillAboveSeventyFiveFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_keystone_fc_kA` Carnage: a kill while holding more than 75 Fervour
+ *  grants a stack, and each stack is 3% more melee damage. A real creature's
+ *  `HandleDeath` credits the possessed Masochist. A kill on an empty bar grants
+ *  nothing; a kill on 80 grants one, and a melee blow is 3% more while a blow
+ *  without the tag is unmoved. */
+bool FCataclysmCarnageTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackRowTest;
+	using namespace CataclysmRavagerFervourTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = MeleeTags();
+	if (!TestEqual(TEXT("the melee tag exists"), Melee.Num(), 1))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_keystone_fc_kA"), 1);
+	const auto Kill = [World, &Player]()
+	{
+		ACataclysmEnemyCharacter* Victim = SpawnHostile(
+			World, Player.Character->GetActorLocation() + FVector(3.0f * M, 0.0f, 0.0f));
+		if (Victim)
+		{
+			Victim->HandleDeath();
+		}
+		return Victim != nullptr;
+	};
+	const auto Read = [&Player, &Melee]()
+	{
+		return TPair<float, float>(
+			Player.AbilitySystem->AttackDamageMoreForSkill(Melee),
+			Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer()));
+	};
+
+	if (!TestEqual(TEXT("set-up: the bar is empty"), FervourOf(Player), 0.0f, 0.001f)
+		|| !TestTrue(TEXT("a creature killed on an empty bar"), Kill())
+		|| !Holds(*this, Player, ECataclysmStackKind::Carnage, 0))
+	{
+		return false;
+	}
+	const TPair<float, float> Clean = Read();
+
+	GiveFervour(Player, 80.0f);
+	if (!TestTrue(TEXT("set-up: the Masochist holds more than 75 Fervour"),
+				  FervourOf(Player) > 75.0f)
+		|| !TestTrue(TEXT("a creature killed on 80"), Kill())
+		|| !Holds(*this, Player, ECataclysmStackKind::Carnage, 1))
+	{
+		return false;
+	}
+	const TPair<float, float> One = Read();
+	TestEqual(TEXT("one stack: a melee blow is 3% more"), One.Key / Clean.Key, 1.03f,
+			  0.0001f);
+	TestEqual(TEXT("and a blow that is not melee is unmoved"), One.Value / Clean.Value,
+			  1.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSanguineMomentumTest,
+	"Cataclysm.MasochistStackRows.SanguineMomentumQuickensARealMasochistsSwingForEachHealthCostInARow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_basic_bt_b1` Sanguine Momentum: "Each health cost paid within 3
+ *  seconds of the last grants a stack, up to 5 stacks. Each stack gives +1%
+ *  increased attack speed per point." Six points. A payment is recorded
+ *  through the two calls `PayHealthCost` makes, in its order; the first of a
+ *  fight grants nothing. The interval is read through
+ *  `UCataclysmBasicAttack::SecondsBetweenSwingsFor`, what the basic attack
+ *  waits between swings. */
+bool FCataclysmSanguineMomentumTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_bt_b1"), 6);
+	const auto Pay = [&Player]()
+	{
+		UCataclysmStacks::NoteHealthCostPaid(Player.AbilitySystem);
+		Player.AbilitySystem->NoteHealthCostPaid(10.0f);
+	};
+	const auto Interval = [&Player]()
+	{
+		return UCataclysmBasicAttack::SecondsBetweenSwingsFor(Player.AbilitySystem);
+	};
+	float Others = 0.0f;
+	if (const FCataclysmStatInputs* Inputs =
+			Player.AbilitySystem->GetStatInputs(FName(TEXT("attack_speed"))))
+	{
+		for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+		{
+			if (Modifier.Bucket == ECataclysmStatBucket::Increased
+				&& Modifier.Condition == ECataclysmStatCondition::Always
+				&& Modifier.Scale == ECataclysmStatScale::Fixed)
+			{
+				Others += Modifier.Value;
+			}
+		}
+	}
+	const auto Quicker = [Others](float Extra)
+	{
+		return (1.0f + (Others + Extra) / 100.0f) / (1.0f + Others / 100.0f);
+	};
+
+	const float Clean = Interval();
+	Pay();
+	if (!TestTrue(TEXT("set-up: the Masochist swings at all"), Clean > 0.0f)
+		|| !Holds(*this, Player, ECataclysmStackKind::SanguineMomentum, 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the first cost of a fight is not within 3 seconds of a last one"),
+			  Interval(), Clean, 0.0001f);
+
+	Pay();
+	if (!Holds(*this, Player, ECataclysmStackKind::SanguineMomentum, 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one stack: 6% increased attack speed"), Clean / Interval(),
+			  Quicker(6.0f), 0.0001f);
+
+	for (int32 More = 0; More < 5; ++More)
+	{
+		Pay();
+	}
+	if (!Holds(*this, Player, ECataclysmStackKind::SanguineMomentum, 5))
+	{
+		return false;
+	}
+	TestEqual(TEXT("seven costs in a row hold five stacks: 30%"), Clean / Interval(),
+			  Quicker(30.0f), 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarnivoreTest,
+	"Cataclysm.MasochistStackRows.CarnivoreGivesARealMasochistUnlimitedCarnageFromHitsTaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Masochist_capstone_200` option 2, Carnivore: "Every hit you take grants a
+ * stack of Carnage. Carnage has no maximum stacks. Each stack gives 2% more
+ * damage." Rows #7 to #10.
+ *
+ * The tree is filled to 200 with BASIC nodes only, because every Masochist
+ * "more" row outside this option is on a keystone or a capstone. The attack and
+ * spell multipliers therefore read exactly 1 with no Carnage and 1.24 with
+ * twelve stacks, on blows with no tags. Hits taken before the option is chosen
+ * grant no Carnage. Twelve is more than Carnage's own cap of five, which is
+ * what the no-maximum row changes.
+ */
+bool FCataclysmCarnivoreTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	ACataclysmEnemyCharacter* Creature = nullptr;
+	if (!Start(*this, World, Player)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		return false;
+	}
+	Creature = SpawnHostile(
+		World, Player.Character->GetActorLocation() + FVector(6.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a creature to hit the Masochist"), Creature))
+	{
+		return false;
+	}
+
+	const FName Capstone(TEXT("Masochist_capstone_200"));
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+	{
+		const auto* Row = reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+		if (Filled >= 200 || Row->Tree != TEXT("Masochist") || Row->Kind != TEXT("basic")
+			|| Row->MaxPoints <= 0)
+		{
+			continue;
+		}
+		const int32 Points = FMath::Min(Row->MaxPoints, 200 - Filled);
+		Allocation.Add(Pair.Key, Points);
+		Filled += Points;
+	}
+	if (!TestEqual(TEXT("set-up: the Masochist's basic nodes hold 200 points"), Filled,
+				   200))
+	{
+		return false;
+	}
+	Allocation.Add(Capstone, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	MakeHuge(Player);
+
+	const auto Read = [&Player]()
+	{
+		return TPair<float, float>(
+			Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer()),
+			SpellMore(Player));
+	};
+
+	// THE CONTROL: without the option, a hit grants no Carnage.
+	if (!TestTrue(TEXT("set-up: the hit reached the Masochist's health"),
+				  HitsHealth(Creature, Player))
+		|| !Holds(*this, Player, ECataclysmStackKind::Carnage, 0))
+	{
+		return false;
+	}
+
+	FString Refusal;
+	if (!TestTrue(TEXT("Carnivore can be chosen"),
+				  Player.State->ChoosePassiveOption(Capstone, 2, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	MakeHuge(Player);
+
+	const TPair<float, float> Clean = Read();
+	TestEqual(TEXT("no Carnage: attack damage is 1x more"), Clean.Key, 1.0f, 0.0001f);
+	TestEqual(TEXT("and spell damage 1x more"), Clean.Value, 1.0f, 0.0001f);
+
+	for (int32 Hit = 0; Hit < 12; ++Hit)
+	{
+		if (!TestTrue(TEXT("set-up: the hit reached the Masochist's health"),
+					  HitsHealth(Creature, Player)))
+		{
+			return false;
+		}
+	}
+	if (!Holds(*this, Player, ECataclysmStackKind::Carnage, 12))
+	{
+		return false;
+	}
+	const TPair<float, float> Twelve = Read();
+	TestEqual(TEXT("twelve stacks: attack damage is 1.24x more"), Twelve.Key, 1.24f,
+			  0.0001f);
+	TestEqual(TEXT("and spell damage 1.24x more"), Twelve.Value, 1.24f, 0.0001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNothingWastedTest,
 	"Cataclysm.DemonicRows.NothingWastedReachesARealRavagerFromItsRow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
