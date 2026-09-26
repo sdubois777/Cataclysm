@@ -1553,6 +1553,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		ForgetThePortals();
 		PlaceThePortals();
 
+		// AND LUXURY HOARDERS, FOR THE SAME REASON; a Horde arena's waves keep its hoards. Placed before the floor's own
+		// creatures, so the guards join the list those are added to. Issues #1820 and #41.
+		ForgetTheHoards();
+		PlaceTheHoards();
+
 		// AND QUARANTINE BREACH, FOR THE SAME REASON; a Horde arena's waves keep its containment.
 		// Issues #1820 and #41.
 		ForgetTheQuarantine();
@@ -5829,6 +5834,88 @@ void ACataclysmDungeonGameMode::StepInsanityBursts(
 	}
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::LuxuryHoardGuardsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : LuxuryHoardGuards)
+	{
+		ACataclysmEnemyCharacter* Guard = One.Get();
+		if (IsValid(Guard) && !UCataclysmSkillEffects::IsDead(Guard))
+		{
+			Standing.Add(Guard);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheHoards()
+{
+	LuxuryHoards.Reset();
+	LuxuryHoardGuards.Reset();
+	LuxuryHoardDrops = 0;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheHoards()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::LuxuryHoardersKey)))
+	{
+		return;
+	}
+	const FCataclysmFloorPopulation Population =
+		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	float MagicFind = 0.0f;
+	float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::LuxuryHoardersPerFloor);
+	for (int32 Index = 0; Index < Cells.Num(); ++Index)
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cells[Index]);
+		LuxuryHoards.Add(Where);
+
+		// THE PILE: drop rolls at the Legendary rung, lying there from the start, on a stream seeded from the floor so
+		// the same floor lays the same pile.
+		FRandomStream Stream(CurrentFloor->GetPlan().Seed ^ (0x5A17 + Index));
+		for (int32 Roll = 0; Roll < Effects::LuxuryHoardersPileRolls; ++Roll)
+		{
+			LuxuryHoardDrops += UCataclysmDropSpawner::SpawnDropsFor(
+				World, Effects::LuxuryHoardersPileRung, MagicFind, LootQuantity, Where, Stream);
+		}
+
+		// THE GUARDS: the floor's own kinds at the Elite rung, standing on it. They pay and are the floor's.
+		const TArray<FIntPoint> Beside = NecroticBloomWaveCells(*CurrentFloor, Where);
+		for (int32 Which = 0; Which < Effects::LuxuryHoardersGuards && !Population.Enemies.IsEmpty() && !Beside.IsEmpty();
+			 ++Which)
+		{
+			FCataclysmEnemyPlacement Placement =
+				Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+			Placement.Cell = Beside[FMath::RandRange(0, Beside.Num() - 1)];
+			if (ACataclysmEnemyCharacter* Guard = SpawnPlacedCreature(
+					Placement, FloorBrief.SightRadiusMultiplier, Effects::LuxuryHoardersGuardRung))
+			{
+				FloorEnemies.Add(Guard);
+				LuxuryHoardGuards.Add(Guard);
+			}
+		}
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Luxury Hoarders: %d hoard(s), %d drop(s), %d guard(s) on floor %d"),
+		   LuxuryHoards.Num(), LuxuryHoardDrops, LuxuryHoardGuards.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForLuxuryHoarders(const FCataclysmDeathNotice& Notice)
+{
+	if (LuxuryHoardGuards.ContainsByPredicate(
+			[&Notice](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Notice.Victim; }))
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -7102,6 +7189,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
+	ForgetTheHoards();
 
 	// AND THE BLOOD DEBT IS THE DUNGEON'S: leaving ends it, and the call below takes its blessing and curse off.
 	BloodDebtPaid = 0;
@@ -9020,6 +9108,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForLuxuryHoarders(Notice);
 	NoteDeathForBloodDebt(Notice);
 	NoteDeathForQuarantineBreach(Notice);
 	NoteDeathForInfectionBloom(Notice);
@@ -10828,6 +10917,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Counting.Add(Insanity, FString::Printf(TEXT("insanity bursts: next in %d s"),
 				FMath::Max(0, FMath::CeilToInt(Effects::InsanityBurstsSecondsBetween - InsanityBurstsSecondsSinceLast))));
 		}
+	}
+
+	// AND LUXURY HOARDERS: how many hoards, and how many of their guards stand. Issues #1820 and #41.
+	const FName Hoarders(Effects::LuxuryHoardersKey);
+	if (FloorBrief.Modifiers.Contains(Hoarders))
+	{
+		const int32 Guarding = LuxuryHoardGuardsStanding().Num();
+		Counting.Add(Hoarders, FString::Printf(TEXT("luxury hoarders: %d hoard%s, %d guard%s standing"),
+			LuxuryHoards.Num(), LuxuryHoards.Num() == 1 ? TEXT("") : TEXT("s"), Guarding,
+			Guarding == 1 ? TEXT("") : TEXT("s")));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
