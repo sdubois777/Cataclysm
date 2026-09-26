@@ -5705,13 +5705,13 @@ bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 		return false;
 	}
 	int32 HitsHeard = 0;
-	const FDelegateHandle Counting = Striker.Events->OnHit.AddLambda(
+	const FDelegateHandle HitListener = Striker.Events->OnHit.AddLambda(
 		[&HitsHeard, &Striker](const FCataclysmHitNotice& Notice)
 		{
 			HitsHeard += Notice.Attacker == Striker.Character ? 1 : 0;
 		});
 	const float Evaded = Striker.Blow(Striker.Second, true);
-	Striker.Events->OnHit.Remove(Counting);
+	Striker.Events->OnHit.Remove(HitListener);
 	AddInfo(FString::Printf(TEXT("the evaded swing dealt %.3f and %d hit notice(s) were heard"),
 		Evaded, HitsHeard));
 	TestEqual(TEXT("an evaded melee swing on the second enemy deals nothing"),
