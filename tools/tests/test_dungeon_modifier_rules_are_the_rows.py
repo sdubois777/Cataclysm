@@ -4276,3 +4276,20 @@ def test_portal_unleashing_row_still_has_portals_that_keep_sending_creatures_to_
         assert phrase in lower, (
             f"Void_Portal_Unleashing no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "PortalUnleashingKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_raw_sewage_row_still_has_rivers_that_give_disease_stacks_that_never_time_out():
+    """The phrases the rule's readings rest on.
+
+    "The dungeon is an actual cesspool, filled with rivers of toxic waste that will spread disease stacks to the
+    player. These disease stacks do not time out and must be cleansed." RIVERS OF TOXIC WASTE is the lines of marks;
+    DISEASE STACKS is why the player carries the disease keyword; DO NOT TIME OUT is why the stacks are the
+    dungeon's; MUST BE CLEANSED is the floor boss's death. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Raw_Sewage"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("rivers of toxic waste", "disease stacks", "do not time out", "must be cleansed"):
+        assert phrase in lower, (
+            f"Pestilence_Raw_Sewage no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "RawSewageKey in CataclysmDungeonModifierEffects.h. " + words)

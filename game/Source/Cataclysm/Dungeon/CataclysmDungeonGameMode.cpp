@@ -37,6 +37,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "GameplayTagsManager.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -1517,6 +1518,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// Issues #1820 and #41.
 		ForgetThePortals();
 		PlaceThePortals();
+
+		// AND RAW SEWAGE'S RIVERS, FOR THE SAME REASON; a Horde arena's waves keep its river. The stacks are the
+		// dungeon's and are not touched here. Issues #1820 and #41.
+		ForgetTheRivers();
+		PlaceTheRivers();
 
 		// AND INFESTED VEINS, FOR THE SAME REASON; a new arena starts its destroyed count again, and a
 		// Horde arena's waves keep it. Issues #1820 and #41.
@@ -4409,6 +4415,198 @@ void ACataclysmDungeonGameMode::StepPortalUnleashing()
 	}
 }
 
+TArray<ACataclysmGroundZone*> ACataclysmDungeonGameMode::RawSewageMarksNow() const
+{
+	TArray<ACataclysmGroundZone*> Now;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Mark : RawSewageMarks)
+	{
+		if (ACataclysmGroundZone* Zone = Mark.Get(); IsValid(Zone))
+		{
+			Now.Add(Zone);
+		}
+	}
+	return Now;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRivers()
+{
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Mark : RawSewageMarks)
+	{
+		if (ACataclysmGroundZone* Zone = Mark.Get())
+		{
+			Zone->Destroy();
+		}
+	}
+	RawSewageMarks.Reset();
+	RawSewageMarkPoints.Reset();
+	bRawSewageInARiver = false;
+	RawSewageSecondsInARiver = 0.0f;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheRivers()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::RawSewageKey)))
+	{
+		return;
+	}
+
+	// EACH RIVER A STRAIGHT LINE OF WINGS OF THE HOST'S MARKS ACROSS THE FLOOR, through a cell Eternal Chorus's
+	// picker gives and at a random heading, keeping the marks that stand clear of the entrance.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::RawSewageRiversPerHordeArena : Effects::RawSewageRiversPerFloor;
+	const FVector Entrance = CurrentFloor->EntranceWorld();
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		const float Heading = FMath::FRandRange(0.0f, PI);
+		for (const FVector& Where : WingsOfTheHostFeathers(
+				 *CurrentFloor, CurrentFloor->WorldOfCell(Cell), FVector(FMath::Cos(Heading), FMath::Sin(Heading), 0.0f)))
+		{
+			if (FVector::Dist2D(Where, Entrance) > Effects::RawSewageDryAroundTheEntranceCm)
+			{
+				RawSewageMarkPoints.Add(Where);
+			}
+		}
+	}
+	RawSewageMarks.SetNum(RawSewageMarkPoints.Num());
+	UE_LOG(LogCataclysm, Log, TEXT("Raw Sewage: %d river mark(s) on floor %d"), RawSewageMarkPoints.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepRawSewage(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::RawSewageKey);
+
+	if (FloorBrief.Modifiers.Contains(FName(Effects::RawSewageKey)) && CurrentFloor && CurrentFloor->IsBuilt())
+	{
+		// THE MARKS DRAWN AGAIN WHENEVER THEY ARE MISSING, which is after every floor or wave. They do no damage.
+		bool bInARiver = false;
+		const FVector Feet = Player->GetActorLocation();
+		for (int32 Index = 0; Index < RawSewageMarkPoints.Num(); ++Index)
+		{
+			ACataclysmGroundZone* Mark = RawSewageMarks.IsValidIndex(Index) ? RawSewageMarks[Index].Get() : nullptr;
+			if (!Mark && Source)
+			{
+				const FVector Where = RawSewageMarkPoints[Index];
+				Mark = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::WingsOfTheHostFeatherRadiusCm, 0.0f,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+				if (RawSewageMarks.IsValidIndex(Index))
+				{
+					RawSewageMarks[Index] = Mark;
+				}
+			}
+			bInARiver |= Mark && Mark->Covers(Feet);
+		}
+
+		// ENTERING ADDS A STACK, AND EACH FURTHER `RawSewageSecondsPerStack` IN A RIVER ANOTHER, never past the most.
+		if (bInARiver && !bRawSewageInARiver)
+		{
+			RawSewageStacks = Effects::RawSewageStacksAfterAdding(RawSewageStacks);
+			RawSewageSecondsInARiver = 0.0f;
+		}
+		else if (bInARiver)
+		{
+			RawSewageSecondsInARiver += SecondsBetweenWaveChecks;
+			if (RawSewageSecondsInARiver >= Effects::RawSewageSecondsPerStack)
+			{
+				RawSewageSecondsInARiver -= Effects::RawSewageSecondsPerStack;
+				RawSewageStacks = Effects::RawSewageStacksAfterAdding(RawSewageStacks);
+			}
+		}
+		else
+		{
+			RawSewageSecondsInARiver = 0.0f;
+		}
+		bRawSewageInARiver = bInARiver;
+	}
+	else
+	{
+		bRawSewageInARiver = false;
+		RawSewageSecondsInARiver = 0.0f;
+	}
+
+	// THE BURN, ONCE A SECOND ON ANY FLOOR WHILE A STACK IS HELD: Plague Convergence's pattern, a share of maximum
+	// health dealt as damage over time typed as the row, which pestilence resistance meets. Not the Disease ailment.
+	if (RawSewageStacks > 0)
+	{
+		RawSewageSecondsSinceBurn += SecondsBetweenWaveChecks;
+		if (RawSewageSecondsSinceBurn >= 1.0f)
+		{
+			RawSewageSecondsSinceBurn = 0.0f;
+			const float Burn = AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())
+				* Effects::RawSewagePercentPerSecond(RawSewageStacks) / 100.0f;
+			if (Source && Burn > 0.0f && !UCataclysmSkillEffects::IsDead(Player))
+			{
+				FCataclysmHitDelivery Delivery;
+				Delivery.bIsDamageOverTime = true;
+				Delivery.DamageType = Type;
+				UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Burn, Delivery);
+			}
+		}
+	}
+	else
+	{
+		RawSewageSecondsSinceBurn = 0.0f;
+	}
+
+	// THE DISEASE KEYWORD WHILE ANY STACK IS HELD, as ruled: the row says "disease stacks", so the player carries a
+	// debuff every reader of the player's debuffs sees -- the Masochist's count, Wound Channeling and Contagion.
+	const bool bWantTag = RawSewageStacks > 0;
+	if (bWantTag != bRawSewageTagged)
+	{
+		const FGameplayTag Disease =
+			UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Keyword.DoT.Disease")), /*ErrorIfNotFound=*/false);
+		if (Disease.IsValid())
+		{
+			if (bWantTag)
+			{
+				AbilitySystem->AddLooseGameplayTag(Disease);
+			}
+			else
+			{
+				AbilitySystem->RemoveLooseGameplayTag(Disease);
+			}
+		}
+		bRawSewageTagged = bWantTag;
+	}
+
+	if (RawSewageStacks != RawSewagePanelStacks)
+	{
+		RawSewagePanelStacks = RawSewageStacks;
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForRawSewage(const FCataclysmDeathNotice& Notice)
+{
+	if (RawSewageStacks <= 0)
+	{
+		return;
+	}
+	// A FLOOR'S BOSS OR THE PLAYER, as Wasting Sickness's stacks end. The next beat takes the tag off.
+	const bool bThePlayer = Cast<ACataclysmPlayerCharacter>(Notice.Victim) != nullptr;
+	if (!bThePlayer && !DiedAsAFloorsBoss(Notice.Victim))
+	{
+		return;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Raw Sewage: %d stack(s) cleansed by %s's death"), RawSewageStacks,
+		   bThePlayer ? TEXT("the player") : TEXT("a floor's boss"));
+	RawSewageStacks = 0;
+	RawSewageSecondsInARiver = 0.0f;
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -5667,6 +5865,13 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
+
+	// AND RAW SEWAGE'S RIVERS AND STACKS: the stacks are the dungeon's and end with it. The beat takes the disease
+	// tag off the player, since the step runs while it is held. Issues #1820 and #41.
+	ForgetTheRivers();
+	RawSewageStacks = 0;
+	RawSewageSecondsInARiver = 0.0f;
+	bRawSewageInARiver = false;
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
 	ForgetTheSarcophagi();
@@ -6146,6 +6351,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND RAW SEWAGE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHILE A STACK OR THE TAG IS HELD: the stacks
+	// are the dungeon's and burn on every floor. Issues #1820 and #41.
+	const bool bRawSewage = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RawSewageKey))
+		|| RawSewageStacks > 0 || bRawSewageTagged;
 	// AND INFESTED VEINS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bInfestedVeins = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::InfestedVeinsKey));
@@ -6177,6 +6386,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
 	{
@@ -6399,6 +6609,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND RAW SEWAGE, WHICH DRAWS RIVERS, ADDS STACKS, BURNS AND TAGS THE PLAYER. Issues #1820 and #41.
+	if (bRawSewage)
+	{
+		StepRawSewage(Player, AbilitySystem);
 	}
 
 	// AND INFESTED VEINS, WHICH PLACES ZONES, SPAWNS CREATURES AND HURTS THE PLAYER. Issues #1820 and #41.
@@ -7457,6 +7673,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForRawSewage(Notice);
 	NoteDeathForMarchOfProgress(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
@@ -9116,6 +9333,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 								   LivingFloorEnemies());
 		}
 		Counting.Add(Trial, Line);
+	}
+
+	// AND RAW SEWAGE: the stacks held, what they burn, and what cleanses them. Issues #1820 and #41.
+	const FName Sewage(Effects::RawSewageKey);
+	if (FloorBrief.Modifiers.Contains(Sewage))
+	{
+		Counting.Add(Sewage, RawSewageStacks > 0
+			? FString::Printf(TEXT("raw sewage: %d disease stack%s, %.1f%% of maximum health a second; a floor's boss "
+								   "cleanses them"),
+							  RawSewageStacks, RawSewageStacks == 1 ? TEXT("") : TEXT("s"),
+							  Effects::RawSewagePercentPerSecond(RawSewageStacks))
+			: FString(TEXT("raw sewage: no disease stacks")));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap

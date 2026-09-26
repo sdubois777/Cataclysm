@@ -2123,6 +2123,12 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Raw Sewage, for the panel and tests: the disease stacks the player carries. */
+	int32 RawSewageStacksHeld() const { return RawSewageStacks; }
+
+	/** Raw Sewage, for tests: the marks of this floor's rivers, drawn from its first beat. */
+	TArray<class ACataclysmGroundZone*> RawSewageMarksNow() const;
+
 	/** Pestilent Empowerment, for the panel and tests: beacons left standing on this dungeon's earlier floors. */
 	int32 PlagueBeaconsLeftStanding() const { return PestilentBeaconsLeftStanding; }
 
@@ -2311,6 +2317,22 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Raw Sewage: this arena's rivers chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheRivers();
+
+	/** Every river mark destroyed and forgotten. The stacks are the dungeon's and are not touched. */
+	void ForgetTheRivers();
+
+	/**
+	 * Raw Sewage, on the beat: the rivers kept drawn, a stack for entering one and one each further
+	 * `RawSewageSecondsPerStack` in it, the burn once a second on any floor while a stack is held, and the disease
+	 * tag held while any is.
+	 */
+	void StepRawSewage(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Raw Sewage: a floor's boss's death, or the player's, clears every stack. */
+	void NoteDeathForRawSewage(const struct FCataclysmDeathNotice& Notice);
 
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
@@ -3403,6 +3425,20 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether
+	 * the player stood in a river on the last beat, and for how long; the burn's clock; whether the disease tag
+	 * is on the player; and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<FVector> RawSewageMarkPoints;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> RawSewageMarks;
+	int32 RawSewageStacks = 0;
+	bool bRawSewageInARiver = false;
+	float RawSewageSecondsInARiver = 0.0f;
+	float RawSewageSecondsSinceBurn = 0.0f;
+	bool bRawSewageTagged = false;
+	int32 RawSewagePanelStacks = -1;
 
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein

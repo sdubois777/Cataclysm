@@ -175,6 +175,140 @@ Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before i
 
 ---
 
+## 2026-09-25 — Raw Sewage: two rivers of waste give the player disease stacks, one on entering and one each two seconds in them, to five; each burns 0.5% of maximum health a second on every floor until a floor's boss or the player dies; the player carries the disease keyword while any is held
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, the stacks and the burn); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the
+rivers, the stacks, the burn, the disease keyword, the cleanse, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
+have.
+
+### The row
+
+`Pestilence_Raw_Sewage` in `game/Data/DungeonModifiers.csv`, weight 10: "The dungeon is an actual cesspool, filled
+with rivers of toxic waste that will spread disease stacks to the player. These disease stacks do not time out and
+must be cleansed." It states no figure.
+
+### What the rule does
+
+When a floor carrying the row is placed, two rivers cross it; a Horde arena has one, kept for its waves. A river is a
+straight line of marks across the floor -- Wings of the Host's feathers, a mark every 400 cm of radius 150 cm --
+through a cell Eternal Chorus's picker gives, at a random heading, with every mark within 600 cm of the entrance
+left out so the player does not arrive standing in one. The marks do no damage. Stepping into a river gives the
+player a disease stack, and each further two seconds in it another, at most five. Each stack burns 0.5% of maximum
+health a second, summed -- 2.5% a second at five, the drain the owner chose for Suffering Aura -- dealt once a second
+as damage over time typed Pestilence, so pestilence resistance meets it. The stacks are the dungeon's: they stay on
+later floors, with the row or not, and go on burning there. They clear when a floor's boss dies or the player dies.
+While any is held the player carries the disease keyword, `Keyword.DoT.Disease`. The panel reads "raw sewage: 3
+disease stacks, 1.5% of maximum health a second; a floor's boss cleanses them", or "raw sewage: no disease stacks".
+
+**The burn is the rule's own, not the Disease ailment.** It is Plague Convergence's pattern: a share of maximum
+health a second from the floor's hazard source. The design document's paragraph opening "An ailment's damage is a
+flat amount, not a share of the hit" describes ailments; this is a floor hazard, and nothing about the Disease
+ailment's damage, duration or stacking applies to it.
+
+**No way for a player to cleanse their own debuffs exists in play yet, so only a boss and death clear these.** The
+only one in the design data is the enchantment `Positive_You_are_cleansed_every_5_seconds` ("You are cleansed every 5
+seconds", `game/Data/EnchantmentsPositive.csv`), which has no row in `game/Data/EnchantmentEffects.csv` and no code.
+Nothing in the passive nodes, weapon skills, gems or status effects cleanses or removes a debuff. **When that
+enchantment is built, its cleanse must also clear these stacks.**
+
+**THE DISEASE KEYWORD CHANGES MASOCHIST PLAY ON THESE FLOORS, and the owner should see this.** `Keyword.DoT.Disease`
+is the tag the Disease ailment grants, and everything that reads the debuffs a character carries reads it
+(`UCataclysmDebuffs`, which counts every tag under `Keyword.DoT` through the owned tags, loose ones included):
+
+- **The count of debuffs carried** (`State.DebuffsCarried`) rises by one while any stack is held -- one, however many
+  stacks -- so every rule that counts the player's debuffs counts it.
+- **"Damage to enemies sharing a debuff"** (Wound Channeling, issue #1061) finds it: a player carrying stacks deals
+  more to diseased enemies.
+- **Contagion spreads it as a real Disease ailment** (`UCataclysmContagion`), because the tag has a status-effect row
+  (`DoT_Disease`, "Deals a base of 12 damage a second for 6 seconds"), by two routes that each need a Masochist
+  node:
+  - **Beacon of Despair** (`Masochist_basic_fl_b2`): every 3 seconds its aura gives one carried debuff to every enemy
+    within 6 metres. With the sewage's disease the only debuff carried, that is a Disease on every nearby enemy every
+    3 seconds.
+  - **Contagious Torment** (`Masochist_basic_fl_b0`): each damage-over-time tick that reaches the player's health
+    gives each enemy within 6 metres a chance per point to catch a carried debuff. **The sewage's own burn is such a
+    tick, once a second, so the hazard feeds this route itself.**
+
+That is a large gain for a Masochist on these floors. It was ruled deliberately: a Disease an enemy puts on a
+Masochist already spreads by these same routes, and treating this one differently would need an exception list for a
+debuff that is literally a disease.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **Two rivers a floor; one on a Horde arena, kept.**
+- **Entering a river adds a stack, and each further 2 s in it another, at most 5.**
+- **Each stack burns 0.5% of maximum health a second, summed**, not doubled as Plague Convergence's are, because
+  these never expire.
+- **The stacks are the dungeon's**: they stay and burn on later floors, and clear at a floor's boss's death
+  (`DiedAsAFloorsBoss`) or the player's death, as Wasting Sickness's do.
+- **Creatures are not affected by the water.**
+- **The panel line as proposed.**
+- **The player cleanse was searched for, and the finding is stated above.**
+- **The burn is stated as the rule's own, not the Disease ailment.**
+- **The disease keyword is applied while any stack is held, and Contagion treats it as any other debuff** -- ruled
+  (a) of three options, with the literal reading of "disease stacks" as the reason.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **No river mark within 600 cm of the entrance** (`RawSewageDryAroundTheEntranceCm`).
+- **The panel line shows only on floors carrying the row**; on a later floor without it the stacks still burn, and
+  the keyword still shows the debuff.
+- **The keyword leaves on the beat after the stacks clear**, since the rule's step runs while it is held.
+
+### The research: ground that hurts the player who stands in it
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Caustic Ground | https://poedb.tw/us/Caustic_Ground | "You are taking Chaos Damage from standing in Caustic Ground" |
+| Diablo IV, Nightmare Dungeon affixes | https://maxroll.gg/d4/resources/nightmare-dungeons | Teleport Residue: "Astaroth now leaves behind a pool of persistent damage when teleporting." |
+
+**What it settles and what it does not.** Both games ship ground that damages a player standing in it. Neither page
+describes ground that leaves something on the player after they step out, or stacks that last until cleansed, so the
+stacks, their five, their half per cent, their outlasting the floor and the boss cure are this game's own. The
+Diablo IV page says it describes no affix that stacks a debuff on the player.
+
+### Tests
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `RawSewageStacksToFiveAndBurnsHalfAPercentEach`: the figures; stacks go 0 to 1, 4 to 5 and stay 5; they burn 0,
+  0.5, 2.5 and, past five, 2.5.
+- `RawSewageDrawsRiversClearOfTheEntrance`: every zone on floor 2 is a river mark, none within 600 cm of the
+  entrance; nothing held on the entrance; the panel; a Horde arena has a river, and its next wave draws as many marks
+  in the same place.
+- `ARiverAddsAStackOnEnteringAndEachTwoSecondsInIt`: no keyword and no debuff counted before; entering adds one, the
+  player carries the keyword and counts one debuff; 1.75 s more is still one and 2 s is two; out and back in is
+  three, with the panel; ten seconds more is five and still one debuff counted.
+- `RawSewageBurnsEachSecondAndOnTheNextFloor`: two stacks out of the river lose at least one and at most two
+  seconds' burn in two seconds; on floor 3 without the row they are still two, still burn and the keyword is still
+  held.
+- `AFloorsBossOrThePlayersDeathCleansesRawSewage`: a Common's death cleanses nothing; a boss's death cleanses every
+  stack, the keyword goes on the next beat and no debuff is counted; the player's death cleanses every stack.
+- `AMasochistInRawSewageGivesANearbyEnemyADisease`: a player made a Masochist through the real allocation, holding
+  Beacon of Despair, with one stack, gives an enemy 3 metres away the disease keyword with one aura pulse.
+- `AMasochistWithNoSewageStacksSpreadsNothing`: the same Masochist with no stack spreads nothing.
+
+One Python check: the row still says "rivers of toxic waste", "disease stacks", "do not time out" and "must be
+cleansed".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-25 — The consecutive-melee test that failed once: it now prints what its evaded swing depends on and asserts both, since no cause was found
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`, the test
