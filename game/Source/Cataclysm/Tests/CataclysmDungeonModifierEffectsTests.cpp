@@ -2811,6 +2811,13 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 				  FName(UCataclysmDungeonModifierEffects::InfernalRainKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
+	// SWARM OF LOCUSTS IS PARTLY BUILT, and #2129 listed it as built. Nothing obscures vision, which the row names.
+	// Issues #1820 and #41.
+	TestEqual(TEXT("Swarm of Locusts is partly built: nothing obscures vision"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
+				  FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+
 	// THE NOT-BUILT CONTROL USED TO BE Void_Singularity_Wells AND THAT ROW IS NOW
 	// PARTLY BUILT, so it had to be replaced. Chaos_Echo_Chamber takes its place
 	// for a stated reason rather than because it happened to be unbuilt.

@@ -110,6 +110,15 @@ Python: a row check that the row still says "unleashing waves", "close these rif
 given time limit", "difficulty and rewards increase" and "successfully closed rift"; and `RiftMagicFindAdded` named in
 `NOT_PERCENTAGES`.
 
+### Also in this change: Swarm of Locusts is listed as partly built
+
+[#2129](https://github.com/sdubois777/Cataclysm/pull/2129), Swarm of Locusts, put `SwarmOfLocustsKey` in the list of
+rows `BuiltStateOf` answers `Built` for, while its entry and its key's comment both said PARTLY BUILT: nothing obscures
+vision, which the row names, because that waits on the vision system. The floor panel therefore showed the row as
+finished. This change moves the key to the partly built list, with its reason beside it, and adds an assertion that
+`BuiltStateOf` answers `Partly` for it. It is its own commit on this branch, by the coordinating session's ruling of
+2026-09-26, so that the one line does not need a whole-suite window of its own.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
