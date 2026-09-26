@@ -1138,6 +1138,10 @@ void ACataclysmDungeonGameMode::StartPlay()
 		// AND A DROP TAKEN ANYWHERE REACHES TRICK OR TREAT, bound for the same three reasons.
 		// Issues #1820 and #41.
 		Events->OnLootTaken.AddUObject(this, &ACataclysmDungeonGameMode::OnLootTaken);
+
+		// AND A CLEANSE OF THE PLAYER REACHES THE STACKS WHOSE ROWS SAY THEY ARE CLEANSED, bound for the same
+		// three reasons. Ruled 2026-09-26.
+		Events->OnCleansed.AddUObject(this, &ACataclysmDungeonGameMode::OnSomethingWasCleansed);
 	}
 }
 
@@ -7435,6 +7439,52 @@ int32 ACataclysmDungeonGameMode::SoulHarvestSoulsOn(const ACataclysmEnemyCharact
 		}
 	}
 	return 0;
+}
+
+void ACataclysmDungeonGameMode::OnSomethingWasCleansed(AActor* Character)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE PLAYER ONLY. A creature's stacks are not the game mode's to keep.
+	if (!Cast<ACataclysmPlayerCharacter>(Character))
+	{
+		return;
+	}
+
+	// ONLY THE STACKS WHOSE ROWS SAY A CLEANSE ENDS THEM, as ruled on 2026-09-26: the row's own words decide.
+	// - Raw Sewage: "These disease stacks do not time out and must be cleansed."
+	// - The Starvation Curse: "These debuffs persist unless cleansed."
+	// - Chaos Touched: "will continue to stack unless cleansed", its debuff kinds only, the split a floor's boss
+	//   already makes, so its buffs stay.
+	// KEPT: Wasting Sickness ("can only be removed by defeating a floor boss"), The Nihil's Embrace ("you must defeat a
+	// high tier enemy"), Void Parasite (its light zone), and the stacks whose rows say nothing of a cleanse.
+	//
+	// LEFT TO THE BEAT, as a floor's boss's death leaves them: the next beat puts each change on the character and
+	// takes Raw Sewage's disease keyword off.
+	const bool bHeld = RawSewageStacks > 0 || StarvationCurseMovementStacks > 0 || StarvationCurseHealthStacks > 0;
+	bool bChaosDebuffHeld = false;
+	for (int32 Kind = Effects::ChaosTouchedFirstDebuff; Kind < Effects::ChaosTouchedKinds; ++Kind)
+	{
+		bChaosDebuffHeld |= ChaosTouchedStacks.IsValidIndex(Kind) && ChaosTouchedStacks[Kind] > 0;
+	}
+	if (!bHeld && !bChaosDebuffHeld)
+	{
+		return;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Cleanse: %d Raw Sewage, %d and %d Starvation Curse stack(s) cleared"),
+		   RawSewageStacks, StarvationCurseMovementStacks, StarvationCurseHealthStacks);
+	RawSewageStacks = 0;
+	RawSewageSecondsInARiver = 0.0f;
+	StarvationCurseMovementStacks = 0;
+	StarvationCurseHealthStacks = 0;
+	for (int32 Kind = Effects::ChaosTouchedFirstDebuff; Kind < Effects::ChaosTouchedKinds; ++Kind)
+	{
+		if (ChaosTouchedStacks.IsValidIndex(Kind))
+		{
+			ChaosTouchedStacks[Kind] = 0;
+		}
+	}
+	RefreshFloorModifierPanel();
 }
 
 void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Notice)

@@ -1794,6 +1794,8 @@ public:
 	 *   draws its own rung like every creature, so `IsBoss()` alone is a 1% draw.
 	 * - THE PLAYER'S OWN DEATH CLEARS BOTH, under the owner's ruling of 2026-09-10 that
 	 *   anything lasting only for a dungeon ends at a death. Leaving the dungeon empties them.
+	 * - A CLEANSE OF THE PLAYER CLEARS BOTH, since 2026-09-26: the row says "persist unless
+	 *   cleansed". `UCataclysmDebuffs::Cleanse`, heard by the dungeon game mode.
 	 * - FLOOR 1 COUNTS.
 	 */
 	static const TCHAR* StarvationCurseKey;
@@ -1863,6 +1865,8 @@ public:
 	 * - A FLOOR'S BOSS CLEANSES THE DEBUFFS ONLY, and the buffs stay: a cleanse removes what
 	 *   harms. The player's own death clears every stack (the owner's ruling of 2026-09-10),
 	 *   and leaving the dungeon empties them.
+	 * - A CLEANSE OF THE PLAYER CLEARS THE DEBUFFS ONLY TOO, since 2026-09-26, the split a
+	 *   floor's boss makes. `UCataclysmDebuffs::Cleanse`, heard by the dungeon game mode.
 	 * - FLOOR 1 COUNTS.
 	 */
 	static const TCHAR* ChaosTouchedKey;
@@ -2423,9 +2427,9 @@ public:
 	 * - EACH STACK BURNS `RawSewagePercentPerStack` OF MAXIMUM HEALTH A SECOND, summed, typed as the row: the
 	 *   rule's own burn in Plague Convergence's pattern, a share of maximum health, and NOT the Disease ailment.
 	 * - THE STACKS ARE THE DUNGEON'S. They stay on later floors, with the row or not, and clear when a floor's boss
-	 *   dies or the player dies, as Wasting Sickness's do. No way for a player to cleanse their own debuffs exists
-	 *   in play yet; the enchantment "You are cleansed every 5 seconds" is text only, and must clear these stacks
-	 *   when it is built.
+	 *   dies or the player dies, as Wasting Sickness's do, AND WHEN THE PLAYER IS CLEANSED, since 2026-09-26:
+	 *   `UCataclysmDebuffs::Cleanse`, heard by the dungeon game mode, which the enchantment "You are cleansed every 5
+	 *   seconds" will call when its row is written, and Grim Totems' Cleanse choice when that change moves.
 	 */
 	static const TCHAR* RawSewageKey;
 

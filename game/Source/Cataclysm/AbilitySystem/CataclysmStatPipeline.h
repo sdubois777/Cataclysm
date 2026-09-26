@@ -3539,6 +3539,16 @@ struct CATACLYSM_API FCataclysmPoolAction
 	ECataclysmCooldownReset CooldownReduce = ECataclysmCooldownReset::None;
 
 	/**
+	 * Set, this action CLEANSES ITS WEARER instead of moving a pool: `UCataclysmDebuffs::Cleanse`. For "You are
+	 * cleansed every 5 seconds", ruled 2026-09-26.
+	 *
+	 * READ ONLY ON THE TIMED EVENT, by `UCataclysmAbilitySystemComponent::StepTimedGrants`, because the one row that
+	 * asks for it is on a clock. A row asking for a cleanse on another event needs its own branch in `ActOnEvent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCleanse = false;
+
+	/**
 	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a
 	 * pool. Issue #1833, phase 2: "When you dodge an attack your next skill deals
 	 * 30%-60% increased damage". `Percent` is what one charge is worth, as
