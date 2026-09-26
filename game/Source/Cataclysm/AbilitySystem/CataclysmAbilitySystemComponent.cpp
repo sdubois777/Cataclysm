@@ -2,6 +2,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the class resource a scaling bonus counts points of. Issue #980.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -990,8 +991,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// anything. `UCataclysmVitalAttributeSet` makes the same distinction for
 	// the same reason, and asking the owner here would count nothing for every
 	// player in the game.
-	State.MinionsHeld =
-		UCataclysmCommand::ThingsCommandedBy(GetAvatarActor()).Num();
+	const TArray<AActor*> Commanded = UCataclysmCommand::ThingsCommandedBy(GetAvatarActor());
+	State.MinionsHeld = Commanded.Num();
+
+	// AND HOW MANY OF THEM ARE DEPLOYABLE MACHINES. Issue #1833, deployable
+	// Part 3: "Each active gadget increases your evasion chance by 5%-10%".
+	for (const AActor* Each : Commanded)
+	{
+		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Each);
+		State.DeployablesActive += Minion && Minion->IsDeployable() ? 1 : 0;
+	}
 
 	// AND THE SELF-BUFF SKILLS RUNNING. Issue #1815. The same test
 	// `ClearWhatDeathEnds` uses to find the buffs a death ends, so "a buff"

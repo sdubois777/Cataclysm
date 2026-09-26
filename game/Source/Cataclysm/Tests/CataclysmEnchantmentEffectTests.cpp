@@ -7256,4 +7256,45 @@ bool FCataclysmGadgetAgeRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetEvasionRowTest,
+	"Cataclysm.Enchantments.TheGadgetEvasionRowCountsEachMachineCommanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, deployable Part 3. "Each active gadget increases your evasion
+ * chance by 5%-10%", at 10: 10% increased evasion per deployable machine the
+ * summoner commands. None is nothing, one ballista is 0.10 and two are 0.20;
+ * an imp beside them adds nothing, because it is no gadget. Written as
+ * increased, as "While moving, your evasion chance is increased by 10%-20%"
+ * is.
+ */
+bool FCataclysmGadgetEvasionRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FSummoner Summoner(Scope.World, TEXT("Positive_Each_active_gadget_increases_your_evasion_chance"));
+	const FGameplayTagContainer NoTags;
+	const auto Increase = [&Summoner, &NoTags]()
+	{
+		return Summoner.ASC()->IncreasesForStat(FName(TEXT("evasion")), NoTags);
+	};
+	TestEqual(TEXT("no machine: nothing"), Increase(), 0.0f, 0.0001f);
+	if (!TestNotNull(TEXT("a ballista"), Summoner.Make(TEXT("Ballista"))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one ballista: 10% increased. If not, DT_EnchantmentEffects may be "
+				   "older than the rows: run tools/generate_datatable_assets.py"),
+		Increase(), 0.10f, 0.0001f);
+	Summoner.Make(TEXT("Ballista"));
+	TestEqual(TEXT("two: 20%"), Increase(), 0.20f, 0.0001f);
+	Summoner.Make(TEXT("Imp"));
+	TestEqual(TEXT("and an imp beside them adds nothing"), Increase(), 0.20f, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

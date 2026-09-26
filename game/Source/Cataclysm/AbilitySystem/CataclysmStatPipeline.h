@@ -2107,6 +2107,15 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerSecondTheMinionHasBeenActive
 		UMETA(DisplayName = "Per Second The Minion Has Been Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` deployable machines the character commands
+	 * now. Issue #1833, deployable Part 3: "Each active gadget increases your
+	 * evasion chance by 5%-10%" is a step of 1. A machine is a minion tagged
+	 * `Type.Deployable` (`ACataclysmMinion::IsDeployable`).
+	 */
+	PerDeployableActive
+		UMETA(DisplayName = "Per Deployable Active"),
 };
 
 /**
@@ -2611,6 +2620,12 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * default is 0 and not the -1 the readings above use to mean "not asked".
 	 */
 	int32 MinionsHeld = 0;
+
+	/**
+	 * How many of those are deployable machines. Issue #1833, deployable Part 3.
+	 * See `PerDeployableActive`.
+	 */
+	int32 DeployablesActive = 0;
 
 	/**
 	 * What the skill dealing this blow cost, as a percentage of the character's

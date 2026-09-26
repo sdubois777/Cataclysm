@@ -4267,6 +4267,10 @@ SCALES = {
     # deployable's blow. Issue #1833, deployable Part 2. The Spear ultimate's
     # machines last 20 seconds, the longest today.
     "minion_seconds_active": (0.0, 60.0, "a number of seconds a minion has been active"),
+    # "Each active gadget increases your evasion chance by 5%-10%" is
+    # `deployables_active`, the machines the character commands now. Issue
+    # #1833, deployable Part 3.
+    "deployables_active": (0.0, 20.0, "a number of deployable machines"),
 }
 
 
@@ -5746,6 +5750,11 @@ def stats_with_no_attribute() -> set[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-09-25 FOR "Each active gadget increases your evasion chance by
+    # 5%-10%", issue #1833, deployable Part 3. `DefenderStat` in
+    # CataclysmDamageCalculation.cpp asks it through `StatForSkill` on every
+    # blow; `ProbeScaledEvasion` measures that with the scale the row carries.
+    "evasion",
     "attack_damage",
     "spell_damage",
     "attack_speed",

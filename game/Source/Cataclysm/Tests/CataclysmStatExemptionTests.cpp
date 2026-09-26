@@ -3238,6 +3238,53 @@ namespace CataclysmStatExemptionTest
 			Clean > 0.0f && Carrying > Clean + 0.001f);
 	}
 
+	/**
+	 * `evasion`, scaled by the deployable machines commanded, asked by
+	 * `DefenderStat` in `UCataclysmDamageCalculation::Resolve`. Issue #1833,
+	 * deployable Part 3. With the evasion roll pinned at 25, a defender at 20
+	 * is hit; with one ballista commanded and a row of 50% increased per
+	 * machine it stands at 30, and the same blow is evaded.
+	 */
+	void ProbeScaledEvasion(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetEvasionAttribute(), 20.0f);
+		ScaledBy(Defender.Actor, TEXT("evasion"), 50.0f,
+				 ECataclysmStatScale::PerDeployableActive, /*Base=*/20.0f);
+
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		const auto Evaded = [&Blow, &Defender]()
+		{
+			return UCataclysmDamageCalculation::Resolve(
+				Blow, Defender.AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/25.0f,
+				/*BlockRoll=*/100.0f).bEvaded;
+		};
+		const bool bClean = Evaded();
+		ACataclysmMinion* Ballista = ACataclysmMinion::Spawn(
+			Defender.Actor, FVector(300.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+			/*bBurns=*/false, TEXT("Ballista"));
+		if (!Test.TestNotNull(TEXT("a ballista commanded"), Ballista))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Ballista)) { Ballista->Destroy(); } };
+		Test.TestTrue(
+			FString::Printf(TEXT("evasion is asked for, so a machine commanded "
+								 "turns a hit into an evade: %s then %s"),
+							bClean ? TEXT("evaded") : TEXT("hit"),
+							Evaded() ? TEXT("evaded") : TEXT("hit")),
+			!bClean && Evaded());
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -3258,6 +3305,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
 			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
 			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
+			{TEXT("evasion"),                    &ProbeScaledEvasion},
 		};
 		return Made;
 	}
