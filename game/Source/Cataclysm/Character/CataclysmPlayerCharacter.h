@@ -343,6 +343,16 @@ public:
 	void AddCameraZoom(float Notches);
 
 	/**
+	 * Darken the camera for a limited sight, or undo it at 0. The vision system's first drawing of darkness: the
+	 * camera's own vignette and a darker exposure, set here with no asset, so it is not an edge at the radius.
+	 * Issues #1820 and #41.
+	 */
+	void SetSightDarkness(float RadiusCm);
+
+	/** The sight the camera is darkened for, or 0. For tests, which have no renderer to look at. */
+	float SightDarknessRadiusCm() const { return SightDarknessRadius; }
+
+	/**
 	 * The distance the camera is moving toward, in centimetres.
 	 *
 	 * This is not the same as the boom's current length: the camera eases toward
@@ -843,6 +853,9 @@ private:
 	/** Where the camera is heading. Set from the boom's own length at BeginPlay,
 	 *  so the resting distance is stated once, in the constructor. */
 	float TargetCameraDistance = 0.0f;
+
+	/** The sight the camera was last darkened for, or 0. */
+	float SightDarknessRadius = 0.0f;
 
 	/** Counts down `RespawnDelaySeconds` from the moment of death. */
 	FTimerHandle RespawnTimer;
