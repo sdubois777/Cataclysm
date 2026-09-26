@@ -140,6 +140,9 @@ restored, and each failed on exactly the one check registered for it.
 | A creature on a patch is written as 1.0 | `ACreatureOnAnInfectionPatchDealsTwentyPercentMore`: "on the patch: 20% more", 1.0 |
 | Destroying the bloom sends no surge | `DestroyingAnInfectionBloomHaltsItsSpreadAndSendsASurge`: "a surge of four", 0 |
 
+The final Python, on this entry's own commit after the lock was released: `5521 passed, 8 skipped` (JUnit 5,529, no
+failures).
+
 ---
 
 ## 2026-09-26 — The deployable naming filter is tested: a moving summoner's unscoped "less damage while moving" row does not reach a ballista's blow
