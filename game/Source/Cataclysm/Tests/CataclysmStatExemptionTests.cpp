@@ -3283,6 +3283,49 @@ namespace CataclysmStatExemptionTest
 			Clean > 0.0f && Carrying > Clean + 0.001f);
 	}
 
+	/**
+	 * `resistance_cap`, scaled by the character's kills, asked by
+	 * `UCataclysmDamageCalculation::ResistanceCapOf`. Issue #1833, the kill
+	 * counter: the shipped row is flat -1 to -4 per 100,000 to 500,000 kills.
+	 * A player's ability system, because only a player state counts kills.
+	 */
+	void ProbeScaledResistanceCap(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* System =
+			State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+		if (!Test.TestNotNull(TEXT("a player's ability system"), System))
+		{
+			return;
+		}
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = -4.0f;
+		Flat.Scale = ECataclysmStatScale::PerKillOfTheCharacter;
+		Flat.ScaleStep = 500000.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+			FName(UCataclysmDamageCalculation::ResistanceCapStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		System->SetStatInputs(MoveTemp(Inputs));
+
+		const float Clean = UCataclysmDamageCalculation::ResistanceCapOf(System);
+		State->SetLifetimeKills(1000000);
+		const float Killed = UCataclysmDamageCalculation::ResistanceCapOf(System);
+		Test.TestTrue(
+			FString::Printf(TEXT("resistance_cap is asked for, so a million kills "
+								 "lower the cap: %.2f against %.2f"), Killed, Clean),
+			Killed < Clean - 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -3303,6 +3346,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
 			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
 			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
+			{TEXT("resistance_cap"),             &ProbeScaledResistanceCap},
 		};
 		return Made;
 	}

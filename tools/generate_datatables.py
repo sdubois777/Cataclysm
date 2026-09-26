@@ -5785,6 +5785,12 @@ def stats_with_no_attribute() -> set[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-09-25 FOR "You lose 1-4% max resistances for every 100,000 -
+    # 500,000 kills", issue #1833, the kill counter.
+    # `UCataclysmDamageCalculation::ResistanceCapOf` asks it through
+    # `StatAppliedTo` with 70 as the base, on every blow and on the sheet;
+    # `ProbeScaledResistanceCap` measures that with the scale the row carries.
+    "resistance_cap",
     "attack_damage",
     "spell_damage",
     "attack_speed",
