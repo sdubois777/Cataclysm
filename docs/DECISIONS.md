@@ -56,6 +56,11 @@ play-test value:**
   them; the panel counts how many stand.
 - **They stand on floor cells within six metres of the point eight metres away**, Necrotic Bloom's wave cells, so a
   point off the floor still places them; a beat whose point has no floor within reach tries again on the next.
+- **A pair placed where there is no floor falls back to the cells around the player.** Phantasms stand on cells
+  within six metres of a point eight metres from the player at a random angle; a point with no floor within reach used
+  to lose that beat's pair in play, and the pair came only on a later beat whose point landed on the floor. So this is
+  a fix to what the player meets and not only to the test that expects two at 30 s. Approved by the coordinating
+  session, 2026-09-26.
 - **The slow is a Less on movement speed through a new player floor-effect field**, written when it starts and ends,
   as Edict of Silence writes its lock.
 

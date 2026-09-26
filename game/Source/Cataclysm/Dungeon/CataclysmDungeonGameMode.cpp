@@ -4691,7 +4691,14 @@ void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
 							Feet.Y + Effects::IllusionAppearsAwayCm * FMath::Sin(Angle), Feet.Z);
 		const FCataclysmFloorPopulation Population =
 			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
-		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+		// A POINT WITH NO FLOOR WITHIN REACH FALLS BACK TO THE CELLS AROUND THE PLAYER, who stands on the floor. Until
+		// this, such a point lost that beat's pair in play and the pair came only when a later beat's point landed on the
+		// floor. Ruled by the coordinating session, 2026-09-26.
+		TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+		if (Cells.IsEmpty())
+		{
+			Cells = NecroticBloomWaveCells(*CurrentFloor, Feet);
+		}
 		int32 Placed = 0;
 		// A PAIR, CUT TO WHAT FITS UNDER THE MOST: at five standing, one comes.
 		const int32 ToSend = Effects::IllusionPhantasmsToSend(PhantasmsStanding().Num());
