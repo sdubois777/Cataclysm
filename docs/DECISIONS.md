@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The Blackest Shadow: the player sees six metres, and a creature outside that light is hidden and, while outside it, deals 100% more damage and attacks 50% faster
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, figures, its
+light as a sight radius in `SightRadiusFor`, and its place among the rows built);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a key of `DamageMultipliersBySource`,
+`BlackestShadowDamageSource`, with its setter, and `DarknessAttackSpeedMultiplier`, one more factor in
+`SecondsBetweenAttacks`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the vision step gives
+and takes the buff, and remembers which creatures carry it); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check, and the new damage source in the check that every
+source writes its own key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Built on the vision system's change, which merges first.**
+The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
+entry when they have.
+
+### The row
+
+`Void_The_Blackest_Shadow` in `game/Data/DungeonModifiers.csv`, weight 20: "The dungeon is pitch black. A single, small
+orb of light follows the player, but it is not enough to illuminate the entire dungeon. Enemies that are not in the
+light are completely invisible, and they gain a permanent "Invisible Stalker" buff that grants them 100% more damage and
+50% faster attack speed."
+
+### The owner's decision, 2026-09-26, relayed by the coordinating session
+
+**The Invisible Stalker buff holds only while the creature is outside the light, and goes when it enters. "Permanent"
+means it has no timer.** The other reading, a buff kept for the rest of the dungeon once a creature had been outside the
+light, was put to the owner beside this one, because the light is small and creatures spawn well beyond it, so under
+that reading nearly every creature on such a floor would have carried it.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **The light is six metres**, as the player's sight through the vision system: a creature further away is hidden, has
+  no bar and cannot be clicked, and the camera is darkened. A play-test value; the row states no radius.
+- **"Completely invisible" is the body, bar and name, not the telegraph**, as ruled for the vision system: a hidden
+  creature's telegraphs, projectiles and ground markers stay drawn.
+- **The damage is a key of the creature damage map of its own, and the attack speed one more factor in
+  `SecondsBetweenAttacks`' divisor**, tested through `SecondsBetweenAttacks()` itself. A creature's speeds do not read the
+  AttackSpeed attribute, so writing it would change nothing; `SecondsBetweenAttacks` is what the creature brain reads for
+  its swing (`CataclysmEnemyController.cpp`, the swing and the ability interval).
+
+### What the rule does
+
+On a floor carrying the row the player sees six metres. Every creature further away is hidden and carries the Invisible
+Stalker buff: its attack damage is doubled, and the seconds between its attacks are divided by 1.5. A creature that
+comes within six metres is seen and loses the buff; one that leaves the light gains it again. On a floor without the
+row, every creature carrying it loses it. On a floor with Fog of War as well, the shorter sight holds, which is six
+metres.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **The buff is written only when a creature's side of the light changes**, not on every beat, so its damage is
+  rewritten as seldom as it changes.
+- **Floor sources outside the light carry it too**, as every creature is measured; a floor source does not attack, so it
+  changes nothing for them.
+- **Only the creatures this rule buffed have it taken off**, as only what the vision system hid is shown again.
+
+### The research
+
+The vision system's entry quotes Path of Exile's Delve, where monsters "take massively reduced damage while they dwell
+within" the darkness, fetched on 2026-09-26: a creature favoured while it is in the dark and not while it is in the
+light, which is the shape the owner decided. The figures are the row's own.
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `TheBlackestShadowFiguresLightAndStalker`: six metres, 100% and 50%; the light is the player's sight, and with Fog of
+  War as well the shorter holds.
+- `OutsideTheLightACreatureIsHiddenAndAnInvisibleStalker`: the player sees six metres; an Imp five metres away is seen,
+  no stalker, with its own damage and swing interval; one seven metres away is hidden and a stalker, with twice the
+  damage and a swing interval divided by 1.5; moved into the light, it is seen and its damage and swing interval are its
+  own again.
+- `AFloorWithoutTheBlackestShadowEndsEveryStalker`: a stalker on the next floor without the row is no stalker, its
+  damage and attack speed are its own, and it is seen.
+
+One Python check: the row still says "small orb of light", "completely invisible", "100% more damage" and "50% faster
+attack speed".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted, after the vision system's change.
+
+---
+
 ## 2026-09-26 — The vision system: a creature beyond the player's sight is hidden, has no bar and cannot be clicked, and the camera is darkened; Fog of War, its first rule, gives ten metres of sight
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`SightRadiusFor`, the one

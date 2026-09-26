@@ -605,6 +605,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetObsidianSarcophagiDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies the attack damage of a creature outside the player's light on a floor carrying The Blackest Shadow:
+	 * its Invisible Stalker buff. `Void_The_Blackest_Shadow`. Issues #1820 and #41.
+	 *
+	 * A KEY OF `DamageMultipliersBySource` OF ITS OWN. Everything the setters above say about the route, the designed
+	 * figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetBlackestShadowDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -613,6 +625,7 @@ public:
 	static constexpr const TCHAR* PlagueBeaconsDamageSource = TEXT("PlagueBeacons");
 	static constexpr const TCHAR* TrialOfEnduranceDamageSource = TEXT("TrialOfEndurance");
 	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
+	static constexpr const TCHAR* BlackestShadowDamageSource = TEXT("BlackestShadow");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -992,6 +1005,14 @@ public:
 	float FeastingMultiplier() const;
 
 	/**
+	 * The Blackest Shadow's Invisible Stalker attack speed while this creature is outside the player's light, or 1.0.
+	 * Written by the dungeon game mode on the beat and read by `SecondsBetweenAttacks`, which is what a creature's swing
+	 * and ability intervals come from; the AttackSpeed attribute is not read, as `WraithMultiplier` records. Issues
+	 * #1820 and #41.
+	 */
+	float DarknessAttackSpeedMultiplier = 1.0f;
+
+	/**
 	 * Everything acting on this creature's movement and attack speed at once.
 	 *
 	 * ONE FUNCTION SO THE TWO STATS CANNOT DISAGREE. Commander raises both
@@ -1252,8 +1273,11 @@ public:
 		//
 		// AND FEASTING, WHICH THE WALK SPEED DOES NOT GET. Its row names
 		// attack speed alone. See `FeastingMultiplier`.
+		//
+		// AND THE BLACKEST SHADOW'S INVISIBLE STALKER, FOR THE SAME REASON: its row
+		// names attack speed and not movement. See `DarknessAttackSpeedMultiplier`.
 		return DesignedSecondsBetweenAttacks()
-			/ (SpeedMultiplier() * FeastingMultiplier());
+			/ (SpeedMultiplier() * FeastingMultiplier() * FMath::Max(0.01f, DarknessAttackSpeedMultiplier));
 	}
 
 	/**

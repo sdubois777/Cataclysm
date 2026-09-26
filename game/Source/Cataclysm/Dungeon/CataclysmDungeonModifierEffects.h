@@ -2185,6 +2185,21 @@ public:
 	static const TCHAR* FogOfWarKey;
 
 	/**
+	 * The row whose floor is dark but for a small light around the player: creatures outside it are hidden and, while
+	 * outside it, deal more damage and attack faster. Issues #1820 and #41. On the vision system.
+	 *
+	 * "The dungeon is pitch black. A single, small orb of light follows the player, but it is not enough to illuminate
+	 * the entire dungeon. Enemies that are not in the light are completely invisible, and they gain a permanent
+	 * "Invisible Stalker" buff that grants them 100% more damage and 50% faster attack speed."
+	 *
+	 * DECIDED BY THE OWNER, 2026-09-26: the Invisible Stalker buff holds only while the creature is outside the light
+	 * and goes when it enters; "permanent" means it has no timer. The light is `BlackestShadowLightCm`, the player's
+	 * sight on such a floor, a play-test value accepted by the coordinating session. "Completely invisible" is the
+	 * body, bar and name, not the telegraph, as ruled for the vision system.
+	 */
+	static const TCHAR* BlackestShadowKey;
+
+	/**
 	 * The player's sight on a floor carrying these rows: the smallest radius any of them asks for, in centimetres, or 0
 	 * for unlimited. The vision system's one source of the radius, so a rule asks here and nothing else writes it.
 	 * Issues #1820 and #41.
@@ -4763,6 +4778,11 @@ public:
 
 	/** Fog of War's sight, a play-test value. See the key. */
 	static constexpr float FogOfWarSightCm = 1000.0f;
+
+	/** The Blackest Shadow's figures: the light, a play-test value the row does not state, and the buff, as it does. */
+	static constexpr float BlackestShadowLightCm = 600.0f;
+	static constexpr float InvisibleStalkerDamageMorePercent = 100.0f;
+	static constexpr float InvisibleStalkerAttackSpeedMorePercent = 50.0f;
 
 	static_assert(TrialOfEnduranceDamageMultiplier == 2.0f && TrialOfEnduranceResistanceMultiplier == 2.0f,
 		"The row says doubled damage and resistances.");

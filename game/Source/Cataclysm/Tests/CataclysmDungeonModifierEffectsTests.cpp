@@ -31879,4 +31879,133 @@ bool FCataclysmFogLiftsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Void_The_Blackest_Shadow, on the vision system. Issues #1820 and #41. The Invisible Stalker buff holds only while
+// a creature is outside the light, as the owner decided on 2026-09-26.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName DarknessRow(UCataclysmDungeonModifierEffects::BlackestShadowKey);
+}
+
+// THE FIGURES: A 6 M LIGHT, AND A BUFF OF 100% MORE DAMAGE AND 50% FASTER ATTACKS; THE LIGHT IS THE PLAYER'S SIGHT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarknessFiguresTest,
+	"Cataclysm.DungeonModifierEffects.TheBlackestShadowFiguresLightAndStalker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarknessFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a 6 m light"), Effects::BlackestShadowLightCm, 600.0f, 0.001f);
+	TestEqual(TEXT("100% more damage"), Effects::InvisibleStalkerDamageMorePercent, 100.0f, 0.001f);
+	TestEqual(TEXT("50% faster attacks"), Effects::InvisibleStalkerAttackSpeedMorePercent, 50.0f, 0.001f);
+	TestEqual(TEXT("the light is the player's sight"), Effects::SightRadiusFor({DarknessRow}), 600.0f, 0.001f);
+	TestEqual(TEXT("with fog too, the shorter holds"), Effects::SightRadiusFor({DarknessRow, FogRow}), 600.0f, 0.001f);
+	return true;
+}
+
+// OUTSIDE THE LIGHT A CREATURE IS HIDDEN AND A STALKER: TWICE THE DAMAGE, AND ITS SWING INTERVAL A THIRD SHORTER; INSIDE
+// IT, NEITHER; WALKING INTO THE LIGHT TAKES THE BUFF OFF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarknessStalkerTest,
+	"Cataclysm.DungeonModifierEffects.OutsideTheLightACreatureIsHiddenAndAnInvisibleStalker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarknessStalkerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {DarknessRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Lit = AnImpAway(World, Player, 500.0f);
+	ACataclysmEnemyCharacter* Dark = AnImpAway(World, Player, 700.0f);
+	if (!TestNotNull(TEXT("an Imp 5 m away"), Lit) || !TestNotNull(TEXT("and one 7 m away"), Dark))
+	{
+		return false;
+	}
+	const float Own = Lit->SecondsBetweenAttacks();
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("the player sees 6 m"), Mode->PlayerSightRadiusCm(), 600.0f, 0.001f);
+	TestFalse(TEXT("the Imp in the light is seen"), Lit->IsHidden());
+	TestFalse(TEXT("and is no stalker"), Mode->IsAnInvisibleStalker(Lit));
+	TestEqual(TEXT("its damage is its own"),
+			  Lit->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and so is its swing interval"), Lit->SecondsBetweenAttacks(), Own, 0.001f);
+
+	TestTrue(TEXT("the Imp outside the light is hidden"), Dark->IsHidden());
+	TestTrue(TEXT("and a stalker"), Mode->IsAnInvisibleStalker(Dark));
+	TestEqual(TEXT("with twice the damage"),
+			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 2.0f, 0.001f);
+	TestEqual(TEXT("and a swing interval 1.5 times as fast"), Dark->SecondsBetweenAttacks(), Own / 1.5f, 0.001f);
+
+	// INTO THE LIGHT: SEEN, AND THE BUFF IS GONE.
+	const FVector At = Player.Character->GetActorLocation();
+	Dark->SetActorLocation(FVector(At.X + 300.0f, At.Y, Dark->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("in the light it is seen"), Dark->IsHidden());
+	TestFalse(TEXT("and is no longer a stalker"), Mode->IsAnInvisibleStalker(Dark));
+	TestEqual(TEXT("its damage is its own again"),
+			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and so is its swing interval"), Dark->SecondsBetweenAttacks(), Own, 0.001f);
+	return true;
+}
+
+// A FLOOR WITHOUT THE DARKNESS TAKES EVERY STALKER'S BUFF OFF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarknessLiftsTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithoutTheBlackestShadowEndsEveryStalker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarknessLiftsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {DarknessRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Dark = AnImpAway(World, Player, 2000.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 20 m away"), Dark) || !TestTrue(TEXT("a stalker"), Mode->IsAnInvisibleStalker(Dark)))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("it still stands"), IsValid(Dark));
+	TestFalse(TEXT("and is no stalker"), Mode->IsAnInvisibleStalker(Dark));
+	TestEqual(TEXT("its damage is its own"),
+			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("its attack speed too"), Dark->DarknessAttackSpeedMultiplier, 1.0f, 0.001f);
+	TestFalse(TEXT("and it is seen"), Dark->IsHidden());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

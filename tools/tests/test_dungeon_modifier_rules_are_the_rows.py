@@ -3037,7 +3037,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetSpireDamageMultiplier", "SpireDamageSource"),
                         ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource"),
                         ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource"),
-                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource")):
+                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource"),
+                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4345,3 +4346,21 @@ def test_fog_of_war_row_still_limits_sight_to_a_short_distance():
         assert phrase in lower, (
             f"War_Fog_of_War no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "FogOfWarKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_the_blackest_shadow_row_still_hides_and_empowers_what_is_outside_the_light():
+    """The phrases the rule's reading rests on.
+
+    "The dungeon is pitch black. A single, small orb of light follows the player ... Enemies that are not in the light
+    are completely invisible, and they gain a permanent "Invisible Stalker" buff that grants them 100% more damage and
+    50% faster attack speed." SMALL ORB OF LIGHT is the player's sight; COMPLETELY INVISIBLE is the hiding; the two
+    figures are the buff, which the owner decided on 2026-09-26 holds only while outside the light. If any changes,
+    the reading must be revisited.
+    """
+    words = flat(rows()["Void_The_Blackest_Shadow"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("small orb of light", "completely invisible", "100% more damage", "50% faster attack speed"):
+        assert phrase in lower, (
+            f"Void_The_Blackest_Shadow no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "BlackestShadowKey in CataclysmDungeonModifierEffects.h. " + words)

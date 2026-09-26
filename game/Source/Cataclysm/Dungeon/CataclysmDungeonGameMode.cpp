@@ -2321,6 +2321,9 @@ void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
 	// projectile -- is its own actor and stays drawn, so a hidden creature's attack can still be read and dodged, as
 	// ruled on 2026-09-26. Its brain and its attacks are unchanged.
 	const FVector Feet = Player->GetActorLocation();
+	const bool bDarkness = FloorBrief.Modifiers.Contains(FName(Effects::BlackestShadowKey));
+	const float StalkerDamage = 1.0f + Effects::InvisibleStalkerDamageMorePercent / 100.0f;
+	const float StalkerSpeed = 1.0f + Effects::InvisibleStalkerAttackSpeedMorePercent / 100.0f;
 	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
 	{
 		ACataclysmEnemyCharacter* Creature = *It;
@@ -2339,6 +2342,32 @@ void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
 		{
 			Creature->SetActorHiddenInGame(false);
 			HiddenBySight.Remove(Creature);
+		}
+
+		// AND THE BLACKEST SHADOW'S INVISIBLE STALKER: 100% more damage and 50% faster attacks WHILE OUTSIDE THE
+		// LIGHT, and gone when it enters, as the owner decided on 2026-09-26. Written only when it changes, and taken
+		// off on a floor without the row. Issues #1820 and #41.
+		const bool bStalker = bDarkness
+			&& FVector::Dist2D(Creature->GetActorLocation(), Feet) > Effects::BlackestShadowLightCm;
+		if (bStalker != InvisibleStalkers.Contains(Creature))
+		{
+			Creature->SetBlackestShadowDamageMultiplier(bStalker ? StalkerDamage : 1.0f);
+			Creature->DarknessAttackSpeedMultiplier = bStalker ? StalkerSpeed : 1.0f;
+			if (bStalker)
+			{
+				InvisibleStalkers.Add(Creature);
+			}
+			else
+			{
+				InvisibleStalkers.Remove(Creature);
+			}
+		}
+	}
+	for (auto It = InvisibleStalkers.CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent();
 		}
 	}
 	for (auto It = HiddenBySight.CreateIterator(); It; ++It)
@@ -6820,7 +6849,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND THE VISION SYSTEM, ON EVERY FLOOR WHOSE ROWS LIMIT SIGHT, AND ON THE FIRST FLOOR AFTER ONE, so what it hid is
 	// shown and the camera lightened. Issues #1820 and #41.
 	const bool bVision = UCataclysmDungeonModifierEffects::SightRadiusFor(FloorBrief.Modifiers) > 0.0f
-		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0;
+		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0 || InvisibleStalkers.Num() > 0;
 	// AND VOID PARASITE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON
 	// THE CHARACTER, as Chaos Touched is stepped. Issues #1820 and #41.
 	const bool bVoidParasite = FloorBrief.Modifiers.Contains(

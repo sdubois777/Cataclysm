@@ -2200,6 +2200,12 @@ public:
 	 */
 	float PlayerSightRadiusCm() const { return PlayerSightRadius; }
 
+	/** The Blackest Shadow, for tests: whether this creature carries the Invisible Stalker buff now. */
+	bool IsAnInvisibleStalker(const ACataclysmEnemyCharacter* Creature) const
+	{
+		return InvisibleStalkers.Contains(const_cast<ACataclysmEnemyCharacter*>(Creature));
+	}
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2296,6 +2302,12 @@ private:
 	 */
 	float PlayerSightRadius = 0.0f;
 	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> HiddenBySight;
+
+	/**
+	 * The Blackest Shadow: the creatures carrying the Invisible Stalker buff now, so only those have it taken off again.
+	 * Issues #1820 and #41.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> InvisibleStalkers;
 
 	/** Blood Bond, on every death: the player's death kills the elite bonded on this floor. */
 	void NoteDeathForBloodBond(const struct FCataclysmDeathNotice& Notice);
