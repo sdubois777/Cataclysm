@@ -101,7 +101,9 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `minion_seconds_active` JOINED on 2026-09-25 for deployable Part 2, as an
 #: engine commit ahead of its two rows, and leaves with them.
 #: `minion_seconds_active` LEFT with its two rows, issue #1833.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: `deployables_active` JOINED the same day for deployable Part 3, and leaves
+#: with its row.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"deployables_active"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
