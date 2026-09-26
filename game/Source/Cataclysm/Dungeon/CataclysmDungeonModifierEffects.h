@@ -291,6 +291,12 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float TouchedResistanceLessPercent = 0.0f;
 
 	/**
+	 * Damage the player takes, more, while further from Demonic Guide's guide than its chain. Issues #1820 and #41.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float GuideDamageTakenMorePercent = 0.0f;
+
+	/**
 	 * What the voidlings attached to the player take, in percent, off attack damage, spell damage, all
 	 * eight resistances and movement speed alike. Void Parasite. Issues #1820 and #41.
 	 *
@@ -454,6 +460,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedSpeedMorePercent <= 0.0f && TouchedSpeedLessPercent <= 0.0f
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
+			&& GuideDamageTakenMorePercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
@@ -2091,6 +2098,24 @@ public:
 	 *   when it is built.
 	 */
 	static const TCHAR* RawSewageKey;
+
+	/**
+	 * The row whose floor has a guide the player must keep near: it walks to the exit, and a player further from it
+	 * than its chain takes more damage. Issues #1820 and #41.
+	 *
+	 * "Player's are chained to a demonic guide. Straying too far from their guide will cause the player to take
+	 * increased damage."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25 AND 2026-09-26. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - THE GUIDE IS AN IMP AT THE COMMON RUNG, raised at the entrance of each new arena. It cannot be hurt, pays
+	 *   nothing, takes no hostile action, and is labelled "Guide" under its health bar.
+	 * - IT WALKS TO THE FLOOR'S EXIT, and waits while the player is further from it than
+	 *   `DemonicGuideWaitsBeyondCm`. The creature brain walks it; see `bGuidesThePlayerForTheFloorRule`.
+	 * - BEYOND `DemonicGuideChainCm` FROM IT, THE PLAYER TAKES `DemonicGuideDamageTakenMorePercent` MORE DAMAGE.
+	 * - THE CHAIN IS DRAWN as a zone of that radius around the guide. Nothing holds the player back.
+	 */
+	static const TCHAR* DemonicGuideKey;
 
 	/**
 	 * The row where veins in the walls poison the ground around them, grow back when destroyed, and
@@ -4631,6 +4656,18 @@ public:
 	 * change: the river's own mark radius and the Imp's reach, 600 cm.
 	 */
 	static constexpr float RawSewageDryAroundTheEntranceCm = 600.0f;
+
+	/**
+	 * Demonic Guide's figures, every one a play-test value. See the key. The redraw distance is this change's
+	 * judgement: the chain is only drawn, and the damage is measured from the guide itself.
+	 */
+	static constexpr float DemonicGuideChainCm = 1200.0f;
+	static constexpr float DemonicGuideWaitsBeyondCm = 1500.0f;
+	static constexpr float DemonicGuideDamageTakenMorePercent = 25.0f;
+	static constexpr float DemonicGuideChainRedrawCm = 100.0f;
+
+	static_assert(DemonicGuideWaitsBeyondCm > DemonicGuideChainCm,
+		"A guide that waited before the player was beyond its chain would never let the chain be felt.");
 
 	static_assert(
 		RawSewageRiversPerFloor > 0 && RawSewageRiversPerHordeArena > 0 && RawSewageSecondsPerStack > 0.0f

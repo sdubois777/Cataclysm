@@ -361,6 +361,36 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		return LastAction;
 	}
 
+	// A FLOOR RULE'S GUIDE WALKS WHERE THE RULE SENDS IT AND DOES NOTHING ELSE. Issues #1820 and #41, Demonic
+	// Guide. After death and a stun, which still stop it; before the charge, the wind-up and the choice of a target,
+	// so it notices nobody and starts no ability. The walk is the roam's request: the same acceptance radius and the
+	// same straight-line fallback when there is no navigation mesh.
+	if (const ACataclysmEnemyCharacter* Guide = Cast<ACataclysmEnemyCharacter>(Driven);
+		Guide && Guide->bGuidesThePlayerForTheFloorRule)
+	{
+		CurrentTarget = nullptr;
+		bHasRoamTarget = false;
+		if (Guide->bGuideWaits
+			|| FVector::Dist2D(Guide->GetActorLocation(), Guide->GuideDestination) <= RoamAcceptanceRadiusCm)
+		{
+			StopMovement();
+			LastAction = ECataclysmBrainAction::Idle;
+			return LastAction;
+		}
+
+		FaceTravelDirection(Driven);
+		FAIMoveRequest Request(Guide->GuideDestination);
+		Request.SetAcceptanceRadius(RoamAcceptanceRadiusCm);
+		Request.SetUsePathfinding(true);
+		if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+		{
+			Request.SetUsePathfinding(false);
+			MoveTo(Request);
+		}
+		LastAction = ECataclysmBrainAction::Guiding;
+		return LastAction;
+	}
+
 	// A CHARGE ALREADY IN FLIGHT OUTRANKS EVERYTHING BELOW, and the brain does
 	// NOTHING while it runs. Issue #499.
 	//

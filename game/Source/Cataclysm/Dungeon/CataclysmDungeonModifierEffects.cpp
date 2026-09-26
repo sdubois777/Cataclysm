@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Items/CataclysmItem.h"
 
 const TCHAR* UCataclysmDungeonModifierEffects::StarvationKey = TEXT("Famine_Starvation");
@@ -169,6 +170,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DemonicGuideKey =
+	TEXT("Demonic_Demonic_Guide");
 
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
@@ -486,6 +490,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PortalUnleashingKey)
 		|| RowKey == FName(SwarmOfLocustsKey)
 		|| RowKey == FName(RawSewageKey)
+		|| RowKey == FName(DemonicGuideKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(VoidParasiteKey)
@@ -685,6 +690,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PortalUnleashingKey),
 		FName(SwarmOfLocustsKey),
 		FName(RawSewageKey),
+		FName(DemonicGuideKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
@@ -992,6 +998,11 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, Effects.TouchedResistanceMorePercent);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.TouchedResistanceLessPercent);
 	}
+
+	// AND A PLAYER BEYOND DEMONIC GUIDE'S CHAIN, A MORE ON THE STAT THAT SAYS HOW MUCH OF A HIT ARRIVES. Issues #1820
+	// and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(UCataclysmDamageCalculation::DamageTakenStat),
+										Effects.GuideDamageTakenMorePercent);
 
 	// AND THE VOIDLINGS ATTACHED TO THE PLAYER, ONE FIGURE ON FOUR KINDS OF STAT. Issues #1820 and #41.
 	// Damage as the enchantment "You deal 20%-35% less damage" takes it, a Less on attack damage and on
@@ -1506,6 +1517,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR, SAID AS MORE AND NOT AS LESS. Issues
 	// #1820 and #41. Every other clause here reports something taken off the player, so a
 	// reward printed in the same list has to say which way it goes.
+	if (Effects.GuideDamageTakenMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage taken %.0f%% more, beyond the demonic guide's chain"),
+									Effects.GuideDamageTakenMorePercent));
+	}
 	if (Effects.ArmourMorePercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(TEXT("armour %.0f%% more from commanders slain"),

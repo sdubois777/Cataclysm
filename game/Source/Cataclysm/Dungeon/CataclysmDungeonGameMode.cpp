@@ -1529,6 +1529,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		ForgetTheRivers();
 		PlaceTheRivers();
 
+		// AND DEMONIC GUIDE'S GUIDE, FOR THE SAME REASON: a new arena's guide at its entrance; a Horde arena's waves
+		// keep it. Issues #1820 and #41.
+		PlaceTheGuide();
+
 		// AND INFESTED VEINS, FOR THE SAME REASON; a new arena starts its destroyed count again, and a
 		// Horde arena's waves keep it. Issues #1820 and #41.
 		ForgetTheVeins();
@@ -4478,6 +4482,110 @@ void ACataclysmDungeonGameMode::PlaceTheRivers()
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::ForgetTheGuide()
+{
+	if (ACataclysmEnemyCharacter* Guide = DemonicGuide.Get())
+	{
+		Guide->Destroy();
+	}
+	if (ACataclysmGroundZone* Chain = DemonicGuideChain.Get())
+	{
+		Chain->Destroy();
+	}
+	DemonicGuide = nullptr;
+	DemonicGuideChain = nullptr;
+	DemonicGuidePanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheGuide()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheGuide();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::DemonicGuideKey)))
+	{
+		return;
+	}
+
+	// AN IMP AT THE ENTRANCE, AT THE COMMON RUNG, where The Reaper is raised. It cannot be hurt, pays nothing, is
+	// raised by the rule and is not on the floor's list, so a Horde arena's waves keep it and Blood Gates does not
+	// count it.
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(CurrentFloor->EntranceWorld());
+	Placement.Creature = ECataclysmDungeonCreature::Imp;
+	ACataclysmEnemyCharacter* Guide = SpawnPlacedCreature(Placement, /*SightRadiusMultiplier=*/1.0f, /*FixedRung=*/0);
+	if (!Guide)
+	{
+		return;
+	}
+	Guide->bCannotBeHurt = true;
+	Guide->bDiesUnpaid = true;
+	Guide->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Guide);
+	Guide->bGuidesThePlayerForTheFloorRule = true;
+	Guide->GuideDestination = CurrentFloor->ExitWorld();
+	DemonicGuide = Guide;
+	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepDemonicGuide(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	ACataclysmEnemyCharacter* Guide = DemonicGuide.Get();
+	bool bBeyond = false;
+	bool bWaits = false;
+	if (IsValid(Guide) && CurrentFloor && CurrentFloor->IsBuilt()
+		&& FloorBrief.Modifiers.Contains(FName(Effects::DemonicGuideKey)))
+	{
+		// HOW FAR THE PLAYER HAS STRAYED, FLAT: the guide sent on to the exit, or told to wait.
+		const FVector At = Guide->GetActorLocation();
+		const float Apart = FVector::Dist2D(Player->GetActorLocation(), At);
+		bBeyond = Apart > Effects::DemonicGuideChainCm;
+		bWaits = Apart > Effects::DemonicGuideWaitsBeyondCm;
+		Guide->GuideDestination = CurrentFloor->ExitWorld();
+		Guide->bGuideWaits = bWaits;
+
+		// THE CHAIN, DRAWN AGAIN AROUND THE GUIDE once it has moved from where it was drawn. It does nothing itself.
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+		ACataclysmGroundZone* Chain = DemonicGuideChain.Get();
+		const FVector Where(At.X, At.Y, CurrentFloor->WorldOfCell(CurrentFloor->CellOfWorld(At)).Z);
+		if (Source && (!Chain || FVector::Dist2D(Chain->GetActorLocation(), Where) > Effects::DemonicGuideChainRedrawCm))
+		{
+			if (Chain)
+			{
+				Chain->Destroy();
+			}
+			DemonicGuideChain = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::DemonicGuideChainCm, 0.0f, /*bAffectsEveryone=*/false,
+				/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::DemonicGuideKey));
+		}
+	}
+
+	// THE DAMAGE TAKEN, WRITTEN WHEN IT CHANGED.
+	const float Wanted = bBeyond ? Effects::DemonicGuideDamageTakenMorePercent : 0.0f;
+	if (!FMath::IsNearlyEqual(Wanted, DemonicGuideApplied))
+	{
+		DemonicGuideApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	const int32 Key = (IsValid(Guide) ? 4 : 0) + (bWaits ? 2 : 0) + (bBeyond ? 1 : 0);
+	if (Key != DemonicGuidePanelKey)
+	{
+		DemonicGuidePanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepRawSewage(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -6045,6 +6153,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// tag off the player, since the step runs while it is held. Issues #1820 and #41.
 	ForgetTheRivers();
 	RawSewageStacks = 0;
+	ForgetTheGuide();
 	RawSewageSecondsInARiver = 0.0f;
 	bRawSewageInARiver = false;
 	ForgetTheVeins();
@@ -6533,6 +6642,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// are the dungeon's and burn on every floor. Issues #1820 and #41.
 	const bool bRawSewage = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RawSewageKey))
 		|| RawSewageStacks > 0 || bRawSewageTagged;
+	// AND DEMONIC GUIDE, ON EVERY FLOOR CARRYING IT, AND WHILE ITS DAMAGE IS ON THE CHARACTER. Issues #1820 and #41.
+	const bool bDemonicGuide =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::DemonicGuideKey))
+		|| DemonicGuideApplied > 0.0f;
 	// AND INFESTED VEINS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bInfestedVeins = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::InfestedVeinsKey));
@@ -6566,6 +6679,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bSwarmOfLocusts
 		&& !bRawSewage
+		&& !bDemonicGuide
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
 	{
@@ -6800,6 +6914,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bRawSewage)
 	{
 		StepRawSewage(Player, AbilitySystem);
+	}
+
+	// AND DEMONIC GUIDE, WHICH SENDS ITS GUIDE ON AND MAKES A STRAYING PLAYER TAKE MORE DAMAGE. Issues #1820 and #41.
+	if (bDemonicGuide)
+	{
+		StepDemonicGuide(Player, AbilitySystem);
 	}
 
 	// AND INFESTED VEINS, WHICH PLACES ZONES, SPAWNS CREATURES AND HURTS THE PLAYER. Issues #1820 and #41.
@@ -7749,6 +7869,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// writes. Both rows are Void and a floor can carry both, so sharing would mean
 	// whichever wrote second erased the first. Issue #1765.
 	Effects.GraspMovementLessPercent = GraspMovementLessApplied;
+
+	// AND DEMONIC GUIDE'S DAMAGE TAKEN AS LAST WRITTEN. Issues #1820 and #41. Read unconditionally like the rest.
+	Effects.GuideDamageTakenMorePercent = DemonicGuideApplied;
 
 	// AND WHAT THE STARVATION CURSE'S STACKS TAKE. Issues #1820 and #41. Their own two
 	// fields, which the declaration explains; read unconditionally like the rest.
@@ -9518,6 +9641,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 								   LivingFloorEnemies());
 		}
 		Counting.Add(Trial, Line);
+	}
+
+	// AND DEMONIC GUIDE: whether the player is within the guide's chain, and whether it waits for them. Issues
+	// #1820 and #41.
+	const FName GuideRow(Effects::DemonicGuideKey);
+	if (FloorBrief.Modifiers.Contains(GuideRow) && DemonicGuide.IsValid())
+	{
+		const FString Chain = DemonicGuideApplied > 0.0f
+			? FString::Printf(TEXT("beyond its chain, %d%% more damage taken"),
+							  FMath::RoundToInt(Effects::DemonicGuideDamageTakenMorePercent))
+			: FString(TEXT("within its chain"));
+		Counting.Add(GuideRow, FString::Printf(TEXT("demonic guide: %s%s"), *Chain,
+											   DemonicGuide->bGuideWaits ? TEXT("; it waits for you") : TEXT("")));
 	}
 
 	// AND RAW SEWAGE: the stacks held, what they burn, and what cleanses them. Issues #1820 and #41.
@@ -11686,6 +11822,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		SingularityWellsSecondsSinceLastWell = 0.0f;
 		SingularityWells.Empty();
 		SingularityWellsSlowApplied = 0.0f;
+
+		// AND DEMONIC GUIDE'S DAMAGE TAKEN AND ITS CHAIN, for Singularity Wells' reason: the call above has taken the
+		// damage off the character, and the chain went with the rules' other zones. The next beat draws the chain
+		// again and puts the damage back if the player is still beyond it. The guide is kept; a new arena replaces it.
+		// Issues #1820 and #41.
+		DemonicGuideApplied = 0.0f;
+		DemonicGuideChain = nullptr;
+		DemonicGuidePanelKey = -1;
 
 		// AND WITHERED GROUND FORGETS ITS PATCHES AND ITS REDUCTION. Issue #41.
 		// TWO LINES AND NOT THREE, because this rule holds no clock: its patches

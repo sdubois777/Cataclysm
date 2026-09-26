@@ -26,6 +26,7 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmBeaconCharacter.h"
@@ -31318,6 +31319,244 @@ bool FCataclysmLocustsBurnTest::RunTest(const FString& Parameters)
 	Before = HealthOf(Player.Character);
 	Beat(Mode, BeatsFor(2.0f));
 	TestEqual(TEXT("in the shelter nothing is lost"), HealthOf(Player.Character), Before, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Demonic_Guide. Issues #1820 and #41.
+//
+// NOTHING HERE WATCHES THE GUIDE WALK. An automation test world does not tick, so its path following never moves a
+// creature, and no test in the project asserts that one moved under `MoveTo`. These read what the brain decides, the
+// destination and the waiting the game mode writes, and the damage figure.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName GuideRow(UCataclysmDungeonModifierEffects::DemonicGuideKey);
+
+	/** A dungeon carrying only Demonic Guide, on floor 2 with its own creatures cleared and its guide raised. */
+	ACataclysmDungeonGameMode* ADemonicGuideFloor(FAutomationTestBase& Test, UWorld* World,
+												  const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {GuideRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		if (!Test.TestNotNull(TEXT("a guide was raised"), Mode->DemonicGuideOnTheFloor()))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** The player stood this far from the guide, flat, along X. */
+	void StandFromTheGuide(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, float Cm)
+	{
+		const FVector Guide = Mode->DemonicGuideOnTheFloor()->GetActorLocation();
+		Player.Character->SetActorLocation(
+			FVector(Guide.X + Cm, Guide.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** What the dungeon's rules add to the damage the player takes, in percent, or 0 for none. */
+	float GuideDamageTakenOn(const FPossessedPlayer& Player)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, UCataclysmDamageCalculation::DamageTakenStat);
+		return Rule ? Rule->Value : 0.0f;
+	}
+}
+
+// THE FIGURES: A 12 M CHAIN, A GUIDE THAT WAITS BEYOND 15 M, 25% MORE DAMAGE TAKEN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideFiguresTest,
+	"Cataclysm.DungeonModifierEffects.DemonicGuideFiguresChainWaitAndDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a 12 m chain"), Effects::DemonicGuideChainCm, 1200.0f, 0.001f);
+	TestEqual(TEXT("it waits beyond 15 m"), Effects::DemonicGuideWaitsBeyondCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("25% more damage taken"), Effects::DemonicGuideDamageTakenMorePercent, 25.0f, 0.001f);
+	return true;
+}
+
+// THE GUIDE: AN IMP AT THE ENTRANCE THAT CANNOT BE HURT, PAYS NOTHING, HARMS NOBODY, IS LABELLED AND IS SENT TO THE EXIT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideRaisedTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideStandsAtTheEntranceAndCannotBeHurt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideRaisedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	TestTrue(FString::Printf(TEXT("at the entrance (%.0f cm from it)"),
+							 FVector::Dist2D(Guide->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())),
+			 FVector::Dist2D(Guide->GetActorLocation(), Mode->CurrentFloor->EntranceWorld()) < 200.0f);
+	TestTrue(TEXT("it cannot be hurt"), Guide->bCannotBeHurt);
+	TestFalse(TEXT("it pays nothing"), Guide->PaysForItsDeath());
+	TestTrue(TEXT("it was raised by the rule"), Guide->bRaisedByARule);
+	TestTrue(TEXT("it takes no hostile action"), Guide->TakesNoHostileAction());
+	TestTrue(TEXT("it is sent to the exit"),
+			 FVector::Dist2D(Guide->GuideDestination, Mode->CurrentFloor->ExitWorld()) < 1.0f);
+	TestTrue(FString::Printf(TEXT("labelled (\"%s\")"), *UCataclysmCombatOverlay::StatusLineFor(Guide)),
+			 UCataclysmCombatOverlay::StatusLineFor(Guide).Contains(TEXT("Guide")));
+
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("its chain drawn"), ZonesOnTheFloor(World), 1);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(GuideRow),
+			  FString(TEXT("demonic guide: within its chain")));
+	return true;
+}
+
+// WITHIN 12 M NOTHING; BEYOND IT THE PLAYER TAKES 25% MORE DAMAGE; BACK WITHIN, NOTHING AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideDamageTest,
+	"Cataclysm.DungeonModifierEffects.BeyondTwelveMetresFromTheGuideThePlayerTakesAQuarterMoreDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideDamageTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	StandFromTheGuide(Mode, Player, 1190.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("nothing at 11.9 m"), GuideDamageTakenOn(Player), 0.0f, 0.001f);
+
+	StandFromTheGuide(Mode, Player, 1210.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("25% more damage taken at 12.1 m"), GuideDamageTakenOn(Player), 25.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(GuideRow),
+			  FString(TEXT("demonic guide: beyond its chain, 25% more damage taken")));
+
+	StandFromTheGuide(Mode, Player, 1100.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("nothing again at 11 m"), GuideDamageTakenOn(Player), 0.0f, 0.001f);
+	return true;
+}
+
+// THE GUIDE'S BRAIN WALKS IT TO THE EXIT, NOTICING NOBODY, AND IT WAITS WHILE THE PLAYER IS BEYOND 15 M.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideWalksTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideHeadsForTheExitAndWaitsBeyondFifteenMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideWalksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Guide->GetController());
+	if (!TestNotNull(TEXT("the guide has a brain"), Brain))
+	{
+		return false;
+	}
+
+	StandFromTheGuide(Mode, Player, 1490.0f);
+	Beat(Mode, 1);
+	TestFalse(TEXT("it does not wait at 14.9 m"), Guide->bGuideWaits);
+	TestEqual(TEXT("it heads for the exit"), static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::Guiding));
+	TestNull(TEXT("noticing nobody"), Brain->CurrentTarget.Get());
+
+	StandFromTheGuide(Mode, Player, 1510.0f);
+	Beat(Mode, 1);
+	TestTrue(TEXT("it waits at 15.1 m"), Guide->bGuideWaits);
+	TestEqual(TEXT("and stands"), static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::Idle));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(GuideRow),
+			  FString(TEXT("demonic guide: beyond its chain, 25% more damage taken; it waits for you")));
+	return true;
+}
+
+// A NEW FLOOR: A NEW GUIDE AT ITS ENTRANCE, AND THE LAST FLOOR'S DAMAGE ENDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorBringsANewGuideAndEndsTheDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> First = Mode->DemonicGuideOnTheFloor();
+	StandFromTheGuide(Mode, Player, 2000.0f);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("25% more on floor 2"), GuideDamageTakenOn(Player), 25.0f, 0.001f)
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Second = Mode->DemonicGuideOnTheFloor();
+	if (!TestNotNull(TEXT("floor 3 has a guide"), Second))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the last floor's guide is gone"), First.IsValid());
+	TestTrue(TEXT("at floor 3's entrance"),
+			 FVector::Dist2D(Second->GetActorLocation(), Mode->CurrentFloor->EntranceWorld()) < 200.0f);
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("no damage taken beside the new guide"), GuideDamageTakenOn(Player), 0.0f, 0.001f);
+	TestEqual(TEXT("one chain drawn"), ZonesOnTheFloor(World), 1);
 	return true;
 }
 

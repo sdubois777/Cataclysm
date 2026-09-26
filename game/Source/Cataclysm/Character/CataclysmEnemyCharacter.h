@@ -754,6 +754,20 @@ public:
 	bool bHealsAlliesForTheFloorRule = false;
 
 	/**
+	 * Whether Demonic Guide made this creature the floor's guide, where the rule sends it, and whether it waits for
+	 * the player. Issues #1820 and #41.
+	 *
+	 * WRITTEN BY `ACataclysmDungeonGameMode` AND READ BY THE BRAIN, which walks a guide to `GuideDestination` unless
+	 * it waits, and does nothing else: it notices nobody and chooses no ability. A guide also takes no hostile action;
+	 * see `TakesNoHostileAction`.
+	 *
+	 * NOT SAVED. A floor restored from a save re-runs its rules.
+	 */
+	bool bGuidesThePlayerForTheFloorRule = false;
+	FVector GuideDestination = FVector::ZeroVector;
+	bool bGuideWaits = false;
+
+	/**
 	 * How long since a creature carrying Phasewalker last teleported.
 	 *
 	 * PUBLIC FOR THE REASON `SecondsSinceAuraPulse` ABOVE IS: the rule that
@@ -879,7 +893,8 @@ public:
 	 */
 	virtual bool TakesNoHostileAction() const override
 	{
-		return bHealsAlliesForTheFloorRule;
+		// AND DEMONIC GUIDE'S GUIDE, which leads the player and is no enemy of theirs. Issues #1820 and #41.
+		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule;
 	}
 	//~ End
 

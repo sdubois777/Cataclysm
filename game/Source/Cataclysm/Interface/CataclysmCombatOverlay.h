@@ -525,6 +525,12 @@ public:
 	static FString SpireTextFor(const AActor* Actor);
 
 	/**
+	 * "Guide" under the health bar of Demonic Guide's guide, or empty. Issues #1820 and #41. Beside "Harbinger", for
+	 * its reason: it says what the creature is.
+	 */
+	static FString GuideTextFor(const AActor* Actor);
+
+	/**
 	 * "Beacon" under the health bar of a living plague beacon, or empty. Issues #1820 and #41. Beside
 	 * the other floor sources' words, for their reason: it says what the creature is.
 	 */

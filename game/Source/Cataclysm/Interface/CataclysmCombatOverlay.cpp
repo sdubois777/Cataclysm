@@ -522,6 +522,14 @@ FString UCataclysmCombatOverlay::BloomTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::GuideTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->bGuidesThePlayerForTheFloorRule && !UCataclysmSkillEffects::IsDead(Creature)
+		? FString(TEXT("Guide"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::SpireTextFor(const AActor* Actor)
 {
 	return Actor && Actor->IsA<ACataclysmSpireCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
@@ -583,7 +591,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
+		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), GuideTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})

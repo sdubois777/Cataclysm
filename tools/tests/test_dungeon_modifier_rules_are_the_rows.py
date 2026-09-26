@@ -4310,3 +4310,20 @@ def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter()
         assert phrase in lower, (
             f"Famine_Swarm_of_Locusts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_demonic_guide_row_still_chains_the_player_to_a_guide():
+    """The phrases the rule's readings rest on.
+
+    "Player's are chained to a demonic guide. Straying too far from their guide will cause the player to take
+    increased damage." A DEMONIC GUIDE is the Imp the rule raises; CHAINED is the zone drawn around it; STRAYING TOO
+    FAR is the distance past the chain; INCREASED DAMAGE is the damage taken. If any of them changes, the reading
+    must be revisited.
+    """
+    words = flat(rows()["Demonic_Demonic_Guide"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("chained to a demonic guide", "straying too far", "take increased damage"):
+        assert phrase in lower, (
+            f"Demonic_Demonic_Guide no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "DemonicGuideKey in CataclysmDungeonModifierEffects.h. " + words)

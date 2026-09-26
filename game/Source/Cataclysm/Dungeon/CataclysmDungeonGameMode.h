@@ -1941,6 +1941,9 @@ public:
 	/** The Reaper on this floor, or null before it arrives. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* TheReaperOnTheFloor() const { return TheReaper.Get(); }
 
+	/** Demonic Guide, for the panel and tests: the floor's guide, or null. */
+	ACataclysmEnemyCharacter* DemonicGuideOnTheFloor() const { return DemonicGuide.Get(); }
+
 	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
 
@@ -2354,6 +2357,18 @@ private:
 
 	/** Raw Sewage: a floor's boss's death, or the player's, clears every stack. */
 	void NoteDeathForRawSewage(const struct FCataclysmDeathNotice& Notice);
+
+	/** Demonic Guide: this arena's guide raised at the entrance, where a new arena is populated. */
+	void PlaceTheGuide();
+
+	/** Demonic Guide: the guide and its chain destroyed and forgotten. */
+	void ForgetTheGuide();
+
+	/**
+	 * Demonic Guide, on the beat: the guide sent to the exit or told to wait, its chain drawn around it, and the damage
+	 * a player beyond the chain takes written on the player.
+	 */
+	void StepDemonicGuide(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
@@ -3474,6 +3489,15 @@ private:
 	float RawSewageSecondsSinceBurn = 0.0f;
 	bool bRawSewageTagged = false;
 	int32 RawSewagePanelStacks = -1;
+
+	/**
+	 * Demonic Guide: the guide, the zone drawn as its chain, the damage taken last written on the player, and what
+	 * the panel last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> DemonicGuide;
+	TWeakObjectPtr<class ACataclysmGroundZone> DemonicGuideChain;
+	float DemonicGuideApplied = 0.0f;
+	int32 DemonicGuidePanelKey = -1;
 
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein
