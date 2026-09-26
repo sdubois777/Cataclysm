@@ -91,6 +91,8 @@ Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before i
 | b. paid per point: `? Effect->ValuePerPoint * Spent.Points` | the same | the same | "grants its 5, once" read 20; "still grants 5, not 10 or 40" read 40 |
 | c. the flag never taken as held: `> 1.0e9f` in `ApplyKnockback` | `Cataclysm.SetStance.` | `1 tests performed, 0 succeeded, 1 failed: AKnockbackMovesARavagerAloneAndNotOneWithAnEnemyNear` | "the knockback is refused", it landed; "the Ravager stays where it stood", it moved |
 
+**Final Python**, after the asset and the entry: `5498 passed, 8 skipped` (JUnit 5,506, no failures), as registered.
+
 ---
 
 ## 2026-09-25 — The consecutive-melee test that failed once: it now prints what its evaded swing depends on and asserts both, since no cause was found
