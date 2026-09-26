@@ -74,6 +74,16 @@ immediately before its run. Each restored run printed `2 tests performed, 2 succ
 | b. paid per point: `? Effect->ValuePerPoint * Spent.Points` | `2 tests performed, 1 succeeded, 1 failed: ScarredPlate...` | "at four points the resistance is 5% increased", 9.42 where 8.2425; "and at eight still 5%, not per point", 10.99 |
 | c. the flag never taken as held: `> 1.0e9f` in `ApplyKnockback` | `2 tests performed, 1 succeeded, 1 failed: SetStance...` | "at four points, with an enemy near, it is not", true |
 
+**THE FINAL PYTHON MISSED ITS REGISTRATION, AND BY MY OWN EDIT.** Registered 5,502 passed and 0 failed; it
+printed `10 failed, 5492 passed, 8 skipped` (JUnit 5,510, 10 failures), all ten in
+`tools/tests/test_generate_datatables.py`: the classes `TestAPassiveNodeCanGrantSeveralStats` (four),
+`TestARowCountingNearbyEnemiesCarriesItsOwnRadius` (three) and `TestABonusCanGrowWithDamageReductionOrMaximumMana`
+(three). Each builds a Passive Effects sheet of its own without the Min Points column, and emptying
+`OPTIONAL_COLUMNS` made the generator refuse such a sheet. After that edit I ran only the threshold tests of
+that file (`-k AnAtNPoints`) and not the whole file. Corrected by appending Min Points to the two sheet helpers
+those classes use, the way issue #1882 appended the columns before it; test-only, so the whole file was run
+again and printed `322 passed` (JUnit 322, no failures).
+
 ---
 
 ## 2026-09-25 — Cooldown reset: six actions that clear skill cooldowns, and eight enchantments written on them

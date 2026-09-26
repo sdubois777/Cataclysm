@@ -1438,7 +1438,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
-                 "Scale Step", "Option", "Reach Metres"]] + rows
+                 "Scale Step", "Option", "Reach Metres", "Min Points"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1598,7 +1598,7 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
-                 "Reach Metres", "Required Tags", "Option"]] + rows
+                 "Reach Metres", "Required Tags", "Option", "Min Points"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
