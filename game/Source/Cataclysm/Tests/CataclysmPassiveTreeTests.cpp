@@ -15886,10 +15886,13 @@ bool FCataclysmWoundChannelingTest::RunTest(const FString&)
 	};
 
 	// THE FIRST HALF: A TICK ON THE MASOCHIST.
+	// THE OTHER INCREASES ARE READ BEFORE THE POINTS ARE SPENT. Wound Channeling's
+	// own row is unconditional and fixed, so `PlainIncreases` read after the eight
+	// points counted its +8% as an "other" increase too, and expected 1.0741.
 	Take(Player, TEXT("Masochist_basic_fl_a1"), 0);
+	const float TickOthers = PlainIncreases(Player, TEXT("damage_over_time_taken"));
 	const float TickWithout = Tick();
 	Take(Player, TEXT("Masochist_basic_fl_a1"), 8);
-	const float TickOthers = PlainIncreases(Player, TEXT("damage_over_time_taken"));
 	const float TickWith = Tick();
 	if (!TestTrue(TEXT("set-up: both ticks reached the Masochist's health"),
 				  TickWithout > 0.0f && TickWith > 0.0f))
@@ -19598,7 +19601,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExsanguinateRowTest,
  *  of your current health, and every skill deals 40% more damage." The 15 is
  *  asked the way `UCataclysmSkillTemplate::AddedHealthCostOfCurrentPercent`, the
  *  function the cost code calls, asks it; the damage is 1.4x more on attack and
- *  spell. */
+ *  spell.
+ *
+ *  ATTACK DAMAGE IS READ AS A BLOW MULTIPLIES IT. `UCataclysmSkillEffects::ApplyHit`
+ *  takes `WeaponDamageOf(Source) / (1 + Folded) * MoreForSkill(...)`, and the 40% is
+ *  an unconditional "more" row, which is folded into the AttackDamage attribute
+ *  that `WeaponDamageOf` reads; `MoreForSkill`, which is `AttackDamageMoreForSkill`,
+ *  returns only what was not folded, so it alone reads 1.0 here, which is what
+ *  this test first read. The keystone adds no increases, so `Folded` does not
+ *  change and the product of the other two is the blow's ratio. */
 bool FCataclysmExsanguinateRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmCostRowTest;
@@ -19618,7 +19629,8 @@ bool FCataclysmExsanguinateRowTest::RunTest(const FString&)
 	const auto Read = [&Player]()
 	{
 		return TPair<float, float>(
-			Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer()),
+			UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem)
+				* Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer()),
 			SpellLine(Player).MoreMultiplier);
 	};
 	// ASKED AS `AddedHealthCostOfCurrentPercent` ASKS IT, which is protected: the
@@ -19984,20 +19996,15 @@ bool FCataclysmCeaselessPenanceRowTest::RunTest(const FString&)
 	}
 
 	/**
-	 * Three seconds of clock, with `HoldStep` called at each regeneration step as
-	 * the character's regeneration timer calls it. BY HAND, as
-	 * `Cataclysm.MasochistBuild.*` calls its drain, so the hold does not depend on
-	 * whether that timer fires in a test world; if it does fire too, a held
-	 * debuff is only held longer.
+	 * Three seconds of clock, in regeneration steps. THE HOLD COMES FROM THE GAME'S
+	 * OWN TIMER ALONE: `RunClock` ticks the world's timers, and the character's
+	 * regeneration timer calls `UCataclysmDebuffs::HoldStep` each step, as in play.
+	 * This test first ALSO called `HoldStep` by hand, so a held debuff was held
+	 * twice a step, gained time, and outlasted the three seconds at 30% health.
 	 */
-	const auto WaitThreeSeconds = [&Player, World]()
+	const auto WaitThreeSeconds = [World]()
 	{
-		const float Step = UCataclysmRegeneration::StepSeconds;
-		for (float Waited = 0.0f; Waited < 3.0f; Waited += Step)
-		{
-			CataclysmTestWorld::RunClock(World, Step, Step);
-			UCataclysmDebuffs::HoldStep(Player.Character, Step);
-		}
+		CataclysmTestWorld::RunClock(World, 3.0f, UCataclysmRegeneration::StepSeconds);
 	};
 
 	/** Stand at this share of maximum health, take a two-second Cripple, and wait three. */
@@ -20038,6 +20045,12 @@ bool FCataclysmCeaselessPenanceRowTest::RunTest(const FString&)
 		return false;
 	}
 	TestTrue(TEXT("with it, at 80% health, the Cripple is still there"), bAboveHalf);
+	if (!TestTrue(TEXT("set-up: before the drop to 30%, the Cripple is still held, by the "
+					   "character's own timer alone"),
+				  UCataclysmDebuffs::CountOnActor(Player.Character) > 0))
+	{
+		return false;
+	}
 
 	// THE HELD CRIPPLE IS STILL ON, so it is taken off before the last case by
 	// dropping to 30%, where the rule no longer holds it, and letting it run out.
