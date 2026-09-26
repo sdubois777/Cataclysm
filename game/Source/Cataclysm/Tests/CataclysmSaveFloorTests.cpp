@@ -21,6 +21,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
@@ -1139,6 +1140,27 @@ bool FCataclysmSaveRiftClaimsNothing::RunTest(const FString&)
 {
 	const ACataclysmRiftCharacter* Default = GetDefault<ACataclysmRiftCharacter>();
 	if (!TestNotNull(TEXT("a rift class"), Default))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it names no archetype row, as the dummy names none"), Default->ArchetypeRow.IsNone());
+	TestTrue(TEXT("the empty name is the training dummy's"),
+		FCataclysmSaveApply::ClassForArchetype(NAME_None) == ACataclysmEnemyCharacter::StaticClass());
+	return true;
+}
+
+/**
+ * An Infection Bloom names no archetype row and is not mapped to one either: the save system skips every floor
+ * source, so the empty name stays the sandbox training dummy's. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveInfectionBloomClaimsNothing,
+	"Cataclysm.SaveApply.AnInfectionBloomDoesNotTakeTheTrainingDummysEmptyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveInfectionBloomClaimsNothing::RunTest(const FString&)
+{
+	const ACataclysmInfectionBloomCharacter* Default = GetDefault<ACataclysmInfectionBloomCharacter>();
+	if (!TestNotNull(TEXT("an infection bloom class"), Default))
 	{
 		return false;
 	}

@@ -551,6 +551,12 @@ public:
 	static FString PortalTextFor(const AActor* Actor);
 
 	/**
+	 * "Infection Bloom" under the health bar of an infection bloom, or empty. Issues #1820 and #41. Beside the
+	 * floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString InfectionBloomTextFor(const AActor* Actor);
+
+	/**
 	 * "Rift" under the health bar of an Abyssal Rift, or empty. Issues #1820 and #41. Beside the floor sources'
 	 * words, for their reason: it says what the creature is.
 	 */

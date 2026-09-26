@@ -2,6 +2,121 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Infection Bloom: one bloom a floor spreads a patch every 20 seconds to eight, creatures on a patch deal 20% more, three come every 45 seconds while it stands, and destroying it clears the patches and sends a surge of four
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, when a patch or a wave is due, the damage multiplier); a new class
+`game/Source/Cataclysm/Character/CataclysmInfectionBloomCharacter.h`;
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (an eighth key of
+`DamageMultipliersBySource`, `InfectionBloomDamageSource`, and its setter);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing the bloom, its patches, the damage,
+the waves, the surge, the panel line); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`
+("Infection Bloom" under its bar); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
+(a row check, and the new key in the damage-source check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Pestilence_Infection_Bloom` in `game/Data/DungeonModifiers.csv`, weight 15: "Certain areas of the dungeon are
+overtaken by massive, living "Infection Blooms," grotesque, pulsating masses of diseased flesh and tendrils. These
+blooms slowly spread across the environment, corrupting the terrain and empowering nearby enemies. If left unchecked,
+they release waves of plague-ridden creatures that swarm players. Destroying the bloom halts its spread and weakens
+affected enemies, but the destruction also triggers a final surge of toxic spores or pestilent minions as a last
+defense." It states no figure.
+
+### What the rule does
+
+When a floor carrying the row is placed, one bloom stands where Eternal Chorus's picker puts its sources, at least
+twenty metres from the entrance. A Horde arena has one too, and its later waves keep it. The bloom is a floor source
+the player can destroy, with the Imp's health at Common; it says "Infection Bloom" under its bar, pays nothing and is
+not one of the floor's creatures.
+
+From its first beat a diseased patch lies under it, drawn in Pestilence's colours, Necrotic Ground's patch in size.
+Every 20 seconds one more is added, touching a random patch already there as Necrotic Ground's patches spread, and
+always on a floor cell, to eight. The patches do no damage. **A creature on any patch deals 20% more damage**, once
+however many patches it stands on.
+
+While the bloom stands, three creatures of the floor's own kinds come beside it every 45 seconds, at Common.
+
+When the player destroys it, every patch goes, and on the next beat every creature's damage is written back without
+them: that is the row's "halts its spread and weakens affected enemies". At once, four creatures of the floor's own
+kinds come beside where it stood, the "final surge". Nothing more spreads or comes on that floor.
+
+The panel reads "infection bloom: 3 of 8 patches; next wave in 12 s", or "infection bloom: destroyed; its spread has
+stopped".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **One bloom a floor**, a destroyable floor source with the Imp's health.
+- **A patch added every 20 s, to eight**, spreading as Necrotic Ground's does.
+- **Creatures on its patches deal 20% more damage.**
+- **A wave of three every 45 s while it stands.**
+- **Destroying it removes its patches and the damage they gave, and spawns four at once.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **A wave's creatures pay nothing and are not the floor's creatures; the surge's pay and are.** A standing bloom
+  sends waves for as long as it stands, so paying waves would be unlimited loot and experience; Portal Unleashing's
+  creatures pay nothing for the same reason. The surge comes once, so it pays, as Infested Veins' guardians do.
+- **A Horde arena has one bloom, kept by its later waves**, with its patches and clocks, as Infested Veins and Portal
+  Unleashing keep theirs.
+- **A patch is always placed on a floor cell**, with up to sixteen tries at a random angle; a beat on which none lands
+  keeps the clock and tries again. Necrotic Ground places its patches without that check.
+- **"Infection Bloom" rather than "Bloom" under its bar**, because Necrotic Bloom's flower already says "Bloom".
+- **The damage is a new key of the creature's damage map**, as Obsidian Sarcophagi's is, so it cannot overwrite
+  another rule's.
+
+### The research: a source that keeps sending until it is destroyed
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, Eternal Torment | https://game8.co/games/Diablo-4/archives/421905 | "A world event in which you would need to destroy bone masses in order to complete." |
+| Diablo IV, a player's bug report | https://us.forums.blizzard.com/en/d4/t/infinite-spawning-enemies-in-nm-dungeons-extreme-leveling-exploit-easily-repeatable/59802 | "the mobs will continue to spawn indefinitely"; the player called it an "EXTREME leveling exploit" |
+
+**What it settles and what it does not.** Diablo IV ships the shape of the row: an object the player must destroy,
+with enemies coming until it is. The bug report, written by a player and not by Blizzard, shows what happens when
+creatures that keep coming also pay: it was reported as a levelling exploit. That is why a wave here pays nothing.
+Neither page describes spreading ground, a damage bonus for standing on it, or a surge on destruction, so the 20
+seconds, eight patches, 20%, 45 seconds, three and four are this game's own.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `InfectionBloomFiguresPatchesWavesAndSurge`: the figures, and when a patch and a wave are due.
+- `AnInfectionBloomSpreadsAPatchEveryTwentySecondsToEight`: one bloom that can be hurt, says "Infection Bloom", pays
+  nothing, is not the floor's, has the Imp's health and stands far enough from the entrance; one patch under it at
+  once, with the panel; a second at 20 s, one patch-width from the first and on a floor cell; eight at 140 s and
+  still eight 40 s later; a Horde arena's next wave keeps the same bloom and draws its patch again.
+- `ACreatureOnAnInfectionPatchDealsTwentyPercentMore`: an Imp on the patch 1.2, one far away 1.0, the bloom itself
+  not strengthened.
+- `AStandingInfectionBloomSendsThreeEveryFortyFiveSeconds`: none at 44.75 s; three at 45 s of the floor's kinds, with
+  a brain, paying nothing, not the floor's, beside the bloom; six at 90 s.
+- `DestroyingAnInfectionBloomHaltsItsSpreadAndSendsASurge`: with two patches and an Imp strengthened on one, the
+  player's blow destroys it: no bloom stands, its patches are gone, four of the floor's creatures stand beside where it
+  stood and each pays; the next beat the Imp is back to 1.0 and the panel says destroyed; a minute later no patch and
+  no wave.
+- `Cataclysm.SaveApply.AnInfectionBloomDoesNotTakeTheTrainingDummysEmptyName`.
+
+Python: a row check that the row still says "slowly spread", "empowering nearby enemies", "release waves", "halts its
+spread", "weakens affected enemies" and "final surge"; and the damage-source check now names the eighth key.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-26 — The deployable naming filter is tested: a moving summoner's unscoped "less damage while moving" row does not reach a ballista's blow
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`

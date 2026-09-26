@@ -605,6 +605,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetObsidianSarcophagiDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies this creature's attack damage while it stands on an infection bloom's patch.
+	 * `Pestilence_Infection_Bloom`. Issues #1820 and #41.
+	 *
+	 * AN EIGHTH KEY OF `DamageMultipliersBySource`. Everything the setters above say about the route,
+	 * the designed figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetInfectionBloomDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -613,6 +625,7 @@ public:
 	static constexpr const TCHAR* PlagueBeaconsDamageSource = TEXT("PlagueBeacons");
 	static constexpr const TCHAR* TrialOfEnduranceDamageSource = TEXT("TrialOfEndurance");
 	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
+	static constexpr const TCHAR* InfectionBloomDamageSource = TEXT("InfectionBloom");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -1691,8 +1704,8 @@ protected:
 	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
 	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
 	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
-	 * `TrialOfEnduranceDamageSource` (Trial of Endurance) and `ObsidianSarcophagiDamageSource` (Obsidian
-	 * Sarcophagi). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
+	 * `TrialOfEnduranceDamageSource` (Trial of Endurance), `ObsidianSarcophagiDamageSource` (Obsidian
+	 * Sarcophagi) and `InfectionBloomDamageSource` (Infection Bloom). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
 	 * by every entry. Issues #1820 and #41.
 	 *
 	 * ONE MAP RATHER THAN A FIELD PER SOURCE, as ruled by the coordinating session on

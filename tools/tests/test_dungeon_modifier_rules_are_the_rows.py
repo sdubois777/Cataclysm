@@ -3037,7 +3037,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetSpireDamageMultiplier", "SpireDamageSource"),
                         ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource"),
                         ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource"),
-                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource")):
+                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource"),
+                        ("SetInfectionBloomDamageMultiplier", "InfectionBloomDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4349,3 +4350,20 @@ def test_infested_hoard_row_still_has_infested_drops_stacks_that_drain_and_a_cha
         assert phrase in lower, (
             f"Pestilence_The_Infested_Hoard no longer says {phrase.upper()!r}. A reading of the rule rests on it; "
             "see InfestedHoardKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_infection_bloom_row_still_spreads_empowers_sends_waves_and_surges_when_destroyed():
+    """The phrases the rule's readings rest on.
+
+    SLOWLY SPREAD is the patches; EMPOWERING NEARBY ENEMIES is the damage they give; RELEASE WAVES is what a standing
+    bloom sends; HALTS ITS SPREAD and WEAKENS AFFECTED ENEMIES are what destroying it does; FINAL SURGE is what it sends
+    as it goes. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Infection_Bloom"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("slowly spread", "empowering nearby enemies", "release waves", "halts its spread",
+                   "weakens affected enemies", "final surge"):
+        assert phrase in lower, (
+            f"Pestilence_Infection_Bloom no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "InfectionBloomKey in CataclysmDungeonModifierEffects.h. " + words)

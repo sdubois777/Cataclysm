@@ -2055,6 +2055,31 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose bloom spreads diseased ground that strengthens creatures, sends waves while it stands, and
+	 * sends a last surge when it is destroyed. Issues #1820 and #41.
+	 *
+	 * "Certain areas of the dungeon are overtaken by massive, living "Infection Blooms," grotesque, pulsating masses
+	 * of diseased flesh and tendrils. These blooms slowly spread across the environment, corrupting the terrain and
+	 * empowering nearby enemies. If left unchecked, they release waves of plague-ridden creatures that swarm players.
+	 * Destroying the bloom halts its spread and weakens affected enemies, but the destruction also triggers a final
+	 * surge of toxic spores or pestilent minions as a last defense."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - ONE BLOOM A FLOOR, a floor source the player can destroy, "Infection Bloom" under its bar, with the Imp's
+	 *   health at Common, placed by Eternal Chorus's picker.
+	 * - IT SPREADS: a diseased patch under it from the first beat, and one more every
+	 *   `InfectionBloomSecondsBetweenPatches`, each touching one already there as Necrotic Ground's do, to
+	 *   `InfectionBloomMostPatches`.
+	 * - A CREATURE ON A PATCH deals `InfectionBloomDamageMorePercent` more damage.
+	 * - WHILE IT STANDS, `InfectionBloomWaveCreatures` of the floor's kinds come beside it every
+	 *   `InfectionBloomSecondsBetweenWaves`.
+	 * - DESTROYED, its patches go, and with them the damage they gave; and `InfectionBloomSurgeCreatures` of the
+	 *   floor's kinds come beside it at once, the "final surge".
+	 */
+	static const TCHAR* InfectionBloomKey;
+
+	/**
 	 * The row whose creatures drop infested loot that drains the player who takes it. Issues #1820 and #41.
 	 *
 	 * "All enemies have a chance to drop infested gold and items. Picking up infested loot will apply a stack of
@@ -4651,6 +4676,20 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/**
+	 * Infection Bloom's figures, every one a play-test value. See the key. A patch is Necrotic Ground's patch, and a
+	 * later one stands where Necrotic Ground's spread puts it.
+	 */
+	static constexpr int32 InfectionBloomsPerFloor = 1;
+	static constexpr float InfectionBloomPatchRadiusCm = NecroticGroundPatchRadiusCm;
+	static constexpr float InfectionBloomSpreadCm = NecroticGroundSpreadCm;
+	static constexpr float InfectionBloomSecondsBetweenPatches = 20.0f;
+	static constexpr int32 InfectionBloomMostPatches = 8;
+	static constexpr float InfectionBloomDamageMorePercent = 20.0f;
+	static constexpr float InfectionBloomSecondsBetweenWaves = 45.0f;
+	static constexpr int32 InfectionBloomWaveCreatures = 3;
+	static constexpr int32 InfectionBloomSurgeCreatures = 4;
+
 	/** The Infested Hoard's figures, every one a play-test value. See the key. */
 	static constexpr float InfestedHoardChancePercent = 10.0f;
 	static constexpr float InfestedHoardChancePercentPerStack = 5.0f;
@@ -5331,6 +5370,15 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** Whether a standing bloom adds a patch now: its time has come and it has fewer than the most. */
+	static bool InfectionBloomPatchIsDue(float SecondsSinceLastPatch, int32 Patches);
+
+	/** Whether a standing bloom sends a wave now. */
+	static bool InfectionBloomWaveIsDue(float SecondsSinceLastWave);
+
+	/** What a creature's damage is multiplied by, on a patch or not. */
+	static float InfectionBloomDamageMultiplier(bool bOnAPatch);
 
 	/** The chance, 0 to 100, that a paying floor creature's death leaves an infested drop, at these stacks. */
 	static float InfestedHoardChancePercentFor(int32 Stacks);

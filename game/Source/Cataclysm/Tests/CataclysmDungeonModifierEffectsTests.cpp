@@ -36,6 +36,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
@@ -32095,6 +32096,326 @@ bool FCataclysmHoardEndsTest::RunTest(const FString& Parameters)
 	UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player.Character, 10000000.0f);
 	TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
 	TestEqual(TEXT("the player's death: none"), Mode->InfestedHoardStacksHeld(), 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Infection_Bloom. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName InfectionRow(UCataclysmDungeonModifierEffects::InfectionBloomKey);
+
+	/** A dungeon carrying only Infection Bloom, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AnInfectionBloomFloor(FAutomationTestBase& Test, UWorld* World,
+													 const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {InfectionRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestNotNull(TEXT("a bloom on the floor"), Mode->InfectionBloomNow()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The floor's creatures that still stand. */
+	TArray<ACataclysmEnemyCharacter*> FloorCreaturesStanding(const ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Standing;
+		for (ACataclysmEnemyCharacter* One : Mode->FloorEnemies)
+		{
+			if (IsValid(One) && !UCataclysmSkillEffects::IsDead(One))
+			{
+				Standing.Add(One);
+			}
+		}
+		return Standing;
+	}
+}
+
+// THE FIGURES: A PATCH EVERY 20 S TO 8, 20% MORE DAMAGE ON ONE, A WAVE OF 3 EVERY 45 S, A SURGE OF 4.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfectionFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InfectionBloomFiguresPatchesWavesAndSurge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfectionFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one bloom a floor"), Effects::InfectionBloomsPerFloor, 1);
+	TestEqual(TEXT("a patch is Necrotic Ground's"), Effects::InfectionBloomPatchRadiusCm,
+			  Effects::NecroticGroundPatchRadiusCm, 0.001f);
+	TestEqual(TEXT("eight patches at most"), Effects::InfectionBloomMostPatches, 8);
+	TestEqual(TEXT("a wave of three"), Effects::InfectionBloomWaveCreatures, 3);
+	TestEqual(TEXT("a surge of four"), Effects::InfectionBloomSurgeCreatures, 4);
+	TestFalse(TEXT("no patch at 19.75 s"), Effects::InfectionBloomPatchIsDue(19.75f, 1));
+	TestTrue(TEXT("a patch at 20 s"), Effects::InfectionBloomPatchIsDue(20.0f, 1));
+	TestFalse(TEXT("none past eight"), Effects::InfectionBloomPatchIsDue(100.0f, 8));
+	TestFalse(TEXT("no wave at 44.75 s"), Effects::InfectionBloomWaveIsDue(44.75f));
+	TestTrue(TEXT("a wave at 45 s"), Effects::InfectionBloomWaveIsDue(45.0f));
+	TestEqual(TEXT("20% more on a patch"), Effects::InfectionBloomDamageMultiplier(true), 1.2f, 0.0001f);
+	TestEqual(TEXT("nothing off one"), Effects::InfectionBloomDamageMultiplier(false), 1.0f, 0.0001f);
+	return true;
+}
+
+// ONE BLOOM, "INFECTION BLOOM", PAYING NOTHING; A PATCH UNDER IT AT ONCE, ONE MORE EVERY 20 S TOUCHING ONE ALREADY
+// THERE, TO EIGHT; A HORDE ARENA'S NEXT WAVE KEEPS IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfectionSpreadsTest,
+	"Cataclysm.DungeonModifierEffects.AnInfectionBloomSpreadsAPatchEveryTwentySecondsToEight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfectionSpreadsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfectionBloomFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bloom = Mode->InfectionBloomNow();
+	const FVector At = Bloom->GetActorLocation();
+	TestTrue(TEXT("an infection bloom"), Bloom->IsA<ACataclysmInfectionBloomCharacter>());
+	TestNull(TEXT("with no brain"), Bloom->GetController());
+	TestFalse(TEXT("that can be hurt"), Bloom->bCannotBeHurt);
+	TestFalse(TEXT("that pays nothing"), Bloom->PaysForItsDeath());
+	TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Bloom));
+	TestEqual(TEXT("\"Infection Bloom\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Bloom),
+			  FString(TEXT("Infection Bloom")));
+	TestEqual(TEXT("with the Imp's health"), MaxHealthOf(Bloom), Mode->InfectionBloomHealth(), 0.5f);
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(At, Mode->CurrentFloor->EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+
+	// THE FIRST BEAT: ONE PATCH, UNDER IT.
+	Beat(Mode, 1);
+	TArray<ACataclysmGroundZone*> Patches = Mode->InfectionBloomPatchesNow();
+	if (!TestEqual(TEXT("one patch at once"), Patches.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("under the bloom"), Patches[0]->Covers(At));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(InfectionRow),
+			  FString(TEXT("infection bloom: 1 of 8 patches; next wave in 45 s")));
+
+	// TWENTY SECONDS: A SECOND, TOUCHING THE FIRST, ON THE FLOOR.
+	Beat(Mode, BeatsFor(Effects::InfectionBloomSecondsBetweenPatches));
+	Patches = Mode->InfectionBloomPatchesNow();
+	if (!TestEqual(TEXT("two patches at twenty seconds"), Patches.Num(), 2))
+	{
+		return false;
+	}
+	const FVector Second = Patches[1]->GetActorLocation();
+	TestEqual(TEXT("one patch-width from the first"), FVector::Dist2D(Second, Patches[0]->GetActorLocation()),
+			  Effects::InfectionBloomSpreadCm, 1.0f);
+	TestTrue(TEXT("on a floor cell"),
+			 Mode->CurrentFloor->GetPlan().IsFloor(Mode->CurrentFloor->CellOfWorld(Second)));
+
+	// SIX MORE TIMES, THEN TWICE MORE: EIGHT, AND STILL EIGHT.
+	Beat(Mode, 6 * BeatsFor(Effects::InfectionBloomSecondsBetweenPatches));
+	TestEqual(TEXT("eight at 140 seconds"), Mode->InfectionBloomPatchesNow().Num(), Effects::InfectionBloomMostPatches);
+	Beat(Mode, 2 * BeatsFor(Effects::InfectionBloomSecondsBetweenPatches));
+	TestEqual(TEXT("still eight"), Mode->InfectionBloomPatchesNow().Num(), Effects::InfectionBloomMostPatches);
+
+	// A HORDE ARENA'S NEXT WAVE KEEPS THE BLOOM AND DRAWS ITS PATCHES AGAIN.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Horde = Mode->InfectionBloomNow();
+	if (!TestNotNull(TEXT("a bloom in the Horde arena"), Horde)
+		|| !TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the next wave keeps the same bloom"), Mode->InfectionBloomNow() == Horde);
+	Beat(Mode, 1);
+	TestEqual(TEXT("with its patch drawn again"), Mode->InfectionBloomPatchesNow().Num(), 1);
+	return true;
+}
+
+// A CREATURE ON A PATCH DEALS 20% MORE; ONE OFF EVERY PATCH, NOTHING MORE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfectionEmpowersTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureOnAnInfectionPatchDealsTwentyPercentMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfectionEmpowersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfectionBloomFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->InfectionBloomNow()->GetActorLocation();
+	ACataclysmEnemyCharacter* On = SpawnImpWithHealth(World, At + FVector(50.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Off =
+		SpawnImpWithHealth(World, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp on the patch"), On) || !TestNotNull(TEXT("an Imp far from it"), Off))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("on the patch: 20% more"),
+			  On->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfectionBloomDamageSource), 1.2f, 0.001f);
+	TestEqual(TEXT("off it: nothing more"),
+			  Off->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfectionBloomDamageSource), 1.0f, 0.001f);
+	TestFalse(TEXT("the bloom itself is not strengthened"),
+			  Mode->InfectionBloomNow()->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfectionBloomDamageSource)
+				  > 1.0f);
+	return true;
+}
+
+// WHILE IT STANDS, THREE OF THE FLOOR'S KINDS COME BESIDE IT EVERY 45 S, PAYING NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfectionWavesTest,
+	"Cataclysm.DungeonModifierEffects.AStandingInfectionBloomSendsThreeEveryFortyFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfectionWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfectionBloomFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->InfectionBloomNow()->GetActorLocation();
+	Beat(Mode, BeatsFor(Effects::InfectionBloomSecondsBetweenWaves) - 1);
+	TestEqual(TEXT("nothing at 44.75 s"), Mode->InfectionBloomWaveCreaturesStanding().Num(), 0);
+	Beat(Mode, 1);
+	const TArray<ACataclysmEnemyCharacter*> First = Mode->InfectionBloomWaveCreaturesStanding();
+	if (!TestEqual(TEXT("three at 45 s"), First.Num(), Effects::InfectionBloomWaveCreatures))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : First)
+	{
+		TestFalse(TEXT("a creature of the floor's kinds, not a floor source"),
+				  Creature->IsA<ACataclysmFloorSourceCharacter>());
+		TestNotNull(TEXT("with a brain"), Creature->GetController());
+		TestFalse(TEXT("that pays nothing"), Creature->PaysForItsDeath());
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Creature));
+		TestTrue(TEXT("beside the bloom"),
+				 FVector::Dist2D(Creature->GetActorLocation(), At) <= Effects::NecroticBloomWaveWithinCm + 1.0f);
+	}
+	Beat(Mode, BeatsFor(Effects::InfectionBloomSecondsBetweenWaves));
+	TestEqual(TEXT("six at 90 s"), Mode->InfectionBloomWaveCreaturesStanding().Num(),
+			  2 * Effects::InfectionBloomWaveCreatures);
+	return true;
+}
+
+// DESTROYED: ITS PATCHES GO AND THEIR DAMAGE WITH THEM, FOUR OF THE FLOOR'S KINDS COME AT ONCE AND PAY, AND
+// NOTHING MORE SPREADS OR COMES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfectionDestroyedTest,
+	"Cataclysm.DungeonModifierEffects.DestroyingAnInfectionBloomHaltsItsSpreadAndSendsASurge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfectionDestroyedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfectionBloomFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bloom = Mode->InfectionBloomNow();
+	const FVector At = Bloom->GetActorLocation();
+	ACataclysmEnemyCharacter* On = SpawnImpWithHealth(World, At + FVector(50.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp on the patch"), On))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::InfectionBloomSecondsBetweenPatches) + 1);
+	const TArray<ACataclysmGroundZone*> Patches = Mode->InfectionBloomPatchesNow();
+	if (!TestEqual(TEXT("two patches"), Patches.Num(), 2)
+		|| !TestEqual(TEXT("the Imp strengthened"),
+					  On->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfectionBloomDamageSource), 1.2f, 0.001f)
+		|| !TestEqual(TEXT("none of the floor's creatures yet"), FloorCreaturesStanding(Mode).Num(), 0))
+	{
+		return false;
+	}
+
+	// THE PLAYER DESTROYS IT.
+	Bloom->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Bloom, 100000.0f);
+	if (!TestTrue(TEXT("the blow destroyed it"), UCataclysmSkillEffects::IsDead(Bloom)))
+	{
+		return false;
+	}
+	TestNull(TEXT("no bloom stands"), Mode->InfectionBloomNow());
+	for (ACataclysmGroundZone* Patch : Patches)
+	{
+		TestFalse(TEXT("its patches are gone"), IsValid(Patch));
+	}
+	const TArray<ACataclysmEnemyCharacter*> Surge = FloorCreaturesStanding(Mode);
+	if (!TestEqual(TEXT("a surge of four"), Surge.Num(), Effects::InfectionBloomSurgeCreatures))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : Surge)
+	{
+		TestTrue(TEXT("each pays"), Creature->PaysForItsDeath());
+		TestTrue(TEXT("beside where it stood"),
+				 FVector::Dist2D(Creature->GetActorLocation(), At) <= Effects::NecroticBloomWaveWithinCm + 1.0f);
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the Imp's strength is gone"),
+			  On->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfectionBloomDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(InfectionRow),
+			  FString(TEXT("infection bloom: destroyed; its spread has stopped")));
+
+	// A MINUTE MORE: NO PATCH AND NO WAVE.
+	Beat(Mode, BeatsFor(60.0f));
+	TestEqual(TEXT("no patch comes back"), Mode->InfectionBloomPatchesNow().Num(), 0);
+	TestEqual(TEXT("and no wave comes"), Mode->InfectionBloomWaveCreaturesStanding().Num(), 0);
 	return true;
 }
 

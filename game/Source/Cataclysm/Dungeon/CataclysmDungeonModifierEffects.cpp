@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InfectionBloomKey =
+	TEXT("Pestilence_Infection_Bloom");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedHoardKey =
 	TEXT("Pestilence_The_Infested_Hoard");
 
@@ -496,6 +499,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(InfectionBloomKey)
 		|| RowKey == FName(InfestedHoardKey)
 		|| RowKey == FName(AbyssalRiftsKey)
 		|| RowKey == FName(RawSewageKey)
@@ -700,6 +704,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(InfectionBloomKey),
 		FName(InfestedHoardKey),
 		FName(AbyssalRiftsKey),
 		FName(SwarmOfLocustsKey),
@@ -1860,6 +1865,21 @@ int32 UCataclysmDungeonModifierEffects::InfestedHoardStacksAfterAdding(int32 Sta
 float UCataclysmDungeonModifierEffects::InfestedHoardPercentPerSecond(int32 Stacks)
 {
 	return FMath::Clamp(Stacks, 0, InfestedHoardMostStacks) * InfestedHoardPercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::InfectionBloomPatchIsDue(float SecondsSinceLastPatch, int32 Patches)
+{
+	return Patches < InfectionBloomMostPatches && SecondsSinceLastPatch >= InfectionBloomSecondsBetweenPatches;
+}
+
+bool UCataclysmDungeonModifierEffects::InfectionBloomWaveIsDue(float SecondsSinceLastWave)
+{
+	return SecondsSinceLastWave >= InfectionBloomSecondsBetweenWaves;
+}
+
+float UCataclysmDungeonModifierEffects::InfectionBloomDamageMultiplier(bool bOnAPatch)
+{
+	return bOnAPatch ? 1.0f + InfectionBloomDamageMorePercent / 100.0f : 1.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)
