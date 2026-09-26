@@ -2826,7 +2826,7 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**Nothing is picked up by walking over it.** The three metres is how near a click has to happen from, not a radius that sweeps things up. Diablo's number describes the second thing, and this design has no automatic pickup of any kind — not for gear, not for crafting materials, and not for gold.
+**Crafting materials within fifteen metres are collected without a click; gear never is.** The three metres is how near a click has to happen from, not a radius that sweeps things up. Crafting materials are the exception, by the project owner's decision of 2026-08-23: a material lying within fifteen metres of the character, five times the click range, comes to them on its own, because a material is an interchangeable quantity and collecting it is not a decision (issues #851 and #883). A piece of gear is never collected automatically, at any distance, because taking one is a decision the player makes after reading it. The game drops no gold.
 
   
 

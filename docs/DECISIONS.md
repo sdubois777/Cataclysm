@@ -257,6 +257,47 @@ On `ca959696`, the engine commit moved onto development `23dbcdfd`.
 
 ---
 
+## 2026-09-25 — The design document now says crafting materials within fifteen metres are collected without a click, as the owner decided on 2026-08-23; gear never is
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the paragraph that began "Nothing is picked up by walking over it." No code
+changes: the game already does what the paragraph now says. Issues
+[#851](https://github.com/sdubois777/Cataclysm/issues/851) and
+[#883](https://github.com/sdubois777/Cataclysm/pull/883).
+
+### What was wrong
+
+The paragraph said the design "has no automatic pickup of any kind — not for gear, not for crafting materials, and
+not for gold". It was written on 2026-08-19 (commit `3b23d850`). Four days later, on 2026-08-23, the project owner
+asked for crafting materials to be collected together (issue #851). Pull request #883 records that the owner settled
+it as "automatic rather than a click", within five times the click range. Since then
+`ACataclysmPlayerController::CollectMaterialsNearby` has run every frame and taken every crafting material within
+`UCataclysmDropPickup::AutomaticMaterialRangeCm`, which is `PickupRangeCm * 5`, 1500 cm. Gear is never taken this
+way, because `UCataclysmDropPickup::ComesAutomatically` answers false for gear at any distance. So the document
+contradicted a later owner decision that the code follows.
+
+This was found while building The Infested Hoard, when the coordinating session read the paragraph as saying the
+code was wrong. It is the paragraph that was out of date.
+
+### What the paragraph says now
+
+That crafting materials within fifteen metres are collected without a click, by the owner's decision of 2026-08-23;
+that a piece of gear is never collected automatically, at any distance; and that the game drops no gold.
+
+### The earlier entry is superseded, not edited
+
+The entry "2026-08-19 — A drop is taken from within three metres, and a click from further off walks there
+first" quotes the old paragraph. It is left as it was, because a merged entry is not edited. **Its sentence "Nothing
+is picked up by walking over it" is superseded by this entry for crafting materials.** For gear it still holds.
+
+### Evidence
+
+No test is added, because nothing in the game changed. The behaviour the paragraph now describes is already tested:
+`ComesAutomatically` refuses gear and accepts a material within range, and the Trick or Treat test
+`AClickThroughThePlayerControllerRollsAndItsSweepDoesNot` shows the controller's collection taking a material at the
+player's feet.
+
+---
+
 ## 2026-09-25 — A passive row can apply from a number of points in its node, once; a knockback asks whether its target may be knocked back
 
 **Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h`, `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
