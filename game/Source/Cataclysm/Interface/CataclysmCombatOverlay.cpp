@@ -18,6 +18,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -601,6 +602,14 @@ FString UCataclysmCombatOverlay::InfectionBloomTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::QuarantineTextFor(const AActor* Actor)
+{
+	const ACataclysmQuarantineCharacter* Containment = Cast<ACataclysmQuarantineCharacter>(Actor);
+	return Containment && !UCataclysmSkillEffects::IsDead(Containment)
+		? FString::Printf(TEXT("Quarantine: %s"), *Containment->Holds)
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
@@ -608,6 +617,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor), InfectionBloomTextFor(Actor),
+		  QuarantineTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  DamageCutTextFor(Actor)})
 	{
