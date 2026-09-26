@@ -12,8 +12,8 @@ on the player, the reset on leaving, the panel line); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and run: the figures are at the end of this
+entry.
 
 ### The row
 
@@ -96,10 +96,26 @@ Six automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "start the dungeon owing", "as they kill enemies, they reduce the debt", "gaining
 blessings", "fail to pay off the debt by the end" and "during the boss fight".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-26, with the build machine and the editor, on development 251d4a52. Every figure below is what
+`pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed. The change compiled at the first build.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window | `5523 passed, 8 skipped` (JUnit 5,531, no failures), as registered |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| Whole suite, started with no CI run in progress | `2642 tests performed, 2642 succeeded, 0 failed`; 2642 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, each on its one test, each anchor re-checked immediately before its run. Each
+printed `1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests performed, 1 succeeded, 0 failed`
+restored, and each failed on exactly the checks registered for it.
+
+| Break | The test that failed, and on what |
+|---|---|
+| A kill pays nothing | `KillsPayTheBloodDebtAndEachQuarterBlessesTheBlow`, six: "fourteen paid", "fifteen paid", "still fifteen" (each 0), "5% more attack damage", "5% more spell damage" (each 0) and "the panel" ("0 of 60 paid, +0%") |
+| The curse never holds | `AnUnpaidBloodDebtCursesTheFinalBossFloor`, three: "30% less attack damage", "30% less spell damage" (each 0) and "the cursed panel" |
+| The blessing written on the player as 0 | `KillsPayTheBloodDebtAndEachQuarterBlessesTheBlow`, two: "5% more attack damage" and "5% more spell damage", each 0 |
 
 ---
 
