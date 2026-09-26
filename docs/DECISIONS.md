@@ -2,6 +2,69 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Four potion slots on the keys 2 to 5: kills fill them by rarity, and a drink heals 35% of maximum health over 3 seconds
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPotions.h` and `.cpp` (new: the slots, the figures, a
+drink, the heal and the refill); `CataclysmAbilitySystemComponent.h` and `.cpp` (the charges and the running heal,
+and a death ending the heal); `CataclysmEnemyCharacter.cpp` (a paying kill adds charges);
+`CataclysmPlayerCharacter.cpp` (the heal is paid in the regeneration step); `CataclysmDungeonGameMode.cpp` (entering
+a dungeon fills every slot); `CataclysmPlayerController.h` and `.cpp`, `CataclysmInputConfig.h`,
+`tools/generate_input_assets.py` and seven assets under `game/Content/Input/` (the keys);
+`CataclysmHUD.h` and `.cpp` (four boxes); `docs/Cataclysm_GDD_v2.md` (the key tables and a potions paragraph).
+Issue [#806](https://github.com/sdubois777/Cataclysm/issues/806).
+
+### WHAT WAS DECIDED
+
+Proposed and accepted on 2026-09-25 under the owner's delegation of unstated numbers. This is the first slice of
+potions: health potions only.
+
+- Four slots, each holding up to 30 charges. A drink spends 10 and heals 35% of maximum health over 3 seconds. One
+  potion heal runs at a time, and a drink while one runs is refused and spends nothing.
+- Every kill adds charges to all four slots by the creature's rarity rung: Common 1, Elite 3.5, Legendary 6, and 11
+  for a Herald, a Boss or a Cataclysm Boss. Only a death that pays loot and experience adds any.
+- The heal is paid a quarter-second at a time through the regeneration top-up, so every rule on healing applies to
+  it, Point of No Return's ceiling included.
+- A death ends a running heal and keeps the charges. Entering a dungeon fills every slot; taking the stairs does not.
+- The keys 2, 3, 4 and 5 drink from slots 1 to 4 in both control schemes. Four boxes in the bottom-right corner show
+  each slot's key, charges and the drinks they make.
+
+### TESTS
+
+Seven in `Cataclysm.Potions.`: a kill fills every slot by rarity; a drink spends ten charges and heals 35% over three
+seconds; a drink is refused with too few charges or no living player and spends nothing; a potion heal stops at the
+ceiling Point of No Return lowers; a death ends a running heal and keeps the charges; entering a dungeon fills every
+slot; the boxes do not run into the skill bar or the vitals.
+
+### THE INPUT ASSETS
+
+`tools/generate_input_assets.py`, run in the editor in this change's window, made `IA_DrinkPotion1` to `4` and
+changed `DA_InputConfig`, `IMC_KeyboardMovement` and `IMC_MouseMovement`. The editor also re-saved the thirteen
+existing input actions and `L_Sandbox.umap`. Each was the same size as at HEAD, and they are left out as re-saves by
+the [#732](https://github.com/sdubois777/Cataclysm/pull/732) precedent; their content was not compared.
+
+### Run
+
+One window on 2026-09-26, with the build machine and the editor, on development af29df34. Every figure below is what
+`pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record | `5520 passed, 8 skipped` (JUnit 5,528, no failures), as registered |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite, started with no CI run in progress | `2615 tests performed, 2615 succeeded, 0 failed`; 2615 declared, gap 0 |
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.Potions.` (seven tests), each anchor re-checked immediately
+before its run. Each printed `7 tests performed, 6 succeeded, 1 failed` with the break in and `7 tests performed, 7
+succeeded, 0 failed` restored.
+
+| Break | The test that failed, and on what |
+|---|---|
+| Every kill counted as a Common one | `AKillFillsEverySlotByTheCreaturesRarity`: "an Elite adds 3.5 to every slot, 4.5 in all", "a Legendary adds 6, 10.5 in all", "a Herald adds 11, 21.5 in all" and "a Boss's 11 fills every slot and stops at 30", all false |
+| A second drink allowed while a heal runs | `ADrinkSpendsTenChargesAndHeals35PercentOfMaximumHealthOverThreeSeconds`: "and keeps its 30 charges", 20 |
+| Entering a dungeon refills nobody | `EnteringADungeonFillsEverySlot`: "slot 1 is full" to "slot 4 is full", each 0 |
+
+---
+
 ## 2026-09-25 — The Infested Hoard: a paying floor creature sometimes leaves one extra infested drop; taking one by hand adds a stack that drains 0.3% of maximum health a second and raises the chance of the next, until the floor ends
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
