@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — A hit on a player measures distance, reads the damage type and spreads Contagious Torment from the player's character, not from its player state
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`. Part of issue
+[#1755](https://github.com/sdubois777/Cataclysm/issues/1755).
+
+### WHAT WAS WRONG
+
+**A player's vital attribute set lives on its player state** (`ACataclysmPlayerState`, `CataclysmPlayerState.cpp`),
+and a player state has no position of its own: it stands at the world origin. Three places in the vital set's
+hit handling asked the set's owning actor, `GetOwningActor()`, where they meant the body the hit landed on. For
+a creature the two are the same actor; for a player they are not.
+
+| What the hit asked | What it got for a player | What it did wrong in play |
+|---|---|---|
+| How far away the attacker is | the attacker's distance from the world origin | Standing Apart and "Nearby enemies deal less" judged every attacker by where it stood relative to the origin, not to the player |
+| The defender's own damage type (`UCataclysmWeaponSlotsComponent::DamageTypeOf`) | the player state's, which holds no weapon | every typed hit, the player's own type included, counted as foreign and opened Cataclysmic Resonance's window |
+| Where Contagious Torment searches from | the world origin | a debuff tick on a player spread to enemies near the origin, not near the player |
+
+### WHAT CHANGED
+
+One helper, `CataclysmDefendingBody`, answers all three with the ability system's avatar, the character the
+player controls, and falls back to the owning actor only when there is none, which is every creature. The audit
+covered every `GetOwningActor()` in the set's hit handling; these three were the ones wrong for a player today.
+Lookups made through the ability system were already right, because `ACataclysmPlayerState` implements
+`IAbilitySystemInterface`.
+
+### TESTS
+
+Four, in the group `Cataclysm.DefenderBody.`, each through a real hit on a real, possessed player standing away
+from the world origin, so that a distance measured to the player's body and one measured to anything left at the
+origin disagree. They were written before the code was changed.
+
+- `StandingApartSoftensAHitFromAnAttackerMoreThanSixMetresFromTheRitualist` and
+  `NearbyEnemiesDealLessOnlyFromWithinFiveMetresOfThePlayer`: two placements each, on either side of the row's
+  distance.
+- `AHitOfAPlayersOwnDamageTypeOpensNoForeignWindow`: a hit of the player's own type opens no window, and one of
+  another type does.
+- `ADebuffTickOnAPlayerSpreadsToEnemiesNearThePlayer`: the Ritualist's energy shield is emptied and the tick is
+  asserted to have reached health, both as set-up, because every damage-over-time tick but a bleed goes to the
+  shield first and Torment spreads only on damage that reached health. Until that set-up was added the tick was
+  absorbed on fixed and unfixed code alike.
+
+### Run
+
+One window on 2026-09-26, with the build machine, on development 267bd38b. Every figure below is what `pytest`,
+`python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record | `5511 passed, 8 skipped` (JUnit 5,519, no failures), as registered |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite, started with no CI run in progress | `2590 tests performed, 2590 succeeded, 0 failed`; 2590 declared, gap 0 |
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.DefenderBody.` (four tests), each anchor re-checked immediately
+before its run. Each puts one `GetOwningActor()` back where `CataclysmDefendingBody(*this)` now stands, so proof a is
+also the measurement of the unfixed code for the two distance rows. Each restored run printed
+`4 tests performed, 4 succeeded, 0 failed`.
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| a. the distance measured to the set's owner | `4 tests performed, 2 succeeded, 2 failed`: NearbyEnemies..., StandingApart... | "A: struck from 3 metres, 23 from the origin: 30% less" read 1.0 where 0.7; "B: struck from 8 metres, at the origin: not reduced" read 0.7; "A: struck from 4 metres, 24 from the origin: not softened" read 0.75 where 1.0; "B: struck from 8 metres, at the origin: 25% less" read 1.0 |
+| b. the damage type read off the set's owner | `4 tests performed, 3 succeeded, 1 failed: AHitOfAPlayersOwnDamageTypeOpensNoForeignWindow` | "a Demonic hit on a Demonic player opens no window" read 0 seconds since, where never (-1) |
+| c. Torment searched around the set's owner | `4 tests performed, 3 succeeded, 1 failed: ADebuffTickOnAPlayerSpreadsToEnemiesNearThePlayer` | "the enemy 2 metres from the player caught the bleed", false; "and the one at the origin, 20 metres off, did not", true |
+
+---
+
 ## 2026-09-25 — Cooldown reduction: running cooldowns lose seconds, a spell cast shortens the next spell's, and four enchantments written on them
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`
