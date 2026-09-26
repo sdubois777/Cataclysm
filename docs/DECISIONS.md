@@ -12,8 +12,8 @@ patches, the panel line); `game/Source/Cataclysm/Interface/CataclysmCombatOverla
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
 `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
 (one check). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and run: the figures are at the end of this
+entry.
 
 ### The row
 
@@ -100,10 +100,46 @@ directly; the burning is the ground zone's own, as for Singularity Wells' wells.
 One Python check: the row still says "frozen in time", "choose to break the containment", "great rewards" and
 "spreading the infection".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-26, with the build machine and the editor, on development 9fa086a2. Every figure below is what
+`pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+**The first build failed on the order of two constants.** Quarantine Breach's figures block defines
+`QuarantineBreachPatchPercentPerSecond = InfestedVeinsPercentPerSecond`, and the block had been placed after Portal
+Unleashing's figures, a hundred lines above Infested Veins' own, in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`. Inside a class body a constant cannot name a member
+declared after it, so every file including the header stopped with `error C2065: 'InfestedVeinsPercentPerSecond':
+undeclared identifier` and `error C2131: expression did not evaluate to a constant`. The block now stands after Infested
+Veins' figures, its values unchanged. The branch had never been compiled; the Python suite reads C++ as text.
+
+**The second build succeeded and one existing test failed.** `2635 tests performed, 2634 succeeded, 1 failed:
+ADeathLeavesGroundThatTakesRecoveryFromWhoeverStandsOnIt`, Withered Ground's test, on "Expected 'and makes no hazard
+source at all' to be null". Quarantine Breach's death listener fetched the floor's hazard source with
+`ACataclysmFloorHazardSource::ForFloor`, which spawns one when there is none, before asking whether the dead creature
+was one it released, so every creature's death on every floor left a hazard source behind. Withered Ground's existing
+test caught it: it kills a creature on a floor carrying no hazard and asserts no source exists. The listener now asks
+first and fetches the source only for a released creature.
+
+Both corrections were made in the window with the coordinating session's approval. Proof Pc's anchor moved with the
+second, to the new `if (!bReleased)` return, re-registered before it ran with the same prediction.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window | `5522 passed, 8 skipped` (JUnit 5,530, no failures), as registered |
+| First build | `Build: Failed - 31 actions, 28 files compiled`; the two errors above |
+| Second build and whole suite | `Build: Succeeded - 13 actions, 10 files compiled`; `2635 tests performed, 2634 succeeded, 1 failed` |
+| Third build and whole suite, after the listener's correction | `Build: Succeeded - 4 actions, 1 file compiled`; `2635 tests performed, 2635 succeeded, 0 failed`; 2635 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, each on its one test, each anchor re-checked immediately before its run. Each
+printed `1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests performed, 1 succeeded, 0 failed`
+restored, and each failed on exactly the checks registered for it.
+
+| Break | The test that failed, and on what |
+|---|---|
+| Breaking the containment releases nothing | `BreakingAQuarantineReleasesFiveAtRungTwo`: "five released", 0 |
+| The released creatures come at Common | `BreakingAQuarantineReleasesFiveAtRungTwo`: "at rung 2", 0, once for each of the five |
+| A released creature's death leaves no patch | `AReleasedQuarantineCreatureLeavesAPatchWhereItDies`: "one more patch", 0 |
 
 ---
 
