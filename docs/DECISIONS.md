@@ -2,6 +2,86 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Cooldown reset: six actions that clear skill cooldowns, and eight enchantments written on them
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`
+(`RollAndResetCooldowns`, the six action names, `PoolActionAllowed` given the event's target),
+`CataclysmStatPipeline.h` (`ECataclysmCooldownReset` and two fields on `FCataclysmPoolAction`),
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the names read from a row), `tools/generate_datatables.py`
+(`COOLDOWN_RESET_ACTIONS`), `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and `game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json`, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(five tests), `CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` and
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+A cooldown is a duration effect granting its slot's `Cooldown.*` tag, so a reset removes every
+effect granting the tags it names -- what `RefundCooldown` already did -- and the skill bar shows
+the slot ready with no new display. Six actions name what they clear: `cooldown_reset_all`,
+`cooldown_reset_others`, `cooldown_reset_heavy`, `cooldown_reset_special`,
+`cooldown_reset_movement` and `cooldown_reset_event_skill`. The row's value is the chance in per
+cent, 100 meaning always; a roll from 0 to 100 strictly below it resets, the rule the cooldown skip
+already follows, and `Cataclysm.CooldownResetRoll` pins it for tests. Each row rolls once per
+event, only on a landed event, and also from the timed grants' step. "Others" and "event skill"
+read the `Slot.*` tag in the event's tags; an event naming no slot clears nothing and says so in
+the log. A pool action's condition is now judged with the event's target
+(`PoolActionAllowed` through `WithTargetState`), which is what lets "a staggered enemy" be asked;
+the one earlier action row with a condition asks about the wearer and judges as before.
+
+### THE ROWS
+
+| Enchantment | Row |
+| :-- | :-- |
+| Using your ultimate ability resets all other skill cooldowns | `cooldown_reset_others` 100, on `skill_use`, Required Tags `Slot.Ultimate` |
+| Your special ability cooldown is reset when you kill an enemy | `cooldown_reset_special` 100, on `kill` |
+| Every 20 seconds all your skill cooldowns are instantly reset | `cooldown_reset_all` 100, `every_seconds` 20 |
+| Blocking an attack has a 20%-40% chance to reset your heavy attack cooldown | `cooldown_reset_heavy` 20 to 40, on `block` |
+| Critical strikes have a 15%-30% chance to reset your movement ability cooldown | `cooldown_reset_movement` 15 to 30, on `critical_strike` |
+| Dodging an attack has a 20%-40% chance to reset your movement ability cooldown | `cooldown_reset_movement` 20 to 40, on `dodge` |
+| Hitting a staggered enemy resets your heavy attack cooldown | `cooldown_reset_heavy` 100, on `hit_dealt`, condition `target_is_staggered` |
+| Ranged kills have a 20%-40% chance to refund the skill cooldown | `cooldown_reset_event_skill` 20 to 40, on `kill`, Required Tags `Type.Ranged` |
+
+"Reset" and "resets" state 100 on the four always-rows, one word per action, the word its own
+sentence uses (`STATED_BY_WORD`).
+
+### FOUR LABELLED JUDGEMENTS, ACCEPTED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+- "All other" leaves out only the ultimate that fired.
+- "All your skill cooldowns" clears every slot, the ultimate included.
+- "Refund the skill cooldown" means a reset of the killing skill's own slot.
+- The staggered-hit row fires once per landed hit on a staggered enemy, with no internal
+  cooldown, because the sentence states none.
+
+**Two consequences, stated as the coordinating session asked:** the ultimate is ready at least
+every 20 seconds of combat for a character wearing the 20-second row; and if a heavy attack itself
+staggers, every heavy hit on the staggered enemy resets heavy, so heavy can be used again at once
+for as long as the stagger lasts.
+
+### THE RUN
+
+On `ca959696`, the engine commit moved onto development `23dbcdfd`.
+
+| Step | Result |
+| :-- | :-- |
+| Build | "Build: Succeeded - 30 actions, 27 files compiled" |
+| Python of record, `ca959696` | "5499 passed, 8 skipped in 383.54s"; JUnit tests 5507, failures 0 |
+| Rows commit `7d03b3cf` | "EnchantmentEffects.csv 363 rows", from 355 |
+| Python after the rows | "1 failed, 5498 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp", the unity file holding `CataclysmDataTableTests.cpp` |
+| Stale-asset step | "125 tests performed, 119 succeeded, 6 failed": the asset-match guard and the five new tests; "8 row(s) only in the CSV" |
+| Asset rebuild `e14e4071` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The five new tests | "5 tests performed, 5 succeeded, 0 failed" |
+| Whole suite, `e14e4071` | "2569 tests performed, 2569 succeeded, 0 failed"; 2569 declared, gap 0 |
+| Proof A, the chance roll inverted | PROVED: "block, rolled 41: still waiting", "critical_strike, rolled 41: still waiting" and "dodge, rolled 41: still waiting" failed, as registered; restored 1/1 |
+| Proof B, "all other" not leaving out the slot that fired | PROVED: "the ultimate used: the ultimate still waits" failed, as registered; restored 1/1 |
+| Proof C, the event's target not passed to the condition | PROVED: "a hit on a staggered enemy: heavy is ready" failed, as registered; restored 1/1 |
+| Python control, "resets" taken off the heavy reset's words | PROVED: only `test_a_single_value_appears_in_its_words_outside_any_range` failed, "1 failed, 29 passed"; restored "30 passed" |
+
+---
+
 ## 2026-09-25 — A passive row can apply from a number of points in its node, once; a knockback asks whether its target may be knocked back
 
 **Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h`, `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
