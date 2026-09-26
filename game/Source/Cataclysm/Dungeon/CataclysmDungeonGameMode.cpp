@@ -39,6 +39,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
 #include "GameplayTagsManager.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
@@ -1535,6 +1536,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// Issues #1820 and #41.
 		ForgetThePortals();
 		PlaceThePortals();
+
+		// AND INFECTION BLOOM, FOR THE SAME REASON; a Horde arena's waves keep its bloom and its patches.
+		// Issues #1820 and #41.
+		ForgetTheInfectionBloom();
+		PlaceTheBloom();
 
 		// AND ABYSSAL RIFTS, FOR THE SAME REASON: a new floor's rift, none on a Horde arena. The successes are the
 		// dungeon's and are not touched. Issues #1820 and #41.
@@ -5118,6 +5124,271 @@ void ACataclysmDungeonGameMode::StepInfestedHoard(
 	}
 }
 
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::InfectionBloomNow() const
+{
+	ACataclysmEnemyCharacter* Bloom = InfectionBloom.Get();
+	return IsValid(Bloom) && !UCataclysmSkillEffects::IsDead(Bloom) ? Bloom : nullptr;
+}
+
+TArray<ACataclysmGroundZone*> ACataclysmDungeonGameMode::InfectionBloomPatchesNow() const
+{
+	TArray<ACataclysmGroundZone*> Drawn;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : InfectionBloomPatches)
+	{
+		if (ACataclysmGroundZone* Patch = One.Get())
+		{
+			Drawn.Add(Patch);
+		}
+	}
+	return Drawn;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::InfectionBloomWaveCreaturesStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Sent : InfectionBloomWaveCreatures)
+	{
+		ACataclysmEnemyCharacter* Creature = Sent.Get();
+		if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+		{
+			Standing.Add(Creature);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheInfectionBloom()
+{
+	if (ACataclysmEnemyCharacter* Bloom = InfectionBloom.Get())
+	{
+		Bloom->Destroy();
+	}
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : InfectionBloomPatches)
+	{
+		if (ACataclysmGroundZone* Patch = One.Get())
+		{
+			Patch->Destroy();
+		}
+	}
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Sent : InfectionBloomWaveCreatures)
+	{
+		if (ACataclysmEnemyCharacter* Creature = Sent.Get())
+		{
+			Creature->Destroy();
+		}
+	}
+	InfectionBloom = nullptr;
+	InfectionBloomWhere = FVector::ZeroVector;
+	InfectionBloomPatchPoints.Reset();
+	InfectionBloomPatches.Reset();
+	InfectionBloomSecondsSincePatch = 0.0f;
+	InfectionBloomSecondsSinceWave = 0.0f;
+	InfectionBloomWaveCreatures.Reset();
+	bInfectionBloomDestroyed = false;
+	InfectionBloomPanelPatches = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheBloom()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::InfectionBloomKey)))
+	{
+		return;
+	}
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::InfectionBloomsPerFloor);
+	if (Cells.IsEmpty())
+	{
+		return;
+	}
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmInfectionBloomCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const FVector Ground = CurrentFloor->WorldOfCell(Cells[0]);
+	ACataclysmEnemyCharacter* Bloom = World->SpawnActor<ACataclysmEnemyCharacter>(
+		Class, Ground + FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class)), FRotator::ZeroRotator,
+		Spawn);
+	if (!Bloom)
+	{
+		return;
+	}
+	// THE PLAYER CAN DESTROY IT, as a vein can be: the Imp's health at Common, paying nothing and not one of the
+	// floor's creatures.
+	Bloom->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Bloom->SetHealth(InfectionBloomHealth());
+	Bloom->SetRarityStep(0);
+	Bloom->bDiesUnpaid = true;
+	Bloom->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Bloom);
+	InfectionBloom = Bloom;
+	InfectionBloomWhere = Ground;
+
+	// ITS FIRST PATCH UNDER IT, from the first beat.
+	InfectionBloomPatchPoints.Add(Ground);
+	UE_LOG(LogCataclysm, Log, TEXT("Infection Bloom: a bloom placed on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::InfectionBloomSend(
+	const FVector& Where, int32 Count, bool bTheFloors)
+{
+	TArray<ACataclysmEnemyCharacter*> Sent;
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return Sent;
+	}
+	// THE FLOOR'S OWN KINDS, as Necrotic Bloom draws them, at Common, on cells beside where it stood.
+	const FCataclysmFloorPopulation Population =
+		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+	for (int32 Which = 0; Which < Count && !Population.Enemies.IsEmpty() && !Cells.IsEmpty(); ++Which)
+	{
+		FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+		ACataclysmEnemyCharacter* Creature =
+			SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0);
+		if (!Creature)
+		{
+			continue;
+		}
+		if (bTheFloors)
+		{
+			// THE SURGE: once, so it pays and is the floor's, as Infested Veins' guardians are.
+			FloorEnemies.Add(Creature);
+		}
+		else
+		{
+			// A WAVE: it comes for as long as the bloom stands, so it pays nothing and is not the floor's, as
+			// Portal Unleashing's creatures are not; otherwise a bloom left standing would be unlimited loot.
+			Creature->bDiesUnpaid = true;
+			Creature->bRaisedByARule = true;
+			CreaturesRaisedByARule.Add(Creature);
+		}
+		Sent.Add(Creature);
+	}
+	return Sent;
+}
+
+void ACataclysmDungeonGameMode::StepInfectionBloom(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::InfectionBloomKey);
+	const bool bStanding = InfectionBloomNow() != nullptr;
+
+	if (bStanding)
+	{
+		// A PATCH ADDED ON ITS CADENCE, touching a random one already there, on the floor: Necrotic Ground's
+		// spread, with up to sixteen tries at an angle that lands on a floor cell. The clock is kept when none does.
+		InfectionBloomSecondsSincePatch += SecondsBetweenWaveChecks;
+		if (Effects::InfectionBloomPatchIsDue(InfectionBloomSecondsSincePatch, InfectionBloomPatchPoints.Num())
+			&& !InfectionBloomPatchPoints.IsEmpty())
+		{
+			const FCataclysmFloorPlan& Plan = CurrentFloor->GetPlan();
+			for (int32 Try = 0; Try < 16; ++Try)
+			{
+				const FVector From = InfectionBloomPatchPoints[FMath::RandRange(0, InfectionBloomPatchPoints.Num() - 1)];
+				const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+				const FVector Where(From.X + Effects::InfectionBloomSpreadCm * FMath::Cos(Angle),
+									From.Y + Effects::InfectionBloomSpreadCm * FMath::Sin(Angle), From.Z);
+				if (Plan.IsFloor(CurrentFloor->CellOfWorld(Where)))
+				{
+					InfectionBloomPatchPoints.Add(Where);
+					InfectionBloomSecondsSincePatch = 0.0f;
+					break;
+				}
+			}
+		}
+
+		// THE PATCHES DRAWN WHEREVER ONE IS MISSING, which is after every floor or wave. They do no damage.
+		InfectionBloomPatches.SetNum(InfectionBloomPatchPoints.Num());
+		for (int32 Index = 0; Index < InfectionBloomPatchPoints.Num(); ++Index)
+		{
+			if (!InfectionBloomPatches[Index].Get() && Source)
+			{
+				const FVector Where = InfectionBloomPatchPoints[Index];
+				InfectionBloomPatches[Index] = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::InfectionBloomPatchRadiusCm, 0.0f,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+			}
+		}
+
+		// A WAVE ON ITS CADENCE while it stands.
+		InfectionBloomSecondsSinceWave += SecondsBetweenWaveChecks;
+		if (Effects::InfectionBloomWaveIsDue(InfectionBloomSecondsSinceWave))
+		{
+			InfectionBloomSecondsSinceWave = 0.0f;
+			const TArray<ACataclysmEnemyCharacter*> Sent =
+				InfectionBloomSend(InfectionBloomWhere, Effects::InfectionBloomWaveCreatures, /*bTheFloors=*/false);
+			for (ACataclysmEnemyCharacter* Creature : Sent)
+			{
+				InfectionBloomWaveCreatures.Add(Creature);
+			}
+			UE_LOG(LogCataclysm, Log, TEXT("Infection Bloom: a wave of %d on floor %d"), Sent.Num(), FloorNumber);
+		}
+	}
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE BUT A FLOOR SOURCE, on a patch or not, every beat, as Obsidian
+	// Sarcophagi writes its damage: once however many patches are under it. No patch, no multiplier.
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+		const FVector At = Creature->GetActorLocation();
+		const bool bOnAPatch = InfectionBloomPatchPoints.ContainsByPredicate([&At](const FVector& Where)
+		{
+			return FVector::Dist2D(At, Where) <= Effects::InfectionBloomPatchRadiusCm;
+		});
+		Creature->SetInfectionBloomDamageMultiplier(Effects::InfectionBloomDamageMultiplier(bOnAPatch));
+	}
+
+	if (InfectionBloomPatchPoints.Num() != InfectionBloomPanelPatches)
+	{
+		InfectionBloomPanelPatches = InfectionBloomPatchPoints.Num();
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForInfectionBloom(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ACataclysmEnemyCharacter* Bloom = InfectionBloom.Get();
+	if (!Bloom || Notice.Victim != Bloom || bInfectionBloomDestroyed)
+	{
+		return;
+	}
+	// ITS SPREAD HALTS: every patch goes, and the next beat writes every creature's damage back without them.
+	bInfectionBloomDestroyed = true;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : InfectionBloomPatches)
+	{
+		if (ACataclysmGroundZone* Patch = One.Get())
+		{
+			Patch->Destroy();
+		}
+	}
+	InfectionBloomPatches.Reset();
+	InfectionBloomPatchPoints.Reset();
+
+	// AND THE FINAL SURGE, beside where it stood.
+	const TArray<ACataclysmEnemyCharacter*> Surge =
+		InfectionBloomSend(InfectionBloomWhere, Effects::InfectionBloomSurgeCreatures, /*bTheFloors=*/true);
+	UE_LOG(LogCataclysm, Log, TEXT("Infection Bloom: destroyed on floor %d; a surge of %d"), FloorNumber, Surge.Num());
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6391,6 +6662,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
+	ForgetTheInfectionBloom();
 
 	// AND ABYSSAL RIFTS' SUCCESSES END WITH THE DUNGEON, as ruled; the call below takes their magic find off.
 	ForgetTheRift();
@@ -6883,6 +7155,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND INFECTION BLOOM, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bInfectionBloom = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::InfectionBloomKey));
 	// AND THE INFESTED HOARD, ON EVERY FLOOR CARRYING IT AND WHILE ANY STACK IS HELD. Issues #1820 and #41.
 	const bool bInfestedHoard = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::InfestedHoardKey))
@@ -6929,6 +7204,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bInfectionBloom
 		&& !bInfestedHoard
 		&& !bAbyssalRifts
 		&& !bSwarmOfLocusts
@@ -7155,6 +7431,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND INFECTION BLOOM, WHICH SPREADS ZONES, CHANGES CREATURES' DAMAGE AND SENDS WAVES. Issues #1820 and #41.
+	if (bInfectionBloom)
+	{
+		StepInfectionBloom(Player);
 	}
 
 	// AND THE INFESTED HOARD, WHICH DRAINS THE PLAYER WHILE A STACK IS HELD. Issues #1820 and #41.
@@ -8242,6 +8524,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForInfectionBloom(Notice);
 	NoteDeathForInfestedHoard(Notice);
 	NoteDeathForAbyssalRifts(Notice);
 	NoteDeathForRawSewage(Notice);
@@ -9962,6 +10245,24 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  InfestedHoardStacks, InfestedHoardStacks == 1 ? TEXT("") : TEXT("s"),
 							  Effects::InfestedHoardPercentPerSecond(InfestedHoardStacks), Chance)
 			: FString::Printf(TEXT("infested hoard: no stacks; %d%% chance of infested loot"), Chance));
+	}
+
+	// AND INFECTION BLOOM: how far it has spread and when its next wave comes, or that it is destroyed. Issues
+	// #1820 and #41.
+	const FName Infection(Effects::InfectionBloomKey);
+	if (FloorBrief.Modifiers.Contains(Infection))
+	{
+		if (bInfectionBloomDestroyed)
+		{
+			Counting.Add(Infection, FString(TEXT("infection bloom: destroyed; its spread has stopped")));
+		}
+		else if (InfectionBloom.IsValid())
+		{
+			Counting.Add(Infection, FString::Printf(TEXT("infection bloom: %d of %d patches; next wave in %d s"),
+				InfectionBloomPatchPoints.Num(), Effects::InfectionBloomMostPatches,
+				FMath::Max(0, FMath::CeilToInt(Effects::InfectionBloomSecondsBetweenWaves
+											   - InfectionBloomSecondsSinceWave))));
+		}
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap

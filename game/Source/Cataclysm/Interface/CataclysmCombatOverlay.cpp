@@ -17,6 +17,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
@@ -587,13 +588,20 @@ FString UCataclysmCombatOverlay::RiftTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::InfectionBloomTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmInfectionBloomCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Infection Bloom"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor), InfectionBloomTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())

@@ -2123,6 +2123,18 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Infection Bloom, for tests: this floor's bloom, or null once destroyed or on a floor with none. */
+	ACataclysmEnemyCharacter* InfectionBloomNow() const;
+
+	/** Infection Bloom, for tests: the patches it has spread, which go when it is destroyed. */
+	TArray<class ACataclysmGroundZone*> InfectionBloomPatchesNow() const;
+
+	/** Infection Bloom, for tests: the creatures its waves sent that still stand. */
+	TArray<ACataclysmEnemyCharacter*> InfectionBloomWaveCreaturesStanding() const;
+
+	/** The health a bloom is given: the Imp's at Common, 87, as the other floor sources have. */
+	float InfectionBloomHealth() const { return ImpHealth; }
+
 	/** The Infested Hoard, for the panel and tests: the Infestation stacks the player holds. */
 	int32 InfestedHoardStacksHeld() const { return InfestedHoardStacks; }
 
@@ -2355,6 +2367,21 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Infection Bloom: this arena's bloom, placed where a new arena is populated. */
+	void PlaceTheBloom();
+
+	/** The bloom, its patches and the waves' record destroyed and forgotten. */
+	void ForgetTheInfectionBloom();
+
+	/** Infection Bloom, on the beat: the patches drawn and spread, the damage they give, and the waves. */
+	void StepInfectionBloom(class ACataclysmPlayerCharacter* Player);
+
+	/** Infection Bloom, on a death: the bloom's own ends its spread and sends the surge. */
+	void NoteDeathForInfectionBloom(const struct FCataclysmDeathNotice& Notice);
+
+	/** `Count` of the floor's own kinds beside `Where`, at Common; the floor's creatures when `bTheFloors`. */
+	TArray<ACataclysmEnemyCharacter*> InfectionBloomSend(const FVector& Where, int32 Count, bool bTheFloors);
 
 	/** Abyssal Rifts: this floor's rift, placed where a new arena is populated. None on a Horde arena. */
 	void PlaceTheRift();
@@ -3505,6 +3532,21 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Infection Bloom: the bloom and where it stood, where its patches are and the zones drawn for them, its two
+	 * clocks, the creatures its waves sent, whether it has been destroyed, and what the panel last showed. Issues
+	 * #1820 and #41.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> InfectionBloom;
+	FVector InfectionBloomWhere = FVector::ZeroVector;
+	TArray<FVector> InfectionBloomPatchPoints;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> InfectionBloomPatches;
+	float InfectionBloomSecondsSincePatch = 0.0f;
+	float InfectionBloomSecondsSinceWave = 0.0f;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> InfectionBloomWaveCreatures;
+	bool bInfectionBloomDestroyed = false;
+	int32 InfectionBloomPanelPatches = -1;
 
 	/**
 	 * The Infested Hoard: the Infestation stacks the player holds, the seconds since the last drain, and what the
