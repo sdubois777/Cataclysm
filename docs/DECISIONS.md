@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Swarm of Locusts obscures vision: while a travelling swarm covers the player, they see four metres, and the row is built
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the sight figure, the key's
+comment, and the row moved from the partly built list to the built list); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`
+(the vision system's step asks for the swarm's sight, and runs on every floor carrying the row); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (one new test, and the built-state assertion
+turned from partly built to built). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Built on the vision system's change, which merges first.**
+The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
+entry when they have.
+
+### What was missing
+
+`Famine_Swarm_of_Locusts`: "Periodically, swarms of locusts sweep through the dungeon, obscuring vision and dealing
+continuous damage." Its swarms crossed the floor and burned a player outside a shelter, and it was listed as partly
+built because nothing could obscure vision: see the entry of 2026-09-25, "Swarm of Locusts, PARTLY BUILT", and the
+correction in the Abyssal Rifts entry that moved it to the partly built list.
+
+### What the rule does now
+
+While a swarm is travelling and covers the player, the player's sight is four metres through the vision system: a
+creature further away is hidden, has no bar and cannot be clicked, and the camera is darkened. On a floor that also
+limits sight another way, the shorter of the two holds. When the swarm has passed, or the player steps out of it, sight
+returns to what the floor gives. The row is now listed as built.
+
+### Rulings and judgements
+
+- **Four metres of sight under a swarm**, proposed by this session and accepted by the coordinating session under the
+  owner's delegation, 2026-09-26. A play-test value.
+- **Judgement of this change: a shelter does not lift it.** A shelter stops the burn, which is what the row's "find
+  shelter ... to survive" is about; a player in a shelter under a swarm is still inside the swarm.
+- **Judgement of this change: only while the swarm travels**, the same condition as its burn, so the warning before it
+  sets off does not already obscure anything.
+
+### Tests
+
+- `ASwarmOfLocustsCoveringThePlayerCutsTheirSightToFourMetres` (new): four metres; under a travelling swarm the player
+  sees four metres and an Imp five metres away is hidden; well out of the swarm, the Imp beside them again, sight is
+  unlimited and the Imp is seen.
+- The built-state control that the Abyssal Rifts change added now says "Swarm of Locusts is built: its swarm obscures
+  vision". It is inside an existing test, so the count of tests does not move for it.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted, after the vision system's change.
+
+---
+
 ## 2026-09-26 — The vision system: a creature beyond the player's sight is hidden, has no bar and cannot be clicked, and the camera is darkened; Fog of War, its first rule, gives ten metres of sight
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`SightRadiusFor`, the one

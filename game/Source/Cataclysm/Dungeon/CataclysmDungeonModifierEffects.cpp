@@ -573,6 +573,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// GRIM TOTEMS, BUILT SINCE A DISPELLED TOTEM ALSO CLEANSES THE PLAYER, the row's "removing harmful effects".
 		// Issues #1820 and #41.
 		|| RowKey == FName(GrimTotemsKey)
+		// SWARM OF LOCUSTS, BUILT SINCE ITS SWARM OBSCURES VISION through the vision system. Issues #1820 and #41.
+		|| RowKey == FName(SwarmOfLocustsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(DemonicGuideKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -618,10 +620,6 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
 		// Issues #1820 and #41.
 		|| RowKey == FName(InsanityBurstsKey)
-		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
-		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
-		// while its entry and its key's comment both said partly built. Issues #1820 and #41.
-		|| RowKey == FName(SwarmOfLocustsKey)
 		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
 		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
 		|| RowKey == FName(RealityRiftsKey)
