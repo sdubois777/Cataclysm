@@ -2,6 +2,121 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Shadowy Enemies: every floor creature takes no damage until light reaches it, from a light zone, The Blackest Shadow's light, or a fire hit
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+and its place among the rows built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (`bShrouded` and
+`TakesNoDamage`); `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (a shrouded creature's blow is
+emptied and its health may not fall); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the light
+zones, the beat that shrouds and exposes, and the fire-hit listener);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Shrouded" under the bar); the automation tests
+in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Built on The Blackest Shadow's change, which merges first**; the chain is the vision system, Swarm of Locusts'
+obscuring, The Blackest Shadow, then this. The Unreal compile, the automation tests and the guard proofs have NOT run
+yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Void_Shadowy_Enemies` in `game/Data/DungeonModifiers.csv`, weight 15: "Void dungeons could be infested with shadowy
+enemies that can only be harmed when exposed to light. Players must use their abilities or environmental factors to
+illuminate and weaken these foes."
+
+### The research
+
+- Alan Wake, as Wikipedia describes it, fetched 2026-09-26: "The Taken are protected by a shield of darkness, initially
+  rendering them impervious to attack; they can only be injured with a firearm after exposure to light, which burns the
+  darkness away."
+- Path of Exile's Delve, from the poe-vault.com Delve guide, fetched 2026-09-26: "Monsters that are shrouded cannot be
+  damaged by the player." Delve's light comes from the crawler's path and from flares the player throws. poelab.com
+  (HTTP 403) and the fandom wikis (HTTP 402) could not be read.
+
+What the research settles: outside the light a creature takes no damage at all, not reduced damage, which is also what
+the row says. What it does not settle, and is specific to this game: which lights exist and their figures. Those are
+the rulings below.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+1. **Every creature the floor puts there is shrouded**, since the row says "infested": the floor's boss and the exit's
+   Gatekeeper included. A new field, `ACataclysmEnemyCharacter::bShrouded`, read where `bCannotBeHurt` is read in
+   `CataclysmVitalAttributeSet.cpp`. **Reusing `bCannotBeHurt` was refused**: subjugation refuses a creature carrying
+   it, Divine Wrath's beam passes it, and a Blood Bond's release clears it, and a shrouded creature is none of those.
+2. **Three light zones a floor, each 400 cm across its radius; and four seconds of exposure after a fire hit.**
+3. **No flare now.** A flare the player carries and throws, as in Delve, would give every class a light it can carry;
+   it needs an input, a count on the screen and an actor, and is a later change.
+4. **The Blackest Shadow's light exposes**: on a floor carrying both rows, a creature within its six metres is exposed.
+   Light is light.
+5. **One more light zone lies on the exit when a boss stands there.** A War character has no fire, and a boss that
+   could not be drawn into one of three random zones could make the floor impossible to finish. The fight at the exit
+   must always be winnable.
+6. **Only a direct hit carrying `Element.Demonic` is a fire hit. Burning ground exposes nothing**, because a ground
+   zone carries no element tag of its own (`CataclysmGroundZone.cpp`: "a zone carries no skill tags of its own to read
+   an Element.* tag from"). A zone recording the element of the skill that placed it is what would let it. Issue
+   [#803](https://github.com/sdubois777/Cataclysm/issues/803), closed, gave a player skill's element to its effects for
+   their colour and left zones without one; no open issue asks for it.
+7. **An evaded fire hit exposes nothing; a blocked one does**, following the decision of 2026-09-05 that an evaded
+   attack applies nothing it was carrying.
+
+### What was read before building
+
+A fire hit on a shrouded creature deals nothing, so the rule has to hear of a blow that did nothing. It does:
+`CataclysmVitalAttributeSet.cpp` empties the blow of a creature no damage reaches, then calls
+`UCataclysmCombatEvents::NoteBlow` with the emptied outcome and the effect's asset tags ("Every resolved blow reaches this
+line, evaded and blocked ones included"), and `NoteBlow` announces it to every listener. A player's skill puts its
+element on the damage effect for colour, which is where `Element.Demonic` is read, as Carrion Feast reads it. The tag
+comes from the skill's own element, so **every Demonic skill's hit is a fire hit**, not only those whose text names
+fire.
+
+### What the rule does
+
+On a floor carrying the row, on every beat, each creature on the floor's list is shrouded unless it stands within
+400 cm of a light zone's centre, stands within six metres of the player on a floor also carrying The Blackest Shadow,
+or was reached by a fire hit less than four seconds ago. A shrouded creature takes nothing from any blow, and its health
+may rise and may not fall; a creature hurt in the light keeps that hurt when it leaves it. The fire hit itself deals
+nothing and exposes the creature at once, so the next blow lands without waiting for the beat. "Shrouded" is written
+under a shrouded creature's bar. The light zones are drawn in Celestial's colours and do no damage. On a floor without
+the row, every shroud the rule gave is taken off.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **Not a creature a rule raised, and not one that cannot be hurt anyway.** Neither is a creature the floor put there,
+  and "Shrouded" under a coffin's or a portal's bar would say something untrue of it.
+- **"The floor's creatures" are the game mode's `FloorEnemies`**, which a Horde arena's waves join. A creature another
+  creature summons is not on it and is not shrouded.
+- **Health is held where it is, not at the maximum as the Reaper's is**, so a creature does not heal by leaving the
+  light.
+- **A creature's own fire exposes nothing**: the row asks the player to do it.
+- **The exit's zone is not kept apart from the other three**; the other three are placed by Eternal Chorus's picker, at
+  least twenty metres from the entrance and from each other.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `ShadowyEnemiesFiguresZonesRadiusAndFireSeconds`: three zones, 400 cm, four seconds.
+- `AShroudedCreatureTakesNoDamageUntilALightReachesIt`: an Imp three metres from the player is shrouded, says so under
+  its bar, and a blow takes nothing; moved into a light zone it is exposed and a blow takes 10; moved out again it is
+  shrouded, keeps the 90 health it has, and a blow takes nothing.
+- `AFireHitExposesAShroudedCreatureForFourSeconds`: the fire hit takes nothing and exposes the Imp at once; the next
+  blow takes 10; it is still exposed after fifteen beats and shrouded on the sixteenth.
+- `TheBlackestShadowsLightExposesAShroudedCreature`: with both rows, an Imp five metres away is exposed and one seven
+  metres away is shrouded.
+- `AFloorWithoutShadowyEnemiesTakesEveryShroudOff`: on the next floor without the row the Imp is not shrouded, and there
+  are no light zones.
+- `ShadowyEnemiesLightsTheExitWhereTheBossStands`: on floor 1 of an Elite dungeon, the last light zone lies on the exit,
+  and the Gatekeeper standing there is exposed.
+
+One Python check: the row still says "infested", "only be harmed when exposed to light", "abilities" and
+"environmental factors".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted, after The Blackest Shadow's change.
+
 ## 2026-09-26 — The Blackest Shadow: the player sees six metres, and a creature outside that light is hidden and, while outside it, deals 100% more damage and attacks 50% faster
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, figures, its

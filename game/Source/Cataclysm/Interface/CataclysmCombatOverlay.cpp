@@ -594,13 +594,21 @@ FString UCataclysmCombatOverlay::RiftTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::ShroudedTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bShrouded && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Shrouded"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())

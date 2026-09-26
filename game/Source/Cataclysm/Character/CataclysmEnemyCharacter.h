@@ -1186,6 +1186,25 @@ public:
 	bool bCannotBeHurt = false;
 
 	/**
+	 * Whether this creature is shrouded now: on a floor carrying Shadowy Enemies, outside every light,
+	 * so no damage reaches it. `Void_Shadowy_Enemies`. Issues #1820 and #41.
+	 *
+	 * A FIELD OF ITS OWN AND NOT `bCannotBeHurt`, as ruled on 2026-09-26. Other rules read that one
+	 * as "a creature a rule made unhurtable" -- subjugation refuses it, Divine Wrath's beam passes
+	 * it, and a Blood Bond's release clears it -- and a shrouded creature is none of those. Written
+	 * by the dungeon game mode on the beat and on a fire hit, and by nothing else.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bShrouded = false;
+
+	/**
+	 * Whether no damage reaches this creature now: it cannot be hurt, or it is shrouded. What
+	 * `UCataclysmVitalAttributeSet` reads where it empties a resolved blow. Its health clamp asks the
+	 * two fields apart, because the Reaper is held at its maximum and a shrouded creature where it is.
+	 */
+	bool TakesNoDamage() const { return bCannotBeHurt || bShrouded; }
+
+	/**
 	 * Whether this creature's death is to pay nothing: a Blood Bond's elite, which dies because
 	 * the player did, and a Plague Convergence creature, which a clock sent. Issues #1820 and
 	 * #41. Set by the dungeon game mode -- on the elite immediately before its death, on a

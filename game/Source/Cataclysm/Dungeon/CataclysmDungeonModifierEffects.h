@@ -2200,6 +2200,28 @@ public:
 	static const TCHAR* BlackestShadowKey;
 
 	/**
+	 * The row whose creatures take no damage until light reaches them. Issues #1820 and #41.
+	 *
+	 * "Void dungeons could be infested with shadowy enemies that can only be harmed when exposed to light. Players
+	 * must use their abilities or environmental factors to illuminate and weaken these foes."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-26. The row states no figure:
+	 * - EVERY CREATURE THE FLOOR PUTS THERE IS SHROUDED (`ACataclysmEnemyCharacter::bShrouded`), the floor's boss and
+	 *   the exit's Gatekeeper included; not a creature a rule raised, and not one that cannot be hurt anyway. A
+	 *   shrouded creature takes no damage; its blows, and the blows on it, still resolve.
+	 * - IT IS EXPOSED, and takes damage as any creature does, while it stands within `ShadowyEnemiesLightRadiusCm`
+	 *   of a light zone's centre; while it stands in The Blackest Shadow's light on a floor carrying both rows; and
+	 *   for `ShadowyEnemiesFireExposureSeconds` after a fire hit reaches it: a blow carrying `Element.Demonic` from
+	 *   anyone but a creature, not evaded. The fire hit itself deals nothing.
+	 * - `ShadowyEnemiesLightZonesPerFloor` LIGHT ZONES A FLOOR, placed as Eternal Chorus's sources are, AND ONE MORE
+	 *   ON THE EXIT when a boss stands there, so the fight at the exit can always be won by a character with no fire.
+	 *   Visible and doing no damage; a Horde arena keeps its zones for its waves.
+	 * - BURNING GROUND EXPOSES NOTHING: a zone carries no element tag of its own. A flare the player carries, which
+	 *   would give every class a light of its own, is a later change.
+	 */
+	static const TCHAR* ShadowyEnemiesKey;
+
+	/**
 	 * The player's sight on a floor carrying these rows: the smallest radius any of them asks for, in centimetres, or 0
 	 * for unlimited. The vision system's one source of the radius, so a rule asks here and nothing else writes it.
 	 * Issues #1820 and #41.
@@ -4783,6 +4805,11 @@ public:
 	static constexpr float BlackestShadowLightCm = 600.0f;
 	static constexpr float InvisibleStalkerDamageMorePercent = 100.0f;
 	static constexpr float InvisibleStalkerAttackSpeedMorePercent = 50.0f;
+
+	/** Shadowy Enemies' figures, play-test values the row does not state. See the key. */
+	static constexpr int32 ShadowyEnemiesLightZonesPerFloor = 3;
+	static constexpr float ShadowyEnemiesLightRadiusCm = 400.0f;
+	static constexpr float ShadowyEnemiesFireExposureSeconds = 4.0f;
 
 	static_assert(TrialOfEnduranceDamageMultiplier == 2.0f && TrialOfEnduranceResistanceMultiplier == 2.0f,
 		"The row says doubled damage and resistances.");

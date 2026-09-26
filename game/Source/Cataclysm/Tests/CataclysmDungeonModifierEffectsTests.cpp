@@ -32008,4 +32008,297 @@ bool FCataclysmDarknessLiftsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Void_Shadowy_Enemies. Issues #1820 and #41. Every floor creature takes no damage until light reaches it: a light
+// zone, The Blackest Shadow's light, or four seconds after a fire hit. Ruled on 2026-09-26.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ShadowyRow(UCataclysmDungeonModifierEffects::ShadowyEnemiesKey);
+
+	/** An Imp this far along X from the player, put on the floor's list as the floor's own creatures are. */
+	ACataclysmEnemyCharacter* AFloorImpAway(ACataclysmDungeonGameMode* Mode, UWorld* World,
+											const FPossessedPlayer& Player, float Cm)
+	{
+		ACataclysmEnemyCharacter* Imp = AnImpAway(World, Player, Cm);
+		if (Imp)
+		{
+			Mode->FloorEnemies.Add(Imp);
+		}
+		return Imp;
+	}
+
+	/** A blow from the player carrying `Element.Demonic`, this project's fire, as Carrion Feast's tests deal one. */
+	void AFireHit(const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Target, float Damage)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.SkillElement = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Target, Damage, Delivery);
+	}
+}
+
+// THE FIGURES: THREE ZONES OF 4 M, AND FOUR SECONDS AFTER A FIRE HIT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyFiguresTest,
+	"Cataclysm.DungeonModifierEffects.ShadowyEnemiesFiguresZonesRadiusAndFireSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three light zones a floor"), Effects::ShadowyEnemiesLightZonesPerFloor, 3);
+	TestEqual(TEXT("each 4 m across its radius"), Effects::ShadowyEnemiesLightRadiusCm, 400.0f, 0.001f);
+	TestEqual(TEXT("four seconds after a fire hit"), Effects::ShadowyEnemiesFireExposureSeconds, 4.0f, 0.001f);
+	return true;
+}
+
+// A SHROUDED CREATURE TAKES NOTHING; IN A LIGHT ZONE IT IS HURT; OUT OF IT AGAIN IT KEEPS THE HURT AND TAKES NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyLightTest,
+	"Cataclysm.DungeonModifierEffects.AShroudedCreatureTakesNoDamageUntilALightReachesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyLightTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FVector> Lights = Mode->ShadowyEnemiesLightsNow();
+	if (!TestTrue(TEXT("the floor has light zones"), Lights.Num() > 0)
+		|| !TestEqual(TEXT("and every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("away from every light it is shrouded"), Imp->bShrouded);
+	TestEqual(TEXT("and says so under its bar"), UCataclysmCombatOverlay::ShroudedTextFor(Imp), FString(TEXT("Shrouded")));
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
+	TestEqual(TEXT("a blow takes nothing off it"), HealthOf(Imp), 100.0f, 0.01f);
+
+	// INTO THE FIRST LIGHT: HURT AS ANY CREATURE IS.
+	Imp->SetActorLocation(FVector(Lights[0].X, Lights[0].Y, Imp->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("in the light it is not shrouded"), Imp->bShrouded);
+	TestTrue(TEXT("and nothing is said under its bar"), UCataclysmCombatOverlay::ShroudedTextFor(Imp).IsEmpty());
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
+	TestEqual(TEXT("a blow takes 10 off it"), HealthOf(Imp), 90.0f, 0.01f);
+
+	// OUT OF IT AGAIN: SHROUDED, KEEPING THE HURT.
+	const FVector At = Player.Character->GetActorLocation();
+	Imp->SetActorLocation(FVector(At.X + 300.0f, At.Y, Imp->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestTrue(TEXT("out of the light it is shrouded again"), Imp->bShrouded);
+	TestEqual(TEXT("and keeps what it took"), HealthOf(Imp), 90.0f, 0.01f);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
+	TestEqual(TEXT("and a blow takes nothing more"), HealthOf(Imp), 90.0f, 0.01f);
+	return true;
+}
+
+// A FIRE HIT DEALS NOTHING AND EXPOSES THE CREATURE AT ONCE, FOR FOUR SECONDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyFireTest,
+	"Cataclysm.DungeonModifierEffects.AFireHitExposesAShroudedCreatureForFourSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyFireTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("it is shrouded"), Imp->bShrouded))
+	{
+		return false;
+	}
+
+	AFireHit(Player, Imp, 10.0f);
+	TestEqual(TEXT("the fire hit itself takes nothing off"), HealthOf(Imp), 100.0f, 0.01f);
+	TestFalse(TEXT("and exposes it at once"), Imp->bShrouded);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
+	TestEqual(TEXT("so the next blow takes 10 off"), HealthOf(Imp), 90.0f, 0.01f);
+
+	// FOUR SECONDS ARE SIXTEEN BEATS: EXPOSED THROUGH THE FIFTEENTH, SHROUDED ON THE SIXTEENTH.
+	Beat(Mode, 15);
+	TestFalse(TEXT("still exposed after 3.75 s"), Imp->bShrouded);
+	Beat(Mode, 1);
+	TestTrue(TEXT("shrouded again after 4 s"), Imp->bShrouded);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
+	TestEqual(TEXT("and a blow takes nothing"), HealthOf(Imp), 90.0f, 0.01f);
+	return true;
+}
+
+// THE BLACKEST SHADOW'S LIGHT IS LIGHT: A CREATURE WITHIN IT IS EXPOSED, ONE BEYOND IT SHROUDED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyOrbTest,
+	"Cataclysm.DungeonModifierEffects.TheBlackestShadowsLightExposesAShroudedCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyOrbTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player,
+		{ShadowyRow, FName(UCataclysmDungeonModifierEffects::BlackestShadowKey)});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Lit = AFloorImpAway(Mode, World, Player, 500.0f);
+	ACataclysmEnemyCharacter* Dark = AFloorImpAway(Mode, World, Player, 700.0f);
+	if (!TestNotNull(TEXT("an Imp 5 m away"), Lit) || !TestNotNull(TEXT("and one 7 m away"), Dark))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("the Imp in the light is exposed"), Lit->bShrouded);
+	TestTrue(TEXT("the Imp beyond it is shrouded"), Dark->bShrouded);
+	return true;
+}
+
+// A FLOOR WITHOUT THE ROW TAKES EVERY SHROUD OFF, AND HAS NO LIGHT ZONES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyLiftsTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithoutShadowyEnemiesTakesEveryShroudOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyLiftsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestTrue(TEXT("shrouded"), Imp->bShrouded))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("it still stands"), IsValid(Imp));
+	TestFalse(TEXT("and is not shrouded"), Imp->bShrouded);
+	TestEqual(TEXT("the floor has no light zones"), Mode->ShadowyEnemiesLightsNow().Num(), 0);
+	TestEqual(TEXT("and none is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), 0);
+	return true;
+}
+
+// ON A FLOOR WITH A BOSS AT ITS EXIT, ONE MORE LIGHT ZONE LIES ON THE EXIT, AND THE GATEKEEPER THERE IS EXPOSED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyExitTest,
+	"Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsTheExitWhereTheBossStands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ShadowyRow};
+	Mode->TotalFloors = 2;
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Elite;
+
+	// FLOOR 1 OF AN ELITE DUNGEON HAS A BOSS AT ITS EXIT, as the Nothing Is Forgotten test finds.
+	if (!TestTrue(TEXT("floor 1 of an Elite dungeon"), Mode->GoToFloor(1))
+		|| !TestTrue(TEXT("has a boss at its exit"), Mode->FloorBrief.bBossAtTheExit))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<FVector> Lights = Mode->ShadowyEnemiesLightsNow();
+	const FVector Exit = Mode->CurrentFloor->ExitWorld();
+	if (!TestTrue(TEXT("the floor has light zones"), Lights.Num() > 0))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the last lies on the exit"), FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
+	TestTrue(TEXT("one more than the row's three, or all the floor had room for and one"),
+			 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	TestEqual(TEXT("every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num());
+
+	ACataclysmEnemyCharacter* Gatekeeper = nullptr;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		if (IsValid(Creature) && Creature->IsA<ACataclysmGatekeeperCharacter>())
+		{
+			Gatekeeper = Creature;
+		}
+	}
+	if (!TestNotNull(TEXT("a Gatekeeper stands"), Gatekeeper))
+	{
+		return false;
+	}
+	TestTrue(TEXT("on the exit's light"),
+			 FVector::Dist2D(Gatekeeper->GetActorLocation(), Exit) <= Effects::ShadowyEnemiesLightRadiusCm);
+	TestFalse(TEXT("so it is exposed"), Gatekeeper->bShrouded);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

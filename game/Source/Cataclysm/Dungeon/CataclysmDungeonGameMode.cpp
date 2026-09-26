@@ -1545,6 +1545,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		ForgetTheVoidParasite();
 		PlaceTheLight();
 
+		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
+		// waves keep them. Issues #1820 and #41.
+		ForgetTheShadowLights();
+		PlaceTheShadowLights();
+
 		// AND OBSIDIAN SARCOPHAGI, FOR THE SAME REASON; a Horde arena's waves keep its coffin and its count.
 		// Issues #1820 and #41.
 		ForgetTheSarcophagi();
@@ -5347,6 +5352,200 @@ ACataclysmGroundZone* ACataclysmDungeonGameMode::VoidParasiteLightNow() const
 	return VoidParasiteLight.Get();
 }
 
+TArray<FVector> ACataclysmDungeonGameMode::ShadowyEnemiesLightsNow() const
+{
+	TArray<FVector> Centres;
+	if (!CurrentFloor)
+	{
+		return Centres;
+	}
+	for (const FIntPoint& Cell : ShadowLightCells)
+	{
+		Centres.Add(CurrentFloor->WorldOfCell(Cell));
+	}
+	return Centres;
+}
+
+int32 ACataclysmDungeonGameMode::ShadowyEnemiesLightZonesDrawn() const
+{
+	int32 Drawn = 0;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Light : ShadowLights)
+	{
+		Drawn += Light.IsValid() ? 1 : 0;
+	}
+	return Drawn;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheShadowLights()
+{
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : ShadowLights)
+	{
+		if (ACataclysmGroundZone* Light = One.Get())
+		{
+			Light->Destroy();
+		}
+	}
+	ShadowLights.Reset();
+	ShadowLightCells.Reset();
+
+	// THE FIRE SECONDS AND NOT THE SHROUDS: the next beat takes every shroud off on a floor without the row, and
+	// writes each one again on a floor with it.
+	ShadowFireSecondsLeft.Reset();
+}
+
+void ACataclysmDungeonGameMode::PlaceTheShadowLights()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey)))
+	{
+		return;
+	}
+
+	// THE ROW'S ZONES, AT LEAST `EternalChorusApartCm` FROM THE ENTRANCE AND FROM EACH OTHER by Eternal Chorus's
+	// picker, AND ONE MORE ON THE EXIT WHEN A BOSS STANDS THERE, as ruled on 2026-09-26: a character with no fire
+	// could not otherwise be sure of hurting the boss it has to kill.
+	ShadowLightCells = EternalChorusCells(*CurrentFloor, Effects::ShadowyEnemiesLightZonesPerFloor);
+	if (FloorBrief.bBossAtTheExit)
+	{
+		ShadowLightCells.Add(CurrentFloor->GetPlan().Exit);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Shadowy Enemies: %d light zone(s) on floor %d"), ShadowLightCells.Num(),
+		   FloorNumber);
+}
+
+void ACataclysmDungeonGameMode::StepShadowyEnemies(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey))
+		&& CurrentFloor && CurrentFloor->IsBuilt();
+
+	// THE LIGHT ZONES DRAWN AGAIN whenever one is missing, which is after a Horde arena's every wave. They do no
+	// damage, and are drawn in Celestial's colours, as Void Parasite's light is.
+	TArray<FVector> Centres;
+	if (bRow)
+	{
+		if (ShadowLights.Num() != ShadowLightCells.Num())
+		{
+			ShadowLights.SetNum(ShadowLightCells.Num());
+		}
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+		for (int32 Index = 0; Index < ShadowLightCells.Num(); ++Index)
+		{
+			const FVector Where = CurrentFloor->WorldOfCell(ShadowLightCells[Index]);
+			Centres.Add(Where);
+			if (!ShadowLights[Index].IsValid() && Source)
+			{
+				ShadowLights[Index] = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::ShadowyEnemiesLightRadiusCm, 0.0f,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/FName(TEXT("Celestial")));
+			}
+		}
+	}
+
+	// THE FIRE SECONDS RUN DOWN BY THE BEAT, and a creature whose seconds are spent or which is gone is forgotten.
+	for (auto It = ShadowFireSecondsLeft.CreateIterator(); It; ++It)
+	{
+		It->Value -= SecondsBetweenWaveChecks;
+		if (!It->Key.IsValid() || It->Value <= 0.0f)
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	// EVERY FLOOR CREATURE SHROUDED UNLESS A LIGHT REACHES IT, measured flat. Not a creature a rule raised, and not
+	// one that cannot be hurt anyway: neither is a creature the floor put there, and the word under its bar would say
+	// something untrue of it.
+	const FVector Feet = Player->GetActorLocation();
+	const bool bOrb = FloorBrief.Modifiers.Contains(FName(Effects::BlackestShadowKey));
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		ACataclysmEnemyCharacter* Creature = Enemy.Get();
+		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature))
+		{
+			continue;
+		}
+		const FVector At = Creature->GetActorLocation();
+		bool bLit = !bRow || Creature->bRaisedByARule || Creature->bCannotBeHurt
+			|| CreaturesRaisedByARule.Contains(Creature) || ShadowFireSecondsLeft.Contains(Creature)
+			|| (bOrb && FVector::Dist2D(At, Feet) <= Effects::BlackestShadowLightCm);
+		for (int32 Index = 0; !bLit && Index < Centres.Num(); ++Index)
+		{
+			bLit = FVector::Dist2D(At, Centres[Index]) <= Effects::ShadowyEnemiesLightRadiusCm;
+		}
+		if (Creature->bShrouded == bLit)
+		{
+			Creature->bShrouded = !bLit;
+			if (bLit)
+			{
+				ShroudedCreatures.Remove(Creature);
+			}
+			else
+			{
+				ShroudedCreatures.Add(Creature);
+			}
+		}
+	}
+
+	// AND ON A FLOOR WITHOUT THE ROW, EVERY SHROUD THIS RULE GAVE IS TAKEN OFF, a creature no longer on the floor's
+	// list included.
+	for (auto It = ShroudedCreatures.CreateIterator(); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = It->Get();
+		if (!Creature)
+		{
+			It.RemoveCurrent();
+		}
+		else if (!bRow)
+		{
+			Creature->bShrouded = false;
+			It.RemoveCurrent();
+		}
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteHitForShadowyEnemies(const FCataclysmHitNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey)))
+	{
+		return;
+	}
+	ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Notice.Target);
+	if (!Creature || Notice.bEvaded)
+	{
+		return;
+	}
+
+	// FIRE IS THE DEMONIC ELEMENT, read as Carrion Feast reads it: a player's hit carries its skill's element on the
+	// damage effect. AN EVADED ONE EXPOSES NOTHING, as the decision of 2026-09-05 says an evaded attack applies
+	// nothing it was carrying; a blocked one does. A creature's own fire exposes nothing: the row asks it of the
+	// player.
+	static const FGameplayTag Fire = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+	if (!Notice.HasTag(Fire)
+		|| UCataclysmTeams::TeamOf(Notice.Attacker) == UCataclysmTeams::IdFor(ECataclysmTeam::Monsters))
+	{
+		return;
+	}
+
+	// EXPOSED AT ONCE, so the next blow lands without waiting for the beat; this blow itself dealt nothing.
+	ShadowFireSecondsLeft.Add(Creature, Effects::ShadowyEnemiesFireExposureSeconds);
+	if (Creature->bShrouded)
+	{
+		Creature->bShrouded = false;
+		ShroudedCreatures.Remove(Creature);
+	}
+}
+
 void ACataclysmDungeonGameMode::ForgetTheVoidParasite()
 {
 	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Voidlings)
@@ -6352,6 +6551,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	bRawSewageInARiver = false;
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
+	ForgetTheShadowLights();
 	ForgetTheSarcophagi();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
@@ -6850,6 +7050,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// shown and the camera lightened. Issues #1820 and #41.
 	const bool bVision = UCataclysmDungeonModifierEffects::SightRadiusFor(FloorBrief.Modifiers) > 0.0f
 		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0 || InvisibleStalkers.Num() > 0;
+	// AND SHADOWY ENEMIES, ON EVERY FLOOR CARRYING IT, AND ON THE FIRST FLOOR AFTER ONE WHILE A SHROUD IS HELD, so it is
+	// taken off. Issues #1820 and #41.
+	const bool bShadowyEnemies = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::ShadowyEnemiesKey))
+		|| ShroudedCreatures.Num() > 0;
 	// AND VOID PARASITE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON
 	// THE CHARACTER, as Chaos Touched is stepped. Issues #1820 and #41.
 	const bool bVoidParasite = FloorBrief.Modifiers.Contains(
@@ -6879,7 +7084,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bSwarmOfLocusts
 		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVision && !bVoidParasite
-		&& !bObsidianSarcophagi)
+		&& !bObsidianSarcophagi && !bShadowyEnemies)
 	{
 		return;
 	}
@@ -7136,6 +7341,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bVision)
 	{
 		StepVision(Player);
+	}
+
+	// AND SHADOWY ENEMIES, WHICH DRAWS ZONES AND SAYS WHICH CREATURES DAMAGE CAN REACH. Issues #1820 and #41.
+	if (bShadowyEnemies)
+	{
+		StepShadowyEnemies(Player);
 	}
 
 	// AND VOID PARASITE, WHICH DRAWS A ZONE, REMOVES CREATURES AND MOVES THE PLAYER'S STATS. Issues #1820
@@ -9586,6 +9797,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	NoteHitForHolyRepercussions(Notice);
 	NoteHitForTheReaper(Notice);
 	NoteHitForPlagueConvergence(Notice);
+	NoteHitForShadowyEnemies(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForWastingSickness(

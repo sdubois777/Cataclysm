@@ -4364,3 +4364,21 @@ def test_the_blackest_shadow_row_still_hides_and_empowers_what_is_outside_the_li
         assert phrase in lower, (
             f"Void_The_Blackest_Shadow no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "BlackestShadowKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_shadowy_enemies_row_still_says_only_light_lets_them_be_harmed():
+    """The phrases the rule's reading rests on.
+
+    "Void dungeons could be infested with shadowy enemies that can only be harmed when exposed to light. Players must
+    use their abilities or environmental factors to illuminate and weaken these foes." INFESTED is why every floor
+    creature is shrouded; ONLY BE HARMED WHEN EXPOSED TO LIGHT is why a shrouded one takes nothing; ABILITIES is the
+    fire hit and ENVIRONMENTAL FACTORS the light zones, as ruled on 2026-09-26. If any changes, the reading must be
+    revisited.
+    """
+    words = flat(rows()["Void_Shadowy_Enemies"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("infested", "only be harmed when exposed to light", "abilities", "environmental factors"):
+        assert phrase in lower, (
+            f"Void_Shadowy_Enemies no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "ShadowyEnemiesKey in CataclysmDungeonModifierEffects.h. " + words)

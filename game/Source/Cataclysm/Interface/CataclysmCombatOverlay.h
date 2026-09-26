@@ -557,6 +557,12 @@ public:
 	static FString RiftTextFor(const AActor* Actor);
 
 	/**
+	 * "Shrouded" under the health bar of a creature no damage reaches until light does, on a floor carrying Shadowy
+	 * Enemies, or empty. Issues #1820 and #41. It says why a blow on it did nothing.
+	 */
+	static FString ShroudedTextFor(const AActor* Actor);
+
+	/**
 	 * "Second Self" under the health bar of the minion or thrall A Second Self
 	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
 	 * it says what the creature is. Nothing else on screen marks a minion.

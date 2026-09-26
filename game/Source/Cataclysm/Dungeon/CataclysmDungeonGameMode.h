@@ -2050,6 +2050,15 @@ public:
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
 	class ACataclysmGroundZone* VoidParasiteLightNow() const;
 
+	/**
+	 * Shadowy Enemies, for tests: the centres of this floor's light zones, the exit's last when a boss stands there;
+	 * empty on a floor without the row. Issues #1820 and #41.
+	 */
+	TArray<FVector> ShadowyEnemiesLightsNow() const;
+
+	/** Shadowy Enemies, for tests: how many of this floor's light zones are drawn now. */
+	int32 ShadowyEnemiesLightZonesDrawn() const;
+
 	/** Necrotic Bloom, for the panel and tests: the flowers still standing. */
 	TArray<ACataclysmEnemyCharacter*> NecroticBloomFlowersNow() const;
 
@@ -2308,6 +2317,31 @@ private:
 	 * Issues #1820 and #41.
 	 */
 	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> InvisibleStalkers;
+
+	/**
+	 * Shadowy Enemies: this floor's light zones' cells, the exit's last when a boss stands there; the zones drawn on
+	 * them; the creatures shrouded now, so only those are released; and the seconds each fire-hit creature stays
+	 * exposed. Issues #1820 and #41.
+	 */
+	TArray<FIntPoint> ShadowLightCells;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> ShadowLights;
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> ShroudedCreatures;
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> ShadowFireSecondsLeft;
+
+	/**
+	 * Shadowy Enemies, on the beat: the light zones kept drawn, and every floor creature shrouded or exposed as the
+	 * lights, The Blackest Shadow's light and its fire seconds say; on a floor without the row, every shroud taken off.
+	 */
+	void StepShadowyEnemies(class ACataclysmPlayerCharacter* Player);
+
+	/** Shadowy Enemies, on every blow: a fire hit on a floor creature exposes it at once, for the row's seconds. */
+	void NoteHitForShadowyEnemies(const struct FCataclysmHitNotice& Notice);
+
+	/** Shadowy Enemies: this arena's light cells chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheShadowLights();
+
+	/** Shadowy Enemies: the light zones destroyed and forgotten, and the fire seconds; the floor has ended. */
+	void ForgetTheShadowLights();
 
 	/** Blood Bond, on every death: the player's death kills the elite bonded on this floor. */
 	void NoteDeathForBloodBond(const struct FCataclysmDeathNotice& Notice);
