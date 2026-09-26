@@ -4293,3 +4293,20 @@ def test_raw_sewage_row_still_has_rivers_that_give_disease_stacks_that_never_tim
         assert phrase in lower, (
             f"Pestilence_Raw_Sewage no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "RawSewageKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_blood_debt_row_still_has_a_debt_paid_in_kills_blessings_and_a_curse_at_the_boss():
+    """The phrases the rule's readings rest on.
+
+    START THE DUNGEON OWING is why the debt is the dungeon's; AS THEY KILL ENEMIES, THEY REDUCE THE DEBT is a kill paying
+    one; GAINING BLESSINGS is the damage each quarter paid gives; FAIL TO PAY OFF THE DEBT BY THE END and DURING THE BOSS
+    FIGHT are the curse on the final boss's floor. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["War_Blood_Debt"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("start the dungeon owing", "as they kill enemies, they reduce the debt", "gaining blessings",
+                   "fail to pay off the debt by the end", "during the boss fight"):
+        assert phrase in lower, (
+            f"War_Blood_Debt no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "BloodDebtKey in CataclysmDungeonModifierEffects.h. " + words)

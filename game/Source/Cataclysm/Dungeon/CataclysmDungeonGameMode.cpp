@@ -4607,6 +4607,56 @@ void ACataclysmDungeonGameMode::NoteDeathForRawSewage(const FCataclysmDeathNotic
 	RefreshFloorModifierPanel();
 }
 
+int32 ACataclysmDungeonGameMode::BloodDebtOwed() const
+{
+	return UCataclysmDungeonModifierEffects::BloodDebtOwedFor(ChooseTotalFloors());
+}
+
+int32 ACataclysmDungeonGameMode::BloodDebtBlessingsNow() const
+{
+	return UCataclysmDungeonModifierEffects::BloodDebtBlessingsFor(BloodDebtPaid, BloodDebtOwed());
+}
+
+bool ACataclysmDungeonGameMode::BloodDebtCursedNow() const
+{
+	// THE BOSS FIGHT IS THE DUNGEON'S FINAL BOSS'S FLOOR, and only on a floor carrying the row.
+	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodDebtKey))
+		&& UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercentFor(
+			   BloodDebtPaid, BloodDebtOwed(), IsTheFinalFloorForItsBoss()) > 0.0f;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForBloodDebt(const FCataclysmDeathNotice& Notice)
+{
+	// A CREATURE THAT PAYS FOR ITS DEATH, ON A FLOOR CARRYING THE ROW: one kill paid. A floor source, a creature
+	// raised again and anything a rule made pay nothing do not count, so no rule's endless creatures pay the debt.
+	const ACataclysmEnemyCharacter* Victim = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Victim || !Victim->PaysForItsDeath()
+		|| !FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodDebtKey)))
+	{
+		return;
+	}
+	++BloodDebtPaid;
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepBloodDebt(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+	const int32 Blessings = BloodDebtBlessingsNow();
+	const bool bCursed = BloodDebtCursedNow();
+	if (Blessings != BloodDebtBlessingsApplied || bCursed != bBloodDebtCurseApplied)
+	{
+		BloodDebtBlessingsApplied = Blessings;
+		bBloodDebtCurseApplied = bCursed;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -5866,6 +5916,11 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
 
+	// AND THE BLOOD DEBT IS THE DUNGEON'S: leaving ends it, and the call below takes its blessing and curse off.
+	BloodDebtPaid = 0;
+	BloodDebtBlessingsApplied = 0;
+	bBloodDebtCurseApplied = false;
+
 	// AND RAW SEWAGE'S RIVERS AND STACKS: the stacks are the dungeon's and end with it. The beat takes the disease
 	// tag off the player, since the step runs while it is held. Issues #1820 and #41.
 	ForgetTheRivers();
@@ -6351,6 +6406,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND BLOOD DEBT, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE WHAT IS ON THE CHARACTER IS NOT WHAT IS OWED.
+	// Issues #1820 and #41.
+	const bool bBloodDebt = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodDebtKey))
+		|| BloodDebtBlessingsNow() != BloodDebtBlessingsApplied || BloodDebtCursedNow() != bBloodDebtCurseApplied;
 	// AND RAW SEWAGE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHILE A STACK OR THE TAG IS HELD: the stacks
 	// are the dungeon's and burn on every floor. Issues #1820 and #41.
 	const bool bRawSewage = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RawSewageKey))
@@ -6386,6 +6445,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bBloodDebt
 		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
@@ -6609,6 +6669,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND BLOOD DEBT, WHICH WRITES ITS BLESSING AND CURSE ON THE PLAYER. Issues #1820 and #41.
+	if (bBloodDebt)
+	{
+		StepBloodDebt(Player, AbilitySystem);
 	}
 
 	// AND RAW SEWAGE, WHICH DRAWS RIVERS, ADDS STACKS, BURNS AND TAGS THE PLAYER. Issues #1820 and #41.
@@ -7596,6 +7662,13 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 		Effects.TouchedResistanceLessPercent = Percent(Effects_::ChaosTouchedResistanceLess);
 	}
 
+	// AND THE BLOOD DEBT'S BLESSING AND CURSE AS LAST APPLIED. Issues #1820 and #41. Read unconditionally like the
+	// rest: a dungeon without the row pays nothing and curses nothing.
+	Effects.BloodDebtDamageMorePercent =
+		UCataclysmDungeonModifierEffects::BloodDebtDamageMorePercentFor(BloodDebtBlessingsApplied);
+	Effects.BloodDebtDamageLessPercent =
+		bBloodDebtCurseApplied ? UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercent : 0.0f;
+
 	// AND WHAT THE ATTACHED VOIDLINGS TAKE, on its own field. Issues #1820 and #41. Read unconditionally like
 	// the rest: a player carrying none is owed nothing.
 	Effects.ParasiteLessPercent =
@@ -7673,6 +7746,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForBloodDebt(Notice);
 	NoteDeathForRawSewage(Notice);
 	NoteDeathForMarchOfProgress(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
@@ -9345,6 +9419,25 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  RawSewageStacks, RawSewageStacks == 1 ? TEXT("") : TEXT("s"),
 							  Effects::RawSewagePercentPerSecond(RawSewageStacks))
 			: FString(TEXT("raw sewage: no disease stacks")));
+	}
+
+	// AND BLOOD DEBT: what is paid, what it blesses, and the curse if it holds. Issues #1820 and #41.
+	const FName Debt(Effects::BloodDebtKey);
+	if (FloorBrief.Modifiers.Contains(Debt))
+	{
+		const int32 Owed = BloodDebtOwed();
+		const int32 More = FMath::RoundToInt(Effects::BloodDebtDamageMorePercentFor(BloodDebtBlessingsNow()));
+		if (BloodDebtCursedNow())
+		{
+			Counting.Add(Debt, FString::Printf(TEXT("blood debt: %d of %d paid; unpaid, %d%% less damage on this "
+													"floor"), BloodDebtPaid, Owed,
+											   FMath::RoundToInt(Effects::BloodDebtCurseLessPercent)));
+		}
+		else
+		{
+			Counting.Add(Debt, FString::Printf(TEXT("blood debt: %d of %d paid, +%d%% damage"),
+											   FMath::Min(BloodDebtPaid, Owed), Owed, More));
+		}
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -11751,6 +11844,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND CHAOS TOUCHED THE SAME WAY: its stacks are the dungeon's and the call above took
 		// them off the character. Issues #1820 and #41.
 		ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
+
+		// AND THE BLOOD DEBT THE SAME WAY: what it has paid is the dungeon's, and the next beat writes its blessing
+		// and, on the final boss's floor, its curse back. Issues #1820 and #41.
+		BloodDebtBlessingsApplied = 0;
+		bBloodDebtCurseApplied = false;
 
 		// AND VOID PARASITE THE SAME WAY: the call above took the voidlings' figure off the character,
 		// and a Horde arena's next wave keeps its stacks, so the next beat puts them back. Issues #1820

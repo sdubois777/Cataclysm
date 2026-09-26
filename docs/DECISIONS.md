@@ -2,6 +2,96 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Blood Debt: a dungeon owes 30 kills a floor, at most 300; each quarter paid gives 5% more damage, and an unpaid debt takes 30% off the player's damage on the final boss's floor
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, what is owed, the blessings and the curse, and two new player floor-effect fields,
+`BloodDebtDamageMorePercent` and `BloodDebtDamageLessPercent`, read by `StatModifiersFor`, `IsEmpty` and `Describe`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the kills paid, the blessing and curse written
+on the player, the reset on leaving, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`War_Blood_Debt` in `game/Data/DungeonModifiers.csv`, weight 10: "Players start the dungeon owing a "blood debt" to a
+war god. As they kill enemies, they reduce the debt, gaining blessings. However, if they fail to pay off the debt by
+the end, they are cursed with a powerful debuff during the boss fight." It states no figure.
+
+### What the rule does
+
+A dungeon carrying the row owes 30 kills for each of its floors, at most 300: a ten-floor dungeon owes 300, a
+two-floor dungeon 60. Every creature that pays for its death on a floor carrying the row pays one kill off the debt;
+a creature that pays nothing, such as a floor source or one a rule raised to pay nothing, pays nothing off it. The
+count is the dungeon's: it carries from floor to floor and ends when the player leaves the dungeon.
+
+Every whole quarter of the debt paid blesses the player with 5% more damage, on attack damage and on spell damage,
+summed: 20% once it is all paid. On the dungeon's final boss's floor, if the debt is not paid in full, the player deals
+30% less damage there; paying the rest on that floor lifts the curse at once. The panel reads "blood debt: 15 of 60
+paid, +5% damage", or on the final boss's floor unpaid "blood debt: 15 of 60 paid; unpaid, 30% less damage on this
+floor".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **The debt is 30 kills per floor of the dungeon, at most 300.**
+- **Every 25% paid gives +5% damage.**
+- **Unpaid on reaching the last floor: 30% less damage dealt while on it.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **A kill is a death that pays**, whoever dealt the blow, because the row's kills are the ones that are rewarded; a
+  creature that pays nothing -- a floor source, a creature raised again, anything a rule made unpaid -- pays nothing
+  off the debt, so no rule's endless creatures can pay it.
+- **Only a floor carrying the row counts kills**, so a Volatile dungeon that re-draws its rows each floor counts only
+  on the floors that carry this one; what has been paid stays.
+- **"The last floor" is the floor whose exit holds the dungeon's final boss**, `IsTheFinalFloorForItsBoss`, because
+  the row places the curse "during the boss fight". A one-floor dungeon has no such floor, so it is never cursed.
+- **The damage is taken as Void Parasite's is**: a More and a Less on attack damage and on spell damage, through two
+  new player floor-effect fields, applied like Chaos Touched's stacks and reapplied after every floor change.
+- **The count does not end at the player's death.** The row ties the debt to the dungeon, not to a life.
+
+### The research: tribute earned by killing, spent inside one area
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile 2, Ritual | https://pathofexile2.wiki.fextralife.com/Ritual | "When you successfully kill resurrected monsters in a Ritual Circle, you will be rewarded with Tribute."; "Tribute will only be accumulated for an entire map" |
+
+**What it settles and what it does not.** Path of Exile's Ritual ships a count earned by killing that is kept for one
+area and spent on rewards there. That settles kills being the currency and the count belonging to the dungeon rather
+than to a floor. The page describes rewards bought with the count, not a debt with a penalty for leaving it unpaid, so
+the 30 a floor, the 300, the quarters, the 5% and the 30% curse are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `BloodDebtFiguresOwedBlessingsAndCurse`: what one, five, ten and twenty floors owe; the blessings at 0, 74, 75, 150,
+  299, 300 and 500 of 300; four blessings are 20%; the curse only unpaid on the final boss's floor.
+- `KillsPayTheBloodDebtAndEachQuarterBlessesTheBlow`: two floors owe 60, with the panel; fourteen kills bless nothing;
+  the fifteenth gives 5% more attack and spell damage, with the panel; three creatures that pay nothing pay nothing.
+- `AnUnpaidBloodDebtCursesTheFinalBossFloor`: no curse on floor 1; on floor 2 of 2 with nothing paid, 30% less attack
+  and spell damage, with the panel; sixty kills there lift the curse and give 20% more, with the panel.
+- `TheBloodDebtCarriesAcrossFloorsAndEndsOnLeaving`: thirty kills on floor 1 of 4 carry to floor 2 with their 5%;
+  leaving ends the count and the blessing.
+
+One Python check: the row still says "start the dungeon owing", "as they kill enemies, they reduce the debt", "gaining
+blessings", "fail to pay off the debt by the end" and "during the boss fight".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Cooldown reset: six actions that clear skill cooldowns, and eight enchantments written on them
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`

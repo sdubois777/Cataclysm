@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BloodDebtKey =
+	TEXT("War_Blood_Debt");
+
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
 
@@ -481,6 +484,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(BloodDebtKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
@@ -679,6 +683,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(BloodDebtKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
@@ -1000,6 +1005,15 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.ParasiteLessPercent);
 	}
+
+	// AND THE BLOOD DEBT'S BLESSING AND ITS CURSE, ON DAMAGE AS VOID PARASITE'S IS TAKEN: a More and a Less on
+	// attack damage and on spell damage. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.BloodDebtDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.BloodDebtDamageMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackDamageStat, Effects.BloodDebtDamageLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsSpellDamageStat, Effects.BloodDebtDamageLessPercent);
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
 	// #41. This is the first entry in this function to write a single resistance,
@@ -1419,6 +1433,16 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 			TEXT("damage, resistances and movement speed %.0f%% less from attached voidlings"),
 			Effects.ParasiteLessPercent));
 	}
+	if (Effects.BloodDebtDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from the blood debt paid"),
+									Effects.BloodDebtDamageMorePercent));
+	}
+	if (Effects.BloodDebtDamageLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% less from the unpaid blood debt"),
+									Effects.BloodDebtDamageLessPercent));
+	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(
@@ -1771,6 +1795,32 @@ int32 UCataclysmDungeonModifierEffects::RawSewageStacksAfterAdding(int32 Stacks)
 float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
 {
 	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodDebtOwedFor(int32 Floors)
+{
+	return FMath::Clamp(FMath::Max(1, Floors) * BloodDebtKillsPerFloor, 0, BloodDebtMostKills);
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodDebtBlessingsFor(int32 Paid, int32 Owed)
+{
+	if (Owed <= 0)
+	{
+		return 0;
+	}
+	// WHOLE QUARTERS: the paid share in percent, divided by the share each blessing needs, rounded down.
+	const int32 Percent = FMath::Clamp(Paid, 0, Owed) * 100 / Owed;
+	return FMath::Clamp(Percent / BloodDebtPercentPerBlessing, 0, 100 / BloodDebtPercentPerBlessing);
+}
+
+float UCataclysmDungeonModifierEffects::BloodDebtDamageMorePercentFor(int32 Blessings)
+{
+	return FMath::Max(0, Blessings) * BloodDebtDamageMorePerBlessing;
+}
+
+float UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercentFor(int32 Paid, int32 Owed, bool bOnTheFinalBossFloor)
+{
+	return bOnTheFinalBossFloor && Paid < Owed ? BloodDebtCurseLessPercent : 0.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

@@ -300,6 +300,14 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ParasiteLessPercent = 0.0f;
 
+	/** The damage the blood debt paid so far blesses the player with, more. Blood Debt. Issues #1820 and #41. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BloodDebtDamageMorePercent = 0.0f;
+
+	/** The damage an unpaid blood debt takes off the player on the final boss's floor, less. Blood Debt. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BloodDebtDamageLessPercent = 0.0f;
+
 	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
@@ -455,6 +463,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
+			&& BloodDebtDamageMorePercent <= 0.0f
+			&& BloodDebtDamageLessPercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -2045,6 +2055,23 @@ public:
 	 *   be dead while a portal stands.
 	 */
 	static const TCHAR* PortalUnleashingKey;
+
+	/**
+	 * The row whose dungeon begins with a debt the player pays in kills, blessed as they pay it and cursed on the
+	 * final boss's floor if they have not. Issues #1820 and #41.
+	 *
+	 * "Players start the dungeon owing a "blood debt" to a war god. As they kill enemies, they reduce the debt,
+	 * gaining blessings. However, if they fail to pay off the debt by the end, they are cursed with a powerful
+	 * debuff during the boss fight."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - THE DEBT is `BloodDebtKillsPerFloor` kills for each floor of the dungeon, at most `BloodDebtMostKills`.
+	 * - EVERY `BloodDebtPercentPerBlessing` OF IT PAID blesses the player with `BloodDebtDamageMorePerBlessing` more
+	 *   damage, summed.
+	 * - UNPAID ON THE DUNGEON'S FINAL BOSS'S FLOOR, the player deals `BloodDebtCurseLessPercent` less damage there.
+	 */
+	static const TCHAR* BloodDebtKey;
 
 	/**
 	 * The row whose rivers of waste give the player disease stacks that burn and never run out. Issues #1820 and
@@ -4571,6 +4598,13 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/** Blood Debt's figures, every one a play-test value. See the key. */
+	static constexpr int32 BloodDebtKillsPerFloor = 30;
+	static constexpr int32 BloodDebtMostKills = 300;
+	static constexpr int32 BloodDebtPercentPerBlessing = 25;
+	static constexpr float BloodDebtDamageMorePerBlessing = 5.0f;
+	static constexpr float BloodDebtCurseLessPercent = 30.0f;
+
 	/**
 	 * Raw Sewage's figures, every one a play-test value. See the key. 2.5% a second at five stacks is the drain the
 	 * owner chose for Suffering Aura (2026-09-23).
@@ -5201,6 +5235,18 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** The kills a dungeon of this many floors owes. */
+	static int32 BloodDebtOwedFor(int32 Floors);
+
+	/** How many blessings this many kills of that debt has earned: one each quarter paid, at most four. */
+	static int32 BloodDebtBlessingsFor(int32 Paid, int32 Owed);
+
+	/** The more damage those blessings give, in percent. */
+	static float BloodDebtDamageMorePercentFor(int32 Blessings);
+
+	/** The less damage the curse takes, in percent: only on the final boss's floor with the debt unpaid. */
+	static float BloodDebtCurseLessPercentFor(int32 Paid, int32 Owed, bool bOnTheFinalBossFloor);
 
 	/** The player's Raw Sewage stacks after one more is added: one more, never past the most. */
 	static int32 RawSewageStacksAfterAdding(int32 Stacks);

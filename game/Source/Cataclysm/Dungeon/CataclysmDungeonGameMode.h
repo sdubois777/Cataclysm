@@ -2123,6 +2123,12 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Blood Debt, for the panel and tests: the kills paid toward the debt in this dungeon. */
+	int32 BloodDebtPaidHeld() const { return BloodDebtPaid; }
+
+	/** Blood Debt, for the panel and tests: the kills this dungeon owes. */
+	int32 BloodDebtOwed() const;
+
 	/** Raw Sewage, for the panel and tests: the disease stacks the player carries. */
 	int32 RawSewageStacksHeld() const { return RawSewageStacks; }
 
@@ -2416,6 +2422,16 @@ private:
 	 * it, and a coffin's Vampire Lord let out at the threshold.
 	 */
 	void NoteDeathForObsidianSarcophagi(const struct FCataclysmDeathNotice& Notice);
+
+	/** Blood Debt, on a death: a paying creature's death on a floor carrying the row pays one kill. */
+	void NoteDeathForBloodDebt(const struct FCataclysmDeathNotice& Notice);
+
+	/** Blood Debt, on the beat: the blessing and the curse written on the player when either changed. */
+	void StepBloodDebt(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Blood Debt: the blessings and whether the curse holds, as they are now. */
+	int32 BloodDebtBlessingsNow() const;
+	bool BloodDebtCursedNow() const;
 
 	/**
 	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
@@ -3425,6 +3441,14 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Blood Debt: the kills paid in this dungeon, and the blessings and curse last written on the player. Issues
+	 * #1820 and #41.
+	 */
+	int32 BloodDebtPaid = 0;
+	int32 BloodDebtBlessingsApplied = 0;
+	bool bBloodDebtCurseApplied = false;
 
 	/**
 	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether
