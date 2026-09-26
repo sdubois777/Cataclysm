@@ -2023,6 +2023,30 @@ public:
 	static const TCHAR* PestilentEmpowermentKey;
 
 	/**
+	 * The row whose portals keep sending creatures for as long as the floor lasts, held back only by killing
+	 * them. Issues #1820 and #41.
+	 *
+	 * "The dungeon is riddled with unstable portals that periodically spawn twisted abominations from the void.
+	 * Players must swiftly dispatch these creatures before they overwhelm the party."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure;
+	 * every figure here is a play-test value:
+	 * - `PortalUnleashingPerFloor` PORTALS A FLOOR, placed by Eternal Chorus's picker; ONE on a Horde arena,
+	 *   kept. Each is `ACataclysmPortalCharacter`, a floor source that cannot be hurt, with the Imp's health,
+	 *   "Portal" under its bar and a visible Void zone `PortalUnleashingRadiusCm` across that does no damage.
+	 * - EVERY `PortalUnleashingSecondsBetween` A PORTAL SENDS ONE CREATURE onto a floor cell within
+	 *   `PortalUnleashingRadiusCm`, while fewer than `PortalUnleashingMostAlivePerPortal` of its own stand. From
+	 *   the floor's placing, with no quiet start.
+	 * - NO ABOMINATION CREATURE EXISTS. What comes is a creature of the floor's own kinds at Common, "Abomination"
+	 *   under its bar, until the project owner names a creature for it.
+	 * - IT PAYS NOTHING, IS RAISED BY THE RULE AND IS NOT ONE OF THE FLOOR'S CREATURES, for two reasons: a portal
+	 *   never stops, so a paid creature would be unlimited loot and experience; and Trial of Endurance's
+	 *   "cleared" and every floor's clear-time log count the floor's creatures, which would otherwise never all
+	 *   be dead while a portal stands.
+	 */
+	static const TCHAR* PortalUnleashingKey;
+
+	/**
 	 * The row where veins in the walls poison the ground around them, grow back when destroyed, and
 	 * summon guardians when too many are destroyed. Issues #1820 and #41.
 	 *
@@ -4516,6 +4540,21 @@ public:
 	static constexpr float PestilentEmpowermentMostPercent = 100.0f;
 
 	/**
+	 * Portal Unleashing's figures, every one a play-test value. See the key. The count is Golden Spires'; the
+	 * radius is Necrotic Bloom's wave radius, which the creatures' cells are chosen by.
+	 */
+	static constexpr int32 PortalUnleashingPerFloor = 2;
+	static constexpr int32 PortalUnleashingPerHordeArena = 1;
+	static constexpr float PortalUnleashingRadiusCm = NecroticBloomWaveWithinCm;
+	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
+	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
+
+	static_assert(
+		PortalUnleashingPerFloor > 0 && PortalUnleashingPerHordeArena > 0 && PortalUnleashingRadiusCm > 0.0f
+			&& PortalUnleashingSecondsBetween > 0.0f && PortalUnleashingMostAlivePerPortal > 0,
+		"A portal that sent nothing, or sent without a cap, is not the row as ruled.");
+
+	/**
 	 * Infested Veins' figures, every one a play-test value. See the key. The burn is Singularity Wells'
 	 * 1% a second, which Necrotic Ground and the Harbingers' trail share; the guardians' rung is the
 	 * Elite rung Royal Guard's constant names.
@@ -5113,6 +5152,12 @@ public:
 	 * not compounded, capped at `PestilentEmpowermentMostPercent`. 1.0 for none.
 	 */
 	static float PestilentEmpowermentDamageMultiplier(int32 BeaconsLeftStanding);
+
+	/**
+	 * Whether a portal sends a creature now: its clock has reached `PortalUnleashingSecondsBetween` and fewer
+	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
+	 */
+	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
 
 	/** What a second in a living vein's zone costs a player with this maximum health. */
 	static float InfestedVeinsBurn(float MaximumHealth);

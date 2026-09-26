@@ -34,6 +34,7 @@
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
+#include "Character/CataclysmPortalCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -30301,6 +30302,304 @@ bool FCataclysmCoffinsLordTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("the coffin still grants: 20% more"),
 				  Still->DamageMultiplierFrom(ACataclysmEnemyCharacter::ObsidianSarcophagiDamageSource), 1.2f, 0.001f);
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Void_Portal_Unleashing. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName PortalsRow(UCataclysmDungeonModifierEffects::PortalUnleashingKey);
+
+	/** A dungeon carrying only Portal Unleashing, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* APortalFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {PortalsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The player kills `Victim`, which cannot dodge. */
+	bool KillWhatAPortalSent(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Victim)
+	{
+		Victim->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		return Test.TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Victim));
+	}
+}
+
+// THE FIGURES: TWO PORTALS, 600 CM, ONE CREATURE EVERY TEN SECONDS WHILE FEWER THAN FOUR OF ITS OWN STAND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PortalUnleashingFiguresAndWhenAPortalSends",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two portals a floor"), Effects::PortalUnleashingPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::PortalUnleashingPerHordeArena, 1);
+	TestEqual(TEXT("600 cm across the radius"), Effects::PortalUnleashingRadiusCm, 600.0f, 0.001f);
+	TestEqual(TEXT("one every ten seconds"), Effects::PortalUnleashingSecondsBetween, 10.0f, 0.001f);
+	TestEqual(TEXT("four of its own at most"), Effects::PortalUnleashingMostAlivePerPortal, 4);
+
+	TestFalse(TEXT("9.75 seconds: not yet"), Effects::PortalUnleashingSendsNow(9.75f, 0));
+	TestTrue(TEXT("10 seconds and none standing: one"), Effects::PortalUnleashingSendsNow(10.0f, 0));
+	TestTrue(TEXT("10 seconds and three standing: one"), Effects::PortalUnleashingSendsNow(10.0f, 3));
+	TestFalse(TEXT("10 seconds and four standing: none"), Effects::PortalUnleashingSendsNow(10.0f, 4));
+	TestFalse(TEXT("a minute and four standing: none"), Effects::PortalUnleashingSendsNow(60.0f, 4));
+	return true;
+}
+
+// TWO PORTALS ON A FLOOR THAT CANNOT BE HURT, EACH SAYING "PORTAL" WITH ITS ZONE; ONE ON A HORDE ARENA, KEPT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.PortalUnleashingPlacesTwoPortalsThatCannotBeHurt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APortalFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	const TArray<ACataclysmEnemyCharacter*> Portals = Mode->VoidPortalsNow();
+	if (!TestEqual(TEXT("two portals on the floor"), Portals.Num(), Effects::PortalUnleashingPerFloor))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Portal : Portals)
+	{
+		TestTrue(TEXT("a portal"), Portal->IsA<ACataclysmPortalCharacter>());
+		TestNull(TEXT("with no brain"), Portal->GetController());
+		TestTrue(TEXT("that cannot be hurt"), Portal->bCannotBeHurt);
+		TestFalse(TEXT("that pays nothing"), Portal->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Portal->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Portal));
+		TestEqual(TEXT("\"Portal\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Portal),
+				  FString(TEXT("Portal")));
+		TestEqual(TEXT("with the Imp's health"), MaxHealthOf(Portal), Mode->VoidPortalHealth(), 0.5f);
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Portal->GetActorLocation(), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+
+		// A BLOW THAT WOULD KILL ANYTHING ELSE TAKES NOTHING, with its evasion at nothing so the blow lands.
+		Portal->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		const float Before = HealthOf(Portal);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Portal, 100000.0f);
+		TestFalse(TEXT("a killing blow does not kill it"), UCataclysmSkillEffects::IsDead(Portal));
+		TestEqual(TEXT("and takes nothing off its health"), HealthOf(Portal), Before, 0.01f);
+	}
+	TestTrue(TEXT("and from each other"), FVector::Dist2D(Portals[0]->GetActorLocation(),
+		Portals[1]->GetActorLocation()) >= Effects::EternalChorusApartCm - 1.0f);
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("two zones in the world"), ZonesOnTheFloor(World), 2);
+	for (ACataclysmEnemyCharacter* Portal : Portals)
+	{
+		ACataclysmGroundZone* Zone = Mode->VoidPortalZoneOf(Portal);
+		if (TestNotNull(TEXT("a zone for each portal"), Zone))
+		{
+			TestTrue(TEXT("around it"), Zone->Covers(Portal->GetActorLocation()));
+			TestFalse(TEXT("and no further than 600 cm"), Zone->Covers(Portal->GetActorLocation()
+				+ FVector(Effects::PortalUnleashingRadiusCm + 50.0f, 0.0f, 0.0f)));
+		}
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(PortalsRow),
+			  FString(TEXT("portal unleashing: 2 portals; 0 of 8 abominations standing")));
+
+	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT AND DRAWS ITS ZONE AGAIN.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Horde = Mode->VoidPortalsNow();
+	if (!TestEqual(TEXT("one portal in a Horde arena"), Horde.Num(), Effects::PortalUnleashingPerHordeArena))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the Horde panel"), Mode->LiveCountsForTheFloor().FindRef(PortalsRow),
+			  FString(TEXT("portal unleashing: 1 portal; 0 of 4 abominations standing")));
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> NextWave = Mode->VoidPortalsNow();
+	TestTrue(TEXT("the next wave keeps the same one portal"), NextWave.Num() == 1 && NextWave[0] == Horde[0]);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("with its zone drawn again"), Mode->VoidPortalZoneOf(Horde[0]));
+	return true;
+}
+
+// A PORTAL SENDS ITS FIRST CREATURE AT TEN SECONDS AND ONE EVERY TEN SECONDS AFTER, NEVER MORE THAN FOUR OF ITS OWN
+// STANDING; ONE KILLED AFTER THE CLOCK HAS RUN IS REPLACED ON THE NEXT BEAT; A NEW FLOOR TAKES THEM AWAY.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalsSendTest,
+	"Cataclysm.DungeonModifierEffects.APortalSendsOneAbominationEveryTenSecondsUpToFour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalsSendTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APortalFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Portals = Mode->VoidPortalsNow();
+	if (!TestEqual(TEXT("two portals"), Portals.Num(), 2))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = Portals[0];
+
+	// 9.75 SECONDS: NOTHING. TEN: ONE EACH.
+	Beat(Mode, BeatsFor(Effects::PortalUnleashingSecondsBetween) - 1);
+	TestEqual(TEXT("at 9.75 seconds the first portal has sent nothing"), Mode->AbominationsOf(First).Num(), 0);
+	Beat(Mode, 1);
+	for (ACataclysmEnemyCharacter* Portal : Portals)
+	{
+		const TArray<ACataclysmEnemyCharacter*> Sent = Mode->AbominationsOf(Portal);
+		if (!TestEqual(TEXT("at ten seconds each portal has sent one"), Sent.Num(), 1))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Creature = Sent[0];
+		TestTrue(TEXT("an abomination"), Creature->bIsAnAbomination);
+		TestFalse(TEXT("a creature of the floor's kinds, not a floor source"),
+				  Creature->IsA<ACataclysmFloorSourceCharacter>());
+		TestEqual(TEXT("at Common"), Creature->RarityStep, 0);
+		TestNotNull(TEXT("with a brain"), Creature->GetController());
+		TestFalse(TEXT("that pays nothing"), Creature->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Creature->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Creature));
+		TestEqual(TEXT("\"Abomination\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Creature),
+				  FString(TEXT("Abomination")));
+		const FVector At = Creature->GetActorLocation();
+		TestTrue(TEXT("beside its portal and not in its cell"),
+				 FVector::Dist2D(At, Portal->GetActorLocation()) <= Effects::PortalUnleashingRadiusCm + 1.0f
+					 && Mode->CurrentFloor->CellOfWorld(At) != Mode->CurrentFloor->CellOfWorld(Portal->GetActorLocation()));
+	}
+
+	// THIRTY SECONDS MORE: FOUR EACH. TWENTY MORE: STILL FOUR.
+	Beat(Mode, BeatsFor(3.0f * Effects::PortalUnleashingSecondsBetween));
+	TestEqual(TEXT("at forty seconds, four"), Mode->AbominationsOf(First).Num(), Effects::PortalUnleashingMostAlivePerPortal);
+	Beat(Mode, BeatsFor(2.0f * Effects::PortalUnleashingSecondsBetween));
+	TestEqual(TEXT("at sixty seconds, still four"), Mode->AbominationsOf(First).Num(),
+			  Effects::PortalUnleashingMostAlivePerPortal);
+	TestEqual(TEXT("the panel at the cap"), Mode->LiveCountsForTheFloor().FindRef(PortalsRow),
+			  FString(TEXT("portal unleashing: 2 portals; 8 of 8 abominations standing")));
+
+	// ONE KILLED: THREE STAND UNTIL THE NEXT BEAT, WHICH SENDS ITS REPLACEMENT.
+	if (!KillWhatAPortalSent(*this, Player, Mode->AbominationsOf(First)[0]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one killed: three stand"), Mode->AbominationsOf(First).Num(), 3);
+	TestEqual(TEXT("the panel with one killed"), Mode->LiveCountsForTheFloor().FindRef(PortalsRow),
+			  FString(TEXT("portal unleashing: 2 portals; 7 of 8 abominations standing")));
+	Beat(Mode, 1);
+	TestEqual(TEXT("the next beat sends its replacement"), Mode->AbominationsOf(First).Num(),
+			  Effects::PortalUnleashingMostAlivePerPortal);
+
+	// A NEW FLOOR TAKES THEM AWAY.
+	const TArray<ACataclysmEnemyCharacter*> Left = Mode->AbominationsOf(First);
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : Left)
+	{
+		TestFalse(TEXT("what the last floor's portal sent is gone"), IsValid(Creature));
+	}
+	return true;
+}
+
+// WHAT A PORTAL SENDS IS NOT THE FLOOR'S: THE FLOOR IS CLEARED WITH IT STANDING, AND IT PAYS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalsClearedTest,
+	"Cataclysm.DungeonModifierEffects.AFloorIsClearedWithAPortalsCreaturesStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalsClearedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APortalFloor(*this, World, Player);
+	if (!Mode || !TestEqual(TEXT("two portals"), Mode->VoidPortalsNow().Num(), 2))
+	{
+		return false;
+	}
+
+	// ONE CREATURE OF THE FLOOR'S OWN, SO THE FLOOR IS NOT CLEARED UNTIL IT DIES.
+	ACataclysmEnemyCharacter* Own =
+		SpawnImpWithHealth(World, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature of the floor's own"), Own))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Own);
+
+	Beat(Mode, BeatsFor(Effects::PortalUnleashingSecondsBetween));
+	const TArray<ACataclysmEnemyCharacter*> Sent = Mode->AbominationsOf(Mode->VoidPortalsNow()[0]);
+	if (!TestEqual(TEXT("the portal has sent one"), Sent.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("not cleared while the floor's own creature stands"), Mode->FloorClearedAfterSeconds() < 0.0f);
+
+	if (!KillWhatAPortalSent(*this, Player, Own))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("the portal's creature still stands"), IsValid(Sent[0]) && !UCataclysmSkillEffects::IsDead(Sent[0]));
+	TestTrue(FString::Printf(TEXT("and the floor was noted cleared all the same (%.2f)"), Mode->FloorClearedAfterSeconds()),
+			 Mode->FloorClearedAfterSeconds() >= 0.0f);
+	TestFalse(TEXT("the portal's creature pays nothing when killed"), Sent[0]->PaysForItsDeath());
 	return true;
 }
 

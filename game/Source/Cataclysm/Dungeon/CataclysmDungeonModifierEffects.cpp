@@ -161,6 +161,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::GoldenSpiresKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 	TEXT("Pestilence_Pestilent_Empowerment");
 
+const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
+	TEXT("Void_Portal_Unleashing");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -474,6 +477,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(NecroticBloomKey)
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
+		|| RowKey == FName(PortalUnleashingKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(VoidParasiteKey)
@@ -670,6 +674,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(NecroticBloomKey),
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
+		FName(PortalUnleashingKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
@@ -1751,6 +1756,11 @@ bool UCataclysmDungeonModifierEffects::NecroticBloomWaveIsDue(float SecondsSince
 		return false;
 	}
 	return SecondsSinceLastWave >= NecroticBloomSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)
+{
+	return SecondsSinceLastSent >= PortalUnleashingSecondsBetween && OwnStanding < PortalUnleashingMostAlivePerPortal;
 }
 
 float UCataclysmDungeonModifierEffects::PestilentEmpowermentDamageMultiplier(int32 BeaconsLeftStanding)

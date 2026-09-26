@@ -20,6 +20,7 @@
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
+#include "Character/CataclysmPortalCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/World.h"
@@ -1095,6 +1096,27 @@ bool FCataclysmSaveSarcophagusClaimsNothing::RunTest(const FString&)
 {
 	const ACataclysmSarcophagusCharacter* Default = GetDefault<ACataclysmSarcophagusCharacter>();
 	if (!TestNotNull(TEXT("a sarcophagus class"), Default))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it names no archetype row, as the dummy names none"), Default->ArchetypeRow.IsNone());
+	TestTrue(TEXT("the empty name is the training dummy's"),
+		FCataclysmSaveApply::ClassForArchetype(NAME_None) == ACataclysmEnemyCharacter::StaticClass());
+	return true;
+}
+
+/**
+ * A Portal Unleashing portal names no archetype row and is not mapped to one either: the save system skips every
+ * floor source, so the empty name stays the sandbox training dummy's. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSavePortalClaimsNothing,
+	"Cataclysm.SaveApply.APortalDoesNotTakeTheTrainingDummysEmptyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSavePortalClaimsNothing::RunTest(const FString&)
+{
+	const ACataclysmPortalCharacter* Default = GetDefault<ACataclysmPortalCharacter>();
+	if (!TestNotNull(TEXT("a portal class"), Default))
 	{
 		return false;
 	}
