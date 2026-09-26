@@ -7666,7 +7666,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDamageRowsTest,
  * row that names no gadget, and it does not reach the machine. THAT DOES NOT
  * TEST THE NAMING FILTER: the row has no condition and no scale, so it is
  * folded into the attribute and never recorded as a stat line, and removing the
- * filter changes nothing here (measured 2026-09-26, proof B of this change).
+ * filter changes nothing here (measured 2026-09-26, proof B of deployable Part 1).
+ * THE FILTER IS TESTED BY THE NEXT SUMMONER: it wears "While moving, your
+ * skills deal 15%-25% less damage", an attack_damage "more" of -25 that names
+ * no gadget and has a condition, so it IS recorded as a stat line. Moving, it
+ * must still not reach the machine: 1.4 times, where without the filter the
+ * blow would be 1.4 x 0.75 = 1.05 times.
  * "While stationary, your gadgets deal 20%-40% increased damage", at 40: 1.4
  * times once the summoner is recorded as not moving.
  * "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit", at 6:
@@ -7695,6 +7700,23 @@ bool FCataclysmGadgetDamageRowsTest::RunTest(const FString&)
 		Increased.Blow(TEXT("Ballista")) / PlainBallista, 1.4f, 0.001f);
 	TestEqual(TEXT("increased: an imp's blow is unchanged"),
 		Increased.Blow(TEXT("Imp")) / PlainImp, 1.0f, 0.001f);
+
+	// AN UNSCOPED ROW RECORDED AS A STAT LINE, which is what the naming filter
+	// keeps off a machine's blow. First that the row is live on the summoner:
+	// moving, its own attack_damage is 0.75 times, since the gadget row names
+	// Type.Deployable and is not asked here.
+	FSummoner Moving(Scope.World, TEXT("Positive_Gadgets_deal_20_40_increased_damage"),
+		TEXT("Negative_While_moving_your_skills_deal_15_25_less_damag"));
+	Moving.ASC()->NoteMovedMetres(1.0f);
+	if (TestEqual(TEXT("moving: the summoner's own attack_damage is 0.75 times"),
+			Moving.ASC()->MultiplierForStatAgainst(
+				FName(TEXT("attack_damage")), FGameplayTagContainer(), nullptr),
+			0.75f, 0.001f))
+	{
+		TestEqual(TEXT("moving: a ballista's blow is still 1.4 times, the unscoped row "
+					   "kept off it (1.05 if it reached it)"),
+			Moving.Blow(TEXT("Ballista")) / PlainBallista, 1.4f, 0.001f);
+	}
 
 	FSummoner Stationary(Scope.World,
 		TEXT("Positive_While_stationary_your_gadgets_deal_20_40_incr"));
