@@ -2,6 +2,71 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The deployable cap: three shipped machine skills state how many may stand at once, and "Add +1-3 to your max deployable count" raises only theirs
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Weapon Skills and Enchantment Effects sheets),
+`game/Data/WeaponSkills.csv`, `game/Data/EnchantmentEffects.csv`,
+`game/Content/Data/DT_WeaponSkills.uasset` and `DT_EnchantmentEffects.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json`, `game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` and
+`CataclysmEnchantmentEffectTests.cpp` (one test each), `CataclysmDataTableTests.cpp` and
+`docs/README.md` (the row count), `tools/tests/test_enchantment_effects_match_the_row_text.py`, and
+the new `tools/tests/test_a_deployable_cap_holds_what_base_timing_allows.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+No engine code. The mechanism already existed: a deploying skill refuses a new machine once
+`MinionCapFor` of them stand, and `MinionCapFor` is the skill's `MaxActive` shape parameter plus the
+character's `minion_cap_bonus`. What was missing was data: none of the three shipped machine skills
+stated a `MaxActive`, and no enchantment gave the bonus to machines only.
+
+| Weapon skill | Shape Params gain | Description gains |
+| :-- | :-- | :-- |
+| Crossbow Special, Bolt Turret | `MaxActive=1` | "One turret may stand at a time." |
+| Spear Special, Ballista | `MaxActive=2` | "Up to 2 ballistas may stand at once." |
+| Spear Ultimate, Iron Fortress | `MaxActive=5` | "One set may stand at a time." |
+
+The Iron Fortress deploys two ballistas and three spike traps in one cast, five in all, so a cap
+of 5 is one set.
+
+| Enchantment | Row |
+| :-- | :-- |
+| Add +1-3 to your max deployable count | `minion_cap_bonus` flat 1 to 3, Required Tags `Type.Deployable` |
+
+### RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25
+
+- The three caps: 1, 2 and 5.
+- The enchantment is `minion_cap_bonus` scoped to `Type.Deployable`, so it raises the cap of
+  machines and not of summons.
+- **The Swarm keystone now reaches these three skills.** Its row, `Ritualist_keystone_b_kA#1`,
+  already gives `minion_cap_bonus` 2 with no required tags; until these rows no machine skill
+  stated a cap for it to raise. That knock-on is accepted.
+- The three description sentences: a player should be able to read a cap that can refuse them.
+- **Base play is unchanged.** `test_a_deployable_cap_holds_what_base_timing_allows.py` checks, for
+  every capped deployable, that machines per cast x ceil(duration / cooldown) is at most the cap, so
+  a character with no cooldown reduction and no charges is never refused. It holds at 1, 2 and 5.
+
+### THE RUN
+
+On `70713ad1`, the test commit moved onto development `48f8e9e3`.
+
+| Step | Result |
+| :-- | :-- |
+| Build | "Build: Succeeded - 22 actions, 19 files compiled" |
+| Python of record, `70713ad1` | "5515 passed, 8 skipped in 469.38s"; JUnit tests 5523, failures 0 |
+| Rows commit `bf853947` | "WeaponSkills.csv 403 rows" with three lines changed; "EnchantmentEffects.csv 373 rows", from 372 |
+| Python after the rows | "1 failed, 5517 passed, 8 skipped": the stale CSV hash, as predicted; the new file adds 3 tests |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp", the unity file holding `CataclysmDataTableTests.cpp` |
+| Stale-asset step | "133 tests performed, 130 succeeded, 3 failed": the asset-match guard and the two new tests |
+| Asset rebuild `9c0ceca8` | only `DT_WeaponSkills.uasset`, `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The two new tests | "2 tests performed, 2 succeeded, 0 failed" |
+| Whole suite, `9c0ceca8` | "2602 tests performed, 2602 succeeded, 0 failed"; 2602 declared, gap 0 |
+| Proof A, the cap bonus ignored in `MinionCapFor` | PROVED: `TheShippedDeployablesStateCapsAndABonusRaisesTheBoltTurrets` failed 1 assertion, "and three with a cap bonus of 3", reading 1; restored "1 tests performed, 1 succeeded" |
+| Proof B, the cap never enforced | PROVED: the same test failed 1 assertion, "three activations leave one turret at the shipped cap", reading 3; restored "1 tests performed, 1 succeeded" |
+| Python control, the Ballista's `MaxActive` 2 made 1 (2026-09-25, in a copy) | PROVED: `test_the_three_capped_deployables_state_their_caps` and `test_no_cap_binds_at_base_timing` failed; restored "3 passed" |
+
+---
+
 ## 2026-09-26 — A player's retaliation blow is dealt, measured and credited by the player's character, not by its player state
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` and
