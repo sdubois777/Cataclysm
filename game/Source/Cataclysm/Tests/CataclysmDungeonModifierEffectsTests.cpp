@@ -31275,4 +31275,43 @@ bool FCataclysmDebtLeavingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// THE PLAYER'S DEATH ENDS THE DEBT'S PAYMENTS AND THEIR BLESSING, AS EVERYTHING THAT LASTS ONLY FOR THE DUNGEON ENDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersDeathEndsWhatWasPaidOffTheBloodDebt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodDebtDungeon(*this, World, Player, 2);
+	if (!Mode || !ThePlayerKillsImps(*this, World, Player, 15))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("fifteen paid"), Mode->BloodDebtPaidHeld(), 15))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Killer = SpawnCreatureThatCanHit(World, Player.Character->GetActorLocation().X + 600.0f);
+	if (!TestNotNull(TEXT("a creature that can hit"), Killer))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player.Character, 10000000.0f);
+	TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("the player's death ends what was paid"), Mode->BloodDebtPaidHeld(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(DebtRow),
+			  FString(TEXT("blood debt: 0 of 60 paid, +0% damage")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

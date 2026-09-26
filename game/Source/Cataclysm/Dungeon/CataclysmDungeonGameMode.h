@@ -2423,7 +2423,10 @@ private:
 	 */
 	void NoteDeathForObsidianSarcophagi(const struct FCataclysmDeathNotice& Notice);
 
-	/** Blood Debt, on a death: a paying creature's death on a floor carrying the row pays one kill. */
+	/**
+	 * Blood Debt, on a death: a paying creature's death on a floor carrying the row pays one kill; the player's death
+	 * ends the debt and what was paid.
+	 */
 	void NoteDeathForBloodDebt(const struct FCataclysmDeathNotice& Notice);
 
 	/** Blood Debt, on the beat: the blessing and the curse written on the player when either changed. */

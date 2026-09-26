@@ -26,7 +26,7 @@ the end, they are cursed with a powerful debuff during the boss fight." It state
 A dungeon carrying the row owes 30 kills for each of its floors, at most 300: a ten-floor dungeon owes 300, a
 two-floor dungeon 60. Every creature that pays for its death on a floor carrying the row pays one kill off the debt;
 a creature that pays nothing, such as a floor source or one a rule raised to pay nothing, pays nothing off it. The
-count is the dungeon's: it carries from floor to floor and ends when the player leaves the dungeon.
+count is the dungeon's: it carries from floor to floor and ends when the player leaves the dungeon or dies.
 
 Every whole quarter of the debt paid blesses the player with 5% more damage, on attack damage and on spell damage,
 summed: 20% once it is all paid. On the dungeon's final boss's floor, if the debt is not paid in full, the player deals
@@ -42,6 +42,11 @@ play-test value:**
 - **The debt is 30 kills per floor of the dungeon, at most 300.**
 - **Every 25% paid gives +5% damage.**
 - **Unpaid on reaching the last floor: 30% less damage dealt while on it.**
+- **The debt, what has been paid and the blessings end at the player's death**, as ruled when this judgement was
+  first written the other way: they last only for the dungeon, and the owner's ruling of 2026-09-10 in the entry
+  "Dying in an ordinary dungeon resolves it at once, and a death clears everything temporary on the player",
+  under "Anything that lasts only for the dungeon ends at death, however it is worded", ends all such things at
+  death. Abyssal Rifts' successes end the same way.
 
 **Judgements of this change, under the same delegation, not ruled separately:**
 
@@ -51,10 +56,13 @@ play-test value:**
 - **Only a floor carrying the row counts kills**, so a Volatile dungeon that re-draws its rows each floor counts only
   on the floors that carry this one; what has been paid stays.
 - **"The last floor" is the floor whose exit holds the dungeon's final boss**, `IsTheFinalFloorForItsBoss`, because
-  the row places the curse "during the boss fight". A one-floor dungeon has no such floor, so it is never cursed.
+  the row places the curse "during the boss fight". A one-floor dungeon has no such floor, so it is never cursed:
+  `IsTheFinalFloorForItsBoss` asks for more than one floor, because `FCataclysmDungeonFloorRules::BossAtTheExit`
+  says "A DUNGEON WITH ONE FLOOR OR FEWER HAS NO BOTTOM TO PUT A BOSS ON". **One case falls outside that:** an Elite
+  dungeon puts a boss at the exit of every floor, so a one-floor Elite dungeon has a boss fight and is still not
+  cursed. It is named here rather than changed, because the ruling reads the last floor as the final boss's.
 - **The damage is taken as Void Parasite's is**: a More and a Less on attack damage and on spell damage, through two
   new player floor-effect fields, applied like Chaos Touched's stacks and reapplied after every floor change.
-- **The count does not end at the player's death.** The row ties the debt to the dungeon, not to a life.
 
 ### The research: tribute earned by killing, spent inside one area
 
@@ -71,7 +79,7 @@ the 30 a floor, the 300, the quarters, the 5% and the 30% curse are this game's 
 
 ### Tests
 
-Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+Five automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 - `BloodDebtFiguresOwedBlessingsAndCurse`: what one, five, ten and twenty floors owe; the blessings at 0, 74, 75, 150,
   299, 300 and 500 of 300; four blessings are 20%; the curse only unpaid on the final boss's floor.
@@ -81,6 +89,7 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`:
   and spell damage, with the panel; sixty kills there lift the curse and give 20% more, with the panel.
 - `TheBloodDebtCarriesAcrossFloorsAndEndsOnLeaving`: thirty kills on floor 1 of 4 carry to floor 2 with their 5%;
   leaving ends the count and the blessing.
+- `ThePlayersDeathEndsWhatWasPaidOffTheBloodDebt`: fifteen paid, then the player's death: none, with the panel.
 
 One Python check: the row still says "start the dungeon owing", "as they kill enemies, they reduce the debt", "gaining
 blessings", "fail to pay off the debt by the end" and "during the boss fight".

@@ -4627,6 +4627,19 @@ bool ACataclysmDungeonGameMode::BloodDebtCursedNow() const
 
 void ACataclysmDungeonGameMode::NoteDeathForBloodDebt(const FCataclysmDeathNotice& Notice)
 {
+	// THE PLAYER'S DEATH ENDS IT, with what was paid and its blessing: the owner's ruling of 2026-09-10, "Anything that
+	// lasts only for the dungeon ends at death, however it is worded". The next beat takes the blessing off.
+	if (Cast<ACataclysmPlayerCharacter>(Notice.Victim))
+	{
+		if (BloodDebtPaid > 0)
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("Blood Debt: the player's death ended %d paid"), BloodDebtPaid);
+			BloodDebtPaid = 0;
+			RefreshFloorModifierPanel();
+		}
+		return;
+	}
+
 	// A CREATURE THAT PAYS FOR ITS DEATH, ON A FLOOR CARRYING THE ROW: one kill paid. A floor source, a creature
 	// raised again and anything a rule made pay nothing do not count, so no rule's endless creatures pay the debt.
 	const ACataclysmEnemyCharacter* Victim = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
