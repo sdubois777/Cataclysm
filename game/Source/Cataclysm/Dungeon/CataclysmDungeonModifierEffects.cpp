@@ -7,6 +7,7 @@
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Items/CataclysmItem.h"
@@ -88,6 +89,13 @@ const TCHAR* UCataclysmDungeonModifierEffects::AntiMagicZonesKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::DesperateMeasuresKey =
 	TEXT("Famine_Desperate_Measures");
+
+const TCHAR* UCataclysmDungeonModifierEffects::HardModeKey = TEXT("Famine_Hard_Mode");
+
+const TCHAR* UCataclysmDungeonModifierEffects::RecessionKey = TEXT("Famine_Recession");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DiminishingReturnsKey =
+	TEXT("Famine_Diminishing_Returns");
 
 const TCHAR* UCataclysmDungeonModifierEffects::DivineResurgenceKey =
 	TEXT("Celestial_Divine_Resurgence");
@@ -453,6 +461,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(CommandersAuraKey)
 		|| RowKey == FName(AntiMagicZonesKey)
 		|| RowKey == FName(DesperateMeasuresKey)
+		|| RowKey == FName(HardModeKey)
+		|| RowKey == FName(RecessionKey)
+		|| RowKey == FName(DiminishingReturnsKey)
 		|| RowKey == FName(DivineResurgenceKey)
 		|| RowKey == FName(DeadRisingKey)
 		|| RowKey == FName(SufferingAuraKey)
@@ -650,6 +661,9 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(CommandersAuraKey),
 		FName(AntiMagicZonesKey),
 		FName(DesperateMeasuresKey),
+		FName(HardModeKey),
+		FName(RecessionKey),
+		FName(DiminishingReturnsKey),
 		FName(DivineResurgenceKey),
 		FName(DeadRisingKey),
 		FName(SufferingAuraKey),
@@ -903,6 +917,23 @@ FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 		Effects.ManaCostAsCurrentHealthPercent = DesperateMeasuresHealthPercent;
 	}
 
+	// AND THE THREE ROWS ON POTIONS, THE SAME ON EVERY FLOOR. Issue #806. None
+	// states a deepening. Diminishing Returns counts drinks, and the count is the
+	// character's, kept by `UCataclysmPotions`; the floor only says how much each
+	// drink costs.
+	if (FloorModifiers.Contains(FName(HardModeKey)))
+	{
+		Effects.PotionsForbiddenValue = 1.0f;
+	}
+	if (FloorModifiers.Contains(FName(RecessionKey)))
+	{
+		Effects.PotionKillChargesLessPercent = RecessionKillChargesLessPercent;
+	}
+	if (FloorModifiers.Contains(FName(DiminishingReturnsKey)))
+	{
+		Effects.PotionHealLessPercentPerDrink = DiminishingReturnsLessPercentPerDrink;
+	}
+
 	return Effects;
 }
 
@@ -1083,6 +1114,16 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		Modifiers, UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat,
 		Effects.ManaCostAsCurrentHealthPercent, ECataclysmStatCondition::ManaBelowPercent,
 		DesperateMeasuresManaBelowPercent);
+
+	// AND THE THREE ROWS ON POTIONS, EACH A FLAT FIGURE ON A STAT WITH NO
+	// ATTRIBUTE. Issue #806. `UCataclysmPotions` asks each one when a potion is
+	// drunk or a kill is credited.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::ForbiddenStat,
+								  Effects.PotionsForbiddenValue);
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::KillChargesLessStat,
+								  Effects.PotionKillChargesLessPercent);
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::HealLessPerDrinkStat,
+								  Effects.PotionHealLessPercentPerDrink);
 
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
@@ -1482,6 +1523,25 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 			TEXT("below %.0f%% mana, skills cost %.0f%% of current health instead"),
 			DesperateMeasuresManaBelowPercent,
 			Effects.ManaCostAsCurrentHealthPercent));
+	}
+
+	if (Effects.PotionsForbiddenValue > 0.0f)
+	{
+		Clauses.Add(TEXT("potions cannot be drunk"));
+	}
+
+	if (Effects.PotionKillChargesLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("kills fill potions %.0f%% less"),
+									Effects.PotionKillChargesLessPercent));
+	}
+
+	if (Effects.PotionHealLessPercentPerDrink > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("each potion already drunk in this dungeon takes %.0f%% of a full heal "
+				 "off the next, down to %.0f%% of it"),
+			Effects.PotionHealLessPercentPerDrink, UCataclysmPotions::LeastHealShare * 100.0f));
 	}
 
 	if (Effects.SicknessMaxHealthLessPercent > 0.0f

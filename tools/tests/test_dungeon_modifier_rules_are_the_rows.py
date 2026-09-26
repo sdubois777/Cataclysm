@@ -3486,6 +3486,40 @@ def test_a_dungeon_rule_modifiers_required_tags_reach_the_stat_line():
         "tags, so a scoped lock could not tell one skill from another.")
 
 
+def test_the_three_potion_rows_still_say_what_their_rules_do():
+    """Hard Mode, Recession and Diminishing Returns, built on the potions of #806.
+
+    Hard Mode refuses every drink: "cannot use potions". Recession's multiplier
+    is the row's own "4x", and `RecessionKillsMultiplier` must hold it.
+    Diminishing Returns' 10 a drink is a judgement of 2026-09-25 rather than the
+    row's, pinned here so that moving it is deliberate; the row must still speak
+    of potions losing effectiveness, which is the reading the rule takes.
+    """
+    table = rows()
+
+    hard = flat(table["Famine_Hard_Mode"]["Description"])
+    assert "cannot use potions" in hard, (
+        "The Famine Hard Mode row no longer says players cannot use potions, which "
+        "is what HardModeKey's rule refuses. " + hard)
+
+    recession = flat(table["Famine_Recession"]["Description"])
+    multiplier = re.search(r"\b(\d+)x as many kills", recession)
+    assert multiplier and multiplier.group(1) == "4", (
+        "The Famine Recession row no longer states 4x as many kills. Check "
+        "RecessionKillsMultiplier against it. " + recession)
+    assert constant("RecessionKillsMultiplier") == 4.0, (
+        "RecessionKillsMultiplier no longer holds the row's 4.")
+
+    diminishing = flat(table["Famine_Diminishing_Returns"]["Description"])
+    assert "Potions lose effectiveness" in diminishing, (
+        "The Famine Diminishing Returns row no longer says potions lose "
+        "effectiveness, which is what DiminishingReturnsKey's rule does. " + diminishing)
+    assert constant("DiminishingReturnsLessPercentPerDrink") == 10.0, (
+        "DiminishingReturnsLessPercentPerDrink moved from the 10 ruled on "
+        "2026-09-25. If that is deliberate, say so in docs/DECISIONS.md and "
+        "change this figure with it.")
+
+
 def test_desperate_measures_row_still_states_its_two_figures():
     """Both of this rule's figures are the row's own, and neither is a judgement.
 

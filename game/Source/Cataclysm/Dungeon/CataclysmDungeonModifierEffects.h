@@ -434,6 +434,24 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ChorusRegenLessPercent = 0.0f;
 
+	/**
+	 * Above zero, no potion may be drunk on this floor. Hard Mode. Issue #806.
+	 * A flag written as a value, as `SkillsLockedValue` is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PotionsForbiddenValue = 0.0f;
+
+	/** The percentage less every kill adds to the potion slots. Recession. Issue #806. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PotionKillChargesLessPercent = 0.0f;
+
+	/**
+	 * The percentage of a potion's heal lost for each drink already taken in the
+	 * dungeon. Diminishing Returns. Issue #806.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PotionHealLessPercentPerDrink = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -463,6 +481,9 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& ManaCostAsCurrentHealthPercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
+			&& PotionsForbiddenValue <= 0.0f
+			&& PotionKillChargesLessPercent <= 0.0f
+			&& PotionHealLessPercentPerDrink <= 0.0f
 			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
 			// and #41. March of Progress' armour is still something the floor is doing
 			// to the player, so a floor carrying it is not empty.
@@ -1460,6 +1481,44 @@ public:
 	 * instead would let a toggled aura run for ever at low mana.
 	 */
 	static const TCHAR* DesperateMeasuresKey;
+
+	/**
+	 * "Players cannot use potions in this dungeon." Issue #806.
+	 *
+	 * EVERY DRINK IS REFUSED, and the slots still fill from kills, so a player
+	 * leaves such a dungeon with what they earned in it. Written on every floor
+	 * carrying the row as `UCataclysmPotions::ForbiddenStat`.
+	 */
+	static const TCHAR* HardModeKey;
+
+	/**
+	 * "Potions take 4x as many kills to fill." Issue #806.
+	 *
+	 * A KILL ADDS A QUARTER OF WHAT IT WOULD, so four kills fill what one did:
+	 * `UCataclysmPotions::KillChargesLessStat` at
+	 * `RecessionKillChargesLessPercent`.
+	 */
+	static const TCHAR* RecessionKey;
+
+	/**
+	 * "Potions lose effectiveness over time, forcing players to find new resources
+	 * or adapt their playstyle." Issue #806.
+	 *
+	 * READ PER DRINK, ruled on 2026-09-25 under the project owner's delegation,
+	 * because "over time" does not say per drink or per minute and per drink makes
+	 * the drinking cost rather than the waiting. Each drink already taken in the
+	 * dungeon takes `DiminishingReturnsLessPercentPerDrink` off the next one's heal,
+	 * down to `UCataclysmPotions::LeastHealShare` of a full heal.
+	 */
+	static const TCHAR* DiminishingReturnsKey;
+
+	/** "4x as many kills": each kill adds a quarter, which is 75% less. */
+	static constexpr float RecessionKillsMultiplier = 4.0f;
+	static constexpr float RecessionKillChargesLessPercent =
+		100.0f - 100.0f / RecessionKillsMultiplier;
+
+	/** A JUDGEMENT: 10% of the heal lost for each drink already taken. */
+	static constexpr float DiminishingReturnsLessPercentPerDrink = 10.0f;
 
 	/**
 	 * The row where the floor's dead rise again, once. Issues #1820 and #41.

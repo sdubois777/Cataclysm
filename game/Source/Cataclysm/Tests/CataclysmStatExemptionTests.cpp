@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
@@ -3213,6 +3214,115 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * A player character on its player state, for the potion probes below: only a
+	 * player character holds potions. Issue #806.
+	 */
+	ACataclysmPlayerCharacter* SpawnPotionHolder(UWorld* World)
+	{
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!PlayerState || !Character)
+		{
+			return nullptr;
+		}
+		Character->SetPlayerState(PlayerState);
+		Character->OnRep_PlayerState();
+		if (UCataclysmAbilitySystemComponent* System =
+				PlayerState->GetCataclysmAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
+		}
+		return Character;
+	}
+
+	/** `potions_forbidden`, asked by `UCataclysmPotions::Drink`. Hard Mode. */
+	void ProbePotionsForbidden(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Plain = SpawnPotionHolder(World);
+		ACataclysmPlayerCharacter* Held = SpawnPotionHolder(World);
+		if (!Test.TestNotNull(TEXT("a player character"), Plain)
+			|| !Test.TestNotNull(TEXT("and another"), Held))
+		{
+			return;
+		}
+		GrantFlats(Held, {{FName(UCataclysmPotions::ForbiddenStat), 1.0f}});
+
+		Test.TestEqual(TEXT("a player without potions_forbidden drinks"),
+					   UCataclysmPotions::Drink(Plain, 0), ECataclysmPotionRefusal::None);
+		Test.TestEqual(TEXT("and one holding it is refused, so Drink really reads it"),
+					   UCataclysmPotions::Drink(Held, 0), ECataclysmPotionRefusal::Forbidden);
+	}
+
+	/** `potion_kill_charges_less_percent`, asked by `NoteEnemyKilled`. Recession. */
+	void ProbePotionKillChargesLess(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Plain = SpawnPotionHolder(World);
+		ACataclysmPlayerCharacter* Held = SpawnPotionHolder(World);
+		if (!Test.TestNotNull(TEXT("a player character"), Plain)
+			|| !Test.TestNotNull(TEXT("and another"), Held))
+		{
+			return;
+		}
+		GrantFlats(Held, {{FName(UCataclysmPotions::KillChargesLessStat), 75.0f}});
+
+		Test.TestEqual(TEXT("an Elite kill adds 3.5 to a player without it"),
+					   UCataclysmPotions::NoteEnemyKilled(Plain, 1), 3.5f, 0.001f);
+		Test.TestEqual(TEXT("and a quarter of that to one holding 75, so it is read"),
+					   UCataclysmPotions::NoteEnemyKilled(Held, 1), 0.875f, 0.001f);
+	}
+
+	/** `potion_heal_less_percent_per_drink`, asked by `Drink`. Diminishing Returns. */
+	void ProbePotionHealLessPerDrink(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Plain = SpawnPotionHolder(World);
+		ACataclysmPlayerCharacter* Held = SpawnPotionHolder(World);
+		UCataclysmAbilitySystemComponent* PlainSystem = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Plain));
+		UCataclysmAbilitySystemComponent* HeldSystem = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Held));
+		if (!Test.TestNotNull(TEXT("a player's ability system"), PlainSystem)
+			|| !Test.TestNotNull(TEXT("and another's"), HeldSystem))
+		{
+			return;
+		}
+		GrantFlats(Held, {{FName(UCataclysmPotions::HealLessPerDrinkStat), 10.0f}});
+		PlainSystem->SetPotionsDrunk(3);
+		HeldSystem->SetPotionsDrunk(3);
+
+		UCataclysmPotions::Drink(Plain, 0);
+		UCataclysmPotions::Drink(Held, 0);
+		Test.TestEqual(TEXT("a fourth drink without it heals 350 of 1000"),
+					   PlainSystem->GetPotionHeal().Remaining, 350.0f, 0.01f);
+		Test.TestEqual(TEXT("and with 10 a drink, 70% of that, so it is read"),
+					   HeldSystem->GetPotionHeal().Remaining, 245.0f, 0.01f);
+	}
+
+	/**
 	 * `movement_speed`, scaled by debuffs carried, asked by
 	 * `ACataclysmPlayerCharacter::RefreshMovementSpeed`. Issue #1833, for
 	 * "Each skill use increases your movement speed by 3%-5% for 2 seconds,
@@ -3317,6 +3427,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("enemies_cannot_move_away_within_metres"), &ProbeNowhereToRun},
 			{TEXT("moving_into_enemy_pushes_aside"), &ProbeShoulderThrough},
 			{TEXT("knockback_suppressed"), &ProbeSetStance},
+			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
+			{TEXT("potion_kill_charges_less_percent"), &ProbePotionKillChargesLess},
+			{TEXT("potion_heal_less_percent_per_drink"), &ProbePotionHealLessPerDrink},
 			{TEXT("minion_held_longest_becomes_your_equal"), &ProbeSecondSelf},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},

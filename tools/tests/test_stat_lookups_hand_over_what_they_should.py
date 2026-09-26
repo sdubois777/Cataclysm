@@ -358,6 +358,18 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(CrowdControlResistanceStat), FGameplayTagContainer(), Stat'):
         'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmPotions.cpp',
+     'FName(ForbiddenStat), FGameplayTagContainer(), 0.0f'):
+        "Hard Mode's flag, asked of the drinker before a potion is drunk and by "
+        'the boxes on screen (issue #806); a potion is not a skill, so no tags',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmPotions.cpp',
+     'FName(KillChargesLessStat), FGameplayTagContainer(), 0.0f'):
+        "Recession's share off every kill, asked of the killer as a kill is "
+        'credited (issue #806); a potion is not a skill, so no tags',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmPotions.cpp',
+     'FName(HealLessPerDrinkStat), FGameplayTagContainer(), 0.0f'):
+        "Diminishing Returns' share off each drink, asked of the drinker as a "
+        'potion is drunk (issue #806); a potion is not a skill, so no tags',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Set Stance's flag, asked of the target of a knockback before it is "

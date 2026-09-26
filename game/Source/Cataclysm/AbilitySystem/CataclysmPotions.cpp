@@ -29,6 +29,11 @@ namespace
 		ECVF_Default);
 }
 
+const TCHAR* UCataclysmPotions::ForbiddenStat = TEXT("potions_forbidden");
+const TCHAR* UCataclysmPotions::KillChargesLessStat = TEXT("potion_kill_charges_less_percent");
+const TCHAR* UCataclysmPotions::HealLessPerDrinkStat =
+	TEXT("potion_heal_less_percent_per_drink");
+
 UCataclysmAbilitySystemComponent* UCataclysmPotions::PotionHolderOf(const AActor* Character)
 {
 	// ONLY A PLAYER CHARACTER HOLDS POTIONS. Every character's ability system
@@ -64,7 +69,12 @@ float UCataclysmPotions::NoteEnemyKilled(AActor* Killer, int32 RarityStep)
 		return 0.0f;
 	}
 
-	const float Added = ChargesForKillOf(RarityStep);
+	// RECESSION TAKES A SHARE OFF EVERY KILL, so four kills fill what one did.
+	// Asked with no tags: a potion is not a skill.
+	const float Less = FMath::Clamp(
+		Holder->StatForSkill(FName(KillChargesLessStat), FGameplayTagContainer(), 0.0f),
+		0.0f, 100.0f);
+	const float Added = ChargesForKillOf(RarityStep) * (100.0f - Less) / 100.0f;
 	for (int32 Slot = 0; Slot < SlotCount; ++Slot)
 	{
 		Holder->SetPotionCharges(Slot, Holder->GetPotionCharges(Slot) + Added);
@@ -89,6 +99,12 @@ ECataclysmPotionRefusal UCataclysmPotions::Drink(AActor* Character, int32 Slot)
 	{
 		return ECataclysmPotionRefusal::NoSuchSlot;
 	}
+	// HARD MODE FIRST AMONG WHAT THE SLOT HOLDS, so a player on such a floor is
+	// told the floor forbids it rather than that the slot is short.
+	if (Holder->StatForSkill(FName(ForbiddenStat), FGameplayTagContainer(), 0.0f) > 0.0f)
+	{
+		return ECataclysmPotionRefusal::Forbidden;
+	}
 	if (Holder->GetPotionCharges(Slot) < ChargesPerDrink)
 	{
 		return ECataclysmPotionRefusal::TooFewCharges;
@@ -103,12 +119,22 @@ ECataclysmPotionRefusal UCataclysmPotions::Drink(AActor* Character, int32 Slot)
 
 	// THE AMOUNT IS FIXED WHEN THE POTION IS DRUNK, from the maximum at that
 	// moment, as a leech payment's is fixed when the hit lands.
+	//
+	// AND SMALLER FOR EACH DRINK ALREADY TAKEN IN THIS DUNGEON, on a floor carrying
+	// Diminishing Returns. The drinks are counted from entering the dungeon,
+	// whether or not every floor carried the row, because the row speaks of the
+	// potions losing effectiveness and not of the floor.
+	const float LessPerDrink = FMath::Max(
+		0.0f,
+		Holder->StatForSkill(FName(HealLessPerDrinkStat), FGameplayTagContainer(), 0.0f));
 	FCataclysmPotionHeal Heal;
-	Heal.Remaining = Vitals->GetMaxHealth() * HealShareOfMaximum;
+	Heal.Remaining = Vitals->GetMaxHealth() * HealShareOfMaximum
+		* HealShareAfter(Holder->GetPotionsDrunk(), LessPerDrink);
 	Heal.SecondsLeft = HealSeconds;
 
 	Holder->SetPotionCharges(Slot, Holder->GetPotionCharges(Slot) - ChargesPerDrink);
 	Holder->SetPotionHeal(Heal);
+	Holder->SetPotionsDrunk(Holder->GetPotionsDrunk() + 1);
 
 	UE_LOG(LogCataclysm, Verbose,
 		   TEXT("%s drank the potion in slot %d: %.1f health over %.1f seconds, %.1f "
@@ -166,13 +192,27 @@ void UCataclysmPotions::RefillAll(AActor* Character)
 		{
 			Holder->SetPotionCharges(Slot, MaxCharges);
 		}
+		Holder->SetPotionsDrunk(0);
 	}
+}
+
+float UCataclysmPotions::HealShareAfter(int32 DrinksTaken, float LessPercentPerDrink)
+{
+	const float Lost = FMath::Max(0, DrinksTaken) * FMath::Max(0.0f, LessPercentPerDrink) / 100.0f;
+	return FMath::Max(LeastHealShare, 1.0f - Lost);
 }
 
 float UCataclysmPotions::ChargesIn(const AActor* Character, int32 Slot)
 {
 	const UCataclysmAbilitySystemComponent* Holder = PotionHolderOf(Character);
 	return Holder ? Holder->GetPotionCharges(Slot) : 0.0f;
+}
+
+bool UCataclysmPotions::AreForbiddenFor(const AActor* Character)
+{
+	const UCataclysmAbilitySystemComponent* Holder = PotionHolderOf(Character);
+	return Holder
+		&& Holder->StatForSkill(FName(ForbiddenStat), FGameplayTagContainer(), 0.0f) > 0.0f;
 }
 
 int32 UCataclysmPotions::DrinksIn(float Charges)
@@ -190,6 +230,7 @@ FString UCataclysmPotions::DescribeRefusal(ECataclysmPotionRefusal Refusal)
 	case ECataclysmPotionRefusal::NoSuchSlot:	  return TEXT("there is no such potion slot");
 	case ECataclysmPotionRefusal::TooFewCharges:  return TEXT("the slot holds too few charges for a drink");
 	case ECataclysmPotionRefusal::AHealIsRunning: return TEXT("a potion is still healing");
+	case ECataclysmPotionRefusal::Forbidden:	  return TEXT("this floor forbids potions");
 	}
 	return TEXT("refused");
 }

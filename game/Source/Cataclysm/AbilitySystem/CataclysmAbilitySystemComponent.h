@@ -262,6 +262,13 @@ public:
 	void SetPotionHeal(const FCataclysmPotionHeal& Heal) { PotionHeal = Heal; }
 
 	/**
+	 * Potions drunk since entering this dungeon, which Diminishing Returns
+	 * counts. Back to 0 when `UCataclysmPotions::RefillAll` fills the slots.
+	 */
+	int32 GetPotionsDrunk() const { return PotionsDrunk; }
+	void SetPotionsDrunk(int32 Drunk) { PotionsDrunk = FMath::Max(0, Drunk); }
+
+	/**
 	 * The sum of increases that produced this character's attack damage.
 	 *
 	 * WHY A FINISHED ATTRIBUTE IS NOT ENOUGH. `AttackDamage` is
@@ -2484,6 +2491,9 @@ protected:
 
 	/** The potion heal being paid out. Empty when none is running. */
 	FCataclysmPotionHeal PotionHeal;
+
+	/** Potions drunk since entering this dungeon. */
+	int32 PotionsDrunk = 0;
 
 	/**
 	 * The sum of increases behind the current attack damage. Issue #895.
