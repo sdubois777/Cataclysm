@@ -2071,13 +2071,14 @@ public:
 	 *
 	 * "A slow-moving line of spectral pallbearers moves through the dungeon; contact causes heavy damage and fear."
 	 *
-	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, AND PARTLY BUILT. The row states no
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25 AND 2026-09-26. The row states no
 	 * figure; every figure here is a play-test value:
 	 * - A PROCESSION EVERY `FunerealProcessionSecondsBetween`, travelling at `FunerealProcessionSpeedCmPerSecond`.
 	 * - CONTACT: `FunerealProcessionPercentPerSecond` of the player's maximum health each second it touches them,
 	 *   typed Death.
-	 * - "AND FEAR" IS NOT BUILT. There is no fear in the game yet; it waits on the fleeing and fear system the Demonic
-	 *   session is building (`ApplyFear`), and is wired in when that merges.
+	 * - AND FEAR: its touch fears the player for `FunerealProcessionFearSeconds`, fleeing from the procession's head,
+	 *   the actor it touched (`UCataclysmFear::ApplyFear`), added when the fear system merged and ruled on
+	 *   2026-09-26. Fear's own refusals hold: a touch inside the immunity window the last fear opened fears nothing.
 	 */
 	static const TCHAR* FunerealProcessionKey;
 
@@ -4753,6 +4754,7 @@ public:
 	static constexpr float FunerealProcessionHalfWidthCm = 100.0f;
 	static constexpr float FunerealProcessionAppearsAwayCm = 2400.0f;
 	static constexpr float FunerealProcessionTravelsCm = 4800.0f;
+	static constexpr float FunerealProcessionFearSeconds = 2.0f;
 
 	/** Blood Debt's figures, every one a play-test value. See the key. */
 	static constexpr int32 BloodDebtKillsPerFloor = 30;

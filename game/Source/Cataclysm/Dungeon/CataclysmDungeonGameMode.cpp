@@ -5678,6 +5678,14 @@ void ACataclysmDungeonGameMode::StepFunerealProcession(
 			return;
 		}
 
+		// AND FEAR, ON EVERY BEAT OF CONTACT, fleeing from the procession's head, the actor it touched, as ruled on
+		// 2026-09-26. `ApplyFear` refuses a player already inside the immunity window a fear opens, so a player it keeps
+		// touching is feared once in each window and not on every beat.
+		if (Line->Covers(Feet) && !UCataclysmSkillEffects::IsDead(Player))
+		{
+			UCataclysmFear::ApplyFear(Source, Player, Effects::FunerealProcessionFearSeconds, Line->GetActorLocation());
+		}
+
 		// CONTACT, ONCE A SECOND, FOR THE PLAYER IT TOUCHES AT THAT BEAT: dealt by the rule's own step, as Swarm of
 		// Locusts' burn is, and typed by the row. Creatures are not touched.
 		FunerealProcessionSecondsSinceBurn += SecondsBetweenWaveChecks;

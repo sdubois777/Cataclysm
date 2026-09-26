@@ -20,6 +20,7 @@
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -32991,6 +32992,7 @@ bool FCataclysmProcessionFiguresTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("one every 60 s"), Effects::FunerealProcessionSecondsBetween, 60.0f, 0.001f);
 	TestEqual(TEXT("at 150 cm a second"), Effects::FunerealProcessionSpeedCmPerSecond, 150.0f, 0.001f);
 	TestEqual(TEXT("5% a second of contact"), Effects::FunerealProcessionPercentPerSecond, 5.0f, 0.001f);
+	TestEqual(TEXT("and 2 s of fear"), Effects::FunerealProcessionFearSeconds, 2.0f, 0.001f);
 	TestFalse(TEXT("not due at 59.75 s"), Effects::FunerealProcessionIsDue(59.75f));
 	TestTrue(TEXT("due at 60 s"), Effects::FunerealProcessionIsDue(60.0f));
 	TestEqual(TEXT("it crosses in 32 s"), Effects::FunerealProcessionLastsSeconds(), 32.0f, 0.001f);
@@ -33105,6 +33107,51 @@ bool FCataclysmProcessionBurnsTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("its touch burns (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
 	TestTrue(FString::Printf(TEXT("once a second, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
 			 Lost <= 2.0f * PerSecond + 0.5f);
+	return true;
+}
+
+// AND FEAR: ITS TOUCH FEARS THE PLAYER, WHICH OPENS THE WINDOW A FEAR OPENS; A PLAYER IT DOES NOT TOUCH IS NOT FEARED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProcessionFearsTest,
+	"Cataclysm.DungeonModifierEffects.AFunerealProcessionFearsThePlayerItTouches",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProcessionFearsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AProcessionFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::FunerealProcessionSecondsBetween));
+	ACataclysmGroundZone* Line = Mode->FunerealProcessionNow();
+	if (!TestNotNull(TEXT("a procession crossing"), Line))
+	{
+		return false;
+	}
+
+	// NOT TOUCHED: NOT FEARED.
+	Beat(Mode, 1);
+	TestFalse(TEXT("untouched, the player is not feared"), UCataclysmFear::IsFeared(Player.Character));
+
+	// TOUCHED: FEARED ON THE NEXT BEAT, AND THE WINDOW A FEAR OPENS IS OPEN.
+	const float Z = Player.Character->GetActorLocation().Z;
+	const FVector Head = Line->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(Head.X, Head.Y, Z));
+	Beat(Mode, 1);
+	TestTrue(TEXT("its touch fears the player"), UCataclysmFear::IsFeared(Player.Character));
+	TestTrue(TEXT("and opens the window a fear opens"),
+			 Player.AbilitySystem->HasMatchingGameplayTag(UCataclysmSkillEffects::StunImmuneTag()));
 	return true;
 }
 

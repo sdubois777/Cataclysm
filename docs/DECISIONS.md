@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-25 — Funereal Procession, PARTLY BUILT: every 60 seconds a line of pallbearers crosses toward where the player stood at 150 cm a second, and its touch burns 5% of maximum health a second; "and fear" waits on the fear system
+## 2026-09-25 — Funereal Procession: every 60 seconds a line of pallbearers crosses toward where the player stood at 150 cm a second, and its touch burns 5% of maximum health a second and fears the player for 2 seconds
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
 figures, when a procession is due, how long it crosses, what its touch costs, and the row listed as partly built);
@@ -11,9 +11,9 @@ per-floor reset, the panel line); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and only in part: "and fear" is not built.** The
-Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
-entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and built in full since 2026-09-26, when "and fear" was
+added on the fear system.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures
+are added at the end of this entry when they have.
 
 ### The row
 
@@ -30,9 +30,11 @@ health, dealt as damage over time typed Death, which death resistance meets. Cre
 or a Horde dungeon's next wave, ends a crossing procession and starts the clock again. The panel reads "funereal
 procession: next in 12 s", or "funereal procession: a procession is crossing; its touch burns".
 
-**NOT BUILT, AND WAITING ON THE FEAR SYSTEM: "and fear".** The game has no fear yet. The Demonic session is building
-it (`State.Feared`, `ApplyFear`), and this row's touch is wired to it when that change merges. Until then
-`BuiltStateOf` answers `Partly` for the row. **Do not read this row as done.**
+**AND FEAR, SINCE 2026-09-26.** On every beat a player stands in the procession, it fears them for 2 seconds, fleeing
+from the procession's head (`UCataclysmFear::ApplyFear`, `State.Feared`). Fear's own refusals hold, so a player it keeps
+touching is feared once in each immunity window a fear opens, not on every beat. `BuiltStateOf` answers `Built`.
+Until the fear system merged (#2139) this paragraph said "and fear" was not built and the row was listed as partly
+built.
 
 ### Rulings
 
@@ -42,6 +44,8 @@ play-test value:**
 - **One procession every 60 s, at 150 cm a second.**
 - **Its touch: 5% of maximum health per second of contact.**
 - **Fear is not built now**; it waits on the fleeing and fear system, which the Demonic session builds.
+- **2026-09-26, when the fear system had merged: its touch fears the player for 2 seconds, fleeing from the
+  procession's head, the actor it touched**; added when this change moved onto it rather than as a change of its own.
 
 **Judgements of this change, under the same delegation, not ruled separately:**
 
@@ -72,16 +76,18 @@ start, the 4800 cm crossing and the absence of a warning are this game's own.
 
 ### Tests
 
-Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+Five automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 - `FunerealProcessionFiguresCadenceSpeedAndContact`: the figures; not due at 59.75 s and due at 60; it crosses in 32 s;
-  a second's touch costs 50 of 1000.
+  a second's touch costs 50 of 1000; 2 s of fear.
 - `AFunerealProcessionSetsOutEverySixtySecondsTowardThePlayer`: none at 59.75 s, with the panel; at 60 s its head
   2400 cm from the player, walking at 150 cm a second toward where they stood, its line covering 400 cm behind its
   head and not 150 cm to its side, with the panel; 32 s later it and its zone are gone, and the panel shows the next
   one's clock at 60 s.
 - `AFunerealProcessionBurnsThePlayerItTouches`: untouched, nothing lost in two seconds; standing on its head, at least
   one second's 5% and at most two seconds' lost in two seconds.
+- `AFunerealProcessionFearsThePlayerItTouches`, added with fear: untouched, the player is not feared; standing on its
+  head, feared on the next beat, and holding the immunity window a fear opens.
 - `ANewFloorEndsAFunerealProcessionAndItsClock`: a crossing procession is gone on the next floor, whose clock starts at
   60 s.
 
@@ -96,6 +102,20 @@ what catch a procession that stands still.
 
 One Python check: the row still says "slow-moving line", "moves through the dungeon", "contact causes heavy damage" and
 "and fear".
+
+### The proofs
+
+Three, registered before the window. When fear was added, the coordinating session ruled on 2026-09-26 that the third
+registered proof, the procession standing still (its velocity written as zero), is replaced by one on fear, since fear
+is the code the move added; the velocity keeps its direct assertions in the set-out test.
+
+- A procession never sets out, on `AFunerealProcessionSetsOutEverySixtySecondsTowardThePlayer`: one failing check, "one
+  sets out at 60 s".
+- Its touch written as nothing, on `AFunerealProcessionBurnsThePlayerItTouches`: one, "its touch burns".
+- Its touch fears nothing (the `ApplyFear` call removed), on `AFunerealProcessionFearsThePlayerItTouches`: two, "its
+  touch fears the player" and "and opens the window a fear opens".
+
+Each break's anchor was checked to match exactly once in the moved branch before it was registered.
 
 ### Not yet run
 
