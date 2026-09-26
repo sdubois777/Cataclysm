@@ -2047,6 +2047,23 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose floors hold piles of loot guarded by Elite creatures. Issues #1820 and #41.
+	 *
+	 * "Certain rooms contain elites or mini-bosses guarding piles of resources. Players must choose whether to expend
+	 * resources fighting for potential rewards."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - `LuxuryHoardersPerFloor` HOARDS A FLOOR. The floor plan keeps no rooms, so a hoard stands where Eternal
+	 *   Chorus's picker puts its sources.
+	 * - A HOARD IS A PILE of `LuxuryHoardersPileRolls` drop rolls at rung `LuxuryHoardersPileRung`, Legendary in
+	 *   `game/Data/EnemyDrops.csv`, lying on the floor from the start, and `LuxuryHoardersGuards` creatures of the
+	 *   floor's kinds at the Elite rung standing on it. They pay and are the floor's creatures.
+	 * - "EXPEND RESOURCES" is the player's health and time: there are no potions yet.
+	 */
+	static const TCHAR* LuxuryHoardersKey;
+
+	/**
 	 * The row whose rivers of waste give the player disease stacks that burn and never run out. Issues #1820 and
 	 * #41.
 	 *
@@ -4570,6 +4587,16 @@ public:
 	static constexpr float PortalUnleashingRadiusCm = NecroticBloomWaveWithinCm;
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
+
+	/**
+	 * Luxury Hoarders' figures, every one a play-test value. See the key. The pile's rung is Legendary's step in
+	 * `game/Data/EnemyDrops.csv`, 2; the guards' is the Elite rung Royal Guard summons at.
+	 */
+	static constexpr int32 LuxuryHoardersPerFloor = 2;
+	static constexpr int32 LuxuryHoardersPileRolls = 3;
+	static constexpr int32 LuxuryHoardersPileRung = 2;
+	static constexpr int32 LuxuryHoardersGuards = 3;
+	static constexpr int32 LuxuryHoardersGuardRung = RoyalGuardLowestRungThatSummons;
 
 	/**
 	 * Raw Sewage's figures, every one a play-test value. See the key. 2.5% a second at five stacks is the drain the

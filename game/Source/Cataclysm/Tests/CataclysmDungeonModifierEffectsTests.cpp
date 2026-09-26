@@ -31041,4 +31041,165 @@ bool FCataclysmSewageMasochistNothingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Famine_Luxury_Hoarders. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName HoardersRow(UCataclysmDungeonModifierEffects::LuxuryHoardersKey);
+
+	/**
+	 * A dungeon carrying only Luxury Hoarders, on floor 2. ITS CREATURES ARE NOT CLEARED: the guards are the floor's
+	 * creatures, and clearing them would clear the guards.
+	 */
+	ACataclysmDungeonGameMode* AHoardersFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {HoardersRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** The drops lying within 400 cm of a hoard, the pile's reach at 25 cm a drop. */
+	TArray<ACataclysmDroppedItem*> DropsAtTheHoard(UWorld* World, const FVector& Hoard)
+	{
+		TArray<ACataclysmDroppedItem*> Found;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			if (FVector::Dist2D(It->GetActorLocation(), Hoard) <= 400.0f)
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	}
+}
+
+// THE FIGURES: TWO HOARDS, EACH THREE DROP ROLLS AT THE LEGENDARY RUNG AND THREE GUARDS AT THE ELITE RUNG.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardersFiguresTest,
+	"Cataclysm.DungeonModifierEffects.LuxuryHoardersFiguresPilesAndGuards",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardersFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two hoards a floor"), Effects::LuxuryHoardersPerFloor, 2);
+	TestEqual(TEXT("three drop rolls a pile"), Effects::LuxuryHoardersPileRolls, 3);
+	TestEqual(TEXT("at the Legendary rung, step 2"), Effects::LuxuryHoardersPileRung, 2);
+	TestEqual(TEXT("three guards a hoard"), Effects::LuxuryHoardersGuards, 3);
+	TestEqual(TEXT("at the Elite rung, step 1"), Effects::LuxuryHoardersGuardRung, 1);
+	return true;
+}
+
+// TWO HOARDS, APART AND FAR FROM THE ENTRANCE, EACH A PILE OF LOOT WITH THREE ELITE GUARDS OF THE FLOOR ON IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardersPlacedTest,
+	"Cataclysm.DungeonModifierEffects.LuxuryHoardersLaysTwoPilesEachGuardedByThreeElites",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardersPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AHoardersFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FVector>& Hoards = Mode->LuxuryHoardsNow();
+	if (!TestEqual(TEXT("two hoards"), Hoards.Num(), Effects::LuxuryHoardersPerFloor))
+	{
+		return false;
+	}
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const FVector& Hoard : Hoards)
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Hoard, Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		const int32 Lying = DropsAtTheHoard(World, Hoard).Num();
+		TestTrue(FString::Printf(TEXT("loot lies at the hoard (%d drops)"), Lying), Lying > 0);
+	}
+	TestTrue(TEXT("and apart"), FVector::Dist2D(Hoards[0], Hoards[1]) >= Effects::EternalChorusApartCm - 1.0f);
+	AddInfo(FString::Printf(TEXT("Luxury Hoarders: %d drops laid in the two piles"), Mode->LuxuryHoardDropsLaid()));
+
+	const TArray<ACataclysmEnemyCharacter*> Guards = Mode->LuxuryHoardGuardsStanding();
+	if (!TestEqual(TEXT("six guards"), Guards.Num(), Effects::LuxuryHoardersPerFloor * Effects::LuxuryHoardersGuards))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Guard : Guards)
+	{
+		TestEqual(TEXT("at the Elite rung"), Guard->RarityStep, Effects::LuxuryHoardersGuardRung);
+		TestNotNull(TEXT("with a brain"), Guard->GetController());
+		TestTrue(TEXT("that pays"), Guard->PaysForItsDeath());
+		TestTrue(TEXT("and is one of the floor's creatures"), Mode->FloorEnemies.Contains(Guard));
+		const FVector At = Guard->GetActorLocation();
+		TestTrue(TEXT("standing on a hoard"), Hoards.ContainsByPredicate([&At](const FVector& Hoard)
+		{
+			return FVector::Dist2D(At, Hoard) <= UCataclysmDungeonModifierEffects::NecroticBloomWaveWithinCm + 1.0f;
+		}));
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(HoardersRow),
+			  FString(TEXT("luxury hoarders: 2 hoards, 6 guards standing")));
+	return true;
+}
+
+// THE GUARDS KILLED, THE PILES STILL LIE THERE TO BE TAKEN, AND THE PANEL SAYS NONE STAND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardersTakenTest,
+	"Cataclysm.DungeonModifierEffects.KillingAHoardsGuardsLeavesItsPileToTake",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardersTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AHoardersFloor(*this, World, Player);
+	if (!Mode || !TestEqual(TEXT("two hoards"), Mode->LuxuryHoardsNow().Num(), 2))
+	{
+		return false;
+	}
+	const TArray<ACataclysmDroppedItem*> Pile = DropsAtTheHoard(World, Mode->LuxuryHoardsNow()[0]);
+	for (ACataclysmEnemyCharacter* Guard : Mode->LuxuryHoardGuardsStanding())
+	{
+		Guard->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Guard, 1000000.0f);
+		TestTrue(TEXT("the blow killed the guard"), UCataclysmSkillEffects::IsDead(Guard));
+	}
+	TestEqual(TEXT("no guard stands"), Mode->LuxuryHoardGuardsStanding().Num(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(HoardersRow),
+			  FString(TEXT("luxury hoarders: 2 hoards, 0 guards standing")));
+	for (ACataclysmDroppedItem* Drop : Pile)
+	{
+		TestTrue(TEXT("the pile still lies there to be taken"), IsValid(Drop));
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

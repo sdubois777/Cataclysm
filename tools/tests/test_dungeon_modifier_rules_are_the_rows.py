@@ -4293,3 +4293,19 @@ def test_raw_sewage_row_still_has_rivers_that_give_disease_stacks_that_never_tim
         assert phrase in lower, (
             f"Pestilence_Raw_Sewage no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "RawSewageKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_luxury_hoarders_row_still_has_guarded_piles_of_resources_and_a_choice_to_fight():
+    """The phrases the rule's readings rest on.
+
+    ELITES OR MINI-BOSSES is the guards' Elite rung; GUARDING PILES OF RESOURCES is the pile of drop rolls with its
+    guards on it; CHOOSE WHETHER TO EXPEND RESOURCES is the player's health and time, there being no potions. If any of
+    them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Famine_Luxury_Hoarders"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("elites or mini-bosses", "guarding piles of resources", "choose whether to expend resources"):
+        assert phrase in lower, (
+            f"Famine_Luxury_Hoarders no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "LuxuryHoardersKey in CataclysmDungeonModifierEffects.h. " + words)

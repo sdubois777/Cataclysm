@@ -2123,6 +2123,15 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Luxury Hoarders, for tests: where this floor's hoards lie. */
+	const TArray<FVector>& LuxuryHoardsNow() const { return LuxuryHoards; }
+
+	/** Luxury Hoarders, for the panel and tests: the hoards' guards that still stand. */
+	TArray<ACataclysmEnemyCharacter*> LuxuryHoardGuardsStanding() const;
+
+	/** Luxury Hoarders, for tests: how many drops the piles were laid with. */
+	int32 LuxuryHoardDropsLaid() const { return LuxuryHoardDrops; }
+
 	/** Raw Sewage, for the panel and tests: the disease stacks the player carries. */
 	int32 RawSewageStacksHeld() const { return RawSewageStacks; }
 
@@ -2317,6 +2326,15 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Luxury Hoarders: this arena's hoards, their piles and guards, placed where a new arena is populated. */
+	void PlaceTheHoards();
+
+	/** The hoards' record forgotten. Their drops lie where they are, and their guards are the floor's. */
+	void ForgetTheHoards();
+
+	/** Luxury Hoarders, on a death: a guard's death updates the panel. */
+	void NoteDeathForLuxuryHoarders(const struct FCataclysmDeathNotice& Notice);
 
 	/** Raw Sewage: this arena's rivers chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheRivers();
@@ -3425,6 +3443,11 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/** Luxury Hoarders: where the hoards lie, their guards, and how many drops the piles were laid with. */
+	TArray<FVector> LuxuryHoards;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> LuxuryHoardGuards;
+	int32 LuxuryHoardDrops = 0;
 
 	/**
 	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether

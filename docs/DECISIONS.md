@@ -2,6 +2,89 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Luxury Hoarders: two piles of loot a floor, each three drop rolls at the Legendary rung, each guarded by three Elite creatures of the floor standing on it
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key and its
+figures); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing the hoards, their piles and
+guards, the panel line, and the include of `Items/CataclysmDroppedItem.h` for the drop spawner); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Famine_Luxury_Hoarders` in `game/Data/DungeonModifiers.csv`, weight 5: "Certain rooms contain elites or mini-bosses
+guarding piles of resources. Players must choose whether to expend resources fighting for potential rewards." It
+states no figure.
+
+### What the rule does
+
+When a floor carrying the row is placed, two hoards stand where Eternal Chorus's picker puts its sources: at least
+twenty metres from the entrance and from each other. A Horde arena has them too, and its later waves keep them. Each
+hoard is a pile of loot lying on the floor from the start -- three drop rolls at the Legendary rung, made as any
+creature's drops are, with the player's magic find -- and three creatures of the floor's own kinds at the Elite rung,
+standing on it. The guards pay for their deaths and are the floor's creatures. The loot lies there whether or not the
+guards are killed; the player chooses whether to fight them for it. The panel reads "luxury hoarders: 2 hoards, 6
+guards standing".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **Two hoards a floor.** The floor plan keeps no rooms (the generator's room list is local to it and discarded), so a
+  hoard stands where Eternal Chorus's picker puts its sources.
+- **Each hoard is a pile of three drop rolls at the Legendary rung, guarded by an Elite pack of three standing on it.**
+- **"Expend resources" is the player's health and time**: there are no potions yet.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **"Elites or mini-bosses" is read as Elites.** Every guard is at the Elite rung, the rung Royal Guard summons at;
+  there is no mini-boss in a hoard.
+- **The pile lies there from the start and is never locked.** The row says the player chooses whether to fight "for
+  potential rewards"; a pile that could be taken past its guards is that choice, and the guards stand on it.
+- **The pile's rolls are seeded from the floor**, so the same floor lays the same pile. Three rolls at the Legendary
+  rung are expected to lay six drops, and lay none about one time in four hundred (e to the minus six); the test
+  floor's seed is fixed, so its test cannot pass on one run and fail on the next.
+- **The guards are drawn from the floor's own kinds**, as Necrotic Bloom's waves are, and stand on cells beside the
+  pile.
+
+### The research: loot that monsters must be killed for
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, strongboxes | https://poedb.tw/us/Strongbox | "When opened, a strongbox will release groups of Monsters to surround and attack the character."; "Only once all of the ambushing monsters are slain will a strongbox relinquish its loot." |
+
+**What it settles and what it does not.** Path of Exile ships a store of loot tied to monsters the player must fight,
+which settles the pairing and the choice to engage. There the loot is locked until the monsters die; here it lies in
+the open with its guards on it, as the row's "guarding piles" reads, so the player can try for it without killing
+them. The two hoards, three rolls, the Legendary rung and three Elites are this game's own.
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `LuxuryHoardersFiguresPilesAndGuards`: two hoards, three rolls at step 2, three guards at step 1.
+- `LuxuryHoardersLaysTwoPilesEachGuardedByThreeElites`: two hoards, far from the entrance and from each other, loot
+  lying within 400 cm of each; six guards at the Elite rung, with a brain, paying, among the floor's creatures, each
+  within reach of a hoard; the panel.
+- `KillingAHoardsGuardsLeavesItsPileToTake`: every guard killed, none standing, the panel says so, and the first
+  pile's drops still lie there.
+
+One Python check: the row still says "elites or mini-bosses", "guarding piles of resources" and "choose whether to
+expend resources".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Set Stance and Scarred Plate: their "At 4 points:" clauses are rows, from four points and once
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv` and
