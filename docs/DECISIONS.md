@@ -67,6 +67,23 @@ every figure is a play-test value:**
 - **At eight feeders a carcass is still eaten and still counts**; only the feeder does not come.
 - **A Horde wave's feeders keep the strength they had** when the count starts again.
 
+### How a player's fire reaches the rule, read before the window
+
+Read on development b399d403, not run. A player's blow carries no damage type of its own: `DamageTypeOf` types only a
+creature (`CataclysmSkillEffects.cpp:1097-1101`). So `ApplyTypedSpec` takes the branch at `CataclysmSkillEffects.cpp:1145`
+and puts the skill's element on the damage effect as a dynamic asset tag, `Spec.AddDynamicAssetTag(Delivery.SkillElement)`
+at line 1161, **inside `if (ColourOnly.IsValid())`**: the element is added only while the tag
+`Data.ElementIsForColourOnly` exists. It does: `game/Config/Tags/CataclysmTags.ini` line 16, the name
+`CataclysmDamageCalculation.cpp:230-231` asks for. The attribute set gathers the effect's asset tags with
+`GetAllAssetTags` (`CataclysmVitalAttributeSet.cpp:336-337`), which in Unreal Engine 5.8 appends the dynamic asset tags
+(`GameplayEffect.cpp:2276-2278`), and passes them to `NoteBlow` (`CataclysmVitalAttributeSet.cpp:1374-1376`), which
+sets `Notice.EffectTags` (`CataclysmCombatEvents.cpp:217`); `HasTag` reads that (`CataclysmCombatEvents.cpp:55`). In
+play a skill fills the element at `CataclysmSkillEffects.cpp:897-899` when the delivery carries none.
+
+**Not settled by reading:** whether a blow on a target that cannot be hurt still reaches `NoteBlow`. The Reaper's block
+zeroes what the blow deals after it has resolved and goes on, which is why it is expected to; the fire test is what
+shows it.
+
 ### The research
 
 **Nothing could be quoted.** The pages that describe Diablo III's Wretched Mother, a creature that eats corpses and
