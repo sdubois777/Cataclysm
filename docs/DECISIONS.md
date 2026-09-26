@@ -10,9 +10,10 @@ light as a sight radius in `SightRadiusFor`, and its place among the rows built)
 `BlackestShadowDamageSource`, with its setter, and `DarknessAttackSpeedMultiplier`, one more factor in
 `SecondsBetweenAttacks`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the vision step gives
 and takes the buff, and remembers which creatures carry it); the automation tests in
-`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`;
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check, and the new damage source in the check that every
-source writes its own key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+source writes its own key); and `tools/tests/test_commander_buff_matches_the_design.py` (the expected attack interval
+names the new factor). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Built on the vision system's change, which merges first.**
 The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
 entry when they have.
@@ -81,6 +82,18 @@ Three automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 One Python check: the row still says "small orb of light", "completely invisible", "100% more damage" and "50% faster
 attack speed".
+
+One Python check changed: `test_the_buff_divides_the_interval_rather_than_multiplying_it` in
+`tools/tests/test_commander_buff_matches_the_design.py` compares the whole return expression of `SecondsBetweenAttacks`
+with a fixed string, and now expects the third factor. Its comment's rule is that an effect naming attack speed alone
+is a factor of its own, outside `SpeedMultiplier`; the row's buff names attack speed and no movement.
+
+### The first Python run failed
+
+The first whole Python run, on the branch before that check was changed, printed "1 failed, 5516 passed, 8 skipped":
+the fixed-string check above failed because this change added the factor and not the check's expected string. The check
+was updated in the same branch, and the run after it printed "5517 passed, 8 skipped". The coordinating session read
+the change and accepted it on 2026-09-26.
 
 ### Not yet run
 
