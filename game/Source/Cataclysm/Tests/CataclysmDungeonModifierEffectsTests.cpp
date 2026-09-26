@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -30600,6 +30601,443 @@ bool FCataclysmPortalsClearedTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("and the floor was noted cleared all the same (%.2f)"), Mode->FloorClearedAfterSeconds()),
 			 Mode->FloorClearedAfterSeconds() >= 0.0f);
 	TestFalse(TEXT("the portal's creature pays nothing when killed"), Sent[0]->PaysForItsDeath());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Raw_Sewage. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName SewageRow(UCataclysmDungeonModifierEffects::RawSewageKey);
+
+	/** The game's disease keyword, which Raw Sewage puts on the player while a stack is held. */
+	FGameplayTag SewageDiseaseTag()
+	{
+		return UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Keyword.DoT.Disease")), false);
+	}
+
+	/** A dungeon carrying only Raw Sewage, on floor 2 with its own creatures cleared, the player on the entrance. */
+	ACataclysmDungeonGameMode* ASewageFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {SewageRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+		Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.Character->GetActorLocation().Z));
+		Beat(Mode, 1);
+		return Test.TestTrue(TEXT("the floor's rivers are drawn"), !Mode->RawSewageMarksNow().IsEmpty()) ? Mode : nullptr;
+	}
+
+	/** Stand the player on a river's first mark, or on the entrance, keeping their height. */
+	void StandInTheRiver(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, bool bInTheRiver)
+	{
+		const FVector Where = bInTheRiver ? Mode->RawSewageMarksNow()[0]->GetActorLocation()
+										  : Mode->CurrentFloor->EntranceWorld();
+		Player.Character->SetActorLocation(FVector(Where.X, Where.Y, Player.Character->GetActorLocation().Z));
+	}
+}
+
+// THE FIGURES: A STACK AT A TIME TO FIVE, HALF A PER CENT OF MAXIMUM HEALTH A SECOND EACH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSewageFiguresTest,
+	"Cataclysm.DungeonModifierEffects.RawSewageStacksToFiveAndBurnsHalfAPercentEach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSewageFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two rivers a floor"), Effects::RawSewageRiversPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::RawSewageRiversPerHordeArena, 1);
+	TestEqual(TEXT("a stack each two seconds in a river"), Effects::RawSewageSecondsPerStack, 2.0f, 0.001f);
+	TestEqual(TEXT("at most five"), Effects::RawSewageMostStacks, 5);
+	TestEqual(TEXT("half a per cent a stack"), Effects::RawSewagePercentPerStack, 0.5f, 0.001f);
+
+	TestEqual(TEXT("the first stack"), Effects::RawSewageStacksAfterAdding(0), 1);
+	TestEqual(TEXT("the fifth"), Effects::RawSewageStacksAfterAdding(4), 5);
+	TestEqual(TEXT("never a sixth"), Effects::RawSewageStacksAfterAdding(5), 5);
+	TestEqual(TEXT("none burns nothing"), Effects::RawSewagePercentPerSecond(0), 0.0f, 0.001f);
+	TestEqual(TEXT("one burns half a per cent"), Effects::RawSewagePercentPerSecond(1), 0.5f, 0.001f);
+	TestEqual(TEXT("five burn two and a half"), Effects::RawSewagePercentPerSecond(5), 2.5f, 0.001f);
+	TestEqual(TEXT("seven burn no more than five"), Effects::RawSewagePercentPerSecond(7), 2.5f, 0.001f);
+	return true;
+}
+
+// TWO RIVERS OF MARKS THAT DO NO DAMAGE, NONE NEAR THE ENTRANCE; A HORDE ARENA HAS ONE, KEPT BY ITS NEXT WAVE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSewageRiversTest,
+	"Cataclysm.DungeonModifierEffects.RawSewageDrawsRiversClearOfTheEntrance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSewageRiversTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmGroundZone*> Marks = Mode->RawSewageMarksNow();
+	AddInfo(FString::Printf(TEXT("Raw Sewage: %d river marks on floor 2"), Marks.Num()));
+	TestEqual(TEXT("every zone on the floor is a river mark"), ZonesOnTheFloor(World), Marks.Num());
+	for (ACataclysmGroundZone* Mark : Marks)
+	{
+		TestTrue(TEXT("each mark clear of the entrance"),
+				 FVector::Dist2D(Mark->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+					 > Effects::RawSewageDryAroundTheEntranceCm);
+	}
+	TestEqual(TEXT("nothing held on the entrance"), Mode->RawSewageStacksHeld(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(SewageRow),
+			  FString(TEXT("raw sewage: no disease stacks")));
+
+	// A HORDE ARENA HAS ONE RIVER, AND ITS NEXT WAVE DRAWS IT AGAIN IN THE SAME PLACE.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<ACataclysmGroundZone*> Horde = Mode->RawSewageMarksNow();
+	if (!TestTrue(TEXT("a Horde arena has a river"), !Horde.IsEmpty()))
+	{
+		return false;
+	}
+	const FVector First = Horde[0]->GetActorLocation();
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<ACataclysmGroundZone*> Again = Mode->RawSewageMarksNow();
+	TestEqual(TEXT("the next wave draws as many marks"), Again.Num(), Horde.Num());
+	if (!Again.IsEmpty())
+	{
+		TestEqual(TEXT("in the same place"), static_cast<float>(FVector::Dist2D(Again[0]->GetActorLocation(), First)),
+				  0.0f, 1.0f);
+	}
+	return true;
+}
+
+// ENTERING A RIVER ADDS A STACK AND EACH TWO SECONDS IN IT ANOTHER, TO FIVE; LEAVING AND COMING BACK ADDS ONE; WHILE ANY
+// IS HELD THE PLAYER CARRIES THE DISEASE KEYWORD AND COUNTS ONE DEBUFF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSewageStacksTest,
+	"Cataclysm.DungeonModifierEffects.ARiverAddsAStackOnEnteringAndEachTwoSecondsInIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSewageStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no disease keyword before a river"), Player.AbilitySystem->HasMatchingGameplayTag(SewageDiseaseTag()));
+	TestEqual(TEXT("and no debuff counted"), UCataclysmDebuffs::CountOn(Player.AbilitySystem), 0);
+
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1);
+	TestEqual(TEXT("entering adds one"), Mode->RawSewageStacksHeld(), 1);
+	TestTrue(TEXT("the player carries the disease keyword"),
+			 Player.AbilitySystem->HasMatchingGameplayTag(SewageDiseaseTag()));
+	TestEqual(TEXT("and counts one debuff"), UCataclysmDebuffs::CountOn(Player.AbilitySystem), 1);
+	Beat(Mode, BeatsFor(Effects::RawSewageSecondsPerStack) - 1);
+	TestEqual(TEXT("1.75 seconds more: still one"), Mode->RawSewageStacksHeld(), 1);
+	Beat(Mode, 1);
+	TestEqual(TEXT("two seconds more: two"), Mode->RawSewageStacksHeld(), 2);
+
+	// OUT AND BACK IN: ONE MORE FOR ENTERING.
+	StandInTheRiver(Mode, Player, false);
+	Beat(Mode, 1);
+	TestEqual(TEXT("out of the river: still two"), Mode->RawSewageStacksHeld(), 2);
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1);
+	TestEqual(TEXT("back in: three"), Mode->RawSewageStacksHeld(), 3);
+	TestEqual(TEXT("the panel at three"), Mode->LiveCountsForTheFloor().FindRef(SewageRow),
+			  FString(TEXT("raw sewage: 3 disease stacks, 1.5% of maximum health a second; a floor's boss cleanses them")));
+
+	// TEN SECONDS MORE: FIVE, AND NO MORE.
+	Beat(Mode, BeatsFor(10.0f));
+	TestEqual(TEXT("five at most"), Mode->RawSewageStacksHeld(), Effects::RawSewageMostStacks);
+	TestEqual(TEXT("still one debuff, however many stacks"), UCataclysmDebuffs::CountOn(Player.AbilitySystem), 1);
+	return true;
+}
+
+// THE STACKS BURN ONCE A SECOND, AND THEY GO ON BURNING ON A FLOOR WITHOUT THE ROW.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSewageBurnTest,
+	"Cataclysm.DungeonModifierEffects.RawSewageBurnsEachSecondAndOnTheNextFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSewageBurnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1 + BeatsFor(Effects::RawSewageSecondsPerStack));
+	StandInTheRiver(Mode, Player, false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("two stacks held"), Mode->RawSewageStacksHeld(), 2))
+	{
+		return false;
+	}
+
+	// OUT OF THE RIVER FOR TWO SECONDS: TWO SECONDS' BURN AT ONE PER CENT, NO MORE.
+	const float PerSecond = HealthForTypedDamage * Effects::RawSewagePercentPerSecond(2) / 100.0f;
+	float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	float Lost = Before - HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("the stacks burn out of the river (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(FString::Printf(TEXT("once a second, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
+			 Lost <= 2.0f * PerSecond + 0.5f);
+
+	// A FLOOR WITHOUT THE ROW: THE STACKS STAY, AND BURN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	Lost = Before - HealthOf(Player.Character);
+	TestEqual(TEXT("the stacks are still two"), Mode->RawSewageStacksHeld(), 2);
+	TestTrue(FString::Printf(TEXT("and still burn (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(TEXT("and the disease keyword is still held"),
+			 Player.AbilitySystem->HasMatchingGameplayTag(SewageDiseaseTag()));
+	return true;
+}
+
+// A COMMON CREATURE'S DEATH CLEANSES NOTHING; A FLOOR'S BOSS'S DEATH CLEANSES EVERY STACK AND THE KEYWORD; SO DOES THE
+// PLAYER'S OWN DEATH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSewageCleanseTest,
+	"Cataclysm.DungeonModifierEffects.AFloorsBossOrThePlayersDeathCleansesRawSewage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSewageCleanseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1);
+	StandInTheRiver(Mode, Player, false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("one stack held"), Mode->RawSewageStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	const FVector Near = Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 300.0f, 100.0f);
+
+	// A COMMON CREATURE'S DEATH: NOTHING.
+	ACataclysmEnemyCharacter* Common = SpawnImpWithHealth(World, Near, 100.0f);
+	if (!TestNotNull(TEXT("a common creature"), Common))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Common, 100000.0f);
+	TestTrue(TEXT("the common creature died"), UCataclysmSkillEffects::IsDead(Common));
+	Beat(Mode, 1);
+	TestEqual(TEXT("a Common's death cleanses nothing"), Mode->RawSewageStacksHeld(), 1);
+
+	// A FLOOR'S BOSS'S DEATH: EVERY STACK, AND THE KEYWORD ON THE NEXT BEAT.
+	ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), Near + FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a boss spawned"), Boss))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Boss->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Boss, 100000.0f);
+	TestTrue(TEXT("the boss died"), UCataclysmSkillEffects::IsDead(Boss));
+	TestEqual(TEXT("a boss's death cleanses every stack"), Mode->RawSewageStacksHeld(), 0);
+	Beat(Mode, 1);
+	TestFalse(TEXT("and the keyword goes on the next beat"),
+			  Player.AbilitySystem->HasMatchingGameplayTag(SewageDiseaseTag()));
+	TestEqual(TEXT("so no debuff is counted"), UCataclysmDebuffs::CountOn(Player.AbilitySystem), 0);
+
+	// THE PLAYER'S DEATH: EVERY STACK.
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("a stack held again"), Mode->RawSewageStacksHeld(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Killer = SpawnCreatureThatCanHit(World, Near.X + 600.0f);
+	if (!TestNotNull(TEXT("a creature that can hit"), Killer))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player.Character, 10000000.0f);
+	TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("the player's death cleanses every stack"), Mode->RawSewageStacksHeld(), 0);
+	return true;
+}
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * The possessed player made a Masochist holding Beacon of Despair, through the real allocation: level 50, and
+	 * the path from the root to `Masochist_basic_fl_b2` with each link's required points.
+	 */
+	bool AMasochistWithBeaconOfDespair(FAutomationTestBase& Test, const FPossessedPlayer& Player)
+	{
+		Player.PlayerState->SetLevelAndExperience(50, 0);
+		const TPair<const TCHAR*, int32> Path[] = {
+			{TEXT("Masochist_basic_spine_000"), 1}, {TEXT("Masochist_basic_spine_001"), 2},
+			{TEXT("Masochist_basic_fl_stem0"), 2}, {TEXT("Masochist_basic_fl_stem1"), 2},
+			{TEXT("Masochist_basic_fl_b0"), 2}, {TEXT("Masochist_basic_fl_b1"), 4},
+			{TEXT("Masochist_basic_fl_b2"), 1}};
+		for (const TPair<const TCHAR*, int32>& Step : Path)
+		{
+			for (int32 Point = 0; Point < Step.Value; ++Point)
+			{
+				FString Reason;
+				if (!Player.PlayerState->SpendPassivePoint(FName(Step.Key), Reason))
+				{
+					Test.AddError(FString::Printf(TEXT("a point into %s was refused: %s"), Step.Key, *Reason));
+					return false;
+				}
+			}
+		}
+		return Test.TestTrue(TEXT("Beacon of Despair's aura is on the player's stat line"),
+							 Player.AbilitySystem->StatForSkill(FName(UCataclysmContagion::AuraDurationStat),
+																FGameplayTagContainer(), 0.0f) > 0.0f);
+	}
+}
+
+// A MASOCHIST HOLDING BEACON OF DESPAIR AND SEWAGE STACKS GIVES A NEARBY ENEMY A DISEASE WITH ITS NEXT AURA PULSE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSewageMasochistSpreadsTest,
+	"Cataclysm.DungeonModifierEffects.AMasochistInRawSewageGivesANearbyEnemyADisease",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSewageMasochistSpreadsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode || !AMasochistWithBeaconOfDespair(*this, Player))
+	{
+		return false;
+	}
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("a stack held"), Mode->RawSewageStacksHeld(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Enemy =
+		SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("an enemy within six metres"), Enemy))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the enemy carries no disease before"),
+			  Enemy->GetAbilitySystemComponent()->HasMatchingGameplayTag(SewageDiseaseTag()));
+	const int32 Applied = UCataclysmContagion::AuraStep(Player.Character);
+	TestTrue(FString::Printf(TEXT("the aura pulse applied something (%d)"), Applied), Applied >= 1);
+	TestTrue(TEXT("the enemy caught a disease"),
+			 Enemy->GetAbilitySystemComponent()->HasMatchingGameplayTag(SewageDiseaseTag()));
+	return true;
+}
+
+// THE SAME MASOCHIST WITH NO SEWAGE STACKS SPREADS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSewageMasochistNothingTest,
+	"Cataclysm.DungeonModifierEffects.AMasochistWithNoSewageStacksSpreadsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSewageMasochistNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode || !AMasochistWithBeaconOfDespair(*this, Player))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no stack held"), Mode->RawSewageStacksHeld(), 0);
+	ACataclysmEnemyCharacter* Enemy =
+		SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("an enemy within six metres"), Enemy))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the aura pulse applies nothing"), UCataclysmContagion::AuraStep(Player.Character), 0);
+	TestFalse(TEXT("the enemy carries no disease"),
+			  Enemy->GetAbilitySystemComponent()->HasMatchingGameplayTag(SewageDiseaseTag()));
 	return true;
 }
 

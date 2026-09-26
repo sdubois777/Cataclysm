@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
+	TEXT("Pestilence_Raw_Sewage");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -478,6 +481,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(VoidParasiteKey)
@@ -675,6 +679,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
@@ -1756,6 +1761,16 @@ bool UCataclysmDungeonModifierEffects::NecroticBloomWaveIsDue(float SecondsSince
 		return false;
 	}
 	return SecondsSinceLastWave >= NecroticBloomSecondsBetween;
+}
+
+int32 UCataclysmDungeonModifierEffects::RawSewageStacksAfterAdding(int32 Stacks)
+{
+	return FMath::Clamp(Stacks + 1, 0, RawSewageMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

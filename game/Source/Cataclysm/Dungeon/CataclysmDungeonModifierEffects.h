@@ -2047,6 +2047,28 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose rivers of waste give the player disease stacks that burn and never run out. Issues #1820 and
+	 * #41.
+	 *
+	 * "The dungeon is an actual cesspool, filled with rivers of toxic waste that will spread disease stacks to
+	 * the player. These disease stacks do not time out and must be cleansed."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - `RawSewageRiversPerFloor` RIVERS A FLOOR, one on a Horde arena, kept: each a straight line of marks across
+	 *   the floor, Wings of the Host's feathers, through a cell Eternal Chorus's picker gives, doing no damage.
+	 * - ENTERING A RIVER ADDS A STACK, and each further `RawSewageSecondsPerStack` in it adds another, at most
+	 *   `RawSewageMostStacks`.
+	 * - EACH STACK BURNS `RawSewagePercentPerStack` OF MAXIMUM HEALTH A SECOND, summed, typed as the row: the
+	 *   rule's own burn in Plague Convergence's pattern, a share of maximum health, and NOT the Disease ailment.
+	 * - THE STACKS ARE THE DUNGEON'S. They stay on later floors, with the row or not, and clear when a floor's boss
+	 *   dies or the player dies, as Wasting Sickness's do. No way for a player to cleanse their own debuffs exists
+	 *   in play yet; the enchantment "You are cleansed every 5 seconds" is text only, and must clear these stacks
+	 *   when it is built.
+	 */
+	static const TCHAR* RawSewageKey;
+
+	/**
 	 * The row where veins in the walls poison the ground around them, grow back when destroyed, and
 	 * summon guardians when too many are destroyed. Issues #1820 and #41.
 	 *
@@ -4549,6 +4571,27 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/**
+	 * Raw Sewage's figures, every one a play-test value. See the key. 2.5% a second at five stacks is the drain the
+	 * owner chose for Suffering Aura (2026-09-23).
+	 */
+	static constexpr int32 RawSewageRiversPerFloor = 2;
+	static constexpr int32 RawSewageRiversPerHordeArena = 1;
+	static constexpr float RawSewageSecondsPerStack = 2.0f;
+	static constexpr int32 RawSewageMostStacks = 5;
+	static constexpr float RawSewagePercentPerStack = 0.5f;
+
+	/**
+	 * How far a river keeps from the entrance, so a player does not arrive standing in it. A judgement of this
+	 * change: the river's own mark radius and the Imp's reach, 600 cm.
+	 */
+	static constexpr float RawSewageDryAroundTheEntranceCm = 600.0f;
+
+	static_assert(
+		RawSewageRiversPerFloor > 0 && RawSewageRiversPerHordeArena > 0 && RawSewageSecondsPerStack > 0.0f
+			&& RawSewageMostStacks > 0 && RawSewagePercentPerStack > 0.0f,
+		"A river that gave nothing, or a stack that burned nothing, is not the row.");
+
 	static_assert(
 		PortalUnleashingPerFloor > 0 && PortalUnleashingPerHordeArena > 0 && PortalUnleashingRadiusCm > 0.0f
 			&& PortalUnleashingSecondsBetween > 0.0f && PortalUnleashingMostAlivePerPortal > 0,
@@ -5158,6 +5201,12 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** The player's Raw Sewage stacks after one more is added: one more, never past the most. */
+	static int32 RawSewageStacksAfterAdding(int32 Stacks);
+
+	/** What this many Raw Sewage stacks burn, in percent of maximum health a second; nothing for none. */
+	static float RawSewagePercentPerSecond(int32 Stacks);
 
 	/** What a second in a living vein's zone costs a player with this maximum health. */
 	static float InfestedVeinsBurn(float MaximumHealth);
