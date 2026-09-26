@@ -9939,11 +9939,12 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	}
 
 	// AND THE INFESTED HOARD: the stacks, what they drain, and the chance of infested loot. Issues #1820 and #41.
-	const FName Hoard(Effects::InfestedHoardKey);
-	if (FloorBrief.Modifiers.Contains(Hoard))
+	// NAMED InfestedRow AND NOT Hoard: Ravenous Hoard's block in this function already declares `Hoard`.
+	const FName InfestedRow(Effects::InfestedHoardKey);
+	if (FloorBrief.Modifiers.Contains(InfestedRow))
 	{
 		const int32 Chance = FMath::RoundToInt(Effects::InfestedHoardChancePercentFor(InfestedHoardStacks));
-		Counting.Add(Hoard, InfestedHoardStacks > 0
+		Counting.Add(InfestedRow, InfestedHoardStacks > 0
 			? FString::Printf(TEXT("infested hoard: %d stack%s, %.1f%% of maximum health a second; %d%% chance of "
 								   "infested loot"),
 							  InfestedHoardStacks, InfestedHoardStacks == 1 ? TEXT("") : TEXT("s"),

@@ -157,7 +157,8 @@ void UCataclysmDropPickup::DropsToName(const UWorld* World,
 
 bool UCataclysmDropPickup::ComesAutomatically(bool bIsMaterial,
 											  const FVector& Character,
-											  const FVector& Drop)
+											  const FVector& Drop,
+											  bool bInfested)
 {
 	// GEAR NEVER DOES, AT ANY DISTANCE. Checked before the arithmetic so the
 	// rule reads as the rule rather than as a consequence of a radius.

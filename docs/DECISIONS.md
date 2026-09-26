@@ -116,6 +116,20 @@ Six automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "chance to drop infested", "picking up infested loot", "a stack of", "drains
 your health over time", "the more stacks you have" and "the higher your chance".
 
+### Two compile errors, found in the window and fixed in it
+
+The first build of this change failed on two errors that were in the original commit `48a498f3` and were carried
+unchanged through both moves onto newer development heads. The change had never been compiled: the Python suite reads
+C++ as text and cannot see either kind of error.
+
+- **`'Hoard': redefinition`** in `LiveCountsForTheFloor`. The panel block declared `const FName Hoard`, and Ravenous
+  Hoard's block in the same function (#1952, 2026-09-17) already declares one. The local is now `InfestedRow`.
+- **`ComesAutomatically` declared with `bool bInfested = false` and defined without it**, so the definition matched no
+  declaration and its body used an undeclared name. The definition now takes the parameter.
+
+Fixed as one commit in the window with the coordinating session's approval, 2026-09-26; neither changes what the rule
+does, the tests or the guard proofs' anchors.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
