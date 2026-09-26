@@ -273,6 +273,9 @@ struct CATACLYSM_API FCataclysmLootTakenNotice
 
 	/** Whether a creature a dungeon rule raised mid-floor dropped it. */
 	bool bMarked = false;
+
+	/** Whether it was an infested drop, The Infested Hoard's. Issues #1820 and #41. */
+	bool bInfested = false;
 };
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnLootTaken, const FCataclysmLootTakenNotice&);
@@ -387,7 +390,7 @@ public:
 
 	/** Announces a drop taken into `Taker`'s inventory. Called by `TakeInto` only. */
 	static void NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand,
-							  bool bMarked = false);
+							  bool bMarked = false, bool bInfested = false);
 
 	/** How many of each have been sent in this world. Read by tests. */
 	uint32 HitsSent() const { return Hits; }

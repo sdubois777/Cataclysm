@@ -157,11 +157,16 @@ void UCataclysmDropPickup::DropsToName(const UWorld* World,
 
 bool UCataclysmDropPickup::ComesAutomatically(bool bIsMaterial,
 											  const FVector& Character,
-											  const FVector& Drop)
+											  const FVector& Drop,
+											  bool bInfested)
 {
 	// GEAR NEVER DOES, AT ANY DISTANCE. Checked before the arithmetic so the
 	// rule reads as the rule rather than as a consequence of a radius.
-	if (!bIsMaterial)
+	//
+	// NOR DOES AN INFESTED DROP, MATERIAL OR NOT: The Infested Hoard's loot is a
+	// choice between a haul and a drain, and one that collected itself would be
+	// neither. Ruled under the owner's delegation, 2026-09-25. Issues #1820, #41.
+	if (!bIsMaterial || bInfested)
 	{
 		return false;
 	}
@@ -335,8 +340,9 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 	// WHERE IT LAY IS READ BEFORE THE ACTOR GOES, and the take announced after.
 	const FVector Where = Drop->GetActorLocation();
 	const bool bMarked = Drop->bDroppedByARaisedCreature;
+	const bool bInfested = Drop->bInfested;
 	Drop->Destroy();
-	UCataclysmCombatEvents::NoteLootTaken(Inventory->GetOwner(), Where, bByHand, bMarked);
+	UCataclysmCombatEvents::NoteLootTaken(Inventory->GetOwner(), Where, bByHand, bMarked, bInfested);
 	return true;
 }
 
@@ -478,7 +484,9 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										   float MagicFind, float LootQuantity,
 										   const FVector& At,
 										   FRandomStream& Stream,
-										   bool bMarked)
+										   bool bMarked, bool bInfested,
+										   int32 GearCountGiven,
+										   int32 MaterialCountGiven)
 {
 	if (!World)
 	{
@@ -518,13 +526,20 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	// ScatterOffset spaces a drop by how many there are in total, so a gear
 	// item that thought there were five of it and a material that thought there
 	// were seventeen would sit at two different radii and could overlap.
-	const int32 Count = UCataclysmDropRoll::RollDropCount(
-		UCataclysmDropRoll::ExpectedGearDrops(Drops, EnemyRarity, LootQuantity),
-		Stream);
-	const int32 MaterialCount = UCataclysmDropRoll::RollDropCount(
-		UCataclysmDropRoll::ExpectedMaterialDrops(Drops, EnemyRarity,
-												  LootQuantity),
-		Stream);
+	//
+	// A COUNT GIVEN IS USED INSTEAD OF ROLLED, which is how The Infested Hoard
+	// asks for exactly one drop. Every other caller gives none.
+	const int32 Count = GearCountGiven >= 0
+		? GearCountGiven
+		: UCataclysmDropRoll::RollDropCount(
+			  UCataclysmDropRoll::ExpectedGearDrops(Drops, EnemyRarity, LootQuantity),
+			  Stream);
+	const int32 MaterialCount = MaterialCountGiven >= 0
+		? MaterialCountGiven
+		: UCataclysmDropRoll::RollDropCount(
+			  UCataclysmDropRoll::ExpectedMaterialDrops(Drops, EnemyRarity,
+													   LootQuantity),
+			  Stream);
 	const int32 Total = Count + MaterialCount;
 	if (Total <= 0)
 	{
@@ -593,7 +608,13 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 
 		Drop->Item = Item;
 		Drop->bDroppedByARaisedCreature = bMarked;
+		Drop->bInfested = bInfested;
 		Drop->DisplayName = UCataclysmItemName::NameOf(Item, Bases, Affixes);
+		if (bInfested)
+		{
+			// THE MARK THE PLAYER READS, on the name the floor draws. Issues #1820, #41.
+			Drop->DisplayName = TEXT("Infested ") + Drop->DisplayName;
+		}
 
 		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
 		if (UCataclysmItemValues::RarityOf(Item.EnchantmentCount,
@@ -613,9 +634,38 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	// roll still used up its place: leaving a gap is better than putting a
 	// material on top of the item after it.
 	Spawned += SpawnMaterialsFor(World, EnemyRarity, Together, At, MaterialCount,
-								 Count, Total, DifficultyTier, Stream, bMarked);
+								 Count, Total, DifficultyTier, Stream, bMarked,
+								 bInfested);
 
 	return Spawned;
+}
+
+int32 UCataclysmDropSpawner::SpawnOneInfestedDropFor(UWorld* World, int32 EnemyRarityStep,
+													 float MagicFind, const FVector& At,
+													 FRandomStream& Stream)
+{
+	const UDataTable* Drops = UCataclysmDropRoll::LoadEnemyDropTable();
+	if (!World || !Drops)
+	{
+		return 0;
+	}
+	const FName EnemyRarity = EnemyRarityForStep(Drops, EnemyRarityStep);
+	const float Gear = UCataclysmDropRoll::ExpectedGearDrops(
+		Drops, EnemyRarity, UCataclysmDropRoll::BaselineLootQuantity);
+	const float Materials = UCataclysmDropRoll::ExpectedMaterialDrops(
+		Drops, EnemyRarity, UCataclysmDropRoll::BaselineLootQuantity);
+	if (EnemyRarity.IsNone() || Gear + Materials <= 0.0f)
+	{
+		return 0;
+	}
+	// GEAR OR A MATERIAL IN THE CREATURE'S OWN RATIO, which is one to one for
+	// every rarity in game/Data/EnemyDrops.csv today.
+	const bool bGear = Stream.FRand() * (Gear + Materials) < Gear;
+	return SpawnDropsFor(World, EnemyRarityStep, MagicFind,
+						 UCataclysmDropRoll::BaselineLootQuantity, At, Stream,
+						 /*bMarked=*/false, /*bInfested=*/true,
+						 /*GearCountGiven=*/bGear ? 1 : 0,
+						 /*MaterialCountGiven=*/bGear ? 0 : 1);
 }
 
 int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
@@ -625,7 +675,7 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 											   int32 TotalDrops,
 											   int32 DifficultyTier,
 											   FRandomStream& Stream,
-											   bool bMarked)
+											   bool bMarked, bool bInfested)
 {
 	if (!World || Count <= 0)
 	{
@@ -677,9 +727,14 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 		Drop->Material = Material;
 		Drop->MaterialQuantity = 1;
 		Drop->bDroppedByARaisedCreature = bMarked;
+		Drop->bInfested = bInfested;
 		Drop->MaterialTier = Tier;
 		Drop->DisplayName =
 			UCataclysmDropRoll::MaterialNameOf(Materials, Material);
+		if (bInfested)
+		{
+			Drop->DisplayName = TEXT("Infested ") + Drop->DisplayName;
+		}
 		Drop->NameColour =
 			UCataclysmDropRoll::MaterialColourFor(TierTable, Tier);
 

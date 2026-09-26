@@ -2,6 +2,166 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — The Infested Hoard: a paying floor creature sometimes leaves one extra infested drop; taking one by hand adds a stack that drains 0.3% of maximum health a second and raises the chance of the next, until the floor ends
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, the chance, the stacks and the drain); `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and `.cpp` (a
+drop's `bInfested` flag, "Infested " in front of its name, `SpawnDropsFor` taking counts instead of rolling them, the
+new `SpawnOneInfestedDropFor`, and `ComesAutomatically` refusing an infested drop);
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the take notice carries `bInfested`);
+`game/Source/Cataclysm/Player/CataclysmPlayerController.cpp` (the automatic material collection passes the flag);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the drop on a death, the stack on a take, the
+drain, the resets, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Pestilence_The_Infested_Hoard` in `game/Data/DungeonModifiers.csv`, weight 5: "All enemies have a chance to drop
+infested gold and items. Picking up infested loot will apply a stack of "Infestation" that drains your health over
+time. However, the more stacks you have, the higher your chance of finding more infested loot. It's a risk/reward
+system where you must weigh the benefits of a huge haul against the dangerous health drain." It states no figure.
+
+### What the rule does
+
+When one of the floor's creatures dies and pays for its death, on a floor carrying the row, it has a 10% chance, plus
+5% for each Infestation stack the player holds, at most 60%, of leaving one infested drop. That drop is extra to its
+own. It is exactly one drop: a piece of gear or a crafting material, chosen in the ratio of the creature's own
+expected gear to materials in `game/Data/EnemyDrops.csv` (one to one for every rarity today), and rolled at the
+creature's rarity and the player's magic find as the creature's own drops are. **The game has no gold drops**, so
+"gold and items" is read as items and crafting materials.
+
+An infested drop lies on the floor with "Infested " in front of its name. **The mark is lost once the item is picked
+up:** nothing in the inventory shows that it was infested. **An infested drop is never collected automatically**,
+material or not, so every infested pickup is a click.
+
+Taking an infested drop by hand adds one Infestation stack, at most 10. While any stack is held, the player loses
+0.3% of maximum health a second for each stack, 3% at ten, dealt once a second as damage over time typed Pestilence,
+which pestilence resistance meets. The stacks end when the floor ends, when the player dies and when the player
+leaves the dungeon.
+
+The panel reads "infested hoard: no stacks; 10% chance of infested loot" or "infested hoard: 3 stacks, 0.9% of
+maximum health a second; 25% chance of infested loot".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **The chance: 10% + 5% per stack, at most 60%, on the death of one of the floor's creatures that pays.**
+- **Exactly one infested drop when the chance succeeds**, gear or a material in the creature's own ratio, at its
+  rarity and magic find. A literal second drop roll would usually drop nothing: a Common creature is expected to drop
+  0.16 gear and 0.16 materials, so the growing chance the row promises would mostly produce nothing.
+- **"Infested " in front of the drop's name**, lost once it is picked up.
+- **"Gold and items" read as items and materials**, because dungeon gold drops do not exist.
+- **An infested drop is never collected automatically.** Crafting materials within 15 m are collected without a
+  click (the owner's decision of 2026-08-23, issues #851 and #883), and an infested material that collected itself
+  would be neither a choice nor a cost. `UCataclysmDropPickup::ComesAutomatically` answers false for one.
+- **Only a pickup by hand adds a stack**, one each, at most ten.
+- **Each stack drains 0.3% of maximum health a second**, summed.
+- **The stacks end with the floor or the player's death**, which keeps the risk to one floor, unlike Raw Sewage's.
+- **The panel line as proposed.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **"The floor ends" is every floor change, including a Horde dungeon's next wave.** The stacks are cleared in
+  `ApplyFloorRulesToPlayer`, beside Wings of the Host's per-floor resets; that function runs on every floor change
+  and on leaving the dungeon, which is how leaving ends them too.
+- **"One of the floor's creatures" is `FloorEnemies`.** A creature a rule raised mid-floor and did not make one of the
+  floor's leaves no infested drop, even if it pays.
+- **The infested drop's roll ignores loot quantity**, since its count is given rather than rolled; magic find reaches
+  it as it reaches every drop, the player's plus the creature's own.
+- **A pinned roll for tests and the console, `Cataclysm.InfestedHoardRoll`**, in the shape of the other rules' pinned
+  rolls.
+- **`SpawnDropsFor` takes the counts as two optional arguments** rather than a second copy of its gear and material
+  loops, so an infested item is made, named, coloured and scattered exactly as every other drop. Every existing caller
+  passes neither and is unchanged.
+
+### The research: loot that costs something to take
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, map modifiers | https://www.poe-vault.com/guides/atlas-of-worlds-map-guide | "Adding affixes to a Map increases its difficulty exponentially from its base, unaltered state"; the affixes raise "Item Quantity, Item Rarity, and Monster Pack size" |
+
+**What it settles and what it does not.** Path of Exile's maps are the shipped form of the row's trade: the player
+takes on more danger in exchange for more and better loot, by choice. That settles the rule being a choice the player
+makes and the reward growing with the risk. No page read describes loot that harms the player who picks it up, or a
+stack that raises the chance of more of it, so the drain on pickup, the 10% and 5% a stack, the 60% cap, the ten
+stacks and the 0.3% a second are this game's own.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `InfestedHoardFiguresChanceStacksAndDrain`: the chance at 0, 1, 10 and 99 stacks; the roll's boundary; one stack a
+  pickup, to ten; the drain at 0, 3 and 10.
+- `APayingFloorCreatureLeavesOneInfestedDropUnderTheChance`: with the roll pinned to 0, a paying floor creature's death
+  leaves exactly one infested drop, named "Infested …" and not marked as a raised creature's; pinned to 99, none more;
+  a creature that is not the floor's, none more.
+- `AnInfestedDropTakenByHandAddsAStackOfInfestation`: the panel with none; one taken by hand, one stack and its panel;
+  one taken another way and an uninfested one by hand add none; twelve more by hand stop at ten, with its panel.
+- `AnInfestedMaterialIsNeverCollectedAutomatically`: `ComesAutomatically` refuses an infested material at the player's
+  feet and accepts a plain one; through the player controller's collection, an infested material beside the player is
+  left and a plain one beside it is taken, and no stack is added.
+- `InfestationDrainsThePlayerEachSecond`: nothing lost in two seconds with no stacks; with ten stacks, at least one
+  second's 3% and at most two seconds' lost in two seconds.
+- `InfestationEndsWithTheFloorLeavingOrThePlayersDeath`: three stacks each time, ended by the next floor, by leaving,
+  and by the player's death.
+
+One Python check: the row still says "chance to drop infested", "picking up infested loot", "a stack of", "drains
+your health over time", "the more stacks you have" and "the higher your chance".
+
+### Two compile errors, found in the window and fixed in it
+
+The first build of this change failed on two errors that were in the original commit `48a498f3` and were carried
+unchanged through both moves onto newer development heads. The change had never been compiled: the Python suite reads
+C++ as text and cannot see either kind of error.
+
+- **`'Hoard': redefinition`** in `LiveCountsForTheFloor`. The panel block declared `const FName Hoard`, and Ravenous
+  Hoard's block in the same function (#1952, 2026-09-17) already declares one. The local is now `InfestedRow`.
+- **`ComesAutomatically` declared with `bool bInfested = false` and defined without it**, so the definition matched no
+  declaration and its body used an undeclared name. The definition now takes the parameter.
+
+Fixed as one commit in the window with the coordinating session's approval, 2026-09-26; neither changes what the rule
+does, the tests or the guard proofs' anchors.
+
+### Run
+
+One window on 2026-09-26, ending at 16:09 UTC, on development 9d4b6a44 with this change at c9a161a0 (the change moved
+onto that head, and the commit fixing the two compile errors above), with the build machine and no workbook. Every
+figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the first build, started with no CI run in progress | `5519 passed, 8 skipped` (JUnit 5,527, no failures) |
+| First build | `Build: Failed - 30 actions, 27 files compiled`: the two errors above; no test ran |
+| Python of record, after the fix | `5519 passed, 8 skipped` (JUnit 5,527, no failures) |
+| Build | `Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.24.cpp, Module.Cataclysm.8.cpp` |
+| Whole suite | `2608 tests performed, 2608 succeeded, 0 failed`; 2608 declared, gap 0, as registered (2602 + 6) |
+
+Three proofs with `prove_cpp_guard`, each anchor counted from the proof script's own table immediately before the
+window. Each restored run printed `1 tests performed, 1 succeeded, 0 failed`, and the source hash was the same before
+and after each.
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| a. a stack is never added: `InfestedHoardStacks += 0;` | `Cataclysm.DungeonModifierEffects.AnInfestedDropTakenByHandAddsAStackOfInfestation` | `1 tests performed, 0 succeeded, 1 failed: AnInfestedDropTakenByHandAddsAStackOfInfestation` | 5, as registered: "taken by hand: one stack", "the panel with one", "taken another way, or not infested: still one", "ten at most", "the panel at ten" |
+| b. an infested material is collected automatically: `if (!bIsMaterial)` | `Cataclysm.DungeonModifierEffects.AnInfestedMaterialIsNeverCollectedAutomatically` | `1 tests performed, 0 succeeded, 1 failed: AnInfestedMaterialIsNeverCollectedAutomatically` | 2, as registered: "the rule itself: an infested material never comes" and "the infested material still lies there" |
+| c. the drain is written as 0: `* 0.0f;` | `Cataclysm.DungeonModifierEffects.InfestationDrainsThePlayerEachSecond` | `1 tests performed, 0 succeeded, 1 failed: InfestationDrainsThePlayerEachSecond` | 1, as registered: "ten stacks drain", which read 0.0 lost |
+
+The whole suite also reported 40 tests that skipped part of what they check, all of them art tests (the Paragon art
+is not in a worktree); none is a dungeon-modifier test.
+
+**Final Python**, after the entry's Run section: `5519 passed, 8 skipped` (JUnit 5,527, no failures), as before the
+window.
+
+---
+
 ## 2026-09-26 — The deployable cap: three shipped machine skills state how many may stand at once, and "Add +1-3 to your max deployable count" raises only theirs
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Weapon Skills and Enchantment Effects sheets),

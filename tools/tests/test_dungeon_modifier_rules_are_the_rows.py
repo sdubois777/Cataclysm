@@ -4329,3 +4329,23 @@ def test_abyssal_rifts_row_still_has_rifts_closed_by_waves_in_time_and_rewards_t
         assert phrase in lower, (
             f"Demonic_Abyssal_Rifts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "AbyssalRiftsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_infested_hoard_row_still_has_infested_drops_stacks_that_drain_and_a_chance_that_grows():
+    """The phrases the rule's readings rest on.
+
+    "All enemies have a chance to drop infested gold and items. Picking up infested loot will apply a stack of
+    "Infestation" that drains your health over time. However, the more stacks you have, the higher your chance of
+    finding more infested loot." CHANCE TO DROP INFESTED is the extra drop; PICKING UP INFESTED LOOT and A STACK are
+    the pick-up by hand; DRAINS YOUR HEALTH OVER TIME is the drain; THE MORE STACKS and HIGHER YOUR CHANCE are the
+    chance that grows. GOLD is read as items and materials because the game drops no gold. If any of them changes,
+    the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_The_Infested_Hoard"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("chance to drop infested", "picking up infested loot", "a stack of",
+                   "drains your health over time", "the more stacks you have", "the higher your chance"):
+        assert phrase in lower, (
+            f"Pestilence_The_Infested_Hoard no longer says {phrase.upper()!r}. A reading of the rule rests on it; "
+            "see InfestedHoardKey in CataclysmDungeonModifierEffects.h. " + words)

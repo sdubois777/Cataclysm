@@ -1628,7 +1628,8 @@ void ACataclysmPlayerController::CollectMaterialsNearby()
 		ACataclysmDroppedItem* Drop = *It;
 		if (IsValid(Drop)
 			&& UCataclysmDropPickup::ComesAutomatically(
-				   Drop->IsMaterial(), Standing, Drop->GetActorLocation()))
+				   Drop->IsMaterial(), Standing, Drop->GetActorLocation(),
+				   Drop->bInfested))
 		{
 			Coming.Add(Drop);
 		}

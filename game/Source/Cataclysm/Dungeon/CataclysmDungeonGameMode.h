@@ -2123,6 +2123,9 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** The Infested Hoard, for the panel and tests: the Infestation stacks the player holds. */
+	int32 InfestedHoardStacksHeld() const { return InfestedHoardStacks; }
+
 	/** Abyssal Rifts, for the panel and tests: where this floor's rift stands in its life. */
 	enum class ERiftState : uint8
 	{
@@ -2481,6 +2484,18 @@ private:
 	 * it, and a coffin's Vampire Lord let out at the threshold.
 	 */
 	void NoteDeathForObsidianSarcophagi(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * The Infested Hoard, on a death: a paying floor creature's may leave one infested drop; the player's ends the
+	 * stacks. Issues #1820 and #41.
+	 */
+	void NoteDeathForInfestedHoard(const struct FCataclysmDeathNotice& Notice);
+
+	/** The Infested Hoard, on a take: an infested drop taken by the player by hand adds one stack. */
+	void NoteLootTakenForInfestedHoard(const struct FCataclysmLootTakenNotice& Notice);
+
+	/** The Infested Hoard, on the beat: the drain, once a second while a stack is held. */
+	void StepInfestedHoard(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
@@ -3490,6 +3505,14 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * The Infested Hoard: the Infestation stacks the player holds, the seconds since the last drain, and what the
+	 * panel last showed. Issues #1820 and #41.
+	 */
+	int32 InfestedHoardStacks = 0;
+	float InfestedHoardSecondsSinceDrain = 0.0f;
+	int32 InfestedHoardPanelStacks = -1;
 
 	/**
 	 * Abyssal Rifts: this floor's rift and its zone, its state, how long it has been open, the waves it has sent and
