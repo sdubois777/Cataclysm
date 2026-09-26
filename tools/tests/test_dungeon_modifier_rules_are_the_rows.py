@@ -4310,3 +4310,23 @@ def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter()
         assert phrase in lower, (
             f"Famine_Swarm_of_Locusts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_warzone_control_points_row_still_captures_holds_and_names_what_is_not_built():
+    """The phrases the rule's readings rest on.
+
+    "Dungeons in the War cataclysm feature control points that players must capture and hold against waves of
+    enemies. Holding these points provides strategic advantages, such as summoning allied soldiers, gaining access to
+    powerful buffs, or opening shortcuts to progress deeper into the dungeon." CAPTURE AND HOLD is standing in a
+    point; WAVES OF ENEMIES is the waves while it is captured; POWERFUL BUFFS is each held point's strength; SUMMONING
+    ALLIED SOLDIERS and OPENING SHORTCUTS are the parts not built. If any of them changes, the reading must be
+    revisited.
+    """
+    words = flat(rows()["War_Warzone_Control_Points"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("capture and hold", "waves of enemies", "powerful buffs", "summoning allied soldiers",
+                   "opening shortcuts"):
+        assert phrase in lower, (
+            f"War_Warzone_Control_Points no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "WarzoneControlPointsKey in CataclysmDungeonModifierEffects.h. " + words)

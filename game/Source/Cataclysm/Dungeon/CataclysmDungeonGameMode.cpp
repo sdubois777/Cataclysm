@@ -1524,6 +1524,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		ForgetTheLocusts();
 		PlaceTheShelters();
 
+		// AND WARZONE CONTROL POINTS, FOR THE SAME REASON: a new arena's points; a Horde arena's waves keep them.
+		// Issues #1820 and #41.
+		PlaceTheControlPoints();
+
 		// AND RAW SEWAGE'S RIVERS, FOR THE SAME REASON; a Horde arena's waves keep its river. The stacks are the
 		// dungeon's and are not touched here. Issues #1820 and #41.
 		ForgetTheRivers();
@@ -4648,6 +4652,195 @@ void ACataclysmDungeonGameMode::ForgetTheLocusts()
 	SwarmOfLocustsPanelSecond = -1;
 }
 
+int32 ACataclysmDungeonGameMode::WarzonePointsHeld() const
+{
+	int32 Held = 0;
+	for (const bool bCaptured : WarzoneCaptured)
+	{
+		Held += bCaptured ? 1 : 0;
+	}
+	return Held;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::WarzoneAttackersStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : WarzoneAttackers)
+	{
+		ACataclysmEnemyCharacter* Attacker = One.Get();
+		if (IsValid(Attacker) && !UCataclysmSkillEffects::IsDead(Attacker))
+		{
+			Standing.Add(Attacker);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheWarzoneHold()
+{
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Zone : WarzonePointZones)
+	{
+		if (ACataclysmGroundZone* Point = Zone.Get())
+		{
+			Point->Destroy();
+		}
+	}
+	WarzonePointZones.Reset();
+	WarzoneSecondsHeld.Reset();
+	WarzoneCaptured.Reset();
+	WarzoneAttackers.Reset();
+	// THE FIRST WAVE ON THE FIRST BEAT INSIDE A POINT.
+	WarzoneWaveClock = UCataclysmDungeonModifierEffects::WarzoneWaveSeconds;
+	WarzonePanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheControlPoints()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	WarzonePointCells.Reset();
+	ForgetTheWarzoneHold();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::WarzoneControlPointsKey)))
+	{
+		return;
+	}
+	// WHERE ETERNAL CHORUS'S PICKER PUTS ITS SOURCES, away from the entrance; a floor with fewer cells far enough
+	// apart has fewer points.
+	WarzonePointCells = EternalChorusCells(*CurrentFloor, Effects::WarzoneControlPointsPerFloor);
+	UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: %d point(s) on floor %d"), WarzonePointCells.Num(),
+		   FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+int32 ACataclysmDungeonGameMode::SendWarzoneWave(const FVector& Point)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE FLOOR'S OWN KINDS AT COMMON, on cells beside a point that far from the control point at a random angle, as
+	// Mind-Shattering Illusions places its phantasms; noticing from anywhere on the floor, as Plague Convergence's
+	// arrivals do, so they come for the player rather than waiting to be found.
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Where(Point.X + Effects::WarzoneWaveAwayCm * FMath::Cos(Angle),
+						Point.Y + Effects::WarzoneWaveAwayCm * FMath::Sin(Angle), Point.Z);
+	const FCataclysmFloorPopulation Population =
+		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+	int32 Placed = 0;
+	for (int32 Which = 0; Which < Effects::WarzoneCreaturesPerWave && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
+		 ++Which)
+	{
+		FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+		ACataclysmEnemyCharacter* Attacker =
+			SpawnPlacedCreature(Placement, Effects::TheReaperSightMultiplier, /*FixedRung=*/0);
+		if (!Attacker)
+		{
+			continue;
+		}
+		// UNPAID AND RAISED BY THE RULE, and on the floor's list so a floor change disposes of them with the rest,
+		// as Plague Convergence's arrivals are.
+		Attacker->bDiesUnpaid = true;
+		Attacker->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Attacker);
+		FloorEnemies.Add(Attacker);
+		WarzoneAttackers.Add(Attacker);
+		++Placed;
+	}
+	return Placed;
+}
+
+void ACataclysmDungeonGameMode::StepWarzoneControlPoints(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	if (CurrentFloor && CurrentFloor->IsBuilt()
+		&& FloorBrief.Modifiers.Contains(FName(Effects::WarzoneControlPointsKey)))
+	{
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+		const int32 Points = WarzonePointCells.Num();
+		WarzonePointZones.SetNum(Points);
+		WarzoneSecondsHeld.SetNumZeroed(Points);
+		WarzoneCaptured.SetNumZeroed(Points);
+
+		// THE POINTS DRAWN WHEREVER ONE IS MISSING, in the row's colours, held or not. They do nothing themselves.
+		for (int32 Index = 0; Index < Points; ++Index)
+		{
+			if (!WarzonePointZones[Index].Get() && Source)
+			{
+				const FVector Where = CurrentFloor->WorldOfCell(WarzonePointCells[Index]);
+				WarzonePointZones[Index] = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::WarzoneControlPointRadiusCm, 0.0f, /*bAffectsEveryone=*/false,
+					/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::WarzoneControlPointsKey));
+			}
+		}
+
+		// THE POINT NOT YET HELD THAT THE PLAYER STANDS IN, IF ANY: its count goes on, and a capture at its seconds.
+		// Out of every point, nothing counts and nothing comes; the counts stay where they were.
+		const FVector Feet = Player->GetActorLocation();
+		for (int32 Index = 0; Index < Points; ++Index)
+		{
+			const ACataclysmGroundZone* Zone = WarzonePointZones[Index].Get();
+			if (WarzoneCaptured[Index] || !Zone || !Zone->Covers(Feet))
+			{
+				continue;
+			}
+			WarzoneSecondsHeld[Index] += SecondsBetweenWaveChecks;
+			if (WarzoneSecondsHeld[Index] >= Effects::WarzoneCaptureSeconds - KINDA_SMALL_NUMBER)
+			{
+				WarzoneCaptured[Index] = true;
+				WarzoneWaveClock = Effects::WarzoneWaveSeconds;
+				UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: point %d captured on floor %d"), Index,
+					   FloorNumber);
+			}
+			else
+			{
+				// A WAVE WHEN ONE IS DUE; THE CLOCK STARTS AGAIN ONLY WHEN ONE CAME, so a beat whose point had no
+				// floor beside it tries again on the next.
+				WarzoneWaveClock += SecondsBetweenWaveChecks;
+				if (WarzoneWaveClock >= Effects::WarzoneWaveSeconds - KINDA_SMALL_NUMBER)
+				{
+					const int32 Came = SendWarzoneWave(CurrentFloor->WorldOfCell(WarzonePointCells[Index]));
+					if (Came > 0)
+					{
+						WarzoneWaveClock = 0.0f;
+						UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: a wave of %d at point %d on floor %d"),
+							   Came, Index, FloorNumber);
+					}
+				}
+			}
+			break;
+		}
+	}
+
+	// THE STRENGTH OF THE POINTS HELD, WRITTEN WHEN IT CHANGED.
+	const int32 Held = WarzonePointsHeld();
+	if (Held != WarzonePointsApplied)
+	{
+		WarzonePointsApplied = Held;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	float Most = 0.0f;
+	for (int32 Index = 0; Index < WarzoneSecondsHeld.Num() && Index < WarzoneCaptured.Num(); ++Index)
+	{
+		Most = WarzoneCaptured[Index] ? Most : FMath::Max(Most, WarzoneSecondsHeld[Index]);
+	}
+	const int32 Key = Held * 1000 + FMath::FloorToInt(Most);
+	if (Key != WarzonePanelKey)
+	{
+		WarzonePanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::PlaceTheShelters()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6040,6 +6233,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
 	ForgetTheLocusts();
+	ForgetTheWarzoneHold();
+	WarzonePointCells.Reset();
 
 	// AND RAW SEWAGE'S RIVERS AND STACKS: the stacks are the dungeon's and end with it. The beat takes the disease
 	// tag off the player, since the step runs while it is held. Issues #1820 and #41.
@@ -6529,6 +6724,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND SWARM OF LOCUSTS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bSwarmOfLocusts =
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey));
+	// AND WARZONE CONTROL POINTS, ON EVERY FLOOR CARRYING IT, AND WHILE HELD POINTS ARE ON THE CHARACTER. Issues
+	// #1820 and #41.
+	const bool bWarzoneControlPoints =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::WarzoneControlPointsKey))
+		|| WarzonePointsApplied > 0;
 	// AND RAW SEWAGE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHILE A STACK OR THE TAG IS HELD: the stacks
 	// are the dungeon's and burn on every floor. Issues #1820 and #41.
 	const bool bRawSewage = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RawSewageKey))
@@ -6565,6 +6765,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bSwarmOfLocusts
+		&& !bWarzoneControlPoints
 		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
@@ -6794,6 +6995,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bSwarmOfLocusts)
 	{
 		StepSwarmOfLocusts(Player, AbilitySystem);
+	}
+
+	// AND WARZONE CONTROL POINTS, WHICH ARE CAPTURED BY STANDING IN THEM AND SEND WAVES WHILE THEY ARE. Issues #1820
+	// and #41.
+	if (bWarzoneControlPoints)
+	{
+		StepWarzoneControlPoints(Player, AbilitySystem);
 	}
 
 	// AND RAW SEWAGE, WHICH DRAWS RIVERS, ADDS STACKS, BURNS AND TAGS THE PLAYER. Issues #1820 and #41.
@@ -7785,6 +7993,13 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// the rest: a player carrying none is owed nothing.
 	Effects.ParasiteLessPercent =
 		UCataclysmDungeonModifierEffects::VoidParasiteLessPercent(VoidParasiteStacksApplied);
+
+	// AND THE HELD WARZONE CONTROL POINTS AS LAST WRITTEN, each giving its share. Issues #1820 and #41. Read
+	// unconditionally like the rest: a player holding none is owed nothing.
+	Effects.WarzoneDamageMorePercent =
+		WarzonePointsApplied * UCataclysmDungeonModifierEffects::WarzoneDamageMorePercentPerPoint;
+	Effects.WarzoneResistancePercent =
+		WarzonePointsApplied * UCataclysmDungeonModifierEffects::WarzoneResistancePercentPerPoint;
 
 	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN BOTH DIRECTIONS. Issues #1820
 	// and #41. Read unconditionally like the rest: a floor without that row
@@ -9542,6 +9757,32 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString::Printf(TEXT("swarm of locusts: next in %d s"),
 							  FMath::Max(0, FMath::CeilToInt(Effects::SwarmOfLocustsSecondsBetween
 															  - SwarmOfLocustsSecondsSinceLast))));
+	}
+
+	// AND WARZONE CONTROL POINTS: how many are held and what they give, and a capture under way. Issues #1820 and
+	// #41.
+	const FName Warzone(Effects::WarzoneControlPointsKey);
+	if (FloorBrief.Modifiers.Contains(Warzone) && !WarzonePointCells.IsEmpty())
+	{
+		const int32 Held = WarzonePointsHeld();
+		FString Line = FString::Printf(TEXT("warzone control points: %d of %d held"), Held, WarzonePointCells.Num());
+		if (Held > 0)
+		{
+			Line += FString::Printf(TEXT(", +%d%% damage and +%d%% resistances"),
+									FMath::RoundToInt(Held * Effects::WarzoneDamageMorePercentPerPoint),
+									FMath::RoundToInt(Held * Effects::WarzoneResistancePercentPerPoint));
+		}
+		float Most = 0.0f;
+		for (int32 Index = 0; Index < WarzoneSecondsHeld.Num() && Index < WarzoneCaptured.Num(); ++Index)
+		{
+			Most = WarzoneCaptured[Index] ? Most : FMath::Max(Most, WarzoneSecondsHeld[Index]);
+		}
+		if (Most > 0.0f)
+		{
+			Line += FString::Printf(TEXT("; capturing, %d of %d s"), FMath::FloorToInt(Most),
+									FMath::RoundToInt(Effects::WarzoneCaptureSeconds));
+		}
+		Counting.Add(Warzone, Line);
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -12005,6 +12246,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		ArtilleryStrikeCircle = nullptr;
 		ArtilleryStrikeWarningSoFar = 0.0f;
 		ArtilleryStrikeSecondsSinceLast = 0.0f;
+
+		// AND WARZONE CONTROL POINTS: the point zones went with the others above and are drawn again on the next beat;
+		// the counts, the captures, the waves' creatures and the strength end with the floor, the call above having
+		// taken the strength off the character. A Horde arena keeps its points' cells, so each wave's points are
+		// captured afresh. Issues #1820 and #41.
+		ForgetTheWarzoneHold();
+		WarzonePointsApplied = 0;
 
 		// AND WINGS OF THE HOST, FOR THE SAME REASON: a flyover marked on the last floor never
 		// lands on this one, and this floor's first comes thirty seconds in. The marks themselves

@@ -2129,6 +2129,15 @@ public:
 	/** Swarm of Locusts, for tests: whether the swarm on the floor has begun to travel. */
 	bool SwarmOfLocustsIsTravelling() const { return bSwarmOfLocustsTravelling; }
 
+	/** Warzone Control Points, for tests: this arena's point cells. */
+	const TArray<FIntPoint>& WarzonePointCellsNow() const { return WarzonePointCells; }
+
+	/** Warzone Control Points, for tests and the panel: how many of this floor's points the player holds. */
+	int32 WarzonePointsHeld() const;
+
+	/** Warzone Control Points, for tests: the creatures its waves sent that still stand. */
+	TArray<ACataclysmEnemyCharacter*> WarzoneAttackersStanding() const;
+
 	/** Swarm of Locusts, for tests: this arena's shelters, drawn from its first beat. */
 	TArray<class ACataclysmGroundZone*> LocustSheltersNow() const;
 
@@ -2338,6 +2347,21 @@ private:
 	 * the burn once a second for a player it covers who is in no shelter, and the swarm gone when it has crossed.
 	 */
 	void StepSwarmOfLocusts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Warzone Control Points: this arena's points chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheControlPoints();
+
+	/** Warzone Control Points: the zones, the counts, the captures and the wave clock forgotten; the cells kept. */
+	void ForgetTheWarzoneHold();
+
+	/**
+	 * Warzone Control Points, on the beat: the points drawn, the count for the one the player stands in, a wave when
+	 * one is due, a capture, and the strength of the points held written on the player.
+	 */
+	void StepWarzoneControlPoints(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Warzone Control Points: a wave near this point; returns how many creatures came. */
+	int32 SendWarzoneWave(const FVector& Point);
 
 	/** Raw Sewage: this arena's rivers chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheRivers();
@@ -3460,6 +3484,20 @@ private:
 	TArray<FIntPoint> LocustShelterCells;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> LocustShelters;
 	int32 SwarmOfLocustsPanelSecond = -1;
+
+	/**
+	 * Warzone Control Points: this arena's point cells and the zones drawn there, the seconds stood in each, which
+	 * are captured, the wave clock, the creatures the waves sent, the points last written on the player, and what the
+	 * panel last showed. Issues #1820 and #41.
+	 */
+	TArray<FIntPoint> WarzonePointCells;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> WarzonePointZones;
+	TArray<float> WarzoneSecondsHeld;
+	TArray<bool> WarzoneCaptured;
+	float WarzoneWaveClock = 0.0f;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> WarzoneAttackers;
+	int32 WarzonePointsApplied = 0;
+	int32 WarzonePanelKey = -1;
 
 	/**
 	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether

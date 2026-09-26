@@ -31321,4 +31321,246 @@ bool FCataclysmLocustsBurnTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// War_Warzone_Control_Points. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName WarzoneRow(UCataclysmDungeonModifierEffects::WarzoneControlPointsKey);
+
+	/** A dungeon carrying only Warzone Control Points, on floor 2 with its own creatures cleared, its points drawn. */
+	ACataclysmDungeonGameMode* AWarzoneFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {WarzoneRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("two points"), Mode->WarzonePointCellsNow().Num(),
+							   UCataclysmDungeonModifierEffects::WarzoneControlPointsPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** The player stood on a control point's cell. */
+	void StandOnAPoint(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, int32 Index)
+	{
+		const FVector At = Mode->CurrentFloor->WorldOfCell(Mode->WarzonePointCellsNow()[Index]);
+		Player.Character->SetActorLocation(FVector(At.X, At.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** The player stood at the entrance, which is further from every point than a point's radius. */
+	void StandAtTheEntrance(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		const FVector At = Mode->CurrentFloor->EntranceWorld();
+		Player.Character->SetActorLocation(FVector(At.X, At.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** What the dungeon's rules add to this stat, or 0 for none. */
+	float WarzoneRuleOn(const FPossessedPlayer& Player, const FString& Stat)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, *Stat);
+		return Rule ? Rule->Value : 0.0f;
+	}
+
+	/** The first damage type's resistance stat, which the rule writes as it writes all eight. */
+	FString AResistance()
+	{
+		return UCataclysmItemModifiers::ResistanceStatFor(UCataclysmItemModifiers::DamageTypeNames()[0]).ToString();
+	}
+}
+
+// THE FIGURES: TWO POINTS OF 400 CM; 10 S TO CAPTURE; THREE CREATURES EVERY 10 S, 8 M AWAY; 10% AND 10 A POINT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneFiguresTest,
+	"Cataclysm.DungeonModifierEffects.WarzoneControlPointsFiguresPointsCaptureWavesAndStrength",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two points a floor"), Effects::WarzoneControlPointsPerFloor, 2);
+	TestEqual(TEXT("400 cm across the radius"), Effects::WarzoneControlPointRadiusCm, 400.0f, 0.001f);
+	TestEqual(TEXT("10 s to capture"), Effects::WarzoneCaptureSeconds, 10.0f, 0.001f);
+	TestEqual(TEXT("a wave every 10 s"), Effects::WarzoneWaveSeconds, 10.0f, 0.001f);
+	TestEqual(TEXT("of three"), Effects::WarzoneCreaturesPerWave, 3);
+	TestEqual(TEXT("8 m from the point"), Effects::WarzoneWaveAwayCm, 800.0f, 0.001f);
+	TestEqual(TEXT("10% more damage a point"), Effects::WarzoneDamageMorePercentPerPoint, 10.0f, 0.001f);
+	TestEqual(TEXT("10 resistance a point"), Effects::WarzoneResistancePercentPerPoint, 10.0f, 0.001f);
+	return true;
+}
+
+// TWO POINTS FAR FROM THE ENTRANCE, DRAWN; STANDING IN ONE BRINGS A WAVE OF THREE UNPAID CREATURES AND COUNTS; STEPPING
+// OUT PAUSES THE COUNT; 10 S IN ALL CAPTURES IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneCaptureTest,
+	"Cataclysm.DungeonModifierEffects.StandingInAControlPointForTenSecondsCapturesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneCaptureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWarzoneFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const FIntPoint& Cell : Mode->WarzonePointCellsNow())
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Mode->CurrentFloor->WorldOfCell(Cell), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+	}
+	TestEqual(TEXT("two points drawn"), ZonesOnTheFloor(World), 2);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
+			  FString(TEXT("warzone control points: 0 of 2 held")));
+
+	// INTO POINT 0: A WAVE OF THREE ON THE FIRST BEAT, UNPAID AND RAISED BY THE RULE.
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, 1);
+	const TArray<ACataclysmEnemyCharacter*> Wave = Mode->WarzoneAttackersStanding();
+	TestEqual(TEXT("a wave of three"), Wave.Num(), Effects::WarzoneCreaturesPerWave);
+	for (const ACataclysmEnemyCharacter* Attacker : Wave)
+	{
+		TestTrue(TEXT("it pays nothing"), Attacker->bDiesUnpaid);
+		TestTrue(TEXT("and was raised by the rule"), Attacker->bRaisedByARule);
+	}
+	Beat(Mode, BeatsFor(5.0f) - 1);
+	TestEqual(TEXT("not held at 5 s"), Mode->WarzonePointsHeld(), 0);
+	TestEqual(TEXT("the panel at 5 s"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
+			  FString(TEXT("warzone control points: 0 of 2 held; capturing, 5 of 10 s")));
+
+	// OUT FOR 5 S: THE COUNT PAUSES AND NOTHING COMES.
+	StandAtTheEntrance(Mode, Player);
+	Beat(Mode, BeatsFor(5.0f));
+	TestEqual(TEXT("the count paused, not reset"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
+			  FString(TEXT("warzone control points: 0 of 2 held; capturing, 5 of 10 s")));
+	TestEqual(TEXT("no wave while out"), Mode->WarzoneAttackersStanding().Num(), Effects::WarzoneCreaturesPerWave);
+
+	// BACK IN: NOT HELD AT 9.75 S IN ALL, HELD AT 10.
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, BeatsFor(5.0f) - 1);
+	TestEqual(TEXT("not held at 9.75 s"), Mode->WarzonePointsHeld(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("held at 10 s"), Mode->WarzonePointsHeld(), 1);
+	TestEqual(TEXT("one wave in all"), Mode->WarzoneAttackersStanding().Num(), Effects::WarzoneCreaturesPerWave);
+	TestEqual(TEXT("the panel once held"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
+			  FString(TEXT("warzone control points: 1 of 2 held, +10% damage and +10% resistances")));
+	return true;
+}
+
+// EACH HELD POINT GIVES 10% MORE ATTACK AND SPELL DAMAGE AND 10 ON EACH RESISTANCE; A HELD POINT SENDS NO MORE WAVES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneStrengthTest,
+	"Cataclysm.DungeonModifierEffects.EachHeldControlPointGivesMoreDamageAndResistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneStrengthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWarzoneFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing before a point is held"), WarzoneRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds));
+	if (!TestEqual(TEXT("point 0 held"), Mode->WarzonePointsHeld(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("10% more attack damage"), WarzoneRuleOn(Player, TEXT("attack_damage")), 10.0f, 0.001f);
+	TestEqual(TEXT("10% more spell damage"), WarzoneRuleOn(Player, TEXT("spell_damage")), 10.0f, 0.001f);
+	TestEqual(TEXT("10 on a resistance"), WarzoneRuleOn(Player, AResistance()), 10.0f, 0.001f);
+	const FCataclysmStatModifier* Resistance = DungeonRuleOn(Player.AbilitySystem, *AResistance());
+	TestTrue(TEXT("added as points, as an item's resistance is"),
+			 Resistance && Resistance->Bucket == ECataclysmStatBucket::Flat);
+
+	StandOnAPoint(Mode, Player, 1);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds));
+	TestEqual(TEXT("both held"), Mode->WarzonePointsHeld(), 2);
+	TestEqual(TEXT("20% more attack damage"), WarzoneRuleOn(Player, TEXT("attack_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("20% more spell damage"), WarzoneRuleOn(Player, TEXT("spell_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("20 on a resistance"), WarzoneRuleOn(Player, AResistance()), 20.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
+			  FString(TEXT("warzone control points: 2 of 2 held, +20% damage and +20% resistances")));
+
+	// STANDING IN A HELD POINT BRINGS NOTHING.
+	const int32 Standing = Mode->WarzoneAttackersStanding().Num();
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, BeatsFor(Effects::WarzoneWaveSeconds) + 1);
+	TestEqual(TEXT("no wave at a held point"), Mode->WarzoneAttackersStanding().Num(), Standing);
+	return true;
+}
+
+// A NEW FLOOR: THE HOLD AND ITS STRENGTH END, THE WAVES' CREATURES GO, AND NEW POINTS WAIT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorEndsTheHoldAndBringsNewControlPoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWarzoneFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds));
+	if (!TestEqual(TEXT("point 0 held on floor 2"), Mode->WarzonePointsHeld(), 1)
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	StandAtTheEntrance(Mode, Player);
+	Beat(Mode, 1);
+	TestEqual(TEXT("nothing held on floor 3"), Mode->WarzonePointsHeld(), 0);
+	TestEqual(TEXT("its points drawn"), ZonesOnTheFloor(World), 2);
+	TestEqual(TEXT("the waves' creatures gone"), Mode->WarzoneAttackersStanding().Num(), 0);
+	TestEqual(TEXT("and the last floor's strength ended"), WarzoneRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("its resistance too"), WarzoneRuleOn(Player, AResistance()), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
+			  FString(TEXT("warzone control points: 0 of 2 held")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

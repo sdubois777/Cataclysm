@@ -301,6 +301,20 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float ParasiteLessPercent = 0.0f;
 
 	/**
+	 * Damage the player's held Warzone Control Points give, more, summed over the points held. Issues #1820 and #41.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float WarzoneDamageMorePercent = 0.0f;
+
+	/**
+	 * Resistance the player's held Warzone Control Points give, added to each of the eight resistances as points,
+	 * as an item's resistance is, summed over the points held. A percentage because a resistance is one. Issues
+	 * #1820 and #41.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float WarzoneResistancePercent = 0.0f;
+
+	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
 	 *
@@ -455,6 +469,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
+			&& WarzoneDamageMorePercent <= 0.0f && WarzoneResistancePercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -2069,6 +2084,28 @@ public:
 	 *   own: moving out of the swarm's line escapes it, and resistances meet its damage.
 	 */
 	static const TCHAR* SwarmOfLocustsKey;
+
+	/**
+	 * The row whose floor holds control points the player captures by standing in them while creatures come, each
+	 * held point making the player stronger until the floor ends. Issues #1820 and #41.
+	 *
+	 * "Dungeons in the War cataclysm feature control points that players must capture and hold against waves of
+	 * enemies. Holding these points provides strategic advantages, such as summoning allied soldiers, gaining access
+	 * to powerful buffs, or opening shortcuts to progress deeper into the dungeon."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25 AND 2026-09-26, AND PARTLY BUILT.
+	 * The row states no figure; every figure here is a play-test value:
+	 * - `WarzoneControlPointsPerFloor` POINTS A FLOOR, zones `WarzoneControlPointRadiusCm` across the radius, placed
+	 *   by Eternal Chorus's picker away from the entrance.
+	 * - STANDING IN ONE FOR `WarzoneCaptureSeconds` CAPTURES IT. Stepping out pauses the count; it does not reset it.
+	 * - WHILE THE PLAYER CAPTURES ONE, `WarzoneCreaturesPerWave` Common creatures of the floor's kinds come every
+	 *   `WarzoneWaveSeconds`, `WarzoneWaveAwayCm` from the point. They pay nothing.
+	 * - EACH HELD POINT GIVES `WarzoneDamageMorePercentPerPoint` MORE DAMAGE AND `WarzoneResistancePercentPerPoint`
+	 *   RESISTANCE until the floor ends.
+	 * - NOT BUILT: "summoning allied soldiers", which needs its own ruling, and "opening shortcuts", which waits on
+	 *   doors and on changing the floor's layout during play.
+	 */
+	static const TCHAR* WarzoneControlPointsKey;
 
 	/**
 	 * The row whose rivers of waste give the player disease stacks that burn and never run out. Issues #1820 and
@@ -4609,6 +4646,19 @@ public:
 	static constexpr int32 SwarmOfLocustsSheltersPerFloor = 2;
 	static constexpr int32 SwarmOfLocustsSheltersPerHordeArena = 1;
 	static constexpr float SwarmOfLocustsShelterRadiusCm = 300.0f;
+
+	/**
+	 * Warzone Control Points' figures, every one a play-test value. See the key. The first wave comes on the first
+	 * beat inside a point, so a capture uninterrupted meets one wave.
+	 */
+	static constexpr int32 WarzoneControlPointsPerFloor = 2;
+	static constexpr float WarzoneControlPointRadiusCm = 400.0f;
+	static constexpr float WarzoneCaptureSeconds = 10.0f;
+	static constexpr float WarzoneWaveSeconds = 10.0f;
+	static constexpr int32 WarzoneCreaturesPerWave = 3;
+	static constexpr float WarzoneWaveAwayCm = 800.0f;
+	static constexpr float WarzoneDamageMorePercentPerPoint = 10.0f;
+	static constexpr float WarzoneResistancePercentPerPoint = 10.0f;
 
 	static_assert(
 		SwarmOfLocustsSecondsBetween > SwarmOfLocustsWarningSeconds + SwarmOfLocustsTravelsCm / SwarmOfLocustsSpeedCmPerSecond,

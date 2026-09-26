@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Warzone Control Points: two points a floor, captured by standing in one for 10 seconds while creatures come, each held point giving 10% more damage and 10 resistance until the floor ends; allied soldiers and shortcuts are not built
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, its place among the rows that are partly built, and two new player floor-effect fields
+`WarzoneDamageMorePercent` and `WarzoneResistancePercent` read by `StatModifiersFor`, `IsEmpty` and `Describe`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing the points, the count, the waves, the
+capture, the per-floor reset, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and PARTLY built.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`War_Warzone_Control_Points` in `game/Data/DungeonModifiers.csv`, weight 10: "Dungeons in the War cataclysm feature
+control points that players must capture and hold against waves of enemies. Holding these points provides strategic
+advantages, such as summoning allied soldiers, gaining access to powerful buffs, or opening shortcuts to progress
+deeper into the dungeon." It states no figure. Its buff row, `Buff_Warzone_Control_Points` in
+`game/Data/StatusEffects.csv`, says only "Holding these provides strategic advantages." and states no figure either.
+
+### What the rule does
+
+A new arena carrying the row gets two control points, drawn on the floor, each 400 cm across its radius and placed on
+floor cells away from the entrance as the Eternal Chorus's cells are. While the player stands in a point not yet held,
+its count runs; stepping out pauses the count and does not reset it. At ten seconds in all the point is captured. While
+the player is capturing a point, three Common creatures of the floor's kinds come every ten seconds, the first on the
+first beat inside, placed about eight metres from the point; they pay nothing, are raised by the rule, and notice the
+player from anywhere on the floor. Each held point gives the player 10% more attack damage and spell damage and 10 on
+each of the eight resistances, until the floor ends. A new floor, or a Horde dungeon's next wave, ends the hold and its
+strength; a new arena brings new points. The panel reads "warzone control points: 1 of 2 held, +10% damage and +10%
+resistances; capturing, 5 of 10 s".
+
+**Not built: "summoning allied soldiers"**, which needs its own ruling, **and "opening shortcuts"**, which waits on
+doors and on changing the floor's layout during play. The row is listed among those partly built for those reasons.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25 and 2026-09-26. The row states no figure;
+every figure is a play-test value:**
+
+- **Buildable in part: capture and buffs. Shortcuts wait on doors and layout. Allied soldiers are not built now; they
+  need their own ruling later.**
+- **2 points a floor, captured by standing in the zone for 10 s while waves come, each held point giving +10% damage
+  and +10% resistance until the floor ends.**
+- **A 400 cm radius, placed away from the entrance; stepping out pauses the count rather than resetting it; waves of
+  3 unpaid Common creatures every 10 s while capturing.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The first wave comes on the first beat inside a point**, so every capture meets at least one wave; with 10 s to
+  capture and a wave every 10 s, a capture not interrupted meets exactly one.
+- **The wave clock runs only while the player is capturing** and starts again at each capture, so a paused capture
+  does not bring creatures to an empty point.
+- **"+10% damage" is a More on attack and spell damage**, one multiplier for all the points held, so it does not shrink
+  beside the player's own increases.
+- **"+10% resistance" is ten points on each of the eight resistances**, added as an item's resistance is, because a
+  resistance is itself a percentage; the other rules that change resistances multiply them, and a multiplier of a
+  player's zero resistance would give nothing.
+- **The creatures notice the player from anywhere on the floor**, as Plague Convergence's arrivals do, so a wave
+  attacks the point rather than waiting to be found.
+- **A Horde arena keeps its points' cells across waves, and each wave's points are captured afresh**, because the row's
+  strength lasts "until the floor ends" and a Horde wave is a floor.
+
+### The research: holding a place on the map against waves
+
+Done after the rulings and before the build; the page quoted was fetched on 2026-09-26 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, local events | https://maxroll.gg/d4/resources/local-events | "Wave of Darkness": "Slay as many enemy waves as you can before time runs out", with the mastery "Defeat 5 waves (1 min)"; "Hold your Ground": "Defeat the attacking waves: 5 left" while protecting an adventurer. |
+
+**What it settles and what it does not.** Diablo IV ships events in which the player holds a place against waves for
+about a minute, for a reward. That settles the pairing of a place held with waves that come while it is held. Diablo
+IV's events reward a chest rather than strength for the rest of the area, so the strength, the two points, the ten
+seconds, the three creatures and the 400 cm are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `WarzoneControlPointsFiguresPointsCaptureWavesAndStrength`: the figures.
+- `StandingInAControlPointForTenSecondsCapturesIt`: two points away from the entrance, drawn, with the panel; three
+  unpaid creatures raised by the rule on the first beat inside; not held at 5 s, with the panel; the count paused and
+  no wave while out; not held at 9.75 s in all and held at 10 s, one wave in all, with the panel.
+- `EachHeldControlPointGivesMoreDamageAndResistance`: nothing before; 10% more attack and spell damage and 10 on a
+  resistance, added as points, with one held; 20 of each with two, with the panel; no wave at a held point.
+- `ANewFloorEndsTheHoldAndBringsNewControlPoints`: on the next floor nothing is held, two points are drawn, the waves'
+  creatures are gone, and the damage and resistance have ended.
+
+One Python check: the row still says "capture and hold", "waves of enemies", "powerful buffs", "summoning allied
+soldiers" and "opening shortcuts".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-26 — A hit on a player measures distance, reads the damage type and spreads Contagious Torment from the player's character, not from its player state
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` and
