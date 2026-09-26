@@ -16,6 +16,9 @@
 // header carries the enumerator and forward-declares this class, so including
 // it here does not make a circle.
 #include "AbilitySystem/CataclysmStacks.h"
+// For the potion heal this component carries. Issue #806. Its header
+// forward-declares this class, so including it here does not make a circle.
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "CataclysmAbilitySystemComponent.generated.h"
 
@@ -227,6 +230,36 @@ public:
 	{
 		return LeechPayments;
 	}
+
+	/**
+	 * The charges in one of the four potion slots. Issue #806.
+	 *
+	 * STORED HERE AND RULED IN `UCataclysmPotions`, as the stacks are: this
+	 * component keeps the numbers and that library decides what changes them.
+	 * Every character has the four counts; only a player character is ever
+	 * credited a kill or given a drink.
+	 *
+	 * @return 0 for a slot outside the four
+	 */
+	float GetPotionCharges(int32 Slot) const
+	{
+		return Slot >= 0 && Slot < UCataclysmPotions::SlotCount ? PotionCharges[Slot] : 0.0f;
+	}
+
+	/** Set one slot's charges, held between 0 and the maximum. */
+	void SetPotionCharges(int32 Slot, float Charges)
+	{
+		if (Slot >= 0 && Slot < UCataclysmPotions::SlotCount)
+		{
+			PotionCharges[Slot] = FMath::Clamp(Charges, 0.0f, UCataclysmPotions::MaxCharges);
+		}
+	}
+
+	/** The potion heal being paid out, if any. */
+	const FCataclysmPotionHeal& GetPotionHeal() const { return PotionHeal; }
+
+	/** Replace the potion heal: a drink starts one, a step pays it down. */
+	void SetPotionHeal(const FCataclysmPotionHeal& Heal) { PotionHeal = Heal; }
 
 	/**
 	 * The sum of increases that produced this character's attack damage.
@@ -2439,6 +2472,18 @@ protected:
 	 * bookkeeping.
 	 */
 	TArray<FCataclysmLeechPayment> LeechPayments;
+
+	/**
+	 * The four potion slots' charges, full at the start. Issue #806. NOT
+	 * REPLICATED, for the reason the leech schedule gives: this is server
+	 * bookkeeping, and the health a drink restores is replicated already.
+	 */
+	float PotionCharges[UCataclysmPotions::SlotCount] = {
+		UCataclysmPotions::MaxCharges, UCataclysmPotions::MaxCharges,
+		UCataclysmPotions::MaxCharges, UCataclysmPotions::MaxCharges};
+
+	/** The potion heal being paid out. Empty when none is running. */
+	FCataclysmPotionHeal PotionHeal;
 
 	/**
 	 * The sum of increases behind the current attack damage. Issue #895.

@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -5593,6 +5594,17 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	DungeonModifiers = Dungeon->Modifiers;
 	DungeonModifierPool = UCataclysmDungeonModifierRules::PoolFor(
 		Run->ModifierPool, Run->ActiveCataclysms);
+
+	// EVERY POTION SLOT IS FULL ON ENTERING A DUNGEON, and only here. Issue
+	// #806. Path of Exile refills flasks in town; this game's town is the
+	// empire, and the way back into a fight from it is this function. Not on the
+	// stairs, which is `GoDownOneFloor`, so a dungeon's floors are fought on
+	// what the kills in it bring back.
+	{
+		UWorld* World = GetWorld();
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		UCataclysmPotions::RefillAll(Controller ? Controller->GetPawn() : nullptr);
+	}
 
 	// AND THE PLAYER STARTS AT ITS ENTRANCE. Without this the floor being walked
 	// is whatever the last dungeon left behind, and entering a shallower one

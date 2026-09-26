@@ -14,6 +14,7 @@
 #include "Items/CataclysmWearing.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -225,6 +226,16 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::TogglePassiveTree,
 		ETriggerEvent::Started, this,
 		&ACataclysmPlayerController::Input_TogglePassiveTree);
+
+	// Started, so a potion is drunk as the key goes down. Issue #806.
+	Input->BindNativeAction(Config, Names::DrinkPotion1, ETriggerEvent::Started,
+		this, &ACataclysmPlayerController::Input_DrinkPotion1);
+	Input->BindNativeAction(Config, Names::DrinkPotion2, ETriggerEvent::Started,
+		this, &ACataclysmPlayerController::Input_DrinkPotion2);
+	Input->BindNativeAction(Config, Names::DrinkPotion3, ETriggerEvent::Started,
+		this, &ACataclysmPlayerController::Input_DrinkPotion3);
+	Input->BindNativeAction(Config, Names::DrinkPotion4, ETriggerEvent::Started,
+		this, &ACataclysmPlayerController::Input_DrinkPotion4);
 
 	TArray<uint32> BindHandles;
 	Input->BindAbilityActions(Config, this,
@@ -688,6 +699,23 @@ void ACataclysmPlayerController::ZoomPassiveTree(float Notches)
 void ACataclysmPlayerController::Input_TogglePassiveTree()
 {
 	TogglePassiveTree();
+}
+
+void ACataclysmPlayerController::Input_DrinkPotion1() { DrinkPotion(0); }
+void ACataclysmPlayerController::Input_DrinkPotion2() { DrinkPotion(1); }
+void ACataclysmPlayerController::Input_DrinkPotion3() { DrinkPotion(2); }
+void ACataclysmPlayerController::Input_DrinkPotion4() { DrinkPotion(3); }
+
+void ACataclysmPlayerController::DrinkPotion(int32 Slot)
+{
+	const ECataclysmPotionRefusal Refusal = UCataclysmPotions::Drink(GetPawn(), Slot);
+	if (Refusal != ECataclysmPotionRefusal::None)
+	{
+		// LOGGED AND NOT SHOWN, for now. The slot's box on screen already says
+		// how many drinks it holds, which is the refusal a player meets most.
+		UE_LOG(LogCataclysm, Log, TEXT("Potion slot %d not drunk: %s."), Slot + 1,
+			   *UCataclysmPotions::DescribeRefusal(Refusal));
+	}
 }
 
 void ACataclysmPlayerController::TogglePassiveTree()

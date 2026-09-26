@@ -97,6 +97,19 @@ namespace CataclysmInputActionNames
 	 * tree, and free in both control schemes. Issue #50.
 	 */
 	inline const FName TogglePassiveTree = FName(TEXT("TogglePassiveTree"));
+
+	/**
+	 * Drink the potion in one of the four potion slots. Tapped, not held.
+	 *
+	 * 2, 3, 4 AND 5 BY DEFAULT, IN BOTH SCHEMES. Path of Exile puts its five
+	 * flasks on 1 to 5; here 1 is the Support ability in the keyboard scheme,
+	 * so the four potions start at 2 and sit on the same keys whichever scheme
+	 * is active. Issue #806; `UCataclysmPotions` is what a press asks.
+	 */
+	inline const FName DrinkPotion1 = FName(TEXT("DrinkPotion1"));
+	inline const FName DrinkPotion2 = FName(TEXT("DrinkPotion2"));
+	inline const FName DrinkPotion3 = FName(TEXT("DrinkPotion3"));
+	inline const FName DrinkPotion4 = FName(TEXT("DrinkPotion4"));
 }
 
 /**

@@ -50,6 +50,10 @@ KEY_LABEL_TO_ENGINE_KEYS = {
     "Left stick": ("Gamepad_Left2D",),
     "WASD": ("W", "A", "S", "D"),
     "1": ("One",),
+    "2": ("Two",),
+    "3": ("Three",),
+    "4": ("Four",),
+    "5": ("Five",),
     "Q": ("Q",),
     "W": ("W",),
     "E": ("E",),
@@ -81,6 +85,12 @@ ACTION_PHRASE_TO_INPUT_ACTION = {
     "Open and close the carried inventory": "IA_ToggleInventory",
     "Open and close the character creator": "IA_ToggleCharacterCreation",
     "Open and close the passive class tree": "IA_TogglePassiveTree",
+    # The four potion slots, issue #806. One phrase a slot, because each slot is
+    # its own action.
+    "Drink the potion in slot 1": "IA_DrinkPotion1",
+    "Drink the potion in slot 2": "IA_DrinkPotion2",
+    "Drink the potion in slot 3": "IA_DrinkPotion3",
+    "Drink the potion in slot 4": "IA_DrinkPotion4",
 }
 
 #: The heading above each table in the document, and the list in the generator it
