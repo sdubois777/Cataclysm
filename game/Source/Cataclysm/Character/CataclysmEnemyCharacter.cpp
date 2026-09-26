@@ -1352,6 +1352,11 @@ void ACataclysmEnemyCharacter::SetGrimTotemsDamageMultiplier(float NewMultiplier
 	SetDamageMultiplierFrom(GrimTotemsDamageSource, NewMultiplier);
 }
 
+void ACataclysmEnemyCharacter::SetBlackestShadowDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(BlackestShadowDamageSource, NewMultiplier);
+}
+
 void ACataclysmEnemyCharacter::SetDamageMultiplierFrom(const TCHAR* Source, float NewMultiplier)
 {
 	const float Wanted = FMath::Max(0.0f, NewMultiplier);
