@@ -183,9 +183,8 @@ rivers, the stacks, the burn, the disease keyword, the cleanse, the panel line);
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and run in one editor window**; the figures
+are in "Run" at the end of this entry.
 
 ### The row
 
@@ -302,10 +301,33 @@ Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "rivers of toxic waste", "disease stacks", "do not time out" and "must be
 cleansed".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One window on 2026-09-26, ending at 02:49 UTC, on development d6144aa8 with this change at 37fea225, with
+the build machine and no workbook. Every figure below is what `pytest`, `python tools/unreal_build.py` or
+`prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, started with no CI run in progress | `5500 passed, 8 skipped` (JUnit 5,508, no failures) |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite | `2576 tests performed, 2576 succeeded, 0 failed`; 2576 declared, gap 0, as registered (2569 + 7) |
+
+Three proofs with `prove_cpp_guard`, each anchor counted from the proof script's own table immediately before the
+window. Each restored run printed `1 tests performed, 1 succeeded, 0 failed`, and the source hash was the same
+before and after each.
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| a. entering adds no stack: `RawSewageStacks += 0;` | `Cataclysm.DungeonModifierEffects.ARiverAddsAStack` | `1 tests performed, 0 succeeded, 1 failed: ARiverAddsAStackOnEnteringAndEachTwoSecondsInIt` | 8, as registered: "entering adds one", "the player carries the disease keyword", "and counts one debuff", "1.75 seconds more: still one", "two seconds more: two", "out of the river: still two", "back in: three", "the panel at three" |
+| b. a floor's boss cleanses nothing: `(true \|\| !DiedAsAFloorsBoss(...))` | `Cataclysm.DungeonModifierEffects.AFloorsBossOrThePlayersDeathCleansesRawSewage` | `1 tests performed, 0 succeeded, 1 failed: AFloorsBossOrThePlayersDeathCleansesRawSewage` | 4, as registered: "a boss's death cleanses every stack", "and the keyword goes on the next beat", "so no debuff is counted", "a stack held again" |
+| c. the burn written as 0: `* 0.0f;` | `Cataclysm.DungeonModifierEffects.RawSewageBurnsEachSecond` | `1 tests performed, 0 succeeded, 1 failed: RawSewageBurnsEachSecondAndOnTheNextFloor` | 2, as registered: "the stacks burn out of the river (0.0 lost)", "and still burn (0.0 lost)" |
+
+The whole suite also reported 40 tests that skipped part of what they check, all of them art tests (the Paragon art
+is not in a worktree); none is a dungeon-modifier test.
+
+**Final Python**, after the entry's Run section: `5500 passed, 8 skipped` (JUnit 5,508, no failures), as before the
+window.
 
 ---
 
