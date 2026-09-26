@@ -1800,6 +1800,57 @@ class TestABonusCanGrowWithDamageReductionOrMaximumMana:
             gen.passive_effects(rows)
 
 
+class TestScaleStepHigh:
+    """The step that rolls with the value. Issue #1833, the kill counter:
+    "for every 100,000-500,000 kills" states the step as a range, and a row
+    writes it as Scale Step and Scale Step High so the item's roll picks one
+    step where it picks the value."""
+
+    WEAPON = "Positive_This_weapon_has_5_20_more_damage_for_every_100"
+    WEAPON_WORDS = "This weapon has 5-20% more damage for every 100,000-500,000 kills"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WEAPON_WORDS, "Generic", 2, "Item.Slot.Weapon", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
+              "Value High", "Required Tags", "Condition", "Condition Value",
+              "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
+              "Scale Max Steps", "Stack Seconds", "Scale Offset",
+              "Every Seconds", "Every Nth", "Scale Step High"]
+
+    def book(self, tmp_path, changes):
+        values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
+                  "Stat": "attack_damage", "Value Kind": "more",
+                  "Value Low": 5, "Value High": 20, "Scale": "weapon_kills",
+                  "Scale Step": 100000, "Scale Step High": 500000}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "scale_step_high.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_stated_step_range_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {}))
+        assert (out[0]["Scale"], out[0]["ScaleStep"], out[0]["ScaleStepHigh"]) == (
+            "weapon_kills", 100000.0, 500000.0)
+
+    def test_a_step_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.book(tmp_path, {"Scale Step High": 400000}))
+
+    def test_a_high_end_not_above_the_step_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is"):
+            gen.enchantment_effects(self.book(tmp_path, {"Scale Step": 500000,
+                                                         "Scale Step High": 100000}))
+
+    def test_a_high_end_with_no_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no scale"):
+            gen.enchantment_effects(self.book(tmp_path, {"Scale": None, "Scale Step": None}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
@@ -1836,7 +1887,7 @@ class TestEnchantmentEffects:
               "Value High", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
-              "Every Seconds", "Every Nth"]
+              "Every Seconds", "Every Nth", "Scale Step High"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1863,7 +1914,7 @@ class TestEnchantmentEffects:
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
             "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
-            "EverySeconds": 0.0, "EveryNth": 0}]
+            "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.

@@ -1592,7 +1592,15 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: EVERY NTH JOINED ON 2026-09-24 for issue #1833's "every Nth" rows, built
 #: ahead of them while the design workbook is with another session, and LEFT
 #: with those rows. The table is empty again.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#:
+#: SCALE STEP HIGH JOINED ON 2026-09-25 for issue #1833's kill counter, built
+#: ahead of its two rows while the design workbook is with another session,
+#: and leaves with those rows.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Enchantment Effects": {
+        "Scale Step High": "issue #1833: the kill counter's rows add this column",
+    },
+}
 
 
 class _Headers(dict):
@@ -4271,6 +4279,10 @@ SCALES = {
     # 26 dungeons), and the widest stated step is 500,000.
     "run_kills": (0.0, 1_000_000.0, "a number of kills this run"),
     "character_kills": (0.0, 1_000_000.0, "a number of kills in every run"),
+    # "This weapon has 5-20% more damage for every 100,000-500,000 kills" is
+    # `weapon_kills`: the kills made with the item the row is on, counted on
+    # both worn weapons. Issue #1833, ruled 2026-09-25. The same bound.
+    "weapon_kills": (0.0, 1_000_000.0, "a number of kills with the weapon"),
 }
 
 
@@ -5333,6 +5345,33 @@ def enchantment_effects(book) -> list[dict]:
                 f"is not an every-Nth action, so it would be dropped. Those "
                 f"actions: {', '.join(NTH_ACTIONS)}.")
 
+        # THE STEP'S HIGH END, WHEN THE STEP ROLLS WITH THE VALUE. Issue #1833,
+        # the kill counter: "for every 100,000-500,000 kills" states the step
+        # as a range, and the item's roll picks one step where it picks the
+        # value, so the hover text, which shows both numbers at that roll, and
+        # the effect agree. The pair is a range the sentence states, low end
+        # first, and the high end is inside the scale's bounds.
+        step_high_text = clean(_cell(raw, headers, "Scale Step High"))
+        scale_step_high = 0.0
+        if step_high_text:
+            scale_step_high = number(step_high_text, "Scale Step High", index)
+            if not scale:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states Scale "
+                    f"Step High and no scale, so it would be dropped.")
+            top = SCALES[scale][1]
+            if not scale_step < scale_step_high <= top:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} steps from "
+                    f"{scale_step:g} to {scale_step_high:g}. The high end is "
+                    f"above the step and at most {top:g}.")
+            if (scale_step, scale_step_high) not in enchantment_ranges(words[name]):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} steps from "
+                    f"{scale_step:g} to {scale_step_high:g}, which its words "
+                    f"{words[name]!r} do not state as a range, so the hover "
+                    f"text would show one step and the effect use another.")
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -5354,6 +5393,7 @@ def enchantment_effects(book) -> list[dict]:
             "ScaleOffset": scale_offset,
             "EverySeconds": every_seconds,
             "EveryNth": every_nth,
+            "ScaleStepHigh": scale_step_high,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A

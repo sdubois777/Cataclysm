@@ -1279,6 +1279,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 	}
 	TestEqual(TEXT("with 3 sockets"), Weapon.Item.Sockets, 3);
 	TestEqual(TEXT("and 2.5 residue"), Weapon.Item.Residue, 2.5f);
+	TestEqual(TEXT("and 123456 kills, issue #1833"), Weapon.Item.Kills, 123456);
 
 	// AND ONE ENCHANTMENT, every field of it away from its default, so a worn
 	// item's enchantment is shown to survive rather than be re-defaulted.

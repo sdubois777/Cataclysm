@@ -37,6 +37,9 @@
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmCharacterSheetLayout.h"
 #include "Interface/CataclysmSkillBar.h"
+#include "Interface/CataclysmItemTooltip.h"
+#include "Items/CataclysmDropRoll.h"
+#include "Save/CataclysmSaveStorage.h"
 #include "GameplayTagContainer.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -2302,9 +2305,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4277,9 +4280,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -7229,6 +7232,350 @@ bool FCataclysmKillsThisRunRowsTest::RunTest(const FString&)
 		Check(TEXT("two thousand more less one"), 0.0005f + 0.0005f);
 		Equipment->Unequip(Slot, Removed);
 	}
+	return true;
+}
+
+namespace CataclysmWeaponKillTest
+{
+	const TCHAR* WeaponRow = TEXT("Positive_This_weapon_has_5_20_more_damage_for_every_100");
+	const TCHAR* LifetimeRow = TEXT("Negative_You_lose_1_4_max_resistances_for_every_100_000");
+
+	/** A one-handed sword carrying the kill row at a roll, with a count already made. */
+	FCataclysmItem Sword(float Roll, int32 Kills)
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+		FCataclysmItem Item = Carrying(TEXT("Weapon_Sword"), WeaponRow, DrawbackWithNoEffect);
+		Item.Enchantments[0].PositiveRoll = Roll;
+		Item.Kills = Kills;
+		return Item;
+	}
+
+	/** The one enchantment "more" modifier on a stat, or -1 when there is not exactly one. */
+	float OnlyEnchantmentMore(const TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+							  const TCHAR* Stat)
+	{
+		const TArray<FCataclysmStatModifier>* On = Totals.Find(FName(Stat));
+		float Found = -1.0f;
+		int32 Count = 0;
+		for (const FCataclysmStatModifier& Each : On ? *On : TArray<FCataclysmStatModifier>())
+		{
+			if (Each.Source == ECataclysmModifierSource::Enchantment
+				&& Each.Bucket == ECataclysmStatBucket::More)
+			{
+				Found = Each.Value;
+				++Count;
+			}
+		}
+		return Count == 1 ? Found : -1.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillCountsOnEachWornWeaponTest,
+	"Cataclysm.KillCounter.EveryPlayerKillCountsOnEachWornWeapon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter, window B; ruled 2026-09-25 under the owner's
+ * delegation. A possessed player's kill counts on the one two-handed weapon it
+ * starts with; once it holds a sword and a dagger, the next kill counts once on
+ * each, because both weapons' damage is in every blow.
+ */
+bool FCataclysmKillCountsOnEachWornWeaponTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	using namespace CataclysmEnchantmentEffectTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPossessedPlayer(Scope.World);
+	UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("a possessed player's equipment"), Equipment)
+		|| !TestNotNull(TEXT("holding a weapon"), Equipment->EquippedAt(ECataclysmGearSlot::Weapon1)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a two-handed weapon leaves the second slot empty"),
+		Equipment->SlotIsEmpty(ECataclysmGearSlot::Weapon2));
+
+	const auto Kill = [&Scope, Player](float Along)
+	{
+		ACataclysmEnemyCharacter* Enemy = SpawnEnemy(Scope.World, FVector(Along, 0.0f, 0.0f));
+		if (Enemy)
+		{
+			UCataclysmSkillEffects::ApplyHit(Player, Enemy, 100.0f, FGameplayTagContainer());
+			UCataclysmCombatEvents::NoteDeath(Enemy);
+		}
+		return Enemy != nullptr;
+	};
+	if (!TestTrue(TEXT("an enemy killed"), Kill(150.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the two-handed weapon counts one"),
+		Equipment->EquippedAt(ECataclysmGearSlot::Weapon1)->Kills, 1);
+
+	Equipment->UnequipEverything();
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	FCataclysmItem Blade;
+	Blade.Base = FName(TEXT("Weapon_Sword"));
+	FCataclysmItem Knife;
+	Knife.Base = FName(TEXT("Weapon_Dagger"));
+	Equipment->EquipInto(Blade, ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved);
+	Equipment->EquipInto(Knife, ECataclysmGearSlot::Weapon2, Removed, AlsoRemoved);
+	const FCataclysmItem* First = Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+	const FCataclysmItem* Second = Equipment->EquippedAt(ECataclysmGearSlot::Weapon2);
+	if (!TestNotNull(TEXT("a sword in the first hand"), First)
+		|| !TestNotNull(TEXT("and a dagger in the second"), Second)
+		|| !TestTrue(TEXT("another enemy killed"), Kill(300.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the sword counts one"), Equipment->EquippedAt(ECataclysmGearSlot::Weapon1)->Kills, 1);
+	TestEqual(TEXT("and so does the dagger"), Equipment->EquippedAt(ECataclysmGearSlot::Weapon2)->Kills, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponKeepsItsKillsTest,
+	"Cataclysm.KillCounter.AWeaponKeepsItsKillsThroughUnequipTheStashAndASave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter, window B. A sword worn for three kills comes
+ * off holding three; put in the private stash and worn in a character record,
+ * it still holds three after the record is written to JSON and read back.
+ */
+bool FCataclysmWeaponKeepsItsKillsTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	using namespace CataclysmEnchantmentEffectTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearer Wearer(Scope.World);
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	FCataclysmItem Blade;
+	Blade.Base = FName(TEXT("Weapon_Sword"));
+	Wearer.Equipment->EquipInto(Blade, ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved);
+	for (int32 Kill = 0; Kill < 3; ++Kill)
+	{
+		Wearer.Equipment->NoteKillOnWornWeapons(nullptr);
+	}
+	FCataclysmItem TakenOff;
+	if (!TestTrue(TEXT("the sword comes off"),
+			Wearer.Equipment->Unequip(ECataclysmGearSlot::Weapon1, TakenOff)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("holding its three kills"), TakenOff.Kills, 3);
+
+	UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>();
+	FCataclysmCarriedSlot Stashed;
+	Stashed.Item = TakenOff;
+	Record->PrivateStash.Add(Stashed);
+	FCataclysmWornItem Worn;
+	Worn.Slot = ECataclysmGearSlot::Weapon1;
+	Worn.Item = TakenOff;
+	Record->WornGear.Add(Worn);
+
+	FString Json;
+	FString Error;
+	if (!TestTrue(TEXT("the record writes"), FCataclysmSaveStorage::ToJson(Record, Json, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
+		Json, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("and reads back"), Read)
+		|| !TestEqual(TEXT("one stashed"), Read->PrivateStash.Num(), 1)
+		|| !TestEqual(TEXT("one worn"), Read->WornGear.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the stashed sword still holds three"), Read->PrivateStash[0].Item.Kills, 3);
+	TestEqual(TEXT("and the worn one"), Read->WornGear[0].Item.Kills, 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponTooltipKillsTest,
+	"Cataclysm.KillCounter.AWeaponsTooltipShowsItsKills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Issue #1833: "Kills: 7" on a sword with seven, and no such line on one with none. */
+bool FCataclysmWeaponTooltipKillsTest::RunTest(const FString&)
+{
+	FCataclysmCarriedSlot Slot;
+	Slot.Item.Base = FName(TEXT("Weapon_Sword"));
+	const auto Lines = [&Slot]()
+	{
+		return UCataclysmItemTooltip::LinesFor(
+			Slot, UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable(),
+			UCataclysmDropRoll::LoadCraftingMaterialTable(),
+			UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+			UCataclysmDropRoll::LoadNegativeEnchantmentTable());
+	};
+	TestFalse(TEXT("a sword with no kill states none"),
+		Lines().ContainsByPredicate([](const FString& Line) { return Line.StartsWith(TEXT("Kills")); }));
+	Slot.Item.Kills = 7;
+	TestTrue(TEXT("one with seven says so"), Lines().Contains(TEXT("Kills: 7")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponKillRowStepsTest,
+	"Cataclysm.Enchantments.TheWeaponKillRowGrowsAtItsRolledStepAndRefreshesOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter, window B. "This weapon has 5-20% more damage
+ * for every 100,000-500,000 kills", worn on a sword at the top roll: 20% more
+ * per 500,000 kills. A sword that has made 499,998 grants nothing; the kill
+ * that reaches 500,000 refreshes the grant, once, and attack and spell damage
+ * are each 1.2 times; the kills either side refresh nothing.
+ */
+bool FCataclysmWeaponKillRowStepsTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmWeaponKillTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearer Wearer(Scope.World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	Wearer.Equipment->EquipInto(Sword(1.0f, 499'998), ECataclysmGearSlot::Weapon1,
+								Removed, AlsoRemoved);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FGameplayTagContainer NoTags;
+	const auto Multiplier = [ASC, &NoTags](const TCHAR* Stat)
+	{
+		return ASC->MultiplierForStatAgainst(FName(Stat), NoTags, nullptr);
+	};
+	const float Attack = Multiplier(TEXT("attack_damage"));
+	const float Spell = Multiplier(TEXT("spell_damage"));
+
+	TestFalse(TEXT("the 499,999th kill crosses no step"),
+		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
+	TestEqual(TEXT("and grants nothing yet"), Multiplier(TEXT("attack_damage")), Attack, 0.0001f);
+	TestTrue(TEXT("the 500,000th crosses the rolled step and refreshes the grant"),
+		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
+	TestEqual(FString::Printf(TEXT("attack damage 1.2 times. %s"), StaleAsset),
+		Multiplier(TEXT("attack_damage")) / Attack, 1.2f, 0.0001f);
+	TestEqual(TEXT("and spell damage"), Multiplier(TEXT("spell_damage")) / Spell, 1.2f, 0.0001f);
+	TestFalse(TEXT("the next kill refreshes nothing"),
+		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
+	TestEqual(TEXT("and changes nothing"), Multiplier(TEXT("attack_damage")) / Attack, 1.2f, 0.0001f);
+
+	// AT THE BOTTOM ROLL THE STEP IS 100,000 AND THE VALUE 5. A sword at 99,999
+	// grants nothing, and its next kill is a step.
+	Wearer.Equipment->UnequipEverything();
+	Wearer.Equipment->EquipInto(Sword(0.0f, 99'999), ECataclysmGearSlot::Weapon1,
+								Removed, AlsoRemoved);
+	Wearer.Equipment->RefreshAttributes(ASC);
+	const float Low = Multiplier(TEXT("attack_damage"));
+	TestTrue(TEXT("at the bottom roll the 100,000th kill is a step"),
+		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
+	TestEqual(TEXT("worth 5%"), Multiplier(TEXT("attack_damage")) / Low, 1.05f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoWeaponsKillRowTest,
+	"Cataclysm.Enchantments.TwoWeaponsWithTheKillRowGrantItOnceAtTheHigherRollsCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter, window B; ruled 2026-09-25 under the owner's
+ * delegation. Two worn swords carry "This weapon has 5-20% more damage for
+ * every 100,000-500,000 kills": the benefit is granted once, at the higher
+ * roll, with THAT sword's count. A top-roll sword at 1,000,000 kills and a
+ * bottom-roll one at 900,000 grant 40 (two steps of 500,000 at 20), not 20
+ * (the other's 900,000 at the top step) and not 45. On a tie of rolls, the
+ * larger count.
+ */
+bool FCataclysmTwoWeaponsKillRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmWeaponKillTest;
+	FTables Tables;
+	if (!LoadAll(*this, Tables))
+	{
+		return false;
+	}
+	int32 Added = 0;
+	TestEqual(TEXT("the higher roll's own count: 40 more"),
+		OnlyEnchantmentMore(Gather(Tables, {Sword(1.0f, 1'000'000), Sword(0.0f, 900'000)}, Added),
+							TEXT("attack_damage")), 40.0f, 0.001f);
+	TestEqual(TEXT("whichever sword comes first"),
+		OnlyEnchantmentMore(Gather(Tables, {Sword(0.0f, 900'000), Sword(1.0f, 1'000'000)}, Added),
+							TEXT("attack_damage")), 40.0f, 0.001f);
+	TestEqual(TEXT("a tie of rolls takes the larger count"),
+		OnlyEnchantmentMore(Gather(Tables, {Sword(1.0f, 500'000), Sword(1.0f, 1'000'000)}, Added),
+							TEXT("attack_damage")), 40.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLifetimeKillRowTest,
+	"Cataclysm.Enchantments.TheLifetimeKillsRowLowersTheCapAtItsRolledStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter, window B. "You lose 1-4% max resistances for
+ * every 100,000 - 500,000 kills", worn at the top roll: 4 off the 70 cap per
+ * 500,000 kills the character has made. 100,000 and 499,999 take nothing, so
+ * the step is the rolled 500,000 and not the low end; 500,000 takes 4 and
+ * 1,000,000 takes 8.
+ */
+bool FCataclysmLifetimeKillRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmWeaponKillTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPossessedPlayer(Scope.World);
+	ACataclysmPlayerState* State =
+		Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	UCataclysmAbilitySystemComponent* ASC =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("a possessed player"), ASC) || !TestNotNull(TEXT("its equipment"), Equipment))
+	{
+		return false;
+	}
+	Equipment->UnequipEverything();
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, LifetimeRow),
+					 Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(ASC);
+
+	using FCalc = UCataclysmDamageCalculation;
+	State->SetLifetimeKills(100'000);
+	TestEqual(TEXT("100,000 kills take nothing: the step rolled to 500,000"),
+		FCalc::ResistanceCapOf(ASC), 70.0f, 0.001f);
+	State->SetLifetimeKills(499'999);
+	TestEqual(TEXT("499,999 take nothing"), FCalc::ResistanceCapOf(ASC), 70.0f, 0.001f);
+	State->SetLifetimeKills(500'000);
+	TestEqual(FString::Printf(TEXT("500,000 take 4. %s"), CataclysmKillCounterTest::StaleAsset),
+		FCalc::ResistanceCapOf(ASC), 66.0f, 0.001f);
+	State->SetLifetimeKills(1'000'000);
+	TestEqual(TEXT("1,000,000 take 8"), FCalc::ResistanceCapOf(ASC), 62.0f, 0.001f);
 	return true;
 }
 

@@ -993,6 +993,11 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			{
 				Mine->NoteKill();
 			}
+			// AND ON EACH WORN WEAPON, whose own count "This weapon has..." reads.
+			if (UCataclysmEquipmentComponent* Gear = GetEquipment())
+			{
+				Gear->NoteKillOnWornWeapons(Acting);
+			}
 			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags);
 		}
 

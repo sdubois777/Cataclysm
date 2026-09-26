@@ -943,7 +943,8 @@ namespace
 			{
 				return false;
 			}
-			Out.ScaleStep = Effect.ScaleStep;
+			// ROLLED WITH THE VALUE WHEN THE ROW STATES TWO STEPS. Issue #1833.
+			Out.ScaleStep = UCataclysmItemModifiers::RolledScaleStep(Effect, Roll);
 			// AND ITS CAP. Issue #1815.
 			Out.ScaleMaxSteps = Effect.ScaleMaxSteps;
 			// AND, FOR A ROW'S OWN STACKS, WHOSE THEY ARE. Issue #1833. The same
@@ -964,6 +965,58 @@ namespace
 FName UCataclysmItemModifiers::OwnStackKeyFor(const FCataclysmEnchantmentEffectRow& Effect)
 {
 	return FName(*FString::Printf(TEXT("%s:%s"), *Effect.Enchantment, *Effect.Stat));
+}
+
+float UCataclysmItemModifiers::RolledScaleStep(const FCataclysmEnchantmentEffectRow& Effect,
+											   float Roll)
+{
+	return Effect.ScaleStepHigh > Effect.ScaleStep
+		? UCataclysmItemValues::EnchantmentValue(Effect.ScaleStep, Effect.ScaleStepHigh, Roll)
+		: Effect.ScaleStep;
+}
+
+bool UCataclysmItemModifiers::KillCrossesAStep(const FCataclysmItem& Item, int32 KillsBefore,
+											   const UDataTable* EffectTable)
+{
+	if (!EffectTable)
+	{
+		return false;
+	}
+	const auto Crosses = [KillsBefore, EffectTable](FName Enchantment, float Roll)
+	{
+		if (Enchantment.IsNone())
+		{
+			return false;
+		}
+		const FString Named = Enchantment.ToString();
+		for (const TPair<FName, uint8*>& Row : EffectTable->GetRowMap())
+		{
+			const FCataclysmEnchantmentEffectRow* Effect =
+				reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+			if (!Effect || Effect->Enchantment != Named
+				|| !Effect->Scale.Equals(TEXT("weapon_kills"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+			const float Step = RolledScaleStep(*Effect, Roll);
+			if (Step > 0.0f
+				&& FMath::FloorToInt32(static_cast<float>(KillsBefore) / Step)
+					!= FMath::FloorToInt32(static_cast<float>(KillsBefore + 1) / Step))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	for (const FCataclysmRolledEnchantment& Rolled : Item.Enchantments)
+	{
+		if (Crosses(Rolled.Positive, Rolled.PositiveRoll)
+			|| Crosses(Rolled.Negative, Rolled.NegativeRoll))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
@@ -1004,8 +1057,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	}
 
 	int32 Added = 0;
+	// `ItemKills` IS THE COUNT OF THE ITEM THE ENCHANTMENT IS ON, which only a
+	// `weapon_kills` row reads. Issue #1833, the kill counter.
 	auto Grant = [&Totals, &EffectsFor, &Added, Actions](FName Enchantment,
-													  float Roll)
+													  float Roll, int32 ItemKills)
 	{
 		const TArray<const FCataclysmEnchantmentEffectRow*>* Effects =
 			EffectsFor.Find(Enchantment);
@@ -1207,6 +1262,28 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					   *Effect->Enchantment, *Effect->Condition, *Effect->Scale);
 				continue;
 			}
+
+			// THE ITEM'S OWN KILLS, FOLDED IN HERE rather than read when the stat
+			// is asked, because no scale can see an item: every other scale reads
+			// the character. Issue #1833, ruled 2026-09-25 under the owner's
+			// delegation. The value is fixed until the count crosses its next
+			// step, and the equipment refreshes the grant when it does
+			// (`UCataclysmEquipmentComponent::NoteKillOnWornWeapons`).
+			if (Modifier.Scale == ECataclysmStatScale::PerKillOfThisWeapon)
+			{
+				int32 Steps = Modifier.ScaleStep > 0.0f
+					? FMath::FloorToInt32(static_cast<float>(FMath::Max(0, ItemKills))
+										  / Modifier.ScaleStep)
+					: 0;
+				if (Modifier.ScaleMaxSteps > 0)
+				{
+					Steps = FMath::Min(Steps, Modifier.ScaleMaxSteps);
+				}
+				Modifier.Value *= static_cast<float>(Steps);
+				Modifier.Scale = ECataclysmStatScale::Fixed;
+				Modifier.ScaleStep = 0.0f;
+				Modifier.ScaleMaxSteps = 0;
+			}
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
 			++Added;
 		}
@@ -1218,6 +1295,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	// higher roll is used whichever piece comes first in the list.
 	TArray<FName> BenefitOrder;
 	TMap<FName, float> HighestBenefitRoll;
+
+	// AND THE KILLS OF THE ITEM HOLDING THAT HIGHER ROLL, the larger count on a
+	// tie. Issue #1833, ruled 2026-09-25 under the owner's delegation: a
+	// benefit is granted once, so the one grant reads one item's count.
+	TMap<FName, int32> BenefitKills;
 
 	// AND HOW MANY WORN ITEMS CARRY EACH NAMED SET. Issue #45. A set's rows turn
 	// on by that count rather than per piece, so the loop below counts a set's
@@ -1241,11 +1323,21 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			{
 				if (float* Highest = HighestBenefitRoll.Find(Rolled.Positive))
 				{
-					*Highest = FMath::Max(*Highest, Rolled.PositiveRoll);
+					int32& Kills = BenefitKills.FindOrAdd(Rolled.Positive);
+					if (Rolled.PositiveRoll > *Highest)
+					{
+						*Highest = Rolled.PositiveRoll;
+						Kills = Item.Kills;
+					}
+					else if (Rolled.PositiveRoll == *Highest)
+					{
+						Kills = FMath::Max(Kills, Item.Kills);
+					}
 				}
 				else
 				{
 					HighestBenefitRoll.Add(Rolled.Positive, Rolled.PositiveRoll);
+					BenefitKills.Add(Rolled.Positive, Item.Kills);
 					BenefitOrder.Add(Rolled.Positive);
 				}
 			}
@@ -1257,7 +1349,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			if (!Rolled.Negative.IsNone()
 				&& !IsSetEnchantmentRow(NegativeTable, Rolled.Negative))
 			{
-				Grant(Rolled.Negative, Rolled.NegativeRoll);
+				Grant(Rolled.Negative, Rolled.NegativeRoll, Item.Kills);
 			}
 		}
 
@@ -1269,7 +1361,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 
 	for (const FName& Benefit : BenefitOrder)
 	{
-		Grant(Benefit, HighestBenefitRoll[Benefit]);
+		Grant(Benefit, HighestBenefitRoll[Benefit], BenefitKills.FindRef(Benefit));
 	}
 
 	// A SET'S ROWS, ONCE ITS WORN PIECES ARE COUNTED. Issue #45, on the owner's
@@ -1301,10 +1393,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			{
 				if (*Pieces >= Set.Thresholds[Index])
 				{
-					Grant(Set.Positives[Index], SetRowRoll);
+					Grant(Set.Positives[Index], SetRowRoll, /*ItemKills=*/0);
 				}
 			}
-			Grant(Set.Negative, SetRowRoll);
+			Grant(Set.Negative, SetRowRoll, /*ItemKills=*/0);
 		}
 	}
 

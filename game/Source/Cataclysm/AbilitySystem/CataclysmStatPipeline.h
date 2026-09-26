@@ -2114,6 +2114,17 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerKillOfTheCharacter
 		UMETA(DisplayName = "Per Kill Of The Character"),
+
+	/**
+	 * `Value` per whole `ScaleStep` kills made with the item the row is on.
+	 * Issue #1833: "This weapon has 5-20% more damage for every
+	 * 100,000-500,000 kills". NEVER EVALUATED HERE: the item's count is folded
+	 * into a fixed value when the item's modifiers are built
+	 * (`UCataclysmItemModifiers::AccumulateEnchantmentsInto`), because no
+	 * scale can see an item. One that reaches the pipeline counts nothing.
+	 */
+	PerKillOfThisWeapon
+		UMETA(DisplayName = "Per Kill Of This Weapon"),
 };
 
 /**

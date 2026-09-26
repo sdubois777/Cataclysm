@@ -2273,4 +2273,15 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	int32 EveryNth = 0;
+
+	/**
+	 * The step's highest end when the step rolls with the value, or 0 when
+	 * `ScaleStep` is the one step. Issue #1833, the kill counter: "for every
+	 * 100,000-500,000 kills" is 100,000 to 500,000, and the item's roll picks
+	 * the step where it picks the value, so the hover text, which shows both
+	 * numbers at that roll, and the effect agree. See
+	 * `UCataclysmItemModifiers::RolledScaleStep`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ScaleStepHigh = 0.0f;
 };

@@ -605,6 +605,13 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 									  NegativeEnchantmentTable));
 	}
 
+	// THE KILLS MADE WITH IT, once there are any. Issue #1833, the kill
+	// counter: what "This weapon has ... for every ... kills" counts.
+	if (Item.Kills > 0)
+	{
+		Lines.Add(FString::Printf(TEXT("Kills: %d"), Item.Kills));
+	}
+
 	if (Item.Sockets > 0)
 	{
 		Lines.Add(FString::Printf(TEXT("%d socket%s"), Item.Sockets,

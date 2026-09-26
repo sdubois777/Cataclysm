@@ -171,6 +171,7 @@ namespace
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
 		{ TEXT("run_kills"),           ECataclysmStatScale::PerKillThisRun },
 		{ TEXT("character_kills"),     ECataclysmStatScale::PerKillOfTheCharacter },
+		{ TEXT("weapon_kills"),        ECataclysmStatScale::PerKillOfThisWeapon },
 	};
 
 	/**
@@ -1547,6 +1548,11 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerKillOfTheCharacter:
 		return State.CharacterKills < 0
 			? 0.0f : StackedValue(Modifier, State.CharacterKills);
+
+	// NOTHING, because the item folds its own count in before the modifier is
+	// recorded. See `PerKillOfThisWeapon`.
+	case ECataclysmStatScale::PerKillOfThisWeapon:
+		return 0.0f;
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
