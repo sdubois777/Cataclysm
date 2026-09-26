@@ -32161,6 +32161,62 @@ bool FCataclysmShadowyFireTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// AN EVADED FIRE HIT EXPOSES NOTHING; THE SAME HIT NOT EVADED DOES. As ruled on 2026-09-26, after the decision of
+// 2026-09-05 that an evaded attack applies nothing it was carrying.
+//
+// THE NOTICE IS BUILT AND ANNOUNCED HERE, NOT DEALT: evasion is a random roll against a soft cap, so no blow a test
+// deals is certain to be evaded. The second notice, the same but not evaded, is the control: it shows a notice built
+// this way reaches the rule, so the first exposing nothing is the evasion and not the notice.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyEvadedTest,
+	"Cataclysm.DungeonModifierEffects.AnEvadedFireHitExposesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyEvadedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!Mode || !TestNotNull(TEXT("the world announces blows"), Events))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("it is shrouded"), Imp->bShrouded))
+	{
+		return false;
+	}
+
+	FGameplayTagContainer FireTags;
+	FireTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic"))));
+	FCataclysmHitNotice Notice;
+	Notice.Attacker = Player.Character;
+	Notice.DealtBy = Player.Character;
+	Notice.Target = Imp;
+	Notice.EffectTags = &FireTags;
+	Notice.bEvaded = true;
+	Events->OnHit.Broadcast(Notice);
+	TestTrue(TEXT("an evaded fire hit leaves it shrouded"), Imp->bShrouded);
+
+	Notice.bEvaded = false;
+	Events->OnHit.Broadcast(Notice);
+	TestFalse(TEXT("the same hit not evaded exposes it"), Imp->bShrouded);
+	return true;
+}
+
 // THE BLACKEST SHADOW'S LIGHT IS LIGHT: A CREATURE WITHIN IT IS EXPOSED, ONE BEYOND IT SHROUDED.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyOrbTest,
 	"Cataclysm.DungeonModifierEffects.TheBlackestShadowsLightExposesAShroudedCreature",
@@ -32274,15 +32330,6 @@ bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
 	Beat(Mode, 1);
 	const TArray<FVector> Lights = Mode->ShadowyEnemiesLightsNow();
 	const FVector Exit = Mode->CurrentFloor->ExitWorld();
-	if (!TestTrue(TEXT("the floor has light zones"), Lights.Num() > 0))
-	{
-		return false;
-	}
-	TestTrue(TEXT("the last lies on the exit"), FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
-	TestTrue(TEXT("one more than the row's three, or all the floor had room for and one"),
-			 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
-	TestEqual(TEXT("every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num());
-
 	ACataclysmEnemyCharacter* Gatekeeper = nullptr;
 	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
 	{
@@ -32291,10 +32338,30 @@ bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
 			Gatekeeper = Creature;
 		}
 	}
-	if (!TestNotNull(TEXT("a Gatekeeper stands"), Gatekeeper))
+	if (!TestTrue(TEXT("the floor has light zones"), Lights.Num() > 0)
+		|| !TestNotNull(TEXT("a Gatekeeper stands"), Gatekeeper))
 	{
 		return false;
 	}
+
+	// SET-UP: NO ZONE BUT THE EXIT'S REACHES THE GATEKEEPER, so its being exposed below can only come from the exit's
+	// zone. Every zone not on the exit is checked, so a floor with no exit zone is checked whole.
+	// Asserted rather than assumed, as the coordinating session asked on 2026-09-26: a floor whose random zones fall
+	// on the exit would let this test pass with the exit's zone missing.
+	for (const FVector& Light : Lights)
+	{
+		if (FVector::Dist2D(Light, Exit) >= 1.0f
+			&& !TestTrue(TEXT("set-up: no random light zone reaches the Gatekeeper"),
+						 FVector::Dist2D(Light, Gatekeeper->GetActorLocation()) > Effects::ShadowyEnemiesLightRadiusCm))
+		{
+			return false;
+		}
+	}
+
+	TestTrue(TEXT("the last lies on the exit"), FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
+	TestTrue(TEXT("one more than the row's three, or all the floor had room for and one"),
+			 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	TestEqual(TEXT("every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num());
 	TestTrue(TEXT("on the exit's light"),
 			 FVector::Dist2D(Gatekeeper->GetActorLocation(), Exit) <= Effects::ShadowyEnemiesLightRadiusCm);
 	TestFalse(TEXT("so it is exposed"), Gatekeeper->bShrouded);
