@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-26 — Warzone Control Points: two points a floor, captured by standing in one for 10 seconds while creatures come, each held point giving 10% more damage and 10 resistance until the floor ends; allied soldiers and shortcuts are not built
+## 2026-09-26 — Warzone Control Points: two points a floor, captured by standing in one for 30 seconds while creatures come, each held point giving 10% more damage and 10 resistance until the floor ends; allied soldiers and shortcuts are not built
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
 figures, its place among the rows that are partly built, and two new player floor-effect fields
@@ -27,13 +27,13 @@ deeper into the dungeon." It states no figure. Its buff row, `Buff_Warzone_Contr
 
 A new arena carrying the row gets two control points, drawn on the floor, each 400 cm across its radius and placed on
 floor cells away from the entrance as the Eternal Chorus's cells are. While the player stands in a point not yet held,
-its count runs; stepping out pauses the count and does not reset it. At ten seconds in all the point is captured. While
+its count runs; stepping out pauses the count and does not reset it. At thirty seconds in all the point is captured. While
 the player is capturing a point, three Common creatures of the floor's kinds come every ten seconds, the first on the
 first beat inside, placed about eight metres from the point; they pay nothing, are raised by the rule, and notice the
 player from anywhere on the floor. Each held point gives the player 10% more attack damage and spell damage and 10 on
 each of the eight resistances, until the floor ends. A new floor, or a Horde dungeon's next wave, ends the hold and its
 strength; a new arena brings new points. The panel reads "warzone control points: 1 of 2 held, +10% damage and +10%
-resistances; capturing, 5 of 10 s".
+resistances; capturing, 5 of 30 s".
 
 **Not built: "summoning allied soldiers"**, which needs its own ruling, **and "opening shortcuts"**, which waits on
 doors and on changing the floor's layout during play. The row is listed among those partly built for those reasons.
@@ -47,13 +47,16 @@ every figure is a play-test value:**
   need their own ruling later.**
 - **2 points a floor, captured by standing in the zone for 10 s while waves come, each held point giving +10% damage
   and +10% resistance until the floor ends.**
+- **The capture raised to 30 s, 2026-09-26**, on this change's finding: with 10 s to capture and a wave every 10 s,
+  the player could stand still through a single wave of three. 30 s brings three waves, close to Diablo IV's event
+  below.
 - **A 400 cm radius, placed away from the entrance; stepping out pauses the count rather than resetting it; waves of
   3 unpaid Common creatures every 10 s while capturing.**
 
 **Judgements of this change, under the same delegation, not ruled separately:**
 
-- **The first wave comes on the first beat inside a point**, so every capture meets at least one wave; with 10 s to
-  capture and a wave every 10 s, a capture not interrupted meets exactly one.
+- **The first wave comes on the first beat inside a point**, so every capture meets at least one wave; with 30 s to
+  capture and a wave every 10 s, a capture not interrupted meets three: on its first beat and at 10 and 20 s.
 - **The wave clock runs only while the player is capturing** and starts again at each capture, so a paused capture
   does not bring creatures to an empty point.
 - **"+10% damage" is a More on attack and spell damage**, one multiplier for all the points held, so it does not shrink
@@ -76,7 +79,7 @@ Done after the rulings and before the build; the page quoted was fetched on 2026
 
 **What it settles and what it does not.** Diablo IV ships events in which the player holds a place against waves for
 about a minute, for a reward. That settles the pairing of a place held with waves that come while it is held. Diablo
-IV's events reward a chest rather than strength for the rest of the area, so the strength, the two points, the ten
+IV's events reward a chest rather than strength for the rest of the area, so the strength, the two points, the thirty
 seconds, the three creatures and the 400 cm are this game's own.
 
 ### Tests
@@ -84,9 +87,9 @@ seconds, the three creatures and the 400 cm are this game's own.
 Four automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 - `WarzoneControlPointsFiguresPointsCaptureWavesAndStrength`: the figures.
-- `StandingInAControlPointForTenSecondsCapturesIt`: two points away from the entrance, drawn, with the panel; three
+- `StandingInAControlPointForThirtySecondsCapturesIt`: two points away from the entrance, drawn, with the panel; three
   unpaid creatures raised by the rule on the first beat inside; not held at 5 s, with the panel; the count paused and
-  no wave while out; not held at 9.75 s in all and held at 10 s, one wave in all, with the panel.
+  no wave while out; not held at 29.75 s in all and held at 30 s, three waves in all, with the panel.
 - `EachHeldControlPointGivesMoreDamageAndResistance`: nothing before; 10% more attack and spell damage and 10 on a
   resistance, added as points, with one held; 20 of each with two, with the panel; no wave at a held point.
 - `ANewFloorEndsTheHoldAndBringsNewControlPoints`: on the next floor nothing is held, two points are drawn, the waves'

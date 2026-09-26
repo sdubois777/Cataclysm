@@ -31378,7 +31378,7 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 }
 
-// THE FIGURES: TWO POINTS OF 400 CM; 10 S TO CAPTURE; THREE CREATURES EVERY 10 S, 8 M AWAY; 10% AND 10 A POINT.
+// THE FIGURES: TWO POINTS OF 400 CM; 30 S TO CAPTURE; THREE CREATURES EVERY 10 S, 8 M AWAY; 10% AND 10 A POINT.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneFiguresTest,
 	"Cataclysm.DungeonModifierEffects.WarzoneControlPointsFiguresPointsCaptureWavesAndStrength",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -31389,7 +31389,7 @@ bool FCataclysmWarzoneFiguresTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("two points a floor"), Effects::WarzoneControlPointsPerFloor, 2);
 	TestEqual(TEXT("400 cm across the radius"), Effects::WarzoneControlPointRadiusCm, 400.0f, 0.001f);
-	TestEqual(TEXT("10 s to capture"), Effects::WarzoneCaptureSeconds, 10.0f, 0.001f);
+	TestEqual(TEXT("30 s to capture"), Effects::WarzoneCaptureSeconds, 30.0f, 0.001f);
 	TestEqual(TEXT("a wave every 10 s"), Effects::WarzoneWaveSeconds, 10.0f, 0.001f);
 	TestEqual(TEXT("of three"), Effects::WarzoneCreaturesPerWave, 3);
 	TestEqual(TEXT("8 m from the point"), Effects::WarzoneWaveAwayCm, 800.0f, 0.001f);
@@ -31399,9 +31399,9 @@ bool FCataclysmWarzoneFiguresTest::RunTest(const FString& Parameters)
 }
 
 // TWO POINTS FAR FROM THE ENTRANCE, DRAWN; STANDING IN ONE BRINGS A WAVE OF THREE UNPAID CREATURES AND COUNTS; STEPPING
-// OUT PAUSES THE COUNT; 10 S IN ALL CAPTURES IT.
+// OUT PAUSES THE COUNT; 30 S IN ALL CAPTURES IT, AND AN UNINTERRUPTED 30 S MEETS THREE WAVES.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneCaptureTest,
-	"Cataclysm.DungeonModifierEffects.StandingInAControlPointForTenSecondsCapturesIt",
+	"Cataclysm.DungeonModifierEffects.StandingInAControlPointForThirtySecondsCapturesIt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmWarzoneCaptureTest::RunTest(const FString& Parameters)
@@ -31445,22 +31445,22 @@ bool FCataclysmWarzoneCaptureTest::RunTest(const FString& Parameters)
 	Beat(Mode, BeatsFor(5.0f) - 1);
 	TestEqual(TEXT("not held at 5 s"), Mode->WarzonePointsHeld(), 0);
 	TestEqual(TEXT("the panel at 5 s"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
-			  FString(TEXT("warzone control points: 0 of 2 held; capturing, 5 of 10 s")));
+			  FString(TEXT("warzone control points: 0 of 2 held; capturing, 5 of 30 s")));
 
 	// OUT FOR 5 S: THE COUNT PAUSES AND NOTHING COMES.
 	StandAtTheEntrance(Mode, Player);
 	Beat(Mode, BeatsFor(5.0f));
 	TestEqual(TEXT("the count paused, not reset"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
-			  FString(TEXT("warzone control points: 0 of 2 held; capturing, 5 of 10 s")));
+			  FString(TEXT("warzone control points: 0 of 2 held; capturing, 5 of 30 s")));
 	TestEqual(TEXT("no wave while out"), Mode->WarzoneAttackersStanding().Num(), Effects::WarzoneCreaturesPerWave);
 
-	// BACK IN: NOT HELD AT 9.75 S IN ALL, HELD AT 10.
+	// BACK IN: NOT HELD AT 29.75 S IN ALL, HELD AT 30; WAVES AT 0, 10 AND 20 S INSIDE.
 	StandOnAPoint(Mode, Player, 0);
-	Beat(Mode, BeatsFor(5.0f) - 1);
-	TestEqual(TEXT("not held at 9.75 s"), Mode->WarzonePointsHeld(), 0);
+	Beat(Mode, BeatsFor(25.0f) - 1);
+	TestEqual(TEXT("not held at 29.75 s"), Mode->WarzonePointsHeld(), 0);
 	Beat(Mode, 1);
-	TestEqual(TEXT("held at 10 s"), Mode->WarzonePointsHeld(), 1);
-	TestEqual(TEXT("one wave in all"), Mode->WarzoneAttackersStanding().Num(), Effects::WarzoneCreaturesPerWave);
+	TestEqual(TEXT("held at 30 s"), Mode->WarzonePointsHeld(), 1);
+	TestEqual(TEXT("three waves in all"), Mode->WarzoneAttackersStanding().Num(), 3 * Effects::WarzoneCreaturesPerWave);
 	TestEqual(TEXT("the panel once held"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
 			  FString(TEXT("warzone control points: 1 of 2 held, +10% damage and +10% resistances")));
 	return true;

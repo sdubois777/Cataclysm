@@ -4649,11 +4649,12 @@ public:
 
 	/**
 	 * Warzone Control Points' figures, every one a play-test value. See the key. The first wave comes on the first
-	 * beat inside a point, so a capture uninterrupted meets one wave.
+	 * beat inside a point, so a capture uninterrupted meets three waves. The capture was ruled at 10 s and raised to 30
+	 * on 2026-09-26, because at 10 s the player could stand still through a single wave.
 	 */
 	static constexpr int32 WarzoneControlPointsPerFloor = 2;
 	static constexpr float WarzoneControlPointRadiusCm = 400.0f;
-	static constexpr float WarzoneCaptureSeconds = 10.0f;
+	static constexpr float WarzoneCaptureSeconds = 30.0f;
 	static constexpr float WarzoneWaveSeconds = 10.0f;
 	static constexpr int32 WarzoneCreaturesPerWave = 3;
 	static constexpr float WarzoneWaveAwayCm = 800.0f;
