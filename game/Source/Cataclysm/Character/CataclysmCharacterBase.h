@@ -499,6 +499,13 @@ public:
 	 */
 	bool IsRegenerating() const;
 
+	/**
+	 * The point this character was frightened away from. Written by
+	 * `UCataclysmFear::ApplyFear` and read while `State.Feared` lasts; meaningless
+	 * without the tag.
+	 */
+	FVector FearSource = FVector::ZeroVector;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

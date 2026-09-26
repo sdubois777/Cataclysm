@@ -2275,6 +2275,10 @@ public:
 	 * madness -- the list `UCataclysmSkillTemplate::IsImmuneTo` calls "crowd
 	 * control". A slow is the Cripple debuff, and madness the Madness debuff.
 	 *
+	 * AND FEAR, THE SEVENTH, since it was built on 2026-09-25: `State.Feared`,
+	 * a target moved away and unable to attack. `IsImmuneTo`'s "CrowdControl"
+	 * already names every effect, fear included.
+	 *
 	 * DISPLACEMENT HAS NOTHING TO READ. A knockback, pull or launch is a move
 	 * and leaves no state of its own; the Staggered state it leaves afterwards
 	 * is not a hold, by the owner's answer of 2026-09-11, and is not read here.

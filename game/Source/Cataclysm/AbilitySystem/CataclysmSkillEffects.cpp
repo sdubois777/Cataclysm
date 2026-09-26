@@ -26,6 +26,7 @@
 // For how long a lasting harmful effect really runs on its target, which is
 // the target's own stat rather than the attacker's. Issue #1033.
 #include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
@@ -2081,7 +2082,8 @@ bool UCataclysmSkillEffects::IsCrowdControlled(const AActor* Actor)
 {
 	return IsStunned(Actor) || IsKnockedDown(Actor) || IsPinned(Actor)
 		|| HasTag(Actor, UCataclysmDebuffs::CrippleTag())
-		|| UCataclysmTeams::IsMaddened(Actor);
+		|| UCataclysmTeams::IsMaddened(Actor)
+		|| UCataclysmFear::IsFeared(Actor);
 }
 
 FGameplayTag UCataclysmSkillEffects::UntargetableTag()
