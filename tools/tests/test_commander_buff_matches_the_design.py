@@ -261,9 +261,16 @@ def test_the_buff_divides_the_interval_rather_than_multiplying_it():
     # inside `SpeedMultiplier`; anything naming attack speed alone is a second
     # factor here. A third factor appearing without that being true is what
     # this line is for.
+    #
+    # AND `DarknessAttackSpeedMultiplier` THIRD SINCE 2026-09-26, under that
+    # rule. The Void_The_Blackest_Shadow row's Invisible Stalker buff gives "50%
+    # faster attack speed" and names no movement, so it is a factor here and not
+    # inside `SpeedMultiplier`. It is a plain field rather than a function, so it
+    # is clamped where it is read. Issue #1820.
     body = " ".join(match.group(1).split())
     assert body == ("DesignedSecondsBetweenAttacks() "
-                    "/ (SpeedMultiplier() * FeastingMultiplier())"), (
+                    "/ (SpeedMultiplier() * FeastingMultiplier() "
+                    "* FMath::Max(0.01f, DarknessAttackSpeedMultiplier))"), (
         f"SecondsBetweenAttacks returns {body!r}. It must DIVIDE the designed "
         f"interval by the multipliers: more attack speed means less time "
         f"between attacks, and less attack speed means more.")
