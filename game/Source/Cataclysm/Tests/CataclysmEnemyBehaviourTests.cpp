@@ -1167,11 +1167,15 @@ bool FCataclysmRoamTargetsAreSpreadTest::RunTest(const FString&)
 	const float Radius = ACataclysmBruteCharacter::BruteRoamRadiusCm;
 
 	// A HUNDREDTH OF A CENTIMETRE OF ROUNDING IS NOT OUTSIDE. ChooseRoamTarget
-	// draws the distance below the radius, but builds the offset from a
-	// single-precision cosine and sine whose squares can sum a hair above one,
-	// so a point drawn at the edge can measure about 0.0001 cm beyond 600. That
-	// failed a whole suite on 2026-09-26 ("furthest was 600 cm of 600"). A point
-	// genuinely beyond the radius is still counted.
+	// draws the distance as the radius times the square root of FMath::FRand(),
+	// which is AT MOST the radius and can equal it: UE 5.8's FRand returns
+	// (Rand() & RandMax) / (float)RandMax, "between 0 and 1, inclusive"
+	// (GenericPlatformMath.h), so 1.0 about once in 32768 draws where RAND_MAX
+	// is 32767. It builds the offset from a single-precision cosine and sine
+	// whose squares can sum a hair above one, so a point drawn at the edge can
+	// measure about 0.0001 cm beyond 600. That failed a whole suite on
+	// 2026-09-26 ("furthest was 600 cm of 600"). A point genuinely beyond the
+	// radius is still counted.
 	constexpr float EdgeRoundingCm = 0.01f;
 
 	// EVERY POINT, NOT A SAMPLE OF ONE. The choice is random, so a single call
