@@ -7663,8 +7663,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDamageRowsTest,
  * a plain summoner's ballista, and an imp's is unchanged. The row is written on
  * attack_damage and on spell_damage; reading both would make it 1.8. The same
  * summoner also wears "Your direct damage is reduced by 25%", an attack_damage
- * row that names no gadget: it must not reach the machine, or the blow would be
- * 1.15 times.
+ * row that names no gadget, and it does not reach the machine. THAT DOES NOT
+ * TEST THE NAMING FILTER: the row has no condition and no scale, so it is
+ * folded into the attribute and never recorded as a stat line, and removing the
+ * filter changes nothing here (measured 2026-09-26, proof B of this change).
  * "While stationary, your gadgets deal 20%-40% increased damage", at 40: 1.4
  * times once the summoner is recorded as not moving.
  * "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit", at 6:
