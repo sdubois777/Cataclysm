@@ -657,6 +657,14 @@ FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)
 	return Enemy && Enemy->bIsACarrionFeeder ? FString(TEXT("Feeder")) : FString();
 }
 
+FString UCataclysmCombatOverlay::ShroudedTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bShrouded && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Shrouded"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
@@ -666,7 +674,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
 		  InfectionBloomTextFor(Actor),
-		  QuarantineTextFor(Actor),
+		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
 		  DamageCutTextFor(Actor)})
