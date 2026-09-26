@@ -119,10 +119,35 @@ finished. This change moves the key to the partly built list, with its reason be
 `BuiltStateOf` answers `Partly` for it. It is its own commit on this branch, by the coordinating session's ruling of
 2026-09-26, so that the one line does not need a whole-suite window of its own.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-26, ending at 07:56 UTC, on development a7af8dd1 with this change at 4d82cf51 (the Abyssal
+Rifts commit 84bdf84a and the Swarm of Locusts correction on it), with the build machine and no workbook. Every figure
+below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, started with no CI run in progress | `5515 passed, 8 skipped` (JUnit 5,523, no failures) |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite | `2599 tests performed, 2599 succeeded, 0 failed`; 2599 declared, gap 0, as registered (2592 + 7) |
+
+Three proofs with `prove_cpp_guard`, each anchor counted from the proof script's own table immediately before the
+window. Each restored run printed `1 tests performed, 1 succeeded, 0 failed`, and the source hash was the same before
+and after each.
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| a. a rift never opens: `if (true \|\| FVector::Dist2D(...) > Effects::AbyssalRiftsOpensWithinCm)` returns before it does | `Cataclysm.DungeonModifierEffects.ARiftOpensNearThePlayerAndSendsThreeWavesOfFour` | `1 tests performed, 0 succeeded, 1 failed: ARiftOpensNearThePlayerAndSendsThreeWavesOfFour` | 2, as registered: "it opened" and "the first wave at once: four", which read 0 |
+| b. a rift never closes: `if (false && AbyssalRiftWavesSent >= Effects::AbyssalRiftsWaves && Standing == 0)` | `Cataclysm.DungeonModifierEffects.ARiftClosedInTimeGivesMagicFindAndRaisesTheNextRifts` | `1 tests performed, 0 succeeded, 1 failed: ARiftClosedInTimeGivesMagicFindAndRaisesTheNextRifts` | 9, as registered: "one closed in time", "+10 magic find", "the closed panel", "still one", "still +10 magic find", and "one rung higher" four times |
+| c. the magic find written as 0: `Effects.RiftMagicFindAdded = 0.0f;` | the same | the same | 2, as registered: "+10 magic find" and "still +10 magic find", each 0 |
+
+The whole suite also reported 40 tests that skipped part of what they check, all of them art tests (the Paragon art
+is not in a worktree); none is a dungeon-modifier test.
+
+The Swarm of Locusts assertion ran inside the whole suite and passed: `BuiltStateOf` answers `Partly` for it.
+
+**Final Python**, after the entry's Run section: `5515 passed, 8 skipped` (JUnit 5,523, no failures), as before the
+window.
 
 ---
 
