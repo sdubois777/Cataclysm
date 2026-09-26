@@ -527,6 +527,28 @@ bool ACataclysmEnemyCharacter::MayMoveItselfTo(const FVector& Landing) const
 	return FVector::Dist2D(Landing, Holder) <= FVector::Dist2D(GetActorLocation(), Holder);
 }
 
+void ACataclysmEnemyCharacter::FleeFrom(const FVector& From, float UntilSeconds)
+{
+	FleeingFrom = From;
+	FleeUntilSeconds = UntilSeconds;
+}
+
+void ACataclysmEnemyCharacter::StopFleeing()
+{
+	FleeUntilSeconds = -1.0f;
+}
+
+bool ACataclysmEnemyCharacter::FleeSourceNow(FVector& OutFrom) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || FleeUntilSeconds < 0.0f || World->GetTimeSeconds() >= FleeUntilSeconds)
+	{
+		return false;
+	}
+	OutFrom = FleeingFrom;
+	return true;
+}
+
 void ACataclysmEnemyCharacter::HoldAgainstMovingAway()
 {
 	if (!IsHeld())

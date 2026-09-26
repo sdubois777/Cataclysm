@@ -2484,6 +2484,7 @@ Taking the middle rather than the strictest is deliberate. This design also has 
 | Disarm | No | Movement and any skill that does not need the weapon still work |
 | Pin, such as Impale, Nail Down, Skewer and Thicket | No | The Disarm sentence with its halves swapped: a pinned target still turns, attacks and uses any skill that does not need movement. Ruled 2026-09-14, issue #1149: no damage threshold, no immunity window, no boss immunity, so pins can be chained and a boss can be pinned |
 | Madness | **Partly** | The target operates every part of itself, but not for the side that owns it. It gets the immunity window and boss immunity, and not the damage threshold. See below |
+| Fear | **Partly** | The target moves, but only away from what frightened it, and cannot attack or use a skill. It is treated as Madness is: the immunity window and boss immunity, and not the damage threshold. See below |
 
   
 
@@ -2515,6 +2516,10 @@ outcome this whole section exists to prevent.
 **Subjugate therefore does nothing to a boss, and that is accepted.** It still
 works on everything else, which is where the Staff support slot will spend most
 of its uses.
+
+  
+
+**Fear moves the target away from what frightened it, and nothing else.** A feared character walks away from the point the fear came from and cannot attack or use a skill; where it cannot go further it stands still. A boss cannot be feared. Fear shares the 5 second immunity window with stun, knockdown and madness, so the four cannot be alternated to hold a target, and like madness it does not need the 10% damage threshold, because it redirects the target rather than interrupting it. Crowd control resistance shortens it as it shortens a stun: a character at 50% is feared for half as long, and one at 100% cannot be feared at all. A creature held by Nowhere to Run cannot move away from its holder, so a feared one it holds stands still. Ruled on 2026-09-25; `docs/DECISIONS.md` has the sources.
 
   
 

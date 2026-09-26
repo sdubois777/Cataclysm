@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmContagion.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -6645,6 +6646,13 @@ void ACataclysmDungeonGameMode::StepDirgeResonance()
 				{
 					UCataclysmSkillEffects::ApplyTagForDuration(
 						Enemy, Enemy, Haste, Effects::DirgeResonanceHasteSeconds);
+
+					// AND THE ROW'S "FEAR IMMUNITY", for the same ten seconds.
+					// The half that waited on fear existing, built 2026-09-25:
+					// `UCataclysmFear::ApplyFear` refuses a creature holding it.
+					UCataclysmSkillEffects::ApplyTagForDuration(
+						Enemy, Enemy, UCataclysmFear::FearImmuneTag(),
+						Effects::DirgeResonanceHasteSeconds);
 					++Hasted;
 				}
 			}

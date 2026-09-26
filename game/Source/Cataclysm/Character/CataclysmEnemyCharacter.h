@@ -1072,6 +1072,24 @@ public:
 	bool MayMoveItselfTo(const FVector& Landing) const;
 
 	/**
+	 * Flee from `From` until the world's clock reaches `UntilSeconds`, WITHOUT
+	 * being feared. The move is the one fear makes; no tag is applied, so no
+	 * crowd-control rule, immunity or resistance touches it. For rules that
+	 * make a creature run: The Plaguebearer and Morale Break. Called again, it
+	 * replaces the point and the time.
+	 */
+	void FleeFrom(const FVector& From, float UntilSeconds);
+
+	/** Stop fleeing a rule's point at once. */
+	void StopFleeing();
+
+	/**
+	 * The point a rule told this creature to flee from, while it still is.
+	 * @return false when no rule has it fleeing
+	 */
+	bool FleeSourceNow(FVector& OutFrom) const;
+
+	/**
 	 * Whether this creature stood back up under the Vengeful Wraiths floor rule.
 	 *
 	 * A FLAG AND NOT A TAG, WHICH IS THE OPPOSITE OF `CrippleMultiplier` BESIDE IT.
@@ -1172,6 +1190,10 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bDiesUnpaid = false;
+
+	/** The point `FleeFrom` last named, and the clock time it lasts until. */
+	FVector FleeingFrom = FVector::ZeroVector;
+	float FleeUntilSeconds = -1.0f;
 
 	/** `LastAttackUsed` before the creature has attacked at all. */
 	static constexpr int32 NoAttackYet = -2;

@@ -14,6 +14,7 @@
 #include "Items/CataclysmWearing.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -257,7 +258,12 @@ bool ACataclysmPlayerController::IsPawnStunned() const
 	// skills aimed at enemies. Renaming it would rename it in the header, both
 	// tests that call it and every log line, to describe a case nothing can
 	// currently produce.
-	return UCataclysmSkillEffects::CannotAct(GetPawn());
+	//
+	// AND FEARED, since fear exists. A feared player can neither attack, use a
+	// skill nor choose where to walk; `PostProcessInput` walks them away from
+	// the source instead. Everything this gates is what fear takes away.
+	return UCataclysmSkillEffects::CannotAct(GetPawn())
+		|| UCataclysmFear::IsFeared(GetPawn());
 }
 
 bool ACataclysmPlayerController::IsPawnPinned() const
@@ -342,6 +348,20 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 		// cancelled, so continuing to wait for an arrival that will never come
 		// would take the item the moment the player next wandered near it.
 		PendingPickup = nullptr;
+	}
+
+	// A FEARED PLAYER IS WALKED AWAY FROM THE SOURCE, every frame, after the
+	// stop above has cancelled any walk of their own. `FleeDirectionFor` is zero
+	// for anyone not fleeing. A wall stops the walk, which is a cornered player
+	// standing still. NO AUTOMATION COVERAGE, for the reason `PawnCannotWalk`
+	// gives: no test has a player controller.
+	if (APawn* Feared = GetPawn())
+	{
+		const FVector Away = UCataclysmFear::FleeDirectionFor(Feared);
+		if (!Away.IsNearlyZero() && UCataclysmFear::IsFeared(Feared))
+		{
+			Feared->AddMovementInput(Away, 1.0f, /*bForce=*/true);
+		}
 	}
 
 	// A CHARGE TELLS THE MOVEMENT COMPONENT WHICH WAY IT IS GOING, AND IT HAS TO

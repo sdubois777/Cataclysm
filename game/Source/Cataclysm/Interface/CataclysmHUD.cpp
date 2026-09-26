@@ -507,6 +507,16 @@ void ACataclysmHUD::DrawPlayerVitals()
 		DrawPlayerPool(Top, Fervour, MaxFervour,
 					   UCataclysmCombatOverlay::FervourFillHex);
 	}
+
+	// AND WHAT IS HOLDING THE PLAYER, above the bars. Only fear today: a feared
+	// player is walked away with the keys refused, and needs telling why.
+	const FString Feared = UCataclysmCombatOverlay::FearedTextFor(Pawn);
+	if (!Feared.IsEmpty())
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawTextCentred(Feared, FLinearColor::White,
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+	}
 }
 
 void ACataclysmHUD::DrawOverheadBars()

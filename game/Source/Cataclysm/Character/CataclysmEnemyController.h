@@ -165,6 +165,19 @@ enum class ECataclysmBrainAction : uint8
 	 * value after it.
 	 */
 	NotAttacking,
+
+	/**
+	 * Moving away from a point, and neither attacking nor using an ability.
+	 *
+	 * FEARED, OR TOLD TO FLEE BY A RULE. `UCataclysmFear::FleeSourceOf` answers
+	 * both. A creature that cannot move further -- no path, or held by Nowhere to
+	 * Run -- still reports this: it is fleeing and standing still, which is what
+	 * a cornered feared creature does in Diablo IV.
+	 *
+	 * Appended, like every value above, because this is a UENUM and inserting
+	 * renumbers every value after it.
+	 */
+	Fleeing,
 };
 
 /**
@@ -559,6 +572,13 @@ public:
 	/** What the last pass of Think was going after. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	TObjectPtr<AActor> CurrentTarget;
+
+	/**
+	 * Where the last flee move aimed, or zero when the creature stood still.
+	 * Read by tests, because a world built for a test never ticks movement, so
+	 * the aim is what can be checked.
+	 */
+	FVector LastFleeGoal = FVector::ZeroVector;
 
 	/** How many times it has told its pawn to attack. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")

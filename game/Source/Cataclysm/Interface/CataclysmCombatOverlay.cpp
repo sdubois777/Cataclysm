@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For asking whether this character can move Fervour at all. Issue #954.
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -482,6 +483,11 @@ FString UCataclysmCombatOverlay::HeldTextFor(const AActor* Actor)
 	return Creature && Creature->IsHeld() ? FString(TEXT("Held")) : FString();
 }
 
+FString UCataclysmCombatOverlay::FearedTextFor(const AActor* Actor)
+{
+	return UCataclysmFear::IsFeared(Actor) ? FString(TEXT("Feared")) : FString();
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -586,7 +592,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor),
-		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
+		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
+		  DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

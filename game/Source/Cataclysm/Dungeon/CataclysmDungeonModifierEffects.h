@@ -1567,8 +1567,10 @@ public:
 	 * - "ALL ENEMIES" is every living creature on the floor at the crescendo, marked ones
 	 *   included. One that arrives during the ten seconds waits for the next.
 	 *
-	 * TWO HALVES OF THE ROW DO NOTHING TODAY. There is no fear in this game, so "fear
-	 * immunity" grants nothing; and there is no audio for the "distant funeral music".
+	 * "FEAR IMMUNITY" IS BUILT SINCE 2026-09-25: the crescendo also gives every living
+	 * creature `State.FearImmune` for the same ten seconds, and `UCataclysmFear::ApplyFear`
+	 * refuses a creature holding it. ONE HALF OF THE ROW STILL DOES NOTHING: there is no
+	 * audio for the "distant funeral music".
 	 */
 	static const TCHAR* DirgeResonanceKey;
 

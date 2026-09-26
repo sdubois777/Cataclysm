@@ -3686,14 +3686,15 @@ def test_blood_gates_row_still_seals_the_next_level_for_the_players_kills():
 
 
 def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
-    """The row's own figure and scope, and the two halves that grant nothing today.
+    """The row's own figure and scope, and the half that grants nothing today.
 
     "Distant funeral music plays; when it crescendos, all enemies gain haste and fear
     immunity for 10 seconds." The ten seconds is `DirgeResonanceHasteSeconds`; ALL ENEMIES
     is why every living creature on the floor is hasted, marked ones included; and the
-    period is a ruling, because the row states none. FEAR IMMUNITY and the MUSIC are in the
-    row and do nothing, because this game has no fear and no audio for it -- if the row
-    drops either, the note saying so should go too.
+    period is a ruling, because the row states none. FEAR IMMUNITY is built since
+    2026-09-25: the crescendo gives `State.FearImmune` for the same ten seconds. The MUSIC
+    is in the row and does nothing, because this game has no audio for it -- if the row
+    drops either phrase, the rule reading it should change with it.
     """
     words = flat(rows()["Death_Dirge_Resonance"]["Description"])
     lower = words.lower()
