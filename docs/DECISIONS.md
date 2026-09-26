@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Deployable Part 1: a summoner's rows scoped to Type.Deployable reach its machines and not its imps, and five gadget enchantments written on them
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` and `.h` (`TypeTags`, parsed at
+`Spawn` from the type row's Tags column, and `IsDeployable`), `CataclysmCommand.cpp` (the attack
+interval asked with the minion's tags), `CataclysmAbilitySystemComponent.cpp` and `.h` (the new
+`StatNamingTagAppliedTo`), `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and `game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json`, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(two tests), `CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, and the new
+`tools/tests/test_a_machine_minion_is_a_deployable.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+A minion now keeps its type row's Tags (`ACataclysmMinion::TypeTags`), such as `Type.Minion,
+Type.Deployable, Minion.Machine`. Until this change that column was imported and read by nothing, and
+every summoner lookup for a minion passed no tags. `minion_damage`, `minion_health`,
+`minion_duration`, `minion_explosion_damage` and `minion_attack_speed` are now asked with those
+tags, so a row whose Required Tags hold `Type.Deployable` reaches a ballista and not an imp. No
+minion row in the enchantment or passive sheets carried required tags before, so no existing row
+changes. Three comments that said a minion carries no tags were corrected.
+
+A machine's blow also applies its summoner's `attack_damage` modifiers whose Required Tags hold
+`Type.Deployable`, and only those, through `StatNamingTagAppliedTo`: (figure + flat) x (1 +
+increases) x more over the naming modifiers alone. A minion takes nothing else of its summoner's,
+so an unscoped `attack_damage` row, such as the drawback "Your direct damage is reduced by 25%",
+does not reach the machine.
+
+`tools/tests/test_a_machine_minion_is_a_deployable.py` checks the Minion Types sheet: a type's
+Family is "Machine" exactly when its Tags hold `Type.Deployable`, because the game reads both.
+
+### THE ROWS, all with Required Tags `Type.Deployable`
+
+| Enchantment | Row |
+| :-- | :-- |
+| Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit | `attack_damage` flat 3 to 6, scale `max_health`, step 100 |
+| While stationary, your gadgets deal 20%-40% increased damage | `attack_damage` increased 20 to 40, condition `while_stationary` |
+| Gadgets have 40%-70% increased HP | `minion_health` increased 40 to 70 |
+| Gadgets last 30%-60% longer | `minion_duration` increased 30 to 60 |
+| Gadgets fire 20%-40% faster | `minion_attack_speed` increased 20 to 40 |
+
+### RULINGS AND JUDGEMENTS
+
+- A modifier that names gadgets reaches a gadget's blow: ruled by the coordinating session on
+  2026-09-25 under the owner's delegation.
+- A machine's blow reads `attack_damage` alone and not `spell_damage`, because a sentence written on
+  both would otherwise count twice, and a machine's bolt is an attack. Ruled the same day.
+- "While stationary" is asked of the summoner, whose state the lookup is built from; the machines
+  never move. A judgement under the owner's delegation.
+
+### THE RUN
+
+On `398554c8`, the three engine and test commits moved onto development `4f1a3549`.
+
+| Step | Result |
+| :-- | :-- |
+| Build | "Build: Succeeded - 30 actions, 27 files compiled" |
+| Python of record, `398554c8` | "5514 passed, 8 skipped in 469.33s"; JUnit tests 5522, failures 0 |
+| Rows commit `71891074` | "EnchantmentEffects.csv 372 rows", from 367 |
+| Python after the rows | "1 failed, 5513 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp", the unity file holding `CataclysmDataTableTests.cpp` |
+| Stale-asset step | "131 tests performed, 128 succeeded, 3 failed": the asset-match guard and the two new tests |
+| Asset rebuild `dc086390` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The two new tests | "2 tests performed, 2 succeeded, 0 failed" |
+| Whole suite, `dc086390` | "2592 tests performed, 2592 succeeded, 0 failed"; 2592 declared, gap 0 |
+| Proof A, the minion's tags not passed to the summoner's lookup | PROVED: `TheGadgetHealthDurationAndSpeedRowsReachMachinesOnly` failed 2 assertions, "health: a ballista has 1.7 times" and "duration: a ballista lasts 1.6 times", each reading 1.0; restored "1 tests performed, 1 succeeded" |
+| Proof B, the naming filter removed | NOT A PROOF: "nothing failed with the break in"; `TheGadgetDamageRowsReachAMachinesBlowAndNotAnImps` passed with the break in and restored |
+| Proof C, the `IsDeployable()` gate removed | NOT A PROOF: the same test passed with the break in and restored |
+| Python control, `Type.Deployable` taken off the Ballista's row (2026-09-25, in a copy) | PROVED: only `test_family_machine_goes_with_the_deployable_tag` failed; restored "3 passed" |
+
+**PROOFS B AND C DID NOT PROVE, and the coordinating session ruled that they are recorded as not
+proofs rather than replaced.** The owner's ruling of 2026-09-14 allows at most three proofs per
+change, and a failed proof is not replaced by a fourth.
+
+- **B could not fail.** Before registration on 2026-09-25 I found that the first form of this
+  proof could not fail, because the test's summoner wore no unscoped `attack_damage` row. I added
+  the real drawback "Your direct damage is reduced by 25%" and claimed the blow "would read 1.15"
+  without the filter. That claim was not run, and it was wrong. The drawback's row is
+  `attack_damage` increased -25 with no tags, no condition and no scale. A row like that is folded
+  into the attribute, not recorded as a stat line, as the comments in
+  `CataclysmPlayerClassStatsTests.cpp` say. `StatNamingTagAppliedTo` reads only the recorded stat
+  lines, so the drawback never reaches the list the filter works on. This is inferred from the run
+  and those comments, not from reading the code that records stat lines. The filter is still
+  needed: an unscoped `attack_damage` row with a condition or a scale is recorded as a stat line
+  and would reach a machine's blow without it. **Nothing tests that yet**; a separate, test-only
+  change after the deployable cap adds such a row to the test and proves the filter with one proof.
+- **C cannot fail, by construction.** The imp's own tags are passed to the lookup, and
+  `UCataclysmStatPipeline::Evaluate` already drops a modifier whose required tag, `Type.Deployable`,
+  the imp lacks. So the `IsDeployable()` gate only saves a lookup, and no test can observe it
+  removed.
+- The approved proof C, "attack_damage read twice", had no single-line break that expresses it,
+  and was replaced before registration by removing the `IsDeployable()` gate.
+
+---
+
 ## 2026-09-26 — A hit on a player measures distance, reads the damage type and spreads Contagious Torment from the player's character, not from its player state
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` and
