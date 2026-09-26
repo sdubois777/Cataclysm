@@ -380,9 +380,11 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 
 		// NOWHERE TO RUN WINS. Ruled 2026-09-25: a held creature cannot move
 		// away from its holder, so a feared one it holds stands still.
+		bLastFleeHeld = false;
 		if (Fleer && Fleer->IsHeld())
 		{
 			StopMovement();
+			bLastFleeHeld = true;
 			LastFleeGoal = FVector::ZeroVector;
 			LastAction = ECataclysmBrainAction::Fleeing;
 			return LastAction;
