@@ -221,6 +221,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BlackestShadowKey =
+	TEXT("Void_The_Blackest_Shadow");
+
 const TCHAR* UCataclysmDungeonModifierEffects::FogOfWarKey =
 	TEXT("War_Fog_of_War");
 
@@ -235,6 +238,11 @@ float UCataclysmDungeonModifierEffects::SightRadiusFor(const TArray<FName>& Modi
 	if (Modifiers.Contains(FName(FogOfWarKey)))
 	{
 		Ask(FogOfWarSightCm);
+	}
+	// THE BLACKEST SHADOW'S LIGHT IS THE PLAYER'S SIGHT: what is outside it is not seen.
+	if (Modifiers.Contains(FName(BlackestShadowKey)))
+	{
+		Ask(BlackestShadowLightCm);
 	}
 	return Radius;
 }
@@ -580,6 +588,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
+		|| RowKey == FName(BlackestShadowKey)
 		|| RowKey == FName(VoidParasiteKey)
 		|| RowKey == FName(ObsidianSarcophagiKey))
 	{
@@ -809,6 +818,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(CarrionFeastKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
+		FName(BlackestShadowKey),
 		FName(VoidParasiteKey),
 		FName(GrimTotemsKey),
 		FName(ObsidianSarcophagiKey),
