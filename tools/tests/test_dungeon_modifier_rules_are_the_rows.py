@@ -4276,3 +4276,20 @@ def test_portal_unleashing_row_still_has_portals_that_keep_sending_creatures_to_
         assert phrase in lower, (
             f"Void_Portal_Unleashing no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "PortalUnleashingKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_quarantine_breach_row_still_has_frozen_groups_a_chosen_breach_rewards_and_spreading_infection():
+    """The phrases the rule's readings rest on.
+
+    FROZEN IN TIME is why the group does not exist until released; CHOOSE TO BREAK THE CONTAINMENT is the player
+    destroying it, and the label saying what it holds; GREAT REWARDS is the rung they are released at; SPREADING THE
+    INFECTION is the patch each leaves where it dies. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Quarantine_Breach"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("frozen in time", "choose to break the containment", "great rewards",
+                   "spreading the infection"):
+        assert phrase in lower, (
+            f"Pestilence_Quarantine_Breach no longer says {phrase.upper()!r}. A reading of the rule rests on it; "
+            "see QuarantineBreachKey in CataclysmDungeonModifierEffects.h. " + words)

@@ -35,6 +35,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -30600,6 +30601,222 @@ bool FCataclysmPortalsClearedTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("and the floor was noted cleared all the same (%.2f)"), Mode->FloorClearedAfterSeconds()),
 			 Mode->FloorClearedAfterSeconds() >= 0.0f);
 	TestFalse(TEXT("the portal's creature pays nothing when killed"), Sent[0]->PaysForItsDeath());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Quarantine_Breach. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName QuarantineRow(UCataclysmDungeonModifierEffects::QuarantineBreachKey);
+
+	/** A dungeon carrying only Quarantine Breach, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AQuarantineFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {QuarantineRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestNotNull(TEXT("a containment on the floor"), Mode->QuarantineNow()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The player's blow kills `Victim`, which cannot dodge. */
+	bool BreakOrKill(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Victim)
+	{
+		Victim->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		return Test.TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Victim));
+	}
+}
+
+// THE FIGURES: ONE CONTAINMENT, FIVE HELD, RELEASED AT RUNG 2, A PATCH BURNING WHAT AN INFESTED VEIN'S GROUND BURNS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmQuarantineFiguresTest,
+	"Cataclysm.DungeonModifierEffects.QuarantineBreachFiguresHeldRungAndPatch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmQuarantineFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one containment a floor"), Effects::QuarantineBreachPerFloor, 1);
+	TestEqual(TEXT("five held"), Effects::QuarantineBreachHeld, 5);
+	TestEqual(TEXT("released at rung 2"), Effects::QuarantineBreachRung, 2);
+	TestEqual(TEXT("a patch is Necrotic Ground's"), Effects::QuarantineBreachPatchRadiusCm,
+			  Effects::NecroticGroundPatchRadiusCm, 0.001f);
+	TestEqual(TEXT("it burns what a vein's ground burns"), Effects::QuarantineBreachPatchBurn(1000.0f),
+			  Effects::InfestedVeinsBurn(1000.0f), 0.0001f);
+	TestTrue(TEXT("and burns something"), Effects::QuarantineBreachPatchBurn(1000.0f) > 0.0f);
+	return true;
+}
+
+// ONE CONTAINMENT THE PLAYER CAN DESTROY, SAYING WHAT IT HOLDS, PAYING NOTHING, WITH NOTHING RELEASED YET.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmQuarantinePlacedTest,
+	"Cataclysm.DungeonModifierEffects.AQuarantineSaysWhatItHoldsAndReleasesNothingUnbroken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmQuarantinePlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AQuarantineFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Containment = Mode->QuarantineNow();
+	TestTrue(TEXT("a containment"), Containment->IsA<ACataclysmQuarantineCharacter>());
+	TestNull(TEXT("with no brain"), Containment->GetController());
+	TestFalse(TEXT("that can be hurt"), Containment->bCannotBeHurt);
+	TestFalse(TEXT("that pays nothing"), Containment->PaysForItsDeath());
+	TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Containment));
+	TestEqual(TEXT("with the Imp's health"), MaxHealthOf(Containment), Mode->QuarantineHealth(), 0.5f);
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Containment->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+
+	// ITS BAR SAYS WHAT IT HOLDS, AND THE PANEL SAYS THE SAME KIND.
+	const FString Label = UCataclysmCombatOverlay::StatusLineFor(Containment);
+	if (!TestTrue(FString::Printf(TEXT("\"Quarantine: 5 ...\" under its bar (%s)"), *Label),
+				  Label.StartsWith(TEXT("Quarantine: 5 ")) && Label.Len() > 14))
+	{
+		return false;
+	}
+	const FString Kind = Label.RightChop(14);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(QuarantineRow),
+			  FString::Printf(TEXT("quarantine breach: 5 %s held; break it to fight them"), *Kind));
+
+	// A MINUTE UNBROKEN: NOTHING RELEASED.
+	Beat(Mode, BeatsFor(60.0f));
+	TestEqual(TEXT("nothing released while it stands"), Mode->QuarantineReleasedStanding().Num(), 0);
+	return true;
+}
+
+// BROKEN: FIVE OF THE KIND IT SHOWED, AT RUNG 2, BESIDE IT, PAYING AND THE FLOOR'S.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmQuarantineBrokenTest,
+	"Cataclysm.DungeonModifierEffects.BreakingAQuarantineReleasesFiveAtRungTwo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmQuarantineBrokenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AQuarantineFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Containment = Mode->QuarantineNow();
+	const FVector At = Containment->GetActorLocation();
+	if (!BreakOrKill(*this, Player, Containment))
+	{
+		return false;
+	}
+	TestNull(TEXT("no containment stands"), Mode->QuarantineNow());
+	const TArray<ACataclysmEnemyCharacter*> Released = Mode->QuarantineReleasedStanding();
+	if (!TestEqual(TEXT("five released"), Released.Num(), Effects::QuarantineBreachHeld))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : Released)
+	{
+		TestTrue(TEXT("all of one kind"), Creature->GetClass() == Released[0]->GetClass());
+		TestEqual(TEXT("at rung 2"), Creature->RarityStep, Effects::QuarantineBreachRung);
+		TestNotNull(TEXT("with a brain"), Creature->GetController());
+		TestTrue(TEXT("that pays"), Creature->PaysForItsDeath());
+		TestTrue(TEXT("and is one of the floor's creatures"), Mode->FloorEnemies.Contains(Creature));
+		TestTrue(TEXT("beside where it stood"),
+				 FVector::Dist2D(Creature->GetActorLocation(), At) <= Effects::NecroticBloomWaveWithinCm + 1.0f);
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(QuarantineRow),
+			  FString(TEXT("quarantine breach: broken; 5 of 5 released stand")));
+	return true;
+}
+
+// EACH RELEASED CREATURE THAT DIES LEAVES A PATCH WHERE IT FELL; ANY OTHER CREATURE'S DEATH LEAVES NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmQuarantineSpreadsTest,
+	"Cataclysm.DungeonModifierEffects.AReleasedQuarantineCreatureLeavesAPatchWhereItDies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmQuarantineSpreadsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AQuarantineFloor(*this, World, Player);
+	if (!Mode || !BreakOrKill(*this, Player, Mode->QuarantineNow()))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Released = Mode->QuarantineReleasedStanding();
+	if (!TestEqual(TEXT("five released"), Released.Num(), 5))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no patch yet"), Mode->QuarantinePatchesNow().Num(), 0);
+
+	// ANOTHER CREATURE'S DEATH: NO PATCH.
+	ACataclysmEnemyCharacter* Other =
+		SpawnImpWithHealth(World, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f), 100.0f);
+	if (!TestNotNull(TEXT("another creature"), Other) || !BreakOrKill(*this, Player, Other))
+	{
+		return false;
+	}
+	TestEqual(TEXT("another creature's death: no patch"), Mode->QuarantinePatchesNow().Num(), 0);
+
+	// TWO RELEASED CREATURES: TWO PATCHES, EACH WHERE ONE FELL.
+	for (int32 Which = 0; Which < 2; ++Which)
+	{
+		const FVector Fell = Released[Which]->GetActorLocation();
+		if (!BreakOrKill(*this, Player, Released[Which]))
+		{
+			return false;
+		}
+		const TArray<ACataclysmGroundZone*> Patches = Mode->QuarantinePatchesNow();
+		if (!TestEqual(TEXT("one more patch"), Patches.Num(), Which + 1))
+		{
+			return false;
+		}
+		TestTrue(TEXT("where it fell"), Patches.Last()->Covers(Fell));
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(QuarantineRow),
+			  FString(TEXT("quarantine breach: broken; 3 of 5 released stand")));
 	return true;
 }
 

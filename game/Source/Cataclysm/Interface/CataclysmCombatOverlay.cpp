@@ -17,6 +17,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -579,13 +580,21 @@ FString UCataclysmCombatOverlay::PortalTextFor(const AActor* Actor)
 	return Enemy && Enemy->bIsAnAbomination ? FString(TEXT("Abomination")) : FString();
 }
 
+FString UCataclysmCombatOverlay::QuarantineTextFor(const AActor* Actor)
+{
+	const ACataclysmQuarantineCharacter* Containment = Cast<ACataclysmQuarantineCharacter>(Actor);
+	return Containment && !UCataclysmSkillEffects::IsDead(Containment)
+		? FString::Printf(TEXT("Quarantine: %s"), *Containment->Holds)
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), QuarantineTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())

@@ -551,6 +551,12 @@ public:
 	static FString PortalTextFor(const AActor* Actor);
 
 	/**
+	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
+	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.
+	 */
+	static FString QuarantineTextFor(const AActor* Actor);
+
+	/**
 	 * "Second Self" under the health bar of the minion or thrall A Second Self
 	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
 	 * it says what the creature is. Nothing else on screen marks a minion.

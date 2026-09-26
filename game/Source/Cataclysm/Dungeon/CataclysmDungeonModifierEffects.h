@@ -2047,6 +2047,27 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose containment holds a group the player may choose to release and fight, for their loot, at the
+	 * risk of spreading their infection. Issues #1820 and #41.
+	 *
+	 * "Groups of monsters containing highly infectious diseases have been frozen in time in order to prevent the
+	 * diseases they carry from spreading. Players can choose to break the containment to fight these enemies for
+	 * great rewards, but doing so risks spreading the infection further."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - ONE CONTAINMENT A FLOOR, a floor source the player can destroy, with the Imp's health, placed by Eternal
+	 *   Chorus's picker. "FROZEN" IS READ AS NOT YET IN THE WORLD: the group does not exist until it is released.
+	 * - IT SHOWS WHAT IT HOLDS: "Quarantine: 5 <creature kind>" under its bar, so breaking it is an informed choice.
+	 * - DESTROYED, it releases `QuarantineBreachHeld` creatures of that one kind at `QuarantineBreachRung`, beside
+	 *   it. They pay and are the floor's creatures, so the "great rewards" are their rung's drops.
+	 * - "SPREADING THE INFECTION": each released creature leaves a Pestilence patch where it dies, Necrotic Ground's
+	 *   patch in size, which burns the player standing in it `QuarantineBreachPatchPercentPerSecond` of maximum health
+	 *   a second for the rest of the floor.
+	 */
+	static const TCHAR* QuarantineBreachKey;
+
+	/**
 	 * The row where veins in the walls poison the ground around them, grow back when destroyed, and
 	 * summon guardians when too many are destroyed. Issues #1820 and #41.
 	 *
@@ -4549,6 +4570,16 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/**
+	 * Quarantine Breach's figures, every one a play-test value. See the key. The patch is Necrotic Ground's in size
+	 * and burns what Infested Veins' toxic ground burns.
+	 */
+	static constexpr int32 QuarantineBreachPerFloor = 1;
+	static constexpr int32 QuarantineBreachHeld = 5;
+	static constexpr int32 QuarantineBreachRung = 2;
+	static constexpr float QuarantineBreachPatchRadiusCm = NecroticGroundPatchRadiusCm;
+	static constexpr float QuarantineBreachPatchPercentPerSecond = InfestedVeinsPercentPerSecond;
+
 	static_assert(
 		PortalUnleashingPerFloor > 0 && PortalUnleashingPerHordeArena > 0 && PortalUnleashingRadiusCm > 0.0f
 			&& PortalUnleashingSecondsBetween > 0.0f && PortalUnleashingMostAlivePerPortal > 0,
@@ -5158,6 +5189,9 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** What a released creature's patch burns a second, from the player's maximum health. */
+	static float QuarantineBreachPatchBurn(float MaximumHealth);
 
 	/** What a second in a living vein's zone costs a player with this maximum health. */
 	static float InfestedVeinsBurn(float MaximumHealth);

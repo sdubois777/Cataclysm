@@ -2123,6 +2123,18 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Quarantine Breach, for tests: this floor's containment, or null once broken or on a floor with none. */
+	ACataclysmEnemyCharacter* QuarantineNow() const;
+
+	/** Quarantine Breach, for tests: the creatures it released that still stand. */
+	TArray<ACataclysmEnemyCharacter*> QuarantineReleasedStanding() const;
+
+	/** Quarantine Breach, for tests: the patches its released creatures have left. */
+	TArray<class ACataclysmGroundZone*> QuarantinePatchesNow() const;
+
+	/** The health a containment is given: the Imp's at Common, 87, as the other floor sources have. */
+	float QuarantineHealth() const { return ImpHealth; }
+
 	/** Pestilent Empowerment, for the panel and tests: beacons left standing on this dungeon's earlier floors. */
 	int32 PlagueBeaconsLeftStanding() const { return PestilentBeaconsLeftStanding; }
 
@@ -2311,6 +2323,21 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Quarantine Breach: this arena's containment, placed where a new arena is populated, holding one kind. */
+	void PlaceTheQuarantine();
+
+	/** The containment, what it released and their patches destroyed and forgotten. */
+	void ForgetTheQuarantine();
+
+	/**
+	 * The kind the containment holds, as the creature panel names it ("Abyssal Warden"), from the kind's class's
+	 * archetype row; the populator's own name for it when the table cannot say.
+	 */
+	FString QuarantineHeldName() const;
+
+	/** Quarantine Breach, on a death: the containment's releases its group; a released creature's leaves a patch. */
+	void NoteDeathForQuarantineBreach(const struct FCataclysmDeathNotice& Notice);
 
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
@@ -3403,6 +3430,16 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Quarantine Breach: the containment, the kind it holds, whether it has been broken, what it released, and the
+	 * patches they left. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> Quarantine;
+	ECataclysmDungeonCreature QuarantineHeldKind = ECataclysmDungeonCreature::Imp;
+	bool bQuarantineBroken = false;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> QuarantineReleased;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> QuarantinePatches;
 
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein

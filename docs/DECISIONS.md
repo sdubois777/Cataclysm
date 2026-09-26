@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Quarantine Breach: one containment a floor says what it holds; breaking it releases five of that kind at rung 2, and each leaves a burning patch where it dies
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, the patch's burn); a new class `game/Source/Cataclysm/Character/CataclysmQuarantineCharacter.h`;
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing the containment, the release, the
+patches, the panel line); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Quarantine: 5
+<kind>" under its bar); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
+(one check). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Pestilence_Quarantine_Breach` in `game/Data/DungeonModifiers.csv`, weight 5: "Groups of monsters containing highly
+infectious diseases have been frozen in time in order to prevent the diseases they carry from spreading. Players can
+choose to break the containment to fight these enemies for great rewards, but doing so risks spreading the infection
+further." It states no figure.
+
+### What the rule does
+
+When a floor carrying the row is placed, one containment stands where Eternal Chorus's picker puts its sources, at
+least twenty metres from the entrance. A Horde arena has one too, and its later waves keep it. It holds five
+creatures of one kind, drawn from the floor's own kinds when it is placed, and says so under its bar: "Quarantine: 5
+Imp", for example. It is a floor source the player can destroy, with the Imp's health at Common; it pays nothing and is
+not one of the floor's creatures. **Nothing is released while it stands**: "frozen in time" is read as the group not
+being in the world yet.
+
+When the player destroys it, the five come at once beside where it stood, of the kind it showed, at rung 2. They pay
+for their deaths and are the floor's creatures, so the "great rewards" are the drops of their rung.
+
+Each of the five that dies leaves a Pestilence patch where it fell, Necrotic Ground's patch in size, for the rest of
+the floor. A player standing in one loses 1% of maximum health a second, dealt as damage over time typed Pestilence,
+which pestilence resistance meets; patches that overlap burn once a second between them. Any other creature's death
+leaves nothing.
+
+The panel reads "quarantine breach: 5 Imp held; break it to fight them", or "quarantine breach: broken; 3 of 5
+released stand".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **One containment a floor; destroying it releases five of the floor's kinds two rungs up.** They pay, so the reward
+  is their rung's drops.
+- **"Spreading the infection": each released creature leaves a Pestilence patch on death, Necrotic Ground's patch.**
+- **The containment shows what it holds: "Quarantine: 5 <creature kind>"**, so breaking it is an informed choice, as
+  the row says.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **"Two rungs up" is rung 2**, two above Common, because the released creatures have no rung of their own to count
+  from.
+- **The five are one kind**, drawn once when the containment is placed, because the label names one kind.
+- **The patch burns what Infested Veins' toxic ground burns, 1% of maximum health a second, for the rest of the floor.**
+  The ruling named the patch's size and not its effect, and a patch that did nothing would spread nothing. The
+  figure is an existing one, `InfestedVeinsPercentPerSecond`, itself `SingularityWellsPercentPerSecond`.
+- **The label names the kind as the creature panel does**, from its class's archetype row through
+  `UCataclysmCreaturePanel::ArchetypeNameForRow` ("5 Abyssal Warden", not the code name "AbyssalWarden"), as March of
+  Progress names its Commander. It is not made plural ("5 Imp", not "5 Imps"), because the names are not all regular
+  plurals ("Succubus").
+- **A Horde arena has one containment, kept by its later waves**, as Infested Veins and Portal Unleashing keep theirs.
+
+### The research: a group held in stasis that the player chooses to free
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Legion | https://poedb.tw/us/Legion_league | "Damaging the enemies while they are in stasis will free them when time resumes, where they can be fought and killed for loot." |
+
+**What it settles and what it does not.** Path of Exile ships the row's shape: enemies held in stasis that the player
+chooses to free, and fights for loot. That settles the group being inert until freed, and the reward being what they
+drop. The page describes neither a single container naming its contents nor infection spreading from the freed
+enemies, so the five, rung 2, the label and the burning patches are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `QuarantineBreachFiguresHeldRungAndPatch`: the figures, and the patch burning what a vein's ground burns.
+- `AQuarantineSaysWhatItHoldsAndReleasesNothingUnbroken`: one containment that can be hurt, pays nothing, is not the
+  floor's, has the Imp's health and stands far enough from the entrance; "Quarantine: 5 <kind>" under its bar and the
+  same kind on the panel; nothing released in a minute.
+- `BreakingAQuarantineReleasesFiveAtRungTwo`: the player's blow destroys it; five stand, all of one kind, at rung 2,
+  with a brain, paying, among the floor's creatures, beside where it stood; the panel.
+- `AReleasedQuarantineCreatureLeavesAPatchWhereItDies`: no patch at first; another creature's death leaves none; each
+  of two released creatures killed leaves one patch covering where it fell; the panel.
+- `Cataclysm.SaveApply.AQuarantineDoesNotTakeTheTrainingDummysEmptyName`.
+
+A test world does not tick a zone, so no test watches a patch burn the player. The burn's figure is checked
+directly, and the burning is done by the ground zone itself, as it is for Singularity Wells' wells.
+
+One Python check: the row still says "frozen in time", "choose to break the containment", "great rewards" and
+"spreading the infection".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — A passive row can apply from a number of points in its node, once; a knockback asks whether its target may be knocked back
 
 **Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h`, `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,

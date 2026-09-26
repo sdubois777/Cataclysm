@@ -37,6 +37,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -1517,6 +1518,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// Issues #1820 and #41.
 		ForgetThePortals();
 		PlaceThePortals();
+
+		// AND QUARANTINE BREACH, FOR THE SAME REASON; a Horde arena's waves keep its containment.
+		// Issues #1820 and #41.
+		ForgetTheQuarantine();
+		PlaceTheQuarantine();
 
 		// AND INFESTED VEINS, FOR THE SAME REASON; a new arena starts its destroyed count again, and a
 		// Horde arena's waves keep it. Issues #1820 and #41.
@@ -4409,6 +4415,180 @@ void ACataclysmDungeonGameMode::StepPortalUnleashing()
 	}
 }
 
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::QuarantineNow() const
+{
+	ACataclysmEnemyCharacter* Containment = Quarantine.Get();
+	return IsValid(Containment) && !UCataclysmSkillEffects::IsDead(Containment) ? Containment : nullptr;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::QuarantineReleasedStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : QuarantineReleased)
+	{
+		ACataclysmEnemyCharacter* Creature = One.Get();
+		if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+		{
+			Standing.Add(Creature);
+		}
+	}
+	return Standing;
+}
+
+TArray<ACataclysmGroundZone*> ACataclysmDungeonGameMode::QuarantinePatchesNow() const
+{
+	TArray<ACataclysmGroundZone*> Drawn;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : QuarantinePatches)
+	{
+		if (ACataclysmGroundZone* Patch = One.Get())
+		{
+			Drawn.Add(Patch);
+		}
+	}
+	return Drawn;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheQuarantine()
+{
+	if (ACataclysmEnemyCharacter* Containment = Quarantine.Get())
+	{
+		Containment->Destroy();
+	}
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : QuarantinePatches)
+	{
+		if (ACataclysmGroundZone* Patch = One.Get())
+		{
+			Patch->Destroy();
+		}
+	}
+	// WHAT IT RELEASED IS THE FLOOR'S, so the floor's own clearing takes it; only the record goes here.
+	Quarantine = nullptr;
+	QuarantineHeldKind = ECataclysmDungeonCreature::Imp;
+	bQuarantineBroken = false;
+	QuarantineReleased.Reset();
+	QuarantinePatches.Reset();
+}
+
+FString ACataclysmDungeonGameMode::QuarantineHeldName() const
+{
+	// AS THE CREATURE PANEL NAMES IT, as March of Progress names its Commander: from the table, so a creature renamed
+	// in the design is renamed here too.
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ClassFor(QuarantineHeldKind);
+	const ACataclysmEnemyCharacter* Default = Class ? Class->GetDefaultObject<ACataclysmEnemyCharacter>() : nullptr;
+	const FString Named = Default
+		? UCataclysmCreaturePanel::ArchetypeNameForRow(UCataclysmCreaturePanel::LoadEnemyArchetypeTable(),
+													   Default->ArchetypeRow)
+		: FString();
+	return Named.IsEmpty() ? FString(CataclysmDungeonCreatureName(QuarantineHeldKind)) : Named;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheQuarantine()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::QuarantineBreachKey)))
+	{
+		return;
+	}
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::QuarantineBreachPerFloor);
+	const FCataclysmFloorPopulation Population =
+		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	if (Cells.IsEmpty() || Population.Enemies.IsEmpty())
+	{
+		return;
+	}
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmQuarantineCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmQuarantineCharacter* Containment = World->SpawnActor<ACataclysmQuarantineCharacter>(
+		Class, CurrentFloor->WorldOfCell(Cells[0]) + FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class)),
+		FRotator::ZeroRotator, Spawn);
+	if (!Containment)
+	{
+		return;
+	}
+	// ONE KIND, OF THE FLOOR'S OWN, drawn once, and shown on its bar. The player can destroy it: the Imp's health at
+	// Common, paying nothing and not one of the floor's creatures.
+	QuarantineHeldKind = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)].Creature;
+	Containment->Holds = FString::Printf(TEXT("%d %s"), Effects::QuarantineBreachHeld, *QuarantineHeldName());
+	Containment->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Containment->SetHealth(QuarantineHealth());
+	Containment->SetRarityStep(0);
+	Containment->bDiesUnpaid = true;
+	Containment->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Containment);
+	Quarantine = Containment;
+	UE_LOG(LogCataclysm, Log, TEXT("Quarantine Breach: a containment holding %s on floor %d"), *Containment->Holds,
+		   FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForQuarantineBreach(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// THE CONTAINMENT BROKEN: ITS GROUP RELEASED beside it, of the kind it showed, at its rung. They pay and are
+	// the floor's creatures.
+	ACataclysmEnemyCharacter* Containment = Quarantine.Get();
+	if (Containment && Notice.Victim == Containment && !bQuarantineBroken)
+	{
+		bQuarantineBroken = true;
+		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Containment->GetActorLocation());
+		for (int32 Which = 0; Which < Effects::QuarantineBreachHeld && !Cells.IsEmpty(); ++Which)
+		{
+			FCataclysmEnemyPlacement Placement;
+			Placement.Creature = QuarantineHeldKind;
+			Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+			if (ACataclysmEnemyCharacter* Released =
+					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Effects::QuarantineBreachRung))
+			{
+				FloorEnemies.Add(Released);
+				QuarantineReleased.Add(Released);
+			}
+		}
+		UE_LOG(LogCataclysm, Log, TEXT("Quarantine Breach: broken on floor %d; %d released"), FloorNumber,
+			   QuarantineReleased.Num());
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// A RELEASED CREATURE'S DEATH SPREADS THE INFECTION: a patch where it fell, for the rest of the floor, burning
+	// the player standing in it once a second by a share of their maximum health, typed by the row.
+	const bool bReleased = QuarantineReleased.ContainsByPredicate(
+		[&Notice](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Notice.Victim; });
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	APlayerController* Controller = World->GetFirstPlayerController();
+	const ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	const UAbilitySystemComponent* AbilitySystem = Player ? Player->GetAbilitySystemComponent() : nullptr;
+	if (!bReleased || !Source || !AbilitySystem)
+	{
+		return;
+	}
+	const FName Type = DungeonGameModeTypeOfRow(Effects::QuarantineBreachKey);
+	const FVector Where = Notice.Location;
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Where, Where, Effects::QuarantineBreachPatchRadiusCm,
+		Effects::QuarantineBreachPatchBurn(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())),
+		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type, /*InDamageType=*/Type);
+	if (Patch)
+	{
+		// PATCHES THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM, as Singularity Wells' do.
+		Patch->BurnsOnceASecondAs = FName(Effects::QuarantineBreachKey);
+		QuarantinePatches.Add(Patch);
+	}
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -5667,6 +5847,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
+	ForgetTheQuarantine();
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
 	ForgetTheSarcophagi();
@@ -7457,6 +7638,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForQuarantineBreach(Notice);
 	NoteDeathForMarchOfProgress(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
@@ -9116,6 +9298,22 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 								   LivingFloorEnemies());
 		}
 		Counting.Add(Trial, Line);
+	}
+
+	// AND QUARANTINE BREACH: what the containment holds, or how many it released still stand. Issues #1820 and #41.
+	const FName Breach(Effects::QuarantineBreachKey);
+	if (FloorBrief.Modifiers.Contains(Breach))
+	{
+		if (bQuarantineBroken)
+		{
+			Counting.Add(Breach, FString::Printf(TEXT("quarantine breach: broken; %d of %d released stand"),
+				QuarantineReleasedStanding().Num(), Effects::QuarantineBreachHeld));
+		}
+		else if (QuarantineNow())
+		{
+			Counting.Add(Breach, FString::Printf(TEXT("quarantine breach: %d %s held; break it to fight them"),
+				Effects::QuarantineBreachHeld, *QuarantineHeldName()));
+		}
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
