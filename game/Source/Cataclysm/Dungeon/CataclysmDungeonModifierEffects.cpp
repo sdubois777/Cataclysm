@@ -1786,9 +1786,9 @@ float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
 	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
 }
 
-bool UCataclysmDungeonModifierEffects::IllusionPhantasmsAreDue(float SecondsSinceLast)
+bool UCataclysmDungeonModifierEffects::IllusionPhantasmsAreDue(float SecondsSinceLast, int32 Standing)
 {
-	return SecondsSinceLast >= IllusionSecondsBetween;
+	return SecondsSinceLast >= IllusionSecondsBetween && Standing < IllusionMostStanding;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

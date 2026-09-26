@@ -31,7 +31,8 @@ creatures do and deal their damage, but each has one point of health, so any hit
 nothing, are raised by the rule and are not the floor's creatures. When a phantasm's blow lands on the player, the
 player's movement speed is 30% less for two seconds; a second blow starts the two seconds again. A new floor, or a
 Horde dungeon's next wave, takes the phantasms away, ends the slow and starts the clock again. The panel reads
-"mind-shattering illusions: next in 12 s; 2 phantasms standing".
+"mind-shattering illusions: next in 12 s; 2 of 6 phantasms standing". A new pair appears only while fewer than six
+of the rule's phantasms stand; the clock runs on while six stand, so a pair comes on the beat after one falls.
 
 ### Rulings
 
@@ -42,6 +43,10 @@ play-test value:**
 - **They deal damage, pay nothing, are not the floor's creatures, and die to any one hit**: "discern reality from
   illusion" is that they fall at a touch.
 - **A phantasm's hit slows the player 30% for 2 s**: "disorient".
+- **A new pair appears only while fewer than 6 of the rule's phantasms stand**, ruled on 2026-09-26 after this rule
+  was registered: they pay nothing and come without end, so a player who walks away from them would otherwise meet
+  forty after ten minutes. Portal Unleashing caps its creatures at four for the same reason. Read as written, five
+  standing and a new pair make seven.
 
 **Judgements of this change, under the same delegation, not ruled separately:**
 
@@ -69,15 +74,18 @@ metres, one point of health, 30% and two seconds are this game's own.
 
 ### Tests
 
-Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+Five automation tests in `Cataclysm.DungeonModifierEffects.`:
 
-- `MindShatteringIllusionsFiguresPhantasmsAndSlow`: the figures; not due at 29.75 s and due at 30.
+- `MindShatteringIllusionsFiguresPhantasmsAndSlow`: the figures; not due at 29.75 s and due at 30; due with five
+  standing and not with six.
 - `TwoPhantasmsAppearEveryThirtySecondsAndFallToOneHit`: none at 29.75 s; two at 30 s of the floor's kinds, with a
   brain, paying nothing, not the floor's, with one point of health, near the player, with the panel; a hit of 5 fells
   one, and one stands.
 - `APhantasmsHitSlowsThePlayerForTwoSeconds`: with the player unable to evade, another creature's hit slows nothing;
   a phantasm's hit makes the player 30% slower, still at 1.75 s, and not by 2.25 s.
 - `ANewFloorTakesThePhantasmsAway`: the last floor's phantasms are gone on the next, and its clock starts at 30 s.
+- `NoNewPhantasmsWhileSixStand`: six stand after 90 s, still six 30 s later, and the panel reads "next in 0 s; 6 of 6
+  phantasms standing".
 
 One Python check: the row still says "phantasmal enemies", "can harm or disorient" and "discern reality from
 illusion".

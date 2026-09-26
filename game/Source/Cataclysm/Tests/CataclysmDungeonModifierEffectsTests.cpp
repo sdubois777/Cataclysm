@@ -31089,8 +31089,11 @@ bool FCataclysmIllusionsFiguresTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("800 cm away"), Effects::IllusionAppearsAwayCm, 800.0f, 0.001f);
 	TestEqual(TEXT("a hit slows 30%"), Effects::IllusionSlowLessPercent, 30.0f, 0.001f);
 	TestEqual(TEXT("for 2 s"), Effects::IllusionSlowSeconds, 2.0f, 0.001f);
-	TestFalse(TEXT("not due at 29.75 s"), Effects::IllusionPhantasmsAreDue(29.75f));
-	TestTrue(TEXT("due at 30 s"), Effects::IllusionPhantasmsAreDue(30.0f));
+	TestEqual(TEXT("six at most"), Effects::IllusionMostStanding, 6);
+	TestFalse(TEXT("not due at 29.75 s"), Effects::IllusionPhantasmsAreDue(29.75f, 0));
+	TestTrue(TEXT("due at 30 s"), Effects::IllusionPhantasmsAreDue(30.0f, 0));
+	TestTrue(TEXT("due with five standing"), Effects::IllusionPhantasmsAreDue(30.0f, 5));
+	TestFalse(TEXT("not with six standing"), Effects::IllusionPhantasmsAreDue(300.0f, 6));
 	return true;
 }
 
@@ -31138,7 +31141,7 @@ bool FCataclysmIllusionsAppearTest::RunTest(const FString& Parameters)
 			<= Effects::IllusionAppearsAwayCm + Effects::NecroticBloomWaveWithinCm + 1.0f);
 	}
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(IllusionsRow),
-			  FString(TEXT("mind-shattering illusions: next in 30 s; 2 phantasms standing")));
+			  FString(TEXT("mind-shattering illusions: next in 30 s; 2 of 6 phantasms standing")));
 
 	// ONE HIT OF ANY SIZE: IT FALLS.
 	ACataclysmEnemyCharacter* First = Standing[0];
@@ -31240,7 +31243,42 @@ bool FCataclysmIllusionsFloorTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("none stand"), Mode->PhantasmsStanding().Num(), 0);
 	TestEqual(TEXT("and the clock starts again"), Mode->LiveCountsForTheFloor().FindRef(IllusionsRow),
-			  FString(TEXT("mind-shattering illusions: next in 30 s; 0 phantasms standing")));
+			  FString(TEXT("mind-shattering illusions: next in 30 s; 0 of 6 phantasms standing")));
+	return true;
+}
+
+// NO MORE THAN SIX: THREE PAIRS STAND AFTER 90 S, AND THE NEXT 30 S ADDS NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionsCapTest,
+	"Cataclysm.DungeonModifierEffects.NoNewPhantasmsWhileSixStand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionsCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnIllusionsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, 3 * BeatsFor(Effects::IllusionSecondsBetween));
+	if (!TestEqual(TEXT("six after three pairs"), Mode->PhantasmsStanding().Num(), Effects::IllusionMostStanding))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::IllusionSecondsBetween));
+	TestEqual(TEXT("still six 30 s later"), Mode->PhantasmsStanding().Num(), Effects::IllusionMostStanding);
+	TestEqual(TEXT("the panel at the cap"), Mode->LiveCountsForTheFloor().FindRef(IllusionsRow),
+			  FString(TEXT("mind-shattering illusions: next in 0 s; 6 of 6 phantasms standing")));
 	return true;
 }
 

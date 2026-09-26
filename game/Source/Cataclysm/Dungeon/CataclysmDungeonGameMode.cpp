@@ -4678,10 +4678,12 @@ void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
 		return;
 	}
 
-	// PHANTASMS ON THEIR CLOCK: the floor's own kinds, on cells beside a point that far from the player at a random
-	// angle. They pay nothing, are raised by the rule, are not the floor's creatures, and have one point of health.
+	// PHANTASMS ON THEIR CLOCK, WHILE FEWER THAN THE MOST STAND: the floor's own kinds, on cells beside a point that
+	// far from the player at a random angle. They pay nothing, are raised by the rule, are not the floor's creatures,
+	// and have one point of health. THE CLOCK RUNS WHILE THE CAP IS FULL, as Portal Unleashing's does, so a pair
+	// comes on the next beat after one falls.
 	IllusionSecondsSinceLast += SecondsBetweenWaveChecks;
-	if (Effects::IllusionPhantasmsAreDue(IllusionSecondsSinceLast))
+	if (Effects::IllusionPhantasmsAreDue(IllusionSecondsSinceLast, PhantasmsStanding().Num()))
 	{
 		const FVector Feet = Player->GetActorLocation();
 		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
@@ -9485,9 +9487,9 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	const FName Illusions(Effects::MindShatteringIllusionsKey);
 	if (FloorBrief.Modifiers.Contains(Illusions))
 	{
-		Counting.Add(Illusions, FString::Printf(TEXT("mind-shattering illusions: next in %d s; %d phantasm%s standing"),
+		Counting.Add(Illusions, FString::Printf(TEXT("mind-shattering illusions: next in %d s; %d of %d phantasms standing"),
 			FMath::Max(0, FMath::CeilToInt(Effects::IllusionSecondsBetween - IllusionSecondsSinceLast)),
-			PhantasmsStanding().Num(), PhantasmsStanding().Num() == 1 ? TEXT("") : TEXT("s")));
+			PhantasmsStanding().Num(), Effects::IllusionMostStanding));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
