@@ -130,10 +130,35 @@ C++ as text and cannot see either kind of error.
 Fixed as one commit in the window with the coordinating session's approval, 2026-09-26; neither changes what the rule
 does, the tests or the guard proofs' anchors.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-26, ending at 16:09 UTC, on development 9d4b6a44 with this change at c9a161a0 (the change moved
+onto that head, and the commit fixing the two compile errors above), with the build machine and no workbook. Every
+figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the first build, started with no CI run in progress | `5519 passed, 8 skipped` (JUnit 5,527, no failures) |
+| First build | `Build: Failed - 30 actions, 27 files compiled`: the two errors above; no test ran |
+| Python of record, after the fix | `5519 passed, 8 skipped` (JUnit 5,527, no failures) |
+| Build | `Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.24.cpp, Module.Cataclysm.8.cpp` |
+| Whole suite | `2608 tests performed, 2608 succeeded, 0 failed`; 2608 declared, gap 0, as registered (2602 + 6) |
+
+Three proofs with `prove_cpp_guard`, each anchor counted from the proof script's own table immediately before the
+window. Each restored run printed `1 tests performed, 1 succeeded, 0 failed`, and the source hash was the same before
+and after each.
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| a. a stack is never added: `InfestedHoardStacks += 0;` | `Cataclysm.DungeonModifierEffects.AnInfestedDropTakenByHandAddsAStackOfInfestation` | `1 tests performed, 0 succeeded, 1 failed: AnInfestedDropTakenByHandAddsAStackOfInfestation` | 5, as registered: "taken by hand: one stack", "the panel with one", "taken another way, or not infested: still one", "ten at most", "the panel at ten" |
+| b. an infested material is collected automatically: `if (!bIsMaterial)` | `Cataclysm.DungeonModifierEffects.AnInfestedMaterialIsNeverCollectedAutomatically` | `1 tests performed, 0 succeeded, 1 failed: AnInfestedMaterialIsNeverCollectedAutomatically` | 2, as registered: "the rule itself: an infested material never comes" and "the infested material still lies there" |
+| c. the drain is written as 0: `* 0.0f;` | `Cataclysm.DungeonModifierEffects.InfestationDrainsThePlayerEachSecond` | `1 tests performed, 0 succeeded, 1 failed: InfestationDrainsThePlayerEachSecond` | 1, as registered: "ten stacks drain", which read 0.0 lost |
+
+The whole suite also reported 40 tests that skipped part of what they check, all of them art tests (the Paragon art
+is not in a worktree); none is a dungeon-modifier test.
+
+**Final Python**, after the entry's Run section: `5519 passed, 8 skipped` (JUnit 5,527, no failures), as before the
+window.
 
 ---
 
