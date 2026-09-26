@@ -141,6 +141,9 @@ restored, and each failed on exactly the checks registered for it.
 | The released creatures come at Common | `BreakingAQuarantineReleasesFiveAtRungTwo`: "at rung 2", 0, once for each of the five |
 | A released creature's death leaves no patch | `AReleasedQuarantineCreatureLeavesAPatchWhereItDies`: "one more patch", 0 |
 
+The final Python, on this entry's own commit after the lock was released: `5522 passed, 8 skipped` (JUnit 5,530, no
+failures).
+
 ---
 
 ## 2026-09-26 — The roam targets test allows a hundredth of a centimetre of rounding at the edge of the roam radius
