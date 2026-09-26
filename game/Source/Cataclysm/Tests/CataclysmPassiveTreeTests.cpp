@@ -19267,7 +19267,7 @@ bool FCataclysmSharedAgonyTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompoundInterestTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompoundInterestRowTest,
 	"Cataclysm.MasochistHealingRows.CompoundInterestRaisesARealMasochistsDamageForEachFivePercentOwed",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
@@ -19276,7 +19276,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompoundInterestTest,
  *  step. The debt is written onto the attribute `UCataclysmHealthDebt::Defer`
  *  adds to, with the same additive operation. The figures avoid exact multiples
  *  of 5%. */
-bool FCataclysmCompoundInterestTest::RunTest(const FString&)
+bool FCataclysmCompoundInterestRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmHealingRowTest;
 	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
