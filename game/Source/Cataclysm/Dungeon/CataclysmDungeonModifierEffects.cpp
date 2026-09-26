@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::QuarantineBreachKey =
+	TEXT("Pestilence_Quarantine_Breach");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfectionBloomKey =
 	TEXT("Pestilence_Infection_Bloom");
 
@@ -499,6 +502,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(QuarantineBreachKey)
 		|| RowKey == FName(InfectionBloomKey)
 		|| RowKey == FName(InfestedHoardKey)
 		|| RowKey == FName(AbyssalRiftsKey)
@@ -704,6 +708,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(QuarantineBreachKey),
 		FName(InfectionBloomKey),
 		FName(InfestedHoardKey),
 		FName(AbyssalRiftsKey),
@@ -1880,6 +1885,11 @@ bool UCataclysmDungeonModifierEffects::InfectionBloomWaveIsDue(float SecondsSinc
 float UCataclysmDungeonModifierEffects::InfectionBloomDamageMultiplier(bool bOnAPatch)
 {
 	return bOnAPatch ? 1.0f + InfectionBloomDamageMorePercent / 100.0f : 1.0f;
+}
+
+float UCataclysmDungeonModifierEffects::QuarantineBreachPatchBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * QuarantineBreachPatchPercentPerSecond / 100.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

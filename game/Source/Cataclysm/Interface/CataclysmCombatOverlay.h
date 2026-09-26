@@ -557,6 +557,12 @@ public:
 	static FString PortalTextFor(const AActor* Actor);
 
 	/**
+	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
+	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.
+	 */
+	static FString QuarantineTextFor(const AActor* Actor);
+
+	/**
 	 * "Infection Bloom" under the health bar of an infection bloom, or empty. Issues #1820 and #41. Beside the
 	 * floor sources' words, for their reason: it says what the creature is.
 	 */
