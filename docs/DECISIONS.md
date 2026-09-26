@@ -85,6 +85,12 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 One Python check: the row still says "temporary portals or rifts", "teleport", "gain buffs" and "access hidden areas".
 
+**A note for the guard proof of the rest.** With the rest broken, a player standing in a rift is carried to the
+other rift of its pair and back again once each quarter-second beat. The test waits 79 beats, an odd number, so the
+player ends at the wrong rift and "still at rift 1 at 19.75 s" and "carried back to rift 0 at 20 s" fail. A change to
+the beat length that makes that count even would let those two pass with the rest broken; only the panel check would
+still fail.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
