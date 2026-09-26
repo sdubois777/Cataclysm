@@ -67,6 +67,8 @@ also the measurement of the unfixed code for the two distance rows. Each restore
 | b. the damage type read off the set's owner | `4 tests performed, 3 succeeded, 1 failed: AHitOfAPlayersOwnDamageTypeOpensNoForeignWindow` | "a Demonic hit on a Demonic player opens no window" read 0 seconds since, where never (-1) |
 | c. Torment searched around the set's owner | `4 tests performed, 3 succeeded, 1 failed: ADebuffTickOnAPlayerSpreadsToEnemiesNearThePlayer` | "the enemy 2 metres from the player caught the bleed", false; "and the one at the origin, 20 metres off, did not", true |
 
+**Final Python**, after the entry: `5511 passed, 8 skipped` (JUnit 5,519, no failures), as registered.
+
 ---
 
 ## 2026-09-25 — Cooldown reduction: running cooldowns lose seconds, a spell cast shortens the next spell's, and four enchantments written on them
