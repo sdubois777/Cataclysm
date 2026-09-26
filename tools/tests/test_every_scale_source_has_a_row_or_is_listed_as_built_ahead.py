@@ -97,7 +97,10 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: engine commit ahead of its row, "This weapon has 5-20% more damage for every
 #: 100,000-500,000 kills", and leaves with it; so does `character_kills`.
 #: `weapon_kills` and `character_kills` LEFT with their rows, issue #1833.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#:
+#: `minion_seconds_active` JOINED on 2026-09-25 for deployable Part 2, as an
+#: engine commit ahead of its two rows, and leaves with them.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"minion_seconds_active"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
