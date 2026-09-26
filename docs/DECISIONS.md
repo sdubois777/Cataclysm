@@ -95,7 +95,7 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Catacly
 - `Cataclysm.SaveApply.AQuarantineDoesNotTakeTheTrainingDummysEmptyName`.
 
 A test world does not tick a zone, so no test watches a patch burn the player. The burn's figure is checked
-directly, and the burning is done by the ground zone itself, as it is for Singularity Wells' wells.
+directly; the burning is the ground zone's own, as for Singularity Wells' wells.
 
 One Python check: the row still says "frozen in time", "choose to break the containment", "great rewards" and
 "spreading the infection".
