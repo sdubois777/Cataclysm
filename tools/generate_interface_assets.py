@@ -12,6 +12,9 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_CharacterSheet      the character sheet, issues #1233 and #50
     WBP_CityScreen          one city: what it is worth, what is standing on it,
                             and what it can build, issue #42
+    WBP_ChoicePanel         what a floor object offers when it is clicked:
+                            its name, a line, a button per choice and
+                            Leave, issues #1820 and #41
     WBP_FloorModifiers      the dungeon modifiers in force on the floor being
                             walked, and which of them do nothing yet, issue #41
 
@@ -554,6 +557,63 @@ def make_floor_modifier_panel():
     log("created {}/{}".format(INTERFACE_DIR, FLOOR_PANEL_ASSET))
 
 
+CHOICE_PANEL_PARENT = "CataclysmChoicePanelWidget"
+CHOICE_PANEL_ASSET = "WBP_ChoicePanel"
+
+
+def make_choice_panel():
+    """What a floor object offers when it is clicked, issues #1820 and #41.
+
+    PINNED TO THE TOP RIGHT, as the floor's modifier panel is, and for its
+    reason: it is open while the floor is played, and a panel filling the
+    screen would cover the creatures coming for the player. Below the modifier
+    panel, so the two do not sit on each other.
+    """
+    parent = parent_class(CHOICE_PANEL_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CHOICE_PANEL_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CHOICE_PANEL_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CHOICE_PANEL_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CHOICE_PANEL_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    pin_to_the_top_right(backdrop, width=440.0, height=320.0)
+    # BELOW THE MODIFIER PANEL, which is 360 high at a 24 inset: the same right
+    # edge, and a top 24 below that panel's bottom.
+    slot = backdrop.get_editor_property("slot")
+    layout = slot.get_editor_property("layout_data")
+    layout.set_editor_property(
+        "offsets", unreal.Margin(-24.0, 24.0 + 360.0 + 24.0, 440.0, 320.0))
+    slot.set_editor_property("layout_data", layout)
+    backdrop.set_editor_property("padding", unreal.Margin(16.0, 12.0, 16.0, 12.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "", size=20)
+
+    prompt = add(blueprint, unreal.TextBlock, "PromptLabel", "Body")
+    set_text(prompt, "", size=16)
+    prompt.set_editor_property("auto_wrap_text", True)
+
+    # ONE BUTTON PER CHOICE AND ONE FOR LEAVE, made at run time by
+    # UCataclysmChoicePanelWidget from the object's own choices.
+    add(blueprint, unreal.VerticalBox, "ChoiceBox", "Body")
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CHOICE_PANEL_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CHOICE_PANEL_ASSET))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
@@ -564,6 +624,7 @@ def main():
     make_character_sheet()
     make_city_screen()
     make_floor_modifier_panel()
+    make_choice_panel()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     log("done")
 

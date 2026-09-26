@@ -2047,6 +2047,17 @@ public:
 	/** Void Parasite, for the panel and tests: how many voidlings the player carries. */
 	int32 VoidParasiteStacksHeld() const { return VoidParasiteStacks; }
 
+	/**
+	 * The choice screen: a choice made at a floor object, sent to the rule that placed it. Answers whether anything
+	 * happened: false for an object gone, a choice it does not offer or cannot offer now, or a rule that does not
+	 * answer. Called by `UCataclysmChoicePanelWidget` and by tests. Issues #1820 and #41.
+	 */
+	bool ChooseAtFloorObject(class ACataclysmFloorObject* Object, FName ChoiceKey);
+
+	/** Grim Totems, for the panel and tests: the totems standing, and the Elite creatures embracing brought. */
+	TArray<class ACataclysmFloorObject*> GrimTotemsNow() const;
+	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
+
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
 	class ACataclysmGroundZone* VoidParasiteLightNow() const;
 
@@ -2423,6 +2434,18 @@ private:
 
 	/** Void Parasite: this arena's light zone chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheLight();
+
+	/** Grim Totems: this arena's totems placed, where a new arena is populated. */
+	void PlaceTheTotems();
+
+	/** Grim Totems: every totem and its zone destroyed and forgotten. */
+	void ForgetTheTotems();
+
+	/** Grim Totems: a choice at one of its totems. */
+	bool ChooseAtGrimTotem(class ACataclysmFloorObject* Totem, FName ChoiceKey);
+
+	/** Grim Totems, on the beat: the totems' zones drawn, and an embrace's strength written and counted down. */
+	void StepGrimTotems(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Every voidling, the light zone and the player's stacks forgotten: the floor has ended. */
 	void ForgetTheVoidParasite();
@@ -3598,6 +3621,17 @@ private:
 	FIntPoint VoidParasiteLightCell = FIntPoint(-1, -1);
 	TWeakObjectPtr<class ACataclysmGroundZone> VoidParasiteLight;
 	int32 VoidParasitePanelStacks = -1;
+
+	/**
+	 * Grim Totems: the totems and the zones drawn under them, the Elite creatures embracing brought, an embrace's
+	 * seconds left and what was last written on the player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> GrimTotems;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> GrimTotemZones;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> GrimTotemElites;
+	float GrimEmbraceLeft = 0.0f;
+	float GrimEmbraceApplied = 0.0f;
+	int32 GrimTotemsPanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

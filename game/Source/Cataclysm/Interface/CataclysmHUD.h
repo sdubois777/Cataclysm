@@ -9,6 +9,7 @@
 #include "CataclysmHUD.generated.h"
 
 class ACataclysmDroppedItem;
+class ACataclysmFloorObject;
 class ACataclysmEnemyCharacter;
 class UFont;
 
@@ -106,6 +107,12 @@ public:
 	 * rather than through this.
 	 */
 	ACataclysmDroppedItem* DropUnderPoint(const FVector2D& Point) const;
+
+	/**
+	 * The floor object whose name tag is under this screen point, or null: the same test `DropUnderPoint` makes, on
+	 * the tags `DrawFloorObjectNames` drew this frame. Issues #1820 and #41, the choice screen.
+	 */
+	ACataclysmFloorObject* FloorObjectUnderPoint(const FVector2D& Point) const;
 
 private:
 	/**
@@ -212,6 +219,9 @@ private:
 	 *  character, over where it lies. Issue #1116. */
 	void DrawDropNames();
 
+	/** The name tags of the floor objects near the character, drawn and recorded as the drops' are. */
+	void DrawFloorObjectNames();
+
 	/** One bar: a dark backing, then the filled share of it. */
 	void DrawBar(float ScreenX, float ScreenY, float Width, float Height,
 				 float Fraction, const FLinearColor& Fill, float Opacity);
@@ -290,6 +300,10 @@ private:
 	 */
 	TArray<FBox2D> DropNameRects;
 	TArray<TWeakObjectPtr<ACataclysmDroppedItem>> DropsNamed;
+
+	/** The floor objects' tags drawn this frame and the objects they name, index for index, as the drops' are. */
+	TArray<FBox2D> ObjectNameRects;
+	TArray<TWeakObjectPtr<ACataclysmFloorObject>> ObjectsNamed;
 
 	/**
 	 * The creature the panel is describing, which may be one the cursor has

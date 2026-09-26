@@ -6,6 +6,8 @@
 #include "Interface/CataclysmCharacterCreationWidget.h"
 #include "Interface/CataclysmCharacterSheetWidget.h"
 #include "Interface/CataclysmCityScreenWidget.h"
+#include "Interface/CataclysmChoicePanelWidget.h"
+#include "Dungeon/CataclysmFloorObject.h"
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
@@ -398,6 +400,7 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	}
 
 	UpdatePendingPickup();
+	UpdatePendingObject();
 	UpdatePendingAttack();
 	CollectMaterialsNearby();
 
@@ -1302,12 +1305,36 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 			return;
 		}
 
+		// A CLICK ON A FLOOR OBJECT'S NAME OPENS ITS CHOICES, the way a click on a drop's name takes it: at once in
+		// reach, and after walking there from further off. After the drop, so a drop's name lying over an object's
+		// is taken first. Issues #1820 and #41, the choice screen.
+		if (ACataclysmFloorObject* Object = FloorObjectUnderCursor())
+		{
+			const APawn* ControlledPawn = GetPawn();
+			if (ControlledPawn
+				&& UCataclysmDropPickup::IsWithinPickupRange(ControlledPawn->GetActorLocation(),
+															 Object->GetActorLocation()))
+			{
+				OpenChoicePanel(Object);
+				PendingObject = nullptr;
+			}
+			else
+			{
+				PendingObject = Object;
+				UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, Object->GetActorLocation());
+			}
+			PendingPickup = nullptr;
+			FollowTime = 0.0f;
+			return;
+		}
+
 		// A CLICK ANYWHERE ELSE ABANDONS THE ITEM the player was walking to, and
 		// the creature they were walking to attack. They changed their mind, and
 		// the walk that follows is a move order rather than the tail of the last
 		// one.
 		PendingPickup = nullptr;
 		PendingAttack = nullptr;
+		PendingObject = nullptr;
 
 		// UNDER KEYBOARD MOVEMENT THERE IS NO WALK TO ORDER. Everything above
 		// still ran, because a click on a drop's name loots it in either scheme.
@@ -1318,6 +1345,72 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 	}
 
 	FollowTime = 0.0f;
+}
+
+ACataclysmFloorObject* ACataclysmPlayerController::FloorObjectUnderCursor() const
+{
+	const ACataclysmHUD* Overlay = Cast<ACataclysmHUD>(GetHUD());
+	float X = 0.0f;
+	float Y = 0.0f;
+	if (!Overlay || !GetMousePosition(X, Y))
+	{
+		return nullptr;
+	}
+	return Overlay->FloorObjectUnderPoint(FVector2D(X, Y));
+}
+
+void ACataclysmPlayerController::UpdatePendingObject()
+{
+	ACataclysmFloorObject* Object = PendingObject.Get();
+	const APawn* ControlledPawn = GetPawn();
+	if (!Object || !ControlledPawn)
+	{
+		if (!Object)
+		{
+			PendingObject = nullptr;
+		}
+		return;
+	}
+	if (!UCataclysmDropPickup::IsWithinPickupRange(ControlledPawn->GetActorLocation(), Object->GetActorLocation()))
+	{
+		return;
+	}
+	// ARRIVED: its choices open, and this click is finished.
+	OpenChoicePanel(Object);
+	PendingObject = nullptr;
+}
+
+void ACataclysmPlayerController::OpenChoicePanel(ACataclysmFloorObject* Object)
+{
+	if (!IsValid(Object))
+	{
+		return;
+	}
+	if (!ChoicePanel)
+	{
+		UClass* PanelClass = ChoicePanelClass.LoadSynchronous();
+		if (!PanelClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no choice panel to open: %s could not be loaded. Run  python "
+						"tools/run_editor_python.py tools/generate_interface_assets.py  to build it."),
+				   *ChoicePanelClass.ToString());
+			return;
+		}
+		ChoicePanel = CreateWidget<UCataclysmChoicePanelWidget>(this, PanelClass);
+		if (!ChoicePanel)
+		{
+			return;
+		}
+	}
+
+	// NOTHING PAUSES, as no screen in the project pauses: the panel sits over the floor while the creatures go on.
+	ChoicePanel->SetObject(Object);
+	if (!ChoicePanel->IsInViewport())
+	{
+		ChoicePanel->AddToViewport();
+	}
+	ApplyPlayingInputMode();
 }
 
 ACataclysmDroppedItem* ACataclysmPlayerController::DropUnderCursor() const

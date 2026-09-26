@@ -2,6 +2,135 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The choice screen: a floor object is clicked by its name like a drop and opens a panel of choices; Grim Totems is its first rule, embraced for 25% more damage and three Elites or cleansed to weaken the creatures near it
+
+**Affects:** two new classes, `game/Source/Cataclysm/Dungeon/CataclysmFloorObject.h` and `.cpp` (a thing on a floor
+that a rule placed and the player clicks) and `game/Source/Cataclysm/Interface/CataclysmChoicePanelWidget.h` and `.cpp`
+(the panel it opens); `game/Source/Cataclysm/Interface/CataclysmHUD.h` and `.cpp` (the object's name tag, drawn and
+hit-tested as a drop's is); `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (the click, the walk
+to an object out of reach, and opening the panel); `tools/generate_interface_assets.py` (the panel's layout,
+`WBP_ChoicePanel`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (Grim Totems' key,
+figures, a player floor-effect field `GrimEmbraceDamageMorePercent`, and its place among the rows partly built);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a key of `DamageMultipliersBySource`,
+`GrimTotemsDamageSource`, with its setter); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (a
+choice sent to the rule that placed its object, and Grim Totems: the totems, embracing, cleansing, the beat, the
+per-floor reset, leaving the dungeon, the panel line); `docs/Cataclysm_GDD_v2.md` (one paragraph beside the one on
+taking drops); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check, and the new damage source in the check that every
+source writes its own key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and Grim Totems PARTLY built.** The panel's
+Widget Blueprint is generated in the Unreal editor, so it, the compile, the automation tests and the guard proofs have
+NOT been done yet; they are done in one window with the build machine, and added at the end of this entry.
+
+### What was there
+
+Nothing on a floor could be clicked except a creature and a drop, and no class or interface in the game's source was
+named for interacting. A drop is clicked through the name the HUD draws over it (`ACataclysmHUD::DropUnderPoint`), and
+a click from further than three metres walks the character there and takes it on arrival
+(`ACataclysmPlayerController`'s `PendingPickup`). Trick or Treat reacts to a drop taken by hand; it does not add a click
+of its own. The screens that offer choices (the city screen, the empire map, the passive tree, character creation and
+the character sheet) all use `UCataclysmChoiceButton`, laid out by Widget Blueprints the generator builds, and none
+pauses the game.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **A floor object**, placed by a rule, with a name and a list of choices, each with a key, a label and whether it can
+  be chosen now; not a creature.
+- **Clicked the way a drop is**: the HUD draws its name, a click on the name in reach opens its panel, and a click from
+  further off walks the character there first, within the three metres a drop is taken from. "A click on a name tag
+  with walk-to matches how the design already takes drops, so no new key is needed."
+- **A choice panel** with the object's name, a line, one button per choice and "Leave", laid out by a generated Widget
+  Blueprint from the existing choice button. It does not pause, like every other screen.
+- **A choice is sent to the game mode**, which hands it to the rule that placed the object.
+- **Tests** drive the panel's own handler and the game mode, as the city screen's tests do.
+- **Grim Totems is the first rule to use it**, in the same change. **A paragraph in the design document** beside the one
+  on taking drops says what a floor object is.
+
+### Grim Totems
+
+`Death_Grim_Totems` in `game/Data/DungeonModifiers.csv`: "Throughout the dungeons, players encounter grim totems
+emanating dark energy. Interacting with these totems offers a choice between embracing their malevolent power or
+dispelling them to cleanse the area. Embracing the power of the totems grants temporary bonuses but may also trigger
+more difficult enemy spawns or curses. Cleansing the totems purifies the environment, removing harmful effects and
+weakening nearby enemies." It states no figure.
+
+A new arena carrying the row gets two totems, one on a Horde arena and kept across its waves, placed away from the
+entrance as the Eternal Chorus's cells are, each a floor object named "Grim Totem" with a zone drawn under it.
+
+- **Embrace**: the player deals 25% more attack and spell damage for thirty seconds, and three creatures of the floor's
+  kinds at the Elite rung come about eight metres from the totem, noticing the player from anywhere on the floor. They
+  are the floor's creatures and pay as the Elite rung does.
+- **Cleanse**: every creature of the floor within fifteen metres of the totem deals 25% less damage for as long as it
+  lives.
+- Either way the totem and its zone go. The panel reads "grim totems: 1 standing; embraced: +25% damage for 12 s".
+- **Not built: "removing harmful effects".** Nothing in the game removes a floor rule's effects from a place or from
+  the player: the rules draw their zones again on the next beat, and there is no cleanse of the player's debuffs. The
+  row is listed among those partly built for that reason.
+
+**Every Grim Totems figure is a judgement of this change under the owner's delegation, not ruled separately**, and each
+is a play-test value: two totems a floor and one a Horde arena; 25% more damage for 30 seconds; three Elites at Royal
+Guard's Elite rung, eight metres off; 25% less damage within fifteen metres. So are these:
+
+- **"More difficult enemy spawns" is Elites**, rather than "curses", which the row offers as an alternative.
+- **The Elites are raised by the rule**, so Blood Gates leaves them out, **and pay**, as the Elite rung does: they are
+  the price of the strength and the player earns what they drop.
+- **An embrace's Elites fall back to the cells around the totem** when the point eight metres off has no floor within
+  reach, because an embrace is one press with no later beat to try again on.
+- **The weakening is a key of the creature damage map of its own**, the route every rule that changes a creature's
+  damage takes, so no other rule's multiplier is overwritten.
+
+### Judgements about the choice screen, under the same delegation
+
+- **A drop's name is tested before a floor object's**, so a drop lying over an object's name is taken first.
+- **The panel stays open until a choice or "Leave"**, and a choice at an object already gone is refused.
+- **The name tag has a plain border**, the thinnest a drop's has, because an object has no rarity to show.
+- **The panel is pinned to the top right, below the floor's modifier panel**, for that panel's reason: it is open while
+  the floor is played, and a panel filling the screen would cover the creatures coming for the player.
+
+### The research
+
+Done before the build; the page quoted was fetched on 2026-09-26 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Eldritch Altars | https://poedb.tw/us/Eldritch_Altar | an altar offers "a choice between two options" that can increase rewards but also increase difficulty, and players "may choose to ignore them" |
+
+**What it settles and what it does not.** Path of Exile ships a thing on the floor that the player walks to and that
+offers a choice between options, each with an upside and a downside, which can be left alone. That settles the shape:
+an object offering a choice, and leaving as a real answer. The figures and the two halves are this game's own.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`. **The click itself is not tested**: the HUD's drawing
+needs a renderer the automation command turns off, and a test world has no cursor, which is why a drop's click is not
+tested either. The tests drive what the click reaches.
+
+- `GrimTotemsFiguresTotemsEmbraceAndCleanse`: the figures.
+- `TwoGrimTotemsStandAwayFromTheEntranceOfferingTwoChoices`: two totems away from the entrance, named, placed by the
+  row, offering embrace then cleanse, both available; a zone under each; the panel.
+- `EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites`: the totem goes; three Elites at the Elite rung,
+  raised by the rule and paying; 25% more attack and spell damage; its zone gone; the panel; still at 29.75 s and gone
+  by 30.25 s; a totem gone and a choice no totem offers are refused.
+- `CleansingAGrimTotemWeakensTheCreaturesNearIt`: the totem goes; a creature fourteen metres off deals 25% less and one
+  sixteen metres off is untouched; no Elites and no strength on the player.
+- `TheChoicePanelOffersATotemsChoicesAndLeaveChoosesNothing`: the panel offers embrace, cleanse and Leave; Leave chooses
+  nothing and the totem stands; cleanse pressed on the panel reaches the rule and the totem goes.
+- `ANewFloorBringsNewGrimTotemsAndEndsTheEmbrace`: the last floor's totem is gone, two new ones stand, and the embrace
+  has ended.
+
+One Python check: the row still says "offers a choice", "temporary bonuses", "more difficult enemy spawns", "removing
+harmful effects" and "weakening nearby enemies".
+
+### Not yet done
+
+`WBP_ChoicePanel`, generated in the editor by `python tools/run_editor_python.py tools/generate_interface_assets.py`
+and committed; the compile, the automation tests, the whole-suite figure and the three guard proofs. They are done in one
+window with the build machine.
+
+---
+
 ## 2026-09-25 — Abyssal Rifts: one rift a floor opens when the player comes near and sends three waves of four; killing them all within 60 seconds closes it in time for +10 magic find, and each success sends later rifts' creatures one rung higher
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its

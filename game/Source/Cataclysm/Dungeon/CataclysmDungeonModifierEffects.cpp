@@ -179,6 +179,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::TrialOfEnduranceKey =
 	TEXT("Celestial_Trial_of_Endurance");
 
+const TCHAR* UCataclysmDungeonModifierEffects::GrimTotemsKey =
+	TEXT("Death_Grim_Totems");
+
 const TCHAR* UCataclysmDungeonModifierEffects::VoidParasiteKey =
 	TEXT("Void_Void_Parasite");
 
@@ -529,6 +532,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
+		// GRIM TOTEMS. Embracing and cleansing are built; "removing harmful effects" is not, because nothing
+		// removes a floor rule's effects from a place or the player. Issues #1820 and #41.
+		|| RowKey == FName(GrimTotemsKey)
 		|| RowKey == FName(SingularityWellsKey)
 		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
 		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
@@ -702,6 +708,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
+		FName(GrimTotemsKey),
 		FName(ObsidianSarcophagiKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
@@ -1112,6 +1119,12 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		Effects.ManaCostAsCurrentHealthPercent, ECataclysmStatCondition::ManaBelowPercent,
 		DesperateMeasuresManaBelowPercent);
 
+	// AND AN EMBRACED GRIM TOTEM'S STRENGTH, A MORE ON ATTACK AND SPELL DAMAGE. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.GrimEmbraceDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.GrimEmbraceDamageMorePercent);
+
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
 	//
@@ -1509,6 +1522,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	// AND DESPERATE MEASURES, SAID AS WHEN IT APPLIES AND WHAT IT COSTS. Issues
 	// #1820 and #41. The floor panel shows the row's own sentence; this reaches
 	// the per-floor log.
+	if (Effects.GrimEmbraceDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from an embraced grim totem"),
+									Effects.GrimEmbraceDamageMorePercent));
+	}
 	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(

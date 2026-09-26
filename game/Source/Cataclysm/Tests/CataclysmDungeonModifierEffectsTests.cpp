@@ -26,6 +26,8 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Dungeon/CataclysmFloorObject.h"
+#include "Interface/CataclysmChoicePanelWidget.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmBeaconCharacter.h"
@@ -31724,6 +31726,307 @@ bool FCataclysmRiftsDeathTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the player's death ends the successes"), Mode->AbyssalRiftSuccessesHeld(), 0);
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
 			  FString(TEXT("abyssal rifts: the rift is closed; 0 closed in time, +0 magic find")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Death_Grim_Totems, and the choice screen it is the first rule to use. Issues #1820 and #41.
+//
+// THE CLICK ITSELF IS NOT TESTED HERE. The HUD draws a floor object's name and the controller hit-tests it, and neither
+// runs in an automation test: `AHUD::DrawHUD` needs a renderer the automation command turns off, and a test world has no
+// cursor, which is why a drop's click is not tested either. These drive what the click reaches: the panel's own handler
+// and the game mode.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName TotemsRow(UCataclysmDungeonModifierEffects::GrimTotemsKey);
+	const FName EmbraceKey(UCataclysmDungeonModifierEffects::GrimTotemsEmbrace);
+	const FName CleanseKey(UCataclysmDungeonModifierEffects::GrimTotemsCleanse);
+
+	/** A dungeon carrying only Grim Totems, on floor 2 with its own creatures cleared and its totems drawn. */
+	ACataclysmDungeonGameMode* ATotemFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {TotemsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("two totems"), Mode->GrimTotemsNow().Num(),
+							   UCataclysmDungeonModifierEffects::GrimTotemsPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** What the dungeon's rules add to this stat, or 0 for none. */
+	float TotemRuleOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, Stat);
+		return Rule ? Rule->Value : 0.0f;
+	}
+}
+
+// THE FIGURES: TWO TOTEMS; EMBRACE 25% MORE DAMAGE FOR 30 S AND THREE ELITES 8 M AWAY; CLEANSE 25% LESS WITHIN 15 M.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.GrimTotemsFiguresTotemsEmbraceAndCleanse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two totems a floor"), Effects::GrimTotemsPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::GrimTotemsPerHordeArena, 1);
+	TestEqual(TEXT("embrace: 25% more damage"), Effects::GrimTotemsEmbraceDamageMorePercent, 25.0f, 0.001f);
+	TestEqual(TEXT("for 30 s"), Effects::GrimTotemsEmbraceSeconds, 30.0f, 0.001f);
+	TestEqual(TEXT("and three Elites"), Effects::GrimTotemsEliteCount, 3);
+	TestEqual(TEXT("8 m from the totem"), Effects::GrimTotemsEliteAwayCm, 800.0f, 0.001f);
+	TestEqual(TEXT("at Royal Guard's Elite rung"), Effects::GrimTotemsEliteRung, Effects::RoyalGuardLowestRungThatSummons);
+	TestEqual(TEXT("cleanse: within 15 m"), Effects::GrimTotemsCleanseRadiusCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("25% less damage"), Effects::GrimTotemsCleanseDamageLessPercent, 25.0f, 0.001f);
+	return true;
+}
+
+// TWO TOTEMS AWAY FROM THE ENTRANCE, EACH A FLOOR OBJECT OFFERING EMBRACE AND CLEANSE, DRAWN, WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.TwoGrimTotemsStandAwayFromTheEntranceOfferingTwoChoices",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const ACataclysmFloorObject* Totem : Mode->GrimTotemsNow())
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Totem->GetActorLocation(), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		TestEqual(TEXT("named"), Totem->DisplayName, FString(TEXT("Grim Totem")));
+		TestEqual(TEXT("placed by the row"), Totem->RuleKey, TotemsRow);
+		if (TestEqual(TEXT("two choices"), Totem->Choices.Num(), 2))
+		{
+			TestEqual(TEXT("embrace first"), Totem->Choices[0].Key, EmbraceKey);
+			TestEqual(TEXT("cleanse second"), Totem->Choices[1].Key, CleanseKey);
+			TestTrue(TEXT("both can be chosen"), Totem->Choices[0].bAvailable && Totem->Choices[1].bAvailable);
+		}
+	}
+	TestEqual(TEXT("a zone under each"), ZonesOnTheFloor(World), 2);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TotemsRow),
+			  FString(TEXT("grim totems: 2 standing")));
+	return true;
+}
+
+// EMBRACING: THE TOTEM GOES, 25% MORE DAMAGE FOR 30 S, AND THREE ELITES OF THE FLOOR'S KINDS COME; A TOTEM GONE REFUSES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsEmbraceTest,
+	"Cataclysm.DungeonModifierEffects.EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsEmbraceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Totem = Mode->GrimTotemsNow()[0];
+	TestEqual(TEXT("nothing before"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	if (!TestTrue(TEXT("embracing acted"), Mode->ChooseAtFloorObject(Totem, EmbraceKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the totem went"), Mode->GrimTotemsNow().Num(), 1);
+
+	const TArray<ACataclysmEnemyCharacter*> Elites = Mode->GrimTotemElitesStanding();
+	TestEqual(TEXT("three Elites came"), Elites.Num(), Effects::GrimTotemsEliteCount);
+	for (const ACataclysmEnemyCharacter* Elite : Elites)
+	{
+		TestEqual(TEXT("at the Elite rung"), Elite->RarityStep, Effects::GrimTotemsEliteRung);
+		TestTrue(TEXT("raised by the rule"), Elite->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Elite->PaysForItsDeath());
+	}
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("25% more attack damage"), TotemRuleOn(Player, TEXT("attack_damage")), 25.0f, 0.001f);
+	TestEqual(TEXT("25% more spell damage"), TotemRuleOn(Player, TEXT("spell_damage")), 25.0f, 0.001f);
+	TestEqual(TEXT("its zone went with it"), ZonesOnTheFloor(World), 1);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TotemsRow),
+			  FString(TEXT("grim totems: 1 standing; embraced: +25% damage for 30 s")));
+
+	Beat(Mode, BeatsFor(Effects::GrimTotemsEmbraceSeconds) - 2);
+	TestEqual(TEXT("still more at 29.75 s"), TotemRuleOn(Player, TEXT("attack_damage")), 25.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("gone by 30.25 s"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	TestFalse(TEXT("a totem gone offers nothing"), Mode->ChooseAtFloorObject(Totem, CleanseKey));
+	TestFalse(TEXT("and a choice no totem offers is refused"),
+			  Mode->ChooseAtFloorObject(Mode->GrimTotemsNow()[0], FName(TEXT("Worship"))));
+	return true;
+}
+
+// CLEANSING: THE TOTEM GOES, AND A CREATURE WITHIN 15 M DEALS 25% LESS DAMAGE WHILE ONE BEYOND DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsCleanseTest,
+	"Cataclysm.DungeonModifierEffects.CleansingAGrimTotemWeakensTheCreaturesNearIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsCleanseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Totem = Mode->GrimTotemsNow()[0];
+	const FVector At = Totem->GetActorLocation();
+	ACataclysmEnemyCharacter* Near = SpawnImpWithHealth(World, At + FVector(1400.0f, 0.0f, 100.0f), 100.0f);
+	ACataclysmEnemyCharacter* Far = SpawnImpWithHealth(World, At + FVector(0.0f, 1600.0f, 100.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature near"), Near) || !TestNotNull(TEXT("and one far"), Far))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Near);
+	Mode->FloorEnemies.Add(Far);
+
+	if (!TestTrue(TEXT("cleansing acted"), Mode->ChooseAtFloorObject(Totem, CleanseKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the totem went"), Mode->GrimTotemsNow().Num(), 1);
+	TestEqual(TEXT("the one 14 m away deals 25% less"),
+			  Near->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 0.75f, 0.001f);
+	TestEqual(TEXT("the one 16 m away is untouched"),
+			  Far->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and no Elites came"), Mode->GrimTotemElitesStanding().Num(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and no strength is on the player"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	return true;
+}
+
+// THE PANEL: A TOTEM'S TWO CHOICES AND LEAVE; LEAVE CHOOSES NOTHING; A CHOICE PRESSED THERE REACHES THE RULE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChoicePanelTest,
+	"Cataclysm.DungeonModifierEffects.TheChoicePanelOffersATotemsChoicesAndLeaveChoosesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChoicePanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Totem = Mode->GrimTotemsNow()[0];
+
+	// NO BLUEPRINT IN A TEST, so the panel has no buttons; its keys are what the buttons would be.
+	UCataclysmChoicePanelWidget* Panel = NewObject<UCataclysmChoicePanelWidget>();
+	Panel->SetObject(Totem);
+	const TArray<FName> Expected = {EmbraceKey, CleanseKey, UCataclysmChoicePanelWidget::LeaveKey};
+	if (TestEqual(TEXT("the totem's two choices and Leave"), Panel->ChoiceKeys().Num(), Expected.Num()))
+	{
+		for (int32 Index = 0; Index < Expected.Num(); ++Index)
+		{
+			TestEqual(FString::Printf(TEXT("button %d"), Index), Panel->ChoiceKeys()[Index], Expected[Index]);
+		}
+	}
+
+	Panel->ChooseForTests(UCataclysmChoicePanelWidget::LeaveKey);
+	TestFalse(TEXT("Leave chooses nothing"), Panel->LastChoiceActed());
+	TestEqual(TEXT("and the totem stands"), Mode->GrimTotemsNow().Num(), 2);
+
+	Panel->SetObject(Totem);
+	Panel->ChooseForTests(CleanseKey);
+	TestTrue(TEXT("a choice pressed on the panel reaches the rule"), Panel->LastChoiceActed());
+	TestEqual(TEXT("and the totem went"), Mode->GrimTotemsNow().Num(), 1);
+	return true;
+}
+
+// A NEW FLOOR: NEW TOTEMS, AND AN EMBRACE UNDER WAY ENDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorBringsNewGrimTotemsAndEndsTheEmbrace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmFloorObject> Left = Mode->GrimTotemsNow()[1];
+	Mode->ChooseAtFloorObject(Mode->GrimTotemsNow()[0], EmbraceKey);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("embraced on floor 2"), TotemRuleOn(Player, TEXT("attack_damage")), 25.0f, 0.001f)
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("floor 2's totem is gone"), Left.IsValid());
+	TestEqual(TEXT("floor 3 has two"), Mode->GrimTotemsNow().Num(), 2);
+	TestEqual(TEXT("and the embrace ended"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TotemsRow),
+			  FString(TEXT("grim totems: 2 standing")));
 	return true;
 }
 

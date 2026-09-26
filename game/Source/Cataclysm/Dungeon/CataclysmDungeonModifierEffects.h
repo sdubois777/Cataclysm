@@ -420,6 +420,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ManaCostAsCurrentHealthPercent = 0.0f;
 
+	/** Damage a Grim Totem the player embraced gives, more, for a time. Issues #1820 and #41. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float GrimEmbraceDamageMorePercent = 0.0f;
+
 	/**
 	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
 	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
@@ -469,6 +473,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SkillsLockedValue <= 0.0f
 			&& SpellsLockedValue <= 0.0f
 			&& ManaCostAsCurrentHealthPercent <= 0.0f
+			&& GrimEmbraceDamageMorePercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
 			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
@@ -2224,6 +2229,33 @@ public:
 	 *   creatures and paying normally, until the project owner names a creature for it.
 	 */
 	static const TCHAR* ObsidianSarcophagiKey;
+
+	/**
+	 * The row whose totems the player clicks and chooses at: embrace one for a moment's strength that brings Elite
+	 * creatures, or cleanse it to weaken the creatures near it. Issues #1820 and #41. The first rule to use the choice
+	 * screen (`ACataclysmFloorObject`, `UCataclysmChoicePanelWidget`).
+	 *
+	 * "Throughout the dungeons, players encounter grim totems emanating dark energy. Interacting with these totems
+	 * offers a choice between embracing their malevolent power or dispelling them to cleanse the area. Embracing the
+	 * power of the totems grants temporary bonuses but may also trigger more difficult enemy spawns or curses.
+	 * Cleansing the totems purifies the environment, removing harmful effects and weakening nearby enemies."
+	 *
+	 * FIGURES BY THIS CHANGE UNDER THE OWNER'S DELEGATION, 2026-09-26, every one a play-test value, AND PARTLY BUILT:
+	 * - `GrimTotemsPerFloor` TOTEMS A FLOOR, `GrimTotemsPerHordeArena` ON A HORDE ARENA, kept across its waves, placed
+	 *   by Eternal Chorus's picker, each a floor object named "Grim Totem" with a zone drawn under it.
+	 * - EMBRACE: `GrimTotemsEmbraceDamageMorePercent` more damage for `GrimTotemsEmbraceSeconds`, and
+	 *   `GrimTotemsEliteCount` creatures of the floor's kinds at the Elite rung come `GrimTotemsEliteAwayCm` from the
+	 *   totem. The totem goes.
+	 * - CLEANSE: every creature of the floor within `GrimTotemsCleanseRadiusCm` of the totem deals
+	 *   `GrimTotemsCleanseDamageLessPercent` less damage for as long as it lives. The totem goes.
+	 * - NOT BUILT: "removing harmful effects". Nothing in the game removes a floor rule's effects from a place or the
+	 *   player: the rules draw their zones again on the next beat, and no cleanse of the player's debuffs exists.
+	 */
+	static const TCHAR* GrimTotemsKey;
+
+	/** Grim Totems' two choices, as the rule and the choice panel name them. */
+	static constexpr const TCHAR* GrimTotemsEmbrace = TEXT("Embrace");
+	static constexpr const TCHAR* GrimTotemsCleanse = TEXT("Cleanse");
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -4706,6 +4738,18 @@ public:
 	static constexpr int32 InfestedVeinsDestroyedBeforeGuardians = 3;
 	static constexpr int32 InfestedVeinsGuardians = 2;
 	static constexpr int32 InfestedVeinsGuardianRung = RoyalGuardLowestRungThatSummons;
+
+	/** Grim Totems' figures, every one a play-test value. See the key. The Elite rung is Royal Guard's. */
+	static constexpr int32 GrimTotemsPerFloor = 2;
+	static constexpr int32 GrimTotemsPerHordeArena = 1;
+	static constexpr float GrimTotemsRadiusCm = 150.0f;
+	static constexpr float GrimTotemsEmbraceDamageMorePercent = 25.0f;
+	static constexpr float GrimTotemsEmbraceSeconds = 30.0f;
+	static constexpr int32 GrimTotemsEliteCount = 3;
+	static constexpr float GrimTotemsEliteAwayCm = 800.0f;
+	static constexpr int32 GrimTotemsEliteRung = RoyalGuardLowestRungThatSummons;
+	static constexpr float GrimTotemsCleanseRadiusCm = 1500.0f;
+	static constexpr float GrimTotemsCleanseDamageLessPercent = 25.0f;
 
 	/**
 	 * Void Parasite's figures, every one a play-test value. See the key. The chance is Demon Prince's

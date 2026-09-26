@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Interface/CataclysmHUD.h"
+#include "Dungeon/CataclysmFloorObject.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -78,6 +79,7 @@ void ACataclysmHUD::DrawHUD()
 
 	DrawDamageNumbers();
 	DrawDropNames();
+	DrawFloorObjectNames();
 
 	// LAST, SO IT SITS ON TOP OF EVERYTHING. The panel hides most of what is
 	// behind it and covers a strip of the screen; a damage number or a drop
@@ -1094,6 +1096,66 @@ void ACataclysmHUD::DrawBorder(const FBox2D& Around, float Thickness,
 	Hollow(FBox2D(Around.Min - FVector2D(1.0, 1.0),
 				  Around.Max + FVector2D(1.0, 1.0)), Thickness + 2.0f, Edge);
 	Hollow(Around, Thickness, Colour);
+}
+
+void ACataclysmHUD::DrawFloorObjectNames()
+{
+	// REBUILT EVERY FRAME, for the reason the drops' names are: a tag not drawn this frame is not clickable this frame.
+	ObjectNameRects.Reset();
+	ObjectsNamed.Reset();
+
+	UWorld* World = GetWorld();
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!World || !LocalPawn)
+	{
+		return;
+	}
+
+	// AS FAR AS A DROP'S NAME IS SHOWN, so a floor object is named from as far off as a drop is.
+	TArray<ACataclysmFloorObject*> Nearby;
+	ACataclysmFloorObject::ObjectsToName(World, LocalPawn->GetActorLocation(), UCataclysmDropPickup::NameShownRangeCm,
+										 Nearby);
+
+	// A PLAIN BORDER, the thinnest a drop's name has: an object has no rarity to show.
+	constexpr int32 BorderPx = 1;
+	for (ACataclysmFloorObject* Object : Nearby)
+	{
+		const FVector Screen = Project(
+			Object->GetActorLocation() + FVector(0.0f, 0.0f, ACataclysmFloorObject::NameHeightCm),
+			/*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+		const FBox2D Text = MeasureTextCentred(Object->DisplayName, Screen.X, Screen.Y, 1.0f);
+		ObjectNameRects.Add(UCataclysmDropPickup::TagAround(Text, BorderPx));
+		ObjectsNamed.Add(Object);
+	}
+
+	UCataclysmDropPickup::SeparateOverlappingNames(ObjectNameRects, UCataclysmDropPickup::NameGapPx);
+
+	for (int32 Index = 0; Index < ObjectNameRects.Num(); ++Index)
+	{
+		const ACataclysmFloorObject* Object = ObjectsNamed[Index].Get();
+		if (!Object)
+		{
+			continue;
+		}
+		const FBox2D& Tag = ObjectNameRects[Index];
+		DrawBorder(Tag, static_cast<float>(BorderPx), Object->NameColour);
+		const float Inset = static_cast<float>(UCataclysmDropPickup::NameBorderPaddingPx + BorderPx);
+		DrawOutlinedText(Object->DisplayName, Object->NameColour, Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
+	}
+}
+
+ACataclysmFloorObject* ACataclysmHUD::FloorObjectUnderPoint(const FVector2D& Point) const
+{
+	const int32 Index = UCataclysmDropPickup::IndexOfNameUnderPoint(ObjectNameRects, Point);
+	if (Index == INDEX_NONE || !ObjectsNamed.IsValidIndex(Index))
+	{
+		return nullptr;
+	}
+	return ObjectsNamed[Index].Get();
 }
 
 ACataclysmDroppedItem* ACataclysmHUD::DropUnderPoint(const FVector2D& Point) const

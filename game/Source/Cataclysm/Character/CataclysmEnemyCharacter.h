@@ -605,6 +605,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetObsidianSarcophagiDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies the attack damage of a creature standing near a Grim Totem the player cleansed.
+	 * `Death_Grim_Totems`. Issues #1820 and #41.
+	 *
+	 * A KEY OF `DamageMultipliersBySource` OF ITS OWN. Everything the setters above say about the route, the designed
+	 * figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetGrimTotemsDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -613,6 +625,7 @@ public:
 	static constexpr const TCHAR* PlagueBeaconsDamageSource = TEXT("PlagueBeacons");
 	static constexpr const TCHAR* TrialOfEnduranceDamageSource = TEXT("TrialOfEndurance");
 	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
+	static constexpr const TCHAR* GrimTotemsDamageSource = TEXT("GrimTotems");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;

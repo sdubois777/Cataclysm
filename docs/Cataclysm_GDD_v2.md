@@ -2834,6 +2834,10 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
+**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** Some dungeon modifiers place things on a floor for the player to act on: a totem to embrace or cleanse, and in time altars, chests and relics. Each shows its name over it as a drop does, and clicking the name within three metres opens a panel of what it offers, with a button for each choice and one to leave; a click from further off walks the character there first, as it does for a drop. The panel does not pause the game, like every other screen, so creatures go on while the player decides. Choosing is final: the modifier that placed the object answers it, and the object usually goes. No new key is needed, because the left mouse button already picks up what is named under the cursor.
+
+  
+
 **Every one of those numbers is an average, and the count varies on every kill.** A Boss's 5 means five items on an average kill, not five items on every kill: the actual number is drawn from a Poisson distribution with the table's figure as its mean, so a Boss usually gives between 1 and 10 and a Common enemy usually gives none. That applies to crafting materials too, on their own separate roll.
 
   

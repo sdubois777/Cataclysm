@@ -3037,7 +3037,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetSpireDamageMultiplier", "SpireDamageSource"),
                         ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource"),
                         ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource"),
-                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource")):
+                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource"),
+                        ("SetGrimTotemsDamageMultiplier", "GrimTotemsDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4329,3 +4330,23 @@ def test_abyssal_rifts_row_still_has_rifts_closed_by_waves_in_time_and_rewards_t
         assert phrase in lower, (
             f"Demonic_Abyssal_Rifts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "AbyssalRiftsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_grim_totems_row_still_offers_embracing_or_cleansing():
+    """The phrases the rule's readings rest on.
+
+    "Interacting with these totems offers a choice between embracing their malevolent power or dispelling them to
+    cleanse the area. Embracing the power of the totems grants temporary bonuses but may also trigger more difficult
+    enemy spawns or curses. Cleansing the totems purifies the environment, removing harmful effects and weakening
+    nearby enemies." A CHOICE is the choice panel; TEMPORARY BONUSES and MORE DIFFICULT ENEMY SPAWNS are embracing;
+    WEAKENING NEARBY ENEMIES is cleansing; REMOVING HARMFUL EFFECTS is the part not built. If any of them changes, the
+    reading must be revisited.
+    """
+    words = flat(rows()["Death_Grim_Totems"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("offers a choice", "temporary bonuses", "more difficult enemy spawns", "removing harmful effects",
+                   "weakening nearby enemies"):
+        assert phrase in lower, (
+            f"Death_Grim_Totems no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "GrimTotemsKey in CataclysmDungeonModifierEffects.h. " + words)
