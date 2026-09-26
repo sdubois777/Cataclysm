@@ -5673,28 +5673,36 @@ bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 	// 0..100 is below the evasion the pipeline answers for the creature, unless
 	// the blow is an area one or cannot be evaded, which the swinger's
 	// `melee_evasion_suppressed` decides for a melee blow.
+	//
+	// AND EACH IS ASSERTED AS SET-UP, returning early, so a failure names the
+	// input that let the swing land rather than reading as "110". Ruled
+	// 2026-09-25 by the coordinating session.
+	const UCataclysmAbilitySystemComponent* Creature =
+		Cast<UCataclysmAbilitySystemComponent>(SecondIts);
+	const float EvasionAttribute = SecondIts->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute());
+	const float PipelineEvasion = Creature
+		? Creature->StatForSkill(FName(TEXT("evasion")), FGameplayTagContainer(), EvasionAttribute)
+		: -1.0f;
+	const FGameplayAttribute Suppressed =
+		UCataclysmCombatAttributeSet::GetMeleeEvasionSuppressedAttribute();
+	const float Suppression = Striker.ASC->HasAttributeSetForAttribute(Suppressed)
+		? Striker.ASC->StatForSkill(
+			  FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat),
+			  Striker.Swing->SkillTags, Striker.ASC->GetNumericAttribute(Suppressed))
+		: 0.0f;
+	AddInfo(FString::Printf(
+		TEXT("evade inputs: creature evasion attribute %.3f; the pipeline's answer %.3f; "
+			 "creature stat line for evasion %s; swinger's melee_evasion_suppressed %.3f"),
+		EvasionAttribute, PipelineEvasion,
+		Creature && Creature->GetStatInputs(FName(TEXT("evasion"))) ? TEXT("held") : TEXT("none"),
+		Suppression));
+	if (!TestTrue(TEXT("set-up: the pipeline's evasion for the creature is at least 100"),
+			PipelineEvasion >= 100.0f)
+		|| !TestTrue(TEXT("set-up: the swinger's melee_evasion_suppressed is nought"),
+			Suppression <= 0.0f))
 	{
-		const UCataclysmAbilitySystemComponent* Creature =
-			Cast<UCataclysmAbilitySystemComponent>(SecondIts);
-		const float Attribute = SecondIts->GetNumericAttribute(
-			UCataclysmCombatAttributeSet::GetEvasionAttribute());
-		const FGameplayAttribute Suppressed =
-			UCataclysmCombatAttributeSet::GetMeleeEvasionSuppressedAttribute();
-		AddInfo(FString::Printf(
-			TEXT("evade inputs: creature evasion attribute %.3f; the pipeline's "
-				 "answer %.3f; creature stat line for evasion %s; swinger's "
-				 "melee_evasion_suppressed %.3f"),
-			Attribute,
-			Creature ? Creature->StatForSkill(FName(TEXT("evasion")),
-											  FGameplayTagContainer(), Attribute)
-					 : -1.0f,
-			Creature && Creature->GetStatInputs(FName(TEXT("evasion"))) ? TEXT("held")
-																	   : TEXT("none"),
-			Striker.ASC->HasAttributeSetForAttribute(Suppressed)
-				? Striker.ASC->StatForSkill(
-					  FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat),
-					  Striker.Swing->SkillTags, Striker.ASC->GetNumericAttribute(Suppressed))
-				: -1.0f));
+		return false;
 	}
 	int32 HitsHeard = 0;
 	const FDelegateHandle Counting = Striker.Events->OnHit.AddLambda(
