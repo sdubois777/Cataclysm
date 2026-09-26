@@ -813,8 +813,11 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 					Cast<UCataclysmAbilitySystemComponent>(
 						UCataclysmTargeting::AbilitySystemOf(Summoner)))
 			{
+				// WITH THE MACHINE'S AGE, which the two age rows read. Issue
+				// #1833, deployable Part 2.
 				Own = Theirs->StatNamingTagAppliedTo(
-					FName(TEXT("attack_damage")), DeployableTag(), Own, TypeTags, Target);
+					FName(TEXT("attack_damage")), DeployableTag(), Own, TypeTags, Target,
+					GetGameTimeSinceCreation());
 			}
 		}
 		const float Damage = Own
@@ -853,6 +856,24 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// This one blow is evadable -- it is a single strike rather than area
 	// damage, which the explosion below records -- so the test is worth making
 	// here and would be worth nothing there.
+	// A MACHINE'S BLOW IS ANNOUNCED TO ITS SUMMONER as `deployable_hit`, with
+	// the machine's tags and the enemy struck, and landed only when it was not
+	// evaded. Issue #1833, deployable Part 2: "Gadgets apply a 15%-25% armor
+	// reduction to enemies they hit for 3 seconds" places a stack on that
+	// enemy. A new event rather than `hit_dealt`, ruled 2026-09-25, because
+	// `hit_dealt` carries unscoped rows that would begin firing on every
+	// machine's blow.
+	if (IsDeployable() && OwnDamagePerHit > 0.0f)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			Theirs->ActOnEvent(FName(TEXT("deployable_hit")), &TypeTags, 0.0f,
+							   /*bLanded=*/!Resolved.bEvaded, Target);
+		}
+	}
+
 	if (bBurnsWhatItHits && !Resolved.bEvaded)
 	{
 		// THE MINION SETS THE FIRE, AS IT DEALT THE BLOW. Ruled on 2026-09-17

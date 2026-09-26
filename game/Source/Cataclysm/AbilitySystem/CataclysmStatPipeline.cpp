@@ -169,6 +169,7 @@ namespace
 		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
 		{ TEXT("class_points_spent"),  ECataclysmStatScale::PerClassPointSpent },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
+		{ TEXT("minion_seconds_active"), ECataclysmStatScale::PerSecondTheMinionHasBeenActive },
 	};
 
 	/**
@@ -1536,6 +1537,13 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		}
 		return StackedValue(Modifier, State.ClassPointsSpent
 			- FMath::FloorToInt32(FMath::Max(0.0f, Modifier.ScaleOffset)));
+
+	// THE STRIKING MINION'S AGE, IN WHOLE SECONDS. Issue #1833, deployable
+	// Part 2. Unknown (-1) is nothing.
+	case ECataclysmStatScale::PerSecondTheMinionHasBeenActive:
+		return State.MinionSecondsActive < 0.0f
+			? 0.0f
+			: StackedValue(Modifier, FMath::FloorToInt32(State.MinionSecondsActive));
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{

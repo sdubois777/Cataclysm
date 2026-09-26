@@ -2093,6 +2093,20 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PercentOfManaHeld
 		UMETA(DisplayName = "Percent Of Mana Held"),
+
+	/**
+	 * `Value` per whole `ScaleStep` seconds the minion striking has been
+	 * active. Issue #1833, deployable Part 2: "Gadgets deal 5%-10% increased
+	 * damage for each second they have been active, up to 30 seconds" is a step
+	 * of 1 with a cap of 30, and "Gadgets that survive for 15 seconds gain a
+	 * permanent 20%-40% damage bonus" a step of 15 with a cap of 1.
+	 *
+	 * READ ONLY ON A DEPLOYABLE'S BLOW, which is the one place that hands the
+	 * age over (`StatNamingTagAppliedTo`). Everywhere else it reads -1 and
+	 * grants nothing.
+	 */
+	PerSecondTheMinionHasBeenActive
+		UMETA(DisplayName = "Per Second The Minion Has Been Active"),
 };
 
 /**
@@ -2872,6 +2886,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 ClassPointsSpent = -1;
+
+	/**
+	 * How many seconds the minion whose blow is being judged has been active,
+	 * or -1 when no minion's blow is. Issue #1833, deployable Part 2. See
+	 * `PerSecondTheMinionHasBeenActive`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MinionSecondsActive = -1.0f;
 
 	/**
 	 * How much mana the character holds now. Negative means unknown: no vital

@@ -4261,6 +4261,12 @@ SCALES = {
     # so the row carries the sentence's own range. Issue #1815. The same 0 to
     # 1,000 bound as `max_mana`.
     "mana_held_percent": (0.0, 1000.0, "an amount of mana"),
+    # "Gadgets deal 5%-10% increased damage for each second they have been
+    # active, up to 30 seconds" and "Gadgets that survive for 15 seconds gain a
+    # permanent 20%-40% damage bonus" are `minion_seconds_active`, read on a
+    # deployable's blow. Issue #1833, deployable Part 2. The Spear ultimate's
+    # machines last 20 seconds, the longest today.
+    "minion_seconds_active": (0.0, 60.0, "a number of seconds a minion has been active"),
 }
 
 
@@ -4628,7 +4634,7 @@ NEXT_USE_ACTIONS = (
 #: `UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction` and
 #: `AttackerDamageRemovedAction` hold the same two names.
 PLACED_ACTIONS = {
-    "enemy_armor_removed": ("hit_dealt",),
+    "enemy_armor_removed": ("hit_dealt", "deployable_hit"),
     "attacker_damage_removed": ("melee_hit_taken",),
 }
 
@@ -4704,6 +4710,11 @@ ACTION_ONLY_EVENTS = (
     # damage for 4 seconds, stacking up to 5 times". Raised in
     # `UCataclysmSkillEffects::ApplyDamageOverTime` on the applier.
     "dot_applied",
+    # A DEPLOYABLE MACHINE'S BLOW, raised on its summoner with the machine's
+    # tags and the enemy struck. Issue #1833, deployable Part 2, ruled
+    # 2026-09-25: a new event rather than `hit_dealt`, whose unscoped rows
+    # would otherwise begin firing on every machine's blow.
+    "deployable_hit",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was

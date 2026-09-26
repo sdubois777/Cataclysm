@@ -7094,4 +7094,166 @@ bool FCataclysmGadgetBodyRowsTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmDeployablePart2Test
+{
+	/**
+	 * A fresh creature with no armour, evasion, block or resistance, beside the
+	 * last minion made, and the summoner's own ability system on it. Issue #1833,
+	 * deployable Part 2.
+	 */
+	ACataclysmEnemyCharacter* Victim(CataclysmDeployableTest::FSummoner& Summoner,
+									 float Evasion = 0.0f)
+	{
+		ACataclysmEnemyCharacter* Made = Summoner.World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(Summoner.Along, 150.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Made)
+		{
+			return nullptr;
+		}
+		Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Made->SetHealth(10000.0f);
+		Made->SetArmour(0.0f);
+		UAbilitySystemComponent* Its = Made->GetAbilitySystemComponent();
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), Evasion);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+		return Made;
+	}
+
+	/** What the stacks placed on this creature take off its armour now. */
+	float ArmourRemoved(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UCataclysmAbilitySystemComponent* Its = Creature
+			? Cast<UCataclysmAbilitySystemComponent>(Creature->GetAbilitySystemComponent())
+			: nullptr;
+		return Its ? Its->ArmourRemovedPercentNow() : -1.0f;
+	}
+
+	/** A minion of this type made now, aged `Seconds`, striking a fresh creature: what it took. */
+	float BlowAtAge(CataclysmDeployableTest::FSummoner& Summoner, const TCHAR* Type, float Seconds)
+	{
+		ACataclysmMinion* Minion = Summoner.Make(Type);
+		if (!Minion)
+		{
+			return -1.0f;
+		}
+		Summoner.World->TimeSeconds += Seconds;
+		ACataclysmEnemyCharacter* Target = Victim(Summoner);
+		if (!Target)
+		{
+			return -1.0f;
+		}
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		UAbilitySystemComponent* Its = Target->GetAbilitySystemComponent();
+		const float Before = Its->GetNumericAttribute(Health);
+		Minion->AttackTarget(Target);
+		return Before - Its->GetNumericAttribute(Health);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetArmorRowTest,
+	"Cataclysm.Enchantments.TheGadgetArmorRowStripsArmorFromWhatAMachineHitsFor3Seconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, deployable Part 2. "Gadgets apply a 15%-25% armor reduction to
+ * enemies they hit for 3 seconds", at 25: a ballista's landed blow places 25%
+ * on the creature it hits, a second blow refreshes it rather than adding
+ * (a cap of 1, ruled 2026-09-25 under the owner's delegation), and it has
+ * lapsed 3 seconds later. An evaded blow places nothing, and neither does an
+ * imp's, which is no gadget.
+ */
+bool FCataclysmGadgetArmorRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	using namespace CataclysmDeployablePart2Test;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FSummoner Summoner(Scope.World, TEXT("Positive_Gadgets_apply_a_15_25_armor_reduction_to_enemi"));
+	ACataclysmMinion* Ballista = Summoner.Make(TEXT("Ballista"));
+	ACataclysmEnemyCharacter* Target = Victim(Summoner);
+	if (!TestNotNull(TEXT("a ballista"), Ballista) || !TestNotNull(TEXT("a creature"), Target))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing removed before the blow"), ArmourRemoved(Target), 0.0f, 0.001f);
+	Ballista->AttackTarget(Target);
+	TestEqual(TEXT("a ballista's landed blow removes 25%. If not, DT_EnchantmentEffects "
+				   "may be older than the rows: run tools/generate_datatable_assets.py"),
+		ArmourRemoved(Target), 25.0f, 0.001f);
+	Ballista->AttackTarget(Target);
+	TestEqual(TEXT("a second blow refreshes it: still 25%"), ArmourRemoved(Target), 25.0f, 0.001f);
+	Scope.World->TimeSeconds += 3.5f;
+	TestEqual(TEXT("and 3 seconds on, nothing"), ArmourRemoved(Target), 0.0f, 0.001f);
+
+	ACataclysmEnemyCharacter* Evading = Victim(Summoner, /*Evasion=*/100.0f);
+	if (TestNotNull(TEXT("an evading creature"), Evading))
+	{
+		Ballista->AttackTarget(Evading);
+		TestEqual(TEXT("an evaded blow removes nothing"), ArmourRemoved(Evading), 0.0f, 0.001f);
+	}
+	ACataclysmMinion* Imp = Summoner.Make(TEXT("Imp"));
+	ACataclysmEnemyCharacter* ImpTarget = Victim(Summoner);
+	if (TestNotNull(TEXT("an imp"), Imp) && TestNotNull(TEXT("its creature"), ImpTarget))
+	{
+		Imp->AttackTarget(ImpTarget);
+		TestEqual(TEXT("an imp's blow removes nothing"), ArmourRemoved(ImpTarget), 0.0f, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetAgeRowsTest,
+	"Cataclysm.Enchantments.TheGadgetAgeRowsGrowWithTheMachinesSecondsActive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, deployable Part 2, against a plain summoner's ballista of the
+ * same age.
+ *
+ * "Gadgets deal 5%-10% increased damage for each second they have been active,
+ * up to 30 seconds", at 10: a new ballista is plain, one 5.5 seconds old deals
+ * 1.5 times, and one 40 seconds old 4 times, the 30 seconds' cap.
+ * "Gadgets that survive for 15 seconds gain a permanent 20%-40% damage bonus
+ * for the rest of their duration", at 40: 14.5 seconds is plain, 15.5 is 1.4
+ * times and 50 is still 1.4.
+ */
+bool FCataclysmGadgetAgeRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	using namespace CataclysmDeployablePart2Test;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FSummoner Plain(Scope.World, nullptr);
+	const float Base = BlowAtAge(Plain, TEXT("Ballista"), 0.0f);
+	if (!TestTrue(TEXT("a plain ballista's blow lands"), Base > 0.0f))
+	{
+		return false;
+	}
+	const auto Ratio = [&Scope, Base](const TCHAR* Enchantment, float Seconds)
+	{
+		FSummoner Wearing(Scope.World, Enchantment);
+		return BlowAtAge(Wearing, TEXT("Ballista"), Seconds) / Base;
+	};
+	const TCHAR* PerSecond = TEXT("Positive_Gadgets_deal_5_10_increased_damage_for_each_se");
+	const TCHAR* Survive = TEXT("Positive_Gadgets_that_survive_for_15_seconds_gain_a_perma");
+	TestEqual(TEXT("per second: a new ballista is plain"), Ratio(PerSecond, 0.0f), 1.0f, 0.001f);
+	TestEqual(TEXT("per second: 5.5 seconds old deals 1.5 times. If not, DT_EnchantmentEffects "
+				   "may be older than the rows: run tools/generate_datatable_assets.py"),
+		Ratio(PerSecond, 5.5f), 1.5f, 0.001f);
+	TestEqual(TEXT("per second: 40 seconds old deals 4 times, the 30 seconds' cap"),
+		Ratio(PerSecond, 40.0f), 4.0f, 0.001f);
+	TestEqual(TEXT("survived: 14.5 seconds is plain"), Ratio(Survive, 14.5f), 1.0f, 0.001f);
+	TestEqual(TEXT("survived: 15.5 seconds deals 1.4 times"), Ratio(Survive, 15.5f), 1.4f, 0.001f);
+	TestEqual(TEXT("survived: 50 seconds still 1.4 times"), Ratio(Survive, 50.0f), 1.4f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

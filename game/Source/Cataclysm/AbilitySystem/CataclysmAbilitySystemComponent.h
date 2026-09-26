@@ -367,7 +367,8 @@ public:
 	 */
 	float StatNamingTagAppliedTo(FName Stat, const FGameplayTag& Named, float Figure,
 								 const FGameplayTagContainer& Tags,
-								 const AActor* Target) const;
+								 const AActor* Target,
+								 float MinionSecondsActive = -1.0f) const;
 
 	/**
 	 * Whether a removal reaches this stat, for these tags, right now. Issue #1791.
