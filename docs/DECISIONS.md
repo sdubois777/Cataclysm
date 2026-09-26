@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Set Stance and Scarred Plate: their "At 4 points:" clauses are rows, from four points and once
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv` and
+`game/Content/Data/DT_PassiveEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+`tools/generate_datatables.py`, `docs/README.md`, `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`, `tools/tests/test_passive_effects_match_the_node_text.py`
+and `tools/tests/test_generate_datatables.py`. Part of issue
+[#1755](https://github.com/sdubois777/Cataclysm/issues/1755).
+
+### WHAT CHANGED
+
+The engine half landed on 2026-09-25 in the entry "A passive row can apply from a number of points in its node,
+once; a knockback asks whether its target may be knocked back". **This change writes the two rows it was built
+for**, so both clauses now work in play:
+
+| Node | Its sentence's clause | The row |
+|---|---|---|
+| Scarred Plate, `Ravager_basic_spine_008` | "At 4 points: +5% increased Crowd Control Resistance." | `crowd_control_resistance`, increased, 5, Min Points 4 |
+| Set Stance, `Ravager_basic_spine_006` | "At 4 points: you cannot be knocked back while an enemy is within 4 metres." | `knockback_suppressed`, flat, 1, condition `enemies_in_reach_at_least` 1 within 4 metres, Min Points 4 |
+
+- The Passive Effects sheet gains the **Min Points** column, empty on the 321 rows already there, and the sheet
+  goes from 321 rows to 323. Both nodes already had a row, so 226 of the 441 nodes still have one.
+- **`OPTIONAL_COLUMNS` is empty again**, as its comment said it would be when these rows came. The Python test
+  that a sheet without the column reads every row as 0 now asserts the opposite: such a sheet is refused, like
+  any other column the generator reads. **That edit was not in the registered window**; it was found when the
+  entry left the table and the test that relied on it failed, and it is recorded here for that reason.
+- Two Python checks read the new clause: a row with `MinPoints` must sit on a node whose sentence says that N,
+  and every "At N points:" clause in the three Demonic trees must have a row from that N (the War trees are
+  exempt, as ruled). They use the regular expression `\bAt (\d+) points:`.
+- The pins move: `CHECK_TABLE` for `PassiveEffects.csv` and `AUTHORED_ROWS` go from 321 to 323. `docs/README.md`
+  gives 323 rows and the new column.
+
+### TESTS
+
+- `Cataclysm.AtPointsRows.ScarredPlateGrantsARealRavagerItsCrowdControlResistanceFromFourPointsOnce`: on a
+  real Ravager, the crowd-control resistance attribute is unchanged at 3 points, 1.05 times as much at 4, and
+  still 1.05 times at 8.
+- `Cataclysm.AtPointsRows.SetStanceKeepsARealRavagerFromBeingKnockedBackFromFourPointsWithAnEnemyNear`: with a
+  shover 6 metres off and another enemy 2 metres off, at 3 points the Ravager is knocked back, at 4 it is not, and
+  at 4 with the near enemy destroyed it is again.
+
+### Run
+
+One window on 2026-09-26, with the design workbook and the build machine held together, on development
+1fac60ba. Every figure below is what `pytest`, the rows script, `generate_datatables.py`, `run_editor_python.py`,
+`python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+**THE PYTHON OF RECORD MISSED ITS REGISTRATION ON THE SKIP COUNT.** It printed `3 failed, 5500 passed, 7 skipped`
+(JUnit 5,510) where 3 failed, 5,499 passed and 8 skipped were registered. The three failures were the registered
+three, the checks the rows satisfy. The difference is one test,
+`test_run_editor_python.TestPreconditions::test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`,
+which is skipped in a built worktree and runs in an unbuilt one: this run was made in a temporary worktree that
+had never been built, so that the fear branch's run in the built one was not switched under. A comparison of the
+two runs' JUnit files shows that one test and no other.
+
+| Step | Printed |
+|---|---|
+| The workbook | "'Min Points' added as column 13, empty on 321 existing rows", the two rows, "321 rows before, 323 after" |
+| The CSVs | "Wrote 29 CSVs"; the diff is `PassiveEffects.csv`, two lines added, and nothing else |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| The asset step | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` alone, whose record went from 321 rows to 323 |
+| Whole suite, started with no CI run in progress | `2578 tests performed, 2578 succeeded, 0 failed`; 2578 declared, gap 0 |
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.AtPointsRows.` (two tests), each anchor re-checked
+immediately before its run. Each restored run printed `2 tests performed, 2 succeeded, 0 failed`.
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| a. a threshold of 4 read as 3: `Spent.Points < Effect->MinPoints - 1` | `2 tests performed, 0 succeeded, 2 failed` | Scarred Plate: "at three points the clause grants nothing", 8.2425 where 7.85; Set Stance: "at three points, with an enemy near, the Ravager is knocked back", false |
+| b. paid per point: `? Effect->ValuePerPoint * Spent.Points` | `2 tests performed, 1 succeeded, 1 failed: ScarredPlate...` | "at four points the resistance is 5% increased", 9.42 where 8.2425; "and at eight still 5%, not per point", 10.99 |
+| c. the flag never taken as held: `> 1.0e9f` in `ApplyKnockback` | `2 tests performed, 1 succeeded, 1 failed: SetStance...` | "at four points, with an enemy near, it is not", true |
+
+**THE FINAL PYTHON MISSED ITS REGISTRATION, AND BY MY OWN EDIT.** Registered 5,502 passed and 0 failed; it
+printed `10 failed, 5492 passed, 8 skipped` (JUnit 5,510, 10 failures), all ten in
+`tools/tests/test_generate_datatables.py`: the classes `TestAPassiveNodeCanGrantSeveralStats` (four),
+`TestARowCountingNearbyEnemiesCarriesItsOwnRadius` (three) and `TestABonusCanGrowWithDamageReductionOrMaximumMana`
+(three). Each builds a Passive Effects sheet of its own without the Min Points column, and emptying
+`OPTIONAL_COLUMNS` made the generator refuse such a sheet. After that edit I ran only the threshold tests of
+that file (`-k AnAtNPoints`) and not the whole file. Corrected by appending Min Points to the two sheet helpers
+those classes use, the way issue #1882 appended the columns before it; test-only, so the whole file was run
+again and printed `322 passed` (JUnit 322, no failures).
+
+---
+
 ## 2026-09-25 — Cooldown reset: six actions that clear skill cooldowns, and eight enchantments written on them
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`

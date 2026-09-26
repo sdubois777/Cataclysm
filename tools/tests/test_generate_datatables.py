@@ -1438,7 +1438,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
-                 "Scale Step", "Option", "Reach Metres"]] + rows
+                 "Scale Step", "Option", "Reach Metres", "Min Points"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1598,7 +1598,7 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
-                 "Reach Metres", "Required Tags", "Option"]] + rows
+                 "Reach Metres", "Required Tags", "Option", "Min Points"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -2755,9 +2755,10 @@ class TestAnAtNPointsRowStatesItsThreshold:
     and Scarred Plate's -- is a row with a `Min Points` column: it applies from
     that many points in its own node, and then once rather than per point.
 
-    OPTIONAL UNTIL THE ROWS ARRIVE. The column is declared in `OPTIONAL_COLUMNS`
-    while the design workbook is with another session, so a sheet without it
-    reads every row as 0, which is the rule every row followed before it.
+    OPTIONAL UNTIL THE ROWS ARRIVED. The column was declared in `OPTIONAL_COLUMNS`
+    while the design workbook was with another session, so a sheet without it read
+    every row as 0. The rows change of 2026-09-25 put it in the workbook, and it is
+    required now like any other column.
 
     A THRESHOLD IS A WHOLE NUMBER OF POINTS FROM 1, and one the node cannot
     reach is reported, because no player could ever earn the row.
@@ -2801,15 +2802,22 @@ class TestAnAtNPointsRowStatesItsThreshold:
         with pytest.raises(gen.DataError, match="whole number of points from 1"):
             gen.passive_effects(rows)
 
-    def test_a_sheet_without_the_column_reads_every_row_as_nought(self, tmp_path):
-        """What the committed workbook is until the rows change adds the column."""
+    def test_a_sheet_without_the_column_is_refused_now_the_rows_have_it(self, tmp_path):
+        """The column was optional until Set Stance's and Scarred Plate's rows came.
+
+        Until 2026-09-25 this read "a sheet without the column reads every row as
+        nought", which was the committed workbook before the rows. The rows change
+        put the column in the workbook and took it out of `OPTIONAL_COLUMNS`, so a
+        sheet without it is now refused like any other column the generator reads.
+        """
         book = openpyxl.load_workbook(workbook_with(
             tmp_path / "without.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres"],
                                  ["A_node", "armor", "increased", 5]]}))
-        assert [r["MinPoints"] for r in gen.passive_effects(book)] == [0]
+        with pytest.raises(gen.DataError, match="Min Points"):
+            gen.passive_effects(book)
 
     def test_a_threshold_the_node_cannot_reach_is_reported(self):
         def tables(min_points):

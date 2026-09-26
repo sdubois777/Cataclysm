@@ -320,3 +320,5 @@ Ravager_capstone_100#4,Ravager_capstone_100,moving_into_enemy_pushes_aside,flat,
 Ravager_keystone_b_kB#1,Ravager_keystone_b_kB,melee_kill_repeats_attack_every_seconds,flat,3.0,,,0.0,,0.0,0,-1.0,0
 Ritualist_capstone_200#4,Ritualist_capstone_200,minion_held_longest_becomes_your_equal,flat,1.0,,,0.0,,0.0,1,-1.0,0
 Ritualist_capstone_200#5,Ritualist_capstone_200,minions_repeat_your_skills,flat,1.0,,,0.0,,0.0,3,-1.0,0
+Ravager_basic_spine_008#2,Ravager_basic_spine_008,crowd_control_resistance,increased,5.0,,,0.0,,0.0,0,-1.0,4
+Ravager_basic_spine_006#2,Ravager_basic_spine_006,knockback_suppressed,flat,1.0,,enemies_in_reach_at_least,1.0,,0.0,0,4.0,4

@@ -461,7 +461,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Shared Ruin to Shared Blood: thirteen flat rows. Issue #1515.
 	// AND 321 SINCE 2026-09-25, for the last six Demonic options built engine
 	// first, one flat row each. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        321)
+	// AND 323 SINCE 2026-09-25, for the two "At 4 points:" clauses, Scarred
+	// Plate's and Set Stance's, each a row from 4 points. Issue #1755.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        323)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

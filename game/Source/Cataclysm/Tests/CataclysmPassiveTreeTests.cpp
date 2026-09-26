@@ -16189,4 +16189,155 @@ bool FCataclysmKnockbackSuppressedTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The two "At 4 points:" clauses, each from its real row. Issue #1755.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmAtPointsRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	/** Points in one node, or none when `Points` is zero. */
+	void Take(FRealCharacter& Player, const TCHAR* Node, int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(FName(Node), Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScarredPlateAtFourPointsTest,
+	"Cataclysm.AtPointsRows.ScarredPlateGrantsARealRavagerItsCrowdControlResistanceFromFourPointsOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_spine_008` Scarred Plate: "+1.5% increased Armor per point. At
+ * 4 points: +5% increased Crowd Control Resistance."
+ *
+ * UNCONDITIONED, SO THE ATTRIBUTE CARRIES IT, and the attribute is what
+ * `AfterCrowdControlResistance` starts from. Nothing at three points, 5%
+ * increased at four, and still 5% at eight rather than 10% or 40%. Each reading
+ * is against the same Ravager with no points, so its class line's resistance
+ * is what the increase multiplies.
+ */
+bool FCataclysmScarredPlateAtFourPointsTest::RunTest(const FString&)
+{
+	using namespace CataclysmAtPointsRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TCHAR* const Node = TEXT("Ravager_basic_spine_008");
+	const auto Resistance = [&Player]()
+	{
+		return Player.AbilitySystem->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute());
+	};
+
+	Take(Player, Node, 0);
+	const float None = Resistance();
+	if (!TestTrue(TEXT("a Ravager's class line gives resistance to raise"), None > 0.0f))
+	{
+		return false;
+	}
+
+	Take(Player, Node, 3);
+	TestEqual(TEXT("at three points the clause grants nothing"), Resistance(), None,
+			  0.001f);
+
+	Take(Player, Node, 4);
+	TestEqual(TEXT("at four points the resistance is 5% increased"), Resistance(),
+			  None * 1.05f, 0.001f);
+
+	Take(Player, Node, 8);
+	TestEqual(TEXT("and at eight still 5%, not per point"), Resistance(),
+			  None * 1.05f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSetStanceAtFourPointsTest,
+	"Cataclysm.AtPointsRows.SetStanceKeepsARealRavagerFromBeingKnockedBackFromFourPointsWithAnEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_spine_006` Set Stance: "+1% increased Damage Reduction per
+ * point. At 4 points: you cannot be knocked back while an enemy is within 4
+ * metres."
+ *
+ * THE SAME ENEMY TWO METRES OFF IN ALL THREE READINGS but the last, so the
+ * points decide the first two and the enemy the third: three points, knocked
+ * back; four, not; four with the near enemy gone, knocked back again.
+ */
+bool FCataclysmSetStanceAtFourPointsTest::RunTest(const FString&)
+{
+	using namespace CataclysmAtPointsRowTest;
+	using namespace CataclysmKeystoneRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TCHAR* const Node = TEXT("Ravager_basic_spine_006");
+	ACataclysmEnemyCharacter* Shover = SpawnHostile(
+		World, Player.Character->GetActorLocation() + FVector(-6.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Near = SpawnHostile(
+		World, Player.Character->GetActorLocation() + FVector(0.0f, 2.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("a shover six metres off"), Shover)
+		|| !TestNotNull(TEXT("and an enemy two metres off"), Near))
+	{
+		return false;
+	}
+
+	const auto KnockedBack = [&]()
+	{
+		const FVector Before = Player.Character->GetActorLocation();
+		const bool bLanded =
+			UCataclysmSkillEffects::ApplyKnockback(Shover, Player.Character, 150.0f);
+		return bLanded
+			&& FVector::Dist2D(Before, Player.Character->GetActorLocation()) > 1.0;
+	};
+
+	Take(Player, Node, 3);
+	TestTrue(TEXT("at three points, with an enemy near, the Ravager is knocked back"),
+			 KnockedBack());
+
+	Take(Player, Node, 4);
+	TestFalse(TEXT("at four points, with an enemy near, it is not"), KnockedBack());
+
+	Near->Destroy();
+	TestTrue(TEXT("and at four points with no enemy near, it is again"),
+			 KnockedBack());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

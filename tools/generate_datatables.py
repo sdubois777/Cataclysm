@@ -1596,9 +1596,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: MIN POINTS JOINED ON 2026-09-25 for issue #1755's two "At 4 points:" clauses,
 #: Set Stance's and Scarred Plate's, built ahead of their rows while the design
 #: workbook is with another session. It leaves with those rows.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Passive Effects": {"Min Points": "issue #1755"},
-}
+#: MIN POINTS LEFT with Set Stance's and Scarred Plate's rows, and the table is
+#: empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):
