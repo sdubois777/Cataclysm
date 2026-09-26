@@ -99,6 +99,11 @@ same creature in the same place, feared and not held, must get a goal 6 metres o
 calls to `UCataclysmFear::FleeDirectionFor` and `IsFeared`. Both are listed in that check as questions, which
 answer something and add no collected test.
 
+**A second miss, in the final Python.** The two tags raised the Tags sheet from 141 rows to 143, and the sheet
+table in `docs/README.md` states that count. The final run printed `1 failed, 5520 passed, 8 skipped`:
+`tools/tests/test_docs_readme_sheet_table_is_true.py::test_every_row_count_in_the_table_is_true`, "Tags: 141, 143".
+The table now says 143. The registration had not looked for a test that counts the sheet's rows.
+
 ---
 
 ## 2026-09-25 — Infection Bloom: one bloom a floor spreads a patch every 20 seconds to eight, creatures on a patch deal 20% more, three come every 45 seconds while it stands, and destroying it clears the patches and sends a surge of four
