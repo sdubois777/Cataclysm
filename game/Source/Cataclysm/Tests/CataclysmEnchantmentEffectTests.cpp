@@ -7761,4 +7761,47 @@ bool FCataclysmGadgetBodyRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeployableCapRowTest,
+	"Cataclysm.Enchantments.TheDeployableCapRowRaisesTheCapOfDeployablesOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the deployable cap. "Add +1-3 to your max deployable count", at
+ * 3: minion_cap_bonus 3 for a skill tagged Type.Deployable, and nothing for a
+ * summon, whose tags do not name it -- so Summon Imp keeps its cap of 3.
+ */
+bool FCataclysmDeployableCapRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), TEXT("Positive_Add_1_3_to_your_max_deployable_count"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+	const float Attribute = Wearer.AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute());
+	const auto Bonus = [&Wearer, Attribute](const TCHAR* Tags)
+	{
+		return Wearer.AbilitySystem->StatForSkill(
+			FName(UCataclysmCommand::MinionCapBonusStat),
+			UCataclysmSkillShapes::TagsFromCell(Tags), Attribute);
+	};
+	TestEqual(TEXT("a deployable skill's cap rises by 3. If not, DT_EnchantmentEffects may "
+				   "be older than the rows: run tools/generate_datatable_assets.py"),
+		Bonus(TEXT("Type.Deployable, Type.Minion")), 3.0f, 0.001f);
+	TestEqual(TEXT("and a summon's by nothing"),
+		Bonus(TEXT("Type.Minion, Type.Summon")), 0.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

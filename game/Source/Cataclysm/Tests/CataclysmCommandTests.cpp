@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -3520,6 +3521,77 @@ bool FCataclysmSharedRuinThrallTest::RunTest(const FString&)
 			 NearLost <= Maximum * 0.2f + 0.01f);
 	TestEqual(TEXT("one five metres away loses nothing"), FarBefore - Far.Health(), 0.0f,
 			  0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShippedDeployableCapsTest,
+	"Cataclysm.Command.TheShippedDeployablesStateCapsAndABonusRaisesTheBoltTurrets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the deployable cap, ruled 2026-09-25 under the owner's
+ * delegation: each deployable skill holds what its timing already allows, so
+ * nothing changes at base. Read from the SHIPPED rows in `DT_WeaponSkills`:
+ * Bolt Turret states 1, Ballista 2 and Iron Fortress 5, one set.
+ *
+ * Then the Bolt Turret row as shipped, with its cooldown turned off so every
+ * activation fires: three activations leave one turret at its cap, and three
+ * with a cap bonus of 3 -- what "Add +1-3 to your max deployable count" grants
+ * at the top of its range, which the test beside the enchantment rows shows
+ * reaching a deployable's tags.
+ */
+bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!TestNotNull(TEXT("the weapon skill table"), Skills))
+	{
+		return false;
+	}
+	const auto ParamsOf = [Skills](const TCHAR* Row)
+	{
+		const FCataclysmWeaponSkillRow* Found =
+			Skills->FindRow<FCataclysmWeaponSkillRow>(FName(Row), TEXT("caps"), false);
+		return Found ? Found->ShapeParams : FString();
+	};
+	const FString Turret = ParamsOf(TEXT("War_Crossbow_Special"));
+	const TCHAR* const Stale =
+		TEXT("If not, DT_WeaponSkills may be older than the rows: run "
+			 "tools/generate_datatable_assets.py");
+	TestEqual(FString::Printf(TEXT("Bolt Turret states a cap of 1. %s"), Stale),
+		UCataclysmSkillShapes::ParseParams(Turret).MaxActive, 1);
+	TestEqual(TEXT("Ballista states 2"),
+		UCataclysmSkillShapes::ParseParams(ParamsOf(TEXT("War_Spear_Special"))).MaxActive, 2);
+	TestEqual(TEXT("Iron Fortress states 5, one set of two ballistas and three spike traps"),
+		UCataclysmSkillShapes::ParseParams(ParamsOf(TEXT("War_Spear_Ultimate"))).MaxActive, 5);
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const auto TurretsAfterThree = [&](FScopedCaster& Caster) -> int32
+	{
+		UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+			Caster, ECataclysmAbilitySlot::Special, Turret, TEXT("Bolt Turret"),
+			TEXT("Type.Deployable, Type.Minion"));
+		if (!Skill)
+		{
+			return -1;
+		}
+		Skill->CooldownOverride = 0.0f;
+		for (int32 Attempt = 0; Attempt < 3; ++Attempt)
+		{
+			if (!Activate(Caster, Skill))
+			{
+				return -1;
+			}
+		}
+		return UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num();
+	};
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	TestEqual(TEXT("three activations leave one turret at the shipped cap"),
+		TurretsAfterThree(Plain), 1);
+	FScopedCaster Raised(World, FVector(0, 30 * M, 0));
+	Raised.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(), 3.0f);
+	TestEqual(TEXT("and three with a cap bonus of 3"), TurretsAfterThree(Raised), 3);
 	return true;
 }
 
