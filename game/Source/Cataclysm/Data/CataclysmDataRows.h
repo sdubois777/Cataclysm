@@ -2097,6 +2097,25 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	float ReachMetres = -1.0f;
+
+	/**
+	 * From how many points in its own node the row applies, and then once.
+	 * Issue #1755.
+	 *
+	 * 0 ON EVERY ROW BUT A NODE SENTENCE'S "AT N POINTS" CLAUSE, and 0 is the
+	 * rule every row followed before this column: from the first point, and
+	 * `ValuePerPoint` times the points. Above 0 the row grants nothing below
+	 * that many points and `ValuePerPoint` once from there, however many more
+	 * are spent: "+1.5% increased Armor per point. At 4 points: +5% increased
+	 * Crowd Control Resistance" is 5 at four points and still 5 at eight.
+	 *
+	 * A COLUMN RATHER THAN A CONDITION, because nothing a condition reads knows
+	 * the node the row came from; `UCataclysmPassiveTree::AccumulateInto` does,
+	 * and it is where the points become a value. The generator refuses a
+	 * threshold the node cannot reach.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	int32 MinPoints = 0;
 };
 
 /**

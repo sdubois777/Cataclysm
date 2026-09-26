@@ -1449,6 +1449,35 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `knockback_suppressed`, read by `UCataclysmSkillEffects::ApplyKnockback`.
+	 * Issue #1755, Set Stance. A target holding it is not knocked back; one
+	 * without it is.
+	 */
+	void ProbeSetStance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Shover(World, FVector::ZeroVector);
+		FScopedSwinger Plain(World, FVector(2.0f * M, 0, 0));
+		FScopedSwinger Held(World, FVector(0, 2.0f * M, 0));
+		GrantFlats(Held.Actor,
+				   {{FName(UCataclysmSkillEffects::KnockbackSuppressedStat), 1.0f}});
+
+		Test.TestTrue(TEXT("a target without knockback_suppressed is knocked back"),
+					  UCataclysmSkillEffects::ApplyKnockback(Shover.Actor, Plain.Actor,
+															 150.0f));
+		Test.TestFalse(TEXT("and one holding it is not, so ApplyKnockback really "
+							"reads it"),
+					   UCataclysmSkillEffects::ApplyKnockback(Shover.Actor, Held.Actor,
+															  150.0f));
+	}
+
+	/**
 	 * `minions_repeat_your_skills`, read by `UCataclysmChorus::Repeat`. Issue
 	 * #1515, Chorus. A caster holding it with an imp has the imp repeat a skill's
 	 * hit; one without it, with an imp too, does not.
@@ -3287,6 +3316,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("melee_kill_repeats_attack_every_seconds"), &ProbeFollowThrough},
 			{TEXT("enemies_cannot_move_away_within_metres"), &ProbeNowhereToRun},
 			{TEXT("moving_into_enemy_pushes_aside"), &ProbeShoulderThrough},
+			{TEXT("knockback_suppressed"), &ProbeSetStance},
 			{TEXT("minion_held_longest_becomes_your_equal"), &ProbeSecondSelf},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},

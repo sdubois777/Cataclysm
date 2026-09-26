@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — A passive row can apply from a number of points in its node, once; a knockback asks whether its target may be knocked back
+
+**Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h`, `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, `tools/generate_datatables.py`,
+`game/Data/PassiveEffects.csv` and `game/Content/Data/DT_PassiveEffects.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json`, `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, `tools/tests/test_generate_datatables.py` and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Part of issue
+[#1755](https://github.com/sdubois777/Cataclysm/issues/1755).
+
+### WHAT CHANGED
+
+**The engine half of two sentences that say "At 4 points:".** Scarred Plate (`Ravager_basic_spine_008`) reads
+"+1.5% increased Armor per point. At 4 points: +5% increased Crowd Control Resistance." Set Stance
+(`Ravager_basic_spine_006`) reads "At 4 points: you cannot be knocked back while an enemy is within 4 metres."
+Until this change an effect row was always worth `ValuePerPoint` times the points in its node, so neither
+clause could be written as a row. Their rows are a separate change, which needs the design workbook.
+
+**A threshold on an effect row.** `FCataclysmPassiveEffectRow` gains `MinPoints`, a whole number, 0 by default.
+`UCataclysmPassiveTree::AccumulateInto` skips a row whose `MinPoints` is above 0 while the node holds fewer
+points than that, and from there grants `ValuePerPoint` once rather than times the points. A row with
+`MinPoints` 0 is unchanged.
+
+- `tools/generate_datatables.py` reads an optional "Min Points" column. It is declared in `OPTIONAL_COLUMNS` for
+  the Passive Effects sheet until the rows change adds the column to the workbook, following the Stack Seconds,
+  Every Seconds and Every Nth precedent. It refuses a threshold that is not a whole number from 1, reports one
+  above the node's `MaxPoints`, and includes the threshold in the duplicate-row key, so the same stat per point
+  and from a threshold are two rows.
+- `PassiveEffects.csv` gains the `MinPoints` column, 0 on all 321 rows, and nothing else.
+- The two inline `FCataclysmPassiveEffectRow` fixtures in `CataclysmPassiveTreeTests.cpp` gain the column.
+
+**JUDGEMENT, NOT DERIVED.** I found no shipped game whose public data states a "from N points, once" row that I
+could cite, so the shape is this game's own reading of its sentences: "At 4 points: X" grants X from the fourth
+point on and does not grow with further points.
+
+**A knockback asks its target first.** A new flag stat, `knockback_suppressed`
+(`UCataclysmSkillEffects::KnockbackSuppressedStat`). `UCataclysmSkillEffects::ApplyKnockback` asks the target
+for it through `StatForSkill`, so a row conditioned on an enemy being near reaches it, and a target holding it
+is neither moved nor staggered and the call returns false. The stat is in `StatsWithNoAttribute`, with a probe
+in the stat exemption test and an entry in the Python stat-lookup inventory.
+
+- **Ruled: knockback only**, not pull, drag or launch. The sentence names knockback, and Unstoppable's wider
+  "knocked back or knocked down" is written separately, as crowd-control resistance 100.
+- **Rejected**: a conditioned crowd-control resistance of 100, which would also block stuns and slows. The
+  sentence does not say that.
+
+**What this change does not do**: grant either clause in play. No row carries `MinPoints` above 0 and no row
+grants `knockback_suppressed` until the rows change lands.
+
+### TESTS
+
+- `Cataclysm.Passives.ARowWithMinPointsAppliesFromThatManyPointsAndOnlyOnce`, on a fixture table. A per-point
+  armour row of 1.5 sits beside a crowd-control row of 5 with `MinPoints` 4, on a node that holds 8. At 3 points:
+  armour 4.5 and no crowd-control row. At 4: 6 and 5. At 8: 12 and 5.
+- `Cataclysm.SetStance.AKnockbackMovesARavagerAloneAndNotOneWithAnEnemyNear`, on a real Ravager.
+  `knockback_suppressed` is given by hand with its row's condition, an enemy within 4 metres. With the shover
+  alone at 6 metres the knockback lands and the Ravager moves; with a second enemy at 2 metres it is refused and
+  the Ravager does not move.
+- Python: 7 tests in `TestAnAtNPointsRowStatesItsThreshold`. They cover the threshold reaching the output, an
+  empty cell reading as 0, the same stat per point and from a threshold being two rows, 0, -1 and 2.5 refused, a
+  sheet without the column reading as 0, and a threshold above `MaxPoints` reported.
+
+### Run
+
+One window on 2026-09-25, ending at 01:11 UTC on 2026-09-26, on development 7e948e4e, with the build machine
+and no workbook. Every figure below is what `pytest`, `run_editor_python.py`, `python tools/unreal_build.py` or
+`prove_cpp_guard` printed.
+
+**ONE STEP RAN OUT OF ITS REGISTERED ORDER.** I registered the asset rebuild before the build. From a worktree
+the asset generator runs the editor on this worktree's own binaries, and the rebuilt asset only holds
+`MinPoints` if those binaries have it, so the build ran first.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the asset | `1 failed, 5497 passed, 8 skipped` (JUnit 5,506, 1 failure). The failure was the registered one: `test_every_csv_still_hashes_to_what_was_recorded`, naming `['PassiveEffects.csv']` alone |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| The asset step | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` alone, as registered |
+| Whole suite, started with no CI run in progress | `2564 tests performed, 2564 succeeded, 0 failed`; 2564 declared, gap 0 |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before its run. Each restored run printed
+`1 tests performed, 1 succeeded, 0 failed`.
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| a. the threshold ignored: `if (false && Effect->MinPoints > 0 && ...)` | `Cataclysm.Passives.ARowWithMinPoints` | `1 tests performed, 0 succeeded, 1 failed: ARowWithMinPointsAppliesFromThatManyPointsAndOnlyOnce` | "and the row from four points grants nothing", true at 3 points |
+| b. paid per point: `? Effect->ValuePerPoint * Spent.Points` | the same | the same | "grants its 5, once" read 20; "still grants 5, not 10 or 40" read 40 |
+| c. the flag never taken as held: `> 1.0e9f` in `ApplyKnockback` | `Cataclysm.SetStance.` | `1 tests performed, 0 succeeded, 1 failed: AKnockbackMovesARavagerAloneAndNotOneWithAnEnemyNear` | "the knockback is refused", it landed; "the Ravager stays where it stood", it moved |
+
+**Final Python**, after the asset and the entry: `5498 passed, 8 skipped` (JUnit 5,506, no failures), as registered.
+
+---
+
 ## 2026-09-25 — The consecutive-melee test that failed once: it now prints what its evaded swing depends on and asserts both, since no cause was found
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`, the test

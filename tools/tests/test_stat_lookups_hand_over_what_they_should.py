@@ -358,6 +358,10 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(CrowdControlResistanceStat), FGameplayTagContainer(), Stat'):
         'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
+        "Set Stance's flag, asked of the target of a knockback before it is "
+        'moved (issue #1755); whether it holds, not a modifier of a blow',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat), SkillTags, UCataclysmDamageCalculation::NormalZoneFirstSweepDamage'):
         "the share a skill's zone deals on its first sweep (issue #1686), "

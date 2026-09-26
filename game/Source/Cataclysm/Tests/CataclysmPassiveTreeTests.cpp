@@ -1002,41 +1002,41 @@ namespace CataclysmPassiveEffectTest
 		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres\r\n"
+			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints\r\n"
 			// A plain increase on a node that holds five points, so the
 			// multiplication by the points held is visible rather than assumed.
-			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0,0,-1\r\n"
+			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0,0,-1,0\r\n"
 			// A more multiplier, which is the other bucket a passive may use.
-			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0,0,-1\r\n"
+			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0,0,-1,0\r\n"
 			// AND A SECOND STAT ON THAT SAME NODE. Issue #953. The Masochist's
 			// starting node grants three Fervour rates at once and two other
 			// nodes grant a health increase and an armour increase together, so
 			// one row per node is a shape the design does not fit.
-			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0,0,-1\r\n"
+			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0,0,-1,0\r\n"
 			// A scoped one, to prove the tag column reaches the modifier.
-			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0,0,-1\r\n"
+			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0,0,-1,0\r\n"
 			// AND ONE THAT DEPENDS ON THE CHARACTER'S HEALTH. Issue #959, and
 			// it proves the two condition columns reach the modifier.
-			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0,0,-1\r\n"
+			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0,0,-1,0\r\n"
 			// AND ONE THAT DEPENDS ON A WINDOW AFTER AN EVENT. Issue #962. It is
 			// a second row on the SAME node deliberately: a new node would change
 			// the rectangle the tree occupies and move an unrelated layout test's
 			// answer.
-			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0,0,-1\r\n"
+			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0,0,-1,0\r\n"
 			// AND ONE WHOSE SIZE GROWS WITH A STATE rather than switching on and
 			// off with it. Issue #968. A third row on the same node, for the same
 			// reason the second one is.
-			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5,0,-1\r\n"
+			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5,0,-1,0\r\n"
 			// AND ONE UNDER THE SECOND KIND OF TIMED WINDOW. Issue #975. The
 			// two windows are separate names and separate enumerators, so
 			// covering one says nothing at all about the other.
-			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0,0,-1\r\n"
+			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0,0,-1,0\r\n"
 			// AND ONE THAT GROWS WITH WHAT THE CHARACTER OWES. Issue #994. A
 			// SECOND scale, and telling it apart from the one above is the
 			// point: health missing and health owed are different states of one
 			// character, so a build that mapped either name onto either
 			// enumerator would pass every check written before this row.
-			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5,0,-1\r\n"
+			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5,0,-1,0\r\n"
 			// AND THREE COUNTS OF STACKS, ONE PER KIND. Issues #1002, #1003 and
 			// #1004. All three are here rather than one of them, because the
 			// three names must not be interchangeable: each kind is granted by a
@@ -1044,36 +1044,36 @@ namespace CataclysmPassiveEffectTest
 			// that mapped two of the names onto one enumerator would hand a node
 			// somebody else's stacks with nothing reporting it. One row cannot
 			// catch that; three can.
-			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1,0,-1\r\n"
-			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1,0,-1\r\n"
-			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1,0,-1\r\n"
+			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1,0,-1,0\r\n"
+			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1,0,-1,0\r\n"
+			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1,0,-1,0\r\n"
 			// AND A COUNT OF THE DEBUFFS THE CHARACTER IS UNDER. Issue #962. A
 			// fourth count beside the three stacks, and its own row for the same
 			// argument: a build that mapped this name onto a stack enumerator
 			// would count something the character EARNED instead of something
 			// being DONE to it, and every check above would still pass.
-			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1,0,-1\r\n"
+			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1,0,-1,0\r\n"
 			// AND A CONDITION THAT NAMES AN EFFECT RATHER THAN A THRESHOLD.
 			// Issue #962. It is the only condition that reads no value, so it is
 			// the only one where the value column could be carried across and
 			// compared against with nothing reporting it.
-			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0,-1\r\n"
+			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0,-1,0\r\n"
 			// AND A THRESHOLD THAT POINTS UPWARDS. Issue #1070. Ceaseless
 			// Penance is the only node in the game asking whether health is
 			// still HIGH, and the failure if the name goes unrecognised is the
 			// worst of the three: the row is left UNCONDITIONAL, so the option
 			// would hold a character's debuffs still at every health rather
 			// than only above half.
-			"Ravager_low#11,Ravager_low,block_chance,flat,1.0,,health_above,50,,0,0,-1\r\n"
+			"Ravager_low#11,Ravager_low,block_chance,flat,1.0,,health_above,50,,0,0,-1,0\r\n"
 			// AND ONE THAT COUNTS THE ENEMIES STANDING NEARBY. Issue #1597. The
 			// only row here carrying a `ReachMetres`, and the only one that can
 			// show the column travelling from a table row to a modifier. Every
 			// other row carries -1, which is what a row that counts no enemies
 			// carries, so a build that dropped the column on the way would leave
 			// this one indistinguishable from all of them.
-			"Ravager_low#12,Ravager_low,retaliation,increased,4.0,,enemies_in_reach_at_least,3,,0,0,4\r\n"
+			"Ravager_low#12,Ravager_low,retaliation,increased,4.0,,enemies_in_reach_at_least,3,,0,0,4,0\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
-			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0,-1\r\n"
+			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0,-1,0\r\n"
 			// A CAPSTONE'S THREE OPTIONS, ONE ROW EACH. Issue #1029. Only the
 			// option the player chose may apply, and a capstone with no choice
 			// made yet grants none of the three.
@@ -1083,9 +1083,9 @@ namespace CataclysmPassiveEffectTest
 			// third says the skip is by option NUMBER rather than by "not the
 			// first one". Each grants a different stat so the test can tell which
 			// of the three arrived.
-			"Ravager_cap#1,Ravager_cap,armor,increased,10.0,,,0,,0,1,-1\r\n"
-			"Ravager_cap#2,Ravager_cap,evasion,increased,20.0,,,0,,0,2,-1\r\n"
-			"Ravager_cap#3,Ravager_cap,magic_find,increased,30.0,,,0,,0,3,-1\r\n"));
+			"Ravager_cap#1,Ravager_cap,armor,increased,10.0,,,0,,0,1,-1,0\r\n"
+			"Ravager_cap#2,Ravager_cap,evasion,increased,20.0,,,0,,0,2,-1,0\r\n"
+			"Ravager_cap#3,Ravager_cap,magic_find,increased,30.0,,,0,,0,3,-1,0\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -1203,6 +1203,78 @@ bool FCataclysmPassiveCapstoneOptionTest::RunTest(const FString&)
 				  (*Armour)[0].Value, 12.0f);
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveMinPointsTest,
+	"Cataclysm.Passives.ARowWithMinPointsAppliesFromThatManyPointsAndOnlyOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A node sentence's "At 4 points: ..." clause, as a row with `MinPoints` 4.
+ * Issue #1755, for Set Stance and Scarred Plate.
+ *
+ * THREE READINGS, AND EACH ONE CATCHES A DIFFERENT FAULT. At 3 points the row
+ * grants nothing, which a threshold ignored gets wrong. At 4 it grants its value
+ * once. At 8 it still grants its value once, which a threshold read as "from
+ * here, per point" gets wrong: it would grant 40. The per-point row beside it
+ * on the same node shows the points really are 3, 4 and 8.
+ */
+bool FCataclysmPassiveMinPointsTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = NewObject<UDataTable>();
+	EffectTable->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
+	const TArray<FString> Problems = EffectTable->CreateTableFromCSVString(TEXT(
+		"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints\r\n"
+		// Paid per point, from the first.
+		"Ravager_low#1,Ravager_low,armor,increased,1.5,,,0,,0,0,-1,0\r\n"
+		// "At 4 points: +5% increased Crowd Control Resistance."
+		"Ravager_low#2,Ravager_low,crowd_control_resistance,increased,5.0,,,0,,0,0,-1,4\r\n"));
+	for (const FString& Problem : Problems)
+	{
+		AddError(Problem);
+	}
+	if (!NodeTable || Problems.Num() > 0)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	const FName Node(TEXT("Ravager_low"));
+	const auto At = [&](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		Allocation.Add(Node, Points);
+		return UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+												   Demonic);
+	};
+	const auto ValueOf = [](const TMap<FName, TArray<FCataclysmStatModifier>>& Granted,
+							const TCHAR* Stat)
+	{
+		const TArray<FCataclysmStatModifier>* Found = Granted.Find(FName(Stat));
+		return Found && Found->Num() == 1 ? (*Found)[0].Value : -1.0f;
+	};
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Three = At(3);
+	TestEqual(TEXT("at three points the per-point row grants 4.5"),
+			  ValueOf(Three, TEXT("armor")), 4.5f, 0.001f);
+	TestFalse(TEXT("and the row from four points grants nothing"),
+			  Three.Contains(FName(TEXT("crowd_control_resistance"))));
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Four = At(4);
+	TestEqual(TEXT("at four points the per-point row grants 6"),
+			  ValueOf(Four, TEXT("armor")), 6.0f, 0.001f);
+	TestEqual(TEXT("and the row from four points grants its 5, once"),
+			  ValueOf(Four, TEXT("crowd_control_resistance")), 5.0f, 0.001f);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Eight = At(8);
+	TestEqual(TEXT("at eight points the per-point row grants 12"),
+			  ValueOf(Eight, TEXT("armor")), 12.0f, 0.001f);
+	TestEqual(TEXT("and the row from four points still grants 5, not 10 or 40"),
+			  ValueOf(Eight, TEXT("crowd_control_resistance")), 5.0f, 0.001f);
 	return true;
 }
 
@@ -1563,8 +1635,8 @@ namespace CataclysmPassiveConditionTest
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(
 			FString::Printf(
 				TEXT("Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,")
-				TEXT("Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres\r\n")
-				TEXT("Ravager_low#1,Ravager_low,%s,increased,3.0,,%s,%s,,0,0,-1\r\n"),
+				TEXT("Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints\r\n")
+				TEXT("Ravager_low#1,Ravager_low,%s,increased,3.0,,%s,%s,,0,0,-1,0\r\n"),
 				Stat, Condition, Value));
 
 		for (const FString& Problem : Problems)
@@ -16033,6 +16105,88 @@ bool FCataclysmDemonicRowsChorusTest::RunTest(const FString&)
 	return CataclysmDemonicRowsTest::WearsTheRows(
 		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_200")), 3,
 		{{UCataclysmChorus::Stat, 1.0f}});
+}
+
+// ---------------------------------------------------------------------------
+// Set Stance's engine half: a knockback asks the target whether it may be
+// knocked back. Issue #1755.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKnockbackSuppressedTest,
+	"Cataclysm.SetStance.AKnockbackMovesARavagerAloneAndNotOneWithAnEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `knockback_suppressed` given by hand, carrying the condition its row will:
+ * an enemy within 4 metres. Issue #1755.
+ *
+ * THE CONDITION IS THE POINT. A flag with no condition would be read off an
+ * attribute as easily, and would pass a test that only placed an enemy near.
+ * So the same flag, on the same character, must let a knockback land while the
+ * only hostile body is the shover six metres off, and refuse it once a second
+ * one stands two metres away. That can only be the pipeline being asked.
+ *
+ * THE ROW ITSELF, AND ITS "AT 4 POINTS", COME WITH THE ROWS CHANGE, which must
+ * add a test that wears it.
+ */
+bool FCataclysmKnockbackSuppressedTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmKeystoneRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager"), Player.Character && Player.AbilitySystem))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Held;
+	Held.Bucket = ECataclysmStatBucket::Flat;
+	Held.Source = ECataclysmModifierSource::PassiveKeystone;
+	Held.Value = 1.0f;
+	Held.Condition = ECataclysmStatCondition::EnemiesInReachAtLeast;
+	Held.ConditionValue = 1.0f;
+	Held.ReachMetres = 4.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(UCataclysmSkillEffects::KnockbackSuppressedStat))
+		.Modifiers = {Held};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	ACataclysmEnemyCharacter* Shover = SpawnHostile(
+		World, Player.Character->GetActorLocation() + FVector(-6.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a shover six metres off, outside the four"), Shover))
+	{
+		return false;
+	}
+
+	const FVector Before = Player.Character->GetActorLocation();
+	TestTrue(TEXT("with no enemy within four metres, the knockback lands"),
+			 UCataclysmSkillEffects::ApplyKnockback(Shover, Player.Character, 150.0f));
+	const FVector Moved = Player.Character->GetActorLocation();
+	TestTrue(TEXT("and the Ravager was moved"),
+			 FVector::Dist2D(Before, Moved) > 1.0f);
+
+	if (!TestNotNull(TEXT("a second enemy two metres off"),
+					 SpawnHostile(World, Moved + FVector(0.0f, 2.0f * M, 0.0f))))
+	{
+		return false;
+	}
+	TestFalse(TEXT("with an enemy within four metres, the knockback is refused"),
+			  UCataclysmSkillEffects::ApplyKnockback(Shover, Player.Character, 150.0f));
+	TestTrue(TEXT("and the Ravager stays where it stood"),
+			 static_cast<float>(FVector::Dist2D(Moved,
+												Player.Character->GetActorLocation()))
+				 < 1.0f);
+	return true;
 }
 
 #endif // WITH_AUTOMATION_TESTS
