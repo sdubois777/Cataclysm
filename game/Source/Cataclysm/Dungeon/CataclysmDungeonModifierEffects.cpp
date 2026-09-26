@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::FunerealProcessionKey =
+	TEXT("Death_Funereal_Procession");
+
 const TCHAR* UCataclysmDungeonModifierEffects::BloodDebtKey =
 	TEXT("War_Blood_Debt");
 
@@ -546,6 +549,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
 		|| RowKey == FName(SingularityWellsKey)
+		// FUNEREAL PROCESSION. The line crosses and its contact burns, but "and fear" does nothing: the game has no
+		// fear until the Demonic session's `ApplyFear` merges. Issues #1820 and #41.
+		|| RowKey == FName(FunerealProcessionKey)
 		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
 		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
 		// while its entry and its key's comment both said partly built. Issues #1820 and #41.
@@ -712,6 +718,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(FunerealProcessionKey),
 		FName(BloodDebtKey),
 		FName(QuarantineBreachKey),
 		FName(InfectionBloomKey),
@@ -1940,6 +1947,21 @@ float UCataclysmDungeonModifierEffects::BloodDebtDamageMorePercentFor(int32 Bles
 float UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercentFor(int32 Paid, int32 Owed, bool bOnTheFinalBossFloor)
 {
 	return bOnTheFinalBossFloor && Paid < Owed ? BloodDebtCurseLessPercent : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::FunerealProcessionIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= FunerealProcessionSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionLastsSeconds()
+{
+	return FunerealProcessionTravelsCm / FunerealProcessionSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * FunerealProcessionPercentPerSecond / 100.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

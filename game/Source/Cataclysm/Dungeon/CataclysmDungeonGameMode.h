@@ -2123,6 +2123,12 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Funereal Procession, for tests: the procession crossing now, or null. */
+	class ACataclysmGroundZone* FunerealProcessionNow() const;
+
+	/** Funereal Procession, for tests: where it walks, in centimetres a second. */
+	FVector FunerealProcessionVelocityNow() const { return FunerealProcessionVelocity; }
+
 	/** Blood Debt, for the panel and tests: the kills paid toward the debt in this dungeon. */
 	int32 BloodDebtPaidHeld() const { return BloodDebtPaid; }
 
@@ -2385,6 +2391,10 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Funereal Procession, on the beat: a procession set out on its clock, its contact, and its end. */
+	void StepFunerealProcession(class ACataclysmPlayerCharacter* Player,
+								class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Quarantine Breach: this arena's containment, placed where a new arena is populated, holding one kind. */
 	void PlaceTheQuarantine();
@@ -3578,6 +3588,17 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Funereal Procession: the line crossing now, where it walks, its two clocks and its contact's, and what the panel
+	 * last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmGroundZone> FunerealProcession;
+	FVector FunerealProcessionVelocity = FVector::ZeroVector;
+	float FunerealProcessionSecondsIntoIt = 0.0f;
+	float FunerealProcessionSecondsSinceLast = 0.0f;
+	float FunerealProcessionSecondsSinceBurn = 0.0f;
+	int32 FunerealProcessionPanelSecond = -1;
 
 	/**
 	 * Blood Debt: the kills paid in this dungeon, and the blessings and curse last written on the player. Issues

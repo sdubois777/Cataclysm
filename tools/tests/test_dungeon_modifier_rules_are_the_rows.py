@@ -4402,3 +4402,19 @@ def test_blood_debt_row_still_has_a_debt_paid_in_kills_blessings_and_a_curse_at_
         assert phrase in lower, (
             f"War_Blood_Debt no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "BloodDebtKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_funereal_procession_row_still_has_a_slow_line_whose_contact_does_heavy_damage_and_fear():
+    """The phrases the rule's readings rest on.
+
+    SLOW-MOVING LINE is the procession walking single file at its speed; MOVES THROUGH THE DUNGEON is its crossing;
+    CONTACT CAUSES HEAVY DAMAGE is its touch; AND FEAR is the half that waits on the fear system. If any of them
+    changes, the reading must be revisited.
+    """
+    words = flat(rows()["Death_Funereal_Procession"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("slow-moving line", "moves through the dungeon", "contact causes heavy damage", "and fear"):
+        assert phrase in lower, (
+            f"Death_Funereal_Procession no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "FunerealProcessionKey in CataclysmDungeonModifierEffects.h. " + words)
