@@ -26,6 +26,7 @@
 // For how long a lasting harmful effect really runs on its target, which is
 // the target's own stat rather than the attacker's. Issue #1033.
 #include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
@@ -2081,7 +2082,8 @@ bool UCataclysmSkillEffects::IsCrowdControlled(const AActor* Actor)
 {
 	return IsStunned(Actor) || IsKnockedDown(Actor) || IsPinned(Actor)
 		|| HasTag(Actor, UCataclysmDebuffs::CrippleTag())
-		|| UCataclysmTeams::IsMaddened(Actor);
+		|| UCataclysmTeams::IsMaddened(Actor)
+		|| UCataclysmFear::IsFeared(Actor);
 }
 
 FGameplayTag UCataclysmSkillEffects::UntargetableTag()
@@ -3393,6 +3395,29 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::NumbersForEffectTag(
 }
 
 bool UCataclysmSkillEffects::ApplyNamedEffect(
+	AActor* Instigator, AActor* Target, const FGameplayTag& EffectTag,
+	float DurationSeconds, float Magnitude, FName DamageType)
+{
+	// MADNESS TAKES THE WINDOW AND BOSS IMMUNITY, as the design document's table
+	// of hard stops rules and as fear does. STATED THERE AND NOT BUILT until the
+	// fear change of 2026-09-25: every Madness -- the ailment chance, Whisper of
+	// Madness, Crawling Insanity -- arrives through this function, so the rules
+	// are asked here, once. A Madness that lands opens the shared window.
+	const bool bMadness = EffectTag.IsValid() && EffectTag == UCataclysmTeams::MadnessTag();
+	if (bMadness && UCataclysmFear::RefusedByTheRedirectionRules(Target))
+	{
+		return false;
+	}
+	const bool bApplied = ApplyNamedEffectOnly(Instigator, Target, EffectTag, DurationSeconds,
+											   Magnitude, DamageType);
+	if (bMadness && bApplied)
+	{
+		UCataclysmFear::OpenTheSharedWindow(Instigator, Target);
+	}
+	return bApplied;
+}
+
+bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
 	AActor* Instigator, AActor* Target, const FGameplayTag& EffectTag,
 	float DurationSeconds, float Magnitude, FName DamageType)
 {

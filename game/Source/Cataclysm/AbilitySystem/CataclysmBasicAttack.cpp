@@ -4,6 +4,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the attack speed attribute the swing rate falls back to. Issue #1002.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -113,7 +114,9 @@ bool UCataclysmBasicAttack::MaySwing(const AActor* Character)
 	//
 	// A PIN DOES NOT COUNT. A pinned character cannot move and can still fight,
 	// so its automatic attack keeps swinging at whatever stays within reach.
-	return !UCataclysmSkillEffects::CannotAct(Character);
+	// AND NOT WHILE FEARED: fear takes away every attack, the basic one included.
+	return !UCataclysmSkillEffects::CannotAct(Character)
+		&& !UCataclysmFear::IsFeared(Character);
 }
 
 float UCataclysmBasicAttack::ReachCmOf(

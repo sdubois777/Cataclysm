@@ -65,7 +65,7 @@ heading row describe their layout instead. Issue #1884.
 | Gems | 27 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3 |
 | Enchantments | 380 | Positives, Type, Weight, Column 4, (blank), Negatives, Type, Weight, Tags |
-| **Tags** | **141** | **Tag Name, Description** |
+| **Tags** | **143** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
 | Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost |
 | Buffs | 18 | one description per row, no heading row |

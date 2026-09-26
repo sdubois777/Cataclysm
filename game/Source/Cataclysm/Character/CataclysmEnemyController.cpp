@@ -5,6 +5,7 @@
 // For announcing a creature's ability as a skill used. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
@@ -358,6 +359,53 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		StopMovement();
 
 		LastAction = ECataclysmBrainAction::Stunned;
+		return LastAction;
+	}
+
+	// FLEEING OUTRANKS EVERYTHING BUT A HARD STOP. A feared creature, or one a
+	// rule told to flee, drops what it was winding up and moves away from the
+	// point, as the stun above drops it, and makes no attack. BELOW THE STUN
+	// because a stunned creature cannot act at all, flight included.
+	FVector FleeSource;
+	if (UCataclysmFear::FleeSourceOf(Driven, FleeSource))
+	{
+		WindingUpAbility = INDEX_NONE;
+		WindUpPassesLeft = 0;
+		ACataclysmEnemyCharacter* Fleer = Cast<ACataclysmEnemyCharacter>(Driven);
+		if (Fleer)
+		{
+			Fleer->CancelCharge();
+		}
+		DismissWindUpMarker();
+
+		// NOWHERE TO RUN WINS. Ruled 2026-09-25: a held creature cannot move
+		// away from its holder, so a feared one it holds stands still.
+		if (Fleer && Fleer->IsHeld())
+		{
+			StopMovement();
+			LastFleeGoal = FVector::ZeroVector;
+			LastAction = ECataclysmBrainAction::Fleeing;
+			return LastAction;
+		}
+
+		LastFleeGoal = UCataclysmFear::FleeGoalFor(Driven, FleeSource);
+		FAIMoveRequest Request(LastFleeGoal);
+		Request.SetAcceptanceRadius(50.0f);
+
+		// A STRAIGHT LINE WITHOUT A NAVIGATION MESH, as the chase does; AND
+		// STANDING STILL WHEN EVEN THAT FAILS, which is a cornered creature.
+		if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+		{
+			Request.SetUsePathfinding(false);
+			if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+			{
+				StopMovement();
+				LastFleeGoal = FVector::ZeroVector;
+			}
+		}
+		FaceTravelDirection(Driven);
+
+		LastAction = ECataclysmBrainAction::Fleeing;
 		return LastAction;
 	}
 
