@@ -5578,6 +5578,72 @@ void ACataclysmDungeonGameMode::NoteDeathForQuarantineBreach(const FCataclysmDea
 	RefreshFloorModifierPanel();
 }
 
+int32 ACataclysmDungeonGameMode::BloodDebtOwed() const
+{
+	return UCataclysmDungeonModifierEffects::BloodDebtOwedFor(ChooseTotalFloors());
+}
+
+int32 ACataclysmDungeonGameMode::BloodDebtBlessingsNow() const
+{
+	return UCataclysmDungeonModifierEffects::BloodDebtBlessingsFor(BloodDebtPaid, BloodDebtOwed());
+}
+
+bool ACataclysmDungeonGameMode::BloodDebtCursedNow() const
+{
+	// THE BOSS FIGHT IS THE DUNGEON'S LAST FLOOR WHEN THAT FLOOR HAS A BOSS AT ITS EXIT, as ruled: a one-floor Elite
+	// dungeon's floor 1 and any longer dungeon's last floor, and never a one-floor ordinary dungeon, which has no boss
+	// fight. Only on a floor carrying the row.
+	const bool bTheBossFight = FloorBrief.FloorNumber >= ChooseTotalFloors() && FloorBrief.bBossAtTheExit;
+	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodDebtKey))
+		&& UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercentFor(
+			   BloodDebtPaid, BloodDebtOwed(), bTheBossFight) > 0.0f;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForBloodDebt(const FCataclysmDeathNotice& Notice)
+{
+	// THE PLAYER'S DEATH ENDS IT, with what was paid and its blessing: the owner's ruling of 2026-09-10, "Anything that
+	// lasts only for the dungeon ends at death, however it is worded". The next beat takes the blessing off.
+	if (Cast<ACataclysmPlayerCharacter>(Notice.Victim))
+	{
+		if (BloodDebtPaid > 0)
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("Blood Debt: the player's death ended %d paid"), BloodDebtPaid);
+			BloodDebtPaid = 0;
+			RefreshFloorModifierPanel();
+		}
+		return;
+	}
+
+	// A CREATURE THAT PAYS FOR ITS DEATH, ON A FLOOR CARRYING THE ROW: one kill paid. A floor source, a creature
+	// raised again and anything a rule made pay nothing do not count, so no rule's endless creatures pay the debt.
+	const ACataclysmEnemyCharacter* Victim = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Victim || !Victim->PaysForItsDeath()
+		|| !FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodDebtKey)))
+	{
+		return;
+	}
+	++BloodDebtPaid;
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepBloodDebt(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+	const int32 Blessings = BloodDebtBlessingsNow();
+	const bool bCursed = BloodDebtCursedNow();
+	if (Blessings != BloodDebtBlessingsApplied || bCursed != bBloodDebtCurseApplied)
+	{
+		BloodDebtBlessingsApplied = Blessings;
+		bBloodDebtCurseApplied = bCursed;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6851,6 +6917,11 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
+
+	// AND THE BLOOD DEBT IS THE DUNGEON'S: leaving ends it, and the call below takes its blessing and curse off.
+	BloodDebtPaid = 0;
+	BloodDebtBlessingsApplied = 0;
+	bBloodDebtCurseApplied = false;
 	ForgetTheQuarantine();
 	ForgetTheInfectionBloom();
 
@@ -7345,6 +7416,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND BLOOD DEBT, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE WHAT IS ON THE CHARACTER IS NOT WHAT IS OWED.
+	// Issues #1820 and #41.
+	const bool bBloodDebt = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodDebtKey))
+		|| BloodDebtBlessingsNow() != BloodDebtBlessingsApplied || BloodDebtCursedNow() != bBloodDebtCurseApplied;
 	// AND INFECTION BLOOM, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bInfectionBloom = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::InfectionBloomKey));
@@ -7394,6 +7469,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bBloodDebt
 		&& !bInfectionBloom
 		&& !bInfestedHoard
 		&& !bAbyssalRifts
@@ -7621,6 +7697,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND BLOOD DEBT, WHICH WRITES ITS BLESSING AND CURSE ON THE PLAYER. Issues #1820 and #41.
+	if (bBloodDebt)
+	{
+		StepBloodDebt(Player, AbilitySystem);
 	}
 
 	// AND INFECTION BLOOM, WHICH SPREADS ZONES, CHANGES CREATURES' DAMAGE AND SENDS WAVES. Issues #1820 and #41.
@@ -8639,6 +8721,13 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 		Effects.TouchedResistanceLessPercent = Percent(Effects_::ChaosTouchedResistanceLess);
 	}
 
+	// AND THE BLOOD DEBT'S BLESSING AND CURSE AS LAST APPLIED. Issues #1820 and #41. Read unconditionally like the
+	// rest: a dungeon without the row pays nothing and curses nothing.
+	Effects.BloodDebtDamageMorePercent =
+		UCataclysmDungeonModifierEffects::BloodDebtDamageMorePercentFor(BloodDebtBlessingsApplied);
+	Effects.BloodDebtDamageLessPercent =
+		bBloodDebtCurseApplied ? UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercent : 0.0f;
+
 	// AND THE MAGIC FIND THE RIFTS CLOSED IN TIME HAVE EARNED. Issues #1820 and #41. Read unconditionally like the
 	// rest: a player who has closed none is owed nothing.
 	Effects.RiftMagicFindAdded =
@@ -8721,6 +8810,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForBloodDebt(Notice);
 	NoteDeathForQuarantineBreach(Notice);
 	NoteDeathForInfectionBloom(Notice);
 	NoteDeathForInfestedHoard(Notice);
@@ -10476,6 +10566,25 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		{
 			Counting.Add(Breach, FString::Printf(TEXT("quarantine breach: %d %s held; break it to fight them"),
 				Effects::QuarantineBreachHeld, *QuarantineHeldName()));
+		}
+	}
+
+	// AND BLOOD DEBT: what is paid, what it blesses, and the curse if it holds. Issues #1820 and #41.
+	const FName Debt(Effects::BloodDebtKey);
+	if (FloorBrief.Modifiers.Contains(Debt))
+	{
+		const int32 Owed = BloodDebtOwed();
+		const int32 More = FMath::RoundToInt(Effects::BloodDebtDamageMorePercentFor(BloodDebtBlessingsNow()));
+		if (BloodDebtCursedNow())
+		{
+			Counting.Add(Debt, FString::Printf(TEXT("blood debt: %d of %d paid; unpaid, %d%% less damage on this "
+													"floor"), BloodDebtPaid, Owed,
+											   FMath::RoundToInt(Effects::BloodDebtCurseLessPercent)));
+		}
+		else
+		{
+			Counting.Add(Debt, FString::Printf(TEXT("blood debt: %d of %d paid, +%d%% damage"),
+											   FMath::Min(BloodDebtPaid, Owed), Owed, More));
 		}
 	}
 
@@ -12883,6 +12992,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND CHAOS TOUCHED THE SAME WAY: its stacks are the dungeon's and the call above took
 		// them off the character. Issues #1820 and #41.
 		ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
+
+		// AND THE BLOOD DEBT THE SAME WAY: what it has paid is the dungeon's, and the next beat writes its blessing
+		// and, on the final boss's floor, its curse back. Issues #1820 and #41.
+		BloodDebtBlessingsApplied = 0;
+		bBloodDebtCurseApplied = false;
 
 		// AND ABYSSAL RIFTS' MAGIC FIND THE SAME WAY: the successes are the dungeon's, and the next beat puts their
 		// reward back. Issues #1820 and #41.

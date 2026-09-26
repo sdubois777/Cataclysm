@@ -2123,6 +2123,12 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Blood Debt, for the panel and tests: the kills paid toward the debt in this dungeon. */
+	int32 BloodDebtPaidHeld() const { return BloodDebtPaid; }
+
+	/** Blood Debt, for the panel and tests: the kills this dungeon owes. */
+	int32 BloodDebtOwed() const;
+
 	/** Quarantine Breach, for tests: this floor's containment, or null once broken or on a floor with none. */
 	ACataclysmEnemyCharacter* QuarantineNow() const;
 
@@ -2538,6 +2544,19 @@ private:
 	 * it, and a coffin's Vampire Lord let out at the threshold.
 	 */
 	void NoteDeathForObsidianSarcophagi(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Blood Debt, on a death: a paying creature's death on a floor carrying the row pays one kill; the player's death
+	 * ends the debt and what was paid.
+	 */
+	void NoteDeathForBloodDebt(const struct FCataclysmDeathNotice& Notice);
+
+	/** Blood Debt, on the beat: the blessing and the curse written on the player when either changed. */
+	void StepBloodDebt(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Blood Debt: the blessings and whether the curse holds, as they are now. */
+	int32 BloodDebtBlessingsNow() const;
+	bool BloodDebtCursedNow() const;
 
 	/**
 	 * The Infested Hoard, on a death: a paying floor creature's may leave one infested drop; the player's ends the
@@ -3559,6 +3578,14 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Blood Debt: the kills paid in this dungeon, and the blessings and curse last written on the player. Issues
+	 * #1820 and #41.
+	 */
+	int32 BloodDebtPaid = 0;
+	int32 BloodDebtBlessingsApplied = 0;
+	bool bBloodDebtCurseApplied = false;
 
 	/**
 	 * Quarantine Breach: the containment, the kind it holds, whether it has been broken, what it released, and the
