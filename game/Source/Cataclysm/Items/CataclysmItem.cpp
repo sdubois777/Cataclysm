@@ -1126,6 +1126,32 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						}
 					}
+					// A COOLDOWN RESET, keyed by the enchantment and the action.
+					// Issue #1833, the cooldown reset action. The value is the
+					// chance.
+					const TPair<const TCHAR*, ECataclysmCooldownReset> ResetActions[] = {
+						{UCataclysmAbilitySystemComponent::CooldownResetAllAction,
+						 ECataclysmCooldownReset::All},
+						{UCataclysmAbilitySystemComponent::CooldownResetOthersAction,
+						 ECataclysmCooldownReset::Others},
+						{UCataclysmAbilitySystemComponent::CooldownResetHeavyAction,
+						 ECataclysmCooldownReset::Heavy},
+						{UCataclysmAbilitySystemComponent::CooldownResetSpecialAction,
+						 ECataclysmCooldownReset::Special},
+						{UCataclysmAbilitySystemComponent::CooldownResetMovementAction,
+						 ECataclysmCooldownReset::Movement},
+						{UCataclysmAbilitySystemComponent::CooldownResetEventSkillAction,
+						 ECataclysmCooldownReset::EventSkill},
+					};
+					for (const TPair<const TCHAR*, ECataclysmCooldownReset>& Reset : ResetActions)
+					{
+						if (Effect->Action.Equals(Reset.Key, ESearchCase::IgnoreCase))
+						{
+							Action.CooldownReset = Reset.Value;
+							Action.ResetKey = FName(*FString::Printf(
+								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
+						}
+					}
 					if (bArmourRemoved || bDamageRemoved)
 					{
 						Action.PlacedKey = FName(*FString::Printf(

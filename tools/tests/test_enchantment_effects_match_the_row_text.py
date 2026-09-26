@@ -233,6 +233,14 @@ COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction"}
 STATED_BY_WORD: dict[str, dict[str, float]] = {
     "crowd_control_resistance": {"immune": 100.0},
     "armor_penetration": {"all": 100.0},
+    # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
+    # a chance: a sentence that resets and states no chance resets every time.
+    # Issue #1833, the cooldown reset action. One word per action, the one its
+    # own row's sentence uses, so each is needed by a row.
+    "cooldown_reset_all": {"reset": 100.0},
+    "cooldown_reset_others": {"resets": 100.0},
+    "cooldown_reset_special": {"reset": 100.0},
+    "cooldown_reset_heavy": {"resets": 100.0},
     # AND "ALL" IS 100 ON `penetration`, for "Your first hit against each enemy
     # in a combat ignores all resistances", issue #1833's small engine halves.
     # The same reasoning as armour: penetration stops at the target's own
@@ -472,8 +480,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 347 over 271: eight rows on eight enchantments.
 #: A minion row may be `more` from here on: minion health reads the More
 #: bucket through `MultiplierForStatAgainst` since this change.
-AUTHORED_ROWS = 355
-AUTHORED_ENCHANTMENTS = 279
+#: AND 363 OVER 287 SINCE THE COOLDOWN RESET ACTION,
+#: issue #1833, from 355 over 279: eight rows on eight enchantments.
+AUTHORED_ROWS = 363
+AUTHORED_ENCHANTMENTS = 287
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

@@ -585,6 +585,38 @@ public:
 	static const TCHAR* NthAttackNoDamageAction;
 
 	/**
+	 * The six cooldown reset action names. Issue #1833, the cooldown reset
+	 * action. `tools/generate_datatables.py` holds the same six in
+	 * `COOLDOWN_RESET_ACTIONS`.
+	 */
+	static const TCHAR* CooldownResetAllAction;
+	static const TCHAR* CooldownResetOthersAction;
+	static const TCHAR* CooldownResetHeavyAction;
+	static const TCHAR* CooldownResetSpecialAction;
+	static const TCHAR* CooldownResetMovementAction;
+	static const TCHAR* CooldownResetEventSkillAction;
+
+	/**
+	 * Roll a cooldown reset action's chance and, on a success, clear the
+	 * cooldowns it names. Issue #1833, the cooldown reset action.
+	 *
+	 * THE ROLL IS 0 TO 100 AND A ROLL BELOW THE CHANCE SUCCEEDS, the rule the
+	 * cooldown skip already follows, so a chance of 100 always succeeds. The
+	 * console variable `Cataclysm.CooldownResetRoll` pins it for tests.
+	 *
+	 * A cooldown is a duration effect granting its slot's `Cooldown.*` tag
+	 * (`UCataclysmGameplayAbility::ApplyCooldown`), so clearing one is removing
+	 * every effect granting that tag, which is what `RefundCooldown` does too.
+	 *
+	 * @param EventTags  the event's skill tags, whose `Slot.*` tag says which
+	 *                   slot fired. Read only by `Others` and `EventSkill`; with
+	 *                   no slot named, those clear nothing
+	 * @return how many cooldown effects were cleared
+	 */
+	int32 RollAndResetCooldowns(const FCataclysmPoolAction& Action,
+								const FGameplayTagContainer* EventTags);
+
+	/**
 	 * The event a row grants on when it grants on a clock. Issue #1833, timed
 	 * grants. `TIMED_EVENT` in `tools/generate_datatables.py`. Never raised
 	 * through `ActOnEvent`: `StepTimedGrants` fires each such action itself.
@@ -2406,7 +2438,8 @@ protected:
 
 	/** Whether this row's tags and condition allow it to fire on this event. */
 	bool PoolActionAllowed(const FCataclysmPoolAction& Action,
-						   const FGameplayTagContainer* EventTags) const;
+						   const FGameplayTagContainer* EventTags,
+						   const AActor* EventTarget = nullptr) const;
 
 	/**
 	 * The two attributes a pool name means: what is held, and the most that can

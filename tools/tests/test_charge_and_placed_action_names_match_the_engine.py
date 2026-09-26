@@ -32,6 +32,13 @@ CONSTANTS = {
     "NthHitTakenDamageAction": "nth_hit_taken_damage",
     "NthSpellManaCostAction": "nth_spell_mana_cost",
     "NthAttackNoDamageAction": "nth_attack_no_damage",
+    # AND THE SIX COOLDOWN RESET NAMES, since issue #1833's cooldown reset.
+    "CooldownResetAllAction": "cooldown_reset_all",
+    "CooldownResetOthersAction": "cooldown_reset_others",
+    "CooldownResetHeavyAction": "cooldown_reset_heavy",
+    "CooldownResetSpecialAction": "cooldown_reset_special",
+    "CooldownResetMovementAction": "cooldown_reset_movement",
+    "CooldownResetEventSkillAction": "cooldown_reset_event_skill",
 }
 
 
@@ -73,3 +80,9 @@ def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> N
     engine = {name for constant, name in engine_names().items()
               if constant.startswith("Nth")}
     assert set(gen.NTH_ACTIONS) == engine
+
+
+def test_the_generator_accepts_exactly_the_cooldown_reset_names_the_engine_has() -> None:
+    engine = {name for constant, name in engine_names().items()
+              if constant.startswith("CooldownReset")}
+    assert set(gen.COOLDOWN_RESET_ACTIONS) == engine
