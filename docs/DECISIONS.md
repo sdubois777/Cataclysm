@@ -94,7 +94,7 @@ the row, every shroud the rule gave is taken off.
 
 ### Tests
 
-Six automation tests in `Cataclysm.DungeonModifierEffects.`:
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 - `ShadowyEnemiesFiguresZonesRadiusAndFireSeconds`: three zones, 400 cm, four seconds.
 - `AShroudedCreatureTakesNoDamageUntilALightReachesIt`: an Imp three metres from the player is shrouded, says so under
@@ -102,12 +102,21 @@ Six automation tests in `Cataclysm.DungeonModifierEffects.`:
   shrouded, keeps the 90 health it has, and a blow takes nothing.
 - `AFireHitExposesAShroudedCreatureForFourSeconds`: the fire hit takes nothing and exposes the Imp at once; the next
   blow takes 10; it is still exposed after fifteen beats and shrouded on the sixteenth.
+- `AnEvadedFireHitExposesNothing`: a fire hit's announcement marked evaded leaves the Imp shrouded, and the same
+  announcement not evaded exposes it. The announcement is built by the test and not dealt, because evasion is a random
+  roll against a soft cap and no blow is certain to be evaded; the second announcement shows one built this way reaches
+  the rule. Added at the coordinating session's request, 2026-09-26.
 - `TheBlackestShadowsLightExposesAShroudedCreature`: with both rows, an Imp five metres away is exposed and one seven
   metres away is shrouded.
 - `AFloorWithoutShadowyEnemiesTakesEveryShroudOff`: on the next floor without the row the Imp is not shrouded, and there
   are no light zones.
 - `ShadowyEnemiesLightsTheExitWhereTheBossStands`: on floor 1 of an Elite dungeon, the last light zone lies on the exit,
-  and the Gatekeeper standing there is exposed.
+  and the Gatekeeper standing there is exposed. As set-up it asserts that no zone but the exit's reaches the Gatekeeper,
+  so the Gatekeeper's exposure can only come from the exit's zone; asked for by the coordinating session, 2026-09-26. If
+  the test floor puts a random zone there, the set-up fails and the floor's seed is to be changed.
+
+**Not tested: a Horde arena keeping its light zones between waves.** The zones are redrawn on the beat whenever one is
+missing, as Void Parasite's light is, but no test runs a Horde arena with this row.
 
 One Python check: the row still says "infested", "only be harmed when exposed to light", "abilities" and
 "environmental factors".
