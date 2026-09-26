@@ -2047,6 +2047,9 @@ public:
 	/** Void Parasite, for the panel and tests: how many voidlings the player carries. */
 	int32 VoidParasiteStacksHeld() const { return VoidParasiteStacks; }
 
+	/** Wasting Sickness, for tests: how many stacks the player carries. */
+	int32 WastingSicknessStacksHeld() const { return WastingSicknessStacks; }
+
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
 	class ACataclysmGroundZone* VoidParasiteLightNow() const;
 
