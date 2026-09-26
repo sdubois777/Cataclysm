@@ -354,3 +354,11 @@ Positive_Your_first_hit_against_each_enemy_in_a_combat_ig#1,Positive_Your_first_
 Negative_Every_hit_you_take_deals_an_additional_5_10_of#1,Negative_Every_hit_you_take_deals_an_additional_5_10_of,,,-5.0,-10.0,,,0.0,,0.0,health,hit_taken,maximum,0,0.0,0.0,0.0,0
 Positive_Energy_shield_regeneration_begins_immediately_af#1,Positive_Energy_shield_regeneration_begins_immediately_af,shield_recharge_has_no_delay,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
 Negative_Your_minions_have_20_50_less_hp#1,Negative_Your_minions_have_20_50_less_hp,minion_health,more,-20.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Using_your_ultimate_ability_resets_all_other_ski#1,Positive_Using_your_ultimate_ability_resets_all_other_ski,,,100.0,100.0,Slot.Ultimate,,0.0,,0.0,cooldown_reset_others,skill_use,,0,0.0,0.0,0.0,0
+Positive_Your_special_ability_cooldown_is_reset_when_you#1,Positive_Your_special_ability_cooldown_is_reset_when_you,,,100.0,100.0,,,0.0,,0.0,cooldown_reset_special,kill,,0,0.0,0.0,0.0,0
+Positive_Every_20_seconds_all_your_skill_cooldowns_are_in#1,Positive_Every_20_seconds_all_your_skill_cooldowns_are_in,,,100.0,100.0,,,0.0,,0.0,cooldown_reset_all,every_seconds,,0,0.0,0.0,20.0,0
+Positive_Blocking_an_attack_has_a_20_40_chance_to_reset#1,Positive_Blocking_an_attack_has_a_20_40_chance_to_reset,,,20.0,40.0,,,0.0,,0.0,cooldown_reset_heavy,block,,0,0.0,0.0,0.0,0
+Positive_Critical_strikes_have_a_15_30_chance_to_reset#1,Positive_Critical_strikes_have_a_15_30_chance_to_reset,,,15.0,30.0,,,0.0,,0.0,cooldown_reset_movement,critical_strike,,0,0.0,0.0,0.0,0
+Positive_Dodging_an_attack_has_a_20_40_chance_to_reset#1,Positive_Dodging_an_attack_has_a_20_40_chance_to_reset,,,20.0,40.0,,,0.0,,0.0,cooldown_reset_movement,dodge,,0,0.0,0.0,0.0,0
+Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta#1,Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta,,,100.0,100.0,,target_is_staggered,0.0,,0.0,cooldown_reset_heavy,hit_dealt,,0,0.0,0.0,0.0,0
+Positive_Ranged_kills_have_a_20_40_chance_to_refund_the#1,Positive_Ranged_kills_have_a_20_40_chance_to_refund_the,,,20.0,40.0,Type.Ranged,,0.0,,0.0,cooldown_reset_event_skill,kill,,0,0.0,0.0,0.0,0
