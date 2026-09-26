@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InfestedHoardKey =
+	TEXT("Pestilence_The_Infested_Hoard");
+
 const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsKey =
 	TEXT("Demonic_Abyssal_Rifts");
 
@@ -493,6 +496,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(InfestedHoardKey)
 		|| RowKey == FName(AbyssalRiftsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -696,6 +700,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(InfestedHoardKey),
 		FName(AbyssalRiftsKey),
 		FName(SwarmOfLocustsKey),
 		FName(RawSewageKey),
@@ -1834,6 +1839,27 @@ int32 UCataclysmDungeonModifierEffects::AbyssalRiftsRungFor(int32 Successes)
 float UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(int32 Successes)
 {
 	return FMath::Max(0, Successes) * AbyssalRiftsMagicFindPerSuccess;
+}
+
+float UCataclysmDungeonModifierEffects::InfestedHoardChancePercentFor(int32 Stacks)
+{
+	return FMath::Min(InfestedHoardChancePercent + FMath::Max(0, Stacks) * InfestedHoardChancePercentPerStack,
+					  InfestedHoardMostChancePercent);
+}
+
+bool UCataclysmDungeonModifierEffects::InfestedHoardDrops(float Roll, int32 Stacks)
+{
+	return Roll < InfestedHoardChancePercentFor(Stacks);
+}
+
+int32 UCataclysmDungeonModifierEffects::InfestedHoardStacksAfterAdding(int32 Stacks)
+{
+	return FMath::Clamp(Stacks + 1, 0, InfestedHoardMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::InfestedHoardPercentPerSecond(int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, InfestedHoardMostStacks) * InfestedHoardPercentPerStack;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

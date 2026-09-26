@@ -2055,6 +2055,29 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose creatures drop infested loot that drains the player who takes it. Issues #1820 and #41.
+	 *
+	 * "All enemies have a chance to drop infested gold and items. Picking up infested loot will apply a stack of
+	 * "Infestation" that drains your health over time. However, the more stacks you have, the higher your chance of
+	 * finding more infested loot. It's a risk/reward system where you must weigh the benefits of a huge haul against
+	 * the dangerous health drain."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - ONE INFESTED DROP, sometimes, when one of the floor's creatures dies and pays: `InfestedHoardChancePercentFor`
+	 *   of the stacks held. It is exactly one drop, gear or a crafting material in the creature's own ratio, rolled
+	 *   at its rarity and magic find as its own drops are, and it is extra to them. The game has no gold drops, so
+	 *   "gold and items" is read as items and materials.
+	 * - "INFESTED " IN FRONT OF ITS NAME while it lies on the floor. The mark is lost once it is picked up.
+	 * - NEVER COLLECTED AUTOMATICALLY, material or not, so taking it is always a click and always a choice.
+	 * - TAKEN BY HAND, IT ADDS ONE STACK, to `InfestedHoardMostStacks`.
+	 * - EACH STACK DRAINS `InfestedHoardPercentPerStack` OF MAXIMUM HEALTH A SECOND, summed, dealt as damage over
+	 *   time typed Pestilence.
+	 * - THE STACKS END WITH THE FLOOR, with the player's death, and with leaving the dungeon.
+	 */
+	static const TCHAR* InfestedHoardKey;
+
+	/**
 	 * The row whose rift opens when the player comes near, sends waves, and pays the player for closing it in time.
 	 * Issues #1820 and #41.
 	 *
@@ -4628,6 +4651,17 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/** The Infested Hoard's figures, every one a play-test value. See the key. */
+	static constexpr float InfestedHoardChancePercent = 10.0f;
+	static constexpr float InfestedHoardChancePercentPerStack = 5.0f;
+	static constexpr float InfestedHoardMostChancePercent = 60.0f;
+	static constexpr int32 InfestedHoardMostStacks = 10;
+	static constexpr float InfestedHoardPercentPerStack = 0.3f;
+
+	static_assert(InfestedHoardChancePercent + InfestedHoardMostStacks * InfestedHoardChancePercentPerStack
+					  >= InfestedHoardMostChancePercent,
+		"The chance should reach its cap within the stacks a player can hold, or the cap is not the limit.");
+
 	/**
 	 * Abyssal Rifts' figures, every one a play-test value. See the key. The zone's radius is Necrotic Bloom's wave
 	 * radius, which the creatures' cells are chosen by; the highest rung is Demon Prince's.
@@ -5297,6 +5331,18 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** The chance, 0 to 100, that a paying floor creature's death leaves an infested drop, at these stacks. */
+	static float InfestedHoardChancePercentFor(int32 Stacks);
+
+	/** Whether a roll of 0 to 100 leaves an infested drop at these stacks: below the chance. */
+	static bool InfestedHoardDrops(float Roll, int32 Stacks);
+
+	/** The stacks after one more infested pickup: one more, never past the most. */
+	static int32 InfestedHoardStacksAfterAdding(int32 Stacks);
+
+	/** The share of maximum health, in percent, these stacks drain a second. */
+	static float InfestedHoardPercentPerSecond(int32 Stacks);
 
 	/** Whether an open rift sends its next wave now: it has sent fewer than all, and that wave's time has come. */
 	static bool AbyssalRiftsWaveIsDue(float SecondsOpen, int32 WavesSent);

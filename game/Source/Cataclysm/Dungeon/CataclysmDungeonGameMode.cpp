@@ -25,6 +25,7 @@
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -766,6 +767,14 @@ static TAutoConsoleVariable<float> CVarTrickOrTreatRoll(
 	TEXT("raises two creatures, from 50 hastes the player. -1 rolls normally."),
 	ECVF_Cheat);
 
+/** Pins The Infested Hoard's roll on a paying floor creature's death, 0 to 100. Issues #1820 and #41. */
+static TAutoConsoleVariable<float> CVarInfestedHoardRoll(
+	TEXT("Cataclysm.InfestedHoardRoll"),
+	-1.0f,
+	TEXT("Pin the roll a paying floor creature's death makes under The Infested Hoard, 0 to 100: below the ")
+	TEXT("chance, one infested drop. -1 rolls normally."),
+	ECVF_Cheat);
+
 /**
  * The draw that decides which kind a floor carrying Chaos Touched adds, pinned for tests.
  */
@@ -889,6 +898,12 @@ namespace
 	float DungeonGameModeTrickOrTreatRoll()
 	{
 		const float Pinned = CVarTrickOrTreatRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeInfestedHoardRoll()
+	{
+		const float Pinned = CVarInfestedHoardRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -5002,6 +5017,106 @@ void ACataclysmDungeonGameMode::NoteDeathForAbyssalRifts(const FCataclysmDeathNo
 	}
 }
 
+void ACataclysmDungeonGameMode::NoteDeathForInfestedHoard(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE PLAYER'S DEATH ENDS THE STACKS, as ruled.
+	if (Cast<ACataclysmPlayerCharacter>(Notice.Victim))
+	{
+		if (InfestedHoardStacks > 0)
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("The Infested Hoard: the player's death ended %d stack(s)"),
+				   InfestedHoardStacks);
+			InfestedHoardStacks = 0;
+			InfestedHoardSecondsSinceDrain = 0.0f;
+			RefreshFloorModifierPanel();
+		}
+		return;
+	}
+
+	// ONE OF THE FLOOR'S CREATURES, WHICH PAID FOR ITS DEATH, ON A FLOOR CARRYING THE ROW.
+	ACataclysmEnemyCharacter* Victim = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	UWorld* World = GetWorld();
+	if (!World || !Victim || !FloorBrief.Modifiers.Contains(FName(Effects::InfestedHoardKey))
+		|| !FloorEnemies.Contains(Victim) || !Victim->PaysForItsDeath()
+		|| !Effects::InfestedHoardDrops(DungeonGameModeInfestedHoardRoll(), InfestedHoardStacks))
+	{
+		return;
+	}
+	float MagicFind = 0.0f;
+	float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+	FRandomStream Stream(Victim->GetUniqueID() ^ 0x1F35D0A7
+		^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+	const int32 Spawned = UCataclysmDropSpawner::SpawnOneInfestedDropFor(
+		World, Victim->RarityStep, MagicFind, Victim->GetActorLocation(), Stream);
+	UE_LOG(LogCataclysm, Log, TEXT("The Infested Hoard: %d infested drop(s) on floor %d at %d stack(s)"), Spawned,
+		   FloorNumber, InfestedHoardStacks);
+}
+
+void ACataclysmDungeonGameMode::NoteLootTakenForInfestedHoard(const FCataclysmLootTakenNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// AN INFESTED DROP, TAKEN BY THE PLAYER BY HAND. Infested drops are never collected automatically, so this is
+	// every infested take the player makes.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!Notice.bInfested || !Notice.bByHand || !Player || Notice.Taker != Player)
+	{
+		return;
+	}
+	InfestedHoardStacks = Effects::InfestedHoardStacksAfterAdding(InfestedHoardStacks);
+	UE_LOG(LogCataclysm, Log, TEXT("The Infested Hoard: an infested drop taken; %d stack(s)"), InfestedHoardStacks);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepInfestedHoard(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// THE DRAIN, ONCE A SECOND WHILE A STACK IS HELD: Raw Sewage's burn, a share of maximum health dealt as damage
+	// over time typed as the row, which pestilence resistance meets.
+	if (InfestedHoardStacks > 0)
+	{
+		InfestedHoardSecondsSinceDrain += SecondsBetweenWaveChecks;
+		if (InfestedHoardSecondsSinceDrain >= 1.0f)
+		{
+			InfestedHoardSecondsSinceDrain = 0.0f;
+			const float Drain = AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())
+				* Effects::InfestedHoardPercentPerSecond(InfestedHoardStacks) / 100.0f;
+			ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+			if (Source && Drain > 0.0f && !UCataclysmSkillEffects::IsDead(Player))
+			{
+				FCataclysmHitDelivery Delivery;
+				Delivery.bIsDamageOverTime = true;
+				Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::InfestedHoardKey);
+				UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Drain, Delivery);
+			}
+		}
+	}
+	else
+	{
+		InfestedHoardSecondsSinceDrain = 0.0f;
+	}
+
+	if (InfestedHoardStacks != InfestedHoardPanelStacks)
+	{
+		InfestedHoardPanelStacks = InfestedHoardStacks;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -5692,6 +5807,10 @@ int32 ACataclysmDungeonGameMode::SoulHarvestSoulsOn(const ACataclysmEnemyCharact
 void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Notice)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE INFESTED HOARD FIRST, AND ON ITS OWN TEST: a take reaches every rule that wants it,
+	// and Trick or Treat's returns below are about its own row. Issues #1820 and #41.
+	NoteLootTakenForInfestedHoard(Notice);
 
 	// A CLICKED DROP, TAKEN BY THE PLAYER, ON A FLOOR CARRYING THE ROW. A material swept up
 	// by walking near it is not a choice the player made. Ruled 2026-09-23.
@@ -6752,6 +6871,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND THE INFESTED HOARD, ON EVERY FLOOR CARRYING IT AND WHILE ANY STACK IS HELD. Issues #1820 and #41.
+	const bool bInfestedHoard = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::InfestedHoardKey))
+		|| InfestedHoardStacks > 0;
 	// AND ABYSSAL RIFTS, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS REWARD IS NOT WHAT IS ON THE CHARACTER.
 	// Issues #1820 and #41.
 	const bool bAbyssalRifts = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::AbyssalRiftsKey))
@@ -6794,6 +6917,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bInfestedHoard
 		&& !bAbyssalRifts
 		&& !bSwarmOfLocusts
 		&& !bRawSewage
@@ -7019,6 +7143,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND THE INFESTED HOARD, WHICH DRAINS THE PLAYER WHILE A STACK IS HELD. Issues #1820 and #41.
+	if (bInfestedHoard)
+	{
+		StepInfestedHoard(Player, AbilitySystem);
 	}
 
 	// AND ABYSSAL RIFTS, WHICH OPENS A RIFT, SENDS WAVES AND PAYS THE PLAYER. Issues #1820 and #41.
@@ -8100,6 +8230,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForInfestedHoard(Notice);
 	NoteDeathForAbyssalRifts(Notice);
 	NoteDeathForRawSewage(Notice);
 	NoteDeathForMarchOfProgress(Notice);
@@ -9805,6 +9936,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Counting.Add(Rifts, FString::Printf(TEXT("abyssal rifts: %s; %d closed in time, +%d magic find"), Where,
 												AbyssalRiftSuccesses, Earned));
 		}
+	}
+
+	// AND THE INFESTED HOARD: the stacks, what they drain, and the chance of infested loot. Issues #1820 and #41.
+	const FName Hoard(Effects::InfestedHoardKey);
+	if (FloorBrief.Modifiers.Contains(Hoard))
+	{
+		const int32 Chance = FMath::RoundToInt(Effects::InfestedHoardChancePercentFor(InfestedHoardStacks));
+		Counting.Add(Hoard, InfestedHoardStacks > 0
+			? FString::Printf(TEXT("infested hoard: %d stack%s, %.1f%% of maximum health a second; %d%% chance of "
+								   "infested loot"),
+							  InfestedHoardStacks, InfestedHoardStacks == 1 ? TEXT("") : TEXT("s"),
+							  Effects::InfestedHoardPercentPerSecond(InfestedHoardStacks), Chance)
+			: FString::Printf(TEXT("infested hoard: no stacks; %d%% chance of infested loot"), Chance));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -12279,6 +12423,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		WingsOfTheHostMarks.Reset();
 		WingsOfTheHostWarningSoFar = 0.0f;
 		WingsOfTheHostSecondsSinceLast = 0.0f;
+
+		// AND THE INFESTED HOARD'S STACKS END WITH THE FLOOR, as ruled, and with leaving the dungeon, which also
+		// comes through here. Issues #1820 and #41.
+		InfestedHoardStacks = 0;
+		InfestedHoardSecondsSinceDrain = 0.0f;
+		InfestedHoardPanelStacks = -1;
 
 		// AND HALLOWED GROUNDFALL FORGETS ITS CRATERS AND ITS CLOCK. Issues
 		// #1820 and #41. The list because those actors are already destroyed -- see

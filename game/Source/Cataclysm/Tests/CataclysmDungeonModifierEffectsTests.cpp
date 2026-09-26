@@ -31727,4 +31727,375 @@ bool FCataclysmRiftsDeathTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Pestilence_The_Infested_Hoard. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName HoardRow(UCataclysmDungeonModifierEffects::InfestedHoardKey);
+
+	/** A crafting material lying beside the player, infested or not. */
+	ACataclysmDroppedItem* AMaterialLyingBeside(UWorld* World, const FPossessedPlayer& Player, float AlongX,
+												bool bInfested)
+	{
+		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(
+			Player.Character->GetActorLocation() + FVector(AlongX, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (Drop)
+		{
+			Drop->Material = FName(TEXT("IronOre"));
+			Drop->MaterialQuantity = 1;
+			Drop->MaterialTier = 2;
+			Drop->bInfested = bInfested;
+			Drop->DisplayName = bInfested ? TEXT("Infested Iron Ore") : TEXT("Iron Ore");
+		}
+		return Drop;
+	}
+
+	/** The player takes a crafting material, infested or not, by a click or not. */
+	bool ThePlayerTakesAMaterial(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+								 bool bInfested, bool bByHand)
+	{
+		ACataclysmDroppedItem* Drop = AMaterialLyingBeside(World, Player, 100.0f, bInfested);
+		return Test.TestNotNull(TEXT("a material to take"), Drop)
+			&& Test.TestTrue(TEXT("it was taken"),
+							 UCataclysmDropPickup::TakeInto(Player.Character->GetInventory(), Drop, bByHand));
+	}
+
+	/** Every infested drop lying in the world. */
+	TArray<ACataclysmDroppedItem*> InfestedDropsLying(UWorld* World)
+	{
+		TArray<ACataclysmDroppedItem*> Found;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			if (It->bInfested)
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	}
+
+	/** One of the floor's creatures, killed by the player, which pays for its death. */
+	bool KillAFloorCreature(FAutomationTestBase& Test, UWorld* World, ACataclysmDungeonGameMode* Mode,
+							const FPossessedPlayer& Player, bool bOneOfTheFloors)
+	{
+		ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(
+			World, Player.Character->GetActorLocation() + FVector(400.0f, 0.0f, 0.0f), 100.0f);
+		if (!Test.TestNotNull(TEXT("a creature to kill"), Imp))
+		{
+			return false;
+		}
+		if (bOneOfTheFloors)
+		{
+			Mode->FloorEnemies.Add(Imp);
+		}
+		Test.TestTrue(TEXT("it pays for its death"), Imp->PaysForItsDeath());
+		Imp->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Imp, 100000.0f);
+		return Test.TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Imp));
+	}
+}
+
+// THE FIGURES: 10% AND 5% A STACK TO 60%; ONE STACK A PICKUP TO TEN; 0.3% OF MAXIMUM HEALTH A SECOND A STACK.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InfestedHoardFiguresChanceStacksAndDrain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("10% with no stacks"), Effects::InfestedHoardChancePercentFor(0), 10.0f, 0.001f);
+	TestEqual(TEXT("15% with one"), Effects::InfestedHoardChancePercentFor(1), 15.0f, 0.001f);
+	TestEqual(TEXT("60% with ten"), Effects::InfestedHoardChancePercentFor(10), 60.0f, 0.001f);
+	TestEqual(TEXT("never past 60%"), Effects::InfestedHoardChancePercentFor(99), 60.0f, 0.001f);
+	TestTrue(TEXT("a roll of 9.99 drops with no stacks"), Effects::InfestedHoardDrops(9.99f, 0));
+	TestFalse(TEXT("a roll of 10 does not"), Effects::InfestedHoardDrops(10.0f, 0));
+	TestTrue(TEXT("a roll of 14 does with one stack"), Effects::InfestedHoardDrops(14.0f, 1));
+	TestEqual(TEXT("one stack a pickup"), Effects::InfestedHoardStacksAfterAdding(3), 4);
+	TestEqual(TEXT("ten at most"), Effects::InfestedHoardStacksAfterAdding(10), 10);
+	TestEqual(TEXT("three stacks: 0.9% a second"), Effects::InfestedHoardPercentPerSecond(3), 0.9f, 0.0001f);
+	TestEqual(TEXT("ten: 3% a second"), Effects::InfestedHoardPercentPerSecond(10), 3.0f, 0.0001f);
+	TestEqual(TEXT("none: nothing"), Effects::InfestedHoardPercentPerSecond(0), 0.0f, 0.0001f);
+	return true;
+}
+
+// A PAYING FLOOR CREATURE'S DEATH UNDER THE CHANCE LEAVES EXACTLY ONE INFESTED DROP, NAMED SO; OVER IT, OR A
+// CREATURE THAT IS NOT THE FLOOR'S, LEAVES NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardDropTest,
+	"Cataclysm.DungeonModifierEffects.APayingFloorCreatureLeavesOneInfestedDropUnderTheChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardDropTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {HoardRow});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// UNDER THE CHANCE: ONE.
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.InfestedHoardRoll"), TEXT("0"));
+		if (!TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable)
+			|| !KillAFloorCreature(*this, World, Mode, Player, /*bOneOfTheFloors=*/true))
+		{
+			return false;
+		}
+	}
+	const TArray<ACataclysmDroppedItem*> First = InfestedDropsLying(World);
+	if (!TestEqual(TEXT("exactly one infested drop"), First.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("named as infested (%s)"), *First[0]->DisplayName),
+			 First[0]->DisplayName.StartsWith(TEXT("Infested ")));
+	TestFalse(TEXT("and not marked as a raised creature's"), First[0]->bDroppedByARaisedCreature);
+
+	// OVER THE CHANCE: NONE MORE.
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.InfestedHoardRoll"), TEXT("99"));
+		if (!KillAFloorCreature(*this, World, Mode, Player, /*bOneOfTheFloors=*/true))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("over the chance: still one"), InfestedDropsLying(World).Num(), 1);
+
+	// NOT ONE OF THE FLOOR'S CREATURES: NONE MORE.
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.InfestedHoardRoll"), TEXT("0"));
+		if (!KillAFloorCreature(*this, World, Mode, Player, /*bOneOfTheFloors=*/false))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("a creature not the floor's: still one"), InfestedDropsLying(World).Num(), 1);
+	return true;
+}
+
+// AN INFESTED DROP TAKEN BY HAND ADDS ONE STACK, TO TEN; ONE TAKEN ANY OTHER WAY, OR AN UNINFESTED ONE, ADDS NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardTakeTest,
+	"Cataclysm.DungeonModifierEffects.AnInfestedDropTakenByHandAddsAStackOfInfestation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardTakeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {HoardRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel with none"), Mode->LiveCountsForTheFloor().FindRef(HoardRow),
+			  FString(TEXT("infested hoard: no stacks; 10% chance of infested loot")));
+
+	if (!ThePlayerTakesAMaterial(*this, World, Player, /*bInfested=*/true, /*bByHand=*/true))
+	{
+		return false;
+	}
+	TestEqual(TEXT("taken by hand: one stack"), Mode->InfestedHoardStacksHeld(), 1);
+	TestEqual(TEXT("the panel with one"), Mode->LiveCountsForTheFloor().FindRef(HoardRow),
+			  FString(TEXT("infested hoard: 1 stack, 0.3% of maximum health a second; 15% chance of infested loot")));
+
+	if (!ThePlayerTakesAMaterial(*this, World, Player, /*bInfested=*/true, /*bByHand=*/false)
+		|| !ThePlayerTakesAMaterial(*this, World, Player, /*bInfested=*/false, /*bByHand=*/true))
+	{
+		return false;
+	}
+	TestEqual(TEXT("taken another way, or not infested: still one"), Mode->InfestedHoardStacksHeld(), 1);
+
+	for (int32 Which = 0; Which < Effects::InfestedHoardMostStacks + 2; ++Which)
+	{
+		if (!ThePlayerTakesAMaterial(*this, World, Player, /*bInfested=*/true, /*bByHand=*/true))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("ten at most"), Mode->InfestedHoardStacksHeld(), Effects::InfestedHoardMostStacks);
+	TestEqual(TEXT("the panel at ten"), Mode->LiveCountsForTheFloor().FindRef(HoardRow),
+			  FString(TEXT("infested hoard: 10 stacks, 3.0% of maximum health a second; 60% chance of infested loot")));
+	return true;
+}
+
+// AN INFESTED MATERIAL WITHIN FIFTEEN METRES IS NOT COLLECTED AUTOMATICALLY; AN UNINFESTED ONE BESIDE IT IS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardSweepTest,
+	"Cataclysm.DungeonModifierEffects.AnInfestedMaterialIsNeverCollectedAutomatically",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardSweepTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World, ACataclysmPlayerController::StaticClass());
+	ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(Player.Controller);
+	if (!TestNotNull(TEXT("the game's own player controller"), Controller))
+	{
+		return false;
+	}
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {HoardRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Feet = Player.Character->GetActorLocation();
+	TestFalse(TEXT("the rule itself: an infested material never comes"),
+			  UCataclysmDropPickup::ComesAutomatically(true, Feet, Feet, /*bInfested=*/true));
+	TestTrue(TEXT("an uninfested one at the feet does"), UCataclysmDropPickup::ComesAutomatically(true, Feet, Feet));
+
+	ACataclysmDroppedItem* Infested = AMaterialLyingBeside(World, Player, 100.0f, /*bInfested=*/true);
+	ACataclysmDroppedItem* Plain = AMaterialLyingBeside(World, Player, 150.0f, /*bInfested=*/false);
+	if (!TestNotNull(TEXT("an infested material"), Infested) || !TestNotNull(TEXT("a plain one"), Plain))
+	{
+		return false;
+	}
+	Controller->CollectMaterialsNearbyForTest();
+	TestTrue(TEXT("the infested material still lies there"), IsValid(Infested));
+	TestFalse(TEXT("the plain one was collected"), IsValid(Plain));
+	TestEqual(TEXT("and no stack"), Mode->InfestedHoardStacksHeld(), 0);
+	return true;
+}
+
+// EACH STACK DRAINS 0.3% OF MAXIMUM HEALTH A SECOND: TEN STACKS, TWO SECONDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardDrainTest,
+	"Cataclysm.DungeonModifierEffects.InfestationDrainsThePlayerEachSecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardDrainTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {HoardRow});
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// NO STACKS: NOTHING LOST IN TWO SECONDS.
+	const float Start = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	TestEqual(TEXT("no stacks: nothing lost"), HealthOf(Player.Character), Start, 0.01f);
+
+	for (int32 Which = 0; Which < Effects::InfestedHoardMostStacks; ++Which)
+	{
+		if (!ThePlayerTakesAMaterial(*this, World, Player, /*bInfested=*/true, /*bByHand=*/true))
+		{
+			return false;
+		}
+	}
+	const float OneSecond =
+		HealthForTypedDamage * Effects::InfestedHoardPercentPerSecond(Effects::InfestedHoardMostStacks) / 100.0f;
+	const float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	const float Lost = Before - HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("ten stacks drain (%.1f lost, %.1f a second)"), Lost, OneSecond),
+			 Lost >= OneSecond - 0.5f);
+	TestTrue(FString::Printf(TEXT("once a second, no more (%.1f lost, %.1f a second)"), Lost, OneSecond),
+			 Lost <= 2.0f * OneSecond + 0.5f);
+	return true;
+}
+
+// THE STACKS END WITH THE FLOOR, WITH LEAVING THE DUNGEON, AND WITH THE PLAYER'S DEATH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoardEndsTest,
+	"Cataclysm.DungeonModifierEffects.InfestationEndsWithTheFloorLeavingOrThePlayersDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoardEndsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {HoardRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const auto TakeThree = [&]()
+	{
+		for (int32 Which = 0; Which < 3; ++Which)
+		{
+			if (!ThePlayerTakesAMaterial(*this, World, Player, /*bInfested=*/true, /*bByHand=*/true))
+			{
+				return false;
+			}
+		}
+		return TestEqual(TEXT("three stacks held"), Mode->InfestedHoardStacksHeld(), 3);
+	};
+
+	// THE FLOOR ENDS.
+	if (!TakeThree() || !TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the next floor: none"), Mode->InfestedHoardStacksHeld(), 0);
+
+	// LEAVING THE DUNGEON.
+	if (!TakeThree())
+	{
+		return false;
+	}
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving: none"), Mode->InfestedHoardStacksHeld(), 0);
+
+	// THE PLAYER'S DEATH.
+	if (!TakeThree())
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Killer = SpawnCreatureThatCanHit(World, Player.Character->GetActorLocation().X + 600.0f);
+	if (!TestNotNull(TEXT("a creature that can hit"), Killer))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player.Character, 10000000.0f);
+	TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("the player's death: none"), Mode->InfestedHoardStacksHeld(), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

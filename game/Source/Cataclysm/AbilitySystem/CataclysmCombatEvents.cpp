@@ -315,7 +315,7 @@ void UCataclysmCombatEvents::NoteCreatureAbility(ACataclysmCharacterBase* Creatu
 }
 
 void UCataclysmCombatEvents::NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand,
-										   bool bMarked)
+										   bool bMarked, bool bInfested)
 {
 	UCataclysmCombatEvents* Events = Taker ? In(Taker->GetWorld()) : nullptr;
 	if (!Events || !Events->OnLootTaken.IsBound())
@@ -328,5 +328,6 @@ void UCataclysmCombatEvents::NoteLootTaken(AActor* Taker, const FVector& Where, 
 	Notice.Where = Where;
 	Notice.bByHand = bByHand;
 	Notice.bMarked = bMarked;
+	Notice.bInfested = bInfested;
 	Events->OnLootTaken.Broadcast(Notice);
 }

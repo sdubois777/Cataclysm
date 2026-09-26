@@ -94,6 +94,13 @@ public:
 	bool bDroppedByARaisedCreature = false;
 
 	/**
+	 * Whether this drop is infested: The Infested Hoard's extra drop, "Infested " in front of its name, never
+	 * collected automatically, and a stack of Infestation to whoever takes it by hand. Issues #1820 and #41.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	bool bInfested = false;
+
+	/**
 	 * Which material tier this drop is, 1 to 5. Zero when the drop is gear.
 	 *
 	 * KEPT BESIDE THE MATERIAL for the reason Rarity is kept beside the item:
@@ -263,7 +270,21 @@ public:
 	static int32 SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 							   float MagicFind, float LootQuantity,
 							   const FVector& At, FRandomStream& Stream,
-							   bool bMarked = false);
+							   bool bMarked = false, bool bInfested = false,
+							   int32 GearCountGiven = -1, int32 MaterialCountGiven = -1);
+
+	/**
+	 * The Infested Hoard's one extra drop: exactly one, gear or a crafting material in the ratio of the creature's
+	 * own expected gear to materials, rolled at its rarity and magic find as its own drops are, and infested.
+	 * Issues #1820 and #41.
+	 *
+	 * THROUGH `SpawnDropsFor` WITH ITS COUNTS GIVEN rather than rolled, so the item, its rarity, its name and its
+	 * scatter are made exactly as every other drop's are.
+	 *
+	 * @return how many actors were spawned: one, or none when the roll failed
+	 */
+	static int32 SpawnOneInfestedDropFor(UWorld* World, int32 EnemyRarityStep, float MagicFind,
+										 const FVector& At, FRandomStream& Stream);
 
 	/**
 	 * The magic find and loot quantity the player in this world is carrying.
@@ -337,7 +358,8 @@ public:
 								   float MagicFind, const FVector& At,
 								   int32 Count, int32 AlreadyOnTheFloor,
 								   int32 TotalDrops, int32 DifficultyTier,
-								   FRandomStream& Stream, bool bMarked = false);
+								   FRandomStream& Stream, bool bMarked = false,
+								   bool bInfested = false);
 };
 
 /**
@@ -545,7 +567,7 @@ public:
 	 * @return false for gear at any distance
 	 */
 	static bool ComesAutomatically(bool bIsMaterial, const FVector& Character,
-								   const FVector& Drop);
+								   const FVector& Drop, bool bInfested = false);
 
 	/**
 	 * Which of the drawn names the cursor is over, or INDEX_NONE for none.
