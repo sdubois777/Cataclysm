@@ -3051,6 +3051,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction =
 	TEXT("cooldown_reduce_heavy");
 const TCHAR* UCataclysmAbilitySystemComponent::NextSpellCooldownReducedAction =
 	TEXT("next_spell_cooldown_reduced");
+const TCHAR* UCataclysmAbilitySystemComponent::CleanseAction = TEXT("cleanse");
 
 int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolAction& Action)
 {
@@ -3281,6 +3282,12 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			else if (!Action.StackKey.IsNone())
 			{
 				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+			}
+			// A CLEANSE ON A CLOCK: "You are cleansed every 5 seconds". Ruled 2026-09-26. Its wearer is the
+			// avatar, which is what the effects are on and what the dungeon game mode compares with its player.
+			else if (Action.bCleanse)
+			{
+				UCataclysmDebuffs::Cleanse(GetAvatarActor());
 			}
 			// A COOLDOWN RESET ON A CLOCK. Issue #1833: "Every 20 seconds all
 			// your skill cooldowns are instantly reset".

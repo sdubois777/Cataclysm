@@ -4367,3 +4367,16 @@ def test_infection_bloom_row_still_spreads_empowers_sends_waves_and_surges_when_
         assert phrase in lower, (
             f"Pestilence_Infection_Bloom no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "InfectionBloomKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_the_rows_a_cleanse_clears_still_say_they_are_cleansed():
+    """The player cleanse clears exactly the dungeon stacks whose rows say a cleanse ends them, as ruled on
+    2026-09-26: `ACataclysmDungeonGameMode::OnSomethingWasCleansed`. If one of these rows stops saying so, the cleanse
+    is clearing stacks its row no longer offers to it, and the ruling must be revisited."""
+    for key, phrase in (("Pestilence_Raw_Sewage", "must be cleansed"),
+                        ("Famine_Starvation_Curse", "persist unless cleansed"),
+                        ("Chaos_Chaos_Touched", "unless cleansed")):
+        words = flat(rows()[key]["Description"])
+        assert phrase in words.lower(), (
+            f"{key} no longer says {phrase.upper()!r}, and the player cleanse clears its stacks because it did; see "
+            "OnSomethingWasCleansed in CataclysmDungeonGameMode.cpp. " + words)

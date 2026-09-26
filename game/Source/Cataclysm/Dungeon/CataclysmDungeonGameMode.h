@@ -2267,6 +2267,13 @@ private:
 	/** Trick or Treat, on every take: a clicked drop on a floor carrying the row rolls. */
 	void OnLootTaken(const struct FCataclysmLootTakenNotice& Notice);
 
+	/**
+	 * A cleanse, on every character cleansed: when it is the player, the dungeon stacks whose rows say they are
+	 * cleansed are cleared -- Raw Sewage's, the Starvation Curse's, and Chaos Touched's debuff kinds. The rest are
+	 * kept, as their rows name another remedy or none. Ruled 2026-09-26.
+	 */
+	void OnSomethingWasCleansed(AActor* Character);
+
 	/** Trick or Treat's trick: two creatures of the floor's kinds where the drop lay. */
 	void RaiseTheTrickOrTreatPair(const FVector& Where);
 

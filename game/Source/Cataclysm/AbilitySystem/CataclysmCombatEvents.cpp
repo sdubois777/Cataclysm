@@ -331,3 +331,12 @@ void UCataclysmCombatEvents::NoteLootTaken(AActor* Taker, const FVector& Where, 
 	Notice.bInfested = bInfested;
 	Events->OnLootTaken.Broadcast(Notice);
 }
+
+void UCataclysmCombatEvents::NoteCleansed(AActor* Character)
+{
+	UCataclysmCombatEvents* Events = Character ? In(Character->GetWorld()) : nullptr;
+	if (Events && Events->OnCleansed.IsBound())
+	{
+		Events->OnCleansed.Broadcast(Character);
+	}
+}

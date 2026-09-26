@@ -32420,4 +32420,300 @@ bool FCataclysmInfectionDestroyedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The player cleanse, `UCataclysmDebuffs::Cleanse`, ruled by the coordinating session under the owner's delegation on
+// 2026-09-26. In this file because three of its tests need the dungeon game mode and this file's helpers.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** Whether the player's ability system carries this tag, or one under it. */
+	bool PlayerCarries(const FPossessedPlayer& Player, const FGameplayTag& Tag)
+	{
+		return Tag.IsValid() && Player.AbilitySystem->HasMatchingGameplayTag(Tag);
+	}
+
+	/** An Imp beside the player, to be the one who put a debuff there. */
+	ACataclysmEnemyCharacter* AnImpBeside(UWorld* World, const FPossessedPlayer& Player)
+	{
+		const FVector At = Player.Character->GetActorLocation();
+		return SpawnImpWithHealth(World, FVector(At.X + 300.0f, At.Y, At.Z), 100.0f);
+	}
+}
+
+// A CLEANSE REMOVES A BURN, A CURSE AND A STUN THAT A CREATURE PUT ON THE PLAYER, AND KEEPS THE STUN'S IMMUNITY.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseRemovesTest,
+	"Cataclysm.Cleanse.ItRemovesTheBurnCurseAndStunACreaturePutOnThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseRemovesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp)
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 60.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	UCataclysmSkillEffects::ApplyNamedEffect(Imp, Player.Character, UCataclysmDebuffs::CrippleTag(), 60.0f);
+	UCataclysmSkillEffects::ApplyStun(Imp, Player.Character, 2.0f, 0.0f, /*bStunIsDesigned=*/true);
+	if (!TestTrue(TEXT("set-up: the player burns"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()))
+		|| !TestTrue(TEXT("set-up: is crippled"), PlayerCarries(Player, UCataclysmDebuffs::CrippleTag()))
+		|| !TestTrue(TEXT("set-up: is stunned"), PlayerCarries(Player, UCataclysmSkillEffects::StunnedTag()))
+		|| !TestTrue(TEXT("set-up: and immune to the next stun"),
+					 PlayerCarries(Player, UCataclysmSkillEffects::StunImmuneTag())))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a cleanse removes three effects"), UCataclysmDebuffs::Cleanse(Player.Character), 3);
+	TestFalse(TEXT("the burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	TestFalse(TEXT("the curse is gone"), PlayerCarries(Player, UCataclysmDebuffs::CrippleTag()));
+	TestFalse(TEXT("the stun is gone"), PlayerCarries(Player, UCataclysmSkillEffects::StunnedTag()));
+	TestTrue(TEXT("the stun's immunity stays"), PlayerCarries(Player, UCataclysmSkillEffects::StunImmuneTag()));
+	TestEqual(TEXT("no debuff is counted"), UCataclysmDebuffs::CountOn(Player.AbilitySystem), 0);
+	return true;
+}
+
+// A CLEANSE KEEPS A BUFF AND A BLEED THE PLAYER PUT ON ITSELF; A CREATURE'S BURN BESIDE THEM IS THE CONTROL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseKeepsTest,
+	"Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseKeepsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp)
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// THE MASOCHIST'S SHAPE: A BLEED WHOSE INSTIGATOR IS THE PLAYER, as `UCataclysmDamageConversion` applies it.
+	const FGameplayTag Commander =
+		UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Status.Buff.Commander")), false);
+	UCataclysmSkillEffects::ApplyTagForDuration(Imp, Player.Character, Commander, 60.0f);
+	UCataclysmSkillEffects::ApplyDamageOverTime(Player.Character, Player.Character, 1.0f, 60.0f,
+												UCataclysmDebuffs::BleedTag(), /*bScalesWithInstigator=*/false);
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 60.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the player carries a buff"), PlayerCarries(Player, Commander))
+		|| !TestTrue(TEXT("set-up: its own bleed"), PlayerCarries(Player, UCataclysmDebuffs::BleedTag()))
+		|| !TestTrue(TEXT("set-up: and a creature's burn"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag())))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a cleanse removes one effect"), UCataclysmDebuffs::Cleanse(Player.Character), 1);
+	TestFalse(TEXT("the creature's burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	TestTrue(TEXT("the buff stays"), PlayerCarries(Player, Commander));
+	TestTrue(TEXT("the player's own bleed stays"), PlayerCarries(Player, UCataclysmDebuffs::BleedTag()));
+	return true;
+}
+
+// A CLEANSE CLEARS RAW SEWAGE'S STACKS AT ONCE, AND THE NEXT BEAT TAKES THE DISEASE KEYWORD OFF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseSewageTest,
+	"Cataclysm.Cleanse.ItClearsRawSewageAndTheNextBeatTakesTheDiseaseOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseSewageTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// A STACK FROM THE RIVER, THEN OUT OF IT, so the beat after the cleanse adds nothing.
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1);
+	StandInTheRiver(Mode, Player, false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: one stack"), Mode->RawSewageStacksHeld(), 1)
+		|| !TestTrue(TEXT("set-up: and the disease keyword"), PlayerCarries(Player, SewageDiseaseTag())))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("a cleanse clears the stacks at once"), Mode->RawSewageStacksHeld(), 0);
+	Beat(Mode, 1);
+	TestFalse(TEXT("and the next beat takes the keyword off"), PlayerCarries(Player, SewageDiseaseTag()));
+	TestEqual(TEXT("still none"), Mode->RawSewageStacksHeld(), 0);
+	return true;
+}
+
+// A CLEANSE CLEARS BOTH KINDS OF STARVATION CURSE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseCurseTest,
+	"Cataclysm.Cleanse.ItClearsTheStarvationCurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseCurseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {StarvationCurse};
+	if (!TheCurseFloor(*this, Mode, 1, CurseSlowsMovement) || !TheCurseFloor(*this, Mode, 2, CurseLowersHealth)
+		|| !TestEqual(TEXT("set-up: one slowing stack"), Mode->StarvationCurseMovementStacksHeld(), 1)
+		|| !TestEqual(TEXT("set-up: and one on health"), Mode->StarvationCurseHealthStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("no slowing stack is left"), Mode->StarvationCurseMovementStacksHeld(), 0);
+	TestEqual(TEXT("and none on health"), Mode->StarvationCurseHealthStacksHeld(), 0);
+	return true;
+}
+
+// A CLEANSE CLEARS CHAOS TOUCHED'S DEBUFF KINDS AND KEEPS ITS BUFF KINDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseChaosTest,
+	"Cataclysm.Cleanse.ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseChaosTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ChaosTouched};
+
+	// A DRAW OF 0 IS MORE HEALTH, A BUFF; 50 IS LESS HEALTH, A DEBUFF.
+	if (!TheTouchedFloor(*this, Mode, 1, TEXT("0")) || !TheTouchedFloor(*this, Mode, 2, TEXT("50"))
+		|| !TestEqual(TEXT("set-up: one stack of more health"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 1)
+		|| !TestEqual(TEXT("set-up: and one of less health"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthLess), 1))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("the debuff kind is cleared"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthLess), 0);
+	TestEqual(TEXT("the buff kind stays"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 1);
+	return true;
+}
+
+// A CLEANSE POOL ACTION ON A CLOCK FIRES EVERY FIVE SECONDS OF A FIGHT, AND NEVER OUT OF ONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseTimedTest,
+	"Cataclysm.Cleanse.ATimedCleanseActionFiresEveryFiveSecondsOfAFight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseTimedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp)
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* ASC = Player.AbilitySystem;
+
+	// THE ROW THE ENCHANTMENT SESSION WILL WRITE, BUILT BY HAND: the timed event, every 5 seconds, a cleanse.
+	FCataclysmPoolAction Cleanse;
+	Cleanse.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+	Cleanse.EverySeconds = 5.0f;
+	Cleanse.bCleanse = true;
+	TArray<FCataclysmPoolAction> Actions;
+	Actions.Add(Cleanse);
+	ASC->SetPoolActions(MoveTemp(Actions));
+
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 600.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the player burns"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag())))
+	{
+		return false;
+	}
+
+	// OUT OF COMBAT, however long.
+	World->TimeSeconds += 50.0f;
+	ASC->StepTimedGrants();
+	TestTrue(TEXT("fifty seconds out of combat cleanse nothing"),
+			 PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+
+	// IN COMBAT, kept there by a blow every second.
+	const float Began = World->TimeSeconds;
+	const auto FightUntil = [&](float Seconds)
+	{
+		while (World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			ASC->NoteHitDealt();
+			ASC->StepTimedGrants();
+		}
+	};
+	ASC->NoteHitDealt();
+	FightUntil(4.0f);
+	TestTrue(TEXT("four seconds into a fight: still burning"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	FightUntil(5.0f);
+	TestFalse(TEXT("five seconds in: cleansed"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

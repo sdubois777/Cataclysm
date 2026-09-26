@@ -143,6 +143,27 @@ public:
 	static int32 CountOnActor(const AActor* Actor);
 
 	/**
+	 * Cleanse a character: every timed effect on it that grants a tag under `DebuffRoots` and that somebody else put
+	 * there is removed, and the cleanse is announced on `UCataclysmCombatEvents::OnCleansed` so the dungeon game mode
+	 * can clear the stacks whose rows say they are cleansed. Ruled by the coordinating session under the owner's
+	 * delegation, 2026-09-26.
+	 *
+	 * WHAT IT REMOVES: a damage over time, a `Status.Debuff` curse and a stun, whatever put them there.
+	 *
+	 * WHAT IT LEAVES:
+	 * - buffs, and `State.StunImmune`, which protects rather than harms;
+	 * - knockdown, pin and stagger, which are not debuff roots;
+	 * - an effect THE CHARACTER ITSELF instigated. The Masochist's damage conversion puts a bleed on its own
+	 *   character (`UCataclysmDamageConversion`), and removing it would delete damage converted and not yet taken.
+	 *
+	 * NO IMMUNITY AFTERWARDS, as ruled: a cleanse every few seconds with even a short immunity would make its wearer
+	 * immune for much of a fight.
+	 *
+	 * @return how many effects were removed
+	 */
+	static int32 Cleanse(AActor* Character);
+
+	/**
 	 * WHICH debuffs this character is carrying, rather than how many.
 	 *
 	 * `CountOn` IS THIS COUNTED, and was written first because counting was all

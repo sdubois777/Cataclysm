@@ -2,6 +2,117 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The player cleanse: one action removes the debuffs others put on the player and clears the dungeon stacks whose rows say they are cleansed
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (`UCataclysmDebuffs::Cleanse`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the `OnCleansed` announcement and
+`NoteCleansed`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`OnSomethingWasCleansed`, which
+clears the stacks); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the `cleanse`
+action name and its branch in `StepTimedGrants`); `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`
+(`FCataclysmPoolAction::bCleanse`); `game/Source/Cataclysm/Items/CataclysmItem.cpp` (a row whose Action is `cleanse`
+sets it); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` (Raw Sewage's, the Starvation Curse's and
+Chaos Touched's notes name the cleanse); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
+entry when they have.
+
+### Why
+
+Three waiting pieces each needed a way to cleanse the player, and there was none: Grim Totems' "removing harmful
+effects", Raw Sewage's "These disease stacks do not time out and must be cleansed", and the enchantment "You are
+cleansed every 5 seconds" (`Positive_You_are_cleansed_every_5_seconds`, text only). No cleanse, purge or dispel existed
+anywhere in the game, of the player's debuffs or of anyone's buffs.
+
+### The research
+
+Each page fetched on 2026-09-26 before it is quoted:
+
+- Diablo IV's Unstoppable (game8.co): the character will "remove all control impairing or CC (crowd control) effects
+  affecting them, including Stuns, Roots, Slows, and Fear"; "you can still take damage while the Unstoppable buff is
+  active". It also grants a short immunity.
+- Path of Exile's utility flasks (poedb.tw): Sin's Rebirth "Removes all Burning when used" and grants immunity to
+  Ignite for 4 seconds; Kiara's Determination grants "Immunity to Freeze, Chill, Curses and Stuns during Effect".
+- Path of Exile 2's Thawing Charm (pathofexile2.wiki.fextralife.com): used when you become Frozen, it "Grants Immunity
+  to Freeze" and lasts 3 seconds.
+- Not quoted, because no page with its text could be read: Grim Dawn's Nullification (grimtools.com's page carried no
+  skill text; its fandom wiki was not tried) and Last Epoch's potion cleanse (its fandom wiki returned HTTP 402).
+
+What the research settles: shipped games remove harmful effects by category (crowd control, a named ailment, curses),
+and a removal usually comes with a short immunity. What it does not settle, and is this game's own: a "cleanse" with no
+category named, and whether dungeon-rule stacks count. Those are the rulings below.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+1. **What it removes:** every timed effect on the player granting a tag under `UCataclysmDebuffs::DebuffRoots`
+   (`Keyword.DoT`, `State.Stunned`, `Status.Debuff`) that somebody else put there: every damage over time, curse and
+   stun. **And the dungeon stacks whose rows say they are cleansed**: Raw Sewage's ("must be cleansed"), the
+   Starvation Curse's ("persist unless cleansed"), and Chaos Touched's ("will continue to stack unless cleansed"), its
+   debuff kinds only, the split a floor's boss already makes.
+2. **What it leaves:** buffs; `State.StunImmune`, which protects; knockdown, pin and stagger, which are not debuff
+   roots; **an effect the player put on itself**, since the Masochist's damage conversion puts a bleed on its own
+   character and removing it would delete damage converted and not yet taken; the stacks whose rows name another
+   remedy, Wasting Sickness ("can only be removed by defeating a floor boss"), The Nihil's Embrace ("you must defeat a
+   high tier enemy") and Void Parasite (its light zone); the stacks whose rows say nothing of a cleanse, Infested Hoard,
+   Plague Convergence, Holy Repercussions' Judgment, Death's Embrace and Brand of the Aggressor; and the effects a
+   floor ties to a place, Grasping Tentacles' and Singularity Wells' slows and Edict of Silence's and Anti-Magic
+   Zones' locks. **The row's own words decide.**
+3. **No immunity afterwards.** A cleanse every 5 seconds with even 2 seconds of immunity would make its wearer immune
+   about 40% of the time.
+4. **The shape:** `UCataclysmDebuffs::Cleanse(Character)` removes the effects and announces `OnCleansed` on
+   `UCataclysmCombatEvents`; the dungeon game mode listens, as it does to `OnHit`, and clears the stacks when the
+   character is the player, leaving the change to the next beat as a floor's boss's death does. The enchantment,
+   which runs in the ability system, and the game mode never call each other.
+5. **Fear**, `State.Feared`, lies outside the debuff roots but is crowd control someone else put on the player, and
+   Diablo IV's Unstoppable removes it: when the fear change merges, the cleanse removes it too. It had not merged when
+   this change was built, so it is added when this change moves onto it.
+6. **Grim Totems' Cleanse choice calls it**, added when that branch moves after this one merges; the two are not
+   stacked.
+7. **The enchantment side:** this change builds the `cleanse` action name, `FCataclysmPoolAction::bCleanse`, its match
+   in `CataclysmItem.cpp` and its branch in `StepTimedGrants`, tested with a pool action built by hand. The
+   `EnchantmentEffects.csv` row (ActionEvent `every_seconds`, EverySeconds 5) and the name in
+   `tools/generate_datatables.py`'s action vocabulary are the enchantment session's. **A caveat passed to it:**
+   `every_seconds` fires only in combat (ruled 2026-09-24), so the cleanse would not fire out of combat, while Raw
+   Sewage's stacks burn out of combat too.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **"Put there by the player" is an effect whose instigator is the character or its ability system's owner**, since a
+  player's ability system belongs to its player state.
+- **Only the timed event reads `bCleanse`.** A row asking for a cleanse on another event would need its own branch in
+  `ActOnEvent`; none does.
+- **Raw Sewage's river timer is reset with its stacks**, as a floor's boss's death resets it.
+
+### Tests
+
+Six automation tests in `Cataclysm.Cleanse.`:
+
+- `ItRemovesTheBurnCurseAndStunACreaturePutOnThePlayer`: a burn, Cripple and a stun an Imp put on the player; a
+  cleanse removes three effects, and the stun's immunity stays.
+- `ItKeepsABuffAndABleedThePlayerPutOnItself`: a Commander buff and a bleed whose instigator is the player stay; an
+  Imp's burn beside them is removed, the one effect removed.
+- `ItClearsRawSewageAndTheNextBeatTakesTheDiseaseOff`: one stack, cleared at once; the next beat takes the disease
+  keyword off.
+- `ItClearsTheStarvationCurse`: one stack of each kind, both cleared.
+- `ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs`: a stack of more health and one of less; the second is cleared.
+- `ATimedCleanseActionFiresEveryFiveSecondsOfAFight`: a hand-built timed pool action; fifty seconds out of combat
+  cleanse nothing; four seconds into a fight the Imp's burn remains; at five it is gone.
+
+Not tested: that the stacks the rows do not offer to a cleanse are kept. The listener does not touch them, and a test
+would pass whatever the listener did to the three it names.
+
+One Python check: the three rows still say "must be cleansed", "persist unless cleansed" and "unless cleansed".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Infection Bloom: one bloom a floor spreads a patch every 20 seconds to eight, creatures on a patch deal 20% more, three come every 45 seconds while it stands, and destroying it clears the patches and sends a surge of four
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
