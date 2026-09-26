@@ -46,6 +46,8 @@ on four assertions: "the retaliation blow was dealt by the character", false; "a
 2 metres", 22; "the kill is credited to the character", false; "and the character is what caused it", false.
 Restored, it printed `5 tests performed, 5 succeeded, 0 failed`.
 
+**Final Python**, after the entry: `5515 passed, 8 skipped` (JUnit 5,523, no failures), as registered.
+
 ---
 
 ## 2026-09-25 — Abyssal Rifts: one rift a floor opens when the player comes near and sends three waves of four; killing them all within 60 seconds closes it in time for +10 magic find, and each success sends later rifts' creatures one rung higher
