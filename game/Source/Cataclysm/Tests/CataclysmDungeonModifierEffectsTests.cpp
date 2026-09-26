@@ -31314,4 +31314,46 @@ bool FCataclysmDebtDeathTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A ONE-FLOOR ELITE DUNGEON HAS A BOSS FIGHT, SO AN UNPAID DEBT CURSES ITS ONE FLOOR; A ONE-FLOOR ORDINARY DUNGEON HAS
+// NONE, SO IT IS NEVER CURSED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtOneFloorTest,
+	"Cataclysm.DungeonModifierEffects.AOneFloorEliteDungeonIsCursedAndAnOrdinaryOneIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtOneFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodDebtDungeon(*this, World, Player, 1);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// ORDINARY, ONE FLOOR: NO BOSS AT ITS EXIT, SO NO CURSE.
+	Beat(Mode, 1);
+	TestFalse(TEXT("an ordinary one-floor dungeon has no boss at its exit"), Mode->FloorBrief.bBossAtTheExit);
+	TestEqual(TEXT("so no curse"), DebtRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	// ELITE, ONE FLOOR: A BOSS AT ITS EXIT, AND NOTHING PAID: 30% LESS.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Elite;
+	if (!TestTrue(TEXT("the Elite floor 1 was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestTrue(TEXT("an Elite floor has a boss at its exit"), Mode->FloorBrief.bBossAtTheExit);
+	TestEqual(TEXT("30% less attack damage on it"), DebtRuleOn(Player, TEXT("attack_damage")), -30.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

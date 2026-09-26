@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-25 — Blood Debt: a dungeon owes 30 kills a floor, at most 300; each quarter paid gives 5% more damage, and an unpaid debt takes 30% off the player's damage on the final boss's floor
+## 2026-09-25 — Blood Debt: a dungeon owes 30 kills a floor, at most 300; each quarter paid gives 5% more damage, and an unpaid debt takes 30% off the player's damage on the boss-fight floor
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
 figures, what is owed, the blessings and the curse, and two new player floor-effect fields,
@@ -29,9 +29,9 @@ a creature that pays nothing, such as a floor source or one a rule raised to pay
 count is the dungeon's: it carries from floor to floor and ends when the player leaves the dungeon or dies.
 
 Every whole quarter of the debt paid blesses the player with 5% more damage, on attack damage and on spell damage,
-summed: 20% once it is all paid. On the dungeon's final boss's floor, if the debt is not paid in full, the player deals
+summed: 20% once it is all paid. On the dungeon's boss-fight floor, if the debt is not paid in full, the player deals
 30% less damage there; paying the rest on that floor lifts the curse at once. The panel reads "blood debt: 15 of 60
-paid, +5% damage", or on the final boss's floor unpaid "blood debt: 15 of 60 paid; unpaid, 30% less damage on this
+paid, +5% damage", or on the boss-fight floor unpaid "blood debt: 15 of 60 paid; unpaid, 30% less damage on this
 floor".
 
 ### Rulings
@@ -42,6 +42,12 @@ play-test value:**
 - **The debt is 30 kills per floor of the dungeon, at most 300.**
 - **Every 25% paid gives +5% damage.**
 - **Unpaid on reaching the last floor: 30% less damage dealt while on it.**
+- **The curse falls on the dungeon's last floor when that floor has a boss at its exit**, because the row places it
+  "during the boss fight". That is the last floor of any dungeon longer than one floor, and floor 1 of a one-floor
+  Elite dungeon, whose every floor has a boss at its exit. A one-floor ordinary dungeon has no boss fight --
+  `FCataclysmDungeonFloorRules::BossAtTheExit` says "A DUNGEON WITH ONE FLOOR OR FEWER HAS NO BOTTOM TO PUT A BOSS
+  ON" -- so it is never cursed. Every floor of a longer Elite dungeon is not cursed, because the row names one curse.
+  This was first written as "the final boss's floor", which left a one-floor Elite dungeon out.
 - **The debt, what has been paid and the blessings end at the player's death**, as ruled when this judgement was
   first written the other way: they last only for the dungeon, and the owner's ruling of 2026-09-10 in the entry
   "Dying in an ordinary dungeon resolves it at once, and a death clears everything temporary on the player",
@@ -55,12 +61,6 @@ play-test value:**
   off the debt, so no rule's endless creatures can pay it.
 - **Only a floor carrying the row counts kills**, so a Volatile dungeon that re-draws its rows each floor counts only
   on the floors that carry this one; what has been paid stays.
-- **"The last floor" is the floor whose exit holds the dungeon's final boss**, `IsTheFinalFloorForItsBoss`, because
-  the row places the curse "during the boss fight". A one-floor dungeon has no such floor, so it is never cursed:
-  `IsTheFinalFloorForItsBoss` asks for more than one floor, because `FCataclysmDungeonFloorRules::BossAtTheExit`
-  says "A DUNGEON WITH ONE FLOOR OR FEWER HAS NO BOTTOM TO PUT A BOSS ON". **One case falls outside that:** an Elite
-  dungeon puts a boss at the exit of every floor, so a one-floor Elite dungeon has a boss fight and is still not
-  cursed. It is named here rather than changed, because the ruling reads the last floor as the final boss's.
 - **The damage is taken as Void Parasite's is**: a More and a Less on attack damage and on spell damage, through two
   new player floor-effect fields, applied like Chaos Touched's stacks and reapplied after every floor change.
 
@@ -79,10 +79,10 @@ the 30 a floor, the 300, the quarters, the 5% and the 30% curse are this game's 
 
 ### Tests
 
-Five automation tests in `Cataclysm.DungeonModifierEffects.`:
+Six automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 - `BloodDebtFiguresOwedBlessingsAndCurse`: what one, five, ten and twenty floors owe; the blessings at 0, 74, 75, 150,
-  299, 300 and 500 of 300; four blessings are 20%; the curse only unpaid on the final boss's floor.
+  299, 300 and 500 of 300; four blessings are 20%; the curse only unpaid on the boss-fight floor.
 - `KillsPayTheBloodDebtAndEachQuarterBlessesTheBlow`: two floors owe 60, with the panel; fourteen kills bless nothing;
   the fifteenth gives 5% more attack and spell damage, with the panel; three creatures that pay nothing pay nothing.
 - `AnUnpaidBloodDebtCursesTheFinalBossFloor`: no curse on floor 1; on floor 2 of 2 with nothing paid, 30% less attack
@@ -90,6 +90,8 @@ Five automation tests in `Cataclysm.DungeonModifierEffects.`:
 - `TheBloodDebtCarriesAcrossFloorsAndEndsOnLeaving`: thirty kills on floor 1 of 4 carry to floor 2 with their 5%;
   leaving ends the count and the blessing.
 - `ThePlayersDeathEndsWhatWasPaidOffTheBloodDebt`: fifteen paid, then the player's death: none, with the panel.
+- `AOneFloorEliteDungeonIsCursedAndAnOrdinaryOneIsNot`: a one-floor ordinary dungeon has no boss at its exit and no
+  curse; made Elite, its floor 1 has one, and nothing paid is 30% less attack damage.
 
 One Python check: the row still says "start the dungeon owing", "as they kill enemies, they reduce the debt", "gaining
 blessings", "fail to pay off the debt by the end" and "during the boss fight".

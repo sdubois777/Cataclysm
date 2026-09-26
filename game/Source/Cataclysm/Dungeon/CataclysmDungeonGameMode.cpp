@@ -4619,10 +4619,13 @@ int32 ACataclysmDungeonGameMode::BloodDebtBlessingsNow() const
 
 bool ACataclysmDungeonGameMode::BloodDebtCursedNow() const
 {
-	// THE BOSS FIGHT IS THE DUNGEON'S FINAL BOSS'S FLOOR, and only on a floor carrying the row.
+	// THE BOSS FIGHT IS THE DUNGEON'S LAST FLOOR WHEN THAT FLOOR HAS A BOSS AT ITS EXIT, as ruled: a one-floor Elite
+	// dungeon's floor 1 and any longer dungeon's last floor, and never a one-floor ordinary dungeon, which has no boss
+	// fight. Only on a floor carrying the row.
+	const bool bTheBossFight = FloorBrief.FloorNumber >= ChooseTotalFloors() && FloorBrief.bBossAtTheExit;
 	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodDebtKey))
 		&& UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercentFor(
-			   BloodDebtPaid, BloodDebtOwed(), IsTheFinalFloorForItsBoss()) > 0.0f;
+			   BloodDebtPaid, BloodDebtOwed(), bTheBossFight) > 0.0f;
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForBloodDebt(const FCataclysmDeathNotice& Notice)
