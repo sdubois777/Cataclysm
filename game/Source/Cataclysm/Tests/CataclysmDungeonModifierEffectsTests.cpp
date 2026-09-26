@@ -32223,7 +32223,8 @@ bool FCataclysmInfectionSpreadsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const FVector Second = Patches[1]->GetActorLocation();
-	TestEqual(TEXT("one patch-width from the first"), FVector::Dist2D(Second, Patches[0]->GetActorLocation()),
+	TestEqual(TEXT("one patch-width from the first"),
+			  static_cast<float>(FVector::Dist2D(Second, Patches[0]->GetActorLocation())),
 			  Effects::InfectionBloomSpreadCm, 1.0f);
 	TestTrue(TEXT("on a floor cell"),
 			 Mode->CurrentFloor->GetPlan().IsFloor(Mode->CurrentFloor->CellOfWorld(Second)));
