@@ -221,6 +221,24 @@ const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
+const TCHAR* UCataclysmDungeonModifierEffects::FogOfWarKey =
+	TEXT("War_Fog_of_War");
+
+float UCataclysmDungeonModifierEffects::SightRadiusFor(const TArray<FName>& Modifiers)
+{
+	// THE SMALLEST ASKED FOR, so two rows that limit sight give the shorter sight and neither lengthens it.
+	float Radius = 0.0f;
+	const auto Ask = [&Radius](float Asked)
+	{
+		Radius = Radius <= 0.0f ? Asked : FMath::Min(Radius, Asked);
+	};
+	if (Modifiers.Contains(FName(FogOfWarKey)))
+	{
+		Ask(FogOfWarSightCm);
+	}
+	return Radius;
+}
+
 const TCHAR* UCataclysmDungeonModifierEffects::TrialOfEnduranceKey =
 	TEXT("Celestial_Trial_of_Endurance");
 
@@ -559,6 +577,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DemonicGuideKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
+		|| RowKey == FName(FogOfWarKey)
 		|| RowKey == FName(VoidParasiteKey)
 		|| RowKey == FName(ObsidianSarcophagiKey))
 	{
@@ -791,6 +810,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfestedVeinsKey),
 		FName(CarrionFeastKey),
 		FName(TrialOfEnduranceKey),
+		FName(FogOfWarKey),
 		FName(VoidParasiteKey),
 		FName(GrimTotemsKey),
 		FName(ObsidianSarcophagiKey),
