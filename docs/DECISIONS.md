@@ -2,6 +2,75 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — The consecutive-melee test that failed once: it now prints what its evaded swing depends on and asserts both, since no cause was found
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`, the test
+`Cataclysm.Enchantments.TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8`. Test-only. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), whose phase 2 added the test in
+[#2118](https://github.com/sdubois777/Cataclysm/pull/2118).
+
+### WHAT WAS SEEN
+
+The test passed in the Obsidian Sarcophagi whole suite on `789ce413` and failed in the Portal
+Unleashing whole suite on `5308fbfc`: "Expected 'an evaded melee swing on the second enemy deals
+nothing' to be 0.000000, but it was 110.000000", and the four assertions after it failed by one
+hit's worth. 110 is a plain blow on that creature: the swing was not evaded.
+
+### WHAT WAS THOUGHT, AND WHY IT WAS WRONG
+
+The coordinating session's first reading was that the creature held a recorded evasion stat line,
+so the evasion attribute the test sets to 100 was only a fallback. **The code says otherwise**:
+`SetStatInputs` is called in production only by `UCataclysmPlayerClassStats::ApplyTo`, whose
+callers are players, so a creature's `StatForSkill` finds no line and returns the attribute. The
+reading was corrected before any change was made.
+
+`Resolve` evades when a roll from 0 to 100 is below the evasion the pipeline answers
+(`CataclysmDamageCalculation.cpp`, the evasion step), unless the blow is an area blow or cannot be
+evaded, which for a melee blow the swinger's `melee_evasion_suppressed` decides
+(`CataclysmVitalAttributeSet.cpp`). Evasion is not clamped. With 100 held and no line, the evade
+is certain except for a roll of exactly 100, which UE 5.8's `FRand` can produce about once in
+32,768 rolls and which cannot explain one failure in two runs.
+
+**Three candidates, none confirmed:** (a) the swinger's `melee_evasion_suppressed`, which only
+`Ravager_keystone_spine_002` grants and this test's player does not hold; (b) a second hit from
+the one call, the first evaded and the second landing; (c) state left by an earlier test in the
+whole suite. The two runs were different suites, so (c) would read as random across branches
+without being random within one.
+
+### WHAT CHANGED
+
+- **Prints on every run**, just before the evaded swing: the creature's evasion attribute, the
+  pipeline's answer, whether the creature holds a stat line for evasion, and the swinger's
+  `melee_evasion_suppressed`; just after, what the swing dealt and how many hit notices it raised.
+- **Two set-up assertions, each returning early**, ruled by the coordinating session: the
+  pipeline's evasion for the creature is at least 100, and the swinger's
+  `melee_evasion_suppressed` is nought. A failure now names the input rather than reading "110".
+- **No fix aimed at anything**, because nothing was found to aim at. The next whole suite that
+  fails names the input.
+
+**The first build of this change failed**: "error C2373: 'Counting': redefinition" -- the
+hit-notice listener's handle took a name the test already uses for its pool actions. A C++ error
+the Python checks cannot see. Renamed `HitListener` inside the window, before anything ran.
+
+### THE RUN
+
+On `0a576725`, on development `c53c2fae`.
+
+| Step | Result |
+| :-- | :-- |
+| First build, `de650e62` | "error C2373: 'Counting': redefinition" / "Result: Failed (OtherCompilationError)"; see above |
+| Build, `0a576725` | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.14.cpp" |
+| `Cataclysm.Enchantments.TheConsecutive`, three runs alone | each "2 tests performed, 2 succeeded, 0 failed" |
+| The prints, identical in all three and in the group run | "creature evasion attribute 100.000; the pipeline's answer 100.000; creature stat line for evasion none; swinger's melee_evasion_suppressed 0.000" and "the evaded swing dealt 0.000 and 1 hit notice(s) were heard" |
+| `Cataclysm.Enchantments.`, once | "113 tests performed, 113 succeeded, 0 failed" |
+| Proof: the creature's evasion set-up 100 made 0 | PROVED: failed on exactly "set-up: the pipeline's evasion for the creature is at least 100"; restored 1 of 1 |
+
+**The fault did not appear in four runs.** Every input read as the code says it should, and one
+swing raised one hit notice, so (a) and (b) did not happen here and (c) remains. The test now
+states its inputs on every run and stops at the first one that is wrong.
+
+---
+
 ## 2026-09-25 — Small engine halves: five engine changes, and eight enchantments written as rows on them
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` and `.h` (damage over
