@@ -2,6 +2,57 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — "When you die all your buffs are removed" also ends the wearer's running auras
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp` (the flag
+attribute `AurasEndAtDeath`), `CataclysmAbilitySystemComponent.cpp` and `.h` (`ClearWhatDeathEnds`,
+`FCataclysmWhatDeathEnded::AurasEnded`, `AurasEndAtDeathStat`),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the stat's attribute),
+`CataclysmPlayerCharacter.cpp` (the respawn log line), `docs/All_Things_Cataclysm.xlsx` (the
+Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and
+`game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (one test),
+`CataclysmAttributeSetTests.cpp` (`OffSheetCombatStats` 45 to 46), `CataclysmPlayerClassStatsTests.cpp`,
+`CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (`FLAG_STATS`) and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+A death already ended the character's running self buffs. An aura is its own skill class and not a
+self buff, so it kept running. The drawback "When you die all your buffs are removed", which the
+owner kept on 2026-09-25, now also ends running auras. It is a flag attribute, `auras_end_at_death`,
+read through `StatForSkill` with the attribute as fallback. When it is above zero,
+`ClearWhatDeathEnds` cancels every active `UCataclysmAuraSkill` the same way it cancels self buffs,
+and counts them in `AurasEnded`. The respawn log line now reads "... and ended %d running buffs and
+%d running auras." A character without the drawback keeps its auras through a death, as before.
+
+| Enchantment | Row |
+| :-- | :-- |
+| When you die all your buffs are removed | `auras_end_at_death` flat 1 |
+
+### THE RUN
+
+On `e8148b48`, the three engine and test commits moved onto development `4abe1e3d`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `e8148b48` | "5522 passed, 8 skipped in 323.52s"; JUnit tests 5530, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `ac29d87e` | "EnchantmentEffects.csv 374 rows", from 373; `auras_end_at_death` joins `FLAG_STATS` |
+| Python after the row | "1 failed, 5521 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp", the unity file holding `CataclysmDataTableTests.cpp` |
+| Stale-asset step | "133 tests performed, 131 succeeded, 2 failed": the asset-match guard and the new test |
+| Asset rebuild `5c2c361c` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The new test | "1 tests performed, 1 succeeded, 0 failed" |
+| Whole suite, `5c2c361c` | "2636 tests performed, 2636 succeeded, 0 failed"; 2636 declared, gap 0; `CharacterSheetIsComplete` passes at 46 off-sheet |
+| Proof A, the branch that ends auras skipped | PROVED: `TheBuffsRemovedOnDeathRowEndsARunningAura` failed 2 assertions, "with it the aura has ended" reading 1 and "and one aura was counted as ended" reading 0; restored "1 tests performed, 1 succeeded" |
+| Proof B, the flag ignored so every death ends auras | PROVED: the same test failed 2 assertions, "without the drawback the aura still runs after a death" reading 0 and "and no aura was counted as ended" reading 1; restored "1 tests performed, 1 succeeded" |
+| Python control, `auras_end_at_death` taken out of `FLAG_STATS` (2026-09-25, in a copy) | PROVED: only `test_a_single_value_appears_in_its_words_outside_any_range` failed |
+
+---
+
 ## 2026-09-26 — The brain says when Nowhere to Run stopped a flight, because a test world has no navigation system and a zero flee goal could not show it
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and `.cpp` (the brain's new
