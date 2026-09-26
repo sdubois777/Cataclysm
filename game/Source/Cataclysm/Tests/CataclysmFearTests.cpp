@@ -363,4 +363,77 @@ CATACLYSM_FEAR_TEST(FCataclysmFleeFromTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Madness, under the same two rules. The design document's anti-stun-lock table
+// gives Madness the 5 second window and boss immunity; neither was built until
+// the fear change, and these two tests were run on the code before it to measure
+// that.
+// ---------------------------------------------------------------------------
+
+CATACLYSM_FEAR_TEST(FCataclysmMadnessBossTest,
+	"Cataclysm.Fear.MadnessIsRefusedOnABossAsFearIs")
+{
+	using namespace CataclysmFearTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Source = Spawn(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	ACataclysmEnemyCharacter* Plain = Spawn(World, FVector(3 * M, 0, 0), ECataclysmTeam::Monsters);
+	ACataclysmEnemyCharacter* Boss = Spawn(World, FVector(0, 3 * M, 0), ECataclysmTeam::Monsters);
+	if (!TestNotNull(TEXT("a creature"), Plain) || !TestNotNull(TEXT("a boss"), Boss))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(4);
+	if (!TestTrue(TEXT("set-up: the Boss rung is a boss"), Boss->IsBoss())
+		|| !TestTrue(TEXT("set-up: a creature that is not a boss is maddened"),
+					 UCataclysmSkillEffects::ApplyNamedEffect(Source, Plain,
+															  UCataclysmTeams::MadnessTag(), 3.0f)
+						 && UCataclysmTeams::IsMaddened(Plain)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("madness on a boss is refused"),
+			  UCataclysmSkillEffects::ApplyNamedEffect(Source, Boss, UCataclysmTeams::MadnessTag(),
+													   3.0f));
+	TestFalse(TEXT("and the boss is not maddened"), UCataclysmTeams::IsMaddened(Boss));
+	return true;
+}
+
+CATACLYSM_FEAR_TEST(FCataclysmMadnessWindowTest,
+	"Cataclysm.Fear.MadnessIsRefusedInsideTheWindowAfterAStun")
+{
+	using namespace CataclysmFearTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Source = Spawn(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	ACataclysmEnemyCharacter* Stunned = Spawn(World, FVector(3 * M, 0, 0), ECataclysmTeam::Monsters);
+	if (!TestNotNull(TEXT("a creature"), Stunned)
+		|| !TestTrue(TEXT("set-up: a one-second stun lands"),
+					 UCataclysmSkillEffects::ApplyStun(Source, Stunned, 1.0f, 0.0f,
+													   /*bStunIsDesigned=*/true)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	if (!TestFalse(TEXT("set-up: the stun has run out"), UCataclysmSkillEffects::IsStunned(Stunned)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("inside the five-second window madness is refused"),
+			  UCataclysmSkillEffects::ApplyNamedEffect(Source, Stunned, UCataclysmTeams::MadnessTag(),
+													   3.0f));
+	TestFalse(TEXT("and the creature is not maddened"), UCataclysmTeams::IsMaddened(Stunned));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
