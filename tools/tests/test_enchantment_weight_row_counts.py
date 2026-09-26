@@ -67,10 +67,14 @@ from __future__ import annotations
 import csv
 import pathlib
 import re
+import sys
 
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+
+import generate_datatables as gen  # noqa: E402
 POSITIVE = REPO_ROOT / "game" / "Data" / "EnchantmentsPositive.csv"
 NEGATIVE = REPO_ROOT / "game" / "Data" / "EnchantmentsNegative.csv"
 DROP_ROLL_H = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Items"
@@ -236,16 +240,24 @@ class TestTheMeasurementMirrorsTheDraw:
                 f"exercised and these counts prove nothing.")
 
     def test_every_row_that_is_not_a_set_can_be_drawn(self, sides):
+        # A RETIRED ROW IS THE OTHER EXCEPTION, and on purpose: weight 0 on an
+        # ordinary enchantment means it stays in the table and never drops.
+        # Issue #1833, ruled 2026-09-25. Judged by the generator's own
+        # `is_retired`, so this file and the generator cannot disagree.
+        tables = {"benefit": "EnchantmentsPositive", "drawback": "EnchantmentsNegative"}
         for name, rows, _ in sides:
             for row in rows:
                 if row["EnchantmentType"].strip().lower() == "set":
+                    continue
+                if gen.is_retired(tables[name], row):
                     continue
                 assert band_of(row) is not None, (
                     f"{name} row {row['Name']!r} has Weight "
                     f"{row['Weight']!r}, which is not a whole 1 to 4, so "
                     f"UCataclysmDropRoll::EnchantmentDrawWeight prices it at "
                     f"zero and it can never drop. Only the set rows of issue "
-                    f"#1443 are allowed to do that.")
+                    f"#1443 and rows retired with a weight of 0 are allowed to "
+                    f"do that.")
 
 
 class TestTheLadderIsUnchanged:
