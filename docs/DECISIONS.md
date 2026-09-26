@@ -68,6 +68,11 @@ entrance as the Eternal Chorus's cells are, each a floor object named "Grim Tote
 - **Not built: "removing harmful effects".** Nothing in the game removes a floor rule's effects from a place or from
   the player: the rules draw their zones again on the next beat, and there is no cleanse of the player's debuffs. The
   row is listed among those partly built for that reason.
+  **The player-cleanse this waits on is the same one two other rows wait on**: Raw Sewage's "These disease stacks do
+  not time out and must be cleansed" (`Pestilence_Raw_Sewage`, whose stacks only a floor's boss's death or the
+  player's clears today), and the enchantment "You are cleansed every 5 seconds"
+  (`Positive_You_are_cleansed_every_5_seconds` in `game/Data/EnchantmentsPositive.csv`, which has text and no
+  rule). One cleanse action, when it is built, finishes all three. Ruled by the coordinating session, 2026-09-26.
 
 **Every Grim Totems figure is a judgement of this change under the owner's delegation, not ruled separately**, and each
 is a play-test value: two totems a floor and one a Horde arena; 25% more damage for 30 seconds; three Elites at Royal
