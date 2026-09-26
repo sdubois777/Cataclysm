@@ -176,7 +176,11 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled)\b", re.IGNORE
 #: engine halves, with "Energy shield regeneration begins immediately after
 #: taking damage with no delay". Above zero the shield recharges at its whole
 #: rate inside the wait after being damaged.
-FLAG_STATS = {"skill_locked", "mana_pool_becomes_health",
+#:
+#: `auras_end_at_death` JOINED ON 2026-09-25, issue #1833, with "When you die
+#: all your buffs are removed", which the owner kept: above zero, a death also
+#: ends the wearer's running auras.
+FLAG_STATS = {"skill_locked", "mana_pool_becomes_health", "auras_end_at_death",
               "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
@@ -488,8 +492,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 367 over 291: five rows on five enchantments.
 #: AND 373 OVER 297 SINCE THE DEPLOYABLE CAP,
 #: issue #1833, from 372 over 296: one row on one enchantment.
-AUTHORED_ROWS = 373
-AUTHORED_ENCHANTMENTS = 297
+#: AND 374 OVER 298 SINCE THE AURAS-AT-DEATH ROW,
+#: issue #1833, from 373 over 297: one row on one enchantment.
+AUTHORED_ROWS = 374
+AUTHORED_ENCHANTMENTS = 298
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

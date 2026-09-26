@@ -372,3 +372,4 @@ Positive_Gadgets_have_40_70_increased_HP#1,Positive_Gadgets_have_40_70_increased
 Positive_Gadgets_last_30_60_longer#1,Positive_Gadgets_last_30_60_longer,minion_duration,increased,30.0,60.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
 Positive_Gadgets_fire_20_40_faster#1,Positive_Gadgets_fire_20_40_faster,minion_attack_speed,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
 Positive_Add_1_3_to_your_max_deployable_count#1,Positive_Add_1_3_to_your_max_deployable_count,minion_cap_bonus,flat,1.0,3.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Negative_When_you_die_all_your_buffs_are_removed#1,Negative_When_you_die_all_your_buffs_are_removed,auras_end_at_death,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
