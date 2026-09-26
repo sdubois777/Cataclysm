@@ -2420,6 +2420,14 @@ bool FCataclysmFloorBriefTwisterPoolTest::RunTest(const FString& Parameters)
 	{
 		Doing += UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) != ECataclysmModifierBuilt::NotBuilt ? 1 : 0;
 	}
+	// SET-UP, NOT THE CHECK: the table must still hold a row that does nothing, or "no row that does nothing" below
+	// could not fail whatever the filter did. The day every row is built, this says so instead of passing for no reason.
+	if (!TestTrue(FString::Printf(TEXT("the table holds a row that does nothing (%d of %d do something)"), Doing,
+									 Run->ModifierPool.Num()),
+				  Doing < Run->ModifierPool.Num()))
+	{
+		return false;
+	}
 	int32 DoingNothing = 0;
 	int32 NotFaced = 0;
 	for (const FCataclysmDungeonModifier& Row : Mode->DungeonEveryBuiltModifier)

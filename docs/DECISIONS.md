@@ -93,8 +93,9 @@ Four automation tests in `Cataclysm.FloorBrief.`:
   nothing.
 - `AFloorCarryingRealityTwisterNamesTheRowItAdded`: on four built floors the row is in force, the creatures' score counts
   its danger, and the panel names it by its name rather than its key.
-- `EnteringADungeonCarriesEveryBuiltRowForRealityTwister`: with the real table, entering carries every row that does
-  something and none that does nothing, some of a Cataclysm the run is not facing; leaving empties it.
+- `EnteringADungeonCarriesEveryBuiltRowForRealityTwister`: with the real table, which must still hold a row that does
+  nothing (asserted as set-up, so the check below can fail), entering carries every row that does something and none
+  that does nothing, some of a Cataclysm the run is not facing; leaving empties it.
 
 ### Not yet done
 
