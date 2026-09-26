@@ -2047,6 +2047,30 @@ public:
 	static const TCHAR* PortalUnleashingKey;
 
 	/**
+	 * The row whose swarms cross the floor and burn the player they cover, unless the player is in a shelter.
+	 * Issues #1820 and #41. PARTLY BUILT: the row's "obscuring vision" waits on the vision system.
+	 *
+	 * "Periodically, swarms of locusts sweep through the dungeon, obscuring vision and dealing continuous damage.
+	 * Players must find shelter or use specific abilities to survive the swarm."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - EVERY `SwarmOfLocustsSecondsBetween` A SWARM: a zone `SwarmOfLocustsRadiusCm` across the radius, appearing
+	 *   `SwarmOfLocustsAppearsAwayCm` from the player at a random angle and standing there for
+	 *   `SwarmOfLocustsWarningSeconds` as its warning, then travelling in a straight line through where the player
+	 *   stood when it appeared, at `SwarmOfLocustsSpeedCmPerSecond`, until it has gone `SwarmOfLocustsTravelsCm`.
+	 * - WHILE IT COVERS THE PLAYER, once a second, `SwarmOfLocustsPercentPerSecond` of maximum health, typed as the
+	 *   row, dealt by the rule's own step and not by the zone -- Infested Veins' pattern -- so a shelter can stop it.
+	 * - `SwarmOfLocustsSheltersPerFloor` SHELTERS A FLOOR, one on a Horde arena, kept: visible zones
+	 *   `SwarmOfLocustsShelterRadiusCm` across, doing nothing, placed by Eternal Chorus's picker. A player inside
+	 *   one takes nothing from a swarm.
+	 * - CREATURES ARE NOT BURNED.
+	 * - NOT BUILT: "obscuring vision", which needs the vision system. "Use specific abilities" has no rule of its
+	 *   own: moving out of the swarm's line escapes it, and resistances meet its damage.
+	 */
+	static const TCHAR* SwarmOfLocustsKey;
+
+	/**
 	 * The row whose rivers of waste give the player disease stacks that burn and never run out. Issues #1820 and
 	 * #41.
 	 *
@@ -4572,6 +4596,27 @@ public:
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
 	/**
+	 * Swarm of Locusts' figures, every one a play-test value. See the key. The warning is Artillery Strike's; the
+	 * speed is Divine Wrath's, slower than every class.
+	 */
+	static constexpr float SwarmOfLocustsSecondsBetween = 45.0f;
+	static constexpr float SwarmOfLocustsWarningSeconds = ArtilleryStrikeWarningSeconds;
+	static constexpr float SwarmOfLocustsRadiusCm = 800.0f;
+	static constexpr float SwarmOfLocustsAppearsAwayCm = 2400.0f;
+	static constexpr float SwarmOfLocustsSpeedCmPerSecond = DivineWrathSpeedCmPerSecond;
+	static constexpr float SwarmOfLocustsTravelsCm = 4800.0f;
+	static constexpr float SwarmOfLocustsPercentPerSecond = 3.0f;
+	static constexpr int32 SwarmOfLocustsSheltersPerFloor = 2;
+	static constexpr int32 SwarmOfLocustsSheltersPerHordeArena = 1;
+	static constexpr float SwarmOfLocustsShelterRadiusCm = 300.0f;
+
+	static_assert(
+		SwarmOfLocustsSecondsBetween > SwarmOfLocustsWarningSeconds + SwarmOfLocustsTravelsCm / SwarmOfLocustsSpeedCmPerSecond,
+		"A swarm must have crossed before the next one is due, or two would stand at once.");
+	static_assert(SwarmOfLocustsTravelsCm > SwarmOfLocustsAppearsAwayCm + SwarmOfLocustsRadiusCm,
+		"A swarm must travel past the point it aimed at, or it would stop on top of the player.");
+
+	/**
 	 * Raw Sewage's figures, every one a play-test value. See the key. 2.5% a second at five stacks is the drain the
 	 * owner chose for Suffering Aura (2026-09-23).
 	 */
@@ -5201,6 +5246,15 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** Whether a swarm of locusts comes now: this long since the last one ended. */
+	static bool SwarmOfLocustsIsDue(float SecondsSinceLast);
+
+	/** How long a swarm lasts from its appearing: its warning, then its travel. */
+	static float SwarmOfLocustsLastsSeconds();
+
+	/** What a second under a swarm costs a player with this maximum health. */
+	static float SwarmOfLocustsBurn(float MaximumHealth);
 
 	/** The player's Raw Sewage stacks after one more is added: one more, never past the most. */
 	static int32 RawSewageStacksAfterAdding(int32 Stacks);

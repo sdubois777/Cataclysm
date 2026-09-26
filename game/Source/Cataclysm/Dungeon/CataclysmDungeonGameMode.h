@@ -2123,6 +2123,15 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Swarm of Locusts, for tests: the swarm on the floor, or null between swarms. */
+	class ACataclysmGroundZone* SwarmOfLocustsNow() const { return SwarmOfLocusts.Get(); }
+
+	/** Swarm of Locusts, for tests: whether the swarm on the floor has begun to travel. */
+	bool SwarmOfLocustsIsTravelling() const { return bSwarmOfLocustsTravelling; }
+
+	/** Swarm of Locusts, for tests: this arena's shelters, drawn from its first beat. */
+	TArray<class ACataclysmGroundZone*> LocustSheltersNow() const;
+
 	/** Raw Sewage, for the panel and tests: the disease stacks the player carries. */
 	int32 RawSewageStacksHeld() const { return RawSewageStacks; }
 
@@ -2317,6 +2326,18 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Swarm of Locusts: this arena's shelters chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheShelters();
+
+	/** Every shelter and any swarm destroyed and forgotten, and the swarm's clock started again. */
+	void ForgetTheLocusts();
+
+	/**
+	 * Swarm of Locusts, on the beat: the shelters kept drawn, a swarm when one is due, its warning and its travel,
+	 * the burn once a second for a player it covers who is in no shelter, and the swarm gone when it has crossed.
+	 */
+	void StepSwarmOfLocusts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Raw Sewage: this arena's rivers chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheRivers();
@@ -3425,6 +3446,20 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Swarm of Locusts: the swarm on the floor, its travel, how long since it appeared and since the last one
+	 * ended, the burn's clock, the shelters' cells and zones, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmGroundZone> SwarmOfLocusts;
+	FVector SwarmOfLocustsVelocity = FVector::ZeroVector;
+	bool bSwarmOfLocustsTravelling = false;
+	float SwarmOfLocustsSecondsIntoIt = 0.0f;
+	float SwarmOfLocustsSecondsSinceLast = 0.0f;
+	float SwarmOfLocustsSecondsSinceBurn = 0.0f;
+	TArray<FIntPoint> LocustShelterCells;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> LocustShelters;
+	int32 SwarmOfLocustsPanelSecond = -1;
 
 	/**
 	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether

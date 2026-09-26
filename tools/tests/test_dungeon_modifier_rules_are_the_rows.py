@@ -4293,3 +4293,20 @@ def test_raw_sewage_row_still_has_rivers_that_give_disease_stacks_that_never_tim
         assert phrase in lower, (
             f"Pestilence_Raw_Sewage no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "RawSewageKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter():
+    """The phrases the rule's readings rest on.
+
+    "Periodically, swarms of locusts sweep through the dungeon, obscuring vision and dealing continuous damage.
+    Players must find shelter or use specific abilities to survive the swarm." PERIODICALLY is its clock; SWEEP
+    THROUGH is its travel; CONTINUOUS DAMAGE is the burn once a second; FIND SHELTER is the shelters; OBSCURING
+    VISION is the part not built, waiting on the vision system. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Famine_Swarm_of_Locusts"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("periodically", "sweep through", "obscuring vision", "continuous damage", "find shelter"):
+        assert phrase in lower, (
+            f"Famine_Swarm_of_Locusts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
