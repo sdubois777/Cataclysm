@@ -114,7 +114,7 @@ Positive_Reflect_20_40_of_damage_taken_back_at_attacker,Reflect 20%-40% of damag
 Positive_Retaliation_damage_is_increased_by_50_100_whil,Retaliation damage is increased by 50%-100% while your HP is below 50%,Generic,4.0,"Trigger.LowLife, Stat.Defense.Retaliation",False
 Positive_Retaliation_damage_applies_to_all_enemies_within,Retaliation damage applies to all enemies within 3 meters when you are hit,Generic,3.0,"Type.AOE.PointBlank, Stat.Defense.Retaliation",False
 Positive_Regenerate_1_3_of_your_maximum_HP_per_second,Regenerate 1%-3% of your maximum HP per second,Generic,2.0,"Stat.Recovery.Regen, Stat.Defense.Life",False
-Positive_Your_HP_regeneration_continues_at_50_effectiven,Your HP regeneration continues at 50% effectiveness during combat,Generic,3.0,"Stat.Recovery.Regen, Stat.Defense.Life",False
+Positive_Your_HP_regeneration_continues_at_50_effectiven,Your HP regeneration continues at 50% effectiveness during combat,Generic,0.0,"Stat.Recovery.Regen, Stat.Defense.Life",False
 Positive_Energy_shield_regeneration_begins_immediately_af,Energy shield regeneration begins immediately after taking damage with no delay,Generic,2.0,"Stat.Recovery.Regen, Stat.Defense.EnergyShield, Keyword.Shield",False
 Positive_Skills_can_spend_HP_instead_of_mana_at_a_3_1_rat,Skills can spend HP instead of mana at a 3:1 ratio,Generic,3.0,"Stat.Resource.HP, Stat.Defense.Life, Stat.Resource.Mana",False
 Positive_Skills_that_cost_HP_restore_that_amount_as_mana,Skills that cost HP restore that amount as mana,Generic,4.0,"Stat.Resource.HP, Stat.Resource.Mana",False
@@ -149,7 +149,7 @@ Positive_Your_retaliation_damage_is_increased_by_2_4_fo,Your retaliation damage 
 Positive_Your_retaliation_damage_is_tripled_while_below_3,Your retaliation damage is tripled while below 30% HP,Generic,3.0,"Stat.Defense.Retaliation, Trigger.LowLife",False
 Positive_Retaliation_damage_hits_all_enemies_within_3_5_m,Retaliation damage hits all enemies within 3-5 meters of you,Generic,3.0,"Stat.Defense.Retaliation, Type.AOE.PointBlank",False
 Positive_Each_hit_you_take_increases_your_retaliation_dam,"Each hit you take increases your retaliation damage by 5%-10% for 5 seconds, stacking up to 5 times",Generic,3.0,"Stat.Defense.Retaliation, Trigger.OnHit",False
-Positive_100_of_your_block_value_is_added_to_your_retali,100% of your block value is added to your retaliation damage,Generic,3.0,"Stat.Defense.Retaliation, Stat.Defense.Block",False
+Positive_100_of_your_block_value_is_added_to_your_retali,100% of your block value is added to your retaliation damage,Generic,0.0,"Stat.Defense.Retaliation, Stat.Defense.Block",False
 Positive_Spells_deal_20_40_increased_damage,Spells deal 20%-40% increased damage,Generic,3.0,"Type.Spell, Stat.Offense.Global",False
 Positive_Spells_have_a_10_20_chance_to_cast_a_second_ti,Spells have a 10%-20% chance to cast a second time for free,Generic,2.0,Type.Spell,False
 Positive_Spells_pierce_through_all_enemies_in_their_path,Spells pierce through all enemies in their path,Generic,3.0,"Type.Spell, Type.Projectile",False
@@ -192,7 +192,7 @@ Positive_Your_DoTs_ignore_20_40_of_enemy_resistances,Your DoTs ignore 20%-40% of
 Positive_Your_first_hit_against_each_enemy_ignores_all_ar,Your first hit against each enemy ignores all armor,Generic,3.0,"Stat.Offense.Penetration, Scope.FirstHit, Stat.Defense.Armor",False
 Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo,"Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking indefinitely",Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Armor",False
 Positive_Each_class_point_spent_above_100_grants_0_5_1,Each class point spent above 100 grants 0.5%-1% increased damage,Generic,3.0,"Stat.Progression.ClassPoints, Stat.Offense.Global",False
-Positive_Class_points_spent_in_your_primary_tree_are_10,Class points spent in your primary tree are 10%-20% more effective,Generic,2.0,Stat.Progression.ClassPoints,False
+Positive_Class_points_spent_in_your_primary_tree_are_10,Class points spent in your primary tree are 10%-20% more effective,Generic,0.0,Stat.Progression.ClassPoints,False
 Positive_Your_first_hit_against_each_enemy_in_a_combat_ig,Your first hit against each enemy in a combat ignores all resistances,Generic,2.0,"Scope.FirstHit, Stat.Defense.Resist",False
 Positive_This_weapon_has_2_4_damage_types,This weapon has 2-4 damage types,Generic,1.0,"Element.Demonic, Element.Celestial, Element.Void, Element.Death, Element.War, Element.Pestilence, Element.Chaos, Element.Famine, Item.Slot.Weapon",False
 Positive_You_take_5_20_less_damage_from_melee_attacks,You take 5-20% less damage from melee attacks,Generic,4.0,Stat.Defense.Melee,False
