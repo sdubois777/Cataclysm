@@ -68,6 +68,12 @@ NATIVE_ACTIONS = [
     # The passive class tree. Issue #50.
     ("IA_TogglePassiveTree", "TogglePassiveTree", BOOLEAN,
      "Toggle Passive Tree"),
+    # The four potion slots. One action a slot, because the controller binds a
+    # native action by name with no argument. Issue #806.
+    ("IA_DrinkPotion1", "DrinkPotion1", BOOLEAN, "Drink Potion 1"),
+    ("IA_DrinkPotion2", "DrinkPotion2", BOOLEAN, "Drink Potion 2"),
+    ("IA_DrinkPotion3", "DrinkPotion3", BOOLEAN, "Drink Potion 3"),
+    ("IA_DrinkPotion4", "DrinkPotion4", BOOLEAN, "Drink Potion 4"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -125,6 +131,13 @@ MOUSE_MAPPINGS = [
     # The passive tree. P in both schemes, which is where Path of Exile
     # puts its passive tree, and free in both. Issue #50.
     ("IA_TogglePassiveTree", "P", []),
+    # The four potions on 2, 3, 4 and 5 in both schemes. Path of Exile puts its
+    # flasks on 1 to 5; 1 is the Support ability under keyboard movement, so the
+    # potions start at 2 and do not move when the scheme does. Issue #806.
+    ("IA_DrinkPotion1", "Two", []),
+    ("IA_DrinkPotion2", "Three", []),
+    ("IA_DrinkPotion3", "Four", []),
+    ("IA_DrinkPotion4", "Five", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -163,6 +176,13 @@ KEYBOARD_MAPPINGS = [
     # The passive tree. P in both schemes, which is where Path of Exile
     # puts its passive tree, and free in both. Issue #50.
     ("IA_TogglePassiveTree", "P", []),
+    # The four potions on 2, 3, 4 and 5 in both schemes. Path of Exile puts its
+    # flasks on 1 to 5; 1 is the Support ability under keyboard movement, so the
+    # potions start at 2 and do not move when the scheme does. Issue #806.
+    ("IA_DrinkPotion1", "Two", []),
+    ("IA_DrinkPotion2", "Three", []),
+    ("IA_DrinkPotion3", "Four", []),
+    ("IA_DrinkPotion4", "Five", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

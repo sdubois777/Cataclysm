@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmHUD.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -58,6 +59,13 @@ void ACataclysmHUD::DrawHUD()
 	if (UCataclysmSkillBar::Enabled())
 	{
 		DrawSkillBar();
+	}
+
+	// THE BOTTOM RIGHT, WHICH NEITHER THE VITALS NOR THE SKILL BAR USE.
+	// `Cataclysm.Potions.TheBoxesDoNotRunIntoTheSkillBarOrTheVitals` holds that.
+	if (UCataclysmPotions::Enabled())
+	{
+		DrawPotions();
 	}
 
 	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
@@ -268,6 +276,53 @@ void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
 	DrawTextCentred(
 		UCataclysmCombatOverlay::PoolTextFor(Current, Maximum),
 		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
+}
+
+void ACataclysmHUD::DrawPotions()
+{
+	const APawn* Pawn = GetOwningPawn();
+	if (!Pawn || !Canvas)
+	{
+		return;
+	}
+
+	const float Size = UCataclysmPotions::BoxSizePx;
+	const FLinearColor Edge =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::BoxEdgeHex);
+	const FLinearColor Backing =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::ReadyHex);
+	const FLinearColor Fill =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmCombatOverlay::HealthFillHex);
+	const FLinearColor Dimmed =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::CoolingHex);
+
+	for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+	{
+		const float Charges = UCataclysmPotions::ChargesIn(Pawn, Slot);
+		const FVector2D At =
+			UCataclysmPotions::BoxOriginFor(Slot, Canvas->SizeX, Canvas->SizeY);
+
+		DrawRect(Edge, At.X - BarBackingInsetPx, At.Y - BarBackingInsetPx,
+				 Size + BarBackingInsetPx * 2.0f, Size + BarBackingInsetPx * 2.0f);
+		DrawRect(Backing, At.X, At.Y, Size, Size);
+
+		// THE CHARGES, FILLED FROM THE BOTTOM, the way a flask is drawn.
+		const float Filled = Size * UCataclysmPotions::FillFractionFor(Charges);
+		DrawRect(Fill, At.X, At.Y + Size - Filled, Size, Filled);
+
+		const int32 Drinks = UCataclysmPotions::DrinksIn(Charges);
+		if (Drinks == 0)
+		{
+			DrawRect(Dimmed, At.X, At.Y, Size, Size);
+		}
+
+		const float Centre = At.X + Size * 0.5f;
+		// The key is the slot's number plus one: slot 0 is on the 2 key.
+		DrawTextCentred(FString::FromInt(Slot + 2), FLinearColor::White, Centre,
+						At.Y + SkillBarKeyInsetPx, SkillBarKeyScale);
+		DrawTextCentred(FString::FromInt(Drinks), FLinearColor::White, Centre,
+						At.Y + Size * 0.5f, SkillBarKeyScale);
+	}
 }
 
 void ACataclysmHUD::DrawSkillBar()

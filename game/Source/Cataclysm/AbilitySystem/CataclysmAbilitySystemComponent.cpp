@@ -2219,6 +2219,12 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// the respawn.
 	LeechPayments.Reset();
 
+	// AND A POTION HEAL NOT YET PAID, for the same reason: `UCataclysmPotions::
+	// HealStep` skips a corpse, so a drink taken just before the death would
+	// finish healing after the respawn. The slots' charges are kept; a death
+	// does not refill them and does not empty them. Issue #806.
+	PotionHeal = FCataclysmPotionHeal();
+
 	return Ended;
 }
 

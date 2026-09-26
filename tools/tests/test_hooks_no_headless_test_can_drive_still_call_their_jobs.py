@@ -132,6 +132,9 @@ HOOKS = {
                 "a kill clearing what the killer owes, issue #997",
             "UCataclysmStacks::NoteEnemyKilled":
                 "the stack a kill may build, issue #1004",
+            "UCataclysmPotions::NoteEnemyKilled":
+                "a kill filling every potion slot by the creature's rarity, "
+                "issue #806",
             "UCataclysmContagion::SpreadOnDeath":
                 "this creature's debuffs passing to whatever stands by its "
                 "body, issue #1060",

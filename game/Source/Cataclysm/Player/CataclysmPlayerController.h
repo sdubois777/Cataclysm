@@ -362,6 +362,19 @@ private:
 	/** The key's half of it. Calls TogglePassiveTree above. */
 	void Input_TogglePassiveTree();
 
+	/**
+	 * The four potion keys, 2 to 5. One handler a slot, because a native
+	 * action is bound by name with no argument. Each drinks through
+	 * `UCataclysmPotions::Drink`, as `Cataclysm.DrinkPotion` does. Issue #806.
+	 */
+	void Input_DrinkPotion1();
+	void Input_DrinkPotion2();
+	void Input_DrinkPotion3();
+	void Input_DrinkPotion4();
+
+	/** Drink the potion in a slot, 0 to 3, and log a refusal. */
+	void DrinkPotion(int32 Slot);
+
 	/** Puts CachedDestination under the cursor. False if the cursor hit nothing. */
 	bool UpdateCachedDestination();
 
