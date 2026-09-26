@@ -12,8 +12,7 @@ per-floor reset, the panel line); the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and built in full since 2026-09-26, when "and fear" was
-added on the fear system.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures
-are added at the end of this entry when they have.
+added on the fear system.** It has been run: the figures are at the end of this entry.
 
 ### The row
 
@@ -117,10 +116,7 @@ is the code the move added; the velocity keeps its direct assertions in the set-
 
 Each break's anchor was checked to match exactly once in the moved branch before it was registered.
 
-### Not yet run
-
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+### Before the window
 
 **Two test lines changed before the first compile, 2026-09-26.** Two checks in
 `AFunerealProcessionSetsOutEverySixtySecondsTowardThePlayer` -- `TestEqual(TEXT("its head 2400 cm from the player"), FVector::Dist2D(Head, Feet), ...)` and
@@ -129,6 +125,28 @@ expected values. In Unreal Engine 5.8 `FVector::Dist2D` and `Size2D` return doub
 `error C2666: 'FAutomationTestBase::TestEqual': overloaded functions have similar conversions`, as it stopped Infection
 Bloom's first build the same day. Each actual value is now wrapped in `static_cast<float>`. Found by a check added to
 the compile sweep for that fault, not by a compile; approved by the coordinating session.
+
+
+### Run
+
+One window on 2026-09-26, with the build machine and the editor, on development 867699a0. Every figure below is what
+`pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed. The change compiled at the first build.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window | `5529 passed, 8 skipped` (JUnit 5,537, no failures), as registered |
+| Build | `Build: Succeeded - 16 actions, 13 files compiled` |
+| Whole suite, started with no CI run in progress | `2648 tests performed, 2648 succeeded, 0 failed`; 2648 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, each on its one test, each anchor re-checked immediately before its run. Each
+printed `1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests performed, 1 succeeded, 0 failed`
+restored, and each failed on exactly the checks registered for it.
+
+| Break | The test that failed, and on what |
+|---|---|
+| A procession never sets out | `AFunerealProcessionSetsOutEverySixtySecondsTowardThePlayer`: "one sets out at 60 s", null |
+| Its touch written as nothing | `AFunerealProcessionBurnsThePlayerItTouches`: "its touch burns (0.0 lost)" |
+| Its touch fears nothing | `AFunerealProcessionFearsThePlayerItTouches`: "its touch fears the player" and "and opens the window a fear opens" |
 
 ---
 
