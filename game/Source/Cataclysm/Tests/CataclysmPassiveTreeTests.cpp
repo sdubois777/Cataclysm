@@ -15948,6 +15948,319 @@ bool FCataclysmDemonicRowsCastFromWardTest::RunTest(const FString&)
 		{{UCataclysmGameplayAbility::CostPaidFromEnergyShieldStat, 1.0f}});
 }
 
+// ---------------------------------------------------------------------------
+// The Second Vow's options 1 and 3, Rock Bottom and Ceaseless Penance, through
+// their real rows on a real Masochist. Issue #2119, sixth batch.
+//
+// THE TREE IS FILLED TO 50 WITH BASIC NODES ONLY, so no keystone's rule sits
+// between the option and what these tests read. Rock Bottom's drop is a real
+// creature's hit crossing 20% health, which reaches
+// `UCataclysmLowHealthRelief::NoteHealthChanged` the way every health change
+// does. Ceaseless Penance's hold is `UCataclysmDebuffs::HoldStep`, called at each
+// regeneration step as the character's regeneration timer calls it.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSecondVowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmKeystoneRowTest;
+	using namespace CataclysmRavagerFervourTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	const FName SecondVow(TEXT("Masochist_capstone_50"));
+
+	/** A Masochist with 50 points in basic nodes and a point in the Second Vow. */
+	bool AtTheSecondVow(FAutomationTestBase& Test, UWorld* World, FRealCharacter& Player)
+	{
+		Player = Spawn(World);
+		const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+		if (!Test.TestTrue(TEXT("a possessed Masochist with an effect table"),
+						   Player.IsComplete())
+			|| !Test.TestNotNull(TEXT("the node table loads"), NodeTable))
+		{
+			Test.AddError(TEXT("If a table is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+
+		FCataclysmPassiveAllocation Allocation;
+		int32 Filled = 0;
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			const auto* Row = reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+			if (Filled >= 50 || Row->Tree != TEXT("Masochist")
+				|| Row->Kind != TEXT("basic") || Row->MaxPoints <= 0)
+			{
+				continue;
+			}
+			const int32 Points = FMath::Min(Row->MaxPoints, 50 - Filled);
+			Allocation.Add(Pair.Key, Points);
+			Filled += Points;
+		}
+		if (!Test.TestEqual(TEXT("set-up: the Masochist's basic nodes hold 50 points"),
+							Filled, 50))
+		{
+			return false;
+		}
+		Allocation.Add(SecondVow, 1);
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		return true;
+	}
+
+	bool Choose(FAutomationTestBase& Test, FRealCharacter& Player, int32 Option)
+	{
+		FString Refusal;
+		if (!Test.TestTrue(*FString::Printf(TEXT("option %d can be chosen"), Option),
+						   Player.State->ChoosePassiveOption(SecondVow, Option, Refusal)))
+		{
+			Test.AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+			return false;
+		}
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		return true;
+	}
+
+	float MaxHealthOf(const FRealCharacter& Player)
+	{
+		return Player.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	}
+
+	float StatOf(const FRealCharacter& Player, const TCHAR* Stat)
+	{
+		return Player.AbilitySystem->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRockBottomRowTest,
+	"Cataclysm.MasochistVowRows.RockBottomClearsARealMasochistsDebtAndGrantsFervourOnDroppingLowOnceInThirtySeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Masochist_capstone_50` option 1, Rock Bottom: "A health cost can never reduce
+ * you below 1 health; anything you cannot pay becomes health debt instead.
+ * Dropping below 20% health clears all outstanding debt and grants 50 Fervour, no
+ * more than once every 30 seconds."
+ *
+ * Each drop is a real creature's hit taking the Masochist from 22% of its
+ * maximum health to below 20%, owing 30% and holding no Fervour. Without the
+ * option the drop leaves the debt and gains only the Fervour the hit itself
+ * generates. With it, the first drop clears the debt and gains exactly 50 more;
+ * a second drop at once clears nothing; a drop 31 seconds later clears it again.
+ * The cost half is read as the cost code asks it: the stat that turns an
+ * unpayable cost into debt reads 1 with the option and 0 without.
+ */
+bool FCataclysmRockBottomRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSecondVowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!AtTheSecondVow(*this, World, Player))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Creature = SpawnHostile(
+		World, Player.Character->GetActorLocation() + FVector(6.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a creature to hit the Masochist"), Creature))
+	{
+		return false;
+	}
+
+	struct FDrop
+	{
+		float OwedAfter = -1.0f;
+		float FervourGained = -1.0f;
+	};
+	/** Stand at 22%, owing 30% with an empty bar, and take a hit to below 20%. */
+	const auto Drop = [this, &Player, Creature](FDrop& Out)
+	{
+		const float Maximum = MaxHealthOf(Player);
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+													  Maximum * 0.22f);
+		Player.AbilitySystem->SetNumericAttributeBase(Resource::GetHealthOwedAttribute(),
+													  Maximum * 0.3f);
+		Player.AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
+													  0.0f);
+		FCataclysmHitDelivery Blow;
+		Blow.bCannotCriticallyStrike = true;
+		UCataclysmSkillEffects::ApplyDirectDamage(Creature, Player.Character,
+												  Maximum * 0.1f, Blow);
+		const float Health =
+			Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		Out.OwedAfter =
+			Player.AbilitySystem->GetNumericAttribute(Resource::GetHealthOwedAttribute())
+			/ Maximum;
+		Out.FervourGained = FervourOf(Player);
+		return TestTrue(TEXT("set-up: the hit took the Masochist from 22% to below 20%, "
+							 "and not to nothing"),
+						Health < Maximum * 0.2f && Health > 0.0f);
+	};
+
+	TestEqual(TEXT("without the option an unpayable cost does not become debt"),
+			  StatOf(Player, TEXT("unpayable_health_cost_becomes_debt")), 0.0f, 0.001f);
+	FDrop Without;
+	if (!Drop(Without))
+	{
+		return false;
+	}
+	TestEqual(TEXT("without the option, dropping low leaves the debt"), Without.OwedAfter,
+			  0.3f, 0.0001f);
+
+	if (!Choose(*this, Player, 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with it an unpayable cost becomes debt"),
+			  StatOf(Player, TEXT("unpayable_health_cost_becomes_debt")), 1.0f, 0.001f);
+	FDrop First;
+	if (!Drop(First))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with it, the first drop clears the whole debt"), First.OwedAfter, 0.0f,
+			  0.0001f);
+	TestEqual(TEXT("and grants 50 Fervour beyond what the hit generated"),
+			  First.FervourGained - Without.FervourGained, 50.0f, 0.01f);
+
+	FDrop AtOnce;
+	if (!Drop(AtOnce))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a second drop at once clears nothing"), AtOnce.OwedAfter, 0.3f, 0.0001f);
+	TestEqual(TEXT("and grants no Fervour of its own"),
+			  AtOnce.FervourGained - Without.FervourGained, 0.0f, 0.01f);
+
+	// NOTHING OWED AND FULL HEALTH ACROSS THE WAIT, so no debt falls due and
+	// drains the Masochist while the clock runs.
+	Player.AbilitySystem->SetNumericAttributeBase(Resource::GetHealthOwedAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+												  MaxHealthOf(Player));
+	CataclysmTestWorld::RunClock(World, 31.0f);
+	FDrop Later;
+	if (!Drop(Later))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a drop 31 seconds later clears the debt again"), Later.OwedAfter, 0.0f,
+			  0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCeaselessPenanceRowTest,
+	"Cataclysm.MasochistVowRows.CeaselessPenanceKeepsARealMasochistsDebuffsWhileAboveHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Masochist_capstone_50` option 3, Ceaseless Penance: debuffs on the Masochist
+ * do not expire while it is above 50% health (row #5, `debuffs_do_not_expire`,
+ * condition `health_above` 50).
+ *
+ * A two-second Cripple, then three seconds of the world's clock with
+ * `UCataclysmDebuffs::HoldStep` called at each regeneration step. Without
+ * the option the Cripple is gone. With it, at 80% health the Cripple is still
+ * there; at 30% health it is gone.
+ */
+bool FCataclysmCeaselessPenanceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSecondVowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!AtTheSecondVow(*this, World, Player))
+	{
+		return false;
+	}
+
+	/**
+	 * Three seconds of clock, with `HoldStep` called at each regeneration step as
+	 * the character's regeneration timer calls it. BY HAND, as
+	 * `Cataclysm.MasochistBuild.*` calls its drain, so the hold does not depend on
+	 * whether that timer fires in a test world; if it does fire too, a held
+	 * debuff is only held longer.
+	 */
+	const auto WaitThreeSeconds = [&Player, World]()
+	{
+		const float Step = UCataclysmRegeneration::StepSeconds;
+		for (float Waited = 0.0f; Waited < 3.0f; Waited += Step)
+		{
+			CataclysmTestWorld::RunClock(World, Step, Step);
+			UCataclysmDebuffs::HoldStep(Player.Character, Step);
+		}
+	};
+
+	/** Stand at this share of maximum health, take a two-second Cripple, and wait three. */
+	const auto StillCrippledAfter = [this, &Player, &WaitThreeSeconds](float HealthShare,
+																		bool& OutStill)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+													  MaxHealthOf(Player) * HealthShare);
+		if (!TestTrue(TEXT("set-up: the Masochist is Crippled"),
+					  UCataclysmSkillEffects::ApplyTagForDuration(
+						  Player.Character, Player.Character, UCataclysmDebuffs::CrippleTag(),
+						  2.0f))
+			|| !TestEqual(TEXT("set-up: it carries one debuff"),
+						  UCataclysmDebuffs::CountOnActor(Player.Character), 1))
+		{
+			return false;
+		}
+		WaitThreeSeconds();
+		OutStill = UCataclysmDebuffs::CountOnActor(Player.Character) > 0;
+		return true;
+	};
+
+	bool bWithout = true;
+	if (!StillCrippledAfter(0.8f, bWithout))
+	{
+		return false;
+	}
+	TestFalse(TEXT("without the option, a two-second Cripple is gone three seconds later"),
+			  bWithout);
+
+	if (!Choose(*this, Player, 3))
+	{
+		return false;
+	}
+	bool bAboveHalf = false;
+	if (!StillCrippledAfter(0.8f, bAboveHalf))
+	{
+		return false;
+	}
+	TestTrue(TEXT("with it, at 80% health, the Cripple is still there"), bAboveHalf);
+
+	// THE HELD CRIPPLE IS STILL ON, so it is taken off before the last case by
+	// dropping to 30%, where the rule no longer holds it, and letting it run out.
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+												  MaxHealthOf(Player) * 0.3f);
+	WaitThreeSeconds();
+	if (!TestEqual(TEXT("set-up: at 30% the held Cripple has run out"),
+				   UCataclysmDebuffs::CountOnActor(Player.Character), 0))
+	{
+		return false;
+	}
+	bool bBelowHalf = true;
+	if (!StillCrippledAfter(0.3f, bBelowHalf))
+	{
+		return false;
+	}
+	TestFalse(TEXT("with it, at 30% health, the Cripple is gone"), bBelowHalf);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNoSecondWindTest,
 	"Cataclysm.DemonicRows.NoSecondWindReachesARealRavagerFromItsRow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
