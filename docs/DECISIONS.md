@@ -2,6 +2,155 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Abyssal Rifts: one rift a floor opens when the player comes near and sends three waves of four; killing them all within 60 seconds closes it in time for +10 magic find, and each success sends later rifts' creatures one rung higher
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, when a wave is due, when the time runs out, the rung and the reward, and a new player floor-effect field
+`RiftMagicFindAdded` read by `StatModifiersFor`, `IsEmpty` and `Describe`); a new class
+`game/Source/Cataclysm/Character/CataclysmRiftCharacter.h`; `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (placing the rift, opening it, its waves, closing it, the successes, the reward, the panel line);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Rift" under its bar); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and two Python checks in `tools/tests/`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Demonic_Abyssal_Rifts` in `game/Data/DungeonModifiers.csv`, weight 10: "Portals to the Abyss open up, unleashing
+waves of demonic creatures. Players must close these rifts by defeating waves of enemies within a given time limit.
+The difficulty and rewards increase with each successfully closed rift." It states no figure.
+
+### What the rule does
+
+When a floor carrying the row is placed, one rift stands where Eternal Chorus's picker puts its sources, at least
+twenty metres from the entrance. A Horde arena has none. A rift is a floor source that cannot be hurt, says "Rift"
+under its bar, and has a visible zone 600 cm across its radius, drawn in Demonic's colours, that does nothing itself.
+It waits until the player first comes within 800 cm, and then it opens: it sends four creatures of the floor's own
+kinds at once, four more at 15 seconds and four more at 30 seconds, onto cells beside it, as Necrotic Bloom's waves are
+placed. They are the floor's creatures and they pay for their deaths.
+
+If every creature it sent is dead within 60 seconds of opening, it closes in time: one success. If the time runs out
+first, it closes with no success and the creatures it sent stay. Either way the rift and its zone are gone.
+
+Each success so far puts a later rift's creatures one rung higher -- one success sends them one rung above Common,
+two successes two -- to rung 3 at most, Herald, the rung under the first boss and Demon Prince's cap -- and gives
+the player +10 magic find, added flat, summed across the successes. **The successes count across the dungeon, and
+they end where their magic find ends: at leaving the dungeon or at the player's death.** A floor without the row
+keeps the magic find, because the successes are the dungeon's and not the floor's.
+
+The panel reads "abyssal rifts: a rift waits; 1 closed in time, +10 magic find", "abyssal rifts: open, 42 s left, 5
+creatures left", "abyssal rifts: the rift is closed; 1 closed in time, +10 magic find", or on a Horde arena "abyssal
+rifts: no rift on a Horde arena; 1 closed in time, +10 magic find".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **One rift a floor, at least 20 m from the entrance; none on a Horde arena.**
+- **A floor source that cannot be hurt, labelled "Rift", with a visible Demonic zone of 600 cm.**
+- **It opens when the player first comes within 800 cm.**
+- **Three waves of four creatures of the floor's kinds, 15 s apart, the first at once. They pay and are the floor's
+  creatures.**
+- **60 seconds to kill every creature it sent. In time is a success; otherwise it closes and its creatures stay.**
+- **Each success: later rifts' creatures one rung higher, at most Demon Prince's; +10 magic find, flat.**
+- **The successes count across the dungeon, and end at leaving the dungeon or at the player's death.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The Horde panel line** says there is no rift rather than showing nothing, so a player who sees the row on a Horde
+  arena is told why nothing happens.
+- **The reward rides a new player floor-effect field, `RiftMagicFindAdded`**, applied like Void Parasite's and Chaos
+  Touched's stacks: written when the successes change, taken off by `ApplyFloorRulesToPlayer` and put back on the next
+  beat. It is the first field there that is not a percentage, so
+  `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` names it as deliberately flat.
+- **The rift's zone radius is Necrotic Bloom's wave radius**, which is also where its creatures are placed, so what the
+  zone shows is where the waves come from.
+- **The rift has the Imp's health at Common**, as every other floor source does, though nothing can take it.
+
+### The research: a rift closed against a clock, harder and richer each time
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo III, Greater Rifts | https://maxroll.gg/d3/resources/greater-rift-explained | "kill the Rift Guardian within a 15 minute time window"; a timely clear unlocks +1 to +3 tiers by speed; Rift Guardian gold, gems and blood shards scale "linearly with Greater Rift tier" |
+| Diablo III, Greater Rifts | https://www.purediablo.com/gameinfo/greater-rifts-diablo-3 | "If you complete a Greater Rift before time expires you'll advance to the next difficulty level." |
+
+**What it settles and what it does not.** Diablo III's Greater Rifts are the row's shape in public: a timed clear,
+success raises the difficulty of the next one, and rewards scale with that difficulty. That settles success being
+timed, the difficulty climbing a step per success, and the reward climbing with it. The pages do not describe waves
+coming from a fixed point, a rift that closes on failure with its creatures left behind, or magic find as the reward,
+so the three waves of four, the 15 and 60 seconds, the 800 cm, one rung a success and +10 magic find are this game's
+own.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `AbyssalRiftsFiguresWavesRungsAndReward`: the figures; when a wave is due and when the time runs out; the rung for
+  0, 2 and 99 successes; the magic find for 0 and 3.
+- `AbyssalRiftsPlacesOneRiftThatWaitsForThePlayer`: one rift that cannot be hurt, says "Rift", has the Imp's health,
+  pays nothing, is not one of the floor's creatures and stands far enough from the entrance; ten seconds with the
+  player at the entrance: waiting, nothing sent, its zone around it and not 650 cm out, the panel; a Horde arena has
+  none, with its panel line.
+- `ARiftOpensNearThePlayerAndSendsThreeWavesOfFour`: beside it, four at once of the floor's kinds at Common, paying,
+  among the floor's creatures, beside the rift, with the panel; four at 14.75 s, eight at 15, twelve at 30, twelve at
+  45; at 60 s closed with no success, the rift and its zone gone, all twelve standing, no magic find, the panel.
+- `ARiftClosedInTimeGivesMagicFindAndRaisesTheNextRifts`: every creature killed as it arrives closes it in time: one
+  success, rift and zone gone, +10 magic find, the panel; the next floor keeps the success and the magic find, and its
+  rift's first wave is one rung higher.
+- `RiftSuccessesEndAtLeavingTheDungeon`: +10 magic find, then leaving: no successes and no magic find.
+- `RiftSuccessesEndAtThePlayersDeath`: one success, then the player's death: none, with the panel.
+- `Cataclysm.SaveApply.ARiftDoesNotTakeTheTrainingDummysEmptyName`.
+
+Python: a row check that the row still says "unleashing waves", "close these rifts by defeating waves", "within a
+given time limit", "difficulty and rewards increase" and "successfully closed rift"; and `RiftMagicFindAdded` named in
+`NOT_PERCENTAGES`.
+
+### Also in this change: Swarm of Locusts is listed as partly built
+
+[#2129](https://github.com/sdubois777/Cataclysm/pull/2129), Swarm of Locusts, put `SwarmOfLocustsKey` in the list of
+rows `BuiltStateOf` answers `Built` for, while its entry and its key's comment both said PARTLY BUILT: nothing obscures
+vision, which the row names, because that waits on the vision system. The floor panel therefore showed the row as
+finished. This change moves the key to the partly built list, with its reason beside it, and adds an assertion that
+`BuiltStateOf` answers `Partly` for it. It is its own commit on this branch, by the coordinating session's ruling of
+2026-09-26, so that the one line does not need a whole-suite window of its own.
+
+### Run
+
+One window on 2026-09-26, ending at 07:56 UTC, on development a7af8dd1 with this change at 4d82cf51 (the Abyssal
+Rifts commit 84bdf84a and the Swarm of Locusts correction on it), with the build machine and no workbook. Every figure
+below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, started with no CI run in progress | `5515 passed, 8 skipped` (JUnit 5,523, no failures) |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite | `2599 tests performed, 2599 succeeded, 0 failed`; 2599 declared, gap 0, as registered (2592 + 7) |
+
+Three proofs with `prove_cpp_guard`, each anchor counted from the proof script's own table immediately before the
+window. Each restored run printed `1 tests performed, 1 succeeded, 0 failed`, and the source hash was the same before
+and after each.
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| a. a rift never opens: `if (true \|\| FVector::Dist2D(...) > Effects::AbyssalRiftsOpensWithinCm)` returns before it does | `Cataclysm.DungeonModifierEffects.ARiftOpensNearThePlayerAndSendsThreeWavesOfFour` | `1 tests performed, 0 succeeded, 1 failed: ARiftOpensNearThePlayerAndSendsThreeWavesOfFour` | 2, as registered: "it opened" and "the first wave at once: four", which read 0 |
+| b. a rift never closes: `if (false && AbyssalRiftWavesSent >= Effects::AbyssalRiftsWaves && Standing == 0)` | `Cataclysm.DungeonModifierEffects.ARiftClosedInTimeGivesMagicFindAndRaisesTheNextRifts` | `1 tests performed, 0 succeeded, 1 failed: ARiftClosedInTimeGivesMagicFindAndRaisesTheNextRifts` | 9, as registered: "one closed in time", "+10 magic find", "the closed panel", "still one", "still +10 magic find", and "one rung higher" four times |
+| c. the magic find written as 0: `Effects.RiftMagicFindAdded = 0.0f;` | the same | the same | 2, as registered: "+10 magic find" and "still +10 magic find", each 0 |
+
+The whole suite also reported 40 tests that skipped part of what they check, all of them art tests (the Paragon art
+is not in a worktree); none is a dungeon-modifier test.
+
+The Swarm of Locusts assertion ran inside the whole suite and passed: `BuiltStateOf` answers `Partly` for it.
+
+**Final Python**, after the entry's Run section: `5515 passed, 8 skipped` (JUnit 5,523, no failures), as before the
+window.
+
+---
+
 ## 2026-09-26 — Deployable Part 1: a summoner's rows scoped to Type.Deployable reach its machines and not its imps, and five gadget enchantments written on them
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` and `.h` (`TypeTags`, parsed at

@@ -4310,3 +4310,22 @@ def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter()
         assert phrase in lower, (
             f"Famine_Swarm_of_Locusts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_abyssal_rifts_row_still_has_rifts_closed_by_waves_in_time_and_rewards_that_grow():
+    """The phrases the rule's readings rest on.
+
+    "Portals to the Abyss open up, unleashing waves of demonic creatures. Players must close these rifts by
+    defeating waves of enemies within a given time limit. The difficulty and rewards increase with each successfully
+    closed rift." WAVES is what a rift sends; CLOSE THESE RIFTS BY DEFEATING WAVES and WITHIN A GIVEN TIME LIMIT are
+    the success; DIFFICULTY AND REWARDS INCREASE are the rung and the magic find each success adds. If any of them
+    changes, the reading must be revisited.
+    """
+    words = flat(rows()["Demonic_Abyssal_Rifts"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("unleashing waves", "close these rifts by defeating waves", "within a given time limit",
+                   "difficulty and rewards increase", "successfully closed rift"):
+        assert phrase in lower, (
+            f"Demonic_Abyssal_Rifts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "AbyssalRiftsKey in CataclysmDungeonModifierEffects.h. " + words)

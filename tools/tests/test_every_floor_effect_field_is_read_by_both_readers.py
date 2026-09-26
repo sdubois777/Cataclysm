@@ -86,7 +86,10 @@ def body_of(text: str, opening: str) -> str:
 #:
 #: `SpellsLockedValue` IS THE SAME STAT FOR THE SAME REASON, written by Anti-Magic Zones
 #: with its scope set to spells. Issues #1820 and #41.
-NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue"}
+#:
+#: `RiftMagicFindAdded` IS A FLAT FIGURE, NOT A SHARE: Abyssal Rifts adds magic find points,
+#: applied by `DungeonModifierEffectsAddFlat`. Issues #1820 and #41.
+NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "RiftMagicFindAdded"}
 
 
 @pytest.fixture(scope="module")
