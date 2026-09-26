@@ -300,6 +300,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ParasiteLessPercent = 0.0f;
 
+	/** Movement speed a phantasm's hit takes off the player for a moment, less. Mind-Shattering Illusions. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float IllusionSlowLessPercent = 0.0f;
+
 	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
@@ -455,6 +459,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
+			&& IllusionSlowLessPercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -2045,6 +2050,26 @@ public:
 	 *   be dead while a portal stands.
 	 */
 	static const TCHAR* PortalUnleashingKey;
+
+	/**
+	 * The row whose floor sends phantasms that hurt and disorient the player and fall at a touch. Issues #1820 and #41.
+	 *
+	 * "The Void manipulates perception, creating hallucinations and phantasmal enemies that can harm or disorient
+	 * players. They must discern reality from illusion, navigate through treacherous encounters, and maintain their
+	 * sanity."
+	 *
+	 * NOT `Chaos_Illusory_Enemies`, which makes a share of the floor's own creatures illusions whose damage is nothing.
+	 * These phantasms come on their own and do harm.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - EVERY `IllusionSecondsBetween`, `IllusionPhantasms` phantasms of the floor's kinds appear
+	 *   `IllusionAppearsAwayCm` from the player.
+	 * - THEY DEAL DAMAGE, PAY NOTHING AND ARE NOT THE FLOOR'S CREATURES.
+	 * - THEY DIE TO ANY ONE HIT: "discern reality from illusion" is that they fall at a touch.
+	 * - A PHANTASM'S HIT SLOWS THE PLAYER `IllusionSlowLessPercent` FOR `IllusionSlowSeconds`: "disorient".
+	 */
+	static const TCHAR* MindShatteringIllusionsKey;
 
 	/**
 	 * The row whose rivers of waste give the player disease stacks that burn and never run out. Issues #1820 and
@@ -4571,6 +4596,13 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/** Mind-Shattering Illusions' figures, every one a play-test value. See the key. */
+	static constexpr float IllusionSecondsBetween = 30.0f;
+	static constexpr int32 IllusionPhantasms = 2;
+	static constexpr float IllusionAppearsAwayCm = 800.0f;
+	static constexpr float IllusionSlowLessPercent = 30.0f;
+	static constexpr float IllusionSlowSeconds = 2.0f;
+
 	/**
 	 * Raw Sewage's figures, every one a play-test value. See the key. 2.5% a second at five stacks is the drain the
 	 * owner chose for Suffering Aura (2026-09-23).
@@ -5201,6 +5233,9 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** Whether phantasms appear now. */
+	static bool IllusionPhantasmsAreDue(float SecondsSinceLast);
 
 	/** The player's Raw Sewage stacks after one more is added: one more, never past the most. */
 	static int32 RawSewageStacksAfterAdding(int32 Stacks);

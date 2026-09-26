@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Mind-Shattering Illusions: every 30 seconds two phantasms of the floor's kinds appear 8 metres from the player; they hurt, fall to one hit, pay nothing, and a phantasm's hit slows the player 30% for 2 seconds
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, when phantasms are due, and a new player floor-effect field `IllusionSlowLessPercent` read by
+`StatModifiersFor`, `IsEmpty` and `Describe`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`
+(the phantasms, their clock, the slow on a phantasm's hit, the per-floor reset, the panel line); the automation tests
+in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Void_Mind_Shattering_Illusions` in `game/Data/DungeonModifiers.csv`, weight 10: "The Void manipulates perception,
+creating hallucinations and phantasmal enemies that can harm or disorient players. They must discern reality from
+illusion, navigate through treacherous encounters, and maintain their sanity." It states no figure.
+
+**It is not `Chaos_Illusory_Enemies`.** That row makes a share of the floor's own creatures illusions whose damage is
+nothing, with no tell on screen. This row's phantasms come on their own clock and do harm.
+
+### What the rule does
+
+Every thirty seconds on a floor carrying the row, two phantasms appear: creatures of the floor's own kinds at Common,
+on floor cells within six metres of a point eight metres from the player at a random angle. They fight as those
+creatures do and deal their damage, but each has one point of health, so any hit that lands fells it. They pay
+nothing, are raised by the rule and are not the floor's creatures. When a phantasm's blow lands on the player, the
+player's movement speed is 30% less for two seconds; a second blow starts the two seconds again. A new floor, or a
+Horde dungeon's next wave, takes the phantasms away, ends the slow and starts the clock again. The panel reads
+"mind-shattering illusions: next in 12 s; 2 phantasms standing".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **Every 30 s, 2 phantasms of the floor's kinds appear 8 m from the player.**
+- **They deal damage, pay nothing, are not the floor's creatures, and die to any one hit**: "discern reality from
+  illusion" is that they fall at a touch.
+- **A phantasm's hit slows the player 30% for 2 s**: "disorient".
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **"Die to any one hit" is one point of health.** Any hit that lands and deals any damage fells it; a hit it evades
+  does not.
+- **No mark under a phantasm's bar.** The row asks the player to discern it, and a label would do the discerning for
+  them; the panel counts how many stand.
+- **They stand on floor cells within six metres of the point eight metres away**, Necrotic Bloom's wave cells, so a
+  point off the floor still places them; a beat whose point has no floor within reach tries again on the next.
+- **The slow is a Less on movement speed through a new player floor-effect field**, written when it starts and ends,
+  as Edict of Silence writes its lock.
+
+### The research: something that comes to the player, hurts, and disorients
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, Nightmare Dungeon affixes | https://maxroll.gg/d4/resources/nightmare-dungeons | Drifting Shades: "Drifting Shades chase players. On contact, they explode for heavy damage and create a Nightmare Field that Dazes victims." |
+
+**What it settles and what it does not.** Diablo IV ships a dungeon affix whose spawned things come to the player,
+hurt them and disorient them. That settles the pairing of harm and a short loss of control from the same source. The
+page describes shades that explode, not phantasms that fight and fall at a touch, so the thirty seconds, two, eight
+metres, one point of health, 30% and two seconds are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `MindShatteringIllusionsFiguresPhantasmsAndSlow`: the figures; not due at 29.75 s and due at 30.
+- `TwoPhantasmsAppearEveryThirtySecondsAndFallToOneHit`: none at 29.75 s; two at 30 s of the floor's kinds, with a
+  brain, paying nothing, not the floor's, with one point of health, near the player, with the panel; a hit of 5 fells
+  one, and one stands.
+- `APhantasmsHitSlowsThePlayerForTwoSeconds`: with the player unable to evade, another creature's hit slows nothing;
+  a phantasm's hit makes the player 30% slower, still at 1.75 s, and not by 2.25 s.
+- `ANewFloorTakesThePhantasmsAway`: the last floor's phantasms are gone on the next, and its clock starts at 30 s.
+
+One Python check: the row still says "phantasmal enemies", "can harm or disorient" and "discern reality from
+illusion".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Set Stance and Scarred Plate: their "At 4 points:" clauses are rows, from four points and once
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv` and

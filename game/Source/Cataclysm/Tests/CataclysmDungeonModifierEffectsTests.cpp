@@ -31041,4 +31041,207 @@ bool FCataclysmSewageMasochistNothingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Void_Mind_Shattering_Illusions. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName IllusionsRow(UCataclysmDungeonModifierEffects::MindShatteringIllusionsKey);
+
+	/** A dungeon carrying only Mind-Shattering Illusions, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AnIllusionsFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {IllusionsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the dungeon's rules take off the player's movement speed, in percent, or 0. */
+	float IllusionSlowOn(const FPossessedPlayer& Player)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed"));
+		return Rule ? -Rule->Value : 0.0f;
+	}
+}
+
+// THE FIGURES: TWO PHANTASMS EVERY 30 S, 800 CM AWAY; A HIT SLOWS 30% FOR 2 S.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.MindShatteringIllusionsFiguresPhantasmsAndSlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("every 30 s"), Effects::IllusionSecondsBetween, 30.0f, 0.001f);
+	TestEqual(TEXT("two phantasms"), Effects::IllusionPhantasms, 2);
+	TestEqual(TEXT("800 cm away"), Effects::IllusionAppearsAwayCm, 800.0f, 0.001f);
+	TestEqual(TEXT("a hit slows 30%"), Effects::IllusionSlowLessPercent, 30.0f, 0.001f);
+	TestEqual(TEXT("for 2 s"), Effects::IllusionSlowSeconds, 2.0f, 0.001f);
+	TestFalse(TEXT("not due at 29.75 s"), Effects::IllusionPhantasmsAreDue(29.75f));
+	TestTrue(TEXT("due at 30 s"), Effects::IllusionPhantasmsAreDue(30.0f));
+	return true;
+}
+
+// AT 30 S TWO PHANTASMS OF THE FLOOR'S KINDS NEAR THE PLAYER, PAYING NOTHING, NOT THE FLOOR'S, EACH FALLING TO ONE HIT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionsAppearTest,
+	"Cataclysm.DungeonModifierEffects.TwoPhantasmsAppearEveryThirtySecondsAndFallToOneHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionsAppearTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnIllusionsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::IllusionSecondsBetween) - 1);
+	TestEqual(TEXT("none at 29.75 s"), Mode->PhantasmsStanding().Num(), 0);
+	Beat(Mode, 1);
+	const TArray<ACataclysmEnemyCharacter*> Standing = Mode->PhantasmsStanding();
+	if (!TestEqual(TEXT("two at 30 s"), Standing.Num(), Effects::IllusionPhantasms))
+	{
+		return false;
+	}
+	const FVector Feet = Player.Character->GetActorLocation();
+	for (ACataclysmEnemyCharacter* Phantasm : Standing)
+	{
+		TestFalse(TEXT("a creature of the floor's kinds, not a floor source"),
+				  Phantasm->IsA<ACataclysmFloorSourceCharacter>());
+		TestNotNull(TEXT("with a brain"), Phantasm->GetController());
+		TestFalse(TEXT("that pays nothing"), Phantasm->PaysForItsDeath());
+		TestFalse(TEXT("and is not one of the floor's creatures"), Mode->FloorEnemies.Contains(Phantasm));
+		TestEqual(TEXT("with one point of health"), MaxHealthOf(Phantasm), 1.0f, 0.01f);
+		TestTrue(TEXT("near the player"), FVector::Dist2D(Phantasm->GetActorLocation(), Feet)
+			<= Effects::IllusionAppearsAwayCm + Effects::NecroticBloomWaveWithinCm + 1.0f);
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(IllusionsRow),
+			  FString(TEXT("mind-shattering illusions: next in 30 s; 2 phantasms standing")));
+
+	// ONE HIT OF ANY SIZE: IT FALLS.
+	ACataclysmEnemyCharacter* First = Standing[0];
+	First->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, First, 5.0f);
+	TestTrue(TEXT("one small hit fells it"), UCataclysmSkillEffects::IsDead(First));
+	TestEqual(TEXT("one stands"), Mode->PhantasmsStanding().Num(), 1);
+	return true;
+}
+
+// A PHANTASM'S HIT SLOWS THE PLAYER 30% FOR 2 S; ANOTHER CREATURE'S HIT DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionsSlowTest,
+	"Cataclysm.DungeonModifierEffects.APhantasmsHitSlowsThePlayerForTwoSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionsSlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnIllusionsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::IllusionSecondsBetween));
+	const TArray<ACataclysmEnemyCharacter*> Standing = Mode->PhantasmsStanding();
+	if (!TestEqual(TEXT("two phantasms"), Standing.Num(), 2))
+	{
+		return false;
+	}
+
+	// THE PLAYER CANNOT EVADE, so each blow below lands and is announced.
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+
+	// ANOTHER CREATURE'S HIT: NO SLOW.
+	ACataclysmEnemyCharacter* Other =
+		SpawnImpWithHealth(World, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f), 100.0f);
+	if (!TestNotNull(TEXT("another creature"), Other))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Other, Player.Character, 1.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("another creature's hit slows nothing"), IllusionSlowOn(Player), 0.0f, 0.001f);
+
+	// A PHANTASM'S HIT: 30% SLOWER, FOR 2 S.
+	UCataclysmSkillEffects::ApplyHit(Standing[0], Player.Character, 1.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("a phantasm's hit: 30% slower"), IllusionSlowOn(Player), 30.0f, 0.001f);
+	Beat(Mode, BeatsFor(Effects::IllusionSlowSeconds) - 2);
+	TestEqual(TEXT("still slower at 1.75 s"), IllusionSlowOn(Player), 30.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("the slow has gone by 2.25 s"), IllusionSlowOn(Player), 0.0f, 0.001f);
+	return true;
+}
+
+// A NEW FLOOR TAKES THE PHANTASMS AWAY AND STARTS THE CLOCK AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionsFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorTakesThePhantasmsAway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionsFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnIllusionsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::IllusionSecondsBetween));
+	const TArray<ACataclysmEnemyCharacter*> Left = Mode->PhantasmsStanding();
+	if (!TestEqual(TEXT("two phantasms"), Left.Num(), 2) || !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Phantasm : Left)
+	{
+		TestFalse(TEXT("the last floor's phantasm is gone"), IsValid(Phantasm));
+	}
+	TestEqual(TEXT("none stand"), Mode->PhantasmsStanding().Num(), 0);
+	TestEqual(TEXT("and the clock starts again"), Mode->LiveCountsForTheFloor().FindRef(IllusionsRow),
+			  FString(TEXT("mind-shattering illusions: next in 30 s; 0 phantasms standing")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

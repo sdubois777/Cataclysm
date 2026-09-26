@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::MindShatteringIllusionsKey =
+	TEXT("Void_Mind_Shattering_Illusions");
+
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
 
@@ -481,6 +484,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(MindShatteringIllusionsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
@@ -679,6 +683,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(MindShatteringIllusionsKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
@@ -1000,6 +1005,9 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.ParasiteLessPercent);
 	}
+
+	// AND A PHANTASM'S HIT, A LESS ON MOVEMENT SPEED FOR A MOMENT. Issues #1820 and #41.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat, Effects.IllusionSlowLessPercent);
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
 	// #41. This is the first entry in this function to write a single resistance,
@@ -1419,6 +1427,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 			TEXT("damage, resistances and movement speed %.0f%% less from attached voidlings"),
 			Effects.ParasiteLessPercent));
 	}
+	if (Effects.IllusionSlowLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from a phantasm's hit"),
+									Effects.IllusionSlowLessPercent));
+	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(
@@ -1771,6 +1784,11 @@ int32 UCataclysmDungeonModifierEffects::RawSewageStacksAfterAdding(int32 Stacks)
 float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
 {
 	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::IllusionPhantasmsAreDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= IllusionSecondsBetween;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

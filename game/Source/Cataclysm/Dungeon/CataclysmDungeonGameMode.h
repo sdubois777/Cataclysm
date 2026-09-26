@@ -2123,6 +2123,9 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Mind-Shattering Illusions, for the panel and tests: the phantasms that still stand. */
+	TArray<ACataclysmEnemyCharacter*> PhantasmsStanding() const;
+
 	/** Raw Sewage, for the panel and tests: the disease stacks the player carries. */
 	int32 RawSewageStacksHeld() const { return RawSewageStacks; }
 
@@ -2416,6 +2419,16 @@ private:
 	 * it, and a coffin's Vampire Lord let out at the threshold.
 	 */
 	void NoteDeathForObsidianSarcophagi(const struct FCataclysmDeathNotice& Notice);
+
+	/** Mind-Shattering Illusions, on a blow: a phantasm's hit on the player slows them for a moment. */
+	void NoteHitForMindShatteringIllusions(const struct FCataclysmHitNotice& Notice);
+
+	/** Mind-Shattering Illusions, on the beat: phantasms on their clock, and the slow counted down and written. */
+	void StepMindShatteringIllusions(class ACataclysmPlayerCharacter* Player,
+									 class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** The phantasms destroyed and forgotten, with the clock and the slow. */
+	void ForgetThePhantasms();
 
 	/**
 	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
@@ -3425,6 +3438,16 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Mind-Shattering Illusions: the phantasms, the clock, the slow's seconds left and what was last written on the
+	 * player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Phantasms;
+	float IllusionSecondsSinceLast = 0.0f;
+	float IllusionSlowLeft = 0.0f;
+	float IllusionSlowApplied = 0.0f;
+	int32 IllusionPanelKey = -1;
 
 	/**
 	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether
