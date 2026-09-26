@@ -224,6 +224,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::BlackestShadowKey =
 	TEXT("Void_The_Blackest_Shadow");
 
+const TCHAR* UCataclysmDungeonModifierEffects::ShadowyEnemiesKey =
+	TEXT("Void_Shadowy_Enemies");
+
 const TCHAR* UCataclysmDungeonModifierEffects::FogOfWarKey =
 	TEXT("War_Fog_of_War");
 
@@ -589,6 +592,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
 		|| RowKey == FName(BlackestShadowKey)
+		|| RowKey == FName(ShadowyEnemiesKey)
 		|| RowKey == FName(VoidParasiteKey)
 		|| RowKey == FName(ObsidianSarcophagiKey))
 	{
@@ -819,6 +823,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
+		FName(ShadowyEnemiesKey),
 		FName(VoidParasiteKey),
 		FName(GrimTotemsKey),
 		FName(ObsidianSarcophagiKey),
