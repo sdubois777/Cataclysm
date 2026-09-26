@@ -363,9 +363,9 @@ health bars); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDung
 and `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. **The
+whole suite had one failure, in a test this change does not touch**; "Run" says which and why.
 
 ### The row
 
@@ -456,10 +456,39 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Catacly
 One Python check: the row still says "unstable portals", "periodically spawn", "twisted abominations",
 "swiftly dispatch" and "before they overwhelm".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development ddb8ab5f as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on 5308fbfc: "Build: Succeeded - 30 actions, 27 files compiled"; **"2562 tests performed,
+  2561 succeeded, 1 failed: TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8"**, every declared test reported
+  (2562 declared, gap 0).
+- **That failure is not this change's.** `Cataclysm.Enchantments.TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8`
+  came with #2118. It sets the second enemy's evasion attribute base to 100 and expects a melee swing to be
+  evaded: "Expected 'an evaded melee swing on the second enemy deals nothing' to be 0.000000, but it was
+  110.000000", and four later assertions failed by the one hit it counted. The evasion step draws
+  `FMath::FRandRange(0, 100)` and compares it with the evasion the stat pipeline answers, which is below 100
+  here, so the swing lands at random. The same test passed on 789ce413, which held #2118, and this change
+  touches no enchantment or evasion code. Ruled by the coordinating session: the test is at fault on
+  development, it is handed to the enchantment session, it is not changed here, and the whole suite is not
+  run a second time for this record.
+- **The Python suite of record**, on 5308fbfc: 5,491 passed and 8 skipped of 5,499, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded. All three ran on
+the prefix `Cataclysm.DungeonModifierEffects.APortalSends`, which does not select the failing test above.
+
+- **The cap never reached** (`&& OwnStanding < 1000;` in `PortalUnleashingSendsNow`). With the break in, 1
+  failed, on exactly "at sixty seconds, still four" (6), "the panel at the cap", "one killed: three stand" (5),
+  "the panel with one killed" and "the next beat sends its replacement" (5). "At forty seconds, four" held, as
+  registered.
+- **A portal sends nothing** (`if (true || !Effects::PortalUnleashingSendsNow(...))`). With the break in, 1
+  failed, on "at ten seconds each portal has sent one" (0), where the test returns.
+- **What a portal sends pays** (`Sent->bDiesUnpaid = false;`). With the break in, 1 failed, on "that pays
+  nothing", once for each portal. Checked by reading before the window: `PaysForItsDeath` reads `bDiesUnpaid`
+  itself, and in `ACataclysmEnemyCharacter::HandleDeath` it alone gates both the drop roll and the experience;
+  being raised by a rule only marks the drops, and the floor's creature list is not read on that path.
 
 ---
 
