@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
+	TEXT("Famine_Swarm_of_Locusts");
+
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
 
@@ -481,6 +484,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(SwarmOfLocustsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
@@ -679,6 +683,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(SwarmOfLocustsKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
@@ -1771,6 +1776,21 @@ int32 UCataclysmDungeonModifierEffects::RawSewageStacksAfterAdding(int32 Stacks)
 float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
 {
 	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::SwarmOfLocustsIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= SwarmOfLocustsSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::SwarmOfLocustsLastsSeconds()
+{
+	return SwarmOfLocustsWarningSeconds + SwarmOfLocustsTravelsCm / SwarmOfLocustsSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::SwarmOfLocustsBurn(float MaximumHealth)
+{
+	return MaximumHealth > 0.0f ? MaximumHealth * SwarmOfLocustsPercentPerSecond / 100.0f : 0.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

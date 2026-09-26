@@ -391,6 +391,132 @@ Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before i
 
 ---
 
+## 2026-09-25 — Swarm of Locusts, PARTLY BUILT: every 45 seconds a swarm crosses the floor through where the player stood and burns 3% of maximum health a second while it covers them outside a shelter; "obscuring vision" waits on the vision system
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, when a swarm comes, how long it lasts and what it burns); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the shelters, the swarm, its warning and travel, the burn, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and only in part: the row's "obscuring vision"
+is not built.** Run in one editor window; the figures are in "Run" at the end of this entry.
+
+### The row
+
+`Famine_Swarm_of_Locusts` in `game/Data/DungeonModifiers.csv`, weight 10: "Periodically, swarms of locusts sweep
+through the dungeon, obscuring vision and dealing continuous damage. Players must find shelter or use specific
+abilities to survive the swarm." It states no figure.
+
+### What the rule does
+
+When a floor carrying the row is placed, two shelters stand where Eternal Chorus's picker puts its sources, at least
+twenty metres from the entrance; a Horde arena has one, kept for its waves. A shelter is a visible zone 300 cm across
+its radius, drawn in Celestial's colours, that does nothing itself. Every 45 seconds a swarm appears: a zone 800 cm
+across its radius, 2400 cm from the player at a random angle. It stands there for three seconds as its warning, then
+travels in a straight line through where the player stood when it appeared, at 300 cm a second -- Divine Wrath's
+speed, slower than every class -- until it has gone 4800 cm, sixteen seconds, and then it is gone and the next one's
+clock starts. While it travels, once a second, a player it covers who is in no shelter loses 3% of maximum health,
+dealt as damage over time typed Famine, which famine resistance meets. Creatures are not burned. The panel reads
+"swarm of locusts: next in 12 s", or "swarm of locusts: a swarm is crossing; shelter stops it".
+
+**NOT BUILT, AND WAITING ON THE VISION SYSTEM: "obscuring vision".** The game has no way to limit what the player
+can see, so a swarm does not hide anything. Swarm of Locusts is listed under vision in the plan of missing systems, so
+this row is finished when that system exists. **Do not read this row as done.**
+
+**"Use specific abilities" has no rule of its own.** Moving out of the swarm's line escapes it, since it is slower
+than every class and travels in a straight line, and resistances meet its damage.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **A swarm every 45 s, after a 3 s warning at its starting point; the first comes 45 s into a floor.**
+- **A swarm is a zone of radius 800 cm starting 2400 cm from the player at a random angle, travelling straight
+  through where the player stood when it appeared at 300 cm/s, until it has gone 4800 cm.**
+- **While it covers the player: 3% of maximum health a second, typed Famine, once a second however many swarms.**
+- **Two shelters a floor, radius 300 cm, visible, doing nothing; a player inside one takes nothing from a swarm; one
+  on a Horde arena, kept.**
+- **Creatures are not burned.**
+- **"Obscuring vision" is not built now**; it is written here as waiting on the vision system, and the row is listed
+  under vision in the plan of missing systems.
+- **The panel line as proposed.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The warning is the swarm itself standing still**, visible where it will set off from, rather than a separate mark.
+- **The burn is dealt by the rule's own step, not by the zone** -- Infested Veins' pattern -- so a shelter can stop it;
+  the swarm zone does no damage of its own.
+- **The shelters are drawn in Celestial's colours**, as Void Parasite's light is, so they do not read as more of the
+  swarm.
+- **A swarm travels by the zone's own movement** (`ACataclysmGroundZone::TravelAt`, as Divine Wrath's beam does). A
+  test world never ticks a zone, so the tests move it with `TravelStep` where they need it moved.
+
+### The research: something that crosses the dungeon, and somewhere to hide from it
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, dungeon affixes | https://www.purediablo.com/diablo4/Dungeon_Affixes | Lightning Storm: "Lightning gathers above the player. Get into the protection dome to avoid severe outcomes." |
+| Diablo IV, Nightmare Dungeon affixes | https://maxroll.gg/d4/resources/nightmare-dungeons | Stormbane's Wrath: "A dark monolith chases players, pulsing for heavy damage when nearby." |
+
+**What it settles and what it does not.** Diablo IV ships both halves: a hazard that comes for the player and hurts
+when near, and a protective dome the player must get into to avoid a gathering storm. Neither page describes a hazard
+that crosses the whole floor in a line, so the swarm's straight crossing, its 45 seconds, its size, its speed, its 3%
+and the two shelters are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `SwarmOfLocustsComesEveryFortyFiveSecondsAndBurnsThreePercent`: the figures; a swarm is due at 45 s and not
+  44.75; it lasts 19 s; a second under it costs 30 of 1000 and nothing with no maximum.
+- `SwarmOfLocustsPlacesTwoSheltersAwayFromTheEntrance`: two shelters and no other zone, each far enough from the
+  entrance, covering its middle and not 350 cm out; no swarm yet; the panel; a Horde arena has one, drawn again in the
+  same place by its next wave.
+- `ASwarmOfLocustsWarnsThenTravelsThroughWhereThePlayerStood`: no swarm at 44.75 s; at 45 s one 2400 cm from the
+  player, standing, not moving, covering 700 cm from its middle, with the panel; three seconds later it travels at
+  300 cm a second toward where the player stood; sixteen seconds later it is gone and the next one's clock has
+  started.
+- `ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter`: under a travelling swarm and in no shelter, the player
+  loses at least one and at most two seconds' 3% in two seconds; with the swarm moved onto a shelter and the player in
+  it, nothing is lost.
+
+One Python check: the row still says "periodically", "sweep through", "obscuring vision", "continuous damage" and
+"find shelter".
+
+### Run
+
+One window on 2026-09-26, ending at 05:44 UTC, on development 3992871a with this change at c16dacf8, with the build
+machine and no workbook. Every figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard`
+printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, started with no CI run in progress | `5511 passed, 8 skipped` (JUnit 5,519, no failures) |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite | `2586 tests performed, 2586 succeeded, 0 failed`; 2586 declared, gap 0, as registered (2582 + 4) |
+
+Three proofs with `prove_cpp_guard`, each anchor counted from the proof script's own table immediately before the
+window. Each restored run printed `1 tests performed, 1 succeeded, 0 failed`, and the source hash was the same before
+and after each.
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| a. the burn written as 0 | `Cataclysm.DungeonModifierEffects.ASwarmOfLocustsBurnsThePlayer` | `1 tests performed, 0 succeeded, 1 failed: ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter` | 1, as registered: "under the swarm the player burns (0.0 lost)" |
+| b. a shelter stops nothing: `(true \|\| !bSheltered)` | the same | the same | 1, as registered: "in the shelter nothing is lost", which read 89,657 against 94,828 |
+| c. a swarm never comes: `if (true \|\| !Effects::SwarmOfLocustsIsDue(...)` | `Cataclysm.DungeonModifierEffects.ASwarmOfLocustsWarns` | `1 tests performed, 0 succeeded, 1 failed: ASwarmOfLocustsWarnsThenTravelsThroughWhereThePlayerStood` | 1, as registered: "at 45 seconds, a swarm" |
+
+The whole suite also reported 40 tests that skipped part of what they check, all of them art tests (the Paragon art
+is not in a worktree); none is a dungeon-modifier test.
+
+**Final Python**, after the entry's Run section: `5511 passed, 8 skipped` (JUnit 5,519, no failures), as before the
+window.
+
+---
+
 ## 2026-09-25 — Raw Sewage: two rivers of waste give the player disease stacks, one on entering and one each two seconds in them, to five; each burns 0.5% of maximum health a second on every floor until a floor's boss or the player dies; the player carries the disease keyword while any is held
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its

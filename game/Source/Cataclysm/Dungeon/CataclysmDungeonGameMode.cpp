@@ -1519,6 +1519,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		ForgetThePortals();
 		PlaceThePortals();
 
+		// AND SWARM OF LOCUSTS' SHELTERS AND ANY SWARM, FOR THE SAME REASON; a Horde arena's waves keep its shelter.
+		// Issues #1820 and #41.
+		ForgetTheLocusts();
+		PlaceTheShelters();
+
 		// AND RAW SEWAGE'S RIVERS, FOR THE SAME REASON; a Horde arena's waves keep its river. The stacks are the
 		// dungeon's and are not touched here. Issues #1820 and #41.
 		ForgetTheRivers();
@@ -4607,6 +4612,175 @@ void ACataclysmDungeonGameMode::NoteDeathForRawSewage(const FCataclysmDeathNotic
 	RefreshFloorModifierPanel();
 }
 
+TArray<ACataclysmGroundZone*> ACataclysmDungeonGameMode::LocustSheltersNow() const
+{
+	TArray<ACataclysmGroundZone*> Now;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Shelter : LocustShelters)
+	{
+		if (ACataclysmGroundZone* Zone = Shelter.Get(); IsValid(Zone))
+		{
+			Now.Add(Zone);
+		}
+	}
+	return Now;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheLocusts()
+{
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Shelter : LocustShelters)
+	{
+		if (ACataclysmGroundZone* Zone = Shelter.Get())
+		{
+			Zone->Destroy();
+		}
+	}
+	LocustShelters.Reset();
+	LocustShelterCells.Reset();
+	if (ACataclysmGroundZone* Swarm = SwarmOfLocusts.Get())
+	{
+		Swarm->Destroy();
+	}
+	SwarmOfLocusts = nullptr;
+	bSwarmOfLocustsTravelling = false;
+	SwarmOfLocustsSecondsIntoIt = 0.0f;
+	SwarmOfLocustsSecondsSinceLast = 0.0f;
+	SwarmOfLocustsSecondsSinceBurn = 0.0f;
+	SwarmOfLocustsPanelSecond = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheShelters()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::SwarmOfLocustsKey)))
+	{
+		return;
+	}
+	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, where Eternal Chorus's picker puts its sources.
+	LocustShelterCells = EternalChorusCells(
+		*CurrentFloor, FloorBrief.bWaveWalksIn ? Effects::SwarmOfLocustsSheltersPerHordeArena
+											   : Effects::SwarmOfLocustsSheltersPerFloor);
+	LocustShelters.SetNum(LocustShelterCells.Num());
+	UE_LOG(LogCataclysm, Log, TEXT("Swarm of Locusts: %d shelter(s) on floor %d"), LocustShelterCells.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepSwarmOfLocusts(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FVector Feet = Player->GetActorLocation();
+
+	// THE SHELTERS DRAWN AGAIN WHENEVER THEY ARE MISSING, which is after every floor or wave. In Celestial's colours,
+	// as Void Parasite's light is, so they do not read as more of the swarm.
+	bool bSheltered = false;
+	for (int32 Index = 0; Index < LocustShelterCells.Num(); ++Index)
+	{
+		ACataclysmGroundZone* Shelter = LocustShelters.IsValidIndex(Index) ? LocustShelters[Index].Get() : nullptr;
+		if (!Shelter && Source)
+		{
+			const FVector Where = CurrentFloor->WorldOfCell(LocustShelterCells[Index]);
+			Shelter = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::SwarmOfLocustsShelterRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/FName(TEXT("Celestial")));
+			if (LocustShelters.IsValidIndex(Index))
+			{
+				LocustShelters[Index] = Shelter;
+			}
+		}
+		bSheltered |= Shelter && Shelter->Covers(Feet);
+	}
+
+	if (ACataclysmGroundZone* Swarm = SwarmOfLocusts.Get())
+	{
+		SwarmOfLocustsSecondsIntoIt += SecondsBetweenWaveChecks;
+
+		// ITS WARNING OVER, IT TRAVELS. The zone moves itself from its own tick in play.
+		if (!bSwarmOfLocustsTravelling && SwarmOfLocustsSecondsIntoIt >= Effects::SwarmOfLocustsWarningSeconds)
+		{
+			Swarm->TravelAt(SwarmOfLocustsVelocity);
+			bSwarmOfLocustsTravelling = true;
+			SwarmOfLocustsSecondsSinceBurn = 0.0f;
+			RefreshFloorModifierPanel();
+		}
+
+		// CROSSED: GONE, AND THE NEXT ONE'S CLOCK STARTS.
+		if (SwarmOfLocustsSecondsIntoIt >= Effects::SwarmOfLocustsLastsSeconds())
+		{
+			Swarm->Destroy();
+			SwarmOfLocusts = nullptr;
+			bSwarmOfLocustsTravelling = false;
+			SwarmOfLocustsSecondsSinceLast = 0.0f;
+			RefreshFloorModifierPanel();
+			return;
+		}
+
+		// THE BURN, ONCE A SECOND WHILE IT TRAVELS, FOR A PLAYER IT COVERS WHO IS IN NO SHELTER. The rule's own step
+		// deals it, as Infested Veins' burn is dealt, so a shelter can stop it.
+		if (bSwarmOfLocustsTravelling)
+		{
+			SwarmOfLocustsSecondsSinceBurn += SecondsBetweenWaveChecks;
+			if (SwarmOfLocustsSecondsSinceBurn >= 1.0f)
+			{
+				SwarmOfLocustsSecondsSinceBurn = 0.0f;
+				const float Burn =
+					Effects::SwarmOfLocustsBurn(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+				if (Source && Burn > 0.0f && Swarm->Covers(Feet) && !bSheltered && !UCataclysmSkillEffects::IsDead(Player))
+				{
+					FCataclysmHitDelivery Delivery;
+					Delivery.bIsArea = true;
+					Delivery.bIsDamageOverTime = true;
+					Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::SwarmOfLocustsKey);
+					UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Burn, Delivery);
+				}
+			}
+		}
+		return;
+	}
+
+	SwarmOfLocustsSecondsSinceLast += SecondsBetweenWaveChecks;
+	const int32 Second = FMath::CeilToInt(Effects::SwarmOfLocustsSecondsBetween - SwarmOfLocustsSecondsSinceLast);
+	if (Second != SwarmOfLocustsPanelSecond)
+	{
+		SwarmOfLocustsPanelSecond = Second;
+		RefreshFloorModifierPanel();
+	}
+	if (!Effects::SwarmOfLocustsIsDue(SwarmOfLocustsSecondsSinceLast) || !Source)
+	{
+		return;
+	}
+
+	// A SWARM: AWAY FROM THE PLAYER AT A RANDOM ANGLE, AIMED THROUGH WHERE THE PLAYER STANDS NOW. It does no damage of
+	// its own; it lasts its warning and its travel.
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Where(Feet.X + Effects::SwarmOfLocustsAppearsAwayCm * FMath::Cos(Angle),
+						Feet.Y + Effects::SwarmOfLocustsAppearsAwayCm * FMath::Sin(Angle), Feet.Z);
+	ACataclysmGroundZone* Swarm = ACataclysmGroundZone::Spawn(
+		Source, Where, Effects::SwarmOfLocustsRadiusCm, Effects::SwarmOfLocustsLastsSeconds() + 1.0f, 0.0f,
+		DungeonGameModeTypeOfRow(Effects::SwarmOfLocustsKey));
+	if (!Swarm)
+	{
+		return;
+	}
+	FVector Toward = Feet - Where;
+	Toward.Z = 0.0f;
+	SwarmOfLocustsVelocity = Toward.GetSafeNormal() * Effects::SwarmOfLocustsSpeedCmPerSecond;
+	SwarmOfLocusts = Swarm;
+	bSwarmOfLocustsTravelling = false;
+	SwarmOfLocustsSecondsIntoIt = 0.0f;
+	UE_LOG(LogCataclysm, Log, TEXT("Swarm of Locusts: a swarm appeared %.0f cm from the player on floor %d"),
+		   Effects::SwarmOfLocustsAppearsAwayCm, FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -5865,6 +6039,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
+	ForgetTheLocusts();
 
 	// AND RAW SEWAGE'S RIVERS AND STACKS: the stacks are the dungeon's and end with it. The beat takes the disease
 	// tag off the player, since the step runs while it is held. Issues #1820 and #41.
@@ -6351,6 +6526,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND SWARM OF LOCUSTS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bSwarmOfLocusts =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey));
 	// AND RAW SEWAGE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHILE A STACK OR THE TAG IS HELD: the stacks
 	// are the dungeon's and burn on every floor. Issues #1820 and #41.
 	const bool bRawSewage = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RawSewageKey))
@@ -6386,6 +6564,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bSwarmOfLocusts
 		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
@@ -6609,6 +6788,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND SWARM OF LOCUSTS, WHICH SENDS A ZONE ACROSS THE FLOOR AND HURTS THE PLAYER IT COVERS. Issues #1820 and #41.
+	if (bSwarmOfLocusts)
+	{
+		StepSwarmOfLocusts(Player, AbilitySystem);
 	}
 
 	// AND RAW SEWAGE, WHICH DRAWS RIVERS, ADDS STACKS, BURNS AND TAGS THE PLAYER. Issues #1820 and #41.
@@ -9345,6 +9530,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  RawSewageStacks, RawSewageStacks == 1 ? TEXT("") : TEXT("s"),
 							  Effects::RawSewagePercentPerSecond(RawSewageStacks))
 			: FString(TEXT("raw sewage: no disease stacks")));
+	}
+
+	// AND SWARM OF LOCUSTS: the next swarm's seconds, or that one is crossing and a shelter stops it. Issues #1820
+	// and #41.
+	const FName Locusts(Effects::SwarmOfLocustsKey);
+	if (FloorBrief.Modifiers.Contains(Locusts))
+	{
+		Counting.Add(Locusts, SwarmOfLocusts.IsValid()
+			? FString(TEXT("swarm of locusts: a swarm is crossing; shelter stops it"))
+			: FString::Printf(TEXT("swarm of locusts: next in %d s"),
+							  FMath::Max(0, FMath::CeilToInt(Effects::SwarmOfLocustsSecondsBetween
+															  - SwarmOfLocustsSecondsSinceLast))));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap

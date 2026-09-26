@@ -31041,4 +31041,284 @@ bool FCataclysmSewageMasochistNothingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Famine_Swarm_of_Locusts. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName LocustsRow(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey);
+
+	/** A dungeon carrying only Swarm of Locusts, on floor 2 with its own creatures cleared, the player on the entrance. */
+	ACataclysmDungeonGameMode* ALocustFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {LocustsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+		Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.Character->GetActorLocation().Z));
+		return Mode;
+	}
+
+	/** Beat until the first swarm has appeared and finished its warning; null if none did. */
+	ACataclysmGroundZone* ATravellingSwarm(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		Beat(Mode, BeatsFor(Effects::SwarmOfLocustsSecondsBetween) + BeatsFor(Effects::SwarmOfLocustsWarningSeconds));
+		ACataclysmGroundZone* Swarm = Mode->SwarmOfLocustsNow();
+		return Test.TestNotNull(TEXT("a swarm came"), Swarm)
+				&& Test.TestTrue(TEXT("and it is travelling"), Mode->SwarmOfLocustsIsTravelling())
+			? Swarm
+			: nullptr;
+	}
+}
+
+// THE FIGURES: EVERY FORTY-FIVE SECONDS, THREE SECONDS' WARNING, SIXTEEN SECONDS' TRAVEL, 3% A SECOND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLocustsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.SwarmOfLocustsComesEveryFortyFiveSecondsAndBurnsThreePercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLocustsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("every forty-five seconds"), Effects::SwarmOfLocustsSecondsBetween, 45.0f, 0.001f);
+	TestEqual(TEXT("three seconds' warning"), Effects::SwarmOfLocustsWarningSeconds, 3.0f, 0.001f);
+	TestEqual(TEXT("800 cm across the radius"), Effects::SwarmOfLocustsRadiusCm, 800.0f, 0.001f);
+	TestEqual(TEXT("appearing 2400 cm away"), Effects::SwarmOfLocustsAppearsAwayCm, 2400.0f, 0.001f);
+	TestEqual(TEXT("at Divine Wrath's 300 cm a second"), Effects::SwarmOfLocustsSpeedCmPerSecond, 300.0f, 0.001f);
+	TestEqual(TEXT("for 4800 cm"), Effects::SwarmOfLocustsTravelsCm, 4800.0f, 0.001f);
+	TestEqual(TEXT("3% a second"), Effects::SwarmOfLocustsPercentPerSecond, 3.0f, 0.001f);
+	TestEqual(TEXT("two shelters a floor"), Effects::SwarmOfLocustsSheltersPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::SwarmOfLocustsSheltersPerHordeArena, 1);
+	TestEqual(TEXT("a shelter 300 cm across"), Effects::SwarmOfLocustsShelterRadiusCm, 300.0f, 0.001f);
+
+	TestFalse(TEXT("44.75 seconds: not yet"), Effects::SwarmOfLocustsIsDue(44.75f));
+	TestTrue(TEXT("45: a swarm"), Effects::SwarmOfLocustsIsDue(45.0f));
+	TestEqual(TEXT("a swarm lasts its warning and sixteen seconds"), Effects::SwarmOfLocustsLastsSeconds(), 19.0f, 0.001f);
+	TestEqual(TEXT("a second under it costs 30 of 1000"), Effects::SwarmOfLocustsBurn(1000.0f), 30.0f, 0.001f);
+	TestEqual(TEXT("nothing with no maximum"), Effects::SwarmOfLocustsBurn(0.0f), 0.0f, 0.001f);
+	return true;
+}
+
+// TWO SHELTERS THAT DO NOTHING, FAR FROM THE ENTRANCE; A HORDE ARENA HAS ONE, KEPT BY ITS NEXT WAVE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLocustsSheltersTest,
+	"Cataclysm.DungeonModifierEffects.SwarmOfLocustsPlacesTwoSheltersAwayFromTheEntrance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLocustsSheltersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ALocustFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<ACataclysmGroundZone*> Shelters = Mode->LocustSheltersNow();
+	if (!TestEqual(TEXT("two shelters"), Shelters.Num(), Effects::SwarmOfLocustsSheltersPerFloor))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and no other zone"), ZonesOnTheFloor(World), 2);
+	for (ACataclysmGroundZone* Shelter : Shelters)
+	{
+		const FVector Middle = Shelter->GetActorLocation();
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Middle, Mode->CurrentFloor->EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+		TestTrue(TEXT("covering its middle"), Shelter->Covers(Middle));
+		TestFalse(TEXT("and not 350 cm out"),
+				  Shelter->Covers(Middle + FVector(Effects::SwarmOfLocustsShelterRadiusCm + 50.0f, 0.0f, 0.0f)));
+	}
+	TestNull(TEXT("no swarm yet"), Mode->SwarmOfLocustsNow());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(LocustsRow),
+			  FString(TEXT("swarm of locusts: next in 45 s")));
+
+	// A HORDE ARENA HAS ONE SHELTER, AND ITS NEXT WAVE DRAWS IT AGAIN IN THE SAME PLACE.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<ACataclysmGroundZone*> Horde = Mode->LocustSheltersNow();
+	if (!TestEqual(TEXT("one shelter in a Horde arena"), Horde.Num(), Effects::SwarmOfLocustsSheltersPerHordeArena))
+	{
+		return false;
+	}
+	const FVector First = Horde[0]->GetActorLocation();
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<ACataclysmGroundZone*> Again = Mode->LocustSheltersNow();
+	if (TestEqual(TEXT("the next wave has one"), Again.Num(), 1))
+	{
+		TestEqual(TEXT("in the same place"), static_cast<float>(FVector::Dist2D(Again[0]->GetActorLocation(), First)),
+				  0.0f, 1.0f);
+	}
+	return true;
+}
+
+// A SWARM APPEARS AT FORTY-FIVE SECONDS, 2400 CM AWAY, STANDS THREE SECONDS, THEN TRAVELS AT 300 CM A SECOND THROUGH
+// WHERE THE PLAYER STOOD; IT IS GONE SIXTEEN SECONDS LATER, AND THE NEXT ONE'S CLOCK STARTS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLocustsSwarmTest,
+	"Cataclysm.DungeonModifierEffects.ASwarmOfLocustsWarnsThenTravelsThroughWhereThePlayerStood",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLocustsSwarmTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ALocustFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Stood = Player.Character->GetActorLocation();
+
+	Beat(Mode, BeatsFor(Effects::SwarmOfLocustsSecondsBetween) - 1);
+	TestNull(TEXT("at 44.75 seconds, no swarm"), Mode->SwarmOfLocustsNow());
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Swarm = Mode->SwarmOfLocustsNow();
+	if (!TestNotNull(TEXT("at 45 seconds, a swarm"), Swarm))
+	{
+		return false;
+	}
+	TestEqual(TEXT("2400 cm from the player"),
+			  static_cast<float>(FVector::Dist2D(Swarm->GetActorLocation(), Stood)), 2400.0f, 1.0f);
+	TestFalse(TEXT("standing for its warning"), Mode->SwarmOfLocustsIsTravelling());
+	TestTrue(TEXT("not yet moving"), Swarm->TravelPerSecond.IsNearlyZero());
+	TestTrue(TEXT("covering 700 cm from its middle"), Swarm->Covers(Swarm->GetActorLocation() + FVector(700.0f, 0.0f, 0.0f)));
+	TestEqual(TEXT("the panel while it crosses"), Mode->LiveCountsForTheFloor().FindRef(LocustsRow),
+			  FString(TEXT("swarm of locusts: a swarm is crossing; shelter stops it")));
+
+	Beat(Mode, BeatsFor(Effects::SwarmOfLocustsWarningSeconds));
+	TestTrue(TEXT("after three seconds it travels"), Mode->SwarmOfLocustsIsTravelling());
+	TestEqual(TEXT("at 300 cm a second"), static_cast<float>(Swarm->TravelPerSecond.Size()), 300.0f, 0.01f);
+	FVector Toward = Stood - Swarm->GetActorLocation();
+	Toward.Z = 0.0f;
+	TestTrue(TEXT("toward where the player stood"),
+			 FVector::DotProduct(Swarm->TravelPerSecond.GetSafeNormal(), Toward.GetSafeNormal()) > 0.999f);
+
+	Beat(Mode, BeatsFor(Effects::SwarmOfLocustsTravelsCm / Effects::SwarmOfLocustsSpeedCmPerSecond));
+	TestFalse(TEXT("sixteen seconds later it is gone"), IsValid(Swarm));
+	TestNull(TEXT("and the floor has none"), Mode->SwarmOfLocustsNow());
+	TestEqual(TEXT("the next one's clock has started"), Mode->LiveCountsForTheFloor().FindRef(LocustsRow),
+			  FString(TEXT("swarm of locusts: next in 45 s")));
+	return true;
+}
+
+// A TRAVELLING SWARM BURNS THE PLAYER IT COVERS 3% OF MAXIMUM HEALTH A SECOND, AND NOTHING WHILE THEY ARE IN A SHELTER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLocustsBurnTest,
+	"Cataclysm.DungeonModifierEffects.ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLocustsBurnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ALocustFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// ON THE ENTRANCE WHILE THE FIRST SWARM WARNS AND SETS OFF: NOTHING LOST UNTIL IT COVERS THEM.
+	ACataclysmGroundZone* Swarm = ATravellingSwarm(*this, Mode);
+	if (!Swarm)
+	{
+		return false;
+	}
+	const TArray<ACataclysmGroundZone*> Shelters = Mode->LocustSheltersNow();
+	const auto InAShelter = [&Shelters](const FVector& Where)
+	{
+		return Shelters.ContainsByPredicate([&Where](const ACataclysmGroundZone* Shelter) { return Shelter->Covers(Where); });
+	};
+
+	// UNDER THE SWARM, OUT OF EVERY SHELTER: A POINT WITHIN IT THAT NO SHELTER COVERS.
+	const float Z = Player.Character->GetActorLocation().Z;
+	FVector Under = Swarm->GetActorLocation();
+	for (const FVector& Offset : {FVector::ZeroVector, FVector(500.0f, 0.0f, 0.0f), FVector(-500.0f, 0.0f, 0.0f),
+								  FVector(0.0f, 500.0f, 0.0f), FVector(0.0f, -500.0f, 0.0f)})
+	{
+		if (!InAShelter(Swarm->GetActorLocation() + Offset))
+		{
+			Under = Swarm->GetActorLocation() + Offset;
+			break;
+		}
+	}
+	if (!TestTrue(TEXT("a point under the swarm and in no shelter"), Swarm->Covers(Under) && !InAShelter(Under)))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(FVector(Under.X, Under.Y, Z));
+	const float PerSecond = Effects::SwarmOfLocustsBurn(HealthForTypedDamage);
+	float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	float Lost = Before - HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("under the swarm the player burns (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(FString::Printf(TEXT("once a second, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
+			 Lost <= 2.0f * PerSecond + 0.5f);
+
+	// THE SWARM MOVED ONTO A SHELTER, THE PLAYER IN IT: NOTHING LOST.
+	if (!TestTrue(TEXT("the floor has a shelter"), !Shelters.IsEmpty()))
+	{
+		return false;
+	}
+	const FVector Refuge = Shelters[0]->GetActorLocation();
+	FVector Across = Refuge - Swarm->GetActorLocation();
+	Across.Z = 0.0f;
+	const float Distance = Across.Size();
+	Swarm->TravelAt(Across.GetSafeNormal() * Effects::SwarmOfLocustsSpeedCmPerSecond);
+	Swarm->TravelStep(Distance / Effects::SwarmOfLocustsSpeedCmPerSecond);
+	Player.Character->SetActorLocation(FVector(Refuge.X, Refuge.Y, Z));
+	if (!TestTrue(TEXT("the swarm now covers the shelter"), Swarm->Covers(Refuge)))
+	{
+		return false;
+	}
+	Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	TestEqual(TEXT("in the shelter nothing is lost"), HealthOf(Player.Character), Before, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
