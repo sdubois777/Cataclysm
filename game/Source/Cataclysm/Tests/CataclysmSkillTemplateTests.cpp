@@ -3130,21 +3130,35 @@ bool FCataclysmDebuffTest::RunTest(const FString&)
 		UCataclysmSkillEffects::HasTag(Target.Actor,
 			UCataclysmSkillShapes::StatusTagFor(TEXT("Madness"))));
 
-	// Now set the target alight and use it again. The cooldown refuses a second
-	// activation, so the state is reset and the ability driven again.
+	// Now a burning enemy, and the ability used again. The cooldown refuses a
+	// second activation, so the state is reset and the ability driven again.
+	//
+	// A SECOND, FRESH TARGET, NOT THE FIRST ONE SET ALIGHT. A madness that lands
+	// opens the stun's shared five-second window, which is the design (the Madness
+	// row: "It gets the immunity window and boss immunity"), so the same target
+	// maddened again at once is refused, and this line read 0 when that rule was
+	// built on 2026-09-26. This test measures the burning doubling, not the
+	// window, so the first target steps out of the 15-metre range and a new one
+	// takes its place.
 	Caster.AbilitySystem->RemoveActiveEffectsWithGrantedTags(
 		FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(
 			ECataclysmAbilitySlot::Support)));
 
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Target.Actor,
+	Target.Actor->SetActorLocation(FVector(30 * M, 0, 0));
+	FScopedFighter Second(World, FVector(1 * M, 0, 0));
+
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Second.Actor,
 		/*HitDamage=*/100.0f, /*bScalesWithInstigator=*/true,
 		/*bBurnIsDesigned=*/true);
-	TestTrue(TEXT("The target is now burning"),
-		UCataclysmSkillEffects::HasTag(Target.Actor, UCataclysmSkillEffects::BurnTag()));
+	TestTrue(TEXT("The second target is burning"),
+		UCataclysmSkillEffects::HasTag(Second.Actor, UCataclysmSkillEffects::BurnTag()));
 
 	TestTrue(TEXT("It activates again"), Activate(Caster, Subjugate));
 	TestEqual(TEXT("And lasts twice as long on a burning enemy"),
 		Subjugate->LastDurationApplied, 6.0f);
+	TestTrue(TEXT("On the second target"),
+		UCataclysmSkillEffects::HasTag(Second.Actor,
+			UCataclysmSkillShapes::StatusTagFor(TEXT("Madness"))));
 
 	return true;
 }

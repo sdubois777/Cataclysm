@@ -59,6 +59,30 @@ namespace CataclysmFearTest
 		return Creature ? Cast<ACataclysmEnemyController>(Creature->GetController()) : nullptr;
 	}
 
+	/**
+	 * A player the dungeon game mode's beat can find, or false.
+	 *
+	 * COPIED FROM `FPossessedPlayer` in CataclysmDungeonModifierEffectsTests.cpp,
+	 * whose comment says why it is `AController::Possess`. The beat runs no floor
+	 * rule at all, Dirge Resonance included, unless
+	 * `GetFirstPlayerController()->GetPawn()` is a player character with an
+	 * ability system; this test first ran without one and its crescendo never came.
+	 */
+	bool PossessAPlayer(UWorld* World, const FVector& Where)
+	{
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
+		if (!PlayerState || !Controller || !Character)
+		{
+			return false;
+		}
+		Controller->SetPlayerState(PlayerState);
+		Controller->Possess(Character);
+		return Character->GetAbilitySystemComponent() != nullptr;
+	}
+
 	int32 Did(ACataclysmEnemyController* Brain)
 	{
 		return static_cast<int32>(Brain->Think());
@@ -289,6 +313,11 @@ CATACLYSM_FEAR_TEST(FCataclysmFearDirgeTest,
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
+	if (!TestTrue(TEXT("set-up: a possessed player the beat can find"),
+				  PossessAPlayer(World, FVector(0, 20 * M, 0))))
+	{
+		return false;
+	}
 	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
 	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
 	{
