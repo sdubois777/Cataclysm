@@ -2,6 +2,74 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Three enchantments the owner removed are retired with a weight of 0: they stay in the table and never drop
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantments sheet), `game/Data/EnchantmentsPositive.csv`
+and `game/Content/Data/DT_EnchantmentsPositive.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json`, `tools/generate_datatables.py` (`RETIRABLE_WEIGHT_TABLES`,
+`is_retired`), `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_enchantment_weight_row_counts.py`, and
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentTests.cpp` (one test). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED, AND WHY RETIRED RATHER THAN DELETED
+
+On 2026-09-25 the owner chose to delete three benefits:
+
+| Benefit | Weight before |
+| :-- | :-- |
+| Your HP regeneration continues at 50% effectiveness during combat | 3 |
+| 100% of your block value is added to your retaliation damage | 3 |
+| Class points spent in your primary tree are 10%-20% more effective | 2 |
+
+The coordinating session ruled, under the owner's delegation, that they be retired with a weight of
+0 instead. Deleting a row shifts the position code of every later row, and merged design-log entries
+quote those codes: a deletion dry run failed `test_the_decisions_log_enchantment_codes_resolve.py`
+for P224, P253, P254, P255, P268, P293, P307, N150 and N151. For the player a retirement is the same
+as a deletion, because `UCataclysmDropRoll::EnchantmentDrawWeight` prices any weight below 1 at
+nothing, so the row is a drop candidate for no slot. The rows keep their names, their text and
+their codes; an item that already carries one keeps its text and still does nothing.
+
+The generator accepts a weight of 0 on an ordinary row of the two enchantment tables only
+(`is_retired`), and still refuses it on a set row, whose Weight column holds the set's identifier,
+and on every other table. The weight-band check `test_every_row_that_is_not_a_set_can_be_drawn`
+skips a row `is_retired` names; rehearsing the retirements on a copy found that it would otherwise
+have failed.
+
+A fourth enchantment decided the same day, "When you die all your buffs are removed", was kept by
+the owner, and was built as the auras-at-death change.
+
+### WHAT THE TESTS COVER
+
+`Cataclysm.Enchantments.ARetiredEnchantmentIsNeverADropCandidate` checks that each of the three rows
+is present, weighs 0, is priced at nothing and is a drop candidate for none of eight slots, while an
+ordinary row, "Double your energy shield", still is. **It reads the generated CSV, not the shipped
+asset**: its helper `Positives()` (`CataclysmEnchantmentTests.cpp` line 68) loads
+`EnchantmentsPositive.csv`. That the game's own copy, `DT_EnchantmentsPositive.uasset`, carries the
+zeros is shown by `EveryGeneratedTableHasAnAssetThatMatchesIt` passing after the rebuild. The two
+tests together are what cover the game's copy.
+
+### THE RUN
+
+On `b5f7e56a`, the three prepared commits moved onto development `564f991d`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `b5f7e56a` | "5528 passed, 8 skipped in 342.26s"; JUnit tests 5536, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `74fc2437` | `EnchantmentsPositive.csv`: only the three weights, 3.0, 3.0 and 2.0, become 0.0 |
+| Python after the rows | "1 failed, 5527 passed, 8 skipped": the stale CSV hash, as predicted |
+| Stale-asset step | "134 tests performed, 133 succeeded, 1 failed: EveryGeneratedTableHasAnAssetThatMatchesIt". **Registered as 2 failures, and that was a prediction miss**: the new test passed, because it reads the CSV (see above), which already held the zeros. The coordinating session ruled to continue |
+| Asset rebuild `43966231` | only `DT_EnchantmentsPositive.uasset` and `datatable_asset_sources.json` |
+| The new test and the asset guard | "2 tests performed, 2 succeeded, 0 failed" |
+| Whole suite, `43966231`, in its own command | "2643 tests performed, 2643 succeeded, 0 failed"; 2643 declared, gap 0 |
+| Proof A, the candidate list ignoring the draw weight | PROVED: `ARetiredEnchantmentIsNeverADropCandidate` failed 24 assertions, "'<row>' is no candidate on <slot>" for 3 rows x 8 slots; restored "1 tests performed, 1 succeeded" |
+| Proof B, a weight of 0 priced above nothing | PROVED: the same test failed 27 assertions, those 24 and "'<row>' is priced at nothing" x 3, each reading 0.25; restored "1 tests performed, 1 succeeded" |
+| Python control, `RETIRABLE_WEIGHT_TABLES` emptied, in a copy | PROVED: "2 failed, 332 passed" in `tools/tests/test_generate_datatables.py`, naming only `test_weight_0_retires_an_ordinary_enchantment` for each table; restored "334 passed" |
+| Rehearsals, in copies with the rows applied | the first found `test_every_row_that_is_not_a_set_can_be_drawn` failing, and its correction was added to this branch; the second printed "12 failed, 5510 passed, 13 skipped", as predicted |
+
+---
+
 ## 2026-09-25 — Blood Debt: a dungeon owes 30 kills a floor, at most 300; each quarter paid gives 5% more damage, and an unpaid debt takes 30% off the player's damage on the boss-fight floor
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
