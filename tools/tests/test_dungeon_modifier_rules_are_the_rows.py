@@ -4310,3 +4310,20 @@ def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter()
         assert phrase in lower, (
             f"Famine_Swarm_of_Locusts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_reality_rifts_row_still_teleports_gives_buffs_and_names_hidden_areas():
+    """The phrases the rule's readings rest on.
+
+    "The fabric of reality is unstable in Chaos Lord dungeons, leading to the creation of temporary portals or rifts.
+    Players can use these rifts strategically to teleport, gain buffs, or access hidden areas." TELEPORT is the pairs;
+    GAIN BUFFS is the gift rift; TEMPORARY is the rest after a crossing; ACCESS HIDDEN AREAS is the part not built,
+    waiting on layout changes. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Chaos_Reality_Rifts"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("temporary portals or rifts", "teleport", "gain buffs", "access hidden areas"):
+        assert phrase in lower, (
+            f"Chaos_Reality_Rifts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "RealityRiftsKey in CataclysmDungeonModifierEffects.h. " + words)

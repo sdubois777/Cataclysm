@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::RealityRiftsKey =
+	TEXT("Chaos_Reality_Rifts");
+
 const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
 	TEXT("Famine_Swarm_of_Locusts");
 
@@ -520,7 +523,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
-		|| RowKey == FName(SingularityWellsKey))
+		|| RowKey == FName(SingularityWellsKey)
+		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
+		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
+		|| RowKey == FName(RealityRiftsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -683,6 +689,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(RealityRiftsKey),
 		FName(SwarmOfLocustsKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
@@ -1005,6 +1012,12 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.ParasiteLessPercent);
 	}
+
+	// AND A GIFT RIFT'S DAMAGE, A MORE ON ATTACK AND SPELL DAMAGE, as Void Parasite's is taken. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.RealityGiftDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.RealityGiftDamageMorePercent);
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
 	// #41. This is the first entry in this function to write a single resistance,
@@ -1423,6 +1436,10 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 		Clauses.Add(FString::Printf(
 			TEXT("damage, resistances and movement speed %.0f%% less from attached voidlings"),
 			Effects.ParasiteLessPercent));
+	}
+	if (Effects.RealityGiftDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from a gift rift"), Effects.RealityGiftDamageMorePercent));
 	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{

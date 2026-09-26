@@ -31321,4 +31321,215 @@ bool FCataclysmLocustsBurnTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Chaos_Reality_Rifts. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName RealityRow(UCataclysmDungeonModifierEffects::RealityRiftsKey);
+
+	/** A dungeon carrying only Reality Rifts, on floor 2 with its own creatures cleared, its rifts drawn. */
+	ACataclysmDungeonGameMode* ARealityFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {RealityRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("two pairs and a gift"), Mode->RealityRiftCellsNow().Num(),
+							   2 * UCataclysmDungeonModifierEffects::RealityRiftPairs + 1))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** The player stood on a rift's cell. */
+	void StandOnARift(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, int32 Index)
+	{
+		const FVector At = Mode->CurrentFloor->WorldOfCell(Mode->RealityRiftCellsNow()[Index]);
+		Player.Character->SetActorLocation(FVector(At.X, At.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** What the dungeon's rules add to this stat, in percent, or 0 for none. */
+	float RealityRuleOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, Stat);
+		return Rule ? Rule->Value : 0.0f;
+	}
+
+	/** How far the player stands from a rift's cell, flat. */
+	float FromARift(const ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, int32 Index)
+	{
+		return FVector::Dist2D(Player.Character->GetActorLocation(),
+							   Mode->CurrentFloor->WorldOfCell(Mode->RealityRiftCellsNow()[Index]));
+	}
+}
+
+// THE FIGURES: TWO PAIRS, 150 CM, 20 S OF REST; A GIFT OF 20% MORE DAMAGE FOR 20 S.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityFiguresTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsFiguresPairsRestAndGift",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two pairs"), Effects::RealityRiftPairs, 2);
+	TestEqual(TEXT("150 cm across the radius"), Effects::RealityRiftRadiusCm, 150.0f, 0.001f);
+	TestEqual(TEXT("20 s of rest"), Effects::RealityRiftRestSeconds, 20.0f, 0.001f);
+	TestEqual(TEXT("a gift of 20% more damage"), Effects::RealityGiftDamageMorePercent, 20.0f, 0.001f);
+	TestEqual(TEXT("for 20 s"), Effects::RealityGiftSeconds, 20.0f, 0.001f);
+	return true;
+}
+
+// FIVE RIFTS FAR FROM THE ENTRANCE, DRAWN; A STEP INTO ONE CARRIES THE PLAYER TO THE OTHER OF ITS PAIR; THEN THEY REST
+// FOR 20 S, AND AFTER IT THE SAME STEP CARRIES THEM BACK.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityCarriesTest,
+	"Cataclysm.DungeonModifierEffects.ARealityRiftCarriesThePlayerToItsPairThenRests",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityCarriesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARealityFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const FIntPoint& Cell : Mode->RealityRiftCellsNow())
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Mode->CurrentFloor->WorldOfCell(Cell), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+	}
+	TestEqual(TEXT("five rifts drawn"), ZonesOnTheFloor(World), 5);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RealityRow),
+			  FString(TEXT("reality rifts: rifts open; a gift rift waits")));
+
+	// INTO RIFT 0: CARRIED TO RIFT 1.
+	StandOnARift(Mode, Player, 0);
+	Beat(Mode, 1);
+	TestTrue(FString::Printf(TEXT("carried to rift 1 (%.0f cm from it)"), FromARift(Mode, Player, 1)),
+			 FromARift(Mode, Player, 1) < 1.0f);
+	TestEqual(TEXT("the panel while they rest"), Mode->LiveCountsForTheFloor().FindRef(RealityRow),
+			  FString(TEXT("reality rifts: rifts resting for 20 s; a gift rift waits")));
+
+	// STANDING IN RIFT 1 WHILE THEY REST: NOT CARRIED BACK UNTIL 20 S HAVE PASSED.
+	Beat(Mode, BeatsFor(Effects::RealityRiftRestSeconds) - 1);
+	TestTrue(TEXT("still at rift 1 at 19.75 s"), FromARift(Mode, Player, 1) < 1.0f);
+	Beat(Mode, 1);
+	TestTrue(FString::Printf(TEXT("carried back to rift 0 at 20 s (%.0f cm from it)"), FromARift(Mode, Player, 0)),
+			 FromARift(Mode, Player, 0) < 1.0f);
+
+	// THE OTHER PAIR, AFTER ITS REST, WITH THE PLAYER OFF EVERY RIFT WHILE IT RESTS: RIFT 3 CARRIES TO RIFT 2.
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.Character->GetActorLocation().Z));
+	Beat(Mode, BeatsFor(Effects::RealityRiftRestSeconds));
+	StandOnARift(Mode, Player, 3);
+	Beat(Mode, 1);
+	TestTrue(TEXT("rift 3 carries to rift 2"), FromARift(Mode, Player, 2) < 1.0f);
+	return true;
+}
+
+// THE GIFT RIFT: 20% MORE DAMAGE FOR 20 S, ONCE; IT IS SPENT AND GOES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityGiftTest,
+	"Cataclysm.DungeonModifierEffects.TheGiftRiftGivesTwentyPercentMoreDamageOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityGiftTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARealityFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const int32 Gift = 2 * Effects::RealityRiftPairs;
+	TestEqual(TEXT("no gift yet"), RealityRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	StandOnARift(Mode, Player, Gift);
+	Beat(Mode, 1);
+	TestTrue(TEXT("the gift is taken"), Mode->RealityGiftTaken());
+	TestEqual(TEXT("20% more attack damage"), RealityRuleOn(Player, TEXT("attack_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("20% more spell damage"), RealityRuleOn(Player, TEXT("spell_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("the gift rift is spent and gone"), ZonesOnTheFloor(World), 4);
+	TestFalse(TEXT("and the player was not carried"), FromARift(Mode, Player, Gift) > 1.0f);
+
+	Beat(Mode, BeatsFor(Effects::RealityGiftSeconds) - 2);
+	TestEqual(TEXT("still more at 19.75 s"), RealityRuleOn(Player, TEXT("attack_damage")), 20.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("gone by 20.25 s"), RealityRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RealityRow),
+			  FString(TEXT("reality rifts: rifts open; the gift is spent")));
+
+	// STANDING THERE AGAIN: NOTHING.
+	Beat(Mode, BeatsFor(5.0f));
+	TestEqual(TEXT("the spent gift gives nothing again"), RealityRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	return true;
+}
+
+// A NEW FLOOR: NEW RIFTS AND A NEW GIFT; A GIFT UNDER WAY ENDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorBringsNewRealityRiftsAndEndsTheGift",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARealityFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	StandOnARift(Mode, Player, 2 * Effects::RealityRiftPairs);
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("the gift is taken on floor 2"), Mode->RealityGiftTaken())
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("floor 3 has its own gift"), Mode->RealityGiftTaken());
+	TestEqual(TEXT("its rifts drawn"), ZonesOnTheFloor(World), 5);
+	TestEqual(TEXT("and the last floor's gift has ended"), RealityRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RealityRow),
+			  FString(TEXT("reality rifts: rifts open; a gift rift waits")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

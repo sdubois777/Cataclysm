@@ -300,6 +300,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ParasiteLessPercent = 0.0f;
 
+	/** Damage a Reality Rifts gift rift gives the player for a time, more. Issues #1820 and #41. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RealityGiftDamageMorePercent = 0.0f;
+
 	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
@@ -455,6 +459,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
+			&& RealityGiftDamageMorePercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -2045,6 +2050,23 @@ public:
 	 *   be dead while a portal stands.
 	 */
 	static const TCHAR* PortalUnleashingKey;
+
+	/**
+	 * The row whose floor holds rifts the player can use: paired rifts that carry the player from one to the other, and
+	 * a rift that gives a moment's strength. Issues #1820 and #41.
+	 *
+	 * "The fabric of reality is unstable in Chaos Lord dungeons, leading to the creation of temporary portals or rifts.
+	 * Players can use these rifts strategically to teleport, gain buffs, or access hidden areas."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, AND PARTLY BUILT. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - `RealityRiftPairs` PAIRS A FLOOR: stepping into one rift carries the player to the other of its pair; then the
+	 *   rifts rest for `RealityRiftRestSeconds`.
+	 * - ONE GIFT RIFT A FLOOR: stepping into it gives `RealityGiftDamageMorePercent` more damage for
+	 *   `RealityGiftSeconds`.
+	 * - "ACCESS HIDDEN AREAS" IS NOT BUILT: it waits on changing the floor's layout during play.
+	 */
+	static const TCHAR* RealityRiftsKey;
 
 	/**
 	 * The row whose swarms cross the floor and burn the player they cover, unless the player is in a shelter.
@@ -4594,6 +4616,16 @@ public:
 	static constexpr float PortalUnleashingRadiusCm = NecroticBloomWaveWithinCm;
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
+
+	/**
+	 * Reality Rifts' figures, every one a play-test value. See the key. A rift's reach is the size of Void Parasite's
+	 * light.
+	 */
+	static constexpr int32 RealityRiftPairs = 2;
+	static constexpr float RealityRiftRadiusCm = 150.0f;
+	static constexpr float RealityRiftRestSeconds = 20.0f;
+	static constexpr float RealityGiftDamageMorePercent = 20.0f;
+	static constexpr float RealityGiftSeconds = 20.0f;
 
 	/**
 	 * Swarm of Locusts' figures, every one a play-test value. See the key. The warning is Artillery Strike's; the

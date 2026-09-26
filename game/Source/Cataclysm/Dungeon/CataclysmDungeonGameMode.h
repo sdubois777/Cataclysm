@@ -2123,6 +2123,15 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/**
+	 * Reality Rifts, for tests: this arena's rift cells. The first `RealityRiftPairs` pairs are paired in order, 0 with
+	 * 1 and 2 with 3; the last is the gift rift.
+	 */
+	const TArray<FIntPoint>& RealityRiftCellsNow() const { return RealityRiftCells; }
+
+	/** Reality Rifts, for tests: whether the gift rift has been used on this arena. */
+	bool RealityGiftTaken() const { return bRealityGiftTaken; }
+
 	/** Swarm of Locusts, for tests: the swarm on the floor, or null between swarms. */
 	class ACataclysmGroundZone* SwarmOfLocustsNow() const { return SwarmOfLocusts.Get(); }
 
@@ -2326,6 +2335,12 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Reality Rifts: this arena's rifts chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheRealityRifts();
+
+	/** Reality Rifts, on the beat: the rifts drawn, a step into one answered, and the gift written on the player. */
+	void StepRealityRifts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Swarm of Locusts: this arena's shelters chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheShelters();
@@ -3446,6 +3461,19 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Reality Rifts: this arena's rift cells and the zones drawn there, whether the gift has been taken, the seconds
+	 * the rifts rest and the gift lasts, what was last written on the player, and what the panel last showed. Issues
+	 * #1820 and #41.
+	 */
+	TArray<FIntPoint> RealityRiftCells;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> RealityRiftZones;
+	bool bRealityGiftTaken = false;
+	float RealityRiftRestLeft = 0.0f;
+	float RealityGiftLeft = 0.0f;
+	float RealityGiftApplied = 0.0f;
+	int32 RealityRiftPanelKey = -1;
 
 	/**
 	 * Swarm of Locusts: the swarm on the floor, its travel, how long since it appeared and since the last one
