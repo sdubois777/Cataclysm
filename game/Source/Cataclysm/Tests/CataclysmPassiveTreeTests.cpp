@@ -15891,6 +15891,458 @@ namespace CataclysmDemonicRowsTest
 	}
 }
 
+// ---------------------------------------------------------------------------
+// How far away a player's attacker stood, through a real hit. The two rows that
+// read it, each at two placements. Issue #1755.
+//
+// THE DISTANCE IS MEASURED IN `CataclysmVitalAttributeSet.cpp` WHEN A HIT
+// ARRIVES, from the thing that struck to the defender. A player's vital
+// attribute set lives on its player state, not on its body, so the defender
+// has to be the ability system's AVATAR for the distance to be the player's.
+//
+// TWO PLACEMENTS EACH, CHOSEN SO THE TWO POSSIBLE MEASUREMENTS DISAGREE. The
+// player stands away from the world's origin, and one attacker stands near the
+// player but far from the origin, the other at the origin but far from the
+// player. A distance measured to anything that stays at the origin answers
+// each placement the wrong way round, where one placement alone could agree by
+// chance.
+//
+// THE WHOLE HIT, NOT THE LOOKUP. `ApplyHit` from a creature, the damage the
+// player received read off the result, with no critical strike. A Ritualist has
+// no evasion or block line, so every hit lands and each is deterministic.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDefenderDistanceTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmKeystoneRowTest;
+
+	/** Stand the player here, at its own height. */
+	void StandAt(const FRealCharacter& Player, float MetresAlongX)
+	{
+		FVector Where = Player.Character->GetActorLocation();
+		Where.X = MetresAlongX * M;
+		Where.Y = 0.0f;
+		Player.Character->SetActorLocation(Where);
+	}
+
+	/** A creature striking for 10, standing at this many metres along x. */
+	ACataclysmEnemyCharacter* AttackerAt(UWorld* World, const FRealCharacter& Player,
+										 float MetresAlongX)
+	{
+		FVector Where = Player.Character->GetActorLocation();
+		Where.X = MetresAlongX * M;
+		Where.Y = 0.0f;
+		ACataclysmEnemyCharacter* Made = SpawnHostile(World, Where);
+		if (Made)
+		{
+			Made->SetAttackDamage(10.0f);
+		}
+		return Made;
+	}
+
+	/** Everything one hit took from the player, with the player made whole first. */
+	float Received(const FRealCharacter& Player, AActor* Attacker)
+	{
+		using Vital = UCataclysmVitalAttributeSet;
+		UCataclysmAbilitySystemComponent* System = Player.AbilitySystem;
+		System->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+			System->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+		System->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(),
+			System->GetNumericAttribute(Vital::GetMaxEnergyShieldAttribute()));
+
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotCriticallyStrike = true;
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Attacker, Player.Character, 100.0f,
+										 FGameplayTagContainer(), Delivery, &Resolved);
+		return Resolved.DealtToHealth + Resolved.AbsorbedByShield
+			+ Resolved.AbsorbedByMana;
+	}
+
+	bool Ready(FAutomationTestBase& Test, const FRealCharacter& Player)
+	{
+		if (!Test.TestTrue(TEXT("a possessed Ritualist with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStandingApartDistanceTest,
+	"Cataclysm.DefenderBody.StandingApartSoftensAHitFromAnAttackerMoreThanSixMetresFromTheRitualist",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_capstone_100` option 3, Standing Apart: "You take 25% less damage
+ * from enemies more than 6 metres away from you." The tree filled to the
+ * capstone's 100 points, and each hit with the option chosen compared with the
+ * same hit and no option chosen, so only the option's row differs.
+ *
+ * A: the Ritualist 20 metres from the origin, struck from 4 metres away (24
+ *    from the origin). Not beyond 6, so no softening: 1.00.
+ * B: the Ritualist 8 metres from the origin, struck from the origin itself,
+ *    8 metres away. Beyond 6, so 0.75.
+ */
+bool FCataclysmStandingApartDistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderDistanceTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!Ready(*this, Player) || !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		return false;
+	}
+
+	const FName Capstone(TEXT("Ritualist_capstone_100"));
+	FCataclysmPassiveAllocation Unchosen;
+	int32 Filled = 0;
+	const int32 Threshold = CataclysmDemonicRowsTest::FillClassTreeToOpen(
+		NodeTable, TEXT("Ritualist"), Capstone, Unchosen, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(TEXT("and the tree holds it"), Filled, Threshold))
+	{
+		return false;
+	}
+	Unchosen.Add(Capstone, 1);
+	FCataclysmPassiveAllocation Chosen = Unchosen;
+	Chosen.SetChosenOption(Capstone, 3);
+
+	const auto Ratio = [&](AActor* Attacker)
+	{
+		Player.State->SetPassiveAllocation(Unchosen, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		const float Without = Received(Player, Attacker);
+		Player.State->SetPassiveAllocation(Chosen, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		const float With = Received(Player, Attacker);
+		return Without > 0.0f ? With / Without : -1.0f;
+	};
+
+	StandAt(Player, 20.0f);
+	ACataclysmEnemyCharacter* Near = AttackerAt(World, Player, 24.0f);
+	if (!TestNotNull(TEXT("an attacker 4 metres from the Ritualist"), Near)
+		|| !TestEqual(TEXT("which really is 4 metres from its body"),
+					  UCataclysmTargeting::MetresBetween(Near, Player.Character), 4.0f,
+					  0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("A: struck from 4 metres, 24 from the origin: not softened"),
+			  Ratio(Near), 1.0f, 0.001f);
+	Near->Destroy();
+
+	StandAt(Player, 8.0f);
+	ACataclysmEnemyCharacter* Far = AttackerAt(World, Player, 0.0f);
+	if (!TestNotNull(TEXT("an attacker at the origin"), Far)
+		|| !TestEqual(TEXT("which really is 8 metres from the Ritualist's body"),
+					  UCataclysmTargeting::MetresBetween(Far, Player.Character), 8.0f,
+					  0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("B: struck from 8 metres, at the origin: 25% less"), Ratio(Far),
+			  0.75f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNearbyEnemiesDistanceTest,
+	"Cataclysm.DefenderBody.NearbyEnemiesDealLessOnlyFromWithinFiveMetresOfThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The enchantment "Nearby enemies deal 10%-30% less damage to you, from within 5
+ * metres", worn on a helm at a roll of 1, so 30%. Each hit wearing it compared
+ * with the same hit wearing a helm whose enchantment does nothing.
+ *
+ * A: the player 20 metres from the origin, struck from 3 metres away (23 from
+ *    the origin). Within 5, so 0.70.
+ * B: the player 8 metres from the origin, struck from the origin, 8 metres
+ *    away. Not within 5, so 1.00.
+ */
+bool FCataclysmNearbyEnemiesDistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderDistanceTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	const auto Helm = [](const TCHAR* Positive)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(TEXT("Head_Helm"));
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(Positive);
+		Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
+		Rolled.PositiveRoll = 1.0f;
+		Item.Enchantments.Add(Rolled);
+		Item.EnchantmentCount = 1;
+		return Item;
+	};
+	const FCataclysmItem Nearby =
+		Helm(TEXT("Positive_Nearby_enemies_deal_10_30_less_damage_to_you"));
+	const FCataclysmItem Plain = Helm(TEXT("Positive_Ultimate_has_1_3_additional_charges"));
+
+	const auto Wear = [&](const FCataclysmItem& Item)
+	{
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		const ECataclysmEquipResult Result =
+			Player.Equipment->Equip(Item, Removed, AlsoRemoved, Slot);
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		return Result == ECataclysmEquipResult::Equipped
+			|| Result == ECataclysmEquipResult::Swapped;
+	};
+
+	const auto Ratio = [&](AActor* Attacker)
+	{
+		if (!Wear(Plain))
+		{
+			return -1.0f;
+		}
+		const float Without = Received(Player, Attacker);
+		if (!Wear(Nearby))
+		{
+			return -1.0f;
+		}
+		const float With = Received(Player, Attacker);
+		return Without > 0.0f ? With / Without : -1.0f;
+	};
+
+	const float Less = UCataclysmItemValues::EnchantmentValue(-10.0f, -30.0f, 1.0f);
+	if (!TestEqual(TEXT("a roll of 1 is the 30% end"), Less, -30.0f, 0.001f))
+	{
+		return false;
+	}
+
+	StandAt(Player, 20.0f);
+	ACataclysmEnemyCharacter* Near = AttackerAt(World, Player, 23.0f);
+	if (!TestNotNull(TEXT("an attacker 3 metres from the player"), Near)
+		|| !TestEqual(TEXT("which really is 3 metres from its body"),
+					  UCataclysmTargeting::MetresBetween(Near, Player.Character), 3.0f,
+					  0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("A: struck from 3 metres, 23 from the origin: 30% less"),
+			  Ratio(Near), 0.70f, 0.001f);
+	Near->Destroy();
+
+	StandAt(Player, 8.0f);
+	ACataclysmEnemyCharacter* Far = AttackerAt(World, Player, 0.0f);
+	if (!TestNotNull(TEXT("an attacker at the origin"), Far)
+		|| !TestEqual(TEXT("which really is 8 metres from the player's body"),
+					  UCataclysmTargeting::MetresBetween(Far, Player.Character), 8.0f,
+					  0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("B: struck from 8 metres, at the origin: not reduced"), Ratio(Far),
+			  1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnTypeOnAPlayerTest,
+	"Cataclysm.DefenderBody.AHitOfAPlayersOwnDamageTypeOpensNoForeignWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The foreign-damage window, which Cataclysmic Resonance (`Masochist_basic_
+ * spine_003`) reads, on a real player. The window opens on a hit of a Cataclysm
+ * type the character does not wield, and the character's own type is read off
+ * its weapon slots -- which are on the character, not on the player state the
+ * vital set lives on.
+ *
+ * `Cataclysm.ConditionalDamage.DamageOfTheCharactersOwnTypeOpensNoWindow` makes
+ * the same check on an actor that owns its own ability system, which is why it
+ * passed while a player read no type at all.
+ */
+bool FCataclysmOwnTypeOnAPlayerTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderDistanceTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	UCataclysmWeaponSlotsComponent* Slots =
+		Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	if (!TestNotNull(TEXT("the player character carries weapon slots"), Slots))
+	{
+		return false;
+	}
+	Slots->SetDamageType(TEXT("Demonic"));
+	if (!TestEqual(TEXT("and wields Demonic damage"),
+				   UCataclysmWeaponSlotsComponent::DamageTypeOf(Player.Character),
+				   FString(TEXT("Demonic"))))
+	{
+		return false;
+	}
+
+	StandAt(Player, 20.0f);
+	ACataclysmEnemyCharacter* Kin = AttackerAt(World, Player, 22.0f);
+	ACataclysmEnemyCharacter* Stranger = AttackerAt(World, Player, 18.0f);
+	if (!TestNotNull(TEXT("a Demonic attacker"), Kin)
+		|| !TestNotNull(TEXT("and a War one"), Stranger))
+	{
+		return false;
+	}
+	Kin->DamageType = FName(TEXT("Demonic"));
+	Stranger->DamageType = FName(TEXT("War"));
+
+	TestTrue(TEXT("the Demonic hit landed"), Received(Player, Kin) > 0.0f);
+	TestEqual(TEXT("a Demonic hit on a Demonic player opens no window"),
+			  Player.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	TestTrue(TEXT("the War hit landed"), Received(Player, Stranger) > 0.0f);
+	TestEqual(TEXT("and a War hit on the same player opens it, now"),
+			  Player.AbilitySystem->SecondsSinceForeignDamageTaken(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTormentAroundAPlayerTest,
+	"Cataclysm.DefenderBody.ADebuffTickOnAPlayerSpreadsToEnemiesNearThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Contagious Torment (`Masochist_basic_fl_b0`) on a real player: "When a debuff
+ * on you deals damage, enemies within 6 metres ... receive a random debuff you
+ * carry." Searched for around the defender, which for a player is the character
+ * and not the player state at the world's origin.
+ *
+ * THE CHANCE IS GIVEN AS 100, NOT THE ROW'S 1% A POINT, for the reason
+ * `Cataclysm.Contagion.ARealDamageOverTimeTickSpreadsWithoutAnybodyCallingIt`
+ * gives: nothing passes a pinned roll through a real tick. What is under test
+ * is where the search is made. TWO BYSTANDERS SAY WHERE: one 2 metres from the
+ * player, 22 from the origin, must catch it; one at the origin, 20 metres from
+ * the player, must not.
+ */
+bool FCataclysmTormentAroundAPlayerTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderDistanceTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Chance;
+	Chance.Bucket = ECataclysmStatBucket::Flat;
+	Chance.Source = ECataclysmModifierSource::PassiveKeystone;
+	Chance.Value = 100.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(UCataclysmContagion::TormentChanceStat)).Modifiers = {Chance};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	const FGameplayTag Bleed = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("the bleed tag exists"), Bleed.IsValid())
+		|| !TestTrue(TEXT("the player is bleeding"),
+					 UCataclysmSkillEffects::ApplyTagForDuration(
+						 Player.Character, Player.Character, Bleed, 30.0f)))
+	{
+		return false;
+	}
+
+	StandAt(Player, 20.0f);
+	ACataclysmEnemyCharacter* Beside = AttackerAt(World, Player, 22.0f);
+	ACataclysmEnemyCharacter* AtOrigin = AttackerAt(World, Player, 0.0f);
+	if (!TestNotNull(TEXT("an enemy 2 metres from the player"), Beside)
+		|| !TestNotNull(TEXT("and one at the origin, 20 metres off"), AtOrigin))
+	{
+		return false;
+	}
+	const auto Carries = [&Bleed](AActor* Who)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Who);
+		return System && System->HasMatchingGameplayTag(Bleed);
+	};
+	if (!TestFalse(TEXT("neither enemy is bleeding to begin with"),
+				   Carries(Beside) || Carries(AtOrigin)))
+	{
+		return false;
+	}
+
+	FCataclysmHitDelivery AsATick;
+	AsATick.bIsDamageOverTime = true;
+	AsATick.bIsArea = true;
+
+	// NO SHIELD, SO THE TICK REACHES HEALTH. Every tick but a bleed goes to
+	// the energy shield first (issue #2014), a Ritualist has one, and Torment
+	// spreads only on damage that reached health. Both are asserted as set-up,
+	// so an absorbed tick fails here, named, and not as a spread that did not
+	// happen.
+	using Vital = UCataclysmVitalAttributeSet;
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 0.0f);
+	if (!TestEqual(TEXT("set-up: the player's energy shield is empty"),
+				   Player.AbilitySystem->GetNumericAttribute(
+					   Vital::GetEnergyShieldAttribute()),
+				   0.0f, 0.001f))
+	{
+		return false;
+	}
+	const float HealthBefore =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	UCataclysmSkillEffects::ApplyDirectDamage(Beside, Player.Character, 10.0f, AsATick);
+	if (!TestTrue(TEXT("set-up: the tick took health off the player"),
+				  Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute())
+					  < HealthBefore))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the enemy 2 metres from the player caught the bleed"),
+			 Carries(Beside));
+	TestFalse(TEXT("and the one at the origin, 20 metres off, did not"),
+			  Carries(AtOrigin));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsSharedRuinTest,
 	"Cataclysm.DemonicRows.SharedRuinReachesARealRitualistFromItsRows",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

@@ -87,6 +87,30 @@ static TAutoConsoleVariable<float> CVarCritRoll(
 		 "critically strikes; 100 never does."),
 	ECVF_Default);
 
+namespace
+{
+	/**
+	 * The body a hit on this set landed on. Issue #1755.
+	 *
+	 * NOT `GetOwningActor()` FOR A PLAYER. A player's vital set is created on
+	 * its player state (`ACataclysmPlayerState`), which stands at the world's
+	 * origin, carries no weapon slots and is not the character. Anything asked
+	 * of the defender's position or components has to be asked of the ability
+	 * system's avatar, the rule `UCataclysmAbilitySystemComponent::
+	 * WithEnemiesInReach` states. For an enemy or a minion the set lives on the
+	 * character, and the avatar and the owner are the same actor.
+	 *
+	 * THE OWNER IS KEPT FOR A SET WITH NO AVATAR, which is what it answered
+	 * before, so such a set reads exactly as it did.
+	 */
+	AActor* CataclysmDefendingBody(const UAttributeSet& Set)
+	{
+		const UAbilitySystemComponent* System = Set.GetOwningAbilitySystemComponent();
+		AActor* Avatar = System ? System->GetAvatarActor() : nullptr;
+		return Avatar ? Avatar : Set.GetOwningActor();
+	}
+}
+
 UCataclysmVitalAttributeSet::UCataclysmVitalAttributeSet()
 {
 	// Placeholders only. Real starting values come from a class stat line
@@ -458,8 +482,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// so a passive row and the combat log cannot disagree about one
 			// strike. It answers -1 when either actor is missing, and every
 			// predicate reading a distance refuses a negative one.
+			//
+			// TO THE DEFENDER'S BODY, NOT TO THIS SET'S OWNER. Issue #1755. A
+			// player's vital set lives on its player state, which stands at the
+			// world's origin wherever the character goes, so measuring to
+			// `GetOwningActor()` gave a player's rows the attacker's distance from
+			// the origin: Standing Apart softened a blow from beside a player who
+			// stood far out and not one from across the room near the origin, and
+			// "Nearby enemies deal less" did the reverse. The same rule
+			// `UCataclysmAbilitySystemComponent::WithEnemiesInReach` states,
+			// "MEASURED FROM THE AVATAR AND NOT FROM THIS COMPONENT'S OWNER". The
+			// owner is kept only for a set with no avatar, and for an enemy or a
+			// minion the two are the same actor.
 			Hit.OpponentDistanceMetres = UCataclysmTargeting::MetresBetween(
-				Data.EffectSpec.GetContext().GetEffectCauser(), GetOwningActor());
+				Data.EffectSpec.GetContext().GetEffectCauser(),
+				CataclysmDefendingBody(*this));
 
 			// AND WHETHER IT WAS STRUCK IN MELEE, FROM RANGE, OR AS A SPELL.
 			// Issues #1032 and #666. Read here beside the other two because they
@@ -1405,8 +1442,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield > 0.0f
 				&& !Hit.DamageType.IsNone())
 			{
+				// THE BODY'S WEAPON, NOT THE SET OWNER'S. Issue #1755. A player's
+				// weapon slots are on its character, and asked of the player state
+				// this read "" for every player, so a hit of the player's own type
+				// opened the foreign-damage window too.
 				const FString Own = UCataclysmWeaponSlotsComponent::DamageTypeOf(
-					GetOwningActor());
+					CataclysmDefendingBody(*this));
 				if (!Hit.DamageType.ToString().Equals(
 						Own, ESearchCase::IgnoreCase))
 				{
@@ -1738,7 +1779,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// node and the function refuses on that before it looks for anybody.
 			if (Hit.bIsDamageOverTime && Outcome.DealtToHealth > 0.0f)
 			{
-				UCataclysmContagion::SpreadOnDebuffDamage(GetOwningActor());
+				// AROUND THE BODY, NOT THE SET OWNER. Issue #1755. For a player
+				// the owner is the player state, at the world's origin, so
+				// Contagious Torment searched for enemies near the origin.
+				UCataclysmContagion::SpreadOnDebuffDamage(CataclysmDefendingBody(*this));
 			}
 
 			PlayImpactEffect(Data, Hit, Outcome);
