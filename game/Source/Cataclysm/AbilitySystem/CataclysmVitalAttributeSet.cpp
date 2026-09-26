@@ -1273,10 +1273,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// attribute, so a character with no such bonus gets exactly
 					// what it got before.
 					//
-					// THE OWNING ACTOR AND NOT THE AVATAR IS STILL WHAT THE
-					// HEALTH LOSS IS CREDITED TO, which is what it was before
-					// this moved. `Pay` reaches for the avatar separately, and
-					// only for the area search, which needs a location.
+					// THE CHARACTER DEALS IT, NOT THE SET'S OWNER. Issue #1755,
+					// ruled 2026-09-25. This passed `GetOwningActor()` "which is
+					// what it was before this moved", and for a player that is
+					// the player state: the returned blow was dealt by it, the
+					// kill was credited to it, and the creature measured the blow
+					// from the world's origin. Every other blow a player deals
+					// names the character, so this does too. `Pay` still finds
+					// the avatar separately for the area search.
 					// `Hit.Damage` AND NOT WHAT LANDED, since issue #1227. The
 					// share is taken of what the blow was worth before this
 					// character's own armour, resistance and reductions, so a
@@ -1284,7 +1288,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// defended one struck by the same blow. Using what landed
 					// would punish the class for its own defences.
 					UCataclysmRetaliation::Pay(
-						GetOwningAbilitySystemComponent(), GetOwningActor(),
+						GetOwningAbilitySystemComponent(), CataclysmDefendingBody(*this),
 						Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
 				}

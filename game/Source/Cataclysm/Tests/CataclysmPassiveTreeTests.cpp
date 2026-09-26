@@ -16343,6 +16343,113 @@ bool FCataclysmTormentAroundAPlayerTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRetaliationCreditedToTheCharacterTest,
+	"Cataclysm.DefenderBody.APlayersRetaliationIsDealtAndCreditedByTheCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A real Masochist's retaliation kills the creature that struck it, and the
+ * blow and the kill belong to the CHARACTER, not to the player state its vital
+ * set lives on. Issue #1755, ruled 2026-09-25: every other blow a player deals
+ * already names the character.
+ *
+ * READ OFF THE COMBAT EVENTS, which is what a kill counter, a quest and the
+ * combat log all hear. The distance the retaliation blow reports is asserted
+ * too: the Masochist stands 20 metres from the origin and the creature 2 metres
+ * from the Masochist, so a blow dealt by the player state reads 22.
+ */
+bool FCataclysmRetaliationCreditedToTheCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderDistanceTest;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Masochist"), Player.Character && Player.AbilitySystem))
+	{
+		return false;
+	}
+	using Vital = UCataclysmVitalAttributeSet;
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+												  1'000'000.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+												  1'000'000.0f);
+	if (!TestTrue(TEXT("a Masochist retaliates against a blow of 1000"),
+				  UCataclysmRetaliation::AmountFor(Player.AbilitySystem, 1000.0f) > 0.0f))
+	{
+		return false;
+	}
+
+	StandAt(Player, 20.0f);
+	ACataclysmEnemyCharacter* Striker = AttackerAt(World, Player, 22.0f);
+	if (!TestNotNull(TEXT("a creature 2 metres from the Masochist"), Striker))
+	{
+		return false;
+	}
+	Striker->SetAttackDamage(1000.0f);
+	if (UAbilitySystemComponent* StrikerSystem = UCataclysmTargeting::AbilitySystemOf(Striker))
+	{
+		StrikerSystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.01f);
+	}
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the world has combat events"), Events))
+	{
+		return false;
+	}
+	AActor* DealtBy = nullptr;
+	float Distance = -1.0f;
+	AActor* Killer = nullptr;
+	AActor* KillingCauser = nullptr;
+	const FDelegateHandle HitHandle = Events->OnHit.AddLambda(
+		[&](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Target == Striker)
+			{
+				DealtBy = Notice.DealtBy;
+				Distance = Notice.DistanceMetres;
+			}
+		});
+	const FDelegateHandle DeathHandle = Events->OnDeath.AddLambda(
+		[&](const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == Striker)
+			{
+				Killer = Notice.Killer;
+				KillingCauser = Notice.KillingCauser;
+			}
+		});
+	ON_SCOPE_EXIT
+	{
+		Events->OnHit.Remove(HitHandle);
+		Events->OnDeath.Remove(DeathHandle);
+	};
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.bCannotCriticallyStrike = true;
+	UCataclysmSkillEffects::ApplyHit(Striker, Player.Character, 100.0f,
+									 FGameplayTagContainer(), Delivery);
+
+	if (!TestTrue(TEXT("the retaliation killed the creature"),
+				  UCataclysmSkillEffects::IsDead(Striker)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the retaliation blow was dealt by the character"),
+			 DealtBy == Player.Character);
+	TestEqual(TEXT("and measured from the character, 2 metres"), Distance, 2.0f, 0.01f);
+	TestTrue(TEXT("the kill is credited to the character"), Killer == Player.Character);
+	TestTrue(TEXT("and the character is what caused it"),
+			 KillingCauser == Player.Character);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsSharedRuinTest,
 	"Cataclysm.DemonicRows.SharedRuinReachesARealRitualistFromItsRows",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

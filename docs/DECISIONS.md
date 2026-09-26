@@ -2,6 +2,54 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — A player's retaliation blow is dealt, measured and credited by the player's character, not by its player state
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`. Part of issue
+[#1755](https://github.com/sdubois777/Cataclysm/issues/1755).
+
+### WHAT WAS WRONG, AND THE RULING
+
+The same fault as the entry "A hit on a player measures distance, reads the damage type and spreads Contagious
+Torment from the player's character, not from its player state", in the one place that entry left alone. When a
+player retaliates, `UCataclysmRetaliation::Pay` was handed the vital set's owning actor as the dealer, and for a
+player that is the player state, which stands at the world origin. So the retaliation blow was dealt by the player
+state, the creature measured it from the origin, and a kill it made was credited to the player state.
+
+**Ruled 2026-09-25 under the owner's delegation:** every other blow a player deals names the character, so
+retaliation does too. `Pay` is now handed `CataclysmDefendingBody(*this)`, the ability system's avatar, which that
+entry introduced.
+
+### TEST
+
+`Cataclysm.DefenderBody.APlayersRetaliationIsDealtAndCreditedByTheCharacter`, written before the code was
+changed. A real Masochist standing 20 metres from the world origin retaliates against a blow of 1,000 from a
+creature 2 metres away, and the retaliation kills it. Read off the combat events, which a kill counter, a quest
+and the combat log all hear: the blow was dealt by the character, it measured 2 metres (a blow dealt by the
+player state reads 22), and the kill is credited to the character.
+
+### Run
+
+One window on 2026-09-26, with the build machine, on development b399d403. Every figure below is what `pytest`,
+`python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record | `5515 passed, 8 skipped` (JUnit 5,523, no failures), as registered |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, started with no CI run in progress | `2600 tests performed, 2600 succeeded, 0 failed`; 2600 declared, gap 0 |
+
+One proof with `prove_cpp_guard`, prefix `Cataclysm.DefenderBody.` (five tests), its anchor re-checked immediately
+before the run. It hands `Pay` the owning actor again, so it is also the measurement of the unfixed code. With the
+break in it printed `5 tests performed, 4 succeeded, 1 failed: APlayersRetaliationIsDealtAndCreditedByTheCharacter`,
+on four assertions: "the retaliation blow was dealt by the character", false; "and measured from the character,
+2 metres", 22; "the kill is credited to the character", false; "and the character is what caused it", false.
+Restored, it printed `5 tests performed, 5 succeeded, 0 failed`.
+
+**Final Python**, after the entry: `5515 passed, 8 skipped` (JUnit 5,523, no failures), as registered.
+
+---
+
 ## 2026-09-25 — Abyssal Rifts: one rift a floor opens when the player comes near and sends three waves of four; killing them all within 60 seconds closes it in time for +10 magic find, and each success sends later rifts' creatures one rung higher
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
