@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The vision system: a creature beyond the player's sight is hidden, has no bar and cannot be clicked, and the camera is darkened; Fog of War, its first rule, gives ten metres of sight
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`SightRadiusFor`, the one
+place a rule asks for a sight radius, and Fog of War's key and figure, among the rows built);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`PlayerSightRadiusCm` and `StepVision`: the sight
+worked out on the beat, creatures beyond it hidden and shown again); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`
+and `.cpp` (`SetSightDarkness`, the camera darkened); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.cpp` (no
+bar for a hidden creature); `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (`IsClickableEnemy`: a
+hidden creature cannot be clicked); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### What was there
+
+Nothing limited what the player sees. The camera is a spring arm 800 cm long at a 60 degree pitch, and the mouse wheel
+moves it between 500 and 1200 cm; no light, fog or post-process setting is written anywhere in the game's source; no
+creature was ever hidden for play; and a creature's bar is drawn whenever it is hurt and in front of the camera, with no
+test of distance or of whether it can be seen. Creatures have their own sight, which a floor can scale
+(`FloorBrief.SightRadiusMultiplier`); the player had none. Four rows wait on it: `War_Fog_of_War`,
+`Void_The_Blackest_Shadow`, `Void_Shadowy_Enemies`, and Swarm of Locusts' "obscuring vision".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **The player's sight is one value**, worked out by the game mode on each beat as the smallest radius any rule in force
+  asks for, 0 for unlimited; a rule asks, and nothing else writes it.
+- **A creature further from the player than the sight is hidden**, and shown again when it comes within it or the rule
+  ends. Its bar, rarity name and status line are not drawn, and it cannot be clicked: the design document's "a label you
+  cannot see is a label you cannot click". Its brain and its attacks are unchanged.
+- **The screen, first: the camera's own vignette and a darker exposure**, set from the code with no asset. It is not an
+  edge at the radius. A radial darkness material is its own later change, checked in play by eye, on the owner's list.
+- **What a hidden creature sends stays drawn**: its telegraph on the ground, its projectiles and ground markers, so a
+  hidden attack can still be read and dodged, following the design's "the combat requires players to read and dodge
+  telegraphed attacks".
+- **"Completely invisible", in The Blackest Shadow, will be read the same way: the body, bar and name, not the
+  telegraph.** Stated here so the owner can overturn it before that row is built.
+- **No minimap** (issue #49); nothing else folded in.
+- **Fog of War first, at ten metres of sight**, in this change. Swarm of Locusts' obscuring, The Blackest Shadow and
+  Shadowy Enemies follow, each its own change.
+
+### What the rule does
+
+`War_Fog_of_War` in `game/Data/DungeonModifiers.csv`, weight 5: "Vision is limited by a thick battlefield fog. Players
+can only see a short distance ahead, making ambushes frequent and navigating difficult." On a floor carrying it the
+player sees ten metres: every creature further than that, measured flat, is hidden and cannot be clicked, and the camera
+has a strong vignette and is one stop darker. Coming within ten metres shows a creature again. On the first floor after
+one without it, everything it hid is shown and the camera is handed back to the map's settings.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **Ten metres is the distance a drop's or a floor object's name is shown from**, so the fog and the names agree on how
+  far the player sees.
+- **Every creature is measured, floor sources included**: a portal, a coffin or a carcass beyond the sight is hidden as
+  a creature is. They are things on the floor the player cannot see.
+- **Only what the vision system hid is shown again**, so it can never show a creature something else hid.
+- **The darkening is a vignette of 1.0 and an exposure one stop down**, overridden only while sight is limited.
+- **A skill's own choice of target is unchanged**: `UCataclysmTargeting` does not ask whether a creature is hidden,
+  and this change does not make it. The ruling is about clicking and drawing; making skills blind as well would be its
+  own decision.
+
+### The research: darkness that limits sight and favours the monsters
+
+Done before the proposal; the page quoted was fetched on 2026-09-26 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Delve | https://poedb.tw/us/Delve | "The darkness in this mine obscures your vision, but it also deals you damage"; monsters "take massively reduced damage while they dwell within it"; "Flares are portable light sources that can be thrown to specific locations" |
+
+**What it settles and what it does not.** Path of Exile ships sight limited to a radius around a source, which a rule
+can make matter for the monsters. That settles the shape: a radius, and what lies outside it treated differently. Ten
+metres and the darkening are this game's own.
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.`. **The darkened camera is not looked at**: an automation
+test has no renderer, so the tests read the sight it was darkened for. **A hidden creature's telegraph staying drawn is
+not tested either**: a telegraph is its own actor and the rule never touches it, which is read from the code, not run.
+
+- `FogOfWarFiguresAndTheSightTheRowsGive`: ten metres; the fog gives ten metres, no rows and a row that does not limit
+  sight give unlimited.
+- `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked`: the player sees ten metres and the camera is darkened for
+  it; an Imp nine metres away is seen, may have a bar and can be clicked; one eleven metres away is hidden, may not have
+  a bar and cannot be clicked; brought to five metres it is seen again.
+- `WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened`: on the next floor without the fog the sight is unlimited, the
+  camera is not darkened, an Imp twenty metres away is seen, and the one the fog hid still stands and is shown.
+
+One Python check: the row still says "vision is limited" and "see a short distance".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-26 — A player's retaliation blow is dealt, measured and credited by the player's character, not by its player state
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` and

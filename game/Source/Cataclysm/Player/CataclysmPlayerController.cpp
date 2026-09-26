@@ -1364,9 +1364,21 @@ AActor* ACataclysmPlayerController::EnemyUnderCursor() const
 	}
 
 	AActor* Found = Hit.GetActor();
+	return IsClickableEnemy(Found, ControlledPawn) ? Found : nullptr;
+}
+
+bool ACataclysmPlayerController::IsClickableEnemy(const AActor* Found, const AActor* ControlledPawn)
+{
 	if (!IsValid(Found) || Found == ControlledPawn)
 	{
-		return nullptr;
+		return false;
+	}
+
+	// AND NOT HIDDEN: a creature beyond the player's sight is hidden by the vision system, and a creature the player
+	// cannot see is not one they can click. Issues #1820 and #41.
+	if (Found->IsHidden())
+	{
+		return false;
 	}
 
 	// AN ALLY AND A CORPSE ARE BOTH "NOT A TARGET" rather than "a target that
@@ -1374,13 +1386,8 @@ AActor* ACataclysmPlayerController::EnemyUnderCursor() const
 	// world. The same two questions `UCataclysmBasicAttack::TargetIsInReach`
 	// asks, minus the distance, because reach is not what decides whether the
 	// player aimed at something.
-	if (!UCataclysmTargeting::IsHostileTo(Found, ControlledPawn)
-		|| UCataclysmSkillEffects::IsDead(Found))
-	{
-		return nullptr;
-	}
-
-	return Found;
+	return UCataclysmTargeting::IsHostileTo(Found, ControlledPawn)
+		&& !UCataclysmSkillEffects::IsDead(Found);
 }
 
 bool ACataclysmPlayerController::TrySwingAt(AActor* Target)

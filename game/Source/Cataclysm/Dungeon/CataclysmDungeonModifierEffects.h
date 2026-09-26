@@ -2172,6 +2172,26 @@ public:
 	static const TCHAR* TrialOfEnduranceKey;
 
 	/**
+	 * The row whose floor the player sees only a short way across: creatures beyond the player's sight are hidden, and
+	 * the camera is darkened. Issues #1820 and #41. The first rule to use the vision system (`SightRadiusFor`,
+	 * `ACataclysmDungeonGameMode::PlayerSightRadiusCm`).
+	 *
+	 * "Vision is limited by a thick battlefield fog. Players can only see a short distance ahead, making ambushes
+	 * frequent and navigating difficult."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-26: `FogOfWarSightCm` of sight, the
+	 * distance a drop's or a floor object's name is shown from. A play-test value.
+	 */
+	static const TCHAR* FogOfWarKey;
+
+	/**
+	 * The player's sight on a floor carrying these rows: the smallest radius any of them asks for, in centimetres, or 0
+	 * for unlimited. The vision system's one source of the radius, so a rule asks here and nothing else writes it.
+	 * Issues #1820 and #41.
+	 */
+	static float SightRadiusFor(const TArray<FName>& Modifiers);
+
+	/**
 	 * The row where a kill of the player's may leave a voidling that comes for the player and, reaching
 	 * them, takes some of their power until they stand in light. Issues #1820 and #41.
 	 *
@@ -4740,6 +4760,9 @@ public:
 	static constexpr float TrialOfEnduranceSeconds = 300.0f;
 	static constexpr float TrialOfEnduranceDamageMultiplier = 2.0f;
 	static constexpr float TrialOfEnduranceResistanceMultiplier = 2.0f;
+
+	/** Fog of War's sight, a play-test value. See the key. */
+	static constexpr float FogOfWarSightCm = 1000.0f;
 
 	static_assert(TrialOfEnduranceDamageMultiplier == 2.0f && TrialOfEnduranceResistanceMultiplier == 2.0f,
 		"The row says doubled damage and resistances.");

@@ -408,6 +408,13 @@ private:
 	ACataclysmDroppedItem* DropUnderCursor() const;
 
 	/**
+	 * Whether an actor found under the cursor is an enemy the player may click: a living hostile that is not the
+	 * player's own pawn and is not hidden. A creature the vision system hides cannot be clicked: "a label you cannot see
+	 * is a label you cannot click". Static so a test can ask it. Issues #1820 and #41.
+	 */
+	static bool IsClickableEnemy(const AActor* Found, const AActor* ControlledPawn);
+
+	/**
 	 * Takes every crafting material lying near the character. Issue #851.
 	 *
 	 * RUN EVERY FRAME, beside UpdatePendingPickup, because the character walks

@@ -31727,4 +31727,156 @@ bool FCataclysmRiftsDeathTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The vision system, and War_Fog_of_War, the first rule to use it. Issues #1820 and #41.
+//
+// THE DARKENED CAMERA IS NOT LOOKED AT HERE. An automation test has no renderer, so these read the sight the camera was
+// darkened for, and what the hiding does: a creature's hidden flag, whether it may have a bar, and whether it may be
+// clicked.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName FogRow(UCataclysmDungeonModifierEffects::FogOfWarKey);
+
+	/** A dungeon carrying these rows, on floor 2 with its own creatures cleared, one beat in. */
+	ACataclysmDungeonGameMode* ASightFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+										   const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** An Imp this far along X from the player. */
+	ACataclysmEnemyCharacter* AnImpAway(UWorld* World, const FPossessedPlayer& Player, float Cm)
+	{
+		const FVector At = Player.Character->GetActorLocation();
+		return SpawnImpWithHealth(World, FVector(At.X + Cm, At.Y, At.Z), 100.0f);
+	}
+}
+
+// THE FIGURE, AND THE SIGHT THE ROWS GIVE: 10 M WITH FOG OF WAR, UNLIMITED WITHOUT IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFogFiguresTest,
+	"Cataclysm.DungeonModifierEffects.FogOfWarFiguresAndTheSightTheRowsGive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFogFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("10 m of sight"), Effects::FogOfWarSightCm, 1000.0f, 0.001f);
+	TestEqual(TEXT("fog gives 10 m"), Effects::SightRadiusFor({FogRow}), 1000.0f, 0.001f);
+	TestEqual(TEXT("no rows give unlimited"), Effects::SightRadiusFor({}), 0.0f, 0.001f);
+	TestEqual(TEXT("a row that does not limit sight gives unlimited"),
+			  Effects::SightRadiusFor({FName(Effects::TrialOfEnduranceKey)}), 0.0f, 0.001f);
+	return true;
+}
+
+// IN FOG A CREATURE MORE THAN 10 M AWAY IS HIDDEN, HAS NO BAR AND CANNOT BE CLICKED; ONE WITHIN IS NOT; COMING CLOSE SHOWS IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFogHidesTest,
+	"Cataclysm.DungeonModifierEffects.InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFogHidesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {FogRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Near = AnImpAway(World, Player, 900.0f);
+	ACataclysmEnemyCharacter* Far = AnImpAway(World, Player, 1100.0f);
+	if (!TestNotNull(TEXT("an Imp 9 m away"), Near) || !TestNotNull(TEXT("and one 11 m away"), Far))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("the player sees 10 m"), Mode->PlayerSightRadiusCm(), 1000.0f, 0.001f);
+	TestEqual(TEXT("and the camera is darkened for it"), Player.Character->SightDarknessRadiusCm(), 1000.0f, 0.001f);
+	TestFalse(TEXT("the Imp 9 m away is seen"), Near->IsHidden());
+	TestTrue(TEXT("the Imp 11 m away is hidden"), Far->IsHidden());
+	TestTrue(TEXT("the one seen may have a bar"),
+			 UCataclysmCombatOverlay::IsOverheadBarCandidate(Near, Player.Character));
+	TestFalse(TEXT("the hidden one may not"),
+			  UCataclysmCombatOverlay::IsOverheadBarCandidate(Far, Player.Character));
+	TestTrue(TEXT("the one seen can be clicked"),
+			 ACataclysmPlayerController::IsClickableEnemy(Near, Player.Character));
+	TestFalse(TEXT("the hidden one cannot"),
+			  ACataclysmPlayerController::IsClickableEnemy(Far, Player.Character));
+
+	// COMING WITHIN THE FOG SHOWS IT AGAIN.
+	const FVector At = Player.Character->GetActorLocation();
+	Far->SetActorLocation(FVector(At.X + 500.0f, At.Y, Far->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("5 m away it is seen again"), Far->IsHidden());
+	return true;
+}
+
+// A FLOOR WITHOUT THE FOG SHOWS WHAT THE FOG HID AND LIGHTENS THE CAMERA; A FLOOR THAT NEVER HAD IT HIDES NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFogLiftsTest,
+	"Cataclysm.DungeonModifierEffects.WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFogLiftsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {FogRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Far = AnImpAway(World, Player, 2000.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 20 m away"), Far) || !TestTrue(TEXT("hidden in the fog"), Far->IsHidden()))
+	{
+		return false;
+	}
+
+	// THE NEXT FLOOR CARRIES NO FOG: THE SIGHT IS UNLIMITED, THE CAMERA IS LIGHTENED AND WHAT THE FOG HID IS SHOWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Stranger = AnImpAway(World, Player, 2000.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("unlimited sight"), Mode->PlayerSightRadiusCm(), 0.0f, 0.001f);
+	TestEqual(TEXT("the camera is not darkened"), Player.Character->SightDarknessRadiusCm(), 0.0f, 0.001f);
+	TestTrue(TEXT("an Imp 20 m away on a floor without fog is seen"), Stranger && !Stranger->IsHidden());
+	TestTrue(TEXT("and the one the fog hid still stands and is shown"), IsValid(Far) && !Far->IsHidden());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

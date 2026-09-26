@@ -4329,3 +4329,19 @@ def test_abyssal_rifts_row_still_has_rifts_closed_by_waves_in_time_and_rewards_t
         assert phrase in lower, (
             f"Demonic_Abyssal_Rifts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "AbyssalRiftsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_fog_of_war_row_still_limits_sight_to_a_short_distance():
+    """The phrases the rule's reading rests on.
+
+    "Vision is limited by a thick battlefield fog. Players can only see a short distance ahead, making ambushes
+    frequent and navigating difficult." VISION IS LIMITED is the vision system's sight radius; A SHORT DISTANCE is its
+    ten metres. If either changes, the reading must be revisited.
+    """
+    words = flat(rows()["War_Fog_of_War"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("vision is limited", "see a short distance"):
+        assert phrase in lower, (
+            f"War_Fog_of_War no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "FogOfWarKey in CataclysmDungeonModifierEffects.h. " + words)

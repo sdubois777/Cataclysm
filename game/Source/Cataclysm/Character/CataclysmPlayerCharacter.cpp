@@ -779,6 +779,24 @@ void ACataclysmPlayerCharacter::ContinueFollowThrough()
 	}
 }
 
+void ACataclysmPlayerCharacter::SetSightDarkness(float RadiusCm)
+{
+	SightDarknessRadius = FMath::Max(0.0f, RadiusCm);
+	if (!TopDownCamera)
+	{
+		return;
+	}
+	// THE CAMERA'S OWN SETTINGS, OVERRIDDEN ONLY WHILE SIGHT IS LIMITED, and handed back to the map's when it is not.
+	// A strong vignette and one stop darker: visible in play, and not a true edge at the radius, which a radial
+	// darkness material would be, as its own change.
+	FPostProcessSettings& Settings = TopDownCamera->PostProcessSettings;
+	const bool bLimited = SightDarknessRadius > 0.0f;
+	Settings.bOverride_VignetteIntensity = bLimited;
+	Settings.VignetteIntensity = bLimited ? 1.0f : 0.4f;
+	Settings.bOverride_AutoExposureBias = bLimited;
+	Settings.AutoExposureBias = bLimited ? -1.0f : 0.0f;
+}
+
 void ACataclysmPlayerCharacter::AddCameraZoom(float Notches)
 {
 	if (FMath::IsNearlyZero(Notches))

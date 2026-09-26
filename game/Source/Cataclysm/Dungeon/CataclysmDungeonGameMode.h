@@ -2195,6 +2195,12 @@ public:
 	bool TrialOfEnduranceRanOut() const { return bTrialRanOut; }
 
 	/**
+	 * The vision system: how far the player sees on this floor, in centimetres, or 0 for unlimited, as last worked out
+	 * on the beat from the rows in force. A creature further than this from the player is hidden. Issues #1820 and #41.
+	 */
+	float PlayerSightRadiusCm() const { return PlayerSightRadius; }
+
+	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
 	 */
@@ -2277,6 +2283,19 @@ private:
 
 	/** Blood Bond, on the beat: the first elite that notices the player takes the bond. */
 	void StepBloodBond(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * The vision system, on the beat: the sight worked out from the rows in force, every creature beyond it hidden and
+	 * every other shown, and the camera darkened while sight is limited.
+	 */
+	void StepVision(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * The vision system: the player's sight as last worked out, and the creatures it hid, so only those are shown
+	 * again. Issues #1820 and #41.
+	 */
+	float PlayerSightRadius = 0.0f;
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> HiddenBySight;
 
 	/** Blood Bond, on every death: the player's death kills the elite bonded on this floor. */
 	void NoteDeathForBloodBond(const struct FCataclysmDeathNotice& Notice);

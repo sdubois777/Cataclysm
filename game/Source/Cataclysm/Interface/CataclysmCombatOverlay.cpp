@@ -395,6 +395,13 @@ bool UCataclysmCombatOverlay::IsOverheadBarCandidate(
 		return false;
 	}
 
+	// AND NOTHING HIDDEN, which is how the vision system hides a creature beyond the player's sight: its bar, its
+	// rarity name and its status line would otherwise show where it stands. Issues #1820 and #41.
+	if (Actor->IsHidden())
+	{
+		return false;
+	}
+
 	return !UCataclysmSkillEffects::IsDead(Actor);
 }
 

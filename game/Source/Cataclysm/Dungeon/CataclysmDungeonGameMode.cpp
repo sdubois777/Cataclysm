@@ -2302,6 +2302,54 @@ void ACataclysmDungeonGameMode::NoteHitForTheReaper(const FCataclysmHitNotice& N
 		   *Player->GetName());
 }
 
+void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	// THE SIGHT, FROM THE ROWS IN FORCE, and nothing else writes it.
+	PlayerSightRadius = Effects::SightRadiusFor(FloorBrief.Modifiers);
+	Player->SetSightDarkness(PlayerSightRadius);
+
+	// EVERY CREATURE BEYOND IT HIDDEN, measured flat, and every one within it, or on a floor with unlimited sight,
+	// shown again if it was this that hid it. ONLY THE CREATURE: what it sends -- a telegraph on the ground, a
+	// projectile -- is its own actor and stays drawn, so a hidden creature's attack can still be read and dodged, as
+	// ruled on 2026-09-26. Its brain and its attacks are unchanged.
+	const FVector Feet = Player->GetActorLocation();
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature))
+		{
+			continue;
+		}
+		const bool bBeyond = PlayerSightRadius > 0.0f
+			&& FVector::Dist2D(Creature->GetActorLocation(), Feet) > PlayerSightRadius;
+		if (bBeyond && !Creature->IsHidden())
+		{
+			Creature->SetActorHiddenInGame(true);
+			HiddenBySight.Add(Creature);
+		}
+		else if (!bBeyond && HiddenBySight.Contains(Creature))
+		{
+			Creature->SetActorHiddenInGame(false);
+			HiddenBySight.Remove(Creature);
+		}
+	}
+	for (auto It = HiddenBySight.CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
+}
+
 void ACataclysmDungeonGameMode::StepBloodBond(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6769,6 +6817,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
+	// AND THE VISION SYSTEM, ON EVERY FLOOR WHOSE ROWS LIMIT SIGHT, AND ON THE FIRST FLOOR AFTER ONE, so what it hid is
+	// shown and the camera lightened. Issues #1820 and #41.
+	const bool bVision = UCataclysmDungeonModifierEffects::SightRadiusFor(FloorBrief.Modifiers) > 0.0f
+		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0;
 	// AND VOID PARASITE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON
 	// THE CHARACTER, as Chaos Touched is stepped. Issues #1820 and #41.
 	const bool bVoidParasite = FloorBrief.Modifiers.Contains(
@@ -6797,7 +6849,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bAbyssalRifts
 		&& !bSwarmOfLocusts
 		&& !bRawSewage
-		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
+		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVision && !bVoidParasite
 		&& !bObsidianSarcophagi)
 	{
 		return;
@@ -7049,6 +7101,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bTrialOfEndurance)
 	{
 		StepTrialOfEndurance(Player);
+	}
+
+	// AND THE VISION SYSTEM, WHICH HIDES WHAT THE PLAYER CANNOT SEE. Issues #1820 and #41.
+	if (bVision)
+	{
+		StepVision(Player);
 	}
 
 	// AND VOID PARASITE, WHICH DRAWS A ZONE, REMOVES CREATURES AND MOVES THE PLAYER'S STATS. Issues #1820
