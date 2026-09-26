@@ -5666,8 +5666,56 @@ bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 	UAbilitySystemComponent* SecondIts = Striker.Second->GetAbilitySystemComponent();
 	SecondIts->SetNumericAttributeBase(
 		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+
+	// WHAT THE EVADE BELOW DEPENDS ON, printed on every run. It passed on one
+	// whole suite and failed on another ("it was 110"), and reading the code
+	// did not find why, so each run now says. `Resolve` evades when a roll in
+	// 0..100 is below the evasion the pipeline answers for the creature, unless
+	// the blow is an area one or cannot be evaded, which the swinger's
+	// `melee_evasion_suppressed` decides for a melee blow.
+	//
+	// AND EACH IS ASSERTED AS SET-UP, returning early, so a failure names the
+	// input that let the swing land rather than reading as "110". Ruled
+	// 2026-09-25 by the coordinating session.
+	const UCataclysmAbilitySystemComponent* Creature =
+		Cast<UCataclysmAbilitySystemComponent>(SecondIts);
+	const float EvasionAttribute = SecondIts->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute());
+	const float PipelineEvasion = Creature
+		? Creature->StatForSkill(FName(TEXT("evasion")), FGameplayTagContainer(), EvasionAttribute)
+		: -1.0f;
+	const FGameplayAttribute Suppressed =
+		UCataclysmCombatAttributeSet::GetMeleeEvasionSuppressedAttribute();
+	const float Suppression = Striker.ASC->HasAttributeSetForAttribute(Suppressed)
+		? Striker.ASC->StatForSkill(
+			  FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat),
+			  Striker.Swing->SkillTags, Striker.ASC->GetNumericAttribute(Suppressed))
+		: 0.0f;
+	AddInfo(FString::Printf(
+		TEXT("evade inputs: creature evasion attribute %.3f; the pipeline's answer %.3f; "
+			 "creature stat line for evasion %s; swinger's melee_evasion_suppressed %.3f"),
+		EvasionAttribute, PipelineEvasion,
+		Creature && Creature->GetStatInputs(FName(TEXT("evasion"))) ? TEXT("held") : TEXT("none"),
+		Suppression));
+	if (!TestTrue(TEXT("set-up: the pipeline's evasion for the creature is at least 100"),
+			PipelineEvasion >= 100.0f)
+		|| !TestTrue(TEXT("set-up: the swinger's melee_evasion_suppressed is nought"),
+			Suppression <= 0.0f))
+	{
+		return false;
+	}
+	int32 HitsHeard = 0;
+	const FDelegateHandle HitListener = Striker.Events->OnHit.AddLambda(
+		[&HitsHeard, &Striker](const FCataclysmHitNotice& Notice)
+		{
+			HitsHeard += Notice.Attacker == Striker.Character ? 1 : 0;
+		});
+	const float Evaded = Striker.Blow(Striker.Second, true);
+	Striker.Events->OnHit.Remove(HitListener);
+	AddInfo(FString::Printf(TEXT("the evaded swing dealt %.3f and %d hit notice(s) were heard"),
+		Evaded, HitsHeard));
 	TestEqual(TEXT("an evaded melee swing on the second enemy deals nothing"),
-		Striker.Blow(Striker.Second, true), 0.0f, 0.01f);
+		Evaded, 0.0f, 0.01f);
 	SecondIts->SetNumericAttributeBase(
 		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 	TestEqual(TEXT("so the fourth on the first enemy adds three times it"),
