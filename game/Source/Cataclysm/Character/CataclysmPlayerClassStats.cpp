@@ -283,6 +283,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Set Stance's "cannot be knocked back", above zero meaning held, read
 		// by UCataclysmSkillEffects::ApplyKnockback. Issue #1755.
 		TEXT("knockback_suppressed"),
+		// The three Famine rows on potions, written by the dungeon floor rules and
+		// read by UCataclysmPotions: Hard Mode's flag, Recession's share off
+		// every kill, and Diminishing Returns' share off each drink. Issue #806.
+		TEXT("potions_forbidden"),
+		TEXT("potion_kill_charges_less_percent"),
+		TEXT("potion_heal_less_percent_per_drink"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.

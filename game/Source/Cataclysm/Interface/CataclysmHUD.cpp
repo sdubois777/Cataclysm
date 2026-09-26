@@ -295,6 +295,7 @@ void ACataclysmHUD::DrawPotions()
 		UCataclysmCombatOverlay::ColourFromHex(UCataclysmCombatOverlay::HealthFillHex);
 	const FLinearColor Dimmed =
 		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::CoolingHex);
+	const bool bForbidden = UCataclysmPotions::AreForbiddenFor(Pawn);
 
 	for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
 	{
@@ -311,9 +312,17 @@ void ACataclysmHUD::DrawPotions()
 		DrawRect(Fill, At.X, At.Y + Size - Filled, Size, Filled);
 
 		const int32 Drinks = UCataclysmPotions::DrinksIn(Charges);
-		if (Drinks == 0)
+		if (Drinks == 0 || bForbidden)
 		{
 			DrawRect(Dimmed, At.X, At.Y, Size, Size);
+		}
+
+		// CROSSED OUT WHERE THE FLOOR FORBIDS POTIONS, the Famine modifier Hard
+		// Mode, so a refused key is explained before it is pressed.
+		if (bForbidden)
+		{
+			DrawLine(At.X, At.Y, At.X + Size, At.Y + Size, FLinearColor::Red, 2.0f);
+			DrawLine(At.X + Size, At.Y, At.X, At.Y + Size, FLinearColor::Red, 2.0f);
 		}
 
 		const float Centre = At.X + Size * 0.5f;
