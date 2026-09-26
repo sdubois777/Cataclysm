@@ -88,6 +88,12 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`:
 A test world does not tick a zone, so no test watches the procession walk; its velocity is checked directly, and the
 walking is the zone's own travel, as for Divine Wrath's beam.
 
+**One assertion is weaker than it reads.** In `AFunerealProcessionSetsOutEverySixtySecondsTowardThePlayer`, the
+points "400 cm behind its head" and "150 cm to its side" are built from the procession's velocity. Were the
+velocity zero, both would fall on the head itself: the first would still pass, because the line covers its head, and
+the second would fail for that reason rather than for the one it names. The assertions on the velocity itself are
+what catch a procession that stands still.
+
 One Python check: the row still says "slow-moving line", "moves through the dungeon", "contact causes heavy damage" and
 "and fear".
 
