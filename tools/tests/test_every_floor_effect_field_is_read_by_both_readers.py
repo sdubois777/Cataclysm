@@ -89,7 +89,12 @@ def body_of(text: str, opening: str) -> str:
 #:
 #: `RiftMagicFindAdded` IS A FLAT FIGURE, NOT A SHARE: Abyssal Rifts adds magic find points,
 #: applied by `DungeonModifierEffectsAddFlat`. Issues #1820 and #41.
-NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "RiftMagicFindAdded"}
+#:
+#: `PotionsForbiddenValue` IS A FLAG FOR THE SAME REASON: Hard Mode writes 1 to
+#: `potions_forbidden`, and `UCataclysmPotions::Drink` refuses when it is above
+#: zero. Issue #806.
+NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "RiftMagicFindAdded",
+                   "PotionsForbiddenValue"}
 
 
 @pytest.fixture(scope="module")
