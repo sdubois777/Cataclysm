@@ -250,6 +250,23 @@ struct CATACLYSM_API FCataclysmItem
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	float Residue = 0.0f;
+
+	/**
+	 * Kills made while this item was worn in a weapon slot. Issue #1833, the
+	 * kill counter: "This weapon has 5-20% more damage for every
+	 * 100,000-500,000 kills" reads it.
+	 *
+	 * EVERY PLAYER KILL COUNTS ON BOTH WORN WEAPONS, or on the one item when it
+	 * is two-handed, because both weapons' damage is in every blow: the game
+	 * sums their damage into one attack damage and nothing records which hand
+	 * struck. Ruled 2026-09-25 under the owner's delegation.
+	 * `UCataclysmEquipmentComponent::NoteKillOnWornWeapons` raises it.
+	 *
+	 * SAVED WITH THE ITEM, so a weapon keeps its count unequipped, in the stash
+	 * and across a save.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 Kills = 0;
 };
 
 /**
@@ -703,6 +720,23 @@ public:
 	 * worn copies of one enchantment share it, and so share one count.
 	 */
 	static FName OwnStackKeyFor(const FCataclysmEnchantmentEffectRow& Effect);
+
+	/**
+	 * The step a row's scale takes at this roll. Issue #1833, the kill counter.
+	 * `ScaleStep` for a row stating one step; for a row stating
+	 * `ScaleStepHigh`, the number between the two at the roll's place, as
+	 * `UCataclysmItemValues::EnchantmentValue` places a value, so one roll
+	 * picks both of a sentence's numbers.
+	 */
+	static float RolledScaleStep(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
+
+	/**
+	 * Whether one more kill takes this item across a step of a `weapon_kills`
+	 * row one of its enchantments carries, from a count of `KillsBefore`.
+	 * Issue #1833. The equipment refreshes the grant only when it does.
+	 */
+	static bool KillCrossesAStep(const FCataclysmItem& Item, int32 KillsBefore,
+								 const UDataTable* EffectTable);
 
 	/**
 	 * What a weapon of this TYPE supplies as attack damage.

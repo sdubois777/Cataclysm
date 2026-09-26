@@ -493,6 +493,29 @@ bool UCataclysmEquipmentComponent::Unequip(ECataclysmGearSlot Slot,
 	return true;
 }
 
+bool UCataclysmEquipmentComponent::NoteKillOnWornWeapons(UAbilitySystemComponent* AbilitySystem)
+{
+	const UDataTable* Effects = UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+	bool bCrossed = false;
+	for (const ECataclysmGearSlot Slot : {ECataclysmGearSlot::Weapon1, ECataclysmGearSlot::Weapon2})
+	{
+		const int32 Index = static_cast<int32>(Slot);
+		if (!Slots.IsValidIndex(Index) || Slots[Index].Base.IsNone()
+			|| Slots[Index].Kills >= MAX_int32)
+		{
+			continue;
+		}
+		FCataclysmItem& Weapon = Slots[Index];
+		bCrossed |= UCataclysmItemModifiers::KillCrossesAStep(Weapon, Weapon.Kills, Effects);
+		++Weapon.Kills;
+	}
+	if (bCrossed && AbilitySystem)
+	{
+		RefreshAttributes(AbilitySystem);
+	}
+	return bCrossed;
+}
+
 void UCataclysmEquipmentComponent::UnequipEverything()
 {
 	bool bAnything = false;
