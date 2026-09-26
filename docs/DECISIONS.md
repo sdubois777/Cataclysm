@@ -60,6 +60,9 @@ one without it, everything it hid is shown and the camera is handed back to the 
   far the player sees.
 - **Every creature is measured, floor sources included**: a portal, a coffin or a carcass beyond the sight is hidden as
   a creature is. They are things on the floor the player cannot see.
+- **A floor object is not hidden**: a Grim Totem, or any later altar or chest placed through the choice screen, is
+  not a creature, and the vision system measures only creatures, so its name stays shown within its own ten metres.
+  This is deliberate, accepted by the coordinating session on 2026-09-26, not an oversight.
 - **Only what the vision system hid is shown again**, so it can never show a creature something else hid.
 - **The darkening is a vignette of 1.0 and an exposure one stop down**, overridden only while sight is limited.
 - **A skill's own choice of target is unchanged**: `UCataclysmTargeting` does not ask whether a creature is hidden,
