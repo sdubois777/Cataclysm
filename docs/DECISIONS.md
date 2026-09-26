@@ -2,6 +2,58 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — The roam targets test allows a hundredth of a centimetre of rounding at the edge of the roam radius
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmEnemyBehaviourTests.cpp`
+(`Cataclysm.AI.RoamTargetsStayInRangeAndAreNotAllTheSamePlace`). Test only; no engine code.
+
+### WHY
+
+On 2026-09-26 the naming-filter window's whole suite printed "2614 succeeded, 1 failed:
+RoamTargetsStayInRangeAndAreNotAllTheSamePlace", with "Expected 'every one of 200 roam targets is
+inside the roam radius (furthest was 600 cm of 600)' to be 0, but it was 1." The coordinating
+session ruled that a test able to fail anyone's whole suite at random is fixed rather than filed.
+
+`ACataclysmEnemyController::ChooseRoamTarget`, in every test world (none has a navigation system),
+draws the distance as the radius times the square root of `FMath::FRand()`, and builds the offset
+from a single-precision cosine and sine. The distance is at most the radius and can equal it:
+UE 5.8's `FRand` is `(Rand() & RandMax) / (float)RandMax`, documented "between 0 and 1, inclusive"
+(`Engine/Source/Runtime/Core/Public/GenericPlatform/GenericPlatformMath.h`), and the Windows SDK's
+`RAND_MAX` is `0x7fff`, so it returns exactly 1.0 about once in 32768 draws. The cosine and sine
+squared can sum a hair above one, so a point at the edge can measure about 0.0001 cm beyond 600.
+The code never places a point genuinely beyond the radius.
+
+**A CORRECTION TO THE ENTRY "The deployable naming filter is tested: a moving summoner's unscoped
+'less damage while moving' row does not reach a ballista's blow".** That entry says the distance is
+the radius times the square root of `FMath::FRand()`, "which is below 1". That is wrong: `FRand` can
+return 1.0, as above. The claim was not read from the engine; the dungeon session read it and the
+coordinating session asked for it to be checked. The merged entry stays as written.
+
+### WHAT CHANGED
+
+The comparison counts a point as outside only beyond `Radius + EdgeRoundingCm`, with
+`EdgeRoundingCm = 0.01f`, and a comment giving the reason above. A point genuinely beyond the radius
+is still counted. The message prints the tolerance and the furthest distance to four places, so the
+next edge case shows its real figure rather than "600 cm of 600".
+
+### THE RUN
+
+On `43b43804`, the two test commits moved onto development `012b2171`. No workbook was needed.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `43b43804` | "5521 passed, 8 skipped in 430.88s"; JUnit tests 5529, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled"; no count was predicted, since this worktree was last built on `88832df8` and 25 game source files had changed since |
+| The changed test | "1 tests performed, 1 succeeded, 0 failed" |
+| Whole suite, `43b43804` | "2630 tests performed, 2630 succeeded, 0 failed"; 2630 declared, gap 0 |
+| The one proof, the draw reaching 1.5 times the radius in `ChooseRoamTarget` | PROVED: the test failed 1 assertion, "every one of 200 roam targets is inside the roam radius, to 0.01 cm (furthest was 899.9313 cm of 600)", reading 110; restored "1 tests performed, 1 succeeded" |
+
+The proof breaks the product code rather than the test, so it shows that a point genuinely beyond
+the radius is still counted with the tolerance in place. Each draw lands beyond 600.01 cm with
+probability 1 - (600.01 / 900)^2, about 0.556, so about 111 of 200 were expected; 110 printed.
+
+---
+
 ## 2026-09-26 — Fear: a crowd-control status that moves the target away and stops it attacking; and Madness now takes the boss immunity and the 5-second window the design gave it
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFear.h` and `.cpp` (new: applying fear, the shared
