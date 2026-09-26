@@ -2123,6 +2123,32 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Abyssal Rifts, for the panel and tests: where this floor's rift stands in its life. */
+	enum class ERiftState : uint8
+	{
+		Waiting,
+		Open,
+		Closed
+	};
+
+	/** Abyssal Rifts, for tests: this floor's rift, or null once it has closed or on a floor with none. */
+	ACataclysmEnemyCharacter* AbyssalRiftNow() const { return AbyssalRift.Get(); }
+
+	/** Abyssal Rifts, for tests: the rift's zone, or null before its first beat and once it has closed. */
+	class ACataclysmGroundZone* AbyssalRiftZoneNow() const { return AbyssalRiftZone.Get(); }
+
+	/** Abyssal Rifts, for tests: the rift's state. */
+	ERiftState AbyssalRiftStateNow() const { return AbyssalRiftState; }
+
+	/** Abyssal Rifts, for the panel and tests: the rifts closed in time this dungeon. */
+	int32 AbyssalRiftSuccessesHeld() const { return AbyssalRiftSuccesses; }
+
+	/** Abyssal Rifts, for the panel and tests: the creatures the rift sent that still stand. */
+	TArray<ACataclysmEnemyCharacter*> AbyssalRiftCreaturesStanding() const;
+
+	/** The health a rift is given: the Imp's at Common, 87, as the other floor sources have. */
+	float AbyssalRiftHealth() const { return ImpHealth; }
+
 	/** Swarm of Locusts, for tests: the swarm on the floor, or null between swarms. */
 	class ACataclysmGroundZone* SwarmOfLocustsNow() const { return SwarmOfLocusts.Get(); }
 
@@ -2326,6 +2352,24 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Abyssal Rifts: this floor's rift, placed where a new arena is populated. None on a Horde arena. */
+	void PlaceTheRift();
+
+	/** The rift and its zone destroyed and forgotten. Its creatures are the floor's and stay; the successes stay. */
+	void ForgetTheRift();
+
+	/** The rift closes: destroyed with its zone, with a success or without. */
+	void CloseTheRift(bool bInTime);
+
+	/**
+	 * Abyssal Rifts, on the beat: the reward written on the player when the successes changed, the rift's zone kept
+	 * drawn, the rift opening when the player comes near, its waves, and its closing in time or not.
+	 */
+	void StepAbyssalRifts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Abyssal Rifts: the player's death ends the successes and their magic find. */
+	void NoteDeathForAbyssalRifts(const struct FCataclysmDeathNotice& Notice);
 
 	/** Swarm of Locusts: this arena's shelters chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheShelters();
@@ -3446,6 +3490,21 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Abyssal Rifts: this floor's rift and its zone, its state, how long it has been open, the waves it has sent and
+	 * the creatures in them, the dungeon's successes and what was last written on the player, and what the panel
+	 * last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> AbyssalRift;
+	TWeakObjectPtr<class ACataclysmGroundZone> AbyssalRiftZone;
+	ERiftState AbyssalRiftState = ERiftState::Waiting;
+	float AbyssalRiftSecondsOpen = 0.0f;
+	int32 AbyssalRiftWavesSent = 0;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> AbyssalRiftCreatures;
+	int32 AbyssalRiftSuccesses = 0;
+	int32 AbyssalRiftSuccessesApplied = 0;
+	int32 AbyssalRiftPanelSecond = -1;
 
 	/**
 	 * Swarm of Locusts: the swarm on the floor, its travel, how long since it appeared and since the last one

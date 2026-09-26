@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsKey =
+	TEXT("Demonic_Abyssal_Rifts");
+
 const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
 	TEXT("Famine_Swarm_of_Locusts");
 
@@ -245,6 +248,12 @@ namespace
 	 */
 	const TCHAR* const DungeonModifierEffectsAttackDamageStat = TEXT("attack_damage");
 	const TCHAR* const DungeonModifierEffectsSpellDamageStat = TEXT("spell_damage");
+
+	/**
+	 * Magic find, which Abyssal Rifts pays. Issues #1820 and #41. The spelling
+	 * `UCataclysmPlayerClassStats::StatToAttribute` holds and the character sheet shows.
+	 */
+	const TCHAR* const DungeonModifierEffectsMagicFindStat = TEXT("magic_find");
 
 	/**
 	 * The four stats Withered Ground's row calls "Health and Mana recovery
@@ -484,6 +493,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(AbyssalRiftsKey)
 		|| RowKey == FName(SwarmOfLocustsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -683,6 +693,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(AbyssalRiftsKey),
 		FName(SwarmOfLocustsKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
@@ -1005,6 +1016,10 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.ParasiteLessPercent);
 	}
+
+	// AND THE MAGIC FIND THE RIFTS CLOSED IN TIME HAVE EARNED, FLAT: it is a figure added, as the row's "rewards
+	// increase" reads, and flat is what `DungeonModifierEffectsAddFlat` gives a stat. Issues #1820 and #41.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.RiftMagicFindAdded);
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
 	// #41. This is the first entry in this function to write a single resistance,
@@ -1424,6 +1439,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 			TEXT("damage, resistances and movement speed %.0f%% less from attached voidlings"),
 			Effects.ParasiteLessPercent));
 	}
+	if (Effects.RiftMagicFindAdded > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts closed in time"),
+									Effects.RiftMagicFindAdded));
+	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(
@@ -1791,6 +1811,26 @@ float UCataclysmDungeonModifierEffects::SwarmOfLocustsLastsSeconds()
 float UCataclysmDungeonModifierEffects::SwarmOfLocustsBurn(float MaximumHealth)
 {
 	return MaximumHealth > 0.0f ? MaximumHealth * SwarmOfLocustsPercentPerSecond / 100.0f : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::AbyssalRiftsWaveIsDue(float SecondsOpen, int32 WavesSent)
+{
+	return WavesSent < AbyssalRiftsWaves && SecondsOpen >= WavesSent * AbyssalRiftsSecondsBetweenWaves;
+}
+
+bool UCataclysmDungeonModifierEffects::AbyssalRiftsHasRunOut(float SecondsOpen)
+{
+	return SecondsOpen >= AbyssalRiftsSecondsToClose;
+}
+
+int32 UCataclysmDungeonModifierEffects::AbyssalRiftsRungFor(int32 Successes)
+{
+	return FMath::Clamp(Successes, 0, AbyssalRiftsHighestRung);
+}
+
+float UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(int32 Successes)
+{
+	return FMath::Max(0, Successes) * AbyssalRiftsMagicFindPerSuccess;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

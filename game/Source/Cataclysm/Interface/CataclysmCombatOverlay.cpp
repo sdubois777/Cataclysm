@@ -17,6 +17,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -579,13 +580,20 @@ FString UCataclysmCombatOverlay::PortalTextFor(const AActor* Actor)
 	return Enemy && Enemy->bIsAnAbomination ? FString(TEXT("Abomination")) : FString();
 }
 
+FString UCataclysmCombatOverlay::RiftTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmRiftCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Rift"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())

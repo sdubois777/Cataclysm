@@ -37,6 +37,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmRiftCharacter.h"
 #include "GameplayTagsManager.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -1518,6 +1519,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// Issues #1820 and #41.
 		ForgetThePortals();
 		PlaceThePortals();
+
+		// AND ABYSSAL RIFTS, FOR THE SAME REASON: a new floor's rift, none on a Horde arena. The successes are the
+		// dungeon's and are not touched. Issues #1820 and #41.
+		ForgetTheRift();
+		PlaceTheRift();
 
 		// AND SWARM OF LOCUSTS' SHELTERS AND ANY SWARM, FOR THE SAME REASON; a Horde arena's waves keep its shelter.
 		// Issues #1820 and #41.
@@ -4781,6 +4787,221 @@ void ACataclysmDungeonGameMode::StepSwarmOfLocusts(
 	RefreshFloorModifierPanel();
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::AbyssalRiftCreaturesStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Sent : AbyssalRiftCreatures)
+	{
+		ACataclysmEnemyCharacter* Creature = Sent.Get();
+		if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+		{
+			Standing.Add(Creature);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRift()
+{
+	if (ACataclysmEnemyCharacter* Rift = AbyssalRift.Get())
+	{
+		Rift->Destroy();
+	}
+	if (ACataclysmGroundZone* Zone = AbyssalRiftZone.Get())
+	{
+		Zone->Destroy();
+	}
+	AbyssalRift = nullptr;
+	AbyssalRiftZone = nullptr;
+	AbyssalRiftState = ERiftState::Waiting;
+	AbyssalRiftSecondsOpen = 0.0f;
+	AbyssalRiftWavesSent = 0;
+	AbyssalRiftCreatures.Reset();
+	AbyssalRiftPanelSecond = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheRift()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::AbyssalRiftsKey)))
+	{
+		return;
+	}
+	// NONE ON A HORDE ARENA, as ruled: its waves already come to the player.
+	if (FloorBrief.bWaveWalksIn)
+	{
+		RefreshFloorModifierPanel();
+		return;
+	}
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, 1);
+	if (Cells.IsEmpty())
+	{
+		return;
+	}
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmRiftCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const FVector Where = CurrentFloor->WorldOfCell(Cells[0]) + FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+	ACataclysmEnemyCharacter* Rift = World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+	if (!Rift)
+	{
+		return;
+	}
+	// IT CANNOT BE HURT: it is closed by killing what it sends, not by striking it. The Imp's health at Common,
+	// paying nothing and not one of the floor's creatures.
+	Rift->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Rift->SetHealth(AbyssalRiftHealth());
+	Rift->SetRarityStep(0);
+	Rift->bCannotBeHurt = true;
+	Rift->bDiesUnpaid = true;
+	Rift->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Rift);
+	AbyssalRift = Rift;
+	AbyssalRiftState = ERiftState::Waiting;
+	UE_LOG(LogCataclysm, Log, TEXT("Abyssal Rifts: a rift placed on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::CloseTheRift(bool bInTime)
+{
+	if (bInTime)
+	{
+		++AbyssalRiftSuccesses;
+	}
+	if (ACataclysmEnemyCharacter* Rift = AbyssalRift.Get())
+	{
+		Rift->Destroy();
+	}
+	if (ACataclysmGroundZone* Zone = AbyssalRiftZone.Get())
+	{
+		Zone->Destroy();
+	}
+	AbyssalRift = nullptr;
+	AbyssalRiftZone = nullptr;
+	AbyssalRiftState = ERiftState::Closed;
+	UE_LOG(LogCataclysm, Log, TEXT("Abyssal Rifts: the rift on floor %d closed %s; %d closed in time this dungeon"),
+		   FloorNumber, bInTime ? TEXT("in time") : TEXT("too late"), AbyssalRiftSuccesses);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepAbyssalRifts(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// THE REWARD WRITTEN ON THE PLAYER WHEN THE SUCCESSES CHANGED, on any floor, as Chaos Touched's stacks are.
+	if (AbyssalRiftSuccesses != AbyssalRiftSuccessesApplied)
+	{
+		AbyssalRiftSuccessesApplied = AbyssalRiftSuccesses;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+		RefreshFloorModifierPanel();
+	}
+
+	ACataclysmEnemyCharacter* Rift = AbyssalRift.Get();
+	if (!Rift || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::AbyssalRiftsKey)))
+	{
+		return;
+	}
+	const FVector At = Rift->GetActorLocation();
+
+	// ITS ZONE DRAWN AGAIN WHENEVER IT IS MISSING. It does no damage.
+	if (!AbyssalRiftZone.Get())
+	{
+		if (ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World))
+		{
+			AbyssalRiftZone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, At, At, Effects::AbyssalRiftsZoneRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::AbyssalRiftsKey));
+		}
+	}
+
+	// IT OPENS WHEN THE PLAYER FIRST COMES NEAR.
+	if (AbyssalRiftState == ERiftState::Waiting)
+	{
+		if (FVector::Dist2D(At, Player->GetActorLocation()) > Effects::AbyssalRiftsOpensWithinCm)
+		{
+			return;
+		}
+		AbyssalRiftState = ERiftState::Open;
+		AbyssalRiftSecondsOpen = 0.0f;
+		AbyssalRiftWavesSent = 0;
+		UE_LOG(LogCataclysm, Log, TEXT("Abyssal Rifts: the rift on floor %d opened"), FloorNumber);
+	}
+	if (AbyssalRiftState != ERiftState::Open)
+	{
+		return;
+	}
+
+	// A WAVE WHEN ITS TIME HAS COME: the floor's own kinds, as Necrotic Bloom draws them, at the rung the successes so
+	// far give, on cells beside the rift. They pay and are the floor's creatures.
+	if (Effects::AbyssalRiftsWaveIsDue(AbyssalRiftSecondsOpen, AbyssalRiftWavesSent))
+	{
+		const FCataclysmFloorPopulation Population =
+			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, At);
+		int32 Placed = 0;
+		for (int32 Which = 0; Which < Effects::AbyssalRiftsCreaturesPerWave && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
+			 ++Which)
+		{
+			FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+			Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+			if (ACataclysmEnemyCharacter* Sent = SpawnPlacedCreature(
+					Placement, FloorBrief.SightRadiusMultiplier, Effects::AbyssalRiftsRungFor(AbyssalRiftSuccesses)))
+			{
+				FloorEnemies.Add(Sent);
+				AbyssalRiftCreatures.Add(Sent);
+				++Placed;
+			}
+		}
+		++AbyssalRiftWavesSent;
+		UE_LOG(LogCataclysm, Log, TEXT("Abyssal Rifts: wave %d of %d sent %d creature(s) on floor %d"),
+			   AbyssalRiftWavesSent, Effects::AbyssalRiftsWaves, Placed, FloorNumber);
+		RefreshFloorModifierPanel();
+	}
+
+	// CLOSED IN TIME WHEN EVERY WAVE HAS COME AND EVERY CREATURE IT SENT IS DEAD; TOO LATE WHEN THE TIME RUNS OUT.
+	const int32 Standing = AbyssalRiftCreaturesStanding().Num();
+	if (AbyssalRiftWavesSent >= Effects::AbyssalRiftsWaves && Standing == 0)
+	{
+		CloseTheRift(/*bInTime=*/true);
+		return;
+	}
+	if (Effects::AbyssalRiftsHasRunOut(AbyssalRiftSecondsOpen))
+	{
+		CloseTheRift(/*bInTime=*/false);
+		return;
+	}
+	AbyssalRiftSecondsOpen += SecondsBetweenWaveChecks;
+
+	const int32 Second = FMath::CeilToInt(Effects::AbyssalRiftsSecondsToClose - AbyssalRiftSecondsOpen) * 100 + Standing;
+	if (Second != AbyssalRiftPanelSecond)
+	{
+		AbyssalRiftPanelSecond = Second;
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForAbyssalRifts(const FCataclysmDeathNotice& Notice)
+{
+	// THE PLAYER'S DEATH ENDS THE SUCCESSES AND THEIR MAGIC FIND, as ruled; the next beat takes the reward off.
+	if (AbyssalRiftSuccesses > 0 && Cast<ACataclysmPlayerCharacter>(Notice.Victim))
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Abyssal Rifts: the player's death ended %d success(es)"), AbyssalRiftSuccesses);
+		AbyssalRiftSuccesses = 0;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6039,6 +6260,11 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
+
+	// AND ABYSSAL RIFTS' SUCCESSES END WITH THE DUNGEON, as ruled; the call below takes their magic find off.
+	ForgetTheRift();
+	AbyssalRiftSuccesses = 0;
+	AbyssalRiftSuccessesApplied = 0;
 	ForgetTheLocusts();
 
 	// AND RAW SEWAGE'S RIVERS AND STACKS: the stacks are the dungeon's and end with it. The beat takes the disease
@@ -6526,6 +6752,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND ABYSSAL RIFTS, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS REWARD IS NOT WHAT IS ON THE CHARACTER.
+	// Issues #1820 and #41.
+	const bool bAbyssalRifts = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::AbyssalRiftsKey))
+		|| AbyssalRiftSuccesses != AbyssalRiftSuccessesApplied;
 	// AND SWARM OF LOCUSTS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bSwarmOfLocusts =
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey));
@@ -6564,6 +6794,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bAbyssalRifts
 		&& !bSwarmOfLocusts
 		&& !bRawSewage
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
@@ -6788,6 +7019,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND ABYSSAL RIFTS, WHICH OPENS A RIFT, SENDS WAVES AND PAYS THE PLAYER. Issues #1820 and #41.
+	if (bAbyssalRifts)
+	{
+		StepAbyssalRifts(Player, AbilitySystem);
 	}
 
 	// AND SWARM OF LOCUSTS, WHICH SENDS A ZONE ACROSS THE FLOOR AND HURTS THE PLAYER IT COVERS. Issues #1820 and #41.
@@ -7781,6 +8018,11 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 		Effects.TouchedResistanceLessPercent = Percent(Effects_::ChaosTouchedResistanceLess);
 	}
 
+	// AND THE MAGIC FIND THE RIFTS CLOSED IN TIME HAVE EARNED. Issues #1820 and #41. Read unconditionally like the
+	// rest: a player who has closed none is owed nothing.
+	Effects.RiftMagicFindAdded =
+		UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(AbyssalRiftSuccessesApplied);
+
 	// AND WHAT THE ATTACHED VOIDLINGS TAKE, on its own field. Issues #1820 and #41. Read unconditionally like
 	// the rest: a player carrying none is owed nothing.
 	Effects.ParasiteLessPercent =
@@ -7858,6 +8100,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
 	NoteDeathForObsidianSarcophagi(Notice);
+	NoteDeathForAbyssalRifts(Notice);
 	NoteDeathForRawSewage(Notice);
 	NoteDeathForMarchOfProgress(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
@@ -9542,6 +9785,26 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString::Printf(TEXT("swarm of locusts: next in %d s"),
 							  FMath::Max(0, FMath::CeilToInt(Effects::SwarmOfLocustsSecondsBetween
 															  - SwarmOfLocustsSecondsSinceLast))));
+	}
+
+	// AND ABYSSAL RIFTS: the rift's state, and what the successes have earned. Issues #1820 and #41.
+	const FName Rifts(Effects::AbyssalRiftsKey);
+	if (FloorBrief.Modifiers.Contains(Rifts))
+	{
+		const int32 Earned = FMath::RoundToInt(Effects::AbyssalRiftsMagicFindFor(AbyssalRiftSuccesses));
+		if (AbyssalRiftState == ERiftState::Open)
+		{
+			Counting.Add(Rifts, FString::Printf(TEXT("abyssal rifts: open, %d s left, %d creatures left"),
+				FMath::Max(0, FMath::CeilToInt(Effects::AbyssalRiftsSecondsToClose - AbyssalRiftSecondsOpen)),
+				AbyssalRiftCreaturesStanding().Num()));
+		}
+		else
+		{
+			const TCHAR* Where = FloorBrief.bWaveWalksIn ? TEXT("no rift on a Horde arena")
+				: (AbyssalRiftState == ERiftState::Closed ? TEXT("the rift is closed") : TEXT("a rift waits"));
+			Counting.Add(Rifts, FString::Printf(TEXT("abyssal rifts: %s; %d closed in time, +%d magic find"), Where,
+												AbyssalRiftSuccesses, Earned));
+		}
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -11948,6 +12211,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND CHAOS TOUCHED THE SAME WAY: its stacks are the dungeon's and the call above took
 		// them off the character. Issues #1820 and #41.
 		ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
+
+		// AND ABYSSAL RIFTS' MAGIC FIND THE SAME WAY: the successes are the dungeon's, and the next beat puts their
+		// reward back. Issues #1820 and #41.
+		AbyssalRiftSuccessesApplied = 0;
 
 		// AND VOID PARASITE THE SAME WAY: the call above took the voidlings' figure off the character,
 		// and a Horde arena's next wave keeps its stacks, so the next beat puts them back. Issues #1820

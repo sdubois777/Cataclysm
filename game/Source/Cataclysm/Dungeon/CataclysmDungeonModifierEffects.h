@@ -301,6 +301,13 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float ParasiteLessPercent = 0.0f;
 
 	/**
+	 * The magic find the rifts closed in time have earned the player, added flat. Abyssal Rifts. Issues #1820 and
+	 * #41. The only field here that rewards the player for a rule's own success.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RiftMagicFindAdded = 0.0f;
+
+	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
 	 *
@@ -455,6 +462,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
+			&& RiftMagicFindAdded <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -2045,6 +2053,31 @@ public:
 	 *   be dead while a portal stands.
 	 */
 	static const TCHAR* PortalUnleashingKey;
+
+	/**
+	 * The row whose rift opens when the player comes near, sends waves, and pays the player for closing it in time.
+	 * Issues #1820 and #41.
+	 *
+	 * "Portals to the Abyss open up, unleashing waves of demonic creatures. Players must close these rifts by
+	 * defeating waves of enemies within a given time limit. The difficulty and rewards increase with each
+	 * successfully closed rift."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - ONE RIFT A FLOOR, placed by Eternal Chorus's picker; NONE on a Horde arena, whose waves already come to the
+	 *   player. `ACataclysmRiftCharacter`, a floor source that cannot be hurt, "Rift" under its bar, with a visible
+	 *   Demonic zone `AbyssalRiftsZoneRadiusCm` across.
+	 * - IT OPENS when the player first comes within `AbyssalRiftsOpensWithinCm`, and sends `AbyssalRiftsWaves` waves
+	 *   of `AbyssalRiftsCreaturesPerWave` creatures of the floor's kinds, one every `AbyssalRiftsSecondsBetweenWaves`,
+	 *   the first at once, onto cells within `AbyssalRiftsZoneRadiusCm`. They pay and are the floor's creatures.
+	 * - EVERY CREATURE IT SENT KILLED WITHIN `AbyssalRiftsSecondsToClose` OF OPENING closes it in time, one success;
+	 *   otherwise it closes with no success and its creatures stay.
+	 * - EACH SUCCESS SO FAR puts a later rift's creatures one rung higher, at most `DemonPrinceRung`, and gives
+	 *   `AbyssalRiftsMagicFindPerSuccess` magic find, summed.
+	 * - SUCCESSES COUNT ACROSS THE DUNGEON, and end where their magic find ends: at leaving the dungeon or at the
+	 *   player's death.
+	 */
+	static const TCHAR* AbyssalRiftsKey;
 
 	/**
 	 * The row whose swarms cross the floor and burn the player they cover, unless the player is in a shelter.
@@ -4596,6 +4629,24 @@ public:
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
 	/**
+	 * Abyssal Rifts' figures, every one a play-test value. See the key. The zone's radius is Necrotic Bloom's wave
+	 * radius, which the creatures' cells are chosen by; the highest rung is Demon Prince's.
+	 */
+	static constexpr float AbyssalRiftsOpensWithinCm = 800.0f;
+	static constexpr float AbyssalRiftsZoneRadiusCm = NecroticBloomWaveWithinCm;
+	static constexpr int32 AbyssalRiftsWaves = 3;
+	static constexpr int32 AbyssalRiftsCreaturesPerWave = 4;
+	static constexpr float AbyssalRiftsSecondsBetweenWaves = 15.0f;
+	static constexpr float AbyssalRiftsSecondsToClose = 60.0f;
+	static constexpr float AbyssalRiftsMagicFindPerSuccess = 10.0f;
+	static constexpr int32 AbyssalRiftsHighestRung = DemonPrinceRung;
+
+	static_assert(AbyssalRiftsSecondsToClose > (AbyssalRiftsWaves - 1) * AbyssalRiftsSecondsBetweenWaves,
+		"Every wave must arrive before the time runs out, or a rift could never be closed in time.");
+	static_assert(AbyssalRiftsWaves > 0 && AbyssalRiftsCreaturesPerWave > 0 && AbyssalRiftsMagicFindPerSuccess > 0.0f,
+		"A rift that sent nothing or paid nothing is not the row.");
+
+	/**
 	 * Swarm of Locusts' figures, every one a play-test value. See the key. The warning is Artillery Strike's; the
 	 * speed is Divine Wrath's, slower than every class.
 	 */
@@ -5246,6 +5297,18 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** Whether an open rift sends its next wave now: it has sent fewer than all, and that wave's time has come. */
+	static bool AbyssalRiftsWaveIsDue(float SecondsOpen, int32 WavesSent);
+
+	/** Whether an open rift's time to be closed has run out. */
+	static bool AbyssalRiftsHasRunOut(float SecondsOpen);
+
+	/** The rung a rift's creatures are sent at after this many successes: one higher each, at most the highest. */
+	static int32 AbyssalRiftsRungFor(int32 Successes);
+
+	/** The magic find this many successes have earned. */
+	static float AbyssalRiftsMagicFindFor(int32 Successes);
 
 	/** Whether a swarm of locusts comes now: this long since the last one ended. */
 	static bool SwarmOfLocustsIsDue(float SecondsSinceLast);
