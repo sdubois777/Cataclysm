@@ -117,6 +117,9 @@ restored, and each failed on exactly the checks registered for it.
 | The curse never holds | `AnUnpaidBloodDebtCursesTheFinalBossFloor`, three: "30% less attack damage", "30% less spell damage" (each 0) and "the cursed panel" |
 | The blessing written on the player as 0 | `KillsPayTheBloodDebtAndEachQuarterBlessesTheBlow`, two: "5% more attack damage" and "5% more spell damage", each 0 |
 
+The final Python, on this entry's own commit after the lock was released: `5523 passed, 8 skipped` (JUnit 5,531, no
+failures).
+
 ---
 
 ## 2026-09-26 — "When you die all your buffs are removed" also ends the wearer's running auras
