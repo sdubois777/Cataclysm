@@ -450,7 +450,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	 * dungeon. Diminishing Returns. Issue #806.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
-	float PotionHealLessPercentPerDrink = 0.0f;
+	float PotionHealLessPerDrinkPercent = 0.0f;
 
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
@@ -483,7 +483,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& ChorusRegenLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
 			&& PotionKillChargesLessPercent <= 0.0f
-			&& PotionHealLessPercentPerDrink <= 0.0f
+			&& PotionHealLessPerDrinkPercent <= 0.0f
 			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
 			// and #41. March of Progress' armour is still something the floor is doing
 			// to the player, so a floor carrying it is not empty.

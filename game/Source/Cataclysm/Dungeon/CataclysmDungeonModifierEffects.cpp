@@ -931,7 +931,7 @@ FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 	}
 	if (FloorModifiers.Contains(FName(DiminishingReturnsKey)))
 	{
-		Effects.PotionHealLessPercentPerDrink = DiminishingReturnsLessPercentPerDrink;
+		Effects.PotionHealLessPerDrinkPercent = DiminishingReturnsLessPercentPerDrink;
 	}
 
 	return Effects;
@@ -1123,7 +1123,7 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::KillChargesLessStat,
 								  Effects.PotionKillChargesLessPercent);
 	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::HealLessPerDrinkStat,
-								  Effects.PotionHealLessPercentPerDrink);
+								  Effects.PotionHealLessPerDrinkPercent);
 
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
@@ -1536,12 +1536,12 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 									Effects.PotionKillChargesLessPercent));
 	}
 
-	if (Effects.PotionHealLessPercentPerDrink > 0.0f)
+	if (Effects.PotionHealLessPerDrinkPercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(
 			TEXT("each potion already drunk in this dungeon takes %.0f%% of a full heal "
 				 "off the next, down to %.0f%% of it"),
-			Effects.PotionHealLessPercentPerDrink, UCataclysmPotions::LeastHealShare * 100.0f));
+			Effects.PotionHealLessPerDrinkPercent, UCataclysmPotions::LeastHealShare * 100.0f));
 	}
 
 	if (Effects.SicknessMaxHealthLessPercent > 0.0f

@@ -86,7 +86,11 @@ def body_of(text: str, opening: str) -> str:
 #:
 #: `SpellsLockedValue` IS THE SAME STAT FOR THE SAME REASON, written by Anti-Magic Zones
 #: with its scope set to spells. Issues #1820 and #41.
-NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue"}
+#:
+#: `PotionsForbiddenValue` IS A FLAG FOR THE SAME REASON: Hard Mode writes 1 to
+#: `potions_forbidden`, and `UCataclysmPotions::Drink` refuses when it is above
+#: zero. Issue #806.
+NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "PotionsForbiddenValue"}
 
 
 @pytest.fixture(scope="module")
