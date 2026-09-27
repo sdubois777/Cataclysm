@@ -494,6 +494,11 @@ someone still working by accident.
 
 - **One branch, one writer.** Never push to, rebase, or update a branch another
   session owns, even if invited to. Reading from another worktree is fine.
+- **Check a hand-resolved C++ conflict before building.** Run
+  `python tools/check_resolved_cpp.py --changed` after resolving a C++ merge
+  conflict by hand, and before building. It catches a `/**` comment left with no
+  opening and a conflict boundary inside a function body, which the compiler
+  alone reports late; four branches broke that way on 2026-09-12 (#1610).
 - **Another session's report is a claim; git is the evidence.** Before believing
   "that landed", check for the content itself, not the branch or pull request
   state: `git ls-tree -r origin/development --name-only | grep <name>`. Work that
