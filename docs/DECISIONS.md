@@ -2,12 +2,13 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-27 — CLAUDE.md tells a session to run the C++ conflict check after resolving a conflict by hand (#1610)
+## 2026-09-26 — CLAUDE.md tells a session to run the C++ conflict check after resolving a conflict by hand (#1610)
 
-**Affects:** `CLAUDE.md` only, one bullet under "Rules that keep parallel sessions from breaking each other". Issue
-[#1610](https://github.com/sdubois777/Cataclysm/issues/1610), which this closes.
+**Affects:** `CLAUDE.md`, one bullet under "Rules that keep parallel sessions from breaking each other". Issue
+[#1610](https://github.com/sdubois777/Cataclysm/issues/1610), which this closes. Also `tools/tests/test_the_decisions_log_names_real_files.py`: a bare name that is a file at the
+repository root now resolves; before, `CLAUDE.md` in an Affects line was reported as missing.
 
-**Decided by the owner on 2026-09-27**, asked by the coordinating session: add the sentence "Run `python
+**Decided by the owner on 2026-09-26**, asked by the coordinating session: add the sentence "Run `python
 tools/check_resolved_cpp.py --changed` after resolving a C++ merge conflict by hand, and before building."
 
 **Why.** On 2026-09-12 four hand-resolved conflicts on four branches broke C++ the same way: a `/**` comment left with
