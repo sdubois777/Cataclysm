@@ -169,6 +169,7 @@ dff58708. Every figure below is what `pytest`, `python tools/unreal_build.py` or
 | Proof (a): the rule's stat not asked | PROVED: 3 failed, `ACurseLaidByACreatureRaisesNothing`, `ACurseLaidByYourMinionRaisesNothing`, `WithoutTheRuleYourCurseRaisesNothing`; restored 11 of 11 |
 | Proof (b): Summon Imp's cap counts only its own imps | PROVED: 1 failed, `SummoningAtTheCapDestroysARisenImpWhenItIsTheOldest`; restored 11 of 11 |
 | Proof (c): only Shred read as a curse | PROVED: 1 failed, `MadnessIsACurseAsWellAsShred`; restored 11 of 11 |
+| Final Python, on `a507c775` in the scratchpad worktree, started with no workflow in progress | `5541 passed, 7 skipped` (JUnit 5,548, no failures) |
 
 **The whole suite's one failure was a count this change should have moved.**
 `Cataclysm.Data.EveryGeneratedTableImports` read "Expected 'PassiveEffects.csv row count' to be 323, but it was
