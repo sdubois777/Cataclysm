@@ -2,6 +2,84 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Twenty-six Masochist rows proven on a real Masochist, in six test batches (#2119)
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` only. Issue
+[#2119](https://github.com/sdubois777/Cataclysm/issues/2119). No game code changes.
+
+### WHAT WAS ADDED
+
+Masochist rows that had no test of what they do are now each read through their real row on a real Masochist.
+Twenty-six tests in five groups:
+
+| Group | Tests | What they show |
+|---|---|---|
+| `Cataclysm.MasochistRows.` | 9 | Living on the Edge, Last Stand, The Catalyst, Desperate Measures and Low Life turn on at or below a share of health; Battle Scarred, Endurance in Suffering, Doctrine of Pain and Wound Channeling read the debuffs on the Masochist |
+| `Cataclysm.MasochistStackRows.` | 5 | Vicious Onslaught, Blood Offering, Carnage, Sanguine Momentum, Carnivore |
+| `Cataclysm.MasochistHealingRows.` | 5 | Cataclysmic Resonance, Sanguine Ledger, Wounds That Feed, Shared Agony, Compound Interest |
+| `Cataclysm.MasochistCostRows.` | 5 | The Reckoning, Blood Rush, Grand Tithe, Exsanguinate, Staunch |
+| `Cataclysm.MasochistVowRows.` | 2 | Rock Bottom, Ceaseless Penance |
+
+The low-health tests assert, as set-up, that the health share handed to the pipeline is at or below each threshold
+exactly, and Wound Channeling's that both ticks reached the Masochist's health, so a set-up that misses reads as a
+set-up failure rather than as a node that does not work. The Compound Interest test's class was renamed because
+another test file already used the name.
+
+### ONE WINDOW FOR TWELVE BATCHES, RUN TWICE
+
+These six batches and the six of #1755 were stacked in queue order as `test/passive-row-batches` and tested in one
+window, ruled 2026-09-26 under the owner's delegation, then merged as two pull requests, one per issue. The #1755 part merged first; this pull request is the stack's other ten commits, the nine batch commits and this issue's correction, moved onto development after it, with this entry on top.
+**One conflict came up in stacking**, in `CataclysmPassiveTreeTests.cpp`'s include list at #2119's first batch: the
+#1755 plain-row batch adds `#include "GameplayEffect.h"`, and that Masochist batch changed the lines next to it. The
+include was kept; `tools/check_resolved_cpp.py` printed "1 files read, 0 with complaints".
+
+**The first window stopped at its whole suite.** On the stack's top `17eb5ca1`, on development 564f991d, the Python
+of record printed `5523 passed, 8 skipped` (JUnit 5,531) and the build `30 actions, 27 files compiled`, and the whole
+suite printed `2690 tests performed, 2683 succeeded, 7 failed`. No proof ran. The seven were read to their causes
+with no build, and none was a game fault; the next section has this issue's share.
+
+### THE FIRST WHOLE SUITE FAILED THREE OF THESE, AND ALL THREE WERE THE TESTS
+
+Three of the seven failures in the window's first whole suite are here. Each was read to its cause before anything
+changed, and none is a game fault. They are corrected in one commit at the top of the stack.
+
+- **Wound Channeling counted its own +8% twice**: it read the other damage over time taken increases after spending
+  its eight points, and its row is unconditional, so it expected 1.0741 where the game gave 1.08. The others are read
+  before the points now.
+- **Exsanguinate read attack damage through `AttackDamageMoreForSkill` alone**, which returns only the "more" not
+  folded into the attribute, and an unconditional "more" row is folded in, so it read 1.0. It now reads
+  `WeaponDamageOf` times that, the product `UCataclysmSkillEffects::ApplyHit` takes; the keystone adds no increases,
+  so the attribute's fold does not change between the two readings.
+- **Ceaseless Penance held its Cripple by hand as well as through the character's regeneration timer**, so at 80%
+  the Cripple was held twice a step, gained time, and outlasted the three-second wait at 30%. The hand call is gone,
+  and a set-up assertion shows the Cripple still held, by the game's timer alone, before the drop to 30%.
+
+### Run
+
+The second window, on 2026-09-26, with the build machine, on the stack's top `f40d2d65` on development d78e3505, both
+correction commits in. Every figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard`
+printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on the top, started with no workflow in progress | `5529 passed, 8 skipped` (JUnit 5,537, no failures) |
+| Build | `Build: Succeeded - 17 actions, 14 files compiled` |
+| Whole suite, on the top, started with no workflow in progress | `2696 tests performed, 2696 succeeded, 0 failed`; 2696 declared, gap 0 |
+
+Twelve proofs with `prove_cpp_guard` on the top, one a batch, each on its batch's group and its anchor re-checked
+immediately before its run; every one printed PROVED. This issue's six, as performed, succeeded, failed:
+
+| Break | With the break in | Restored |
+|---|---|---|
+| Health at or below a threshold never holds | 9, 4, 5: Living on the Edge, Last Stand, The Catalyst, Desperate Measures, Low Life | 9, 9, 0 |
+| Debuffs carried counted as none | 9, 6, 3: Battle Scarred, Endurance in Suffering, Doctrine of Pain | 9, 9, 0 |
+| Health missing counted in part-steps, rounded up | 5, 4, 1: Vicious Onslaught | 5, 5, 0 |
+| The foreign-damage window never closes | 5, 4, 1: Cataclysmic Resonance | 5, 5, 0 |
+| The window after a health cost never closes | 5, 4, 1: Blood Rush | 5, 5, 0 |
+| The thirty-second wait between reliefs ignored | 2, 1, 1: Rock Bottom | 2, 2, 0 |
+
+---
+
 ## 2026-09-26 — Twenty-two Demonic and Ravager rows proven on a real player, in six test batches (#1755)
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` only. Issue
