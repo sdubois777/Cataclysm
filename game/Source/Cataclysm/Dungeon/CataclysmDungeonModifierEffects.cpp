@@ -205,6 +205,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
 	TEXT("Famine_Swarm_of_Locusts");
 
+const TCHAR* UCataclysmDungeonModifierEffects::WarzoneControlPointsKey =
+	TEXT("War_Warzone_Control_Points");
+
 const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 	TEXT("Pestilence_Raw_Sewage");
 
@@ -585,7 +588,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(SwarmOfLocustsKey)
 		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
 		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
-		|| RowKey == FName(RealityRiftsKey))
+		|| RowKey == FName(RealityRiftsKey)
+		// WARZONE CONTROL POINTS. The points are captured and held and give their strength; "summoning allied
+		// soldiers" and "opening shortcuts" do nothing. Issues #1820 and #41.
+		|| RowKey == FName(WarzoneControlPointsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -762,6 +768,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfestedHoardKey),
 		FName(AbyssalRiftsKey),
 		FName(SwarmOfLocustsKey),
+		FName(WarzoneControlPointsKey),
 		FName(RawSewageKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
@@ -1109,6 +1116,18 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 										Effects.RealityGiftDamageMorePercent);
 	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
 										Effects.RealityGiftDamageMorePercent);
+
+	// AND THE HELD WARZONE CONTROL POINTS: a More on attack and spell damage, and points on each of the eight
+	// resistances, a Flat as an item's resistance is. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.WarzoneDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.WarzoneDamageMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.WarzoneResistancePercent);
+	}
 
 	// AND THE BLOOD DEBT'S BLESSING AND ITS CURSE, ON DAMAGE AS VOID PARASITE'S IS TAKEN: a More and a Less on
 	// attack damage and on spell damage. Issues #1820 and #41.
@@ -1544,6 +1563,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 											Each.Percent, Each.Direction));
 			}
 		}
+	}
+	if (Effects.WarzoneDamageMorePercent > 0.0f || Effects.WarzoneResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and all resistances +%.0f%% from held control points"),
+									Effects.WarzoneDamageMorePercent, Effects.WarzoneResistancePercent));
 	}
 	if (Effects.ParasiteLessPercent > 0.0f)
 	{
