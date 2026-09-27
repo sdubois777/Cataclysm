@@ -108,6 +108,9 @@ restored, and each failed on exactly the checks registered for it.
 | The burst's lock never reaches the skills | `AnInsanityBurstWarnsThenLocksEverySkillForFiveSeconds`, two: "every skill locked when the warning ends" and "still locked at 4.75 s" |
 | The stun burst stuns nothing | `AnInsanityBurstCanStunThePlayerInstead`: "stunned when it ends" |
 
+The final Python, on this entry's own commit after the lock was released: `5530 passed, 8 skipped` (JUnit 5,538, no
+failures).
+
 ---
 
 ## 2026-09-26 — Skill charges: a skill with a cooldown holds one use plus its charges bonus, recharged one at a time, and six enchantments written on them
