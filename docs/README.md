@@ -87,7 +87,7 @@ heading row describe their layout instead. Issue #1884.
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Passive Effects | 324 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
-| Enchantment Effects | 386 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High |
+| Enchantment Effects | 389 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
 read a row count as a count of the things the sheet describes without checking
