@@ -2,6 +2,27 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-27 — CLAUDE.md tells a session to run the C++ conflict check after resolving a conflict by hand (#1610)
+
+**Affects:** `CLAUDE.md` only, one bullet under "Rules that keep parallel sessions from breaking each other". Issue
+[#1610](https://github.com/sdubois777/Cataclysm/issues/1610), which this closes.
+
+**Decided by the owner on 2026-09-27**, asked by the coordinating session: add the sentence "Run `python
+tools/check_resolved_cpp.py --changed` after resolving a C++ merge conflict by hand, and before building."
+
+**Why.** On 2026-09-12 four hand-resolved conflicts on four branches broke C++ the same way: a `/**` comment left with
+no opening after both sides were kept, which leaves braces balanced and is seen only by the compiler, and a conflict
+boundary inside a function body. `tools/check_resolved_cpp.py` (with `tools/tests/test_check_resolved_cpp.py`) merged
+as #1610's work and catches both. Every other part of #1610 had landed; this sentence was held for the owner.
+
+**Who wrote it.** The Demonic session proposed the sentence and declined to edit CLAUDE.md on a relayed approval, which
+is its rule. The coordinating session made the edit on the owner's direct answer.
+
+**Checked:** the four Python test files that open `CLAUDE.md` printed "24 passed", the decisions checks printed "154
+passed", and `ruff check .` printed "All checks passed!". The pull request's CI runs the whole Python suite.
+
+---
+
 ## 2026-09-26 — Every Demonic capstone option grants its own rows and no other option's; which misfiled rows the checks can and cannot see (#1755)
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmCapstoneOptionTests.cpp` (new) only. Issue
