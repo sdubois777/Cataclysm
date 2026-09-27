@@ -167,6 +167,16 @@ enum class ECataclysmBrainAction : uint8
 	NotAttacking,
 
 	/**
+	 * Walking to where a floor rule sends it, noticing nobody: Demonic Guide's
+	 * guide. Issues #1820 and #41. A guide that waits for the player, or has
+	 * arrived, reports `Idle`.
+	 *
+	 * Appended, like every value from Roaming on, because this is a UENUM and
+	 * inserting renumbers every value after it.
+	 */
+	Guiding,
+
+	/**
 	 * Moving away from a point, and neither attacking nor using an ability.
 	 *
 	 * FEARED, OR TOLD TO FLEE BY A RULE. `UCataclysmFear::FleeSourceOf` answers
