@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::FunerealProcessionKey =
+	TEXT("Death_Funereal_Procession");
+
 const TCHAR* UCataclysmDungeonModifierEffects::BloodDebtKey =
 	TEXT("War_Blood_Debt");
 
@@ -505,6 +508,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(FunerealProcessionKey)
 		|| RowKey == FName(BloodDebtKey)
 		|| RowKey == FName(QuarantineBreachKey)
 		|| RowKey == FName(InfectionBloomKey)
@@ -712,6 +716,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(FunerealProcessionKey),
 		FName(BloodDebtKey),
 		FName(QuarantineBreachKey),
 		FName(InfectionBloomKey),
@@ -1940,6 +1945,21 @@ float UCataclysmDungeonModifierEffects::BloodDebtDamageMorePercentFor(int32 Bles
 float UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercentFor(int32 Paid, int32 Owed, bool bOnTheFinalBossFloor)
 {
 	return bOnTheFinalBossFloor && Paid < Owed ? BloodDebtCurseLessPercent : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::FunerealProcessionIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= FunerealProcessionSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionLastsSeconds()
+{
+	return FunerealProcessionTravelsCm / FunerealProcessionSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * FunerealProcessionPercentPerSecond / 100.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)
