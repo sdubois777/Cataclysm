@@ -2,6 +2,88 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Twenty-two Demonic and Ravager rows proven on a real player, in six test batches (#1755)
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` only. Issue
+[#1755](https://github.com/sdubois777/Cataclysm/issues/1755). No game code changes.
+
+### WHAT WAS ADDED
+
+Rows of the three Demonic trees that had no test of what they do, or were tested only with their stat given by
+hand, are now each read through their real row on a real character, through the function a blow calls. Twenty-two
+tests in six new groups:
+
+| Group | Tests | What they show |
+|---|---|---|
+| `Cataclysm.ReachRows.` | 5 | Weight of the Axe, Onset, Unbreaking, In Among Them and Wade In count enemies within 4 metres |
+| `Cataclysm.TargetRows.` | 5 | Run Them Ragged, Nothing Left In Them, Cornered Quarry, Wearing Them Down and Broken Will read the enemy on the other end of a blow |
+| `Cataclysm.FervourRows.` | 3 | Unspent Ruin and Banked Ruin read Fervour held; the Ritualist's starting node makes Fervour from its minions |
+| `Cataclysm.RitualistRows.` | 3 | Attendant, Unbroken Focus and Cold Reading raise spell damage |
+| `Cataclysm.PartialClauses.` | 5 | Unstoppable's slow, Never Lets Go on a real blow, Press-Ganged's and Rekindled's limits, Hollow Crown's damage |
+| `Cataclysm.PlainRows.` | 1 | every row with no condition, scale, required tag, capstone option or Min Points reaches a real player at its figure times the points |
+
+### ONE WINDOW FOR TWELVE BATCHES, RUN TWICE
+
+These six batches and the six of #2119 were stacked in queue order as `test/passive-row-batches` and tested in one
+window, ruled 2026-09-26 under the owner's delegation, then merged as two pull requests, one per issue. This pull request is the stack's first seven commits, the six batches and this issue's correction `8ffdeaf1`, with this entry on top; its `game/` tree is the one the window built at `8ffdeaf1`.
+**One conflict came up in stacking**, in `CataclysmPassiveTreeTests.cpp`'s include list at #2119's first batch: the
+#1755 plain-row batch adds `#include "GameplayEffect.h"`, and that Masochist batch changed the lines next to it. The
+include was kept; `tools/check_resolved_cpp.py` printed "1 files read, 0 with complaints".
+
+**The first window stopped at its whole suite.** On the stack's top `17eb5ca1`, on development 564f991d, the Python
+of record printed `5523 passed, 8 skipped` (JUnit 5,531) and the build `30 actions, 27 files compiled`, and the whole
+suite printed `2690 tests performed, 2683 succeeded, 7 failed`. No proof ran. The seven were read to their causes
+with no build, and none was a game fault; the next section has this issue's share.
+
+### THE FIRST WHOLE SUITE FAILED FOUR OF THESE, AND ALL FOUR WERE THE TESTS
+
+The window's first whole suite on the stack printed `2690 tests performed, 2683 succeeded, 7 failed`; four of the
+seven are here. Each was read to its cause before anything changed, and none is a game fault. They are corrected
+in one commit, `8ffdeaf1`, which is this pull request's last test commit.
+
+- **The plain-row test counted a row with Min Points**, Scarred Plate's crowd control resistance, which pays once
+  from four points since #2127 and so is not "figure times the points". `IsPlain` now also requires `MinPoints` 0.
+  That skips one Ravager row, 57 read to 56 against a floor of 56; both rows with Min Points are covered by
+  `Cataclysm.AtPointsRows.*`.
+- **In Among Them's spell half and Wade In's armour read through `StatAppliedTo`, which never counts enemies in
+  reach**, so every per-enemy-in-reach row read zero there. The game's own reads do count them: a skill's spell
+  damage through `StatForSkill`, armour against a hit through `DefenderStat` and `StatForSkill`. Armour is now read
+  exactly as a hit reads it; spell damage through `MultiplierForStatAgainst`, which builds the same state.
+  `StatAppliedTo`'s header does not say that it ignores enemies in reach and the target's state, and it has game
+  callers, mana cost among them; no reach-scaled row sits on such a stat today. That is recorded here rather than
+  changed, since this change is to tests only.
+- **Never Lets Go hit a 1,000,000-health enemy for 100**, and an ailment from a passive is rolled only on a blow that
+  takes a tenth of the target's maximum health (the owner's rule of 2026-09-02, #917). It now hits for 250,000,
+  not a larger figure, because the blow is scaled by the Ravager's own attack multipliers and a dead enemy rolls no
+  ailment. That multiplier was not measured; two set-up assertions guard it, that the blow took a tenth of maximum
+  health and that the enemy is still alive.
+
+### Run
+
+The second window, on 2026-09-26, with the build machine, on the stack's top `f40d2d65` on development d78e3505, both
+correction commits in. Every figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard`
+printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on the top, started with no workflow in progress | `5529 passed, 8 skipped` (JUnit 5,537, no failures) |
+| Build | `Build: Succeeded - 17 actions, 14 files compiled` |
+| Whole suite, on the top, started with no workflow in progress | `2696 tests performed, 2696 succeeded, 0 failed`; 2696 declared, gap 0 |
+
+Twelve proofs with `prove_cpp_guard` on the top, one a batch, each on its batch's group and its anchor re-checked
+immediately before its run; every one printed PROVED. This issue's six, as performed, succeeded, failed:
+
+| Break | With the break in | Restored |
+|---|---|---|
+| The enemies-in-reach condition never holds | 5, 2, 3: Weight of the Axe, Onset, Unbreaking | 5, 5, 0 |
+| A Crippled target never seen as Crippled | 5, 4, 1: Run Them Ragged | 5, 5, 0 |
+| Fervour held counts no steps | 3, 1, 2: Unspent Ruin, Banked Ruin | 3, 3, 0 |
+| Minions held counted as none | 3, 2, 1: Attendant | 3, 3, 0 |
+| A lost or exploded minion replaced however recently one was | 5, 3, 2: Press-Ganged, Rekindled | 5, 5, 0 |
+| A row's figure not multiplied by the points spent | 1, 0, 1: the plain-row test | 1, 1, 0 |
+
+---
+
 ## 2026-09-25 — Funereal Procession: every 60 seconds a line of pallbearers crosses toward where the player stood at 150 cm a second, and its touch burns 5% of maximum health a second and fears the player for 2 seconds
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
