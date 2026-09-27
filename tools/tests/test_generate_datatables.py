@@ -2384,8 +2384,9 @@ class TestEnchantmentEffects:
 
     def test_an_action_row_may_carry_required_tags(self, tmp_path):
         # TWO ROWS ARE SCOPED: "melee kills" and "strike skills ... on hit".
-        # Type.Melee is on 30 of the 403 weapon skills and Type.Strike on 31,
-        # measured 2026-09-14.
+        # Type.Melee is on 31 of the 403 weapon skills and Type.Strike on 31,
+        # since issue #944 gave The Whole Weight the melee tag it lacked (30 and
+        # 31, measured 2026-09-14).
         out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
             {"Required Tags": "Type.Melee", "Action Event": "kill"})]))
 
