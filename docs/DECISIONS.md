@@ -2,6 +2,78 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Every Demonic capstone option grants its own rows and no other option's; which misfiled rows the checks can and cannot see (#1755)
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmCapstoneOptionTests.cpp` (new) only. Issue
+[#1755](https://github.com/sdubois777/Cataclysm/issues/1755), which this closes. No game code changes.
+
+### WHAT WAS LEFT
+
+#1755's last open item was six capstone options with no test that their rows are reachable through that option, that
+the other options grant nothing, and that each row lands in its bucket: Ravager capstone 25 options 1 and 3,
+Ritualist capstone 25 options 1, 2 and 3, and Ritualist capstone 100 option 3. Reading the tests showed none of the
+six was fully covered: Ritualist capstone 25 had no test at all, Headlong's movement speed row was tested nowhere,
+and no test anywhere chose one option and checked that the other two granted nothing.
+
+### THE TEST
+
+Ruled 2026-09-26 under the owner's delegation, widened from the six to every capstone option of the three Demonic
+trees. `Cataclysm.CapstoneOptions.EveryDemonicCapstoneOptionGrantsItsRowsAndNoOthers` reads all 36 options and their
+64 rows through `UCataclysmPassiveTree::ModifiersFor`, which calls `AccumulateInto`, the function whose one line
+compares a row's `Option` with the option chosen. For each capstone node the modifiers with no option chosen are the
+base; choosing option N must add, stat by stat, exactly option N's rows, each in the bucket its value kind names
+(spelt out in the test, not read from the game) with its figure, condition, scale, required tags and reach, and
+nothing else. A row with a condition or a scale is carried and checked, not evaluated, so no row is skipped. It
+logs the options and rows each tree checked and fails below 12 options and 28, 18 and 18 rows for Masochist, Ravager
+and Ritualist. The per-option tests that already existed stay.
+
+### WHAT GUARDS THE DATA, AND WHAT DOES NOT
+
+**This test guards the routing code, not the data.** It takes each option's rows from the same `Option` column it
+checks, so a row filed under the wrong option is expected where it is filed and found there.
+
+**The data is guarded by the existing check, for 52 of the 64 rows.**
+`tools/tests/test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description`
+reads a capstone row against its own option's sentence (`words_of`, since #1029). For 52 rows the text that
+satisfies it appears in that option's sentence and in no other option of the node, so a row filed under another
+option fails there. Shown on 2026-09-26 with the data unchanged, in memory: that check passes on the real rows, and
+fails with `Ravager_capstone_25#1` (25% increased movement speed, option 3) moved to option 1, "Ravager_capstone_25:
+the workbook grants 25% of movement_speed per point, and the node says:" followed by option 1's sentence.
+
+**The other 12 rows have no guard against being filed under an option that shares their figure.** A new check for
+it was proposed and dropped, since it could not catch these either. They are:
+
+| Row | Text it is matched by | Also in option |
+|---|---|---|
+| `Masochist_capstone_100#1` to `#4` | "1%" | 2 and 3 |
+| `Masochist_capstone_100#5`, `#6` | "1%" | 1 and 2 |
+| `Masochist_capstone_100#8` | "1%" | 1 and 3 |
+| `Ritualist_capstone_25#2` | "20%" | 3 |
+| `Ritualist_capstone_25#3`, `#4` | "20%" | 2 |
+| `Ritualist_capstone_100#1` | "25%" | 1 |
+| `Ritualist_capstone_100#2` | "25%" | 3 |
+
+### Run
+
+One window on 2026-09-26, with the build machine, on `test/capstone-options` `b7a4be47` on development 84bee9be.
+Every figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, started with no workflow in progress | `5530 passed, 8 skipped` (JUnit 5,538, no failures) |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| `Cataclysm.CapstoneOptions.` | `1 tests performed, 1 succeeded, 0 failed`; logged "Masochist: 12 capstone options, 28 rows checked", "Ravager: 12 capstone options, 18 rows checked", "Ritualist: 12 capstone options, 18 rows checked" |
+| Whole suite, started with no workflow in progress | `2706 tests performed, 2706 succeeded, 0 failed`; 2706 declared, gap 0 |
+
+One proof with `prove_cpp_guard`, prefix `Cataclysm.CapstoneOptions.`, its anchor re-checked immediately before the run:
+the routing line in `AccumulateInto` made `if (false && Effect->Option != 0 && Effect->Option != ChosenOption)`, so every
+option's rows apply whatever is chosen. With the break in it printed `1 tests performed, 0 succeeded, 1 failed:
+EveryDemonicCapstoneOptionGrantsItsRowsAndNoOthers`, on 64 assertions, one a row, each "... is granted by option N, in
+that bucket": with the comparison gone, the no-option base already holds every row, so choosing an option adds none.
+Restored, it printed `1 tests performed, 1 succeeded, 0 failed`.
+
+---
+
 ## 2026-09-25 — Insanity Bursts, PARTLY BUILT: every 40 seconds on a floor, after a 3-second warning, a burst either locks every skill for 5 seconds or stuns the player for 1.5; "attack allies" is not built
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
