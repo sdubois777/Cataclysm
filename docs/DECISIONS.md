@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-27 — The three Famine rules on potions: Hard Mode refuses every drink, Recession quarters a kill's charges, Diminishing Returns takes 10% of a full heal off each drink down to 30%
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPotions.h` and `.cpp` (a drink refused, the charges a kill
+adds, the heal a drink gives, drinks counted); `CataclysmAbilitySystemComponent.h`; `CataclysmPlayerClassStats.cpp` (the
+three stats have no attribute); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+three rows' keys, figures and floor fields); `CataclysmHUD.cpp` (the boxes crossed out when potions are forbidden);
+tests in `CataclysmPotionFamineTests.cpp` and `CataclysmStatExemptionTests.cpp`; and three Python checks. Issue
+[#806](https://github.com/sdubois777/Cataclysm/issues/806). The rows themselves were already in
+`game/Data/DungeonModifiers.csv`; no data changes.
+
+### WHAT WAS DECIDED
+
+The three Famine dungeon modifiers act on the four potion slots, each read from its row's own words.
+
+- **Hard Mode**, "Players cannot use potions in this dungeon.": the floor writes `potions_forbidden` 1, and
+  `UCataclysmPotions::Drink` refuses every drink while it is above zero. Kills still fill the slots, and the boxes on
+  screen are crossed out.
+- **Recession**, "Potions take 4x as many kills to fill.": the floor writes `potion_kill_charges_less_percent` 75,
+  so a kill adds a quarter of its charges.
+- **Diminishing Returns**, "Potions lose effectiveness over time...": the floor writes
+  `potion_heal_less_percent_per_drink` 10; each drink heals 10% of a full heal less than the one before, counted from
+  entering the dungeon, down to 30% of a full heal. Ruled per drink on 2026-09-25.
+
+The three stats have no attribute, as a rule written by a floor and read by one function needs none. The three rows
+join the floor log, the rule and built-state lists, the stat exemption probes and the stat lookup inventory, and the
+Python row check pins "cannot use potions", the 4x and the 10.
+
+### TESTS
+
+Three in `Cataclysm.PotionFamine.`: Hard Mode refuses every drink and the slots still fill; Recession makes a kill
+add a quarter of its charges; Diminishing Returns takes ten percent of a full heal off each drink down to thirty.
+
+### Run
+
+One window on 2026-09-27, with the build machine, on `feat/potion-famine-rules` on development 66231143. Every
+figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on `5b7e16a3`, started with no workflow in progress | `5532 passed, 8 skipped` (JUnit 5,540, no failures) |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| Whole suite, started with no workflow in progress | `2716 tests performed, 2714 succeeded, 2 failed`: the Hard Mode and Recession tests. **Not as registered** |
+| Diagnostic rebuild and `Cataclysm.PotionFamine.` | `3 tests performed, 1 succeeded, 2 failed`, both on "set-up: the victim spawned at (300, 0, 0)" |
+| Test-only fix, rebuild and `Cataclysm.PotionFamine.` | `3 tests performed, 3 succeeded, 0 failed` |
+
+**The first whole suite's two failures were the tests.** In both, every kill made after `GoToFloor(2)` added no
+charges ("a kill still fills the slot" read 20 against 21; Recession's two figures read 0), while the kill on floor 1
+added its 3.5. Two causes gave the same numbers: the test's victim not spawning, or the second floor replacing the
+player's pawn or potions holder, which would have been a game fault, a real player's kills charging no potion after
+the first floor. A diagnostic run settled it before anything was fixed: the `Kill` helper asserted, as set-up, that
+its victim spawned, that the first player controller's pawn and ability system were the ones the test reads, before
+each kill and after `GoToFloor(2)`, and that `HandleDeath` marked the victim dead. Both tests failed on the spawn, and
+every holder check passed. **The second floor's layout occupies the fixed spot (300, 0, 0), so `SpawnActor` refused
+it and no kill happened.** The victim is now spawned with `AlwaysSpawn` at the same spot, and the set-up assertions
+stay. As ruled, a test-only fix after the whole suite gets a group rerun, not a second whole suite.
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.PotionFamine.`, each anchor re-checked immediately before its
+run; each printed PROVED, as performed, succeeded, failed:
+
+| Break | With the break in | Restored |
+|---|---|---|
+| Hard Mode's flag never taken as held when drinking | 3, 2, 1: the Hard Mode test, on "the drink is refused", "and spends nothing" (10 against 20) and "a kill still fills the slot" (11 against 21) | 3, 3, 0 |
+| A floor carrying Recession writes no share off a kill | 3, 2, 1: the Recession test, on "a quarter of that: 0.875" (3.5) and "so four kills add what one did" (14 against 3.5) | 3, 3, 0 |
+| A drink is never counted | 3, 2, 1: the Diminishing Returns test, on four heals from the second drink on, each 178.5, a full heal | 3, 3, 0 |
+
+---
+
 ## 2026-09-25 — Luxury Hoarders: two piles of loot a floor, each three drop rolls at the Legendary rung, each guarded by three Elite creatures of the floor standing on it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key and its
