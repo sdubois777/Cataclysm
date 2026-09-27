@@ -6,6 +6,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -75,23 +77,56 @@ namespace CataclysmPotionFamineTest
 		return Made;
 	}
 
+	bool StillTheSameHolder(FAutomationTestBase& Test, const FFloor& Floor, const TCHAR* When);
+
 	/** Down to the next floor, which carries `Row`. */
 	bool OntoAFloorCarrying(FAutomationTestBase& Test, const FFloor& Floor, const TCHAR* Row)
 	{
 		Floor.Mode->DungeonModifiers = {FName(Row)};
 		return Test.TestTrue(*FString::Printf(TEXT("the next floor, carrying %s, was reached"), Row),
-							 Floor.Mode->GoToFloor(2));
+							 Floor.Mode->GoToFloor(2))
+			&& StillTheSameHolder(Test, Floor, TEXT("after GoToFloor(2)"));
 	}
 
-	/** A creature of this rung dies, credited to the player. */
-	void Kill(UWorld* World, int32 RarityStep)
+	/**
+	 * THE PLAYER A KILL CHARGES IS THE ONE THE TEST READS. `HandleDeath` hands the
+	 * kill to the first player controller's pawn, and `UCataclysmPotions` charges
+	 * that pawn's ability system; the test reads `Floor.AbilitySystem`. Set-up, so a
+	 * pawn or holder replaced by `GoToFloor` fails here and not on a charge figure.
+	 */
+	bool StillTheSameHolder(FAutomationTestBase& Test, const FFloor& Floor, const TCHAR* When)
 	{
-		if (ACataclysmEnemyCharacter* Victim = World->SpawnActor<ACataclysmEnemyCharacter>(
-				FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator))
+		const APlayerController* Watching = Floor.World->GetFirstPlayerController();
+		return Test.TestTrue(*FString::Printf(TEXT("set-up, %s: the first player controller's "
+												   "pawn is the test's character"), When),
+							 Watching && Watching->GetPawn() == Floor.Character)
+			&& Test.TestTrue(*FString::Printf(TEXT("set-up, %s: and its ability system is the "
+												   "one the test reads"), When),
+							 UCataclysmTargeting::AbilitySystemOf(Floor.Character)
+								 == Floor.AbilitySystem);
+	}
+
+	/**
+	 * A creature of `RarityStep` dies, or false with the set-up line that failed.
+	 *
+	 * DIAGNOSTIC, 2026-09-27. The first whole suite on this change found every kill
+	 * after `GoToFloor(2)` adding no charges while the kill on floor 1 did. Either
+	 * the victim never spawned at this fixed spot on the new layout, or the kill
+	 * reached a different holder; these set-up lines say which.
+	 */
+	bool Kill(FAutomationTestBase& Test, const FFloor& Floor, int32 RarityStep)
+	{
+		ACataclysmEnemyCharacter* Victim = Floor.World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: the victim spawned at (300, 0, 0)"), Victim)
+			|| !StillTheSameHolder(Test, Floor, TEXT("before the kill")))
 		{
-			Victim->SetRarityStep(RarityStep);
-			Victim->HandleDeath();
+			return false;
 		}
+		Victim->SetRarityStep(RarityStep);
+		Victim->HandleDeath();
+		return Test.TestTrue(TEXT("set-up: and HandleDeath marked it dead"),
+							 UCataclysmSkillEffects::IsDead(Victim));
 	}
 
 	/** Every slot full, and no heal running: the state before a drink is read. */
@@ -156,7 +191,10 @@ CATACLYSM_POTION_FAMINE_TEST(FCataclysmHardModePotionTest,
 			  0.001f);
 	TestTrue(TEXT("and the boxes are drawn crossed out"), Potions::AreForbiddenFor(Floor.Character));
 
-	Kill(World, 0);
+	if (!Kill(*this, Floor, 0))
+	{
+		return false;
+	}
 	TestEqual(TEXT("a kill still fills the slot"), Floor.AbilitySystem->GetPotionCharges(0), 21.0f,
 			  0.001f);
 	return true;
@@ -180,7 +218,10 @@ CATACLYSM_POTION_FAMINE_TEST(FCataclysmRecessionPotionTest,
 	}
 
 	Floor.AbilitySystem->SetPotionCharges(0, 0.0f);
-	Kill(World, 1);
+	if (!Kill(*this, Floor, 1))
+	{
+		return false;
+	}
 	TestEqual(TEXT("on a floor without the row, an Elite kill adds 3.5"),
 			  Floor.AbilitySystem->GetPotionCharges(0), 3.5f, 0.001f);
 
@@ -189,12 +230,18 @@ CATACLYSM_POTION_FAMINE_TEST(FCataclysmRecessionPotionTest,
 		return false;
 	}
 	Floor.AbilitySystem->SetPotionCharges(0, 0.0f);
-	Kill(World, 1);
+	if (!Kill(*this, Floor, 1))
+	{
+		return false;
+	}
 	TestEqual(TEXT("on a floor carrying it, a quarter of that: 0.875"),
 			  Floor.AbilitySystem->GetPotionCharges(0), 0.875f, 0.001f);
 	for (int32 More = 0; More < 3; ++More)
 	{
-		Kill(World, 1);
+		if (!Kill(*this, Floor, 1))
+		{
+			return false;
+		}
 	}
 	TestEqual(TEXT("so four kills add what one did"), Floor.AbilitySystem->GetPotionCharges(0),
 			  3.5f, 0.001f);
