@@ -99,14 +99,21 @@ Four new automation tests, and one extended:
   the player is maddened when the warning ends, the player and minion are hostile, nothing is stunned or locked, the
   panel reads "maddened for 3 s", and the clock starts again 3 s later.
 - `AnInsanityBurstNeverMaddensAPlayerWithNoMinion`: the same roll with no minion stuns the player.
-- `MaddenedIsSaidUnderACreaturesBarAndAboveThePlayersBars`: an Imp's status line and the player's frame word say
-  "Maddened" only while maddened.
+- `MaddenedIsSaidUnderACreaturesBarAndAboveThePlayersBars`: an Imp's status line and the player's frame word are empty
+  before madness and say "Maddened" while it holds. It checks the word empty BEFORE madness rather than after, as first
+  registered; the test does not wait for the tag to expire. The coordinating session accepted the change.
 - `Cataclysm.Command.AMinionTurningOnItsMaddenedSummonerIsNotDrawnToAFellowMinion`: with Behind the Veil and three
   minions, a creature hunting the summoner is drawn to a minion before and after, and a minion deciding against its
   maddened summoner is drawn to nobody.
 
 The two existing burst tests keep their rolls, 10 and 90, and have no minion, so the halves still give them a lock and
 a stun.
+
+### Correction
+
+The entry "2026-09-25 — Luxury Hoarders: two piles of loot a floor, each three drop rolls at the Legendary rung, each
+guarded by three Elite creatures of the floor standing on it" says its window ran "on 2026-09-27". It ran on 2026-09-26,
+local time; the date was taken from UTC.
 
 ### Not yet run
 
