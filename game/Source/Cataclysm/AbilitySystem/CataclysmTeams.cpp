@@ -86,11 +86,17 @@ ETeamAttitude::Type UCataclysmTeams::AttitudeBetween(const AActor* Actor, const 
 		return ETeamAttitude::Hostile;
 	}
 
-	// OWNERSHIP BEATS THE TEAM NUMBER, and it has to come first. A minion takes
-	// its summoner's team when it is spawned, so in the ordinary case the two
-	// tests agree. This one is what still holds when they do not: anything a
-	// character puts in the world is on that character's side even if nothing
-	// gave it a team.
+	// OWNERSHIP BEATS THE TEAM NUMBER, and it has to come first: anything a
+	// character puts in the world and nobody possesses -- a projectile, burning
+	// ground -- is on that character's side even if nothing gave it a team.
+	//
+	// A MINION DOES NOT REACH ITS SUMMONER THIS WAY. It is possessed by its AI
+	// controller as it spawns, and `APawn::PossessedBy` makes that controller
+	// its owner, so its owner chain stops there. It is on its summoner's side
+	// through the TEAM it is given at spawn (`ACataclysmMinion::Spawn`,
+	// CataclysmMinion.cpp), below. A THRALL DOES reach its commander here:
+	// `UCataclysmCommand::Subjugate` sets its owner to the commander after
+	// possession (CataclysmCommand.cpp), and gives it the commander's team too.
 	if (SharesAnOwnerChain(Actor, Other))
 	{
 		return ETeamAttitude::Friendly;

@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
@@ -491,6 +492,12 @@ FString UCataclysmCombatOverlay::FearedTextFor(const AActor* Actor)
 	return UCataclysmFear::IsFeared(Actor) ? FString(TEXT("Feared")) : FString();
 }
 
+FString UCataclysmCombatOverlay::MaddenedTextFor(const AActor* Actor)
+{
+	return UCataclysmTeams::IsMaddened(Actor) && !UCataclysmSkillEffects::IsDead(Actor) ? FString(TEXT("Maddened"))
+																						  : FString();
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -619,6 +626,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor), InfectionBloomTextFor(Actor),
 		  QuarantineTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
+		  MaddenedTextFor(Actor),
 		  DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())

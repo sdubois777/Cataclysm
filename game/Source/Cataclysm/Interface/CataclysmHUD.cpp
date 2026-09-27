@@ -584,13 +584,23 @@ void ACataclysmHUD::DrawPlayerVitals()
 					   UCataclysmCombatOverlay::FervourFillHex);
 	}
 
-	// AND WHAT IS HOLDING THE PLAYER, above the bars. Only fear today: a feared
-	// player is walked away with the keys refused, and needs telling why.
+	// AND WHAT IS HOLDING THE PLAYER, above the bars. Fear: a feared player is
+	// walked away with the keys refused, and needs telling why.
 	const FString Feared = UCataclysmCombatOverlay::FearedTextFor(Pawn);
 	if (!Feared.IsEmpty())
 	{
 		Top -= PlayerBarHeightPx + PlayerBarGapPx;
 		DrawTextCentred(Feared, FLinearColor::White,
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+	}
+
+	// AND MADNESS, since Insanity Bursts can madden the player (2026-09-26): their
+	// own minions turn on them, and without a word it reads as a fault.
+	const FString Maddened = UCataclysmCombatOverlay::MaddenedTextFor(Pawn);
+	if (!Maddened.IsEmpty())
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawTextCentred(Maddened, FLinearColor::White,
 						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
 	}
 }

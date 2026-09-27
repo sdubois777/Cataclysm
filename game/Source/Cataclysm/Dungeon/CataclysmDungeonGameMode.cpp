@@ -5776,32 +5776,47 @@ void ACataclysmDungeonGameMode::StepInsanityBursts(
 	}
 	const bool bRowHere = FloorBrief.Modifiers.Contains(FName(Effects::InsanityBurstsKey));
 
-	// A LOCK RUNNING COUNTS DOWN, on a floor with the row or not.
-	if (InsanityBurstsLockLeft > 0.0f)
+	// A LOCK OR A MADNESS RUNNING COUNTS DOWN, on a floor with the row or not; the clock waits for it.
+	if (InsanityBurstsLockLeft > 0.0f || InsanityBurstsMaddenedLeft > 0.0f)
 	{
 		InsanityBurstsLockLeft = FMath::Max(0.0f, InsanityBurstsLockLeft - SecondsBetweenWaveChecks);
+		InsanityBurstsMaddenedLeft = FMath::Max(0.0f, InsanityBurstsMaddenedLeft - SecondsBetweenWaveChecks);
 	}
 	else if (bRowHere && bInsanityBurstsWarning)
 	{
-		// THE WARNING RUNS, and at its end the burst: every skill locked, or a stun. A designed stun, so it skips the
-		// damage threshold; it does not skip the immunity window.
+		// THE WARNING RUNS, and at its end the burst: every skill locked, a stun, or madness. A designed stun, so it
+		// skips the damage threshold; it does not skip the immunity window. Madness as every other source applies it,
+		// through `ApplyNamedEffect`, so it takes the same window and a player inside it is not maddened.
 		InsanityBurstsWarningSoFar += SecondsBetweenWaveChecks;
 		if (InsanityBurstsWarningSoFar >= Effects::InsanityBurstsWarningSeconds)
 		{
 			bInsanityBurstsWarning = false;
 			InsanityBurstsWarningSoFar = 0.0f;
 			InsanityBurstsSecondsSinceLast = 0.0f;
-			if (bInsanityBurstsWillLock)
+			if (InsanityBurstsKind == Effects::InsanityBurstLocks)
 			{
 				InsanityBurstsLockLeft = Effects::InsanityBurstsLockSeconds;
 			}
 			else if (AActor* Source = ACataclysmFloorHazardSource::ForFloor(World))
 			{
-				UCataclysmSkillEffects::ApplyStun(Source, Player, Effects::InsanityBurstsStunSeconds, 0.0f,
-												  /*bStunIsDesigned=*/true);
+				if (InsanityBurstsKind == Effects::InsanityBurstMaddens)
+				{
+					// "ATTACK ALLIES", AGAINST THE PLAYER'S OWN MINIONS, by the owner's decision of 2026-09-26.
+					if (UCataclysmSkillEffects::ApplyNamedEffect(Source, Player, UCataclysmTeams::MadnessTag(),
+																 Effects::InsanityBurstsMadnessSeconds))
+					{
+						InsanityBurstsMaddenedLeft = Effects::InsanityBurstsMadnessSeconds;
+					}
+				}
+				else
+				{
+					UCataclysmSkillEffects::ApplyStun(Source, Player, Effects::InsanityBurstsStunSeconds, 0.0f,
+													  /*bStunIsDesigned=*/true);
+				}
 			}
 			UE_LOG(LogCataclysm, Log, TEXT("Insanity Bursts: a burst on floor %d: %s"), FloorNumber,
-				   bInsanityBurstsWillLock ? TEXT("skills locked") : TEXT("stunned"));
+				   InsanityBurstsKind == Effects::InsanityBurstLocks ? TEXT("skills locked")
+				   : InsanityBurstsKind == Effects::InsanityBurstMaddens ? TEXT("maddened") : TEXT("stunned"));
 		}
 	}
 	else if (bRowHere)
@@ -5812,7 +5827,8 @@ void ACataclysmDungeonGameMode::StepInsanityBursts(
 		{
 			bInsanityBurstsWarning = true;
 			InsanityBurstsWarningSoFar = 0.0f;
-			bInsanityBurstsWillLock = Effects::InsanityBurstsLocksSkills(DungeonGameModeInsanityBurstsRoll());
+			InsanityBurstsKind =
+				Effects::InsanityBurstsKindFor(DungeonGameModeInsanityBurstsRoll(), PlayerHasALivingMinion(Player));
 		}
 	}
 
@@ -5825,6 +5841,7 @@ void ACataclysmDungeonGameMode::StepInsanityBursts(
 	}
 
 	const int32 Second = InsanityBurstsLockLeft > 0.0f ? 1000 + FMath::CeilToInt(InsanityBurstsLockLeft)
+		: InsanityBurstsMaddenedLeft > 0.0f ? 2000 + FMath::CeilToInt(InsanityBurstsMaddenedLeft)
 		: bInsanityBurstsWarning ? 500 + FMath::CeilToInt(InsanityBurstsWarningSoFar)
 		: FMath::CeilToInt(InsanityBurstsSecondsSinceLast);
 	if (Second != InsanityBurstsPanelSecond)
@@ -5914,6 +5931,27 @@ void ACataclysmDungeonGameMode::NoteDeathForLuxuryHoarders(const FCataclysmDeath
 	{
 		RefreshFloorModifierPanel();
 	}
+}
+
+bool ACataclysmDungeonGameMode::PlayerHasALivingMinion(const AActor* Player) const
+{
+	UWorld* World = GetWorld();
+	if (!World || !Player)
+	{
+		return false;
+	}
+	// THE SUMMONER, NOT THE OWNER CHAIN. A minion is possessed by its AI controller as it spawns, and the engine's
+	// `APawn::PossessedBy` makes that controller its owner, so no minion's owner chain reaches the player. The first
+	// whole-suite run of this change found it.
+	for (TActorIterator<ACataclysmMinion> It(World); It; ++It)
+	{
+		ACataclysmMinion* Minion = *It;
+		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion) && Minion->Summoner == Player)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
@@ -10907,6 +10945,11 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Counting.Add(Insanity, FString::Printf(TEXT("insanity bursts: skills locked for %d s"),
 												   FMath::CeilToInt(InsanityBurstsLockLeft)));
 		}
+		else if (InsanityBurstsMaddenedLeft > 0.0f)
+		{
+			Counting.Add(Insanity, FString::Printf(TEXT("insanity bursts: maddened for %d s"),
+												   FMath::CeilToInt(InsanityBurstsMaddenedLeft)));
+		}
 		else if (bInsanityBurstsWarning)
 		{
 			Counting.Add(Insanity, FString::Printf(TEXT("insanity bursts: a burst in %d s"),
@@ -13390,6 +13433,7 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		bInsanityBurstsWarning = false;
 		InsanityBurstsWarningSoFar = 0.0f;
 		InsanityBurstsLockLeft = 0.0f;
+		InsanityBurstsMaddenedLeft = 0.0f;
 		InsanityBurstsLockApplied = 0.0f;
 		InsanityBurstsPanelSecond = -1;
 

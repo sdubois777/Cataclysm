@@ -2,6 +2,169 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Insanity Bursts' "attack allies", against the player's own minions: a third burst maddens the player for 3 seconds when a minion of theirs stands; other players wait for co-op, so the row stays partly built
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the madness figure, the three
+burst kinds and the draw between them, the row's comment in the partly-built list);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the madness burst, its countdown, the panel
+line, the per-floor reset, and a search for a living minion of the player's);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (the word "Maddened" under a creature's bar);
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the same word above the player's bars);
+`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp` (Behind the Veil never draws a minion's choice to a fellow
+minion); `game/Source/Cataclysm/AbilitySystem/CataclysmTeams.cpp` (a comment only); and the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`CataclysmCommandTests.cpp`. It follows Insanity Bursts
+([#2150](https://github.com/sdubois777/Cataclysm/pull/2150)). **Applied, and still only in part: other players are not
+reached, because co-op does not exist.** It has been run: the figures are at the end of this entry, after a first window that
+stopped on a failure.
+
+### The row
+
+`Void_Insanity_Bursts` in `game/Data/DungeonModifiers.csv`: "...causing players to lose control over their abilities,
+attack allies, or experience debilitating effects." The entry of 2026-09-25 built the first and third clauses and left
+"attack allies" unbuilt.
+
+### What the rule does now
+
+When a burst's warning begins, the burst is drawn from three kinds if at least one living minion of the player's
+stands on the floor, and from two if none does:
+
+| A minion of the player's stands | Roll below 33.34 | 33.34 to below 66.67 | 66.67 and above |
+|---|---|---|---|
+| Yes | every skill locked for 5 s | stunned for 1.5 s | **maddened for 3 s** |
+| No | every skill locked for 5 s (below 50) | stunned for 1.5 s (50 and above) | stunned |
+
+A maddened player is hostile to their own minions and the minions to the player, for 3 seconds. The panel reads
+"insanity bursts: maddened for 3 s", counting down, and the clock waits for the madness to end as it waits for a lock.
+"Maddened" is shown above the player's bars, beside "Feared", and under any maddened creature's bar.
+
+**How "attack allies" reaches the minions: by click, by the swing's cone, by area skills, by auto-targeting and by the
+player's ground zones.** Every one of those reads `UCataclysmTeams::IsHostileTo`, and Madness overrides ownership in
+`AttitudeBetween` before the ownership and team checks. **The player keeps full control**: nothing that stops a player
+acting reads Madness.
+
+**NOT BUILT: other players.** Co-op is planned for Early Access (the design document's Phase 2). `ECataclysmTeam::Players`
+already includes a second player, so a maddened player will be hostile to one with no further code, but that cannot be
+tested until co-op exists. `BuiltStateOf` still answers `Partly` for the row.
+
+### Rulings
+
+**The owner, 2026-09-26, relayed by the coordinating session:** "attack allies" is built now against the player's own
+minions; other players are added with co-op; the row stays partly built until then.
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **The third kind maddens the player for 3 s**, through `UCataclysmSkillEffects::ApplyNamedEffect`, as every other
+  Madness arrives. 3 s is the design document's own Madness duration, not a new figure.
+- **Equal thirds with a minion standing; the existing halves without one**, so a burst never does nothing.
+- **A minion is an `ACataclysmMinion` that is alive and whose summoner is the player**: summoned creatures and
+  deployed machines alike. It reads `ACataclysmMinion::Summoner`, not the owner chain: a minion is possessed by its AI
+  controller as it spawns, and the engine's `APawn::PossessedBy` makes that controller its owner, so no minion's owner
+  chain reaches the player. The ruling first said "owner chain"; the first window below found why it cannot. **The comment above the owner-chain
+  test in `UCataclysmTeams::AttitudeBetween` now says so**: a minion is on its summoner's side through the team it is
+  given at spawn, and a thrall reaches its commander through the owner chain. No line of code there changed.
+- **The player's own burning ground and deployables turn on the player while maddened**, as Madness already works for
+  creatures. No special case.
+- **"Maddened" above the player's bars, and under a creature's bar**, since nothing showed Madness anywhere before.
+- **Behind the Veil is fixed in this change.** `UCataclysmCommand::MinionDrawingEnemyFrom` returns null when the creature
+  deciding is one of the defender's own commanded things. Until Madness could fall on a summoner, a summoner was never
+  its own minion's nearest hostile; now it can be, and the rule would have sent a minion turning on its summoner to
+  itself or to a fellow minion.
+
+**Six consequences kept as they fall out, under the same delegation. None gets a special case now; if play shows one to
+be a problem, it gets its own ruling then:**
+
+1. For 5 s after a madness burst the player cannot be stunned, knocked down or feared: the shared window every Madness
+   opens.
+2. A stun or knockdown in the 5 s before a madness burst refuses it, and that burst does nothing: the redirection rule
+   for every stun-family effect.
+3. The 3 s is read through the player's own `debuff_duration_taken`, so passive nodes that lengthen debuffs on the player
+   lengthen it.
+4. A minion killed while the player is maddened counts as an enemy's death for rows that read one.
+5. For 3 s a subjugated creature counts as hostile to the player, so dungeon rules that exclude thralls that way give it
+   their effect.
+6. Madness is a carried debuff, so the Contagion aura node can spread it from the player to their minions.
+
+### The research
+
+Fetched on 2026-09-26 before it was quoted. Diablo II's Confuse
+([diablo2.wiki.fextralife.com/Confuse](https://diablo2.wiki.fextralife.com/Confuse)): "Curses a monster to force it to
+attack random targets", and it "will not work on Super Unique Monsters and Bosses". It settles the shape of "attack
+allies": one side stops telling friend from foe for a time, and bosses are exempt. That is the shape Madness already
+has in this game. It does not settle whether a player should ever carry it; the same page says "This will not work on
+other Players". **That is the owner's decision for this game**, made on 2026-09-26.
+
+### Tests
+
+Four new automation tests, and one extended:
+
+- The Insanity figures test gains the 3 s madness figure and the draw's boundaries: 33.33 locks, 33.34 and 66.66 stun,
+  66.67 maddens with a minion; 49.99 locks, 50 and 99.9 stun without one.
+- `AnInsanityBurstMaddensThePlayerWhenAMinionStands`: with the roll pinned at 90 and a minion of the player's standing,
+  the player is maddened when the warning ends, the player and minion are hostile, nothing is stunned or locked, the
+  panel reads "maddened for 3 s", and the clock starts again 3 s later.
+- `AnInsanityBurstNeverMaddensAPlayerWithNoMinion`: the same roll with no minion stuns the player.
+- `MaddenedIsSaidUnderACreaturesBarAndAboveThePlayersBars`: an Imp's status line and the player's frame word are empty
+  before madness and say "Maddened" while it holds. It checks the word empty BEFORE madness rather than after, as first
+  registered; the test does not wait for the tag to expire. The coordinating session accepted the change.
+- `Cataclysm.Command.AMinionTurningOnItsMaddenedSummonerIsNotDrawnToAFellowMinion`: with Behind the Veil and three
+  minions, a creature hunting the summoner is drawn to a minion before and after, and a minion deciding against its
+  maddened summoner is drawn to nobody.
+
+The two existing burst tests keep their rolls, 10 and 90, and have no minion, so the halves still give them a lock and
+a stun.
+
+### Correction
+
+The entry "2026-09-25 — Luxury Hoarders: two piles of loot a floor, each three drop rolls at the Legendary rung, each
+guarded by three Elite creatures of the floor standing on it" says its window ran "on 2026-09-27". It ran on 2026-09-26,
+local time; the date was taken from UTC.
+
+### First window, stopped
+
+One window on 2026-09-27, on development af957ae1, at 3340081b. The Python of record printed `5532 passed, 8 skipped`
+(JUnit 5,540, no failures), as registered. The build printed `Build: Succeeded - 30 actions, 27 files compiled`, and the
+whole suite `2720 tests performed, 2719 succeeded, 1 failed: AnInsanityBurstMaddensThePlayerWhenAMinionStands`; 2720
+declared, gap 0. No proof was run. The five checks that failed:
+
+| Check | Printed |
+|---|---|
+| "maddened when it ends" | false |
+| "so its own minion is hostile to it" | 0 (friendly), not 2 (hostile) |
+| "and no stun" | the player was stunned |
+| "the panel while maddened" | "insanity bursts: next in 40 s" |
+| "and the clock starts again after 3 s" | "insanity bursts: next in 37 s" |
+
+**The cause, found by reading:** the search for a living minion of the player's asked whether the minion's owner chain
+reached the player. It never does, because possession replaces the owner (above). So the draw took the halves, and the
+pinned roll of 90 stunned. The search now reads the minion's summoner. It is game code, so the next window runs the
+whole suite again before the proofs.
+
+### Run
+
+A second window on 2026-09-27, with the build machine and the editor, on development 79422a13, at 0ef5c6d7. Every figure
+below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window, with no CI run in progress | `5536 passed, 8 skipped` (JUnit 5,544, no failures), as registered |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| Whole suite | `2726 tests performed, 2726 succeeded, 0 failed`; 2726 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, each on its one test, each anchor checked immediately before its run. Each printed
+`1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests performed, 1 succeeded, 0 failed` restored,
+and each failed on exactly the checks registered for it. The source hash was the same before and after each.
+
+| Break | The test that failed, and on what |
+|---|---|
+| The madness call is never made | `AnInsanityBurstMaddensThePlayerWhenAMinionStands`, four: "maddened when it ends", "so its own minion is hostile to it" (0, friendly), "the panel while maddened" ("next in 40 s") and "and the clock starts again after 3 s" ("next in 37 s") |
+| The thirds are drawn with no minion standing | `AnInsanityBurstNeverMaddensAPlayerWithNoMinion`, two: "no minion stands, so the player is not maddened" and "and is stunned instead" |
+| Behind the Veil's guard never matches the minion deciding | `AMinionTurningOnItsMaddenedSummonerIsNotDrawnToAFellowMinion`, two: "a minion turning on its summoner is drawn to no fellow minion" and "nor to itself" |
+
+The final Python on the Run-section head, 84cdd8f9, after the last move: `5536 passed, 8 skipped` (JUnit 5,544, no
+failures or errors), the same as the Python of record.
+
+---
+
 ## 2026-09-27 — Kill counter B: each worn weapon counts and keeps its kills, a row's step can roll with its value, and two enchantments written on them
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmItem.cpp` and `.h` (the `Kills` count on an item, the

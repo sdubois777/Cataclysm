@@ -568,8 +568,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
 		|| RowKey == FName(SingularityWellsKey)
-		// INSANITY BURSTS. The skill lock and the stun work; "attack allies" does nothing, because the game has no
-		// player allies but the player's own minions. Issues #1820 and #41.
+		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
+		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
+		// Issues #1820 and #41.
 		|| RowKey == FName(InsanityBurstsKey)
 		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
 		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
@@ -2042,6 +2043,16 @@ bool UCataclysmDungeonModifierEffects::InsanityBurstsIsDue(float SecondsSinceLas
 bool UCataclysmDungeonModifierEffects::InsanityBurstsLocksSkills(float Roll)
 {
 	return Roll < InsanityBurstsLockChancePercent;
+}
+
+int32 UCataclysmDungeonModifierEffects::InsanityBurstsKindFor(float Roll, bool bAMinionStands)
+{
+	if (!bAMinionStands)
+	{
+		return InsanityBurstsLocksSkills(Roll) ? InsanityBurstLocks : InsanityBurstStuns;
+	}
+	const float Third = 100.0f / 3.0f;
+	return Roll < Third ? InsanityBurstLocks : Roll < 2.0f * Third ? InsanityBurstStuns : InsanityBurstMaddens;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)

@@ -33240,6 +33240,18 @@ bool FCataclysmInsanityFiguresTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("due at 40 s"), Effects::InsanityBurstsIsDue(40.0f));
 	TestTrue(TEXT("a roll of 49.9 locks"), Effects::InsanityBurstsLocksSkills(49.9f));
 	TestFalse(TEXT("a roll of 50 stuns"), Effects::InsanityBurstsLocksSkills(50.0f));
+
+	// AND MADNESS, SINCE 2026-09-26: 3 S, A THIRD EACH WITH A MINION STANDING, AND NEVER WITHOUT ONE.
+	TestEqual(TEXT("a 3 s madness"), Effects::InsanityBurstsMadnessSeconds, 3.0f, 0.001f);
+	TestEqual(TEXT("with a minion, 33.33 locks"), Effects::InsanityBurstsKindFor(33.33f, true),
+			  Effects::InsanityBurstLocks);
+	TestEqual(TEXT("33.34 stuns"), Effects::InsanityBurstsKindFor(33.34f, true), Effects::InsanityBurstStuns);
+	TestEqual(TEXT("66.66 stuns"), Effects::InsanityBurstsKindFor(66.66f, true), Effects::InsanityBurstStuns);
+	TestEqual(TEXT("66.67 maddens"), Effects::InsanityBurstsKindFor(66.67f, true), Effects::InsanityBurstMaddens);
+	TestEqual(TEXT("without one, 49.99 locks"), Effects::InsanityBurstsKindFor(49.99f, false),
+			  Effects::InsanityBurstLocks);
+	TestEqual(TEXT("50 stuns"), Effects::InsanityBurstsKindFor(50.0f, false), Effects::InsanityBurstStuns);
+	TestEqual(TEXT("and 99.9 still stuns"), Effects::InsanityBurstsKindFor(99.9f, false), Effects::InsanityBurstStuns);
 	return true;
 }
 
@@ -33322,6 +33334,125 @@ bool FCataclysmInsanityStunsTest::RunTest(const FString& Parameters)
 	Beat(Mode, 1);
 	TestTrue(TEXT("stunned when it ends"), UCataclysmSkillEffects::IsStunned(Player.Character));
 	TestFalse(TEXT("and nothing locked"), EverySkillLocked(Player));
+	return true;
+}
+
+// WITH A MINION OF THE PLAYER'S STANDING AND THE ROLL PINNED FROM 66.67, THE BURST MADDENS THE PLAYER FOR 3 S: ITS OWN
+// MINION IS HOSTILE TO IT. The owner's decision of 2026-09-26.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInsanityMaddensTest,
+	"Cataclysm.DungeonModifierEffects.AnInsanityBurstMaddensThePlayerWhenAMinionStands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInsanityMaddensTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Pinned(TEXT("Cataclysm.InsanityBurstsRoll"), TEXT("90"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInsanityFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FVector At = Player.Character->GetActorLocation();
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(Player.Character, FVector(At.X + 300.0f, At.Y, At.Z),
+													   /*Lifetime=*/600.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: a minion of the player's"), Minion))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsSecondsBetween) + BeatsFor(Effects::InsanityBurstsWarningSeconds) - 1);
+	TestFalse(TEXT("not maddened before the warning ends"), UCataclysmTeams::IsMaddened(Player.Character));
+	Beat(Mode, 1);
+	TestTrue(TEXT("maddened when it ends"), UCataclysmTeams::IsMaddened(Player.Character));
+	TestEqual(TEXT("so its own minion is hostile to it"),
+			  static_cast<int32>(UCataclysmTeams::AttitudeBetween(Player.Character, Minion)),
+			  static_cast<int32>(ETeamAttitude::Hostile));
+	TestFalse(TEXT("and no stun"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	TestFalse(TEXT("and nothing locked"), EverySkillLocked(Player));
+	TestEqual(TEXT("the panel while maddened"), Mode->LiveCountsForTheFloor().FindRef(InsanityRow),
+			  FString(TEXT("insanity bursts: maddened for 3 s")));
+
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsMadnessSeconds));
+	TestEqual(TEXT("and the clock starts again after 3 s"), Mode->LiveCountsForTheFloor().FindRef(InsanityRow),
+			  FString(TEXT("insanity bursts: next in 40 s")));
+	return true;
+}
+
+// WITH THE SAME ROLL AND NO MINION, THE BURST NEVER MADDENS: IT STUNS, SO A BURST NEVER FALLS ON NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInsanityNoMinionTest,
+	"Cataclysm.DungeonModifierEffects.AnInsanityBurstNeverMaddensAPlayerWithNoMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInsanityNoMinionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Pinned(TEXT("Cataclysm.InsanityBurstsRoll"), TEXT("90"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInsanityFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::InsanityBurstsSecondsBetween) + BeatsFor(Effects::InsanityBurstsWarningSeconds));
+	TestFalse(TEXT("no minion stands, so the player is not maddened"), UCataclysmTeams::IsMaddened(Player.Character));
+	TestTrue(TEXT("and is stunned instead"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	return true;
+}
+
+// "MADDENED" IS SAID UNDER A MADDENED CREATURE'S BAR AND ABOVE A MADDENED PLAYER'S BARS, AND NOTHING WHEN NOT MADDENED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaddenedIsSaidTest,
+	"Cataclysm.DungeonModifierEffects.MaddenedIsSaidUnderACreaturesBarAndAboveThePlayersBars",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaddenedIsSaidTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	const FVector At = Player.IsUsable() ? Player.Character->GetActorLocation() : FVector::ZeroVector;
+	ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(World, FVector(At.X + 400.0f, At.Y, At.Z), 100.0f);
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	const FGameplayTag Madness = UCataclysmTeams::MadnessTag();
+
+	TestTrue(TEXT("an Imp not maddened says nothing of it"), UCataclysmCombatOverlay::MaddenedTextFor(Imp).IsEmpty());
+	UCataclysmSkillEffects::ApplyTagForDuration(Player.Character, Imp, Madness, 10.0f);
+	TestTrue(TEXT("a maddened Imp says \"Maddened\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Imp).Contains(TEXT("Maddened")));
+
+	TestTrue(TEXT("a player not maddened says nothing of it"),
+			 UCataclysmCombatOverlay::MaddenedTextFor(Player.Character).IsEmpty());
+	UCataclysmSkillEffects::ApplyTagForDuration(Imp, Player.Character, Madness, 10.0f);
+	TestEqual(TEXT("and a maddened player says \"Maddened\" above the bars"),
+			  UCataclysmCombatOverlay::MaddenedTextFor(Player.Character), FString(TEXT("Maddened")));
 	return true;
 }
 

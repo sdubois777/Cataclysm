@@ -3595,4 +3595,60 @@ bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilSparesItsOwnTest,
+	"Cataclysm.Command.AMinionTurningOnItsMaddenedSummonerIsNotDrawnToAFellowMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion deciding against its own summoner is drawn to nobody: not to itself, not to a fellow minion. Until Madness
+ * could fall on a summoner, its own minions never chose it; a maddened one is their nearest hostile. Found for Insanity
+ * Bursts' "attack allies", 2026-09-26.
+ *
+ * THE CREATURE HUNTING THE SUMMONER IS THE CONTROL, before and after: it is still drawn to the minion drawing most.
+ */
+bool FCataclysmVeilSparesItsOwnTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(8 * M, 0, 0));
+
+	ACataclysmMinion* One =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 6 * M, 0), DrawsMost);
+	ACataclysmMinion* Two =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Three =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 8 * M, 0), DrawsLittle);
+	ON_SCOPE_EXIT { if (IsValid(One)) { One->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Two)) { Two->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Three)) { Three->Destroy(); } };
+	if (!One || !Two || !Three)
+	{
+		return false;
+	}
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+	if (!TestTrue(TEXT("set-up: a creature hunting the summoner is drawn to the minion drawing most"),
+			UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, Hunting.Actor) == One))
+	{
+		return false;
+	}
+
+	// THE SUMMONER MADDENED, so its own minions are hostile to it.
+	UCataclysmSkillEffects::ApplyTagForDuration(Summoner.Actor, Summoner.Actor, UCataclysmTeams::MadnessTag(), 10.0f);
+	if (!TestTrue(TEXT("set-up: the summoner is maddened"), UCataclysmTeams::IsMaddened(Summoner.Actor)))
+	{
+		return false;
+	}
+	TestNull(TEXT("a minion turning on its summoner is drawn to no fellow minion"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, Two));
+	TestNull(TEXT("nor to itself"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, One));
+	TestTrue(TEXT("and the creature hunting it still is"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, Hunting.Actor) == One);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

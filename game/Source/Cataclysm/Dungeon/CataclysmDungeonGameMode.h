@@ -2413,6 +2413,12 @@ private:
 	/** Insanity Bursts, on the beat: its clock, its warning, the burst, and the lock written on the player. */
 	void StepInsanityBursts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
+	/**
+	 * Insanity Bursts: whether a living minion of this player's stands, an `ACataclysmMinion` whose owner chain reaches
+	 * them, summons and deployables alike. A madness burst is drawn only then.
+	 */
+	bool PlayerHasALivingMinion(const AActor* Player) const;
+
 	/** Funereal Procession, on the beat: a procession set out on its clock, its contact, and its end. */
 	void StepFunerealProcession(class ACataclysmPlayerCharacter* Player,
 								class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -3616,14 +3622,16 @@ private:
 	int32 LuxuryHoardDrops = 0;
 
 	/**
-	 * Insanity Bursts: the clock, the warning under way, which burst it will be, the lock's seconds left, the lock last
-	 * written on the player, and what the panel last showed. Issues #1820 and #41.
+	 * Insanity Bursts: the clock, the warning under way, which burst it will be (`InsanityBurstLocks`, `...Stuns` or
+	 * `...Maddens`), the lock's and the madness's seconds left, the lock last written on the player, and what the panel
+	 * last showed. Issues #1820 and #41.
 	 */
 	float InsanityBurstsSecondsSinceLast = 0.0f;
 	bool bInsanityBurstsWarning = false;
 	float InsanityBurstsWarningSoFar = 0.0f;
-	bool bInsanityBurstsWillLock = false;
+	int32 InsanityBurstsKind = 0;
 	float InsanityBurstsLockLeft = 0.0f;
+	float InsanityBurstsMaddenedLeft = 0.0f;
 	float InsanityBurstsLockApplied = 0.0f;
 	int32 InsanityBurstsPanelSecond = -1;
 
