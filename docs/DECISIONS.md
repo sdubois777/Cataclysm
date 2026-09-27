@@ -75,6 +75,7 @@ One window on 2026-09-27, with the build machine and the workbook, on `fix/strik
 | Whole suite, started with no workflow in progress | `2727 tests performed, 2727 succeeded, 0 failed`; declared 2727, gap 0 |
 | Proof: `ModifierApplies` never matches a row's required tags | PROVED: 1 performed, 0 succeeded, 1 failed, on "so Carnage does not reach Anathema"; restored 1 of 1 |
 | Python proof: the generator's refusal removed | PROVED: `test_the_generator_refuses_a_strike_without_the_melee_tag` failed; restored `3 passed` |
+| Final Python, on `6e89182a`, started with no workflow in progress | `5539 passed, 8 skipped` (JUnit 5,547, no failures) |
 
 ---
 
