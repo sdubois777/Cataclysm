@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-27 — Deployable Part 2: a machine's blow is announced to its summoner, gadgets strip armour from what they hit, and grow with the seconds they have been active
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (the `deployable_hit` event and
+the machine's age passed to its summoner's rows), `CataclysmAbilitySystemComponent.cpp` and `.h`
+(`StatNamingTagAppliedTo` takes the age), `CataclysmStatPipeline.cpp` and `.h` (the scale
+`minion_seconds_active` and `FCataclysmStatConditions::MinionSecondsActive`),
+`tools/generate_datatables.py` (`deployable_hit` in `ACTION_ONLY_EVENTS`, `enemy_armor_removed`
+allowed on it, and the scale's bounds), `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/EnchantmentEffects.csv` and `game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json`, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(two tests), `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and `docs/README.md` (the row
+count), `tools/tests/test_enchantment_effects_match_the_row_text.py` and
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+- **A machine's blow is announced to its summoner** as the event `deployable_hit`, with the machine's
+  tags and the enemy struck, landed only when the blow was not evaded. It is a new event rather than
+  `hit_dealt`, ruled 2026-09-25, because `hit_dealt` carries unscoped rows that would otherwise begin
+  firing on every machine's blow. Only a deployable machine raises it; an imp does not.
+- **A machine's age is a scale.** `minion_seconds_active` counts the whole seconds the striking
+  machine has been out, handed over only on a deployable's blow and set last on the conditions,
+  because each earlier builder returns a whole state. Everywhere else it reads -1 and grants nothing.
+
+| Enchantment | Row |
+| :-- | :-- |
+| Gadgets apply a 15%-25% armor reduction to enemies they hit for 3 seconds | `enemy_armor_removed` 15 to 25 on `deployable_hit`, Required Tags `Type.Deployable`, Stack Seconds 3, cap 1 |
+| Gadgets deal 5%-10% increased damage for each second they have been active, up to 30 seconds | `attack_damage` increased 5 to 10, `Type.Deployable`, scale `minion_seconds_active` step 1, cap 30 |
+| Gadgets that survive for 15 seconds gain a permanent 20%-40% damage bonus for the rest of their duration | `attack_damage` increased 20 to 40, `Type.Deployable`, scale `minion_seconds_active` step 15, cap 1 |
+
+**A judgement under the owner's delegation, accepted by the coordinating session:** the armour row
+has a cap of 1, so a second blow refreshes the 3 seconds rather than adding another stack. The
+sentence states no stacking, and Rending Blows is the precedent.
+
+### THE REBASE
+
+Moving the engine commit onto development, which had gained both kill counters, met five conflicts,
+each where both sides appended in the same place. They were resolved by rule: development's side,
+then Part 2's. Two were in `CataclysmStatPipeline.h`, where the shared `/**` sits above the conflict
+and both sides begin with comment text: kept as they were, the second comment would have had no
+opening. The resolution put a blank line and a new `/**` between the two sides, both joins were read
+by eye, and `tools/check_resolved_cpp.py` reported "3 files read, 0 with complaints", as the
+`CLAUDE.md` rule for a hand-resolved C++ conflict asks. Each file's change, and the whole commit's "8
+files changed, 240 insertions(+), 8 deletions(-)", equal the original commit's. After the later move
+onto the Ritualist's risen imps, which changed `ACataclysmMinion`, the three proof anchors in
+`CataclysmMinion.cpp` were each still found once.
+
+Both new tests equip real enchantments through the equipment component and so read the rebuilt
+asset, not the generated CSV; that was checked before registering, after two earlier windows'
+predictions had missed tests that read the CSV.
+
+### PROOF C WAS NOT A PROOF
+
+Proof C removed the `IsDeployable()` gate in front of the `deployable_hit` raise, so that an imp's
+blow raises the event too. It failed nothing, and it could not: the event carries the striking
+minion's own type tags (`CataclysmMinion.cpp`), the only row on it requires `Type.Deployable`, and
+`UCataclysmAbilitySystemComponent::PoolActionAllowed` refuses a row whose required tags the event's
+tags lack, so the imp is refused with or without the gate. The gate only saves raising an event no
+current row accepts. The coordinating session ruled that it is recorded as not a proof and not
+replaced, since three proofs had been run. The test's check "an imp's blow removes nothing" is guarded
+by the row's Required Tags, not by the gate, and its comment now says so.
+
+**This is the second time a proof that removes a gate was registered without reading what runs after
+the gate on the same path** (deployable Part 1's proof C was the first). Before registering a proof
+that removes a gate, read the filter that follows it.
+
+### THE RUN
+
+On `79dde302`, the engine commit moved onto development `9f9225c0`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `79dde302` | "5540 passed, 8 skipped in 328.24s"; JUnit tests 5548, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `48fe8112` | "EnchantmentEffects.csv 389 rows", from 386; six pins moved: `docs/README.md` 386 to 389, `CHECK_TABLE` 386 to 389, `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` 386 and 308 to 389 and 311, `BUILT_AHEAD_OF_THEIR_ROWS` emptied, `EXPECTED_NAMED_BY_A_ROW` 29 to 30 |
+| Python after the rows | "1 failed, 5539 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp" |
+| Stale-asset step | "145 tests performed, 142 succeeded, 3 failed": the asset guard and the two new tests, as registered (145 counted by name beforehand) |
+| Asset rebuild `028ce362` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The two new tests | "2 tests performed, 2 succeeded, 0 failed" |
+| Whole suite, `028ce362`, in its own command | "2741 tests performed, 2741 succeeded, 0 failed"; 2741 declared, gap 0 |
+| Proof A, a machine's blow never landing | PROVED: `TheGadgetArmorRow...` failed 2 assertions, "a ballista's landed blow removes 25%" and "a second blow refreshes it: still 25%", each reading 0; restored "1 tests performed, 1 succeeded" |
+| Proof B, the machine's age not passed | PROVED: `TheGadgetAgeRows...` failed 4, at 5.5, 40, 15.5 and 50 seconds, each reading 1.0; restored 1 of 1 |
+| Proof C, the `IsDeployable()` gate removed | NOT A PROOF: "nothing failed with the break in"; see above |
+| Python control, `deployable_hit` taken off `ACTION_ONLY_EVENTS` (2026-09-25, in a copy) | PROVED: only `test_every_event_a_row_may_hang_on_is_one_the_game_fires` failed; restored "3 passed" |
+
+---
+
 ## 2026-09-27 — A skill made with a melee weapon is melee, whatever its area shape: eight Demonic skills gain Type.Melee, and the generator refuses a strike without it
 
 **Affects:** the workbook's Weapon Skills sheet and `game/Data/WeaponSkills.csv` (eight Tags cells);

@@ -9104,6 +9104,12 @@ bool FCataclysmGadgetArmorRowTest::RunTest(const FString&)
 		Ballista->AttackTarget(Evading);
 		TestEqual(TEXT("an evaded blow removes nothing"), ArmourRemoved(Evading), 0.0f, 0.001f);
 	}
+	// THE IMP IS KEPT OFF BY THE ROW'S REQUIRED TAGS, NOT BY THE `IsDeployable()`
+	// GATE IN FRONT OF `deployable_hit`. The event carries the striking minion's
+	// own type tags, and `PoolActionAllowed` refuses this row, which requires
+	// `Type.Deployable`, for an imp either way; removing the gate fails nothing
+	// here (measured 2026-09-27, proof C of deployable Part 2). This check does
+	// not prove the gate.
 	ACataclysmMinion* Imp = Summoner.Make(TEXT("Imp"));
 	ACataclysmEnemyCharacter* ImpTarget = Victim(Summoner);
 	if (TestNotNull(TEXT("an imp"), Imp) && TestNotNull(TEXT("its creature"), ImpTarget))
