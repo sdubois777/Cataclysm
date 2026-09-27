@@ -12,8 +12,7 @@ tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`;
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and only in part: "attack allies" is not built.**
-The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of
-this entry when they have.
+It has been run: the figures are at the end of this entry.
 
 ### The row
 
@@ -88,10 +87,26 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "prolonged exposure", "bursts of insanity", "lose control over their abilities",
 "attack allies" and "debilitating effects".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-26, with the build machine and the editor, on development 669be4a4. Every figure below is what
+`pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed. The change compiled at the first build.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window | `5530 passed, 8 skipped` (JUnit 5,538, no failures), as registered |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite, started with no CI run in progress | `2705 tests performed, 2705 succeeded, 0 failed`; 2705 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, each on its one test, each anchor re-checked immediately before its run. Each
+printed `1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests performed, 1 succeeded, 0 failed`
+restored, and each failed on exactly the checks registered for it.
+
+| Break | The test that failed, and on what |
+|---|---|
+| A burst never comes | `AnInsanityBurstWarnsThenLocksEverySkillForFiveSeconds`, five: "the warning at 40 s", "every skill locked when the warning ends", "the panel while locked", "still locked at 4.75 s" and "and the clock starts again" (each panel reads "next in 0 s") |
+| The burst's lock never reaches the skills | `AnInsanityBurstWarnsThenLocksEverySkillForFiveSeconds`, two: "every skill locked when the warning ends" and "still locked at 4.75 s" |
+| The stun burst stuns nothing | `AnInsanityBurstCanStunThePlayerInstead`: "stunned when it ends" |
 
 ---
 
