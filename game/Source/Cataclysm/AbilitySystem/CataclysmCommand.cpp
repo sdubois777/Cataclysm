@@ -100,6 +100,28 @@ namespace
 	}
 }
 
+TArray<ACataclysmMinion*> UCataclysmCommand::MinionsOfTypeCommandedBy(
+	const AActor* Commander, const FString& TypeName)
+{
+	TArray<ACataclysmMinion*> Found;
+	for (AActor* Follower : ThingsCommandedBy(Commander))
+	{
+		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Minion) && Minion->TypeName == TypeName)
+		{
+			Found.Add(Minion);
+		}
+	}
+
+	// OLDEST FIRST, which is what a summon at the cap destroys. The spawn order
+	// and not the spawn time, because two imps made in one frame share a time.
+	Found.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B)
+	{
+		return A.SpawnOrder < B.SpawnOrder;
+	});
+	return Found;
+}
+
 AActor* UCataclysmCommand::LeastHealthCommandedBy(const AActor* Commander)
 {
 	AActor* Least = nullptr;

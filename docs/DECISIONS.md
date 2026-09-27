@@ -79,6 +79,108 @@ One window on 2026-09-27, with the build machine and the workbook, on `fix/strik
 
 ---
 
+## 2026-09-27 — A Ritualist's cursed enemy rises as an imp for 20 seconds, sharing one cap with Summon Imp
+
+**Affects:** `docs/Ritualist_Class_Tree_Final.json` (the starting node's sentence) and `game/Data/PassiveNodes.csv`;
+the workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (a third row on the node, added in the
+workbook window); `game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.h` and `.cpp` (new: who a dying creature
+rises for, and the rising); `CataclysmCommand.h` and `.cpp` (`MinionsOfTypeCommandedBy`, the imps a character holds,
+oldest first); `CataclysmMinion.h` and `.cpp` (a spawn order, and when an imp rose); `CataclysmSkillTemplates.h` and
+`.cpp` (Summon Imp's cap and its replacement count every imp the summoner holds); `CataclysmEnemyCharacter.cpp` (the
+death calls the rising); `CataclysmCombatOverlay.h` and `.cpp` ("Risen" on the status line);
+`CataclysmPlayerClassStats.cpp` (the stat has no attribute); tests in `CataclysmRisenImpTests.cpp`,
+`CataclysmPassiveTreeTests.cpp` and `CataclysmStatExemptionTests.cpp`; and three Python checks. Issue
+[#1479](https://github.com/sdubois777/Cataclysm/issues/1479).
+
+### WHAT WAS DECIDED
+
+The owner ruled on 2026-09-27 that the Ritualist is a caster class, "which means wand/staff", and that the tree
+should be adjusted to fit a demonic caster and summoner. A Wand Ritualist had no way to make minions, so the starting
+node, `Ritualist_basic_spine_000`, gains a clause. Its sentence is now:
+
+> Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that
+> dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds, if you hold fewer
+> imps than Summon Imp allows at once. While you have this, Fervour does not decay, so what you hold is held until you
+> spend it or reserve it.
+
+Ruled under the coordinating session's delegation, and accepted there with the sentence above:
+
+- **A curse is any `Status.Debuff.*` effect whose instigator holds the rule.** The Wand's Shred and Madness qualify,
+  and so do the others. The rule is the stat `curse_death_raises_imp` above zero, which only this node grants, so a
+  curse laid by a creature or a minion raises nothing. A refresh of a running curse keeps its first applier, because
+  the game refreshes the running application rather than replacing it.
+- **The imp is Summon Imp's**, read from its row (`Demonic_Staff_Special`): its kind, its 20 seconds, its burning
+  and its explosion radius. It appears where the creature died.
+- **One cap for every imp (reading B).** The cap is Summon Imp's effective maximum, so The Swarm and the minion-count
+  enchantments move it for both. A death at the cap raises nothing and destroys nothing. A press of Summon Imp at the
+  cap destroys the oldest imp from either source. The sentence says "fewer imps than Summon Imp allows" rather than
+  "fewer than 3" because that figure is not fixed.
+- **A risen imp reserves no Fervour.** The ruling that a summon needs unreserved Fervour governs skills that state a
+  `FervourReserve`, and this is not a skill.
+- **"Risen" shows on the imp's status line for 2 seconds.**
+
+### WHY: WHAT THE GENRE DOES
+
+Fetched 2026-09-27.
+
+| Game | Source | What it says |
+|---|---|---|
+| Diablo III, Witch Doctor, Circle of Life | [Blizzard's skill page](https://eu.diablo3.blizzard.com/en-us/class/witch-doctor/passive/circle-of-life) | "When an enemy dies within 20 yards, there is a 15% chance that a Zombie Dog will automatically emerge." |
+| The same | [Maxroll, Witch Doctor overview](https://maxroll.gg/d3/resources/witch-doctor) | the dogs it makes "count towards your current maximum cap (3 by default)" |
+| Path of Exile, Herald of Purity | [poedb](https://poedb.tw/us/Herald_of_Purity) | "Summon a Sentinel of Purity when you Kill an Enemy", "Maximum 4 Summoned Sentinels of Purity"; the gem reserves once and a sentinel reserves nothing of its own |
+
+**What the research settles:** a minion made by a death shares the cap of the skill that makes the same minion
+(Diablo III), and a minion made by a trigger has a maximum and no reservation of its own (both).
+
+**What it does not settle, and is this game's judgement:** that the trigger is a curse rather than any kill; that
+every `Status.Debuff.*` counts as a curse; that a death at the cap raises nothing rather than replacing the oldest;
+and the 2 seconds of "Risen". Diablo III's chance roll is not used: the curse is already the condition.
+
+### TESTS
+
+Eleven in `Cataclysm.RisenImps.`, with the stat granted by hand: Shred raises an imp of Summon Imp's kind where the
+creature died, for 20 seconds, burning; Madness is a curse too; an uncursed creature, a creature's curse, a minion's
+curse and a curse without the rule raise nothing; nothing rises at the cap and nothing held is destroyed; The Swarm
+raises the cap for risen imps; a creature refreshing the curse leaves it the Ritualist's; "Risen" shows for two
+seconds and never on a summoned imp; and a press of Summon Imp at the cap destroys a risen imp that is the oldest. One
+in `Cataclysm.FervourRows.` reads the node's real row on a real Ritualist. One probe in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` shows `curse_death_raises_imp` is read.
+
+Before this change was written, the eleven existing tests that call `SummonOne`, `SummonReplacementAt` or
+`ReplaceLost` were read and predicted unchanged under the shared count.
+
+### Run
+
+One window on 2026-09-27, with the build machine and the workbook, on `feat/ritualist-risen-imps` on development
+dff58708. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on `86b79b60` in a scratchpad worktree, started with no workflow in progress | `2 failed, 5539 passed, 7 skipped` (JUnit 5,548, 2 failures, 0 errors): the passive-effect coverage pin and the asset hash, as registered |
+| Workbook, then `generate_datatables.py` | Passive Effects row 325 added; `PassiveEffects.csv` gained `Ritualist_basic_spine_000#3` and no other CSV changed |
+| Check of three data test files | `1 failed, 377 passed`: the asset hash only |
+| First build, from the scratchpad worktree | `Result: Failed (OtherCompilationError)` in 5.6 seconds, nothing compiled: "The following action paths are longer than 260 characters". Not a code fault |
+| Build, from the main worktree | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Before the asset rebuild | `Cataclysm.RisenImps.` 11/11/0; `Cataclysm.FervourRows.` 4/3/1, on "with it, a cursed death raises an imp for the Ritualist"; `Cataclysm.StatExemption.` 3/3/0 |
+| `generate_datatable_assets.py` | `DT_PassiveEffects.uasset`, `DT_PassiveNodes.uasset` and `datatable_asset_sources.json` changed |
+| `Cataclysm.FervourRows.` after it | `4 tests performed, 4 succeeded, 0 failed` |
+| Whole suite, started with no workflow in progress | `2739 tests performed, 2738 succeeded, 1 failed`. **Not as registered** |
+| Test-only fix, rebuild and `Cataclysm.Data.` | `7 tests performed, 7 succeeded, 0 failed` |
+| Proof (a): the rule's stat not asked | PROVED: 3 failed, `ACurseLaidByACreatureRaisesNothing`, `ACurseLaidByYourMinionRaisesNothing`, `WithoutTheRuleYourCurseRaisesNothing`; restored 11 of 11 |
+| Proof (b): Summon Imp's cap counts only its own imps | PROVED: 1 failed, `SummoningAtTheCapDestroysARisenImpWhenItIsTheOldest`; restored 11 of 11 |
+| Proof (c): only Shred read as a curse | PROVED: 1 failed, `MadnessIsACurseAsWellAsShred`; restored 11 of 11 |
+| Final Python, on `a507c775` in the scratchpad worktree, started with no workflow in progress | `5541 passed, 7 skipped` (JUnit 5,548, no failures) |
+
+**The whole suite's one failure was a count this change should have moved.**
+`Cataclysm.Data.EveryGeneratedTableImports` read "Expected 'PassiveEffects.csv row count' to be 323, but it was
+324." The pin in `CataclysmDataTableTests.cpp` counts the rows of `PassiveEffects.csv`, and this change adds the
+324th on purpose. The Python pin on the same count, `AUTHORED_ROWS`, had been raised and the C++ copy had not. A
+third copy, the Passive Effects row in `docs/README.md`'s sheet table, also said 323, and
+`tools/tests/test_docs_readme_sheet_table_is_true.py` failed on it once the workbook row was in. Both now say 324.
+As ruled, a test-only fix after the whole suite gets a group rerun, not a second whole suite.
+
+---
+
 ## 2026-09-26 — Insanity Bursts' "attack allies", against the player's own minions: a third burst maddens the player for 3 seconds when a minion of theirs stands; other players wait for co-op, so the row stays partly built
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the madness figure, the three

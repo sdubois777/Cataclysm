@@ -312,6 +312,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmCombatEvents::NoteBlow. A flag: the Conduit keystone sets
 		// it to one, and without it a minion's blow is the minion's own.
 		TEXT("minion_hits_count_as_yours"),
+		// Whether a creature that dies carrying a curse this character laid
+		// rises as an imp for it, read by UCataclysmRisenImps::CurserOf. A flag:
+		// the Ritualist's starting node sets it to one. Issue #1479.
+		TEXT("curse_death_raises_imp"),
 		// How far a Ritualist's minions draw nearby enemies off their summoner,
 		// and how many minions that takes. Both read by
 		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil

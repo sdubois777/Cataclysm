@@ -3289,6 +3289,31 @@ int32 UCataclysmSummonSkill::LivingMinionCount()
 	return Minions.Num();
 }
 
+TArray<ACataclysmMinion*> UCataclysmSummonSkill::MinionsSharingTheCap()
+{
+	LivingMinionCount();
+	const FString SummonedType =
+		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
+	TArray<ACataclysmMinion*> Sharing =
+		UCataclysmCommand::MinionsOfTypeCommandedBy(Avatar(), SummonedType);
+	for (const TObjectPtr<ACataclysmMinion>& Own : Minions)
+	{
+		Sharing.AddUnique(Own.Get());
+	}
+	Sharing.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B)
+	{
+		return A.SpawnOrder < B.SpawnOrder;
+	});
+	return Sharing;
+}
+
+int32 UCataclysmSummonSkill::CapFor(const AActor* Summoner,
+									const FCataclysmSkillShapeParams& SkillParams,
+									const FGameplayTagContainer& SummonTags)
+{
+	return MinionCapFor(Summoner, SkillParams, SummonTags);
+}
+
 const TCHAR* UCataclysmSummonSkill::ReplacedOnDeathStat =
 	TEXT("minion_death_replaced_every_seconds");
 const TCHAR* UCataclysmSummonSkill::ReplacedOnExplosionStat =
@@ -3302,8 +3327,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		return nullptr;
 	}
 
+	// THE SHARED COUNT, issue #1479: a risen imp holds a place here too.
 	const int32 SummonCap = MinionCapFor(Self, Params, SkillTags);
-	if (SummonCap > 0 && LivingMinionCount() >= SummonCap)
+	if (SummonCap > 0 && MinionsSharingTheCap().Num() >= SummonCap)
 	{
 		return nullptr;
 	}
@@ -3557,11 +3583,22 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	// exceeds it even for an instant. Summon Imp: "up to 3 imps may be active at
 	// once. Summoning a fourth destroys the oldest, which explodes for damage in
 	// a 3 meter radius."
+	//
+	// THE OLDEST OF EVERY IMP THE SUMMONER HOLDS, NOT ONLY OF THIS SKILL'S.
+	// Issue #1479, ruled 2026-09-27 under the owner's delegation: the
+	// Ritualist's risen imps share this cap, so the oldest may be one that
+	// rose from a cursed enemy and is in no skill's list.
 	const int32 SummonCap = MinionCapFor(Avatar(), Params, SkillTags);
-	if (SummonCap > 0 && LivingMinionCount() >= SummonCap)
+	const TArray<ACataclysmMinion*> Sharing =
+		SummonCap > 0 ? MinionsSharingTheCap() : TArray<ACataclysmMinion*>();
+	if (SummonCap > 0 && Sharing.Num() >= SummonCap)
 	{
-		ACataclysmMinion* Oldest = Minions[0];
-		Minions.RemoveAt(0);
+		ACataclysmMinion* Oldest = Sharing[0];
+		Minions.Remove(Oldest);
+		if (UCataclysmSummonSkill* Maker = Oldest->SummonedBy.Get())
+		{
+			Maker->Minions.Remove(Oldest);
+		}
 		if (IsValid(Oldest))
 		{
 			// A MINION'S EXPLOSION TAKES NONE OF THE SUMMONER'S AREA OF EFFECT, so

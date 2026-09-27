@@ -8,6 +8,7 @@
 // For asking whether this character can move Fervour at all. Issue #954.
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -511,6 +512,11 @@ FString UCataclysmCombatOverlay::HarbingerTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::RisenTextFor(const AActor* Actor)
+{
+	return UCataclysmRisenImps::ShowsRisen(Actor) ? FString(TEXT("Risen")) : FString();
+}
+
 FString UCataclysmCombatOverlay::DamageCutTextFor(const AActor* Actor)
 {
 	const UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -621,7 +627,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
+		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), RisenTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor), InfectionBloomTextFor(Actor),
 		  QuarantineTextFor(Actor),

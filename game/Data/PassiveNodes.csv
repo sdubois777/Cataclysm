@@ -366,7 +366,7 @@ Ravager_keystone_d_kB,Ravager,keystone_d_kB,keystone,In Among Them,You deal 2% m
 Ravager_basic_d_c0,Ravager,basic_d_c0,basic,Sustained Assault,+1% increased Life Leech per point.,6,0,1050.0,-276.0,,,,,,
 Ravager_basic_d_c1,Ravager,basic_d_c1,basic,Wrung Out,Killing an enemy spends 5 Fervour to restore 1% of your maximum health per point. If you have no Fervour it restores nothing.,6,0,1050.0,-408.0,,,,,,
 Ravager_keystone_d_kC,Ravager,keystone_d_kC,keystone,No Ground Given,"Your Fervour does not decay while an enemy is within 8 metres of you, rather than 4.",1,0,1050.0,-540.0,,,,,,
-Ritualist_basic_spine_000,Ritualist,basic_spine_000,basic,Fervour,"Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",1,0,0.0,780.0,,,,,,
+Ritualist_basic_spine_000,Ritualist,basic_spine_000,basic,Fervour,"Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds, if you hold fewer imps than Summon Imp allows at once. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",1,0,0.0,780.0,,,,,,
 Ritualist_basic_spine_001,Ritualist,basic_spine_001,basic,Wider Circle,+2% increased maximum Fervour per point.,12,0,-450.0,648.0,,,,,,
 Ritualist_basic_spine_002,Ritualist,basic_spine_002,basic,Whispered Word,+2% increased Spell Damage per point.,6,0,675.0,648.0,,,,,,
 Ritualist_basic_spine_003,Ritualist,basic_spine_003,basic,Binding Sigils,+2% increased Fervour gained from your minions per point.,12,0,-300.0,516.0,,,,,,

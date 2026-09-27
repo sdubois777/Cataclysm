@@ -1388,6 +1388,28 @@ public:
 	TArray<TObjectPtr<ACataclysmMinion>> Minions;
 
 	/**
+	 * Every living minion that counts against this skill's cap, oldest first:
+	 * its own, and every other minion of the same type its summoner commands.
+	 * Issue #1479.
+	 *
+	 * SHARED WITH THE RITUALIST'S RISEN IMPS, ruled 2026-09-27 under the
+	 * owner's delegation. A risen imp is in no skill's list, and "up to 3 imps
+	 * may be active at once" counts it. This skill's own list is included as
+	 * well, so a minion whose type row failed to load still counts here as it
+	 * did before.
+	 */
+	TArray<ACataclysmMinion*> MinionsSharingTheCap();
+
+	/**
+	 * How many minions a skill with these parameters may keep active at once
+	 * for this summoner, with every passive that changes it; zero for no cap.
+	 * Issue #1479: the risen imps read Summon Imp's figure through this, so
+	 * The Swarm and the minion-count enchantments reach them as well.
+	 */
+	static int32 CapFor(const AActor* Summoner, const FCataclysmSkillShapeParams& SkillParams,
+						const FGameplayTagContainer& SummonTags);
+
+	/**
 	 * Strike one enemy and take it if the blow left it weak enough.
 	 *
 	 * ONE ROW STATES IT: the Staff's Subjugate, "drive your will into an enemy up

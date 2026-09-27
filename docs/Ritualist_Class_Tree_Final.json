@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",
+        "description": "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds, if you hold fewer imps than Summon Imp allows at once. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
