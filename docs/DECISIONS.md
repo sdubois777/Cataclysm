@@ -86,6 +86,9 @@ creature moved under `MoveTo`; the brain's tests read the action `Think()` repor
   panel, nothing again at 11 m.
 - `TheGuideHeadsForTheExitAndWaitsBeyondFifteenMetres`: at 14.9 m it does not wait and its brain reports `Guiding`,
   noticing nobody; at 15.1 m it waits and its brain reports `Idle`, with the panel.
+  **"Heads for the exit" is measured through the brain's goal and `Think()`'s answer, not by movement**: a world
+  built for a test has no navigation system (the entry on Nowhere to Run's flights, 2026-09-26). The guide
+  walking to the exit in play is for the owner's play check.
 - `ANewFloorBringsANewGuideAndEndsTheDamage`: the last floor's guide is gone, a new one stands at the next entrance,
   and the damage has ended.
 
