@@ -160,6 +160,9 @@ and each failed on exactly the checks registered for it. The source hash was the
 | The thirds are drawn with no minion standing | `AnInsanityBurstNeverMaddensAPlayerWithNoMinion`, two: "no minion stands, so the player is not maddened" and "and is stunned instead" |
 | Behind the Veil's guard never matches the minion deciding | `AMinionTurningOnItsMaddenedSummonerIsNotDrawnToAFellowMinion`, two: "a minion turning on its summoner is drawn to no fellow minion" and "nor to itself" |
 
+The final Python on the Run-section head, 84cdd8f9, after the last move: `5536 passed, 8 skipped` (JUnit 5,544, no
+failures or errors), the same as the Python of record.
+
 ---
 
 ## 2026-09-27 — Kill counter B: each worn weapon counts and keeps its kills, a row's step can roll with its value, and two enchantments written on them
