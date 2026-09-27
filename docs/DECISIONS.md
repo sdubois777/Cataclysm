@@ -106,6 +106,9 @@ performed, 1 succeeded, 0 failed` restored, and each failed on exactly the check
 | The guards come at Common | "at the Elite rung", 0, once for each of the six guards |
 | No guard is placed | "six guards", 0 |
 
+The final Python on the Run-section head, 4b0908d4, after the last move: `5531 passed, 8 skipped` (JUnit 5,539, no
+failures or errors), the same as the Python of record.
+
 ---
 
 ## 2026-09-26 — Kill counter A: the player's kills this run and over the character's life, two scales that read them, a resistance cap rows can move, and two enchantments written on them
