@@ -371,6 +371,9 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		Record.Level = State->GetCharacterLevel();
 		Record.Experience = State->GetExperienceIntoLevel();
 
+		// AND EVERY KILL IT HAS MADE. Issue #1833, the kill counter.
+		Record.LifetimeKills = State->GetLifetimeKills();
+
 		// AND WHAT WAS CHOSEN WHEN THE CHARACTER WAS CREATED, since 2026-08-25.
 		// Issue #50.
 		//
@@ -404,5 +407,17 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 	// loaded from disk into an empty one every time it was refreshed. This
 	// list named the passive tree and the equipped slots too until each gained a
 	// source: the passive allocation above, and the worn gear since 2026-09-24.
+	return true;
+}
+
+bool FCataclysmSaveGather::RunKillsFrom(const ACataclysmPlayerCharacter& Character,
+										UCataclysmRunSave& Record)
+{
+	const ACataclysmPlayerState* State = Character.GetPlayerState<ACataclysmPlayerState>();
+	if (!State)
+	{
+		return false;
+	}
+	Record.RunKills = State->GetRunKills();
 	return true;
 }

@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Kill counter A: the player's kills this run and over the character's life, two scales that read them, a resistance cap rows can move, and two enchantments written on them
+
+**Affects:** `game/Source/Cataclysm/Player/CataclysmPlayerState.cpp` and `.h` (`NoteKill`, `RunKills`,
+`LifetimeKills`), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (a kill is noted),
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` and `.h` (the scales `run_kills` and
+`character_kills`), `CataclysmAbilitySystemComponent.cpp` (the counts read into the conditions),
+`CataclysmDamageCalculation.cpp` and `.h` (`ResistanceCapOf`, `EffectiveResistanceUnderCap`),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (`resistance_cap` has no attribute),
+`game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.cpp` and `.h` and
+`CataclysmCharacterSheetWidget.cpp` (the sheet's header line), `game/Source/Cataclysm/Save/`
+(`CataclysmSaveRecords.h`, `CataclysmSaveGather.cpp` and `.h`, `CataclysmSaveWriter.cpp`),
+`game/Tests/SaveFixtures/Character_v3.json` and `game/Tests/SaveFixtures/Run_v1.json`, `tools/generate_datatables.py`,
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/EnchantmentEffects.csv` and
+`game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+the tests in `CataclysmEnchantmentEffectTests.cpp`, `CataclysmSaveRecordTests.cpp` and
+`CataclysmStatExemptionTests.cpp`, `CataclysmDataTableTests.cpp` and `docs/README.md` (the row
+count), `tools/tests/test_enchantment_effects_match_the_row_text.py` and
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+- **A kill is the player's own "kill" event**, the one every kill-triggered enchantment already
+  uses, so a minion's kill counts only under the Conduit keystone. Each raises two counts on
+  `ACataclysmPlayerState`: this run's and the character's lifetime. "This run" means since the
+  session began, because there is no continue flow yet.
+- **Two scales read them**, `run_kills` and `character_kills`. `character_kills` has no row until
+  kill counter B, so it is listed as built ahead of its rows.
+- **A resistance cap rows can move.** `resistance_cap` is asked on the defender with 70 as the base,
+  and the answer is held between 0 and 90, the design's hard ceiling. A blow meets the defender's
+  own cap (`ResistanceCapOf`), and the character sheet shows the same figure. Nothing grants it yet.
+- **Saving.** The character record gains `LifetimeKills` and the run record `RunKills`, both
+  defaulting to 0, so neither schema version moves, as `CataclysmSaveRecords.h` states for a field
+  with a sensible default. The fixtures carry both fields.
+- **The character sheet's header line** shows both counts, beside the level and difficulty tier.
+
+| Enchantment | Rows |
+| :-- | :-- |
+| Your damage is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run | `attack_damage` and `spell_damage` increased 0.01 to 0.05, scale `run_kills` step 1000 |
+| Your maximum HP is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run | `max_health` increased 0.01 to 0.05, scale `run_kills` step 1000 |
+
+### THE REBASE
+
+Moving the engine commit onto development, which had just gained skill charges, met three
+conflicts, each where skill charges had added its own entry beside kill counter A's: the list of
+stats with no attribute, the stat-exemption probes (git had interleaved two whole probe functions
+line by line) and the end of the enchantment test file. They were resolved by rule, never by
+editing the markers: development's side of each file, then each block the kill counter commit adds,
+inserted next to a line that occurs exactly once (the test file's by the append-only resolver).
+Each file's change, and the whole commit's "23 files changed, 676 insertions(+), 8 deletions(-)",
+equal the original commit's.
+
+**The first rehearsal on the moved head is not evidence.** Its copy folder could not be deleted
+("Device or resource busy") because a stopped rehearsal still held it, the new copy was unpacked
+over the old, and it printed 44 failures. Rerun in a fresh folder, it printed exactly its
+prediction, "12 failed, 5512 passed, 13 skipped".
+
+### A TEST THAT COULD NOT SEE THE CAP, FOUND BY ITS FIRST UNREAL RUN
+
+`Cataclysm.KillCounter.TheResistanceCapMovesWithItsRowsBetweenNoughtAndNinety` had never run in
+Unreal before this window; the earlier work on kill counter A rehearsed the Python suite only. Its
+first run, in the stale-asset step, failed "and the blow meets 80, not 70: 0.2 / 0.3 of it", reading
+1.0, so that step printed 3 failures where 2 were registered. The cause was in the test:
+`UCataclysmDamageCalculation::Resolve` reports `DealtToHealth` as `FMath::Min(Damage,
+Vitals->GetHealth())` (`CataclysmDamageCalculation.cpp`), and a bare wearer holds the default 100
+health (`InitHealth(100.0f)` in `CataclysmVitalAttributeSet.cpp`). The test's 1000-damage blow
+leaves 300 under a cap of 70 and 200 under a cap of 80, and both were clipped to 100. The test now
+gives its defender 10,000 health and asserts it before the blows. The game code was right: the cap
+does raise what a blow meets.
+
+**Proof B's registration was only sound once the test was fixed.** Proof B makes a blow meet 70
+whatever the defender's cap. Under the old test even the unbroken code read 1.0, so that proof could
+not have failed. With the fix its broken half reads 1.0 against 0.667.
+
+### THE RUN
+
+On `3a57c3f0`, the engine commit moved onto development `5d93bbb8`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `3a57c3f0` | "5530 passed, 8 skipped in 327.86s"; JUnit tests 5538, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `771cb596` | "EnchantmentEffects.csv 383 rows", from 380 |
+| Python after the rows | "1 failed, 5529 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp" |
+| Stale-asset step, with `Cataclysm.KillCounter.` | "143 tests performed, 140 succeeded, 3 failed": the asset guard, `TheKillsThisRunRowsGrowWithEachThousandKills` and, unregistered, the resistance-cap test above |
+| Test commit `47253b50`, rebuilt | "4 actions, 1 file compiled: Module.Cataclysm.15.cpp"; the test alone "1 tests performed, 1 succeeded, 0 failed" |
+| Asset rebuild `565d87d1` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The four new tests | "4 tests performed, 4 succeeded, 0 failed" |
+| Whole suite, `565d87d1`, in its own command | "2710 tests performed, 2710 succeeded, 0 failed"; 2710 declared, gap 0 |
+| Proof A, a kill not noted | PROVED: `APlayersKillRaisesBothCountsAndTheConditionsReadThem` failed 5 assertions, each count reading 0; restored "1 tests performed, 1 succeeded" |
+| Proof B, a blow meeting 70 whatever the cap | PROVED: the resistance-cap test failed 1, "and the blow meets 80, not 70", reading 1.0; restored 1 of 1 |
+| Proof C, the cap not held to 0..90 | PROVED: the same test failed 2, "+40: 90, the ceiling, not 110" reading 110 and "-80: nought, not -10" reading -10; restored 1 of 1 |
+
+---
+
 ## 2026-09-26 — CLAUDE.md tells a session to run the C++ conflict check after resolving a conflict by hand (#1610)
 
 **Affects:** `CLAUDE.md`, one bullet under "Rules that keep parallel sessions from breaking each other". Issue

@@ -212,6 +212,11 @@ const TArray<FString>& UCataclysmCharacterSheetLayout::SheetStats()
 	return All;
 }
 
+FString UCataclysmCharacterSheetLayout::KillsLine(int32 RunKills, int32 LifetimeKills)
+{
+	return FString::Printf(TEXT("Kills this run %d   Kills %d"), RunKills, LifetimeKills);
+}
+
 int32 UCataclysmCharacterSheetLayout::SheetStatCount()
 {
 	return SheetStats().Num();
@@ -409,8 +414,11 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 			Generic + Read(ASC, UCataclysmDamageCalculation::ResistanceAttributeFor(Type));
 		const float Penalty =
 			UCataclysmDamageCalculation::ResistancePenaltyAt(DifficultyTier);
-		const float Met = UCataclysmDamageCalculation::EffectiveResistance(
-			Held - Penalty, /*Penetration=*/0.0f);
+		// UNDER THE CHARACTER'S OWN CAP, the one `Resolve` holds a hit to.
+		// Issue #1833.
+		const float Met = UCataclysmDamageCalculation::EffectiveResistanceUnderCap(
+			Held - Penalty, /*Penetration=*/0.0f,
+			UCataclysmDamageCalculation::ResistanceCapOf(ASC));
 
 		// WORKED OUT THE WAY `Resolve` WORKS IT OUT: the total less the penalty,
 		// then bounded by the cap. Showing the first figure alone is what issue

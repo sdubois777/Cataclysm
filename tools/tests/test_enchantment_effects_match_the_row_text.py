@@ -496,8 +496,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 373 over 297: one row on one enchantment.
 #: AND 380 OVER 304 SINCE THE SKILL CHARGES,
 #: issue #1833, from 374 over 298: six rows on six enchantments.
-AUTHORED_ROWS = 380
-AUTHORED_ENCHANTMENTS = 304
+#: AND 383 OVER 306 SINCE THE KILL COUNTER,
+#: issue #1833, from 380 over 304: three rows on two enchantments.
+AUTHORED_ROWS = 383
+AUTHORED_ENCHANTMENTS = 306
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

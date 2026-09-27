@@ -2093,6 +2093,27 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PercentOfManaHeld
 		UMETA(DisplayName = "Percent Of Mana Held"),
+
+	/**
+	 * `Value` per whole `ScaleStep` enemies the character has killed this run.
+	 * Issue #1833, the kill counter: "Your damage is increased by 0.01%-0.05%
+	 * permanently for every 1000 enemies killed this run" is a step of 1000.
+	 *
+	 * A KILL IS THE CHARACTER'S OWN "kill" EVENT, and "this run" is since the
+	 * session began; see `ACataclysmPlayerState::NoteKill`. A CHARACTER WITH
+	 * NO PLAYER STATE READS -1 AND GETS NOTHING: every creature and minion.
+	 */
+	PerKillThisRun
+		UMETA(DisplayName = "Per Kill This Run"),
+
+	/**
+	 * `Value` per whole `ScaleStep` enemies the character has killed in every
+	 * run it has played. Issue #1833: "You lose 1-4% max resistances for every
+	 * 100,000 - 500,000 kills". Its row waits for the column that rolls the
+	 * step with the value; until then no row names this scale.
+	 */
+	PerKillOfTheCharacter
+		UMETA(DisplayName = "Per Kill Of The Character"),
 };
 
 /**
@@ -2872,6 +2893,20 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 ClassPointsSpent = -1;
+
+	/**
+	 * Kills this run, or -1 for one with no player state to ask. Issue #1833.
+	 * See `PerKillThisRun`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 RunKills = -1;
+
+	/**
+	 * Kills in every run the character has played, or -1 for one with no
+	 * player state to ask. Issue #1833. See `PerKillOfTheCharacter`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 CharacterKills = -1;
 
 	/**
 	 * How much mana the character holds now. Negative means unknown: no vital

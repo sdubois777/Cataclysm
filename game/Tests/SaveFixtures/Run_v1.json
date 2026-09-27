@@ -11,6 +11,7 @@
 	"SurgesFired": 9,
 	"NextSurgeDay": 122.5,
 	"RandomStreamSeed": 1743984213,
+	"RunKills": 1234,
 	"Dungeons": [
 		{
 			"DungeonId": 3,

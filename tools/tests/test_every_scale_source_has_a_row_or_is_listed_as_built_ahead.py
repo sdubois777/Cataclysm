@@ -85,7 +85,14 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `consecutive_hits` JOINED on 2026-09-24 for issue #1833's phase 2, as an
 #: engine commit ahead of its rows' commit on the same branch, and LEFT with
 #: those rows.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#:
+#: `run_kills` and `character_kills` JOINED on 2026-09-25 for issue #1833's
+#: kill counter, as an engine commit ahead of the rows. `run_kills` leaves with
+#: its rows' commit on the same branch. `character_kills` stays until window B,
+#: which adds the column that rolls a step with the value that its one sentence
+#: needs: "You lose 1-4% max resistances for every 100,000 - 500,000 kills".
+#: `run_kills` LEFT with its three rows, issue #1833.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"character_kills"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -112,7 +119,9 @@ KNOWN_USED = "debuffs_carried"
 #: AND 25 OF 25 WHEN `own_stacks` GAINED ITS TEN ROWS, issue #1833.
 #:
 #: AND 26 OF 26 WHEN `consecutive_hits` GAINED ITS FOUR ROWS, issue #1833.
-EXPECTED_NAMED_BY_A_ROW = 26
+#:
+#: AND 27 OF 27 WHEN `run_kills` GAINED ITS THREE ROWS, issue #1833.
+EXPECTED_NAMED_BY_A_ROW = 27
 
 
 def scales_named_by_a_row() -> set[str]:

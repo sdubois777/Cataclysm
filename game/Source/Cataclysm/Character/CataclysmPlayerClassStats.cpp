@@ -327,6 +327,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// route that honours a row scoped to a slot (issue #1981), and three of
 		// the five sentences it serves are scoped.
 		TEXT("cooldown_lengthening"),
+		// How far a character's resistance cap moves from 70, read by
+		// UCataclysmDamageCalculation::ResistanceCapOf. Issue #1833, the kill
+		// counter.
+		TEXT("resistance_cap"),
 		// Flat uses added to a skill with a cooldown, read by
 		// UCataclysmAbilitySystemComponent::SkillChargesMaximum. Issue #1833,
 		// skill charges: "Ultimate has 1-3 additional charges" and five more.
