@@ -2,6 +2,92 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Skill charges: a skill with a cooldown holds one use plus its charges bonus, recharged one at a time, and six enchantments written on them
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`
+(`SkillChargesMaximum`, `SkillChargesSpent`, `SkillChargesHeld`, `SpendSkillCharge`,
+`OnSkillRechargeTagChanged`, `RefillSkillCharges`), `CataclysmGameplayAbility.cpp` and `.h`
+(`CheckCooldown` refuses only at none held; `ApplyCooldownEffect`),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (`skill_charges_bonus` has no
+attribute), `game/Source/Cataclysm/Interface/CataclysmSkillBar.cpp` and `.h` and `CataclysmHUD.cpp`
+and `.h` (the skill bar shows "x2"), `docs/All_Things_Cataclysm.xlsx`, `game/Data/EnchantmentEffects.csv`,
+`game/Data/EnchantmentsPositive.csv`, `game/Content/Data/DT_EnchantmentEffects.uasset` and
+`DT_EnchantmentsPositive.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (five tests),
+`CataclysmStatExemptionTests.cpp` (the probe), `CataclysmDataTableTests.cpp` and `docs/README.md` (the
+row count), `tools/tests/test_enchantment_effects_match_the_row_text.py` and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+A skill with a cooldown holds 1 + `skill_charges_bonus` uses, asked with the skill's own tags. A use
+spends one and starts the recharge if none is running; when a recharge ends, one use comes back and,
+if any are still spent, the next recharge starts. Uses are counted as spent, so a rising maximum
+gives its extra uses at once, and a falling maximum takes away the uses above it. A cooldown reset
+or a death refills every use; a cooldown reduction shortens the recharge that is running. The skill
+bar shows the uses held when a skill can hold more than one.
+
+### THE ROWS, all `skill_charges_bonus` flat
+
+| Enchantment | Row |
+| :-- | :-- |
+| Ultimate has 1-3 additional charges | 1 to 3, Required Tags `Slot.Ultimate` |
+| Gain 1-3 additional charges for your cooldown abilities | 1 to 3 |
+| Skills have 1-2 additional charges when fighting Boss enemies, for 4 seconds after you strike one | 1 to 2, condition `seconds_after_striking_a_boss` 4 |
+| Your heavy attack has 1-2 additional charges | 1 to 2, `Slot.Heavy` |
+| Your special ability has 1-2 additional charges | 1 to 2, `Slot.Special` |
+| Your movement ability has 1-2 additional charges | 1 to 2, `Slot.Movement` |
+
+### RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25
+
+- **Charges recover one at a time.** Separate timers would triple the sustained output of every
+  cooldown skill under "Gain 1-3 additional charges for your cooldown abilities". The research did
+  not settle the order: the one fetched source, poe2db's Second Wind I ("twice as many Cooldown
+  Uses", "50% less Cooldown Recovery Rate"), does not state it. The owner may overturn it.
+- **Uses are counted as spent**, because the 4-second boss clock is usually shorter than a
+  recharge, so a recharged extra use would rarely exist.
+- **The Boss sentence is reworded, verbatim**, from "Skills have 1-2 additional charges when
+  fighting Boss enemies" to "Skills have 1-2 additional charges when fighting Boss enemies, for 4
+  seconds after you strike one", so that the 4 the row carries is stated. The addition comes after
+  the first 48 characters, so the row name holds.
+- The benefit that `BenefitWithNoEffect` named in the tests, "Ultimate has 1-3 additional charges",
+  now has a row, so those tests use "Your ultimate ability is converted into a placeable", which has
+  none.
+
+### THE REBASE
+
+Moving the engine commit onto development met a conflict in `CataclysmEnchantmentEffectTests.cpp`,
+where both sides had added tests at the end. It was resolved by rule, not by hand: development's side
+of the file, then the commit's one-line change to `BenefitWithNoEffect` and its comment, then the
+commit's added block before the final `#endif`. The rebased commit's stat, "12 files changed, 728
+insertions(+), 2 deletions(-)", equals the original commit's.
+
+### THE RUN
+
+On `bdad4d81`, the engine commit moved onto development `5519d664`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `bdad4d81` | "5529 passed, 8 skipped in 317.86s"; JUnit tests 5537, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `e8b070a1` | "EnchantmentEffects.csv 380 rows", from 374; `EnchantmentsPositive.csv`: the Boss sentence only |
+| Python after the rows | "1 failed, 5528 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp", the unity file holding `CataclysmDataTableTests.cpp` |
+| Stale-asset step | "139 tests performed, 133 succeeded, 6 failed": the asset-match guard and the five new tests |
+| Asset rebuild `f7e4c4af` | only `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset` and `datatable_asset_sources.json` |
+| The five new tests | "5 tests performed, 5 succeeded, 0 failed" |
+| Whole suite, `f7e4c4af`, in its own command | "2701 tests performed, 2701 succeeded, 0 failed"; 2701 declared, gap 0 |
+| Proof A, a use spending no charge | PROVED: `TheHeavyChargesRowGivesThreeUsesThatRechargeOneAtATime` failed 6 assertions: "and the fourth is refused"; "nothing held" reading 2; "one recharge ends: one use back" reading 3; "and the next ten seconds start" reading 0; "two back" reading 3; "and the last ten start" reading 0. Restored "1 tests performed, 1 succeeded" |
+| Proof B, no next recharge starting | PROVED: the same test failed 4: "and the next ten seconds start" reading 0; "two back" reading 1; "and the last ten start" reading 0; "all three back" reading 1. Restored 1 of 1 |
+| Proof C, a fallen maximum not clamping the spent uses | PROVED: `AChargeMaximumThatFallsTakesTheUsesAboveIt` failed 3: "the recharge ends: its one use is back" reading 0; "and no further recharge starts" reading 10; "so it is used". Restored 1 of 1 |
+
+Proofs A and B were predicted by reading `SkillChargesSpent`, where a running recharge alone counts
+as one use spent, and `RechargeHeavy`, which fires no tag event when no recharge runs. Each printed
+exactly its prediction.
+
+---
+
 ## 2026-09-26 — Twenty-six Masochist rows proven on a real Masochist, in six test batches (#2119)
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` only. Issue
