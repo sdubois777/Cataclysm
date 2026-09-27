@@ -494,8 +494,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 372 over 296: one row on one enchantment.
 #: AND 374 OVER 298 SINCE THE AURAS-AT-DEATH ROW,
 #: issue #1833, from 373 over 297: one row on one enchantment.
-AUTHORED_ROWS = 374
-AUTHORED_ENCHANTMENTS = 298
+#: AND 380 OVER 304 SINCE THE SKILL CHARGES,
+#: issue #1833, from 374 over 298: six rows on six enchantments.
+AUTHORED_ROWS = 380
+AUTHORED_ENCHANTMENTS = 304
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
