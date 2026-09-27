@@ -109,15 +109,20 @@ namespace CataclysmPotionFamineTest
 	/**
 	 * A creature of `RarityStep` dies, or false with the set-up line that failed.
 	 *
-	 * DIAGNOSTIC, 2026-09-27. The first whole suite on this change found every kill
-	 * after `GoToFloor(2)` adding no charges while the kill on floor 1 did. Either
-	 * the victim never spawned at this fixed spot on the new layout, or the kill
-	 * reached a different holder; these set-up lines say which.
+	 * SPAWNED WHATEVER STANDS THERE. The first whole suite on this change found every
+	 * kill after `GoToFloor(2)` adding no charges while the kill on floor 1 did, and a
+	 * diagnostic run on 2026-09-27 showed why: on the second floor's layout this spot
+	 * is occupied, `SpawnActor` refused and returned nothing, and no kill happened.
+	 * The player and the potion holder were unchanged. So the victim is spawned
+	 * whatever collides there, and the set-up lines stay, so a spawn that fails
+	 * again, or a kill that reaches another holder, says so here.
 	 */
 	bool Kill(FAutomationTestBase& Test, const FFloor& Floor, int32 RarityStep)
 	{
+		FActorSpawnParameters Always;
+		Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		ACataclysmEnemyCharacter* Victim = Floor.World->SpawnActor<ACataclysmEnemyCharacter>(
-			FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+			FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Always);
 		if (!Test.TestNotNull(TEXT("set-up: the victim spawned at (300, 0, 0)"), Victim)
 			|| !StillTheSameHolder(Test, Floor, TEXT("before the kill")))
 		{
