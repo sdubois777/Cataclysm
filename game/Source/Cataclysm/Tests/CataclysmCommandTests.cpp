@@ -543,6 +543,12 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 
 	constexpr int32 Casts = 5;
 
+	// FERVOUR FOR EVERY CAST, AND THE POOL IS NOTHING ELSE HERE. Issue #1478: the
+	// Ultimate slot costs 50 Fervour, and this caster's pool is also its
+	// Fervour, so five casts need 250. An imp reserves nothing yet (issue
+	// #1934), so the pool's size changes only what can be paid.
+	constexpr float PoolForEveryCast = 50.0f * Casts;
+
 	const auto SummonRepeatedly = [&](FScopedCaster& Caster, const TCHAR* Row)
 	{
 		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
@@ -578,7 +584,7 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 	};
 
 	// --- THE CONTROL: THE ROW'S OWN CAP OF THREE ----------------------------
-	FScopedCaster Plain(World, FVector::ZeroVector);
+	FScopedCaster Plain(World, FVector::ZeroVector, PoolForEveryCast);
 	const int32 PlainAlive = SummonRepeatedly(Plain, ImpRow);
 
 	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT. If the casts did
@@ -591,7 +597,7 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 	}
 
 	// --- WITH THE KEYSTONE: FIVE -------------------------------------------
-	FScopedCaster Swarming(World, FVector(0, 30 * M, 0));
+	FScopedCaster Swarming(World, FVector(0, 30 * M, 0), PoolForEveryCast);
 	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
 				 2.0f);
 	TestEqual(TEXT("and five with The Swarm"),
@@ -601,7 +607,7 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 	//
 	// THE HALF A BUILD ADDING THE BONUS TO THE FIGURE WOULD FAIL. It would read
 	// two here rather than five.
-	FScopedCaster Uncapped(World, FVector(0, 60 * M, 0));
+	FScopedCaster Uncapped(World, FVector(0, 60 * M, 0), PoolForEveryCast);
 	Uncapped.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
 				 2.0f);
 	TestEqual(TEXT("a summon stating no cap keeps every one it made"),
@@ -753,6 +759,12 @@ bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 			 "FervourReserve=30; HealthThresholdPercent=50");
 
 	constexpr float PoolThatFitsOnlyTheReducedReserve = 25.0f;
+
+	// SUBJUGATE IS GRANTED INTO THE SPECIAL SLOT HERE, NOT ITS OWN ULTIMATE.
+	// Issue #1478: the Ultimate slot costs 50 Fervour, and this test needs a
+	// pool of 25, which can never hold 50. The test is about the reserve, not
+	// the slot, so the slot is moved and the pool is kept. Ruled 2026-09-27
+	// under the owner's delegation.
 	constexpr float HealthUnderTheThreshold = 400.0f;   // 40% of a creature's 1000
 
 	// --- WITHOUT THE KEYSTONE: 30 DOES NOT FIT IN 25 ------------------------
@@ -763,7 +775,7 @@ bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 	Plain.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
 
 	UCataclysmSummonSkill* PlainTry = GrantSkill<UCataclysmSummonSkill>(
-		Plain, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+		Plain, ECataclysmAbilitySlot::Special, Row, TEXT("Subjugate"));
 	if (!PlainTry)
 	{
 		AddError(TEXT("Could not grant Subjugate to the plain caster."));
@@ -802,7 +814,7 @@ bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 				5.0f);
 
 	UCataclysmSummonSkill* CrownedTry = GrantSkill<UCataclysmSummonSkill>(
-		Crowned, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+		Crowned, ECataclysmAbilitySlot::Special, Row, TEXT("Subjugate"));
 	if (!CrownedTry)
 	{
 		AddError(TEXT("Could not grant Subjugate to the crowned caster."));

@@ -239,6 +239,29 @@ public:
 	float ManaCostFor(const UAbilitySystemComponent* AbilitySystem) const;
 
 	/**
+	 * What one use costs THIS character in Fervour, on top of its mana. Issue
+	 * #1478, ruled 2026-09-09: "The Ultimate slot costs 50 Fervour", and no
+	 * other slot costs any. The figure is the slot's `FervourCost` in
+	 * game/Data/SkillSlots.csv.
+	 *
+	 * EVERY CLASS PAYS IT, decided by the project owner on 2026-09-27 knowing
+	 * that the three War classes have no way to fill Fervour yet, so their
+	 * Ultimates cannot be cast until their generators are built.
+	 *
+	 * A SLOT COST AND NOT A MANA COST, ruled 2026-09-27 under the owner's
+	 * delegation: an Ultimate whose mana a row has made free still pays it, and
+	 * no mana stat reaches it.
+	 *
+	 * NOTHING FOR A CHARACTER WITH NO FERVOUR POOL AT ALL, ruled with it: an
+	 * ability system without `UCataclysmClassResourceAttributeSet` has no bar to
+	 * pay from. Every player has one; no enemy does.
+	 */
+	float FervourCostFor(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/** Whether this character holds at least `Cost` Fervour. */
+	static bool FervourCovers(const UAbilitySystemComponent* AbilitySystem, float Cost);
+
+	/**
 	 * The share of current health a cast of this skill pays INSTEAD of its mana
 	 * cost right now, as a percentage, or nothing. Issues #1820 and #41.
 	 *
@@ -405,6 +428,7 @@ private:
 	mutable float SlotCooldown = 0.0f;
 	mutable float SlotManaCostAtLevel100 = 0.0f;
 	mutable float SlotManaOnHitAtLevel100 = 0.0f;
+	mutable float SlotFervourCost = 0.0f;
 
 	/**
 	 * See `ManaCostPaidAsHealthPercentThisCast`. MUTABLE BECAUSE `ApplyCost` IS

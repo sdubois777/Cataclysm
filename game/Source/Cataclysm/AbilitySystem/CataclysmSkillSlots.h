@@ -38,6 +38,10 @@ struct CATACLYSM_API FCataclysmSkillSlotNumbers
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
 	float ManaOnHitAtLevel100 = 0.0f;
 
+	/** Fervour one use costs, at every level. Issue #1478. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	float FervourCost = 0.0f;
+
 	/** False when no row was found, which is the only way this is invalid. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
 	bool bFound = false;

@@ -381,6 +381,16 @@ FString UCataclysmSkillBar::NextUseLine(float SkillPercent, int32 SkillCount,
 	return FString::Join(Entries, TEXT("   "));
 }
 
+FString UCataclysmSkillBar::FervourTextFor(const FCataclysmSkillBarSlot& Slot)
+{
+	if (!Slot.bFilled || !Slot.bShortOfFervour)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("%s needs %d Fervour"), *NameForEmptySlot(Slot.Slot),
+						   FMath::CeilToInt(Slot.FervourCost));
+}
+
 FString UCataclysmSkillBar::LockedNotice()
 {
 	// BASIC ATTACKS ARE NAMED BECAUSE THEY STILL WORK. The bar draws no box for
@@ -491,6 +501,12 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 		// alone would grey the box out.
 		Box.bAffordable = Ability->ManaCostPaidAsHealthPercent(Abilities) > 0.0f
 			|| CanAfford(Abilities, Pool, Box.ManaCost);
+
+		// AND THE FERVOUR, THE SAME QUESTION `CheckCost` ASKS FIRST. Issue #1478.
+		Box.FervourCost = Ability->FervourCostFor(Abilities);
+		Box.bShortOfFervour =
+			!UCataclysmGameplayAbility::FervourCovers(Abilities, Box.FervourCost);
+		Box.bAffordable = Box.bAffordable && !Box.bShortOfFervour;
 
 		// THE LOCK IS ASKED PER BOX, WITH THIS SKILL'S OWN TAGS. Issue #1810.
 		// Unlike mana above, this is not one answer for the character:

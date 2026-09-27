@@ -415,6 +415,16 @@ void ACataclysmHUD::DrawSkillBar()
 			DrawTextCentred(Name, Ink, Centre, At.Y + Size + SkillBarNameGapPx,
 							SkillBarNameScale);
 		}
+
+		// AND, ABOVE A BOX SHORT OF FERVOUR, WHAT IT NEEDS. Issue #1478. Grey
+		// alone reads as "no mana", and a War character has no Fervour bar to
+		// look at. Above the box, where the name below it cannot collide.
+		const FString Fervour = UCataclysmSkillBar::FervourTextFor(Box);
+		if (!Fervour.IsEmpty())
+		{
+			DrawTextCentred(Fervour, Ink, Centre, At.Y - SkillBarFervourGapPx,
+							SkillBarKeyScale);
+		}
 	}
 
 	// AND IN WORDS WHEN EVERY ONE OF THEM IS LOCKED. Issue #1810. Six boxes

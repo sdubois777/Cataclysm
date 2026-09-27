@@ -189,6 +189,18 @@ namespace CataclysmSkillTest
 
 		float Health() const { return Get(UCataclysmVitalAttributeSet::GetHealthAttribute()); }
 		float Mana() const { return Get(UCataclysmVitalAttributeSet::GetManaAttribute()); }
+		/**
+		 * Fervour for this many Ultimate casts. Issue #1478: the Ultimate slot costs
+		 * 50 Fervour, ruled 2026-09-09, and this fighter starts with none, so a test
+		 * that casts an Ultimate is given it first. Per test and not in the
+		 * constructor, because three tests read this fighter's Fervour as a figure.
+		 */
+		void GiveFervourForUltimates(int32 Casts)
+		{
+			Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+				50.0f * static_cast<float>(Casts));
+		}
+
 		float Fervour() const
 		{
 			return Get(
@@ -5774,8 +5786,10 @@ bool FCataclysmConsumedCountScalesTest::RunTest(const FString&)
 	const TCHAR* Params = TEXT("Radius=15; Angle=360; Burn=1; ConsumeBurn=1; "
 							   "IncreasedDamagePer=15; ScalingSource=Consumed");
 
+	Alone.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* One = GrantSkill<UCataclysmStrikeSkill>(
 		Alone, ECataclysmAbilitySlot::Ultimate, Params, TEXT("Extinction"));
+	Crowded.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Three = GrantSkill<UCataclysmStrikeSkill>(
 		Crowded, ECataclysmAbilitySlot::Ultimate, Params, TEXT("Extinction"));
 	if (!One || !Three)
@@ -5826,6 +5840,7 @@ bool FCataclysmMaxDamagePercentTest::RunTest(const FString&)
 
 	// FOUR FIRES IS THREE OTHERS, so forty-five percentage points would take the
 	// Ultimate slot's 400% to 580%. Extinction states a ceiling of 500%.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=15; Angle=360; Burn=1; ConsumeBurn=1; "
@@ -6501,6 +6516,7 @@ bool FCataclysmStrikeAppliesCursesTest::RunTest(const FString&)
 	// ANATHEMA IS A STRIKE, NOT A DEBUFF, and until 2026-09-01 only the Debuff
 	// shape applied a named effect, so this row's whole second sentence did
 	// nothing: "laying every curse you know on it for 10 seconds".
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Damn = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=12; Angle=360; Burn=1; EffectDuration=10; "
@@ -6740,6 +6756,7 @@ bool FCataclysmCursePassesOnDeathTest::RunTest(const FString&)
 	// ANATHEMA'S LAST SENTENCE: "anything that dies while damned passes the
 	// curse to the nearest living enemy." `OnDeath=SpreadDebuff` and
 	// `OnDeathRange=8` said so and nothing read either.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Damn = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=5; Angle=360; EffectDuration=10; Effect=Madness; "
@@ -6796,6 +6813,7 @@ bool FCataclysmCurseDoesNotSpreadUnaskedTest::RunTest(const FString&)
 	// on-death parameters. Without it that test would pass just as well against
 	// a curse that always passed on, which would make every curse in the game
 	// unkillable.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Damn = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=5; Angle=360; EffectDuration=10; Effect=Madness"),
@@ -7349,6 +7367,7 @@ bool FCataclysmRackCountTest::RunTest(const FString&)
 
 	// BUTCHER'S BILL WITH A SMALLER RACK, so the test is not driving thirty
 	// throws by hand. The limit is what is being measured, not the figure.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmProjectileSkill* Rack = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Range=10; Radius=1; Speed=2000; Burn=1; Count=4; Duration=10; "
@@ -7476,6 +7495,7 @@ bool FCataclysmRackKeepsRunningTest::RunTest(const FString&)
 	FScopedFighter Middle(World, FVector(5 * M, 0, 0));
 	FScopedFighter Far(World, FVector(7 * M, 0, 0));
 
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmProjectileSkill* Rack = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Range=10; Radius=1; Speed=2000; Burn=1; Count=3; Duration=10; "
@@ -7700,6 +7720,7 @@ bool FCataclysmForcedMovementNamesTwoVerbsTest::RunTest(const FString&)
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Caught(World, FVector(0, 10 * M, 0));
 
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Gathering = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=14; Angle=360; Burn=1; ForcedMovement=Pull, Knockdown; "
@@ -7765,6 +7786,7 @@ bool FCataclysmForcedMovementKnockdownResistedTest::RunTest(const FString&)
 	Immune.AbilitySystem->SetNumericAttributeBase(
 		UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 100.0f);
 
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Floor = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=6; Angle=360; ForcedMovement=Knockdown; "
@@ -8035,6 +8057,7 @@ bool FCataclysmStrikeLeavesTerrainTest::RunTest(const FString&)
 	// The Spear's Thicket, as its row states it: "Drive a forest of burning
 	// spears up out of the ground within 12 meters ... The spears stand for 12
 	// seconds afterward, and anything that walks into them is pinned as well."
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Thicket = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=12; Angle=360; Burn=1; ForcedMovement=Pin; "
@@ -9008,6 +9031,7 @@ bool FCataclysmFlickerVisitsEachEnemyTest::RunTest(const FString&)
 	FScopedFighter Far(World, FVector(9 * M, 0, 0));
 	FScopedFighter Outside(World, FVector(25 * M, 0, 0));
 
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmMovementSkill* Flicker = GrantSkill<UCataclysmMovementSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Mode=Flicker; Range=10; Duration=4; Interval=0.33; Burn=1; "
@@ -11114,6 +11138,7 @@ bool FCataclysmHeldSwingWithNoFloorTest::RunTest(const FString&)
 
 	// The Whole Weight's own row, with its stated 350 supplied the way the
 	// weapon slots component supplies it.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=9; Angle=180; ChargeTime=3; MoreDamagePer=8; "
@@ -11181,6 +11206,7 @@ bool FCataclysmHeldSwingCountsBlowsTest::RunTest(const FString&)
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Striker(World, FVector(3 * M, 0, 0));
 
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=9; Angle=180; ChargeTime=3; MoreDamagePer=8; "
@@ -11357,6 +11383,7 @@ bool FCataclysmStaggerSparesUnnamedHoldTest::RunTest(const FString&)
 	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
 
 	// The Whole Weight's `ChargeBreaksOn=Death`, which does not name a stagger.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=9; Angle=180; ChargeTime=3; MaxDamagePercent=500; "
@@ -11409,6 +11436,7 @@ bool FCataclysmDeathLosesHeldSwingTest::RunTest(const FString&)
 		FScopedFighter Caster(World, FVector::ZeroVector);
 		FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
 
+		Caster.GiveFervourForUltimates(1);
 		UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
 			Caster, ECataclysmAbilitySlot::Ultimate,
 			TEXT("Radius=9; Angle=180; ChargeTime=3; MaxDamagePercent=500; "
@@ -11441,6 +11469,7 @@ bool FCataclysmDeathLosesHeldSwingTest::RunTest(const FString&)
 
 		// A ROW NAMING NOTHING AT ALL. `ChargeBreaksOn` is absent, so the row
 		// says nothing breaks its hold -- and death still does.
+		Other.GiveFervourForUltimates(1);
 		UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
 			Other, ECataclysmAbilitySlot::Ultimate,
 			TEXT("Radius=9; Angle=180; ChargeTime=3; MaxDamagePercent=500"),
@@ -11792,6 +11821,7 @@ bool FCataclysmAuraWithoutTheseGivesNeitherTest::RunTest(const FString&)
 			  70.0f);
 
 	// Living Pyre's own row as the sheet states it today.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=4; Duration=6; Interval=1; Burn=1"),
@@ -11853,6 +11883,7 @@ bool FCataclysmPyreGrowsWithBlowsTakenTest::RunTest(const FString&)
 	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
 
 	// Living Pyre's own row as the sheet now states it.
+	Caster.GiveFervourForUltimates(2);
 	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
@@ -11957,6 +11988,7 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
 
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
@@ -12055,6 +12087,7 @@ bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Striker(World, FVector(2 * M, 0, 0));
 
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
@@ -12175,6 +12208,7 @@ bool FCataclysmPyreReturnsFromARealBlowTest::RunTest(const FString&)
 	// implementation that returned nothing.
 	Holder.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
 
+	Holder.GiveFervourForUltimates(1);
 	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
 		Holder, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
@@ -12240,6 +12274,7 @@ bool FCataclysmFistImmunitiesTest::RunTest(const FString&)
 	// Three of the six named effects, not all six, which is why the row states
 	// them one by one rather than writing `CrowdControl` the way Cinder Rush
 	// does.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
@@ -12823,6 +12858,7 @@ bool FCataclysmHoldForbidsActingTest::RunTest(const FString&)
 	Holder.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
 
 	// The Whole Weight's own row as the sheet now states it.
+	Holder.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Ultimate = GrantSkill<UCataclysmStrikeSkill>(
 		Holder, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Radius=9; Angle=180; Burn=1; ChargeTime=3; MoreDamagePer=8; "
@@ -13651,6 +13687,7 @@ bool FCataclysmLockScopeTest::RunTest(const FString&)
 		Caster, ECataclysmAbilitySlot::Movement,
 		TEXT("Mode=Blink; Range=9; Radius=2"), TEXT("Ashwalk"),
 		TEXT("Slot.Movement"));
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmSelfBuffSkill* Ultimate = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Duration=6"),
 		TEXT("Test Ultimate"), TEXT("Slot.Ultimate"));
@@ -16919,6 +16956,7 @@ bool FCataclysmRackFallbackTellsABuffTest::RunTest(const FString&)
 
 	UCataclysmSelfBuffSkill* Groundbreaker = RunGroundbreaker(Caster);
 	// BUTCHER'S BILL'S ROW WITH ITS SPEED LEFT OUT, and a rack of four.
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmProjectileSkill* Rack = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate,
 		TEXT("Range=10; Radius=1; Count=4; Duration=10; Interval=0.333; TargetMode=All"),
@@ -17104,6 +17142,7 @@ bool FCataclysmAurasHeldCountTest::RunTest(const FString&)
 	UCataclysmAuraSkill* Ring = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
 		TEXT("Conflagration"));
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Radius=4; Interval=1; Duration=6"),
 		TEXT("Living Pyre"));
@@ -18578,6 +18617,7 @@ bool FCataclysmEveryNthAttackTest::RunTest(const FString&)
 	UCataclysmStrikeSkill* Second = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360; Burn=1"),
 		TEXT("Second"), TEXT("Type.Melee"));
+	Caster.GiveFervourForUltimates(1);
 	UCataclysmStrikeSkill* Third = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Radius=4; Angle=360; Burn=1"),
 		TEXT("Third"), TEXT("Type.Melee"));
