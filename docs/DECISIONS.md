@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-27 — Kill counter B: each worn weapon counts and keeps its kills, a row's step can roll with its value, and two enchantments written on them
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmItem.cpp` and `.h` (the `Kills` count on an item, the
+rolled step, the `weapon_kills` grant), `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp` and
+`.h` (`NoteKillOnWornWeapons`), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (a kill
+reaches the worn weapons), `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` and `.h`
+(the scale `weapon_kills`), `game/Source/Cataclysm/Data/CataclysmDataRows.h` (`ScaleStepHigh`),
+`game/Source/Cataclysm/Interface/CataclysmItemTooltip.cpp` ("Kills: N"),
+`game/Tests/SaveFixtures/Character_v3.json` and `game/Tests/SaveFixtures/Run_v1.json`,
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet gains
+the column Scale Step High), `game/Data/EnchantmentEffects.csv` and
+`game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+the tests in `CataclysmEnchantmentEffectTests.cpp`, `CataclysmEnchantmentRollTests.cpp`,
+`CataclysmEnchantmentSetTests.cpp`, `CataclysmSaveRecordTests.cpp` and `CataclysmStatExemptionTests.cpp`,
+`CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_enchantment_effects_match_the_row_text.py`
+and `tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+- **A weapon counts its own kills.** Every kill the player makes adds one to `Kills` on each weapon
+  worn in either weapon slot, and the count is saved with the item, so it survives unequipping, the
+  stash and a save. The item's attributes are refreshed only when a count crosses a step, not on
+  every kill. A weapon's tooltip shows "Kills: N" once it has any.
+- **A row's step can roll with its value.** A new optional column, Scale Step High, gives the far
+  end of a step's range; a worn item's roll picks both the value and the step from the same place in
+  their ranges, so the words and the effect agree. Four hand-written copies of the table's header in
+  the C++ tests carry the column.
+- **`weapon_kills`** scales a row by the kills of the weapon it is on. When two worn weapons carry
+  the same row, it is granted once, at the higher roll, and counts that weapon's kills.
+- **`resistance_cap`** is now a stat the pipeline asks for, with a probe that moves it by kills.
+
+| Enchantment | Rows |
+| :-- | :-- |
+| This weapon has 5-20% more damage for every 100,000-500,000 kills | `attack_damage` and `spell_damage`, scale `weapon_kills`, step 100,000 to 500,000 |
+| You lose 1-4% max resistances for every 100,000 - 500,000 kills | `resistance_cap`, scale `character_kills`, step 100,000 to 500,000 |
+
+At the top roll these rows give slightly less per kill than at the bottom (0.004% a kill against
+0.005%), because a larger value comes with a longer step. The ranges stay as written.
+
+### THE REBASE: THE GENERATED TABLE WAS REGENERATED, NOT MERGED
+
+Moving the two commits onto development met three conflicts. Two were hand-written lists, where
+development had changed the same line: `OPTIONAL_COLUMNS` in the generator and
+`BUILT_AHEAD_OF_THEIR_ROWS`, and both sides' entries were kept. The third was
+`game/Data/EnchantmentEffects.csv`, which kill counter B rewrites whole to add its column. It was not
+merged by hand: development's copy was taken and regenerated with the resolved generator and
+development's workbook, and a script compared the two, printing:
+
+```
+rows old/new: 383 383 | column at 19
+every row equal once the new column is removed: True | values in new column: ['0.0']
+```
+
+Every other file's change equals the original commits', except the table (more rows now) and the
+generator (the `OPTIONAL_COLUMNS` lines above).
+
+### FOUR PREDICTION MISSES, EACH MEASURED
+
+- **The Python of record printed "1 failed, 5535 passed, 8 skipped" against a registered 5536 and
+  8.** The failure was `test_every_csv_still_hashes_to_what_was_recorded`: kill counter B's engine
+  commit regenerates `EnchantmentEffects.csv` to add its column, and records no new hash and
+  rebuilds no asset, so the CSV no longer matched before any row was written. The same was true of
+  the branch's first head, `4e4e44c4`, whose Python figure was registered without being measured,
+  and the rehearsal's stale-hash failure came from the engine commit, not from the rows as it was
+  first described. For the same reason the Unreal asset guard,
+  `EveryGeneratedTableHasAnAssetThatMatchesIt`, would have failed without the rows.
+- **`TwoWeaponsWithTheKillRowGrantItOnceAtTheHigherRollsCount` passed in the stale-asset step,**
+  where it was registered to fail. It loads its tables with `LoadAll`, which reads the generated
+  `EnchantmentEffects.csv` (`LoadCsv`), not `DT_EnchantmentEffects.uasset`, so it saw the rows before
+  the asset was rebuilt.
+- **`AWeaponKeepsItsKillsThroughUnequipTheStashAndASave` failed in that step,** where it was
+  registered to pass; it had never run in Unreal before. It built its save record with `NewObject`
+  and never set `SchemaVersion`, which stays 0, and the loader refuses a record at 0 by design
+  (`CataclysmSaveRecord.h`). With its assertion made to print the loader's verdict, it read: "the
+  schema version is below the first real one -- the record says it is version 0; the first real
+  version is 1". The test now stamps `SchemaVersionNow`, as `CataclysmSaveWriter.cpp` stamps a real
+  record, and keeps the verdict in its assertion. The game was not at fault: the committed
+  `Character_v3.json`, whose weapons carry `Kills`, reads back in
+  `TheCommittedCharacterFileReadsIntoTheValuesItStates`.
+- **A timeout was put on one command that built.** `CLAUDE.md` forbids it; the command finished in
+  time, and every later build ran without one.
+
+### THE RUN
+
+On `72d42a66`, the two commits moved onto development `af957ae1`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `72d42a66` | "1 failed, 5535 passed, 8 skipped in 335.96s"; JUnit tests 5544, failures 1: the stale CSV hash, a prediction miss (above) |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `ce22e440` | "EnchantmentEffects.csv 386 rows", from 383; the workbook gains Scale Step High |
+| Python after the rows | "1 failed, 5535 passed, 8 skipped": the stale CSV hash |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp" |
+| Stale-asset step, with `Cataclysm.KillCounter.` | "149 tests performed, 145 succeeded, 4 failed": the guard, `TheLifetimeKillsRow...`, `TheWeaponKillRow...` and `AWeaponKeepsItsKills...`; `TwoWeapons...` passed. Two names differ from the registration (above) |
+| The save test with its verdict printed, rebuilt | "1 tests performed, 0 succeeded, 1 failed", reading "the record says it is version 0; the first real version is 1" |
+| Test commit `0a102170`, rebuilt | "4 actions, 1 file compiled: Module.Cataclysm.15.cpp"; the test alone "1 tests performed, 1 succeeded, 0 failed" |
+| Asset rebuild `82edb963` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The six new tests | "6 tests performed, 6 succeeded, 0 failed" |
+| Whole suite, `82edb963`, in its own command | "2722 tests performed, 2722 succeeded, 0 failed"; 2722 declared, gap 0 |
+| Proof A, a step that never rolls | PROVED: `TheLifetimeKillsRow...` and `TheWeaponKillRow...` failed 7 assertions between them; restored "2 tests performed, 2 succeeded" |
+| Proof B, the merged grant keeping the first weapon's count | PROVED: `TwoWeapons...` failed 1, "whichever sword comes first", reading 20 against 40; restored 1 of 1 |
+| Proof C, a step crossing that does not refresh | PROVED: `TheWeaponKillRow...` failed 4, the last "worth 5%" reading 1.0; restored 1 of 1 |
+
+---
+
 ## 2026-09-27 — The three Famine rules on potions: Hard Mode refuses every drink, Recession quarters a kill's charges, Diminishing Returns takes 10% of a full heal off each drink down to 30%
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPotions.h` and `.cpp` (a drink refused, the charges a kill
