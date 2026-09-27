@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::LuxuryHoardersKey =
+	TEXT("Famine_Luxury_Hoarders");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InsanityBurstsKey =
 	TEXT("Void_Insanity_Bursts");
 
@@ -511,6 +514,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(LuxuryHoardersKey)
 		|| RowKey == FName(FunerealProcessionKey)
 		|| RowKey == FName(BloodDebtKey)
 		|| RowKey == FName(QuarantineBreachKey)
@@ -722,6 +726,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(LuxuryHoardersKey),
 		FName(InsanityBurstsKey),
 		FName(FunerealProcessionKey),
 		FName(BloodDebtKey),
