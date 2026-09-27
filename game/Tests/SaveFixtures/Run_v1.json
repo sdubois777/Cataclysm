@@ -146,7 +146,8 @@
 						}
 					],
 					"Sockets": 0,
-					"Residue": 2.5
+					"Residue": 2.5,
+					"Kills": 0
 				},
 				"Material": "None",
 				"MaterialQuantity": 0,

@@ -272,6 +272,21 @@ public:
 	/** Take everything off. Used by tests and by a character being rebuilt. */
 	void UnequipEverything();
 
+	/**
+	 * One kill by the wearer: each worn weapon's `FCataclysmItem::Kills` rises
+	 * by one. Issue #1833, the kill counter; ruled 2026-09-25 under the owner's
+	 * delegation, since both weapons' damage is in every blow.
+	 *
+	 * NOT AN EQUIPMENT CHANGE: nothing is announced and no skill is granted
+	 * again. The grants are refreshed only when a count crosses a step of a
+	 * `weapon_kills` row the weapon carries, once per 100,000 or more kills, so
+	 * a worn tooltip's count waits for the next change or re-opening.
+	 *
+	 * @param AbilitySystem  whose attributes are refreshed at a crossing
+	 * @return whether a step was crossed and the grants refreshed
+	 */
+	bool NoteKillOnWornWeapons(UAbilitySystemComponent* AbilitySystem);
+
 	// -- what it is all for ------------------------------------------------
 
 	/**
