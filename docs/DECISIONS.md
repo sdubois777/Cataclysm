@@ -81,6 +81,10 @@ Three automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "elites or mini-bosses", "guarding piles of resources" and "choose whether to
 expend resources".
 
+**Moved onto development 84bee9be, 2026-09-26, with one line fewer.** The branch added
+`#include "Items/CataclysmDroppedItem.h"` to `CataclysmDungeonGameMode.cpp`. Development already includes it, since The
+Infested Hoard added it, so the move leaves it out; the rest of the change is line for line what it was.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
