@@ -8790,6 +8790,10 @@ bool FCataclysmWeaponKeepsItsKillsTest::RunTest(const FString&)
 	TestEqual(TEXT("holding its three kills"), TakenOff.Kills, 3);
 
 	UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>();
+	// STAMPED AS THE GAME'S WRITER STAMPS IT (CataclysmSaveWriter.cpp), because a
+	// record left at version 0 is one "nobody filled in" and the loader refuses
+	// it: "the record says it is version 0; the first real version is 1".
+	Record->SchemaVersion = UCataclysmCharacterSave::SchemaVersionNow;
 	FCataclysmCarriedSlot Stashed;
 	Stashed.Item = TakenOff;
 	Record->PrivateStash.Add(Stashed);
@@ -8809,7 +8813,10 @@ bool FCataclysmWeaponKeepsItsKillsTest::RunTest(const FString&)
 	FString Message;
 	const UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
 		Json, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (!TestNotNull(TEXT("and reads back"), Read)
+	// SAYS WHY IF IT DOES NOT READ BACK, as the fixture test does: the loader
+	// hands its verdict and message over, and a bare "not null" hides both.
+	if (!TestNotNull(*FString::Printf(TEXT("and reads back (%s -- %s)"),
+				FCataclysmSaveStorage::Describe(Result), *Message), Read)
 		|| !TestEqual(TEXT("one stashed"), Read->PrivateStash.Num(), 1)
 		|| !TestEqual(TEXT("one worn"), Read->WornGear.Num(), 1))
 	{
