@@ -95,6 +95,17 @@ Five automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "phantasmal enemies", "can harm or disorient" and "discern reality from
 illusion".
 
+### The move onto development 9213a5e3
+
+The change was written on development b9b68113 in four commits, 20c0d85f to bd9f504d, and moved on 2026-09-27 as one
+commit. Six files conflicted, so it was rebuilt rather than rebased. The change's own edit scripts ran on development's
+copies; on b9b68113 the same scripts reproduce the first commit's game files exactly. The three later commits were then
+applied as a patch with `git apply -3`. Two places where both sides had added code were resolved by keeping both, less
+the first commit's one-argument `IllusionPhantasmsAreDue`, which the later commits replace. **The evidence that nothing
+was lost or added: the sorted changed lines of the moved commit against 9213a5e3 have the same checksum as bd9f504d's
+against b9b68113.** `tools/check_resolved_cpp.py` on the five changed C++ files printed "5 files read, 0 with
+complaints".
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
