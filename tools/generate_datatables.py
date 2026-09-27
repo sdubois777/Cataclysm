@@ -841,6 +841,17 @@ def tags_with_slot(written: str, slot: str, where: str) -> str:
             f"cell. Slot tags come from the Slot column and are added by the "
             f"generator; remove it from the sheet.")
 
+    # A STRIKE IS A MELEE ATTACK. The project owner ruled on 2026-08-26, under
+    # issue #999, that a strike is what "melee" means for a weapon skill, and
+    # every row then carrying `Type.Strike` was given `Type.Melee`. A row added
+    # later without it drops out of every melee-scoped bonus with nothing to say
+    # so; `Demonic_Greatsword_Ultimate` did, until issue #944. Refused here so a
+    # new one cannot.
+    if "Type.Strike" in tags and "Type.Melee" not in tags:
+        raise DataError(
+            f"{where}: carries Type.Strike and not Type.Melee. A strike is a "
+            f"melee attack (issue #999), so add Type.Melee to its Tags cell.")
+
     if not slot:
         return ", ".join(tags)
 
