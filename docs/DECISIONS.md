@@ -14,8 +14,8 @@ line, the per-floor reset, and a search for a living minion of the player's);
 minion); `game/Source/Cataclysm/AbilitySystem/CataclysmTeams.cpp` (a comment only); and the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
 `CataclysmCommandTests.cpp`. It follows Insanity Bursts
 ([#2150](https://github.com/sdubois777/Cataclysm/pull/2150)). **Applied, and still only in part: other players are not
-reached, because co-op does not exist.** The Unreal compile, the automation tests and the guard proofs have NOT run
-yet; the figures are added at the end of this entry when they have.
+reached, because co-op does not exist.** It has been run: the figures are at the end of this entry, after a first window that
+stopped on a failure.
 
 ### The row
 
@@ -139,10 +139,26 @@ reached the player. It never does, because possession replaces the owner (above)
 pinned roll of 90 stunned. The search now reads the minion's summoner. It is game code, so the next window runs the
 whole suite again before the proofs.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+A second window on 2026-09-27, with the build machine and the editor, on development 79422a13, at 0ef5c6d7. Every figure
+below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window, with no CI run in progress | `5536 passed, 8 skipped` (JUnit 5,544, no failures), as registered |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| Whole suite | `2726 tests performed, 2726 succeeded, 0 failed`; 2726 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, each on its one test, each anchor checked immediately before its run. Each printed
+`1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests performed, 1 succeeded, 0 failed` restored,
+and each failed on exactly the checks registered for it. The source hash was the same before and after each.
+
+| Break | The test that failed, and on what |
+|---|---|
+| The madness call is never made | `AnInsanityBurstMaddensThePlayerWhenAMinionStands`, four: "maddened when it ends", "so its own minion is hostile to it" (0, friendly), "the panel while maddened" ("next in 40 s") and "and the clock starts again after 3 s" ("next in 37 s") |
+| The thirds are drawn with no minion standing | `AnInsanityBurstNeverMaddensAPlayerWithNoMinion`, two: "no minion stands, so the player is not maddened" and "and is stunned instead" |
+| Behind the Veil's guard never matches the minion deciding | `AMinionTurningOnItsMaddenedSummonerIsNotDrawnToAFellowMinion`, two: "a minion turning on its summoner is drawn to no fellow minion" and "nor to itself" |
 
 ---
 
