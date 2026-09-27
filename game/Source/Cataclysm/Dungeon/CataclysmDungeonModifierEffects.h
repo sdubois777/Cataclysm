@@ -300,6 +300,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ParasiteLessPercent = 0.0f;
 
+	/** Movement speed a phantasm's hit takes off the player for a moment, less. Mind-Shattering Illusions. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float IllusionSlowLessPercent = 0.0f;
+
 	/** The damage the blood debt paid so far blesses the player with, more. Blood Debt. Issues #1820 and #41. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float BloodDebtDamageMorePercent = 0.0f;
@@ -488,6 +492,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
+			&& IllusionSlowLessPercent <= 0.0f
 			&& BloodDebtDamageMorePercent <= 0.0f
 			&& BloodDebtDamageLessPercent <= 0.0f
 			&& RiftMagicFindAdded <= 0.0f
@@ -2124,6 +2129,26 @@ public:
 	 *   be dead while a portal stands.
 	 */
 	static const TCHAR* PortalUnleashingKey;
+
+	/**
+	 * The row whose floor sends phantasms that hurt and disorient the player and fall at a touch. Issues #1820 and #41.
+	 *
+	 * "The Void manipulates perception, creating hallucinations and phantasmal enemies that can harm or disorient
+	 * players. They must discern reality from illusion, navigate through treacherous encounters, and maintain their
+	 * sanity."
+	 *
+	 * NOT `Chaos_Illusory_Enemies`, which makes a share of the floor's own creatures illusions whose damage is nothing.
+	 * These phantasms come on their own and do harm.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
+	 * figure here is a play-test value:
+	 * - EVERY `IllusionSecondsBetween`, `IllusionPhantasms` phantasms of the floor's kinds appear
+	 *   `IllusionAppearsAwayCm` from the player.
+	 * - THEY DEAL DAMAGE, PAY NOTHING AND ARE NOT THE FLOOR'S CREATURES.
+	 * - THEY DIE TO ANY ONE HIT: "discern reality from illusion" is that they fall at a touch.
+	 * - A PHANTASM'S HIT SLOWS THE PLAYER `IllusionSlowLessPercent` FOR `IllusionSlowSeconds`: "disorient".
+	 */
+	static const TCHAR* MindShatteringIllusionsKey;
 
 	/**
 	 * The row whose floors hold piles of loot guarded by Elite creatures. Issues #1820 and #41.
@@ -4841,6 +4866,21 @@ public:
 	static constexpr float PortalUnleashingSecondsBetween = 10.0f;
 	static constexpr int32 PortalUnleashingMostAlivePerPortal = 4;
 
+	/** Mind-Shattering Illusions' figures, every one a play-test value. See the key. */
+	static constexpr float IllusionSecondsBetween = 30.0f;
+	static constexpr int32 IllusionPhantasms = 2;
+
+	/**
+	 * At most this many of the rule's phantasms stand; a due pair is cut to what fits. Ruled by the coordinating
+	 * session under the owner's delegation, 2026-09-26, a play-test value: phantasms pay nothing and come without end,
+	 * so a player who walks away from them would otherwise meet forty after ten minutes. Portal Unleashing caps its
+	 * creatures for the same reason. At five standing, one comes.
+	 */
+	static constexpr int32 IllusionMostStanding = 6;
+	static constexpr float IllusionAppearsAwayCm = 800.0f;
+	static constexpr float IllusionSlowLessPercent = 30.0f;
+	static constexpr float IllusionSlowSeconds = 2.0f;
+
 	/**
 	 * Luxury Hoarders' figures, every one a play-test value. See the key. The pile's rung is Legendary's step in
 	 * `game/Data/EnemyDrops.csv`, 2; the guards' is the Elite rung Royal Guard summons at.
@@ -5589,6 +5629,12 @@ public:
 	 * than `PortalUnleashingMostAlivePerPortal` of its own creatures stand.
 	 */
 	static bool PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding);
+
+	/** Whether phantasms appear now: their time has come and fewer than the most stand. */
+	static bool IllusionPhantasmsAreDue(float SecondsSinceLast, int32 Standing);
+
+	/** How many phantasms a due pair sends with this many standing: the pair cut to what fits under the most. */
+	static int32 IllusionPhantasmsToSend(int32 Standing);
 
 	/** Whether a burst's warning begins now. */
 	static bool InsanityBurstsIsDue(float SecondsSinceLast);

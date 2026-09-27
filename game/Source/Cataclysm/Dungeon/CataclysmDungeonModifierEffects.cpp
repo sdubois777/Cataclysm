@@ -172,6 +172,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 	TEXT("Void_Portal_Unleashing");
 
+const TCHAR* UCataclysmDungeonModifierEffects::MindShatteringIllusionsKey =
+	TEXT("Void_Mind_Shattering_Illusions");
+
 const TCHAR* UCataclysmDungeonModifierEffects::LuxuryHoardersKey =
 	TEXT("Famine_Luxury_Hoarders");
 
@@ -525,6 +528,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(MindShatteringIllusionsKey)
 		|| RowKey == FName(LuxuryHoardersKey)
 		|| RowKey == FName(FunerealProcessionKey)
 		|| RowKey == FName(BloodDebtKey)
@@ -741,6 +745,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
+		FName(MindShatteringIllusionsKey),
 		FName(LuxuryHoardersKey),
 		FName(InsanityBurstsKey),
 		FName(FunerealProcessionKey),
@@ -1088,6 +1093,9 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.ParasiteLessPercent);
 	}
+
+	// AND A PHANTASM'S HIT, A LESS ON MOVEMENT SPEED FOR A MOMENT. Issues #1820 and #41.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat, Effects.IllusionSlowLessPercent);
 
 	// AND THE BLOOD DEBT'S BLESSING AND ITS CURSE, ON DAMAGE AS VOID PARASITE'S IS TAKEN: a More and a Less on
 	// attack damage and on spell damage. Issues #1820 and #41.
@@ -1529,6 +1537,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 		Clauses.Add(FString::Printf(
 			TEXT("damage, resistances and movement speed %.0f%% less from attached voidlings"),
 			Effects.ParasiteLessPercent));
+	}
+	if (Effects.IllusionSlowLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from a phantasm's hit"),
+									Effects.IllusionSlowLessPercent));
 	}
 	if (Effects.BloodDebtDamageMorePercent > 0.0f)
 	{
@@ -2053,6 +2066,16 @@ int32 UCataclysmDungeonModifierEffects::InsanityBurstsKindFor(float Roll, bool b
 	}
 	const float Third = 100.0f / 3.0f;
 	return Roll < Third ? InsanityBurstLocks : Roll < 2.0f * Third ? InsanityBurstStuns : InsanityBurstMaddens;
+}
+
+int32 UCataclysmDungeonModifierEffects::IllusionPhantasmsToSend(int32 Standing)
+{
+	return FMath::Clamp(IllusionMostStanding - Standing, 0, IllusionPhantasms);
+}
+
+bool UCataclysmDungeonModifierEffects::IllusionPhantasmsAreDue(float SecondsSinceLast, int32 Standing)
+{
+	return SecondsSinceLast >= IllusionSecondsBetween && Standing < IllusionMostStanding;
 }
 
 bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)
