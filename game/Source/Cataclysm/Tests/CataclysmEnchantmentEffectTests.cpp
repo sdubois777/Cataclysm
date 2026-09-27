@@ -8513,6 +8513,18 @@ bool FCataclysmResistanceCapStatTest::RunTest(const FString&)
 	const FName Void(TEXT("Void"));
 	ASC->SetNumericAttributeBase(FCalc::ResistanceAttributeFor(Void), 85.0f);
 	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+
+	// HEALTH ENOUGH THAT NO BLOW IS CLIPPED. `Resolve` reports
+	// `DealtToHealth` as the smaller of the damage and the health held, and a
+	// bare wearer holds the default 100; at that, 300 under a cap of 70 and 200
+	// under 80 both read 100, and the ratio below is 1.0 whatever the cap does.
+	// Found by this test's first Unreal run, 2026-09-26.
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 10000.0f);
+	TestEqual(TEXT("the defender has 10000 health, so no blow is clipped"),
+		ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+		10000.0f, 0.001f);
+
 	FCataclysmIncomingHit Blow;
 	Blow.Damage = 1000.0f;
 	Blow.DamageType = Void;
