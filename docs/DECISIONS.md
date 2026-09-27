@@ -2,6 +2,82 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-27 — A skill made with a melee weapon is melee, whatever its area shape: eight Demonic skills gain Type.Melee, and the generator refuses a strike without it
+
+**Affects:** the workbook's Weapon Skills sheet and `game/Data/WeaponSkills.csv` (eight Tags cells);
+`game/Content/Data/DT_WeaponSkills.uasset`; `tools/generate_datatables.py` (`tags_with_slot` refuses a row carrying
+the strike tag without the melee tag); tests in `tools/tests/test_a_strike_is_a_melee_attack.py` and
+`game/Source/Cataclysm/Tests/CataclysmMeleeSkillTagTests.cpp`; a comment in `tools/tests/test_generate_datatables.py`.
+Issue [#944](https://github.com/sdubois777/Cataclysm/issues/944).
+
+### WHAT WAS DECIDED
+
+Eight melee-scoped Demonic rows (Carnage, Bought With Ruin, Attrition, Headlong, Overreach and three more) reached
+none of the Demonic skills below, because those skills did not carry `Type.Melee`.
+
+- **The Whole Weight** (`Demonic_Greatsword_Ultimate`) carries `Type.Strike` and not `Type.Melee`. The owner's ruling
+  for issue [#999](https://github.com/sdubois777/Cataclysm/issues/999), "a strike is what melee means", gave every
+  `Type.Strike` row `Type.Melee`. This row was written after that, so it was missed. It now has the tag, and the
+  generator refuses any later row that repeats the gap.
+- **Seven point-blank skills made with a melee weapon** gain `Type.Melee`, ruled 2026-09-27 under the coordinating
+  session's delegation: Extinction, Buried Fire, Pyroclasm, The Gathering, Break the World, Thicket and Upthrust.
+  #999 did not rule them, because they carry `Type.AOE.PointBlank` rather than `Type.Strike`.
+- **Two stay without it.** Anathema (`Demonic_Wand_Ultimate`) is a spell. Touch Off (`Demonic_Sword_Special`) states
+  no weapon damage and pays out burns it consumes, and a burn is not melee.
+
+The "27 rows" in `tools/tests/test_passive_effects_match_the_node_text.py` stays as it is: it is #999's figure on the
+day of that ruling, not a count of today's sheet.
+
+### WHY: WHAT THE GENRE DOES
+
+Fetched 2026-09-27.
+
+| Game | Source | What it says |
+|---|---|---|
+| Path of Exile, Earthquake | [poedb](https://poedb.tw/us/Earthquake) | tags "Attack, AoE, Melee, Duration, Slam" |
+| Path of Exile, Cyclone | [poedb](https://poedb.tw/us/Cyclone) | tags "Attack, AoE, Melee, Movement, Channelling" |
+| Path of Exile, slams | [poedb](https://poedb.tw/us/Slam) | "Several melee skill are classified as 'slam'"; "None of them have the Strike tag" |
+| Path of Exile, Discharge | [poedb](https://poedb.tw/us/Discharge) | tags "Spell, AoE, Fire, Cold, Lightning, Nova", no Melee |
+| Last Epoch, Warpath | [Tales of the Aggronaut](https://aggronaut.com/2024/03/05/last-epoch-and-skill-tags/) | "By default, Warpath has the tags Physical, Melee, Area, Channeled, Movement, and Strength" |
+| Last Epoch, ignite | [Maxroll, damage explained](https://maxroll.gg/last-epoch/resources/damage-explained) | of Flame Reave's ignite: "two are for Melee Damage which don't apply. Only our multiplier for Fire Damage scales our Ignites." |
+
+**What the research settles:** Path of Exile and Last Epoch agree that melee follows an attack made with a melee
+weapon, not the area's shape. A slam, a spin and a channelled area around the character are all melee. A spell
+around the character is not, and an ailment such as a burn does not take melee bonuses.
+
+**What it does not settle, and is this game's judgement:** that a burst paid out of consumed burns (Touch Off) is
+not melee. Path of Exile's rule for burning ground was not fetched. Diablo IV has no melee skill bonus and uses the
+enemy's distance instead; that was not followed. The research agent reported that poewiki.net answered "Access
+Denied" and the Path of Exile and Last Epoch fandom wikis HTTP 402, so none of them is cited.
+
+### TESTS
+
+- `Cataclysm.MeleeSkills.AMeleeScopedRowReachesBreakTheWorldAndNotAnathema` reads the skills' tags from the built
+  `DT_WeaponSkills` and Carnage's row (`Masochist_keystone_fc_kA`) from the built passive tables, and asks
+  `UCataclysmStatPipeline::ModifierApplies`. Carnage reaches Break the World and does not reach Anathema.
+- Three in `tools/tests/test_a_strike_is_a_melee_attack.py`: the generator refuses a strike without the melee tag,
+  accepts one with it, and every generated strike is melee, with at least 31 strike rows.
+
+### Run
+
+One window on 2026-09-27, with the build machine and the workbook, on `fix/strike-means-melee` on development
+9213a5e3. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on `454f2826`, started with no workflow in progress | `6 failed, 5533 passed, 8 skipped` (JUnit 5,547, 6 failures, 0 errors): the six tests that build from the real workbook, as registered |
+| Workbook, then `generate_datatables.py` | `8 rows given Type.Melee`; `WeaponSkills.csv` 8 lines changed and no other CSV |
+| Check of the three data test files | `1 failed, 358 passed`: the asset hash only, as registered |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| `Cataclysm.MeleeSkills.` before the asset rebuild | `1 tests performed, 0 succeeded, 1 failed`, on "Break the World carries Type.Melee" and "so Carnage reaches Break the World" |
+| `generate_datatable_assets.py` | `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` changed, nothing else |
+| `Cataclysm.MeleeSkills.` after it | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole suite, started with no workflow in progress | `2727 tests performed, 2727 succeeded, 0 failed`; declared 2727, gap 0 |
+| Proof: `ModifierApplies` never matches a row's required tags | PROVED: 1 performed, 0 succeeded, 1 failed, on "so Carnage does not reach Anathema"; restored 1 of 1 |
+| Python proof: the generator's refusal removed | PROVED: `test_the_generator_refuses_a_strike_without_the_melee_tag` failed; restored `3 passed` |
+
+---
+
 ## 2026-09-26 — Insanity Bursts' "attack allies", against the player's own minions: a third burst maddens the player for 3 seconds when a minion of theirs stands; other players wait for co-op, so the row stays partly built
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the madness figure, the three
