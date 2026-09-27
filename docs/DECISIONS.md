@@ -148,6 +148,9 @@ restored, and each failed on exactly the checks registered for it.
 | Its touch written as nothing | `AFunerealProcessionBurnsThePlayerItTouches`: "its touch burns (0.0 lost)" |
 | Its touch fears nothing | `AFunerealProcessionFearsThePlayerItTouches`: "its touch fears the player" and "and opens the window a fear opens" |
 
+The final Python, on this entry's own commit after the lock was released: `5529 passed, 8 skipped` (JUnit 5,537, no
+failures).
+
 ---
 
 ## 2026-09-26 — Three enchantments the owner removed are retired with a weight of 0: they stay in the table and never drop
