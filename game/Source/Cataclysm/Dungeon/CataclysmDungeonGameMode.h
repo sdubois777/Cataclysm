@@ -2392,6 +2392,9 @@ private:
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
 
+	/** Insanity Bursts, on the beat: its clock, its warning, the burst, and the lock written on the player. */
+	void StepInsanityBursts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
 	/** Funereal Procession, on the beat: a procession set out on its clock, its contact, and its end. */
 	void StepFunerealProcession(class ACataclysmPlayerCharacter* Player,
 								class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -3588,6 +3591,18 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Insanity Bursts: the clock, the warning under way, which burst it will be, the lock's seconds left, the lock last
+	 * written on the player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	float InsanityBurstsSecondsSinceLast = 0.0f;
+	bool bInsanityBurstsWarning = false;
+	float InsanityBurstsWarningSoFar = 0.0f;
+	bool bInsanityBurstsWillLock = false;
+	float InsanityBurstsLockLeft = 0.0f;
+	float InsanityBurstsLockApplied = 0.0f;
+	int32 InsanityBurstsPanelSecond = -1;
 
 	/**
 	 * Funereal Procession: the line crossing now, where it walks, its two clocks and its contact's, and what the panel

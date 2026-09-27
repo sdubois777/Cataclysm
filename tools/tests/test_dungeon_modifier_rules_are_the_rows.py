@@ -4418,3 +4418,20 @@ def test_funereal_procession_row_still_has_a_slow_line_whose_contact_does_heavy_
         assert phrase in lower, (
             f"Death_Funereal_Procession no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "FunerealProcessionKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_insanity_bursts_row_still_has_bursts_that_take_control_attack_allies_or_debilitate():
+    """The phrases the rule's readings rest on.
+
+    PROLONGED EXPOSURE is time on the floor; BURSTS OF INSANITY is the burst on its cadence; LOSE CONTROL OVER THEIR
+    ABILITIES is the skill lock; DEBILITATING EFFECTS is the stun; ATTACK ALLIES is the half that is not built. If any
+    of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Void_Insanity_Bursts"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("prolonged exposure", "bursts of insanity", "lose control over their abilities",
+                   "attack allies", "debilitating effects"):
+        assert phrase in lower, (
+            f"Void_Insanity_Bursts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "InsanityBurstsKey in CataclysmDungeonModifierEffects.h. " + words)
