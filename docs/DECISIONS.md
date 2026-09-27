@@ -149,6 +149,35 @@ in `Cataclysm.FervourRows.` reads the node's real row on a real Ritualist. One p
 Before this change was written, the eleven existing tests that call `SummonOne`, `SummonReplacementAt` or
 `ReplaceLost` were read and predicted unchanged under the shared count.
 
+### Run
+
+One window on 2026-09-27, with the build machine and the workbook, on `feat/ritualist-risen-imps` on development
+dff58708. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on `86b79b60` in a scratchpad worktree, started with no workflow in progress | `2 failed, 5539 passed, 7 skipped` (JUnit 5,548, 2 failures, 0 errors): the passive-effect coverage pin and the asset hash, as registered |
+| Workbook, then `generate_datatables.py` | Passive Effects row 325 added; `PassiveEffects.csv` gained `Ritualist_basic_spine_000#3` and no other CSV changed |
+| Check of three data test files | `1 failed, 377 passed`: the asset hash only |
+| First build, from the scratchpad worktree | `Result: Failed (OtherCompilationError)` in 5.6 seconds, nothing compiled: "The following action paths are longer than 260 characters". Not a code fault |
+| Build, from the main worktree | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Before the asset rebuild | `Cataclysm.RisenImps.` 11/11/0; `Cataclysm.FervourRows.` 4/3/1, on "with it, a cursed death raises an imp for the Ritualist"; `Cataclysm.StatExemption.` 3/3/0 |
+| `generate_datatable_assets.py` | `DT_PassiveEffects.uasset`, `DT_PassiveNodes.uasset` and `datatable_asset_sources.json` changed |
+| `Cataclysm.FervourRows.` after it | `4 tests performed, 4 succeeded, 0 failed` |
+| Whole suite, started with no workflow in progress | `2739 tests performed, 2738 succeeded, 1 failed`. **Not as registered** |
+| Test-only fix, rebuild and `Cataclysm.Data.` | `7 tests performed, 7 succeeded, 0 failed` |
+| Proof (a): the rule's stat not asked | PROVED: 3 failed, `ACurseLaidByACreatureRaisesNothing`, `ACurseLaidByYourMinionRaisesNothing`, `WithoutTheRuleYourCurseRaisesNothing`; restored 11 of 11 |
+| Proof (b): Summon Imp's cap counts only its own imps | PROVED: 1 failed, `SummoningAtTheCapDestroysARisenImpWhenItIsTheOldest`; restored 11 of 11 |
+| Proof (c): only Shred read as a curse | PROVED: 1 failed, `MadnessIsACurseAsWellAsShred`; restored 11 of 11 |
+
+**The whole suite's one failure was a count this change should have moved.**
+`Cataclysm.Data.EveryGeneratedTableImports` read "Expected 'PassiveEffects.csv row count' to be 323, but it was
+324." The pin in `CataclysmDataTableTests.cpp` counts the rows of `PassiveEffects.csv`, and this change adds the
+324th on purpose. The Python pin on the same count, `AUTHORED_ROWS`, had been raised and the C++ copy had not. A
+third copy, the Passive Effects row in `docs/README.md`'s sheet table, also said 323, and
+`tools/tests/test_docs_readme_sheet_table_is_true.py` failed on it once the workbook row was in. Both now say 324.
+As ruled, a test-only fix after the whole suite gets a group rerun, not a second whole suite.
+
 ---
 
 ## 2026-09-26 — Insanity Bursts' "attack allies", against the player's own minions: a third burst maddens the player for 3 seconds when a minion of theirs stands; other players wait for co-op, so the row stays partly built
