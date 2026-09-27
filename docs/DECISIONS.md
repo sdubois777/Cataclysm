@@ -11,7 +11,7 @@ line, the per-floor reset, and a search for a living minion of the player's);
 `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (the word "Maddened" under a creature's bar);
 `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the same word above the player's bars);
 `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp` (Behind the Veil never draws a minion's choice to a fellow
-minion); and the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+minion); `game/Source/Cataclysm/AbilitySystem/CataclysmTeams.cpp` (a comment only); and the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
 `CataclysmCommandTests.cpp`. It follows Insanity Bursts
 ([#2150](https://github.com/sdubois777/Cataclysm/pull/2150)). **Applied, and still only in part: other players are not
 reached, because co-op does not exist.** The Unreal compile, the automation tests and the guard proofs have NOT run
@@ -59,7 +59,9 @@ minions; other players are added with co-op; the row stays partly built until th
 - **A minion is an `ACataclysmMinion` that is alive and whose summoner is the player**: summoned creatures and
   deployed machines alike. It reads `ACataclysmMinion::Summoner`, not the owner chain: a minion is possessed by its AI
   controller as it spawns, and the engine's `APawn::PossessedBy` makes that controller its owner, so no minion's owner
-  chain reaches the player. The ruling first said "owner chain"; the first window below found why it cannot.
+  chain reaches the player. The ruling first said "owner chain"; the first window below found why it cannot. **The comment above the owner-chain
+  test in `UCataclysmTeams::AttitudeBetween` now says so**: a minion is on its summoner's side through the team it is
+  given at spawn, and a thrall reaches its commander through the owner chain. No line of code there changed.
 - **The player's own burning ground and deployables turn on the player while maddened**, as Madness already works for
   creatures. No special case.
 - **"Maddened" above the player's bars, and under a creature's bar**, since nothing showed Madness anywhere before.
