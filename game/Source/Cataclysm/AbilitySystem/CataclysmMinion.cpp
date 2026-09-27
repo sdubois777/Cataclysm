@@ -544,6 +544,11 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	Minion->Summoner = InSummoner;
 	Minion->bBurnsWhatItHits = bBurns;
 
+	// Issue #1479: "the oldest" across every source of one kind. Game thread
+	// only, like every spawn, so a plain counter is enough.
+	static int64 NextSpawnOrder = 0;
+	Minion->SpawnOrder = ++NextSpawnOrder;
+
 	// WHEN IT CAME UNDER COMMAND, for A Second Self's "held longest". Issue #1515.
 	Minion->CommandedSinceSeconds = World->GetTimeSeconds();
 

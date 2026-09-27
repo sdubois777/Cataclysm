@@ -362,6 +362,10 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(CrowdControlResistanceStat), FGameplayTagContainer(), Stat'):
         'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
+     'FName(UCataclysmRisenImps::RisesStat), FGameplayTagContainer(), 0.0f'):
+        "the Ritualist's risen-imp flag, asked of whoever laid a curse on a "
+        'creature that has just died (issue #1479); a death is not a skill, so no tags',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmPotions.cpp',
      'FName(ForbiddenStat), FGameplayTagContainer(), 0.0f'):
         "Hard Mode's flag, asked of the drinker before a potion is drunk and by "

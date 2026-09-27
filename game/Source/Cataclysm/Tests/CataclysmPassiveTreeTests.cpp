@@ -11450,6 +11450,77 @@ bool FCataclysmPassiveRitualistGeneratorOnARealCharacterTest::RunTest(const FStr
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRitualistRisenImpTest,
+	"Cataclysm.FervourRows.TheRitualistsStartingNodeRaisesACursedEnemyForARealRitualist",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_spine_000`'s third row on a real Ritualist, read out of the
+ * built ASSET. Issue #1479: "An enemy that dies carrying a curse you laid on it
+ * rises as a lesser imp that fights for you for 20 seconds".
+ *
+ * WITHOUT THE NODE AND THEN WITH IT, one creature each, both carrying the
+ * Ritualist's Shred. The rule's behaviour is covered by `Cataclysm.RisenImps.`
+ * with the stat granted by hand; this is what says the node's row grants it.
+ */
+bool FCataclysmPassiveRitualistRisenImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	const FGameplayTag Shred = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Status.Debuff.Shred")), /*ErrorIfNotFound=*/false);
+	const auto CursedDeath = [&](const FVector& Where) -> int32
+	{
+		ACataclysmEnemyCharacter* Victim = World->SpawnActor<ACataclysmEnemyCharacter>(
+			Where, FRotator::ZeroRotator);
+		if (!TestNotNull(TEXT("set-up: a creature"), Victim))
+		{
+			return -1;
+		}
+		Victim->SetHealth(1000.0f);
+		if (!TestTrue(TEXT("set-up: the Ritualist lays Shred on it"),
+				UCataclysmSkillEffects::ApplyTagForDuration(
+					Player.Character, Victim, Shred, 10.0f)))
+		{
+			return -1;
+		}
+		UCataclysmTargeting::AbilitySystemOf(Victim)->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+		if (!TestTrue(TEXT("set-up: it is recorded as dead"),
+					  UCataclysmSkillEffects::IsDead(Victim)))
+		{
+			return -1;
+		}
+		return UCataclysmCommand::MinionsOfTypeCommandedBy(
+			Player.Character, TEXT("Imp")).Num();
+	};
+
+	const FVector Here = Player.Character->GetActorLocation();
+
+	Take(Player, TEXT("Ritualist_basic_spine_000"), 0);
+	TestEqual(TEXT("without the node, a cursed death raises nothing"),
+			  CursedDeath(Here + FVector(4.0f * Metre, 0.0f, 0.0f)), 0);
+
+	Take(Player, TEXT("Ritualist_basic_spine_000"), 1);
+	TestEqual(TEXT("with it, a cursed death raises an imp for the Ritualist"),
+			  CursedDeath(Here + FVector(0.0f, 4.0f * Metre, 0.0f)), 1);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourArrivesTest,
 	"Cataclysm.Passives.FervourArrivesForEnemiesStandingNearARealRavager",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

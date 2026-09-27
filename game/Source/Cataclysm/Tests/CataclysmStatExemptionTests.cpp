@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
@@ -3330,6 +3331,45 @@ namespace CataclysmStatExemptionTest
 		return Character;
 	}
 
+	/**
+	 * `curse_death_raises_imp`, asked by `UCataclysmRisenImps::CurserOf`. The
+	 * Ritualist's starting node, issue #1479. Two cursers, one holding the flag,
+	 * each laying Shred on its own victim, so neither answer can be the other's.
+	 */
+	void ProbeCurseDeathRaisesImp(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter PlainVictim(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Flagged(World, /*AttackDamage=*/0.0f);
+		FScopedFighter FlaggedVictim(World, /*AttackDamage=*/0.0f);
+		GrantFlat(Flagged.Actor, UCataclysmRisenImps::RisesStat, 1.0f);
+
+		const FGameplayTag Shred = FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Status.Debuff.Shred")), /*ErrorIfNotFound=*/false);
+		if (!Test.TestTrue(TEXT("set-up: the plain curser lays Shred"),
+				UCataclysmSkillEffects::ApplyTagForDuration(
+					Plain.Actor, PlainVictim.Actor, Shred, 10.0f))
+			|| !Test.TestTrue(TEXT("set-up: and so does the other"),
+				UCataclysmSkillEffects::ApplyTagForDuration(
+					Flagged.Actor, FlaggedVictim.Actor, Shred, 10.0f)))
+		{
+			return;
+		}
+
+		Test.TestNull(TEXT("a curse laid without curse_death_raises_imp raises nothing"),
+					  UCataclysmRisenImps::CurserOf(PlainVictim.Actor));
+		Test.TestTrue(TEXT("and one laid holding it names its curser, so CurserOf "
+						   "really reads curse_death_raises_imp"),
+					  UCataclysmRisenImps::CurserOf(FlaggedVictim.Actor) == Flagged.Actor);
+	}
+
 	/** `potions_forbidden`, asked by `UCataclysmPotions::Drink`. Hard Mode. */
 	void ProbePotionsForbidden(FAutomationTestBase& Test)
 	{
@@ -3563,6 +3603,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("moving_into_enemy_pushes_aside"), &ProbeShoulderThrough},
 			{TEXT("knockback_suppressed"), &ProbeSetStance},
 			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
+			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
 			{TEXT("potion_kill_charges_less_percent"), &ProbePotionKillChargesLess},
 			{TEXT("potion_heal_less_percent_per_drink"), &ProbePotionHealLessPerDrink},
 			{TEXT("minion_held_longest_becomes_your_equal"), &ProbeSecondSelf},

@@ -144,6 +144,9 @@ HOOKS = {
             "UCataclysmSkillTemplate::NoteKill":
                 "telling the killer's running skills that it killed something, "
                 "which is what feeds the Axe's Butcher's Heat, issue #37",
+            "UCataclysmRisenImps::RiseOnDeath":
+                "a creature dying carrying a curse a Ritualist laid rising as "
+                "an imp for that Ritualist, issue #1479",
         },
         "questions": {
             "UCataclysmSkillEffects::MarkDead",

@@ -635,7 +635,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: with `MinPoints` 4 on a node that already had one: Scarred Plate's
 #: `crowd_control_resistance` and Set Stance's `knockback_suppressed`. The
 #: nodes already counted, so `AUTHORED_NODES` does not move. Issue #1755.
-AUTHORED_ROWS = 323
+#:
+#: AND TO 324 ON 2026-09-27, for the Ritualist's risen imps: a third row on the
+#: starting node, `curse_death_raises_imp` flat 1. The node already counted, so
+#: `AUTHORED_NODES` does not move. Issue #1479.
+AUTHORED_ROWS = 324
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -2560,6 +2564,15 @@ VALUE_IN_WORDS = {
     # it names no number because the rule is not a quantity.
     ("Ritualist_keystone_spine_003", "minion_hits_count_as_yours"):
         ("counts as damage you dealt", 1.0),
+
+    # AND THE RITUALIST'S RISEN IMPS, a flag of one. Issue #1479. The death path
+    # asks whether the stat stands above zero. The sentence's digits belong to
+    # other things -- the 1 and the 5 to the two Fervour rows on this node, the
+    # 20 to Summon Imp's lifetime -- so the ordinary check would find the 1 of
+    # "1 per second" and pass for the wrong reason. The phrase is the clause
+    # that carries the rule.
+    ("Ritualist_basic_spine_000", "curse_death_raises_imp"):
+        ("rises as a lesser imp that fights for you", 1.0),
     ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
         ("slowed", 1.0),
 

@@ -520,6 +520,14 @@ public:
 	static FString HarbingerTextFor(const AActor* Actor);
 
 	/**
+	 * "Risen" over an imp that rose from a cursed enemy's death, for the two
+	 * seconds after it rose, or empty. Issue #1479, the Ritualist's starting node.
+	 * It tells the player where the imp came from; once that is seen, it is an
+	 * imp like any other.
+	 */
+	static FString RisenTextFor(const AActor* Actor);
+
+	/**
 	 * "Chorus" under the health bar of a living Eternal Chorus source, or empty. Issues #1820 and
 	 * #41. First on the line with "Harbinger", for that word's reason: it says what the creature is.
 	 */

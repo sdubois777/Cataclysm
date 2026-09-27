@@ -7,6 +7,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmCommand.generated.h"
 
+class ACataclysmMinion;
+
 /**
  * What a character commands, what it is ordered to attack, and taking an enemy
  * into that command.
@@ -76,6 +78,27 @@ public:
 	 * goes to the nearer, since `ThingsCommandedBy` answers nearest first.
 	 */
 	static AActor* LeastHealthCommandedBy(const AActor* Commander);
+
+	/**
+	 * The living minions of one type this character commands, oldest first.
+	 * Issue #1479.
+	 *
+	 * ONE COUNT FOR EVERY SOURCE OF AN IMP, ruled 2026-09-27 under the owner's
+	 * delegation. Summon Imp's cap and the Ritualist's risen imps share it:
+	 * a summon at the cap destroys the oldest imp whichever made it, and an
+	 * enemy rises only while this list is shorter than the cap. Each summon
+	 * skill's own `Minions` list could not answer that, because a risen imp is
+	 * in none of them.
+	 *
+	 * DEAD AND DESTROYED ONES ARE LEFT OUT, as `LivingMinionCount` leaves them
+	 * out of a skill's own list (issue #1957). `ThingsCommandedBy` drops the
+	 * dead; a thrall is not a minion actor, so it is never in this list.
+	 *
+	 * @param Commander  whose minions. Null answers empty
+	 * @param TypeName   a row of game/Data/MinionTypes.csv, such as "Imp"
+	 */
+	static TArray<ACataclysmMinion*> MinionsOfTypeCommandedBy(const AActor* Commander,
+															  const FString& TypeName);
 
 	/**
 	 * Who this creature follows, or null if it follows nobody.

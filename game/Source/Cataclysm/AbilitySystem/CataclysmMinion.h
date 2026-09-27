@@ -129,6 +129,26 @@ public:
 	FString TypeName;
 
 	/**
+	 * The order this one was spawned in, among every minion this process has
+	 * made; a larger number is younger. Issue #1479.
+	 *
+	 * WHAT "THE OLDEST" MEANS ONCE TWO SOURCES SHARE ONE CAP. Summon Imp's list
+	 * held its own imps in order, and a risen imp is in no skill's list, so
+	 * `UCataclysmCommand::MinionsOfTypeCommandedBy` sorts by this. A spawn time
+	 * would not do: two made in one frame share it, and every test makes its
+	 * imps in one frame.
+	 */
+	int64 SpawnOrder = 0;
+
+	/**
+	 * World time this one rose from a cursed enemy's death, or a negative number
+	 * if it never did. Issue #1479: the Ritualist's starting node raises "a
+	 * lesser imp that fights for you" and the status line says "Risen" over it
+	 * for `RisenLabelSeconds`.
+	 */
+	float RisenAtSeconds = -1.0f;
+
+	/**
 	 * Its type row's Tags, such as `Type.Minion, Type.Deployable,
 	 * Minion.Machine`. Issue #1833, deployable Part 1. Empty for a minion with
 	 * no type row.
