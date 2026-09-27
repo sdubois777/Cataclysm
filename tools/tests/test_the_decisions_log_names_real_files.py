@@ -200,6 +200,11 @@ def resolves(path: str) -> bool:
     if (REPO_ROOT / IMPLIED_PREFIX / path).exists():
         return True
 
+    # A FILE AT THE REPOSITORY ROOT, such as CLAUDE.md. None of the searched
+    # folders holds it, so it is looked for where it lives.
+    if "/" not in path and (REPO_ROOT / path).is_file():
+        return True
+
     # A BARE FILENAME, SEARCHED FOR. The log names plenty of files by name alone,
     # and searching is the same rule the pattern branch above already applies. It
     # is what makes those names checkable at all rather than skipped.
