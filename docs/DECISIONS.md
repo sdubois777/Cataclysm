@@ -105,6 +105,17 @@ before this section was written, against 9213a5e3 are identical to 7a33ae20's ag
 label sits in the combat overlay's status line beside "Harbinger"; development's "Maddened" label, from Insanity Bursts,
 is a separate part of the same line, and neither reads the other.
 
+**On a development head that carries the Ritualist's risen imps (#2159), the status-line list conflicts.** That change
+put `RisenTextFor(Actor)` after `HarbingerTextFor(Actor)` on the list's first line, where the guide puts
+`GuideTextFor(Actor)`. The rule, accepted by the coordinating session on 2026-09-27: when each side only inserted items
+into one list line, keep every item, development's first, refuse any removal or reorder, and wrap at 120 characters as
+the list's other lines are wrapped. Read back after the rehearsal on 9f9225c0:
+
+```
+		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
+		  ChorusTextFor(Actor), BloomTextFor(Actor),
+```
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
