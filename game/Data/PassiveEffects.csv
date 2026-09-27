@@ -322,3 +322,4 @@ Ritualist_capstone_200#4,Ritualist_capstone_200,minion_held_longest_becomes_your
 Ritualist_capstone_200#5,Ritualist_capstone_200,minions_repeat_your_skills,flat,1.0,,,0.0,,0.0,3,-1.0,0
 Ravager_basic_spine_008#2,Ravager_basic_spine_008,crowd_control_resistance,increased,5.0,,,0.0,,0.0,0,-1.0,4
 Ravager_basic_spine_006#2,Ravager_basic_spine_006,knockback_suppressed,flat,1.0,,enemies_in_reach_at_least,1.0,,0.0,0,4.0,4
+Ritualist_basic_spine_000#3,Ritualist_basic_spine_000,curse_death_raises_imp,flat,1.0,,,0.0,,0.0,0,-1.0,0
