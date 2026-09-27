@@ -1600,11 +1600,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: SCALE STEP HIGH JOINED ON 2026-09-25 for issue #1833's kill counter, built
 #: ahead of its two rows while the design workbook is with another session,
 #: and leaves with those rows.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Scale Step High": "issue #1833: the kill counter's rows add this column",
-    },
-}
+#: SCALE STEP HIGH LEFT with the kill counter's two rows, and the table is
+#: empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):

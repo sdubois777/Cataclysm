@@ -382,3 +382,6 @@ Positive_Your_movement_ability_has_1_2_additional_charges#1,Positive_Your_moveme
 Positive_Your_damage_is_increased_by_0_01_0_05_permanen#1,Positive_Your_damage_is_increased_by_0_01_0_05_permanen,attack_damage,increased,0.01,0.05,,,0.0,run_kills,1000.0,,,,0,0.0,0.0,0.0,0,0.0
 Positive_Your_damage_is_increased_by_0_01_0_05_permanen#2,Positive_Your_damage_is_increased_by_0_01_0_05_permanen,spell_damage,increased,0.01,0.05,,,0.0,run_kills,1000.0,,,,0,0.0,0.0,0.0,0,0.0
 Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm#1,Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm,max_health,increased,0.01,0.05,,,0.0,run_kills,1000.0,,,,0,0.0,0.0,0.0,0,0.0
+Positive_This_weapon_has_5_20_more_damage_for_every_100#1,Positive_This_weapon_has_5_20_more_damage_for_every_100,attack_damage,more,5.0,20.0,,,0.0,weapon_kills,100000.0,,,,0,0.0,0.0,0.0,0,500000.0
+Positive_This_weapon_has_5_20_more_damage_for_every_100#2,Positive_This_weapon_has_5_20_more_damage_for_every_100,spell_damage,more,5.0,20.0,,,0.0,weapon_kills,100000.0,,,,0,0.0,0.0,0.0,0,500000.0
+Negative_You_lose_1_4_max_resistances_for_every_100_000#1,Negative_You_lose_1_4_max_resistances_for_every_100_000,resistance_cap,flat,-1.0,-4.0,,,0.0,character_kills,100000.0,,,,0,0.0,0.0,0.0,0,500000.0
