@@ -808,6 +808,56 @@ On `79dde302`, the engine commit moved onto development `9f9225c0`.
 
 ---
 
+## 2026-09-27 — The Ultimate slot costs 50 Fervour, paid by every class, so a War character cannot cast an Ultimate until its tree fills Fervour
+
+**Affects:** the workbook's Skill Slots sheet and `game/Data/SkillSlots.csv` (a Fervour Cost column);
+`tools/generate_datatables.py`; `game/Source/Cataclysm/Data/CataclysmDataRows.h` (the slot row);
+`CataclysmSkillSlots.h` and `.cpp` (the slot numbers); `CataclysmGameplayAbility.h` and `.cpp` (the cost is asked,
+refused and paid); `CataclysmSkillBar.h` and `.cpp` and `CataclysmHUD.h` and `.cpp` (the greyed box and its words);
+`docs/README.md`; tests in `CataclysmUltimateFervourTests.cpp`, `CataclysmSkillTemplateTests.cpp` and
+`CataclysmCommandTests.cpp`, and one in `tools/tests/test_skill_slot_sheet_matches_the_model.py`. Issue
+[#1478](https://github.com/sdubois777/Cataclysm/issues/1478).
+
+### WHAT WAS DECIDED
+
+The entry of 2026-09-09, "The Ultimate slot costs 50 Fervour", is built as written: one figure on the Ultimate
+row of the Skill Slots sheet, on top of the slot's mana, and no other slot costs any.
+
+**Every class pays it, and that leaves the three War classes without an Ultimate for now.** Only the Masochist,
+Ravager and Ritualist trees have rows that generate Fervour, and every character's Fervour starts at 0, so a
+Berserker, Bulwark or Saboteur character cannot cast any Ultimate until its tree gains a generator. This was put
+to the project owner before the build, with a per-class exemption offered, and the owner answered: "every class as
+ruled. We shouldn't be building out the war classes yet anyways so it doesn't matter".
+
+Ruled under the owner's delegation on 2026-09-27:
+
+- **A slot cost, not a mana cost.** The Fervour is asked before any of the mana answers, so an Ultimate whose mana
+  a row has made free, or whose mana is paid in health, still pays 50. No mana stat reaches it.
+- **Follow Through's repeat "at no cost" pays none**, as it pays no mana.
+- **A character with no Fervour pool pays none.** An ability system without the class-resource attribute set has
+  no bar to pay from; every player has one and no enemy does.
+- **The skill bar greys the Ultimate and names it**, "Ultimate needs 50 Fervour", above the box. A War character
+  has no Fervour bar on screen, so grey alone would read as a mana problem.
+
+**Existing tests were given Fervour, not a different cost.** Twenty-six skill template tests cast an Ultimate from
+a fighter holding none, and each is given 50 before its cast (100 for the one that casts twice); a default on the
+fighter would have moved three tests that read its Fervour as a figure. The Swarm test's casters get a pool of 250
+for their five casts. `Cataclysm.Command.CrownedTakesAThrallThePoolWouldOtherwiseRefuse` needs a pool of 25, which
+can never hold 50, so its Subjugate is granted into the Special slot: the test is about the reserve, not the slot.
+
+**What the research settles is recorded in the entry of 2026-09-09** and is not repeated here. What this entry adds
+is judgement specific to this game: the order of the checks, the free repeat, the character with no pool, and the
+words on the bar.
+
+### TESTS
+
+Seven in `Cataclysm.UltimateFervour.`: an Ultimate at 49 Fervour is refused and takes nothing; one with enough is
+cast and takes 50 and its mana; a mana-free Ultimate still costs 50; no other slot costs any; a character with no
+pool pays none; the skill bar greys the box and says "Ultimate needs 50 Fervour"; and the built `DT_SkillSlots`
+states 50 for the Ultimate and 0 for the other six. One in Python pins the sheet to the ruling.
+
+---
+
 ## 2026-09-27 — A skill made with a melee weapon is melee, whatever its area shape: eight Demonic skills gain Type.Melee, and the generator refuses a strike without it
 
 **Affects:** the workbook's Weapon Skills sheet and `game/Data/WeaponSkills.csv` (eight Tags cells);
