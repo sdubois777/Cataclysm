@@ -1553,6 +1553,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		ForgetThePortals();
 		PlaceThePortals();
 
+		// AND REALITY RIFTS, FOR THE SAME REASON: a new arena's rifts and its gift; a Horde arena's waves keep them.
+		// Issues #1820 and #41.
+		PlaceTheRealityRifts();
+
 		// AND LUXURY HOARDERS, FOR THE SAME REASON; a Horde arena's waves keep its hoards. Placed before the floor's own
 		// creatures, so the guards join the list those are added to. Issues #1820 and #41.
 		ForgetTheHoards();
@@ -6083,6 +6087,122 @@ void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
 	}
 }
 
+void ACataclysmDungeonGameMode::PlaceTheRealityRifts()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	RealityRiftCells.Reset();
+	RealityRiftZones.Reset();
+	bRealityGiftTaken = false;
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::RealityRiftsKey)))
+	{
+		return;
+	}
+	// THE PAIRS AND THE GIFT WHERE ETERNAL CHORUS'S PICKER PUTS ITS SOURCES. A floor with too few cells far enough apart
+	// keeps whole pairs only, and the gift only when a cell is left for it.
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, 2 * Effects::RealityRiftPairs + 1);
+	const int32 Paired = FMath::Min(Cells.Num() / 2, Effects::RealityRiftPairs) * 2;
+	for (int32 Index = 0; Index < Paired; ++Index)
+	{
+		RealityRiftCells.Add(Cells[Index]);
+	}
+	if (Cells.Num() > Paired)
+	{
+		RealityRiftCells.Add(Cells[Paired]);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: %d rift(s) on floor %d"), RealityRiftCells.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepRealityRifts(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	if (CurrentFloor && CurrentFloor->IsBuilt() && FloorBrief.Modifiers.Contains(FName(Effects::RealityRiftsKey)))
+	{
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+		const int32 Paired = FMath::Min(RealityRiftCells.Num() / 2, Effects::RealityRiftPairs) * 2;
+		const bool bHasGift = RealityRiftCells.Num() > Paired;
+
+		// THE RIFTS DRAWN WHEREVER ONE IS MISSING: the pairs in the row's colours, the gift in Celestial's, and not
+		// the gift once it is spent. They do nothing themselves.
+		RealityRiftZones.SetNum(RealityRiftCells.Num());
+		for (int32 Index = 0; Index < RealityRiftCells.Num(); ++Index)
+		{
+			const bool bTheGift = Index >= Paired;
+			if (!RealityRiftZones[Index].Get() && Source && !(bTheGift && bRealityGiftTaken))
+			{
+				const FVector Where = CurrentFloor->WorldOfCell(RealityRiftCells[Index]);
+				RealityRiftZones[Index] = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::RealityRiftRadiusCm, 0.0f, /*bAffectsEveryone=*/false,
+					/*InDrawnAsType=*/bTheGift ? FName(TEXT("Celestial")) : DungeonGameModeTypeOfRow(Effects::RealityRiftsKey));
+			}
+		}
+
+		const FVector Feet = Player->GetActorLocation();
+		RealityRiftRestLeft = FMath::Max(0.0f, RealityRiftRestLeft - SecondsBetweenWaveChecks);
+
+		// A STEP INTO A PAIRED RIFT, THE RIFTS OPEN: carried to the other of its pair, on its cell, as the player is
+		// put at the entrance: unswept, so no wall between stops it. Then the rifts rest, so the player is not carried
+		// straight back.
+		for (int32 Index = 0; Index < Paired && RealityRiftRestLeft <= 0.0f; ++Index)
+		{
+			const ACataclysmGroundZone* Rift = RealityRiftZones[Index].Get();
+			if (!Rift || !Rift->Covers(Feet))
+			{
+				continue;
+			}
+			const FIntPoint Other = RealityRiftCells[Index ^ 1];
+			const FVector Arrive = CurrentFloor->WorldOfCell(Other)
+				+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Player));
+			if (Player->TeleportTo(Arrive, Player->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true))
+			{
+				RealityRiftRestLeft = Effects::RealityRiftRestSeconds;
+				UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: the player carried from rift %d to rift %d on floor %d"),
+					   Index, Index ^ 1, FloorNumber);
+			}
+			break;
+		}
+
+		// A STEP INTO THE GIFT RIFT: its damage for its seconds, once an arena; the rift is spent and goes.
+		if (bHasGift && !bRealityGiftTaken)
+		{
+			ACataclysmGroundZone* Gift = RealityRiftZones[Paired].Get();
+			if (Gift && Gift->Covers(Feet))
+			{
+				bRealityGiftTaken = true;
+				RealityGiftLeft = Effects::RealityGiftSeconds;
+				Gift->Destroy();
+				RealityRiftZones[Paired] = nullptr;
+			}
+		}
+	}
+
+	// THE GIFT, WRITTEN WHEN IT CHANGED AND COUNTED DOWN ON THE BEAT.
+	const float Wanted = RealityGiftLeft > 0.0f ? Effects::RealityGiftDamageMorePercent : 0.0f;
+	if (!FMath::IsNearlyEqual(Wanted, RealityGiftApplied))
+	{
+		RealityGiftApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+	RealityGiftLeft = FMath::Max(0.0f, RealityGiftLeft - SecondsBetweenWaveChecks);
+
+	const int32 Key = FMath::CeilToInt(RealityRiftRestLeft) * 1000 + FMath::CeilToInt(RealityGiftLeft) * 10
+		+ (bRealityGiftTaken ? 1 : 0);
+	if (Key != RealityRiftPanelKey)
+	{
+		RealityRiftPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -7861,6 +7981,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bMindShatteringIllusions = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::MindShatteringIllusionsKey))
 		|| IllusionSlowApplied > 0.0f || IllusionSlowLeft > 0.0f;
+	// AND REALITY RIFTS, ON EVERY FLOOR CARRYING IT, AND WHILE A GIFT IS ON THE CHARACTER. Issues #1820 and #41.
+	const bool bRealityRifts = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::RealityRiftsKey))
+		|| RealityGiftApplied > 0.0f || RealityGiftLeft > 0.0f;
 	// AND INSANITY BURSTS, ON EVERY FLOOR CARRYING IT, AND WHILE ITS LOCK IS STILL ON THE CHARACTER. Issues #1820
 	// and #41.
 	const bool bInsanityBursts = FloorBrief.Modifiers.Contains(
@@ -7923,6 +8046,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bMindShatteringIllusions
+		&& !bRealityRifts
 		&& !bInsanityBursts
 		&& !bFunerealProcession
 		&& !bBloodDebt
@@ -8159,6 +8283,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bMindShatteringIllusions)
 	{
 		StepMindShatteringIllusions(Player, AbilitySystem);
+	}
+
+	// AND REALITY RIFTS, WHICH CARRY THE PLAYER BETWEEN PAIRED RIFTS AND GIVE A GIFT. Issues #1820 and #41.
+	if (bRealityRifts)
+	{
+		StepRealityRifts(Player, AbilitySystem);
 	}
 
 	// AND INSANITY BURSTS, WHICH LOCKS THE PLAYER'S SKILLS OR STUNS THEM. Issues #1820 and #41.
@@ -9197,6 +9327,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 
 	// AND A PHANTASM'S HIT'S SLOW AS LAST WRITTEN. Issues #1820 and #41. Read unconditionally like the rest.
 	Effects.IllusionSlowLessPercent = IllusionSlowApplied;
+
+	// AND A GIFT RIFT'S DAMAGE AS LAST WRITTEN. Issues #1820 and #41. Read unconditionally like the rest.
+	Effects.RealityGiftDamageMorePercent = RealityGiftApplied;
 
 	// AND THE BLOOD DEBT'S BLESSING AND CURSE AS LAST APPLIED. Issues #1820 and #41. Read unconditionally like the
 	// rest: a dungeon without the row pays nothing and curses nothing.
@@ -11124,6 +11257,20 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Illusions, FString::Printf(TEXT("mind-shattering illusions: next in %d s; %d of %d phantasms standing"),
 			FMath::Max(0, FMath::CeilToInt(Effects::IllusionSecondsBetween - IllusionSecondsSinceLast)),
 			PhantasmsStanding().Num(), Effects::IllusionMostStanding));
+	}
+
+	// AND REALITY RIFTS: whether the rifts are open or resting, and the gift. Issues #1820 and #41.
+	const FName Reality(Effects::RealityRiftsKey);
+	if (FloorBrief.Modifiers.Contains(Reality) && !RealityRiftCells.IsEmpty())
+	{
+		const FString RiftsState = RealityRiftRestLeft > 0.0f
+			? FString::Printf(TEXT("rifts resting for %d s"), FMath::CeilToInt(RealityRiftRestLeft))
+			: FString(TEXT("rifts open"));
+		const FString Gift = RealityGiftLeft > 0.0f
+			? FString::Printf(TEXT("+%d%% damage for %d s"), FMath::RoundToInt(Effects::RealityGiftDamageMorePercent),
+							  FMath::CeilToInt(RealityGiftLeft))
+			: (bRealityGiftTaken ? FString(TEXT("the gift is spent")) : FString(TEXT("a gift rift waits")));
+		Counting.Add(Reality, FString::Printf(TEXT("reality rifts: %s; %s"), *RiftsState, *Gift));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -13618,6 +13765,15 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND MIND-SHATTERING ILLUSIONS: a floor's phantasms go with it, its clock starts again, and a slow under way
 		// ends, the call above having taken it off the character. Issues #1820 and #41.
 		ForgetThePhantasms();
+
+		// AND REALITY RIFTS: the rift zones went with the others above and are drawn again on the next beat; the rest
+		// and a gift under way end with the floor, the call above having taken the gift off the character. Issues
+		// #1820 and #41.
+		RealityRiftZones.Reset();
+		RealityRiftRestLeft = 0.0f;
+		RealityGiftLeft = 0.0f;
+		RealityGiftApplied = 0.0f;
+		RealityRiftPanelKey = -1;
 
 		// AND FUNEREAL PROCESSION, FOR THE SAME REASON: a procession crossing the last floor does not cross this one,
 		// and this floor's first sets out sixty seconds in. Issues #1820 and #41.

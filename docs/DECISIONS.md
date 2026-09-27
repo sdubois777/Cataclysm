@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Reality Rifts: two pairs of rifts carry the player from one to the other and then rest for 20 seconds; a fifth rift gives 20% more damage for 20 seconds, once; hidden areas wait on layout changes
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, its place among the rows that are partly built, and a new player floor-effect field
+`RealityGiftDamageMorePercent` read by `StatModifiersFor`, `IsEmpty` and `Describe`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing the rifts, the crossing, the rest, the
+gift, the per-floor reset, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and PARTLY built.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Chaos_Reality_Rifts` in `game/Data/DungeonModifiers.csv`, weight 5: "The fabric of reality is unstable in Chaos Lord
+dungeons, leading to the creation of temporary portals or rifts. Players can use these rifts strategically to
+teleport, gain buffs, or access hidden areas." It states no figure.
+
+### What the rule does
+
+A new arena carrying the row gets five rifts, drawn on the floor, each 150 cm across its radius and placed on floor
+cells away from the entrance as the Eternal Chorus's cells are. Rifts 1 and 2 are a pair, and so are rifts 3 and 4.
+Stepping into a rift of a pair carries the player to the other rift of that pair; then every pair rests for twenty
+seconds, during which a step into any of them carries nobody. The fifth rift, drawn in Celestial's colour, is the gift:
+stepping into it gives the player 20% more attack damage and spell damage for twenty seconds, and the gift rift is
+spent and goes. A new floor, or a Horde dungeon's next wave, ends the gift; a new arena brings new rifts. The panel
+reads "reality rifts: rifts open; a gift rift waits", or "rifts resting for 12 s", or "+20% damage for 8 s", or "the
+gift is spent".
+
+**Not built: "access hidden areas".** A floor has no hidden area to reach; that waits on layout changes, and the row
+is listed among those partly built for that reason.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **Buildable in part: the teleport and the buff. Hidden areas wait on layout changes.**
+- **Two pairs of rifts per floor that carry the player between them, with a 20-second rest.**
+- **One rift per floor that gives 20% more damage for 20 seconds.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The gift is taken once per arena** and the rift goes when it is; a rift that could be taken again every rest would
+  make the buff permanent.
+- **The rest covers every pair, not only the one crossed.** Without it the player could step straight back out of the
+  rift they arrived in; with it, "temporary" is the rifts closing for a while after use.
+- **The gift rift is drawn in Celestial's colour** so it reads apart from the pairs, which are drawn in the row's own.
+- **150 cm across the radius**, wide enough to step into on purpose and narrow enough not to be crossed by accident.
+- **"More", not "increased", for the gift**: a separate multiplier on attack and spell damage, so it does not
+  shrink beside the player's own increases.
+- **In a Horde dungeon the gift rift does not come back with the next wave**: the arena is the same one, and the gift
+  is once per arena.
+- **A Horde arena keeps its rifts across waves**, because its arena does not change; the wave ends the gift, as a new
+  floor does.
+
+### The research: a buff taken from a spot on the floor
+
+Done after the rulings and before the build; the page quoted was fetched on 2026-09-26 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, shrines | https://poedb.tw/us/Shrine | "Players can steal the shrine to gain its bonuses for 45 seconds or until leaving the area." Divine Shrine lasts 20 seconds. |
+
+**What it settles and what it does not.** Path of Exile ships a spot on the floor that gives a strong buff for tens of
+seconds, taken once, and gone on leaving the area; that settles the shape of the gift: once, timed, and ended by a new
+floor. The pairs that carry the player, the twenty-second rest, the 20% and the radius are this game's own.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `RealityRiftsFiguresPairsRestAndGift`: the figures.
+- `ARealityRiftCarriesThePlayerToItsPairThenRests`: five rifts away from the entrance, drawn, with the panel; rift 1
+  carries to rift 2; standing in rift 2 carries nobody at 19.75 s and back to rift 1 at 20 s; rift 4 carries to rift 3.
+- `TheGiftRiftGivesTwentyPercentMoreDamageOnce`: no gift before; 20% more attack and spell damage after the step, the
+  rift gone and the player not carried; still at 19.75 s and gone by 20.25 s; the panel says the gift is spent.
+- `ANewFloorBringsNewRealityRiftsAndEndsTheGift`: the next floor has five new rifts, a gift that waits again, and no
+  damage left from the last.
+
+One Python check: the row still says "temporary portals or rifts", "teleport", "gain buffs" and "access hidden areas".
+
+**A note for the guard proof of the rest.** With the rest broken, a player standing in a rift is carried to the
+other rift of its pair and back again once each quarter-second beat. The test waits 79 beats, an odd number, so the
+player ends at the wrong rift and "still at rift 1 at 19.75 s" and "carried back to rift 0 at 20 s" fail. A change to
+the beat length that makes that count even would let those two pass with the rest broken; only the panel check would
+still fail.
+
+### The move onto development 9213a5e3
+
+The change was written on development 267bd38b in two commits, aa6f9ab8 and eee7a482, and moved on 2026-09-27 as one
+commit. Six files conflicted, so it was rebuilt rather than rebased. The change's own edit scripts ran on development's
+copies; on 267bd38b the same scripts reproduce aa6f9ab8's game files exactly. What the scripts do not write, the Python
+row check, was applied as a patch with `git apply -3`, and the one place where both sides had added a check was resolved
+by keeping both. **One edit moved:** development's partly-built list in `BuiltStateOf` now ends with Swarm of Locusts,
+so Reality Rifts is added after it rather than after Singularity Wells. **The evidence that nothing else changed: the
+sorted changed lines of the moved commit, taken before this section was written, against 9213a5e3 differ from eee7a482's against 267bd38b in exactly those two
+lines**, the `SingularityWellsKey` line becoming the `SwarmOfLocustsKey` line, once added and once removed.
+
+### The first build, on the five-modifier stack, failed
+
+On 2026-09-30, in the window that ran this change stacked with four others on development 977edde4, the build printed
+`Build: Failed - 31 actions, 28 files compiled` on one error: `CataclysmDungeonGameMode.cpp(11904,17): error C4456:
+declaration of 'Rifts' hides previous local declaration`. The panel's `const FString Rifts`, inside its own block in
+`LiveCountsForTheFloor`, hid Abyssal Rifts' `const FName Rifts` at the function's top scope, and the build treats that
+as an error. No test and no proof had run. The local is now `RiftsState`; the panel's text is unchanged.
+
+The compile sweep's first check reads only a function's top scope, so it did not see this. **A sixth check now runs with
+the sweep:** a declaration whose name is already declared in a scope still open in the same function. On the stack it
+found exactly this one; on development's own compiled changes, 9213a5e3 to 977edde4, it found none, which is its
+control. Two sibling blocks declaring the same name are legal and are not flagged.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Mind-Shattering Illusions: every 30 seconds two phantasms of the floor's kinds appear 8 metres from the player; they hurt, fall to one hit, pay nothing, and a phantasm's hit slows the player 30% for 2 seconds
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
