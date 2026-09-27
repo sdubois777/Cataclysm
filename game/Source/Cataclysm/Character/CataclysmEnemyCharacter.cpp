@@ -1337,6 +1337,11 @@ void ACataclysmEnemyCharacter::SetObsidianSarcophagiDamageMultiplier(float NewMu
 	SetDamageMultiplierFrom(ObsidianSarcophagiDamageSource, NewMultiplier);
 }
 
+void ACataclysmEnemyCharacter::SetCarrionFeastDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(CarrionFeastDamageSource, NewMultiplier);
+}
+
 void ACataclysmEnemyCharacter::SetInfectionBloomDamageMultiplier(float NewMultiplier)
 {
 	SetDamageMultiplierFrom(InfectionBloomDamageSource, NewMultiplier);

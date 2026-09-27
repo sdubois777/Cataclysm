@@ -20,6 +20,7 @@
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmCarcassCharacter.h"
 #include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
@@ -631,6 +632,20 @@ FString UCataclysmCombatOverlay::QuarantineTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	if (Actor->IsA<ACataclysmCarcassCharacter>())
+	{
+		return TEXT("Carcass");
+	}
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsACarrionFeeder ? FString(TEXT("Feeder")) : FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
@@ -638,7 +653,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor), RiftTextFor(Actor), InfectionBloomTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
+		  InfectionBloomTextFor(Actor),
 		  QuarantineTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
