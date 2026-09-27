@@ -5940,11 +5940,13 @@ bool ACataclysmDungeonGameMode::PlayerHasALivingMinion(const AActor* Player) con
 	{
 		return false;
 	}
+	// THE SUMMONER, NOT THE OWNER CHAIN. A minion is possessed by its AI controller as it spawns, and the engine's
+	// `APawn::PossessedBy` makes that controller its owner, so no minion's owner chain reaches the player. The first
+	// whole-suite run of this change found it.
 	for (TActorIterator<ACataclysmMinion> It(World); It; ++It)
 	{
 		ACataclysmMinion* Minion = *It;
-		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion)
-			&& UCataclysmTeams::SharesAnOwnerChain(Minion, Player))
+		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion) && Minion->Summoner == Player)
 		{
 			return true;
 		}

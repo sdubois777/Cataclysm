@@ -56,8 +56,10 @@ minions; other players are added with co-op; the row stays partly built until th
 - **The third kind maddens the player for 3 s**, through `UCataclysmSkillEffects::ApplyNamedEffect`, as every other
   Madness arrives. 3 s is the design document's own Madness duration, not a new figure.
 - **Equal thirds with a minion standing; the existing halves without one**, so a burst never does nothing.
-- **A minion is an `ACataclysmMinion` that is alive and whose owner chain reaches the player**: summoned creatures and
-  deployed machines alike.
+- **A minion is an `ACataclysmMinion` that is alive and whose summoner is the player**: summoned creatures and
+  deployed machines alike. It reads `ACataclysmMinion::Summoner`, not the owner chain: a minion is possessed by its AI
+  controller as it spawns, and the engine's `APawn::PossessedBy` makes that controller its owner, so no minion's owner
+  chain reaches the player. The ruling first said "owner chain"; the first window below found why it cannot.
 - **The player's own burning ground and deployables turn on the player while maddened**, as Madness already works for
   creatures. No special case.
 - **"Maddened" above the player's bars, and under a creature's bar**, since nothing showed Madness anywhere before.
@@ -114,6 +116,26 @@ a stun.
 The entry "2026-09-25 — Luxury Hoarders: two piles of loot a floor, each three drop rolls at the Legendary rung, each
 guarded by three Elite creatures of the floor standing on it" says its window ran "on 2026-09-27". It ran on 2026-09-26,
 local time; the date was taken from UTC.
+
+### First window, stopped
+
+One window on 2026-09-27, on development af957ae1, at 3340081b. The Python of record printed `5532 passed, 8 skipped`
+(JUnit 5,540, no failures), as registered. The build printed `Build: Succeeded - 30 actions, 27 files compiled`, and the
+whole suite `2720 tests performed, 2719 succeeded, 1 failed: AnInsanityBurstMaddensThePlayerWhenAMinionStands`; 2720
+declared, gap 0. No proof was run. The five checks that failed:
+
+| Check | Printed |
+|---|---|
+| "maddened when it ends" | false |
+| "so its own minion is hostile to it" | 0 (friendly), not 2 (hostile) |
+| "and no stun" | the player was stunned |
+| "the panel while maddened" | "insanity bursts: next in 40 s" |
+| "and the clock starts again after 3 s" | "insanity bursts: next in 37 s" |
+
+**The cause, found by reading:** the search for a living minion of the player's asked whether the minion's owner chain
+reached the player. It never does, because possession replaces the owner (above). So the draw took the halves, and the
+pinned roll of 90 stunned. The search now reads the minion's summoner. It is game code, so the next window runs the
+whole suite again before the proofs.
 
 ### Not yet run
 
