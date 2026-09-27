@@ -555,7 +555,8 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 
 float UCataclysmAbilitySystemComponent::StatNamingTagAppliedTo(
 	FName Stat, const FGameplayTag& Named, float Figure,
-	const FGameplayTagContainer& Tags, const AActor* Target) const
+	const FGameplayTagContainer& Tags, const AActor* Target,
+	float MinionSecondsActive) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs || !Named.IsValid())
@@ -574,10 +575,13 @@ float UCataclysmAbilitySystemComponent::StatNamingTagAppliedTo(
 	{
 		return Figure;
 	}
+	// AND THE STRIKING MINION'S AGE, SET LAST, because each builder above
+	// returns a whole state. Issue #1833, deployable Part 2.
+	FCataclysmStatConditions State =
+		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions()));
+	State.MinionSecondsActive = MinionSecondsActive;
 	return FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(
-		Figure, Naming, Tags,
-		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions())))
-		.Final);
+		Figure, Naming, Tags, State).Final);
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
