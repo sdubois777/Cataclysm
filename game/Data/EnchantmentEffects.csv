@@ -373,3 +373,9 @@ Positive_Gadgets_last_30_60_longer#1,Positive_Gadgets_last_30_60_longer,minion_d
 Positive_Gadgets_fire_20_40_faster#1,Positive_Gadgets_fire_20_40_faster,minion_attack_speed,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
 Positive_Add_1_3_to_your_max_deployable_count#1,Positive_Add_1_3_to_your_max_deployable_count,minion_cap_bonus,flat,1.0,3.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
 Negative_When_you_die_all_your_buffs_are_removed#1,Negative_When_you_die_all_your_buffs_are_removed,auras_end_at_death,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Ultimate_has_1_3_additional_charges#1,Positive_Ultimate_has_1_3_additional_charges,skill_charges_bonus,flat,1.0,3.0,Slot.Ultimate,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Gain_1_3_additional_charges_for_your_cooldown_ab#1,Positive_Gain_1_3_additional_charges_for_your_cooldown_ab,skill_charges_bonus,flat,1.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Skills_have_1_2_additional_charges_when_fighting#1,Positive_Skills_have_1_2_additional_charges_when_fighting,skill_charges_bonus,flat,1.0,2.0,,seconds_after_striking_a_boss,4.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Your_heavy_attack_has_1_2_additional_charges#1,Positive_Your_heavy_attack_has_1_2_additional_charges,skill_charges_bonus,flat,1.0,2.0,Slot.Heavy,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Your_special_ability_has_1_2_additional_charges#1,Positive_Your_special_ability_has_1_2_additional_charges,skill_charges_bonus,flat,1.0,2.0,Slot.Special,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Your_movement_ability_has_1_2_additional_charges#1,Positive_Your_movement_ability_has_1_2_additional_charges,skill_charges_bonus,flat,1.0,2.0,Slot.Movement,,0.0,,0.0,,,,0,0.0,0.0,0.0,0

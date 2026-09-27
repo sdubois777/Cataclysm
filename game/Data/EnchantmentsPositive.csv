@@ -35,7 +35,7 @@ Positive_Every_30_seconds_your_next_skill_is_cast_at_300,Every 30 seconds your n
 Positive_For_every_unique_Cataclysm_boss_defeated_gain_5,"For every unique Cataclysm boss defeated, gain 5%-10% more damage permanently",Generic,1.0,"Trigger.Progression, Stat.Offense.Global",False
 Positive_Deal_40_80_increased_damage_to_Boss_enemies,Deal 40%-80% increased damage to Boss enemies,Generic,3.0,"Scope.BossOnly, Stat.Offense.Global",False
 Positive_You_take_20_40_less_damage_from_Boss_enemies,You take 20%-40% less damage from Boss enemies,Generic,2.0,"Scope.BossOnly, Stat.Defense.Global",False
-Positive_Skills_have_1_2_additional_charges_when_fighting,Skills have 1-2 additional charges when fighting Boss enemies,Generic,2.0,Scope.BossOnly,False
+Positive_Skills_have_1_2_additional_charges_when_fighting,"Skills have 1-2 additional charges when fighting Boss enemies, for 4 seconds after you strike one",Generic,2.0,Scope.BossOnly,False
 Positive_Blocking_an_attack_has_a_20_40_chance_to_fully,Blocking an attack has a 20%-40% chance to fully negate all damage,Generic,2.0,Stat.Defense.Block,False
 Positive_You_block_for_65_75_of_damage_instead_of_the_n,You block for 65%-75% of damage instead of the normal 50%,Generic,2.0,Stat.Defense.Block,False
 Positive_Gain_3_8_additional_class_points,Gain 3-8 additional class points,Generic,2.0,Stat.Progression.ClassPoints,False
