@@ -10,8 +10,8 @@ guards, the panel line, and the include of `Items/CataclysmDroppedItem.h` for th
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and run: the figures are at the end of this
+entry.
 
 ### The row
 
@@ -85,10 +85,26 @@ expend resources".
 `#include "Items/CataclysmDroppedItem.h"` to `CataclysmDungeonGameMode.cpp`. Development already includes it, since The
 Infested Hoard added it, so the move leaves it out; the rest of the change is line for line what it was.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-27, with the build machine and the editor, on development 13133248. Every figure below is what
+`pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed. The change compiled at the first build.
+
+| Step | Printed |
+|---|---|
+| Python of record, before the window | `5531 passed, 8 skipped` (JUnit 5,539, no failures), as registered |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| Whole suite, started with no CI run in progress | `2713 tests performed, 2713 succeeded, 0 failed`; 2713 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+Three proofs with `prove_cpp_guard`, all on `LuxuryHoardersLaysTwoPilesEachGuardedByThreeElites`, each anchor re-checked
+immediately before its run. Each printed `1 tests performed, 0 succeeded, 1 failed` with the break in and `1 tests
+performed, 1 succeeded, 0 failed` restored, and each failed on exactly the checks registered for it.
+
+| Break | What failed |
+|---|---|
+| No pile is laid | "loot lies at the hoard (0 drops)", once for each of the two hoards |
+| The guards come at Common | "at the Elite rung", 0, once for each of the six guards |
+| No guard is placed | "six guards", 0 |
 
 ---
 
