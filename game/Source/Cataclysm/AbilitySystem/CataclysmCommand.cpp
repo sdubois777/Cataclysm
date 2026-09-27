@@ -406,6 +406,14 @@ AActor* UCataclysmCommand::MinionDrawingEnemyFrom(const AActor* Defender,
 	// ruled on 2026-09-18. `ThingsCommandedBy` already counts it, and the target
 	// choice this feeds says outright that a thrall is part of the army.
 	const TArray<AActor*> Commanded = ThingsCommandedBy(Defender);
+
+	// A THING THE DEFENDER COMMANDS IS NEVER DRAWN TO ANOTHER. Until Madness could fall on a summoner, the defender was
+	// never one of its own minions' nearest hostile; a maddened one is, and without this the minion turning on it was
+	// told to attack itself or a fellow minion. Found for Insanity Bursts' "attack allies", 2026-09-26.
+	if (Commanded.ContainsByPredicate([Deciding](const AActor* Thing) { return Thing == Deciding; }))
+	{
+		return nullptr;
+	}
 	if (Commanded.Num() < FMath::RoundToInt(Minimum))
 	{
 		return nullptr;

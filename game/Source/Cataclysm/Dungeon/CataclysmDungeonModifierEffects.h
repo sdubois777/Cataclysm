@@ -2156,8 +2156,12 @@ public:
 	 *   `InsanityBurstsWarningSeconds`.
 	 * - A BURST IS ONE OF TWO, AT RANDOM: every skill locked for `InsanityBurstsLockSeconds` ("lose control over their
 	 *   abilities", Edict of Silence's lock), or a stun of `InsanityBurstsStunSeconds` ("debilitating effects").
-	 * - "ATTACK ALLIES" IS NOT BUILT: the game has no player allies but the player's own minions, and turning those is
-	 *   its own ruling.
+	 * - AND "ATTACK ALLIES", BY THE OWNER'S DECISION OF 2026-09-26: a third burst maddens the player for
+	 *   `InsanityBurstsMadnessSeconds`, Madness as every other source applies it (`ApplyNamedEffect`, the shared window).
+	 *   While it lasts the player's clicks, swings, skills, areas and ground zones reach their own minions, and the
+	 *   minions turn on them; the player keeps full control. It is drawn only while a living minion of theirs stands:
+	 *   thirds then, and the lock or the stun half and half without one (`InsanityBurstsKindFor`).
+	 * - STILL PARTLY BUILT: "attack allies" against other players waits on co-operative play.
 	 */
 	static const TCHAR* InsanityBurstsKey;
 
@@ -4853,6 +4857,12 @@ public:
 	static constexpr float InsanityBurstsLockSeconds = 5.0f;
 	static constexpr float InsanityBurstsStunSeconds = 1.5f;
 	static constexpr float InsanityBurstsLockChancePercent = 50.0f;
+	static constexpr float InsanityBurstsMadnessSeconds = 3.0f;
+
+	/** The three kinds of burst, as `InsanityBurstsKindFor` answers them. */
+	static constexpr int32 InsanityBurstLocks = 0;
+	static constexpr int32 InsanityBurstStuns = 1;
+	static constexpr int32 InsanityBurstMaddens = 2;
 
 	/**
 	 * Funereal Procession's figures, every one a play-test value. See the key. The procession is a line walking along
@@ -5585,6 +5595,13 @@ public:
 
 	/** Whether a roll of 0 to 100 makes this burst the skill lock rather than the stun: below the lock's chance. */
 	static bool InsanityBurstsLocksSkills(float Roll);
+
+	/**
+	 * Which burst a roll of 0 to 100 makes: with a minion of the player's standing, a third each of the lock, the stun
+	 * and madness, in that order; without one, the lock or the stun half and half, as `InsanityBurstsLocksSkills`
+	 * says, so a burst never falls on nothing.
+	 */
+	static int32 InsanityBurstsKindFor(float Roll, bool bAMinionStands);
 
 	/** Whether a procession sets out now. */
 	static bool FunerealProcessionIsDue(float SecondsSinceLast);

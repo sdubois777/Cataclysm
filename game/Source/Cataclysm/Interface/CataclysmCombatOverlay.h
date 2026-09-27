@@ -506,6 +506,13 @@ public:
 	static FString FearedTextFor(const AActor* Actor);
 
 	/**
+	 * "Maddened" while `Status.Debuff.Madness` lasts on a living actor, or empty. Beside "Feared": a creature's status
+	 * line shows it, and so does the line above the player's own bars, which Insanity Bursts can madden. Until
+	 * 2026-09-26 Madness was said nowhere on screen.
+	 */
+	static FString MaddenedTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.
