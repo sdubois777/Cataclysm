@@ -116,6 +116,9 @@ is found by the line above it. **The evidence that nothing else changed: the sor
 taken before this section was written, against 9213a5e3 differ from 5a0c419f's against 4f1a3549 in exactly two lines**,
 the `SingularityWellsKey` line becoming the `SwarmOfLocustsKey` line, once added and once removed. The reset lines are
 the same lines in a new place, so they do not differ.
+The resets development added between those two calls (`ForgetTheHoards`, Blood Debt's counts, `ForgetTheQuarantine`,
+`ForgetTheInfectionBloom`, `ForgetTheRift` and Abyssal Rifts' counts) each clear only their own rule's fields and
+destroy only actors in their own lists; none reads or writes the control points' state, so the order does not matter.
 
 ### Not yet run
 
