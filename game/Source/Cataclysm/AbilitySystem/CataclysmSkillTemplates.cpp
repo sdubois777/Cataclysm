@@ -324,6 +324,29 @@ void UCataclysmStrikeSkill::ActivateAbility(
 	});
 }
 
+const TCHAR* UCataclysmStrikeSkill::MeleeArcFullCircleStat = TEXT("melee_arc_full_circle");
+
+float UCataclysmStrikeSkill::ArcDegrees() const
+{
+	// A SPELL'S CONE IS NEVER WIDENED. The sentence says "your melee arc", and a
+	// strike carries `Type.Melee` exactly when it is made with a melee weapon,
+	// which the generator has enforced since issue #944.
+	static const FGameplayTag Melee = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
+	if (!Melee.IsValid() || !SkillTags.HasTag(Melee))
+	{
+		return Params.AngleDegrees;
+	}
+
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+	if (Mine && Mine->StatForSkill(FName(MeleeArcFullCircleStat), SkillTags, 0.0f) > 0.0f)
+	{
+		return 360.0f;
+	}
+	return Params.AngleDegrees;
+}
+
 int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 {
 	AActor* Self = Avatar();
@@ -334,9 +357,14 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 
 	// Aimed at the cursor rather than at wherever the character happens to be
 	// facing. A top-down game gives the player no other way to point a cone.
+	//
+	// AND AS WIDE AS `ArcDegrees` SAYS, which is the row's angle unless a melee
+	// swing's caster holds Every Swing Lands. The nearest are still taken first
+	// and the target limit still holds, so a one-target basic attack takes the
+	// nearest enemy in any direction rather than only in front.
 	const TArray<AActor*> Targets = UCataclysmTargeting::FindEnemiesInCone(
 		GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
-		ScaledRadiusCm(), Params.AngleDegrees, Params.MaxTargets);
+		ScaledRadiusCm(), ArcDegrees(), Params.MaxTargets);
 
 	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
 	// than tidy. Quench gives an enemy whose fire was just put out 50% more

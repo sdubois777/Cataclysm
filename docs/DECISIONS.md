@@ -71,6 +71,74 @@ with complaints".
 
 ---
 
+## 2026-09-30 — Every Swing Lands' second clause: a Ravager's melee arc becomes a full circle, basic attack included, at no cost
+
+**Affects:** the workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (a second row on
+`Ravager_keystone_spine_002`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (the arc a
+melee swing picks its targets across); `CataclysmPlayerClassStats.cpp` (the stat has no attribute); tests in
+`CataclysmPassiveTreeTests.cpp`, `CataclysmStatExemptionTests.cpp` and `CataclysmDataTableTests.cpp`; `docs/README.md`;
+and three Python checks. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### WHAT WAS DECIDED
+
+The Ravager keystone Every Swing Lands reads "Your melee attacks cannot be evaded, and your melee arc is a full circle
+rather than a cone." Its first clause was built under issue #1515; the second was recorded as deferred, and an audit of
+all 246 Demonic node and option sentences on 2026-09-30 found it the one clause with no row and no open issue. The
+owner's mandate is the Demonic trees working in game, so it is built.
+
+Ruled under the owner's delegation on 2026-09-30:
+
+- **Every melee swing, the basic attack included.** "Your melee arc" is every strike made with a melee weapon, and the
+  basic attack is one. A spell's cone is never widened.
+- **The target limit is unchanged.** A swing that takes one target still takes one, the nearest in any direction, so a
+  one-target basic attack no longer needs the enemy in front of it. A wide melee skill hits everything in its reach.
+- **No damage is taken off.** The sentence states no cost, and a keystone's cost is the points and the path to it.
+
+### WHY: WHAT THE GENRE DOES
+
+Fetched 2026-09-30.
+
+| Game | Source | What it says |
+|---|---|---|
+| Path of Exile, Melee Splash | [poedb](https://poedb.tw/us/Melee_Splash_Support) | "Supported Skills deal Splash Damage to surrounding targets"; "40% less Splash Damage to surrounding targets" |
+| Path of Exile, Ancestral Call | [poedb](https://poedb.tw/us/Ancestral_Call_Support) | "Supported Strike Skills target 2 additional nearby Enemies"; "(0—19)% less Damage" |
+
+**What the research settles:** a shipped game does let a melee strike reach enemies around the character rather than
+only in front.
+
+**What it does not settle, and is this game's judgement:** the shape and the price. Both Path of Exile versions charge
+19% to 40% less damage, but both are support gems, which a player can move onto any skill at no other cost, so the
+penalty is the whole of their price. A keystone is paid for with the points and the path through the tree, and this
+one's sentence states no penalty, so none is added. No shipped keystone that turns a melee arc into a circle was found:
+searches of Path of Exile and Last Epoch wording found none.
+
+### HOW IT IS BUILT
+
+One row, `melee_arc_full_circle` flat 1. `UCataclysmStrikeSkill::ArcDegrees` answers 360 for a swing whose skill carries
+`Type.Melee` when the caster holds the stat, and the row's angle otherwise; `SwingOnce` picks its targets across that
+width. The swing's drawn arc ignores every angle today (issue #813), so the circle shows in who is hit.
+
+### OLDER "NOT BUILT" LINES THIS AUDIT FOUND SUPERSEDED
+
+Merged entries are not edited. These older statements were true when written and are not now, each checked in code at
+977edde4: Nothing Moves You's second clause (row `crowd_control_ends_when_its_applier_dies`, read in
+`CataclysmPlayerCharacter.cpp`), which a comment in `tools/tests/test_passive_effects_match_the_node_text.py` also called
+unbuilt and which this change corrects; A Second Self and Chorus (`CataclysmSecondSelf.cpp`, `CataclysmChorus.cpp`);
+Vessel (its row scales `class_resource` by `max_mana`, read by `MaximumClassResource`); the Ravager's "1 for each enemy
+your attacks hit" (`UCataclysmFervour::GainForEnemiesHit`); Rolling Debt (`health_debt_delay_extension`, read in
+`CataclysmHealthDebt.cpp`); and The Reckoning's lethal rule (`DrainWhileDebtExceedsHealth`, called from
+`CataclysmCharacterBase.cpp`).
+
+### TESTS
+
+Five in `Cataclysm.MeleeArc.`, on a real Ravager taking the node through the built tables: the node grants both its
+rows; a 60-degree melee swing hits an enemy behind with the node and not without; a spell cone does not widen; the
+basic attack takes a lone enemy behind it; and the basic attack's one target is still one, the nearer.
+`Cataclysm.Passives.EverySwingLandsStopsARealRavagersMeleeBeingEvaded` now expects two rows and finds the evasion row
+by its stat. A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` shows the stat is read.
+
+---
+
 ## 2026-09-26 — Carrion Feast: a slain creature leaves a carcass that becomes a carrion feeder after 10 seconds unless fire burns it, and every carcass eaten makes the feeders 10% stronger; the purification altars wait on the interaction screen
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its

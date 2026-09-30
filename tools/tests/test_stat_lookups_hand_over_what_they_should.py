@@ -362,6 +362,10 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(CrowdControlResistanceStat), FGameplayTagContainer(), Stat'):
         'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(MeleeArcFullCircleStat), SkillTags, 0.0f'):
+        "Every Swing Lands' flag, asked as a melee swing picks its targets "
+        '(issue #1515); with the tags of the skill, no blow in hand yet',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
      'FName(UCataclysmRisenImps::RisesStat), FGameplayTagContainer(), 0.0f'):
         "the Ritualist's risen-imp flag, asked of whoever laid a curse on a "

@@ -2517,6 +2517,11 @@ VALUE_IN_WORDS = {
         ("also restores your energy shield", 1.0),
     ("Ravager_keystone_spine_001", "armor_penetration_suppressed"):
         ("cannot be ignored", 1.0),
+    # AND EVERY SWING LANDS' SECOND CLAUSE, the arc, a flag of one. Issue
+    # #1515. `UCataclysmStrikeSkill::ArcDegrees` asks whether it stands above
+    # zero; the sentence says what the arc becomes, not by how much.
+    ("Ravager_keystone_spine_002", "melee_arc_full_circle"):
+        ("full circle rather than a cone", 1.0),
     ("Ravager_keystone_spine_002", "melee_evasion_suppressed"):
         ("cannot be evaded", 1.0),
 
@@ -2578,7 +2583,9 @@ VALUE_IN_WORDS = {
 
     # FIFTY IS "HALF", by the arithmetic the resistance already uses:
     # Amount x (1 - Resisted / 100). Its second clause, about an effect ending
-    # when its applier dies, is not this row and is not built yet.
+    # when its applier dies, is not this row: it is the node's second row,
+    # `crowd_control_ends_when_its_applier_dies`, read by the player's death
+    # handling. This comment said "not built yet" after that row was built.
     ("Ravager_keystone_a_kB", "crowd_control_resistance"):
         ("last half as long", 50.0),
 
