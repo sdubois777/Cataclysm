@@ -40730,6 +40730,14 @@ bool FCataclysmPactWrathTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("no buff on floor 4"), PactRulesOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
 	TestEqual(TEXT("the curse is still there on floor 4"), PactRulesOn(Player, TEXT("max_health")), -10.0f, 0.001f);
+
+	// FLOOR 5, STILL NO NEW PACT AND NO BUFF EITHER SIDE: NOTHING OF THE PACT CHANGED, SO ONLY THE FLOOR CHANGE TELLING
+	// THE BEAT THE CURSE WAS TAKEN OFF PUTS IT BACK.
+	if (!TheNextPactFloor(*this, Mode, 5))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the curse is still there on floor 5"), PactRulesOn(Player, TEXT("max_health")), -10.0f, 0.001f);
 	return true;
 }
 
