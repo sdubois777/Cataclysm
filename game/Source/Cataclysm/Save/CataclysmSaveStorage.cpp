@@ -3,6 +3,7 @@
 #include "Save/CataclysmSaveStorage.h"
 
 #include "Dom/JsonObject.h"
+#include "Items/CataclysmEnchantmentRenames.h"
 #include "JsonObjectConverter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
@@ -188,6 +189,13 @@ UCataclysmSaveRecord* FCataclysmSaveStorage::FromJson(
 			*Default->RecordType().ToString(), *FailReason.ToString());
 		return nullptr;
 	}
+
+	// AND EVERY ROLLED ENCHANTMENT IS POINTED AT ITS CURRENT ROW. Issue #1799,
+	// the owner's decision of 2026-09-30: a reword that renamed a row must not
+	// leave the saved items carrying the old name with an enchantment that finds
+	// nothing. Here, after the fields are read, because this is the one door every
+	// record comes in by. See `FCataclysmEnchantmentRenames`.
+	FCataclysmEnchantmentRenames::RenameIn(Loaded);
 
 	// THE VERSION IS NOT STAMPED ON AFTERWARDS. It is read out of the record like
 	// every other field, so a build where the version field stopped being
