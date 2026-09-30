@@ -90,7 +90,7 @@ MULTIPLIER = re.compile(
 #: increased row whose sentence says "increasing"; issue #1833.
 INCREASE = re.compile(
     r"\b(increase|increases|increased|increasing|reduce|reduces|reduced|reducing"
-    r"|faster|slower|longer"
+    r"|faster|slower|longer|less time"
     r"|larger|gain|lose)\b"
     # AND "bonus", BUT NEVER THE SET LABEL. Measured 2026-09-18: 13
     # sentences use it as an effect word, 39 carry it ONLY inside
@@ -509,8 +509,10 @@ JUDGED_NUMBERS = {
 #: four enchantments.
 #: AND 396 OVER 318 SINCE HEALTH RESERVATION,
 #: issue #1833, from 394 over 316: two rows on two enchantments.
-AUTHORED_ROWS = 396
-AUTHORED_ENCHANTMENTS = 318
+#: AND 402 OVER 324 SINCE THE DURATIONS,
+#: issue #1833, from 396 over 318: six rows on six enchantments.
+AUTHORED_ROWS = 402
+AUTHORED_ENCHANTMENTS = 324
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -553,7 +555,7 @@ REMOVED_ROWS = 32
 #: issue #1791: its drawback, "You have no health/mana/es regen", is three
 #: removed rows, and its 2-piece bonus three flat leech rows. Its 6-piece and
 #: 10-piece rows still wait.
-SETS_THAT_WORK = [5, 6, 8, 9, 11, 12, 13, 16, 17]
+SETS_THAT_WORK = [5, 6, 7, 8, 9, 11, 12, 13, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -709,10 +711,10 @@ def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
 
 
 def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
-    """Nine of the fourteen sets have a row written: Archon's Aegis (5),
-    Tyrant's Chains (6), Mana Weaver (8), Brute's Heart (9), Demon King's
+    """Ten of the fourteen sets have a row written: Archon's Aegis (5),
+    Tyrant's Chains (6), Chronomancer's Time-Lock (7), Mana Weaver (8), Brute's Heart (9), Demon King's
     Regalia (11), Plague Doctor (12), Starvation (13), Divine Retribution
-    (16) and Warlord's Will (17). The other five wait
+    (16) and Warlord's Will (17). The other four wait
     for what their rows need, which `docs/DECISIONS.md` lists set by set. This
     moves only when somebody means it to.
 

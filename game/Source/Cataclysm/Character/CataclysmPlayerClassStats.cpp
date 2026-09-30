@@ -382,6 +382,19 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Issue #1833: "80%-99% of your health is reserved". No gameplay
 		// attribute, for the same reason.
 		TEXT("health_reserved_percent"),
+		// Increases to every duration a skill sets -- its buff, its effect, a
+		// mark, a terrain -- read by UCataclysmSkillTemplate::OwnDurationMultiplier
+		// with the skill's tags. Issue #1833: "Your support ability duration is
+		// increased by 50%-100%".
+		TEXT("skill_duration"),
+		// Increases to a self-buff skill's buff alone, read by the same
+		// function. Issue #1833: "Buff effects you apply last 30%-60% longer".
+		TEXT("buff_duration"),
+		// Increases to every debuff this character places on an enemy, read by
+		// UCataclysmSkillEffects::DebuffDurationMultiplierOf in
+		// ApplyTagForDuration and DamageOverTimeNumbers. Issue #1833: "Debuff
+		// effects you apply last 30%-60% longer".
+		TEXT("debuff_duration"),
 	};
 	return Stats;
 }

@@ -395,3 +395,9 @@ Negative_Killing_an_enemy_triggers_a_1_2_second_global_co#1,Negative_Killing_an_
 Negative_Critical_strikes_trigger_a_0_5_1_second_global_c#1,Negative_Critical_strikes_trigger_a_0_5_1_second_global_c,skill_locked,flat,1.0,1.0,,,0.0,own_stacks,1.0,,critical_strike,,1,0.5,0.0,0.0,0,0.0,1.0
 Negative_Each_minion_reserves_100_500_hp#1,Negative_Each_minion_reserves_100_500_hp,health_reserved,flat,100.0,500.0,,,0.0,minions_held,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
 Negative_80_99_of_your_health_is_reserved#1,Negative_80_99_of_your_health_is_reserved,health_reserved_percent,flat,80.0,99.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
+Positive_Your_support_ability_duration_is_increased_by_50#1,Positive_Your_support_ability_duration_is_increased_by_50,skill_duration,increased,50.0,100.0,Slot.Support,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
+Positive_Buff_effects_you_apply_last_30_60_longer#1,Positive_Buff_effects_you_apply_last_30_60_longer,buff_duration,increased,30.0,60.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
+Negative_Buff_effects_applied_to_you_last_30_50_less_ti#1,Negative_Buff_effects_applied_to_you_last_30_50_less_ti,buff_duration,increased,-30.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
+Positive_Debuff_effects_you_apply_last_30_60_longer#1,Positive_Debuff_effects_you_apply_last_30_60_longer,debuff_duration,increased,30.0,60.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
+Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de#1,Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de,debuff_duration,increased,50.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
+Negative_All_buffs_you_apply_to_yourself_now_last_25_les#1,Negative_All_buffs_you_apply_to_yourself_now_last_25_les,buff_duration,increased,-25.0,-25.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0

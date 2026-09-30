@@ -128,6 +128,28 @@ public:
 	static const TCHAR* MeleeReachMetresStat;
 
 	/**
+	 * The stats that lengthen what a skill itself sets going. Issue #1833,
+	 * ruled 2026-09-30 under the owner's delegation. `skill_duration` is every
+	 * duration a skill sets -- a buff's, an effect's, a mark's, a terrain's --
+	 * asked with the skill's tags, so "Your support ability duration is
+	 * increased by 50%-100%" is it scoped to `Slot.Support`. `buff_duration` is
+	 * a self-buff skill's buff alone, "Buff effects you apply last 30%-60%
+	 * longer". Neither has a gameplay attribute; both are in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* SkillDurationStat;
+	static const TCHAR* BuffDurationStat;
+
+	/**
+	 * What this skill's own durations are multiplied by: one plus the caster's
+	 * increases to `skill_duration`, and to `buff_duration` too when the
+	 * duration is a buff's, asked with this skill's tags. Floored at nought, so
+	 * a reduction past -100% ends a buff rather than reversing it. One when
+	 * the caster's ability system is not this project's.
+	 */
+	float OwnDurationMultiplier(bool bIsBuff) const;
+
+	/**
 	 * The radius of the ground this skill leaves, after area of effect.
 	 *
 	 * ALWAYS SCALED, unlike the radius above, because a zone's damage IS area
