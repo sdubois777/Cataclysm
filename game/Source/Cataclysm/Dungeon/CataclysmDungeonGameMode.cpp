@@ -6944,8 +6944,8 @@ void ACataclysmDungeonGameMode::StepCarrionFeast()
 	// A CONSECRATED AREA: ITS ZONE DRAWN WHEREVER IT IS MISSING, and a carcass that fell inside burned on this beat.
 	if (bAltarConsecrated)
 	{
-		UWorld* World = GetWorld();
-		ACataclysmFloorHazardSource* Source = World ? ACataclysmFloorHazardSource::ForFloor(World) : nullptr;
+		// THE FLOOR'S HAZARD SOURCE, which answers null for no world, as every rule's zone is owned.
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(GetWorld());
 		if (Source && !AltarZone.Get())
 		{
 			AltarZone = ACataclysmGroundZone::SpawnForTheFloor(
