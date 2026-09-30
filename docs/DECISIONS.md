@@ -71,7 +71,9 @@ whether losing a high-rarity drop for good feels fair.
 
 Asked by the coordinating session: for each writer of a creature's maximum health in the game module, which rule it
 is, whether it can meet this one on a floor, and whether either write erases the other's share. Read on this branch.
-Any two rows can meet on one floor through a Volatile dungeon's draw, so "can meet" is yes for every rule.
+A dungeon draws its rows from every Cataclysm active in the run (`UCataclysmDungeonModifierRules::PoolFor`), so
+two rules meet on one floor whenever both their Cataclysms are active in it; "can meet" is yes for every rule
+below, and no pair's Cataclysms were checked further.
 
 | Writer | Rule | Erases a share? | What this change does |
 | :-- | :-- | :-- | :-- |
