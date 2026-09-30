@@ -43,6 +43,14 @@ public:
 	/** Hard cap. Above 100% a critical strike chance means nothing. */
 	static constexpr float CritChanceCap = 100.0f;
 
+	/**
+	 * The stat that lowers this character's critical strike ceiling, read over
+	 * `MaxCritChance` where a blow takes its chance. Issue #1833: "Your critical
+	 * strike chance cannot exceed 30%-50%". No attribute of its own, so it is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* MaxCritChanceStat;
+
 	/** Soft cap. Recorded, and deliberately not enforced as a clamp. */
 	static constexpr float EvasionSoftCap = 60.0f;
 

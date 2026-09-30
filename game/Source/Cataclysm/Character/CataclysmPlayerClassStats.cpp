@@ -412,6 +412,22 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// added in UCataclysmDamageCalculation::Resolve after the roll. Issue
 		// #1833: "Your critical strikes ignore 20%-40% of enemy armor".
 		TEXT("critical_armor_penetration"),
+		// The critical strike ceiling, read over the MaxCritChance attribute in
+		// UCataclysmVitalAttributeSet where a blow takes its chance. Issue
+		// #1833: "Your critical strike chance cannot exceed 30%-50%".
+		TEXT("max_crit_chance"),
+		// The share of its maximum the energy shield regenerates to, read in
+		// UCataclysmRegeneration::ApplyStep. Issue #1833: "Your energy shield
+		// cannot recharge above 50% of its maximum".
+		TEXT("energy_shield_recharge_ceiling"),
+		// The share of a kill's experience granted, read by
+		// ACataclysmPlayerState::ExperienceAfterGain. Issue #1833: "Kills no
+		// longer generate any experience".
+		TEXT("experience_gain"),
+		// A share of the maximum mana added to a skill's cost, read in
+		// UCataclysmGameplayAbility::ManaCostFor with the skill's tags. Issue
+		// #1833: "Movement abilities cost 20%-50% of your maximum mana".
+		TEXT("mana_cost_as_maximum_mana_percent"),
 	};
 	return Stats;
 }

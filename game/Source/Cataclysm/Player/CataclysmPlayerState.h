@@ -135,6 +135,23 @@ public:
 	int32 GrantExperience(int64 Amount);
 
 	/**
+	 * The share of a kill's experience this character receives, as a
+	 * percentage over a base of 100, asked where the kill grants it. Issue
+	 * #1833: "Kills no longer generate any experience" removes it. No
+	 * attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* ExperienceGainStat;
+
+	/**
+	 * What a kill worth `Score` experience grants this character: the score
+	 * times `experience_gain` asked through its stat line over a base of 100,
+	 * rounded down, and the whole score unchanged when nothing moves it. Issue
+	 * #1833, ruled 2026-09-30: "Kills no longer generate any experience" removes
+	 * the stat, which leaves nothing.
+	 */
+	int64 ExperienceAfterGain(int32 Score) const;
+
+	/**
 	 * Put a saved level and progress back onto the character.
 	 *
 	 * CLAMPED RATHER THAN REFUSED, because this is reached from a save record

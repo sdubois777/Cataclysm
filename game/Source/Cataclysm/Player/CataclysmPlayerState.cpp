@@ -157,6 +157,25 @@ int32 ACataclysmPlayerState::GetCharacterLevel() const
 		: UCataclysmPlayerClassStats::ChosenLevel();
 }
 
+const TCHAR* ACataclysmPlayerState::ExperienceGainStat = TEXT("experience_gain");
+
+int64 ACataclysmPlayerState::ExperienceAfterGain(int32 Score) const
+{
+	const UCataclysmAbilitySystemComponent* Earner =
+		Cast<const UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Earner)
+	{
+		return Score;
+	}
+	const float Share = FMath::Max(0.0f, Earner->StatAppliedTo(
+		FName(ExperienceGainStat), FGameplayTagContainer(), 100.0f)) / 100.0f;
+	// UNCHANGED TO THE POINT WHEN NOTHING MOVES IT, so no rounding reaches a
+	// character without the row.
+	return FMath::IsNearlyEqual(Share, 1.0f)
+		? static_cast<int64>(Score)
+		: static_cast<int64>(FMath::FloorToDouble(static_cast<double>(Score) * Share));
+}
+
 int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 {
 	// GRANTING NOTHING CHANGES NOTHING, INCLUDING THE LEVEL, and that is worth

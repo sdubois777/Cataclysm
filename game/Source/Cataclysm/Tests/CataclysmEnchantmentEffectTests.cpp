@@ -10049,4 +10049,174 @@ bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmCeilingRowsTest
+{
+	/** Pin the critical strike roll for the life of this object. */
+	struct FPinnedCritRoll
+	{
+		explicit FPinnedCritRoll(float Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		~FPinnedCritRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCritCeilingRowTest,
+	"Cataclysm.Enchantments.TheCritCeilingRowStopsACriticalStrikeAboveIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your critical strike chance cannot exceed 30%-50%", worn at the top of its
+ * roll, is a ceiling of 50: a wearer at 100% chance critically strikes on a
+ * roll of 40 and not on a roll of 60. Issue #1833, `max_crit_chance` flat -50,
+ * the complement of the sentence's 50.
+ */
+bool FCataclysmCritCeilingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmCeilingRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Your_critical_strike_chance_cannot_exceed_30_50"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	// AFTER THE REFRESH, which writes nothing a wearer holding no weapon strikes with.
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
+	CataclysmEnchantmentEffectTest::FWearer Target(Worn.World);
+
+	const auto CriticalOn = [&](float Roll)
+	{
+		const FPinnedCritRoll Pinned(Roll);
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Worn.Wearer->Actor, Target.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
+		return Result.bWasCritical;
+	};
+	TestTrue(TEXT("a roll of 40 is under the ceiling of 50: a critical strike"), CriticalOn(40.0f));
+	TestFalse(TEXT("a roll of 60 is over it: no critical strike, though the chance is 100%"), CriticalOn(60.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShieldCeilingRowTest,
+	"Cataclysm.Enchantments.TheShieldCeilingRowStopsRegenerationAtHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your energy shield cannot recharge above 50% of its maximum": a shield of
+ * 400 of 1000 regenerating 1000 a second stops at 500. Issue #1833,
+ * `energy_shield_recharge_ceiling` flat -50 on a base of 100.
+ */
+bool FCataclysmShieldCeilingRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Your_energy_shield_cannot_recharge_above_50_of"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 1000.0f);
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 400.0f);
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(), 1000.0f);
+	UCataclysmRegeneration::ApplyStep(Worn.Wearer->Actor, 1.0f, 100.0f);
+	TestEqual(TEXT("a second of regeneration stops at half the maximum, 500"),
+			  ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()),
+			  500.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoExperienceRowTest,
+	"Cataclysm.Enchantments.TheNoExperienceRowRemovesExperienceGain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Kills no longer generate any experience" removes `experience_gain`, so the
+ * share a kill grants, asked over its base of 100, is nothing. Issue #1833.
+ * `ACataclysmPlayerState::ExperienceAfterGain` is what asks it, measured by the
+ * stat's probe; a wearer here is no player state.
+ */
+bool FCataclysmNoExperienceRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Kills_no_longer_generate_any_experience"), false);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the share of experience a kill grants: nothing"),
+			  Worn.ASC()->StatAppliedTo(FName(ACataclysmPlayerState::ExperienceGainStat),
+										FGameplayTagContainer(), 100.0f),
+			  0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMovementManaRowTest,
+	"Cataclysm.Enchantments.TheMovementManaRowAddsHalfTheMaximumToAMovementSkillOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Movement abilities cost 20%-50% of your maximum mana", worn at the top: a
+ * Movement skill costs its own mana plus 500 of a maximum of 1000, and a
+ * Special skill only its own. Issue #1833, `mana_cost_as_maximum_mana_percent`
+ * scoped to Slot.Movement, PLUS the normal cost.
+ */
+bool FCataclysmMovementManaRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Movement_abilities_cost_20_50_of_your_maximum"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+
+	const auto SkillIn = [&](ECataclysmAbilitySlot Slot, const TCHAR* SlotTag) -> UCataclysmStrikeSkill*
+	{
+		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), Slot, /*Level=*/1, Worn.Wearer->Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmStrikeSkill* Skill = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(SlotTag);
+		}
+		return Skill;
+	};
+	const UCataclysmStrikeSkill* Dash = SkillIn(ECataclysmAbilitySlot::Movement, TEXT("Slot.Movement"));
+	const UCataclysmStrikeSkill* Strike = SkillIn(ECataclysmAbilitySlot::Special, TEXT("Slot.Special"));
+	if (!TestNotNull(TEXT("a movement skill"), Dash) || !TestNotNull(TEXT("a special skill"), Strike))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a movement skill: its own cost plus half the maximum mana"),
+			  Dash->ManaCostFor(ASC), Dash->GetManaCost() + 500.0f, 0.01f);
+	TestEqual(TEXT("a special skill: its own cost only"),
+			  Strike->ManaCostFor(ASC), Strike->GetManaCost(), 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

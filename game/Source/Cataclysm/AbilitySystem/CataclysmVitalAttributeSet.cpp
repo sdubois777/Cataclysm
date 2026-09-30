@@ -829,9 +829,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						// passes through that clamp, so a skill stating 80% on a
 						// character an enchantment has capped at 30% would
 						// otherwise land at 80%. Issue #680.
+						//
+						// AND THE CEILING IS ASKED THROUGH THE PIPELINE, over the
+						// attribute. Issue #1833, ruled 2026-09-30: "Your critical
+						// strike chance cannot exceed 30%-50%" is `max_crit_chance`
+						// flat -70 to -50 on the attribute's 100. Clamped to the
+						// attribute, so a row can lower the ceiling and never raise it,
+						// the owner's ruling of 2026-08-17.
+						const float Ceiling = Asking
+							? FMath::Clamp(Asking->StatAppliedTo(
+											  FName(UCataclysmCombatAttributeSet::MaxCritChanceStat),
+											  AssetTags, Offence->GetMaxCritChance()),
+										  0.0f, Offence->GetMaxCritChance())
+							: Offence->GetMaxCritChance();
 						Hit.CritChance = FMath::Min(
-							Stated >= 0.0f ? Stated : OwnCritChance,
-							Offence->GetMaxCritChance());
+							Stated >= 0.0f ? Stated : OwnCritChance, Ceiling);
 
 						// THE MULTIPLIER IS ASKED FOR TOO, AND FOR THE SAME
 						// REASON THE CHANCE IS. Issue #947 lists it among the
