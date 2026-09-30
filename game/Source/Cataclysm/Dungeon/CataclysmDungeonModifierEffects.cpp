@@ -276,6 +276,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::ForcedTithesKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PactOfTemptationKey =
 	TEXT("Demonic_Pact_of_Temptation");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BloodPriceKey =
+	TEXT("Demonic_Blood_Price");
+
 const TCHAR* UCataclysmDungeonModifierEffects::PactName(int32 Pact)
 {
 	switch (Pact)
@@ -766,6 +769,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(WarBannerKey)
 		|| RowKey == FName(ForcedTithesKey)
 		|| RowKey == FName(PactOfTemptationKey)
+		|| RowKey == FName(BloodPriceKey)
 		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
 		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -1010,6 +1014,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(WarBannerKey),
 		FName(ForcedTithesKey),
 		FName(PactOfTemptationKey),
+		FName(BloodPriceKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),

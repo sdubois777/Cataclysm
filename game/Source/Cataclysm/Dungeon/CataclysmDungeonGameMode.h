@@ -2190,6 +2190,9 @@ public:
 	const TArray<int32>& PactCursesTaken() const { return PactCurseCounts; }
 	int32 PactsTakenNow() const { return PactsTaken; }
 
+	/** Blood Price, for the panel and tests: the bleed stacks this dungeon has left on the player. */
+	int32 BloodPriceStacksHeld() const { return BloodPriceStacks; }
+
 	/**
 	 * Where a rule standing an altar at the floor's exit puts it: THE EXIT CELL FOR THE FIRST, and for each after it the
 	 * next walkable cell beside the exit, so two altars never share a cell. The first is the earliest in a fixed order
@@ -2950,6 +2953,19 @@ private:
 	/** Pact of Temptation, on the beat: Greed's curse on every creature, and the buff and curses on the player. */
 	void StepPactOfTemptation(class ACataclysmPlayerCharacter* Player,
 							  class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The choice screen's rule half: a choice sent to the rule that placed the object, answering whether anything
+	 * happened. `ChooseAtFloorObject` wraps it, so a rule that prices every choice -- Blood Price -- asks once.
+	 */
+	bool ChooseAtFloorObjectForItsRule(class ACataclysmFloorObject* Object, FName ChoiceKey);
+
+	/** Blood Price: the price of a choice that acted, from the health the player had before it, and a bleed stack. */
+	void PayTheBloodPrice(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem,
+						  float HealthBefore);
+
+	/** Blood Price, on the beat: the buttons priced, the bleed once a second, and the bleed keyword while it is held. */
+	void StepBloodPrice(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** A floor object at this point, carrying the rule's key, the name and the prompt given. Issues #1820 and #41. */
 	class ACataclysmFloorObject* PlaceFloorObjectAt(FName RuleKey, const FVector& Where, const FString& DisplayName,
@@ -4497,6 +4513,15 @@ private:
 	TArray<int32> PactCursesApplied = {0, 0, 0, 0, 0};
 	bool bPactWritten = false;
 	int32 PactPanelKey = -1;
+
+	/**
+	 * Blood Price: the bleed stacks this dungeon has left, the clock to the next second's bleed, whether the player
+	 * carries the bleed keyword, and what the panel last showed. The dungeon's, cleared on leaving it. Issues #1820, #41.
+	 */
+	int32 BloodPriceStacks = 0;
+	float BloodPriceSecondsSinceBleed = 0.0f;
+	bool bBloodPriceTagged = false;
+	int32 BloodPricePanelStacks = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
