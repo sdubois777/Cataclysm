@@ -4815,3 +4815,22 @@ def test_infernal_beacons_row_still_names_activating_power_for_enemies_and_magic
         assert phrase in lower, (
             f"Demonic_Infernal_Beacons no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "InfernalBeaconsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_war_banner_row_still_names_planting_an_aura_waves_and_a_defended_period():
+    """The phrases the rule's readings rest on.
+
+    "Players can plant a "War Banner" that grants significant buffs in a radius but also attracts waves of enemies. The
+    banner must be defended for a certain period to gain its full benefits." CAN PLANT is the floor object's choice;
+    BUFFS IN A RADIUS is the aura inside its zone; ATTRACTS WAVES OF ENEMIES is a wave every fifteen seconds held;
+    DEFENDED FOR A CERTAIN PERIOD is sixty seconds standing inside; FULL BENEFITS is the doubled aura. If any of them
+    changes, the reading must be revisited.
+    """
+    words = flat(rows()["War_War_Banner"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("can plant", "buffs in a radius", "attracts waves of enemies", "defended for a certain period",
+                   "full benefits"):
+        assert phrase in lower, (
+            f"War_War_Banner no longer says {phrase.upper()!r}. A reading of the rule rests on it; see WarBannerKey "
+            "in CataclysmDungeonModifierEffects.h. " + words)

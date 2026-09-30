@@ -626,6 +626,9 @@ public:
 	/** "Chaos Spawn" under the bar of a creature a Pandora's Box's waves brought, or empty. Issues #1820 and #41. */
 	static FString ChaosSpawnTextFor(const AActor* Actor);
 
+	/** "Assailant" under the bar of a creature a War Banner's waves brought, or empty. Issues #1820 and #41. */
+	static FString BannerAssailantTextFor(const AActor* Actor);
+
 	/**
 	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
 	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.
