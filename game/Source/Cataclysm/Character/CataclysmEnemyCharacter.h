@@ -1262,6 +1262,24 @@ public:
 	bool bIsPanicked = false;
 
 	/**
+	 * The Contagion stacks this creature's touches put on the player. Issues #1820 and #41, Contagious Touch. The
+	 * player's count is the sum over the living creatures, so killing this one removes exactly these: the row's "the
+	 * only way to remove the debuff is to kill the enemy that applied it". It says "Infecting N" under its bar.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 ContagionStacksApplied = 0;
+
+	/**
+	 * True only while `AttackTarget` sends a Contagious Touch. `UCataclysmVitalAttributeSet` reads it off the blow's
+	 * causer, as it reads Perfect Aim, and keeps nothing of the blow but whether it was evaded. Issues #1820 and #41.
+	 *
+	 * A FLAG ON THE CAUSER AND NOT A TAG ON THE BLOW, because a new gameplay tag is generated from the design
+	 * workbook's Tags sheet (`tools/generate_gameplay_tags.py`). The blow is Instant, so it is resolved inside the
+	 * call that sets and clears this.
+	 */
+	bool bSwingIsAContagiousTouch = false;
+
+	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.
 	 *

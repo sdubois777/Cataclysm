@@ -2556,6 +2556,30 @@ public:
 	static const TCHAR* MoraleBreakKey;
 
 	/**
+	 * The row where a creature's touch puts a stack on the player instead of damage, and every hit the player lands
+	 * costs them a share of the struck creature's health for each stack. Issues #1820 and #41.
+	 *
+	 * "Enemies no longer deal damage on contact. Instead, they apply a stacking "Contagion" debuff. When you hit an
+	 * enemy, you take a percentage of their total health as damage for every stack of the debuff. The only way to
+	 * remove the debuff is to kill the enemy that applied it."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - CONTACT IS A CREATURE'S BASIC ATTACK (`ACataclysmEnemyCharacter::AttackTarget`) at the player. It deals nothing
+	 *   and adds `ContagiousTouchStacksPerTouch`, up to `ContagiousTouchMostStacks` in total. Charges, stomps, leaps,
+	 *   projectiles and auras still deal damage.
+	 * - EVASION STOPS A STACK, asked of the damage calculation's own evasion step through the whole pipeline; block,
+	 *   which only halves a blow, does not.
+	 * - EACH CREATURE COUNTS THE STACKS IT APPLIED (`ContagionStacksApplied`); the player carries the sum over the
+	 *   living, so killing a creature removes exactly its stacks.
+	 * - EACH HIT THE PLAYER LANDS on a creature costs the player `ContagiousTouchPercentPerStack` of THAT creature's
+	 *   maximum health for every stack carried, charged per hit, so an area skill striking ten creatures pays ten
+	 *   times: the literal reading. Minions' hits do not count. Dealt from the floor's hazard source, typed as the row
+	 *   as Raw Sewage's burn is, as an area blow so it cannot be evaded, and so never heard as the player's own hit.
+	 */
+	static const TCHAR* ContagiousTouchKey;
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5402,6 +5426,24 @@ public:
 	static bool MoraleBreakReturnIsDue(float SecondsAway)
 	{
 		return SecondsAway >= MoraleBreakReturnSeconds - KINDA_SMALL_NUMBER;
+	}
+
+	/** Contagious Touch's figures, every one a play-test value. See the key. */
+	static constexpr float ContagiousTouchPercentPerStack = 1.0f;
+	static constexpr int32 ContagiousTouchMostStacks = 10;
+	static constexpr int32 ContagiousTouchStacksPerTouch = 1;
+
+	/** Contagious Touch: how many stacks one more touch adds when the player carries this many in total. */
+	static int32 ContagiousTouchStacksAdded(int32 Carried)
+	{
+		return FMath::Clamp(ContagiousTouchMostStacks - Carried, 0, ContagiousTouchStacksPerTouch);
+	}
+
+	/** Contagious Touch: what one hit on a creature of this maximum health costs the player at this many stacks. */
+	static float ContagiousTouchRetaliation(float StruckMaxHealth, int32 Stacks)
+	{
+		return FMath::Max(0.0f, StruckMaxHealth) * FMath::Clamp(Stacks, 0, ContagiousTouchMostStacks)
+			* ContagiousTouchPercentPerStack / 100.0f;
 	}
 
 	/**

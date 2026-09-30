@@ -37165,4 +37165,376 @@ bool FCataclysmMoraleBreakHordeLeaderTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Pestilence_Contagious_Touch. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ContagionRow(UCataclysmDungeonModifierEffects::ContagiousTouchKey);
+
+	/** Sets the player's evasion. Uncapped, so 1000 evades every roll and 0 none. */
+	void SetPlayerEvasion(const FPossessedPlayer& Player, float Evasion)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), Evasion);
+	}
+
+	/**
+	 * A dungeon carrying only Contagious Touch, on floor 2, with a player of a hundred thousand health who evades
+	 * nothing.
+	 */
+	ACataclysmDungeonGameMode* AContagionFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {ContagionRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !GiveThePlayerHealthForTypedDamage(Test, Player))
+		{
+			return nullptr;
+		}
+		SetPlayerEvasion(Player, 0.0f);
+		return Mode;
+	}
+
+	/** A creature beside the player with 1000 health that swings for 100, or null. */
+	ACataclysmEnemyCharacter* AToucher(UWorld* World, const FPossessedPlayer& Player, float Along)
+	{
+		ACataclysmEnemyCharacter* Creature = SpawnCreatureWithHealth(
+			World, Player.Character->GetActorLocation() + FVector(Along, 0.0f, 0.0f), 1000.0f);
+		if (Creature && GiveCreatureAttackDamage(Creature, 100.0f) <= 0.0f)
+		{
+			return nullptr;
+		}
+		return Creature;
+	}
+
+	/** `Times` swings of `Creature`'s basic attack at the player. */
+	void Touch(ACataclysmEnemyCharacter* Creature, const FPossessedPlayer& Player, int32 Times)
+	{
+		for (int32 Index = 0; Index < Times; ++Index)
+		{
+			Creature->AttackTarget(Player.Character);
+		}
+	}
+}
+
+// THE FIGURES: 1% OF THE STRUCK CREATURE'S MAXIMUM A STACK, TEN STACKS IN ALL, ONE A TOUCH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchFiguresTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchFiguresShareCapAndStacksPerTouch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("1% a stack"), Effects::ContagiousTouchPercentPerStack, 1.0f, 0.001f);
+	TestEqual(TEXT("ten stacks in all"), Effects::ContagiousTouchMostStacks, 10);
+	TestEqual(TEXT("one a touch"), Effects::ContagiousTouchStacksPerTouch, 1);
+	TestEqual(TEXT("a touch at none adds one"), Effects::ContagiousTouchStacksAdded(0), 1);
+	TestEqual(TEXT("at nine, one"), Effects::ContagiousTouchStacksAdded(9), 1);
+	TestEqual(TEXT("at ten, none"), Effects::ContagiousTouchStacksAdded(10), 0);
+	TestEqual(TEXT("past ten, none"), Effects::ContagiousTouchStacksAdded(11), 0);
+	TestEqual(TEXT("no stack costs nothing"), Effects::ContagiousTouchRetaliation(1000.0f, 0), 0.0f, 0.001f);
+	TestEqual(TEXT("three stacks, 3% of 1000"), Effects::ContagiousTouchRetaliation(1000.0f, 3), 30.0f, 0.001f);
+	TestEqual(TEXT("never past ten"), Effects::ContagiousTouchRetaliation(1000.0f, 12), 100.0f, 0.001f);
+	return true;
+}
+
+// A SWING AT THE PLAYER DEALS NOTHING AND ADDS A STACK; OFF THE ROW IT DEALS DAMAGE; A BLOW THAT IS NOT THE BASIC
+// ATTACK STILL DEALS DAMAGE ON THE ROW.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchSwingTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchASwingDealsNothingAndAddsAStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchSwingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+
+	// THE CONTROL, ON A FLOOR WITHOUT THE ROW: THE SAME SWING DEALS DAMAGE.
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	SetPlayerEvasion(Player, 0.0f);
+	ACataclysmEnemyCharacter* Plain = AToucher(World, Player, 200.0f);
+	if (!TestNotNull(TEXT("a creature for the control"), Plain))
+	{
+		return false;
+	}
+	const float BeforeControl = HealthOf(Player.Character);
+	Touch(Plain, Player, 1);
+	TestTrue(TEXT("off the row a swing deals damage"), HealthOf(Player.Character) < BeforeControl);
+	TestEqual(TEXT("and adds no stack"), Plain->ContagionStacksApplied, 0);
+
+	// ON THE ROW.
+	Mode->DungeonModifiers = {ContagionRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	SetPlayerEvasion(Player, 0.0f);
+	ACataclysmEnemyCharacter* Toucher = AToucher(World, Player, 200.0f);
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher))
+	{
+		return false;
+	}
+	const float Before = HealthOf(Player.Character);
+	Touch(Toucher, Player, 1);
+	TestEqual(TEXT("on the row a swing deals nothing"), HealthOf(Player.Character), Before, 0.01f);
+	TestEqual(TEXT("and adds one stack to the creature"), Toucher->ContagionStacksApplied, 1);
+	TestEqual(TEXT("which the player carries"), Mode->ContagionStacksNow(), 1);
+	TestTrue(TEXT("\"Infecting 1\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Toucher).Contains(TEXT("Infecting 1")));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(ContagionRow),
+			  FString(TEXT("contagious touch: 1 stacks, hits cost 1% of the target's health")));
+
+	// A BLOW THAT IS NOT THE BASIC ATTACK -- a charge, a stomp, a projectile -- STILL DEALS DAMAGE.
+	UCataclysmSkillEffects::ApplyHit(Toucher, Player.Character, 100.0f);
+	TestTrue(TEXT("a blow that is not contact still deals damage"), HealthOf(Player.Character) < Before);
+	TestEqual(TEXT("and adds no stack"), Toucher->ContagionStacksApplied, 1);
+	return true;
+}
+
+// TEN STACKS IN ALL, ACROSS THE CREATURES THAT APPLIED THEM; A TOUCH AT TEN ADDS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchCapTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchStacksStopAtTenAcrossCreatures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* First = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Second = Mode ? AToucher(World, Player, -200.0f) : nullptr;
+	if (!TestNotNull(TEXT("a first creature"), First) || !TestNotNull(TEXT("and a second"), Second))
+	{
+		return false;
+	}
+	Touch(First, Player, 7);
+	Touch(Second, Player, 5);
+	TestEqual(TEXT("seven from the first"), First->ContagionStacksApplied, 7);
+	TestEqual(TEXT("three from the second, the rest refused at ten"), Second->ContagionStacksApplied, 3);
+	TestEqual(TEXT("ten in all"), Mode->ContagionStacksNow(), 10);
+	Touch(First, Player, 1);
+	TestEqual(TEXT("a touch at ten adds nothing"), Mode->ContagionStacksNow(), 10);
+	TestEqual(TEXT("to anyone"), First->ContagionStacksApplied, 7);
+	return true;
+}
+
+// AN EVADED TOUCH ADDS NO STACK, ASKED OF THE PIPELINE'S OWN EVASION STEP; ONE THAT LANDS DOES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchEvadedTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchAnEvadedTouchAddsNoStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchEvadedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher))
+	{
+		return false;
+	}
+	SetPlayerEvasion(Player, 1000.0f);
+	Touch(Toucher, Player, 3);
+	TestEqual(TEXT("three evaded touches add no stack"), Toucher->ContagionStacksApplied, 0);
+	SetPlayerEvasion(Player, 0.0f);
+	Touch(Toucher, Player, 1);
+	TestEqual(TEXT("one that lands adds one"), Toucher->ContagionStacksApplied, 1);
+	return true;
+}
+
+// A HIT THE PLAYER LANDS COSTS 1% OF THE STRUCK CREATURE'S MAXIMUM HEALTH FOR EVERY STACK, TYPED AS THE ROW AND DEALT
+// FROM THE FLOOR'S HAZARD SOURCE; A BLOW THE PLAYER DID NOT STRIKE COSTS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchRetaliationTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchAHitCostsOnePercentOfTheTargetsMaximumPerStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchRetaliationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Struck = Mode
+		? SpawnCreatureWithHealth(World, Player.Character->GetActorLocation() + FVector(0.0f, 200.0f, 0.0f), 50000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher) || !TestNotNull(TEXT("and one to strike"), Struck))
+	{
+		return false;
+	}
+	Struck->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	Touch(Toucher, Player, 3);
+	if (!TestEqual(TEXT("set-up: three stacks"), Mode->ContagionStacksNow(), 3))
+	{
+		return false;
+	}
+
+	// WHAT 3% OF 50,000 FROM THE FLOOR'S HAZARD SOURCE, TYPED AS THE ROW, COSTS THIS PLAYER, measured on the player.
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Full = Player.Read(Health);
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.DamageType = FName(TEXT("Pestilence"));
+	UCataclysmSkillEffects::ApplyDirectDamage(ACataclysmFloorHazardSource::ForFloor(World), Player.Character,
+											  1500.0f, Delivery);
+	const float Expected = Full - Player.Read(Health);
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Full);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the reference cost something: %.1f"), Expected), Expected > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Struck, 100.0f);
+	TestTrue(TEXT("the player's hit landed"), HealthOf(Struck) < 50000.0f);
+	TestEqual(TEXT("and cost the player 3% of the struck creature's maximum"), Full - Player.Read(Health), Expected, 0.5f);
+
+	// A BLOW THE PLAYER DID NOT STRIKE -- one creature on another -- COSTS THE PLAYER NOTHING.
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Full);
+	UCataclysmSkillEffects::ApplyHit(Toucher, Struck, 100.0f);
+	TestEqual(TEXT("a blow the player did not strike costs nothing"), Player.Read(Health), Full, 0.01f);
+	return true;
+}
+
+// KILLING A CREATURE REMOVES EXACTLY THE STACKS IT APPLIED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchKillTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchKillingACreatureRemovesItsStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* First = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Second = Mode ? AToucher(World, Player, -200.0f) : nullptr;
+	if (!TestNotNull(TEXT("a first creature"), First) || !TestNotNull(TEXT("and a second"), Second))
+	{
+		return false;
+	}
+	Touch(First, Player, 2);
+	Touch(Second, Player, 3);
+	if (!TestEqual(TEXT("set-up: five stacks"), Mode->ContagionStacksNow(), 5) || !KillIt(*this, Player, First))
+	{
+		return false;
+	}
+	TestEqual(TEXT("killing the first removes its two"), Mode->ContagionStacksNow(), 3);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(ContagionRow),
+			  FString(TEXT("contagious touch: 3 stacks, hits cost 3% of the target's health")));
+	if (!KillIt(*this, Player, Second))
+	{
+		return false;
+	}
+	TestEqual(TEXT("killing the second removes the rest"), Mode->ContagionStacksNow(), 0);
+	return true;
+}
+
+// THE RETALIATION IS NOT HEARD AS THE PLAYER'S OWN HIT, SO IT CANNOT FEED ITSELF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchNotHeardTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchTheRetaliationIsNotHeardAsThePlayersHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchNotHeardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Struck = Mode
+		? SpawnCreatureWithHealth(World, Player.Character->GetActorLocation() + FVector(0.0f, 200.0f, 0.0f), 50000.0f)
+		: nullptr;
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher) || !TestNotNull(TEXT("and one to strike"), Struck)
+		|| !TestNotNull(TEXT("the world announces hits"), Events))
+	{
+		return false;
+	}
+	Struck->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	Touch(Toucher, Player, 2);
+	if (!TestEqual(TEXT("set-up: two stacks"), Mode->ContagionStacksNow(), 2))
+	{
+		return false;
+	}
+
+	AActor* const You = Player.Character;
+	int32 ByThePlayer = 0;
+	int32 OnThePlayer = 0;
+	int32 OnThePlayerByThePlayer = 0;
+	const FDelegateHandle Heard = Events->OnHit.AddLambda(
+		[You, &ByThePlayer, &OnThePlayer, &OnThePlayerByThePlayer](const FCataclysmHitNotice& Notice)
+		{
+			ByThePlayer += Notice.Attacker == You ? 1 : 0;
+			OnThePlayer += Notice.Target == You ? 1 : 0;
+			OnThePlayerByThePlayer += (Notice.Target == You && Notice.Attacker == You) ? 1 : 0;
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Heard); };
+
+	const float Before = HealthOf(Player.Character);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Struck, 100.0f);
+	TestTrue(TEXT("the retaliation reached the player"), HealthOf(Player.Character) < Before);
+	TestEqual(TEXT("one hit heard from the player: its own, on the creature"), ByThePlayer, 1);
+	TestEqual(TEXT("the retaliation is heard on the player once"), OnThePlayer, 1);
+	TestEqual(TEXT("and not as the player's own hit"), OnThePlayerByThePlayer, 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

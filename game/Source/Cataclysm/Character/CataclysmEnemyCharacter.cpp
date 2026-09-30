@@ -31,6 +31,7 @@
 // For what a kill drops. The rules live in the item module; this file
 // only says when they run and where the result lands.
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Items/CataclysmDropRoll.h"
@@ -1904,6 +1905,34 @@ void ACataclysmEnemyCharacter::SetEnergyShieldFraction(float NewFraction)
 
 void ACataclysmEnemyCharacter::AttackTarget(AActor* Target)
 {
+	// ON A FLOOR CARRYING CONTAGIOUS TOUCH, A SWING AT THE PLAYER IS A TOUCH: it deals nothing and, unless the player
+	// evades it, adds one Contagion stack. Issues #1820 and #41. Only the basic attack is contact, as ruled; a charge, a
+	// stomp, a leap, a projectile or an aura still deals its damage, and a swing at anything but the player (a minion,
+	// or a maddened ally) is dealt as always, since the debuff is the player's.
+	//
+	// EVADED OR NOT IS ASKED OF THE REAL PIPELINE, as ruled: the swing is sent through `ApplyHit` as it always is, with
+	// `bSwingIsAContagiousTouch` set, and the attribute set keeps only the evasion step's answer. No second roll and
+	// no copy of the evasion formula or of the conditions it reads. The defender's resolved-hit stamp tells a blow that
+	// reached the pipeline from one refused before it -- an untargetable player -- which is not a touch.
+	ACataclysmDungeonGameMode* Floor = ACataclysmDungeonGameMode::InWorld(GetWorld());
+	if (Floor && Floor->ContagiousTouchIsOn() && Cast<ACataclysmPlayerCharacter>(Target))
+	{
+		UCataclysmAbilitySystemComponent* Touched =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+		const uint32 Before = Touched ? Touched->GetResolvedHitStamp() : 0;
+		FCataclysmDamageResult Touch;
+		bSwingIsAContagiousTouch = true;
+		UCataclysmSkillEffects::ApplyHit(
+			this, Target, AttackPercentOfOwnDamage,
+			UCataclysmSkillShapes::TagsFromCell(BasicAttackTags), FCataclysmHitDelivery(), &Touch);
+		bSwingIsAContagiousTouch = false;
+		if (Touched && Touched->GetResolvedHitStamp() != Before && !Touch.bEvaded)
+		{
+			Floor->NoteContagiousTouch(this);
+		}
+		return;
+	}
+
 	// The same path a player's skill takes: written into the Damage meta
 	// attribute and resolved through the full mitigation order. An enemy with no
 	// attack damage set deals nothing and says so once, which ApplyHit handles.

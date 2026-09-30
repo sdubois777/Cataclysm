@@ -4722,3 +4722,22 @@ def test_morale_break_row_still_names_a_leader_a_flight_an_escape_and_a_return()
         assert phrase in lower, (
             f"War_Morale_Break no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "MoraleBreakKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_contagious_touch_row_still_names_contact_a_stack_a_share_per_stack_and_the_applier():
+    """The phrases the rule's readings rest on.
+
+    "Enemies no longer deal damage on contact. Instead, they apply a stacking "Contagion" debuff. When you hit an
+    enemy, you take a percentage of their total health as damage for every stack of the debuff. The only way to remove
+    the debuff is to kill the enemy that applied it." ON CONTACT is the basic attack; WHEN YOU HIT AN ENEMY is each hit
+    the player lands; THEIR TOTAL HEALTH is the struck creature's maximum; FOR EVERY STACK is every stack carried; KILL
+    THE ENEMY THAT APPLIED IT is each creature counting its own. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Contagious_Touch"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("no longer deal damage on contact", "stacking", "when you hit an enemy",
+                   "percentage of their total health", "for every stack", "kill the enemy that applied it"):
+        assert phrase in lower, (
+            f"Pestilence_Contagious_Touch no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "ContagiousTouchKey in CataclysmDungeonModifierEffects.h. " + words)

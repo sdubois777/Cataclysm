@@ -1727,6 +1727,9 @@ private:
 	 */
 	void NoteDeathForSporeClouds(const struct FCataclysmDeathNotice& Notice);
 
+	/** Contagious Touch: a creature that applied stacks died, so the panel says what is left. Issue #41. */
+	void NoteDeathForContagiousTouch(const struct FCataclysmDeathNotice& Notice);
+
 	/**
 	 * Hellfire's explosion, on a creature the player killed. Issues #1820 and
 	 * #41.
@@ -1977,6 +1980,21 @@ public:
 
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
+
+	/** Contagious Touch: whether this floor carries it. Issues #1820 and #41. */
+	bool ContagiousTouchIsOn() const;
+
+	/** Contagious Touch: the stacks the player carries, the sum over the living creatures that applied them. */
+	int32 ContagionStacksNow() const;
+
+	/** Contagious Touch: a creature's touch landed on the player, so it applies one stack more, up to the most. */
+	void NoteContagiousTouch(ACataclysmEnemyCharacter* Toucher);
+
+	/**
+	 * The dungeon game mode in this world, or null. FOUND BY WALKING THE LEVEL, as the player's revival finds it,
+	 * because a world built for a test has no authority game mode and no test can supply one.
+	 */
+	static ACataclysmDungeonGameMode* InWorld(UWorld* World);
 
 	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
@@ -3031,6 +3049,9 @@ private:
 	 * twentieth blow. Recorded on #1820 rather than fixed here.
 	 */
 	void NoteHitForBrandOfTheAggressor(const struct FCataclysmHitNotice& Notice);
+
+	/** Contagious Touch: a hit the player landed on a creature costs them its share for every stack. Issue #41. */
+	void NoteHitForContagiousTouch(const struct FCataclysmHitNotice& Notice);
 
 	/**
 	 * Put the floor panel's lines back on the screen, carrying whatever the

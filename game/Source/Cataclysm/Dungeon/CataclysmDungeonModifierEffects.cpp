@@ -224,6 +224,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PlaguebearerKey =
 const TCHAR* UCataclysmDungeonModifierEffects::MoraleBreakKey =
 	TEXT("War_Morale_Break");
 
+const TCHAR* UCataclysmDungeonModifierEffects::ContagiousTouchKey =
+	TEXT("Pestilence_Contagious_Touch");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -596,6 +599,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DemonicGuideKey)
 		|| RowKey == FName(PlaguebearerKey)
 		|| RowKey == FName(MoraleBreakKey)
+		|| RowKey == FName(ContagiousTouchKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
@@ -833,6 +837,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(CarrionFeastKey),
 		FName(PlaguebearerKey),
 		FName(MoraleBreakKey),
+		FName(ContagiousTouchKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),

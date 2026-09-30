@@ -2,6 +2,135 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Contagious Touch: a creature's swing at the player deals nothing and adds a stack, up to ten; each hit the player lands costs 1% of the struck creature's maximum health per stack; killing a creature removes its stacks
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the stacks a creature applied,
+the touch flag, and the basic attack); `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (a touch
+keeps only whether it was evaded); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the count, the
+retaliation, the panel line, and finding the game mode by walking the level);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Infecting N"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+
+### The row
+
+`Pestilence_Contagious_Touch` in `game/Data/DungeonModifiers.csv`, weight 10: "Enemies no longer deal damage on contact.
+Instead, they apply a stacking "Contagion" debuff. When you hit an enemy, you take a percentage of their total health as
+damage for every stack of the debuff. The only way to remove the debuff is to kill the enemy that applied it." It states
+no figure.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md` and this log on 2026-09-30. The design document does not name the row. This log's
+Necrotic Ground entry holds **the Contagious Touch probe**: a creature blow of zero damage is not announced as a hit,
+because `UCataclysmCombatEvents::NoteBlow` is reached only when the blow dealt something. So this rule could not learn of a
+touch by listening for hits, and the creature's swing reports it instead. `ACataclysmDungeonGameMode::OnSomethingWasHit`
+already named this row as a listener it expected.
+
+### What the rule does
+
+On a floor carrying the row, a creature's basic attack at the player (`ACataclysmEnemyCharacter::AttackTarget`) deals
+nothing. Unless the player evades it, it adds one Contagion stack to that creature's own count, up to ten across every
+creature. The creature says "Infecting N" under its bar. The player carries the sum over the living creatures, so killing
+a creature removes exactly the stacks it applied. Each hit the player lands on a creature costs the player 1% of that
+creature's maximum health for every stack carried, charged per hit. The panel reads "contagious touch: 3 stacks, hits
+cost 3% of the target's health". A charge, a stomp, a leap, a projectile or an aura still deals its damage, and a swing at
+anything but the player is dealt as always.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **Contact is a creature's basic attack**: it deals no damage and adds one stack.
+- **Evasion stops a stack**, asked of the damage calculation's existing evasion step with its conditional evasion stats:
+  no second roll and no copy of its formula. Block, which halves a blow and never stops one, does not stop a stack.
+- **Each creature counts the stacks it applied**, as a field on the creature, and the player's total is the sum over
+  the living.
+- **Ten stacks in total**; a touch at ten adds nothing.
+- **The literal reading of the cost**: each hit the player lands costs 1% of the struck creature's maximum health per
+  stack carried, charged per hit, so an area skill striking ten creatures pays ten times. Dealt from the floor's hazard
+  source. Minions' hits do not count. Brand of the Aggressor's three checks: the blow landed, the player struck it, and
+  it struck a creature.
+- **The damage type**: read from what Raw Sewage's disease deals first. Raw Sewage's burn is typed as its own row,
+  `const FName Type = DungeonGameModeTypeOfRow(Effects::RawSewageKey);` in `StepRawSewage` in
+  `CataclysmDungeonGameMode.cpp`, which reads the row's Cataclysm column. So this rule is typed as its own row the same
+  way, which is Pestilence.
+- **The labels and the panel line**; the player has no status line of its own, so the panel line is the player's.
+
+**On the owner's play-check list**, added by the coordinating session: whether the cost against high-health creatures (an
+Elite or a boss at ten stacks costs 10% of that creature's maximum per hit) is fair against the player's health, and
+whether an area skill should pay once per use instead.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **How evasion is asked without a second roll.** The facts the evasion step reads -- the striker's Perfect Aim, a
+  keystone that stops melee evasion, melee or ranged, a boss, the striker's state and distance -- are filled from the
+  gameplay effect in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, so building them anywhere else would copy
+  them. The swing is therefore sent through `ApplyHit` as always, with `bSwingIsAContagiousTouch` set on the creature, and
+  the attribute set, straight after `UCataclysmDamageCalculation::Resolve`, keeps only the evasion answer, records it as
+  every blow's result is recorded, and stops: nothing is dealt, drawn, leeched, retaliated or announced. The creature
+  reads the answer back through the defender's resolved-hit stamp, which also tells a blow refused before the pipeline --
+  an untargetable player -- from one that reached it.
+- **A flag on the creature and not a tag on the blow**, because a new gameplay tag is generated from the design
+  workbook's Tags sheet (`tools/generate_gameplay_tags.py`), which this change may not edit. The attribute set already
+  reads the blow's causer for Perfect Aim.
+- **An evaded touch draws no "Evaded" number**, since the attribute set stops before the drawing.
+- **A swing at anything but the player is dealt as always**: the debuff is the player's, so a minion or a maddened ally
+  struck by a creature takes its damage.
+- **The retaliation is an area blow**, so it cannot be evaded, as Brand of the Aggressor's nova is, and not damage over
+  time, so an energy shield meets it.
+- **The count is taken over every living creature in the world**, not only the floor's list, so a creature a rule raised
+  counts like any other. **A blow that kills a creature that applied stacks has removed them before its cost is taken.**
+- **The creature finds the game mode by walking the level**, as the player's revival does, because a world built for a
+  test has no authority game mode. `ACataclysmDungeonGameMode::InWorld` is that lookup.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Corrupted Blood | [poedb.tw/us/Corrupted_Blood](https://poedb.tw/us/Corrupted_Blood) | applied by monster hits, one stack a hit; "Corrupted Blood can stack up to ten times" |
+| Path of Exile, the reflect map modifier | [maxroll.gg's map-rolling guide](https://maxroll.gg/poe/getting-started/how-to-roll-maps) | "Monsters reflect 18% of Elemental OR Physical Damage"; "Your character kills itself by hitting monsters"; among "some of the worst ones you can roll on t16 Maps" |
+| Path of Exile, curses | [the curses FAQ](https://www.pathofexile.com/forum/view-thread/3323572) | "your Curses will be removed if you die or leave the area" |
+
+A search summary says a monster's Mark ends when the monster that inflicted it is killed; `poedb.tw/us/Mark` did not say
+so when fetched, so it is not relied on. **What it settles:** stacks added by monster hits with a cap of ten, hitting
+monsters costing the player, and an effect tied to the life of whoever applied it. **What it does not:** the share, what
+counts as contact, and whether an area skill pays per hit.
+
+### Tests
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `ContagiousTouch`:
+
+- `ContagiousTouchFiguresShareCapAndStacksPerTouch`: 1%, ten, one; the edges of each helper.
+- `ContagiousTouchASwingDealsNothingAndAddsAStack`: off the row the same swing deals damage and adds no stack; on it,
+  nothing dealt, one stack on the creature and on the player, "Infecting 1", the panel; a blow that is not the basic
+  attack still deals damage and adds nothing.
+- `ContagiousTouchStacksStopAtTenAcrossCreatures`: seven and five touches make seven and three; a touch at ten adds nothing.
+- `ContagiousTouchAnEvadedTouchAddsNoStack`: at an evasion of 1000, which the pipeline does not cap, three touches add
+  nothing; at 0, one adds one.
+- `ContagiousTouchAHitCostsOnePercentOfTheTargetsMaximumPerStack`: at three stacks a hit on a creature of 50,000 costs what
+  1,500 from the floor's hazard source, typed Pestilence as an area blow, costs the same player, measured on the player;
+  a blow the player did not strike costs nothing.
+- `ContagiousTouchKillingACreatureRemovesItsStacks`: five stacks, three after the first creature dies, none after the
+  second; the panel.
+- `ContagiousTouchTheRetaliationIsNotHeardAsThePlayersHit`: one hit heard from the player, on the creature; the
+  retaliation heard once on the player and never as the player's own.
+
+One Python check: the row still says "no longer deal damage on contact", "stacking", "when you hit an enemy",
+"percentage of their total health", "for every stack" and "kill the enemy that applied it".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted, stacked with the rest of its group.
+
+---
+
 ## 2026-09-30 — Morale Break: when a group's Elite leader dies the rest of the group runs; those that get away come back 30 seconds later with one more of their kind each
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
