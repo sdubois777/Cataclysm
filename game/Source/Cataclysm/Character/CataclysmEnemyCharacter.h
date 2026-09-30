@@ -629,6 +629,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetInfectionBloomDamageMultiplier(float NewMultiplier);
 
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetInfernalBeaconsDamageMultiplier(float NewMultiplier);
+
 	/**
 	 * Multiplies the attack damage of a creature standing near a Grim Totem the player cleansed.
 	 * `Death_Grim_Totems`. Issues #1820 and #41.
@@ -663,6 +666,7 @@ public:
 	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
 	static constexpr const TCHAR* CarrionFeastDamageSource = TEXT("CarrionFeast");
 	static constexpr const TCHAR* InfectionBloomDamageSource = TEXT("InfectionBloom");
+	static constexpr const TCHAR* InfernalBeaconsDamageSource = TEXT("InfernalBeacons");
 	static constexpr const TCHAR* GrimTotemsDamageSource = TEXT("GrimTotems");
 	static constexpr const TCHAR* BlackestShadowDamageSource = TEXT("BlackestShadow");
 
@@ -1827,7 +1831,8 @@ protected:
 	 * What each rule that changes this creature's attack damage multiplies it by, under that
 	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
 	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
-	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
+	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment), `InfernalBeaconsDamageSource` (Infernal
+	 * Beacons) and
 	 * `TrialOfEnduranceDamageSource` (Trial of Endurance), `ObsidianSarcophagiDamageSource` (Obsidian
 	 * Sarcophagi), `InfectionBloomDamageSource` (Infection Bloom) and `CarrionFeastDamageSource`
 	 * (Carrion Feast). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies

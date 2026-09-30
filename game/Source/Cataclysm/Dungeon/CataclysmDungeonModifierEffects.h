@@ -343,6 +343,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float RiftMagicFindAdded = 0.0f;
 
+	/** The magic find the Infernal Beacons activated in this dungeon give the player, added flat. Issues #1820, #41. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BeaconMagicFindAdded = 0.0f;
+
 	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
@@ -541,6 +545,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& BloodDebtDamageMorePercent <= 0.0f
 			&& BloodDebtDamageLessPercent <= 0.0f
 			&& RiftMagicFindAdded <= 0.0f
+			&& BeaconMagicFindAdded <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -2584,6 +2589,31 @@ public:
 
 	/** A Pandora's Box's one choice. */
 	static constexpr const TCHAR* PandorasBoxOpen = TEXT("Open");
+
+	/**
+	 * The row whose beacons the player activates, each making every creature of the dungeon hit harder and the player
+	 * find better loot, for the rest of the dungeon. Issues #1820 and #41.
+	 *
+	 * "Each floor contains an Infernal Beacon. Enemies in the dungeon gain a stacking power score buff per beacon
+	 * activated while the player gains a stacking magic find buff."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `InfernalBeaconsPerFloor` A FLOOR, `InfernalBeaconsPerHordeArena` ON A HORDE ARENA, placed by Eternal Chorus's
+	 *   picker: a floor object named "Infernal Beacon" offering "Activate", which goes once activated. One left alone
+	 *   does nothing.
+	 * - EACH ACTIVATED ADDS ONE STACK FOR THE REST OF THE DUNGEON; leaving the dungeon clears the count.
+	 * - "POWER" IS DAMAGE ONLY, by Pestilent Empowerment's ruling of 2026-09-25: each stack gives every creature
+	 *   `InfernalBeaconsDamagePercentPerStack` more damage, added, capped at `InfernalBeaconsMostDamagePercent`, through
+	 *   its own key of the damage map, written on the beat from the floor it was activated on. With Pestilent
+	 *   Empowerment the two keys stack as separate keys.
+	 * - THE PLAYER GAINS `InfernalBeaconsMagicFindPerStack` MAGIC FIND A STACK, added, capped at
+	 *   `InfernalBeaconsMostMagicFind`.
+	 */
+	static const TCHAR* InfernalBeaconsKey;
+
+	/** An Infernal Beacon's one choice. */
+	static constexpr const TCHAR* InfernalBeaconsActivate = TEXT("Activate");
 
 	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
@@ -5394,6 +5424,27 @@ public:
 	static constexpr int32 PandorasBoxWaveCount = 3;
 	static constexpr int32 PandorasBoxWaveSize = 4;
 	static constexpr float PandorasBoxWaveAwayCm = 600.0f;
+
+	/** Infernal Beacons' figures, every one a play-test value. See the key. */
+	static constexpr int32 InfernalBeaconsPerFloor = 1;
+	static constexpr int32 InfernalBeaconsPerHordeArena = 1;
+	static constexpr float InfernalBeaconsDamagePercentPerStack = 10.0f;
+	static constexpr float InfernalBeaconsMostDamagePercent = 100.0f;
+	static constexpr float InfernalBeaconsMagicFindPerStack = 10.0f;
+	static constexpr float InfernalBeaconsMostMagicFind = 100.0f;
+
+	/** Infernal Beacons: what every creature's damage is multiplied by at this many stacks, added and capped. */
+	static float InfernalBeaconsDamageMultiplier(int32 Stacks)
+	{
+		return 1.0f + FMath::Min(FMath::Max(Stacks, 0) * InfernalBeaconsDamagePercentPerStack,
+								 InfernalBeaconsMostDamagePercent) / 100.0f;
+	}
+
+	/** Infernal Beacons: the magic find the player gains at this many stacks, added and capped. */
+	static float InfernalBeaconsMagicFind(int32 Stacks)
+	{
+		return FMath::Min(FMath::Max(Stacks, 0) * InfernalBeaconsMagicFindPerStack, InfernalBeaconsMostMagicFind);
+	}
 
 	/** Pandora's Box: whether a box opened on this roll lets out its waves rather than giving its reward. */
 	static bool PandorasBoxUnleashes(float Roll) { return Roll < PandorasBoxUnleashBelow; }

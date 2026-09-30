@@ -3041,7 +3041,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetInfectionBloomDamageMultiplier", "InfectionBloomDamageSource"),
                         ("SetCarrionFeastDamageMultiplier", "CarrionFeastDamageSource"),
                         ("SetGrimTotemsDamageMultiplier", "GrimTotemsDamageSource"),
-                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource")):
+                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource"),
+                        ("SetInfernalBeaconsDamageMultiplier", "InfernalBeaconsDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4698,3 +4699,21 @@ def test_pandoras_box_row_still_names_chests_and_one_outcome_or_the_other():
         assert phrase in lower, (
             f"Chaos_Pandora_s_Box no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "PandorasBoxKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_infernal_beacons_row_still_names_activating_power_for_enemies_and_magic_find():
+    """The phrases the rule's readings rest on.
+
+    "Each floor contains an Infernal Beacon. Enemies in the dungeon gain a stacking power score buff per beacon
+    activated while the player gains a stacking magic find buff." EACH FLOOR CONTAINS is one a floor; PER BEACON
+    ACTIVATED is a stack for each; POWER SCORE is read as damage, by Pestilent Empowerment's ruling; STACKING MAGIC FIND
+    is the player's side. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Demonic_Infernal_Beacons"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("each floor contains an infernal beacon", "stacking power score buff", "per beacon activated",
+                   "stacking magic find buff"):
+        assert phrase in lower, (
+            f"Demonic_Infernal_Beacons no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "InfernalBeaconsKey in CataclysmDungeonModifierEffects.h. " + words)
