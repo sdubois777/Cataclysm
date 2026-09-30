@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -1333,6 +1334,78 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	return CurrentFloor;
 }
 
+int32 ACataclysmDungeonGameMode::BringFollowersTo(APawn* Leader)
+{
+	if (!Leader || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return 0;
+	}
+
+	// A RING AROUND THE ENTRANCE, KEEPING ONLY SPOTS ON WALKABLE FLOOR. Eight
+	// spots a metre and a half out, the width of a floor cell's worth of room
+	// either side of the player; a follower given no walkable spot stands at
+	// the entrance itself, where the player does.
+	const FVector Entrance = CurrentFloor->EntranceWorld();
+	TArray<FVector> Spots;
+	for (int32 Step = 0; Step < 8; ++Step)
+	{
+		const float Angle = Step * UE_TWO_PI / 8.0f;
+		const FVector Spot = Entrance + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * 150.0f;
+		if (CurrentFloor->GetPlan().IsFloor(CurrentFloor->CellOfWorld(Spot)))
+		{
+			Spots.Add(Spot);
+		}
+	}
+	if (Spots.IsEmpty())
+	{
+		Spots.Add(Entrance);
+	}
+
+	int32 Moved = 0;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Leader))
+	{
+		APawn* Body = Cast<APawn>(Follower);
+		if (!Body)
+		{
+			continue;
+		}
+		const FVector Standing = Spots[Moved % Spots.Num()]
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Body));
+		// SWEEP OFF, for the reason `PlaceAtEntrance` gives.
+		if (Body->TeleportTo(Standing, Body->GetActorRotation(),
+							 /*bIsATest=*/false, /*bNoCheck=*/true))
+		{
+			++Moved;
+		}
+	}
+	return Moved;
+}
+
+int32 ACataclysmDungeonGameMode::EndEveryPlayersFollowers()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0;
+	}
+
+	TArray<AActor*> Ending;
+	for (TActorIterator<ACataclysmPlayerCharacter> It(World); It; ++It)
+	{
+		Ending.Append(UCataclysmCommand::ThingsCommandedBy(*It));
+	}
+	int32 Ended = 0;
+	for (AActor* Follower : Ending)
+	{
+		if (IsValid(Follower))
+		{
+			Follower->Destroy();
+			++Ended;
+		}
+	}
+	return Ended;
+}
+
 bool ACataclysmDungeonGameMode::PlaceAtEntrance(APawn* Pawn)
 {
 	if (!Pawn || !CurrentFloor || !CurrentFloor->IsBuilt())
@@ -1474,7 +1547,12 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 		// ALREADY GONE IS THE ORDINARY CASE, not an error: the player kills
 		// creatures, and a killed one destroys itself once its death animation
 		// has played.
-		if (IsValid(Enemy))
+		//
+		// AND A PLAYER'S THRALL IS NOT THE FLOOR'S ANY MORE. Issue #1202, ruled
+		// 2026-09-30: it goes down the stairs with the player. It still leaves
+		// this list below, because it is no enemy of the next floor.
+		if (IsValid(Enemy)
+			&& !Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Enemy)))
 		{
 			// DESTROYING THE PAWN DESTROYS ITS BRAIN TOO. `APawn::Destroyed`
 			// detaches the controller, and `AController::PawnPendingDestroy`
@@ -9333,6 +9411,11 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheSarcophagi();
 	ForgetTheTotems();
 
+	// THE RUN IS OVER, AND WHAT THE PLAYER COMMANDED ENDS WITH IT. Issue
+	// #1202, ruled 2026-09-30. Their Fervour reserves go with them, because
+	// the reserve is read from what is commanded.
+	EndEveryPlayersFollowers();
+
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
 	// maximums, gives back the resistance The Nihil's Embrace had taken, stops
@@ -16181,7 +16264,8 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	{
 		if (UWorld* World = GetWorld())
 		{
-			const int32 Removed = UCataclysmFloorContents::ClearTheFloor(*World);
+			const int32 Removed =
+				UCataclysmFloorContents::ClearTheFloor(*World, /*bCarryFollowers=*/true);
 			UE_LOG(LogCataclysm, Verbose,
 				   TEXT("Floor %d: %d actors left on the last floor were removed."),
 				   FloorNumber, Removed);
@@ -16269,6 +16353,10 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 		}
 
 		PlaceAtEntrance(Moving);
+
+		// AND WHAT IT COMMANDS COMES WITH IT. Issue #1202, ruled 2026-09-30.
+		// Not on a Horde wave, which keeps the arena and never reaches here.
+		BringFollowersTo(Moving);
 	}
 
 	// AND THE SAVE RECORD FOLLOWS. `UCataclysmSaveWriter::SetFloor` has existed

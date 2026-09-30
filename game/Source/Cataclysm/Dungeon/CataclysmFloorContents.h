@@ -31,12 +31,17 @@ class UWorld;
  *   - **The floor.** `ACataclysmDungeonFloor` is reused rather than replaced.
  *   - **The stairs.** `ACataclysmDungeonStairs` is moved to the new exit.
  *   - **The player.** Nothing here reaches `ACataclysmPlayerCharacter`.
- *   - **A player's minions.** `ACataclysmMinion` descends from
- *     `ACataclysmCharacterBase` and not from `ACataclysmEnemyCharacter`, so the
- *     sweep below does not reach one. Whether a summon should follow its owner
- *     down the stairs, be dismissed, or stand where it was is a design question
- *     nobody has answered; issue #1176 asks it. Leaving them is the behaviour
- *     that was already there, so this changes nothing about them either way.
+ *   - **What a player commands, at a floor change.** Issue #1202, ruled
+ *     2026-09-30: a player's thralls and summoned creatures go down the stairs
+ *     with the player, and `ACataclysmDungeonGameMode::BringFollowersTo` puts
+ *     them beside the player on the new floor. A thrall is a taken
+ *     `ACataclysmEnemyCharacter`, so the sweep below skips any whose commander
+ *     is a player; `ACataclysmMinion` descends from `ACataclysmCharacterBase`
+ *     and the sweep never reached one. **Deployed gadgets are the exception**
+ *     and are destroyed with the floor: a gadget stays where it was put
+ *     rather than following its deployer, and the spot it was put on is gone.
+ *     A judgement, not a ruling of the design. All of this only when
+ *     `bCarryFollowers` is set; a save restoring a floor clears as before.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmFloorContents : public UBlueprintFunctionLibrary
@@ -60,7 +65,11 @@ public:
 	 * they are spawned straight into the world mid-fight. This sweeps by class,
 	 * so it reaches them.
 	 *
+	 * @param bCarryFollowers  true at a floor change: what a player commands is
+	 *                         kept, except deployed gadgets, which are destroyed.
+	 *                         False, the default, keeps the behaviour a save's
+	 *                         restore has always had.
 	 * @return how many actors were destroyed
 	 */
-	static int32 ClearTheFloor(UWorld& World);
+	static int32 ClearTheFloor(UWorld& World, bool bCarryFollowers = false);
 };

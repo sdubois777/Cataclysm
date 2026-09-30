@@ -490,6 +490,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
 	bool PlaceAtEntrance(APawn* Pawn);
 
+	/**
+	 * Put everything `Leader` commands beside it, on free floor around the
+	 * current floor's entrance. Issue #1202, ruled 2026-09-30: a player's
+	 * thralls and summoned creatures go down the stairs with the player.
+	 * Answers how many were moved.
+	 */
+	int32 BringFollowersTo(APawn* Leader);
+
+	/**
+	 * Destroy everything any player commands. Issue #1202, ruled 2026-09-30:
+	 * leaving the dungeon ends the run, and every thrall, imp and gadget with
+	 * it, and their Fervour reserves with them. Answers how many ended.
+	 */
+	int32 EndEveryPlayersFollowers();
+
 	/** The floor being stood on, once `BuildFloor` has run. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	TObjectPtr<ACataclysmDungeonFloor> CurrentFloor;

@@ -11,6 +11,9 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
@@ -510,6 +513,177 @@ bool FCataclysmStairsFloorNumberTest::RunTest(const FString& Parameters)
 			 Mode->GoToFloor(-40));
 	TestEqual(TEXT("and it is floor 1"), Mode->FloorNumber, 1);
 
+	return true;
+}
+
+namespace CataclysmStairsFollowersTest
+{
+	/** Metres, so the assertions read the way the ruling does. */
+	constexpr float M = 100.0f;
+
+	/** A creature spawned beside the player and taken by it. */
+	ACataclysmEnemyCharacter* TakeAThrall(UWorld* World, ACataclysmPlayerCharacter* Player)
+	{
+		ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+			Player->GetActorLocation() + FVector(3 * M, 0, 0), FRotator::ZeroRotator);
+		if (Creature && UCataclysmCommand::Subjugate(Player, Creature))
+		{
+			return Creature;
+		}
+		return nullptr;
+	}
+
+	/** A minion of the named type, the player's, beside it. */
+	ACataclysmMinion* SummonFor(ACataclysmPlayerCharacter* Player, const TCHAR* Type, float Along)
+	{
+		return ACataclysmMinion::Spawn(
+			Player, Player->GetActorLocation() + FVector(0, Along * M, 0),
+			/*Lifetime=*/60.0f, /*bBurns=*/false, Type);
+	}
+
+	bool Gone(const AActor* Actor)
+	{
+		return !IsValid(Actor) || Actor->IsActorBeingDestroyed();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStairsFollowersTest,
+	"Cataclysm.DungeonStairs.AThrallAndAnImpComeDownWithThePlayerAndAGadgetDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. A thrall is taken "permanently" and "fights
+ * for you until it dies" (Subjugate's row), so it goes down the stairs with
+ * the player; so does a summoned imp. A deployed gadget stays where it was put
+ * rather than following, so it goes with the floor. An enemy nobody took is
+ * cleared as before.
+ */
+bool FCataclysmStairsFollowersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStairsTest;
+	using namespace CataclysmStairsFollowersTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnModeOnAFloor(World, /*EnemyScale=*/0.0f);
+	if (!TestNotNull(TEXT("a game mode is standing on a floor"), Mode))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Player = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player character spawned"), Player)
+		|| !TestTrue(TEXT("placed on the first floor"), Mode->PlaceAtEntrance(Player)))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Thrall = TakeAThrall(World, Player);
+	ACataclysmMinion* Imp = SummonFor(Player, TEXT("Imp"), 2.0f);
+	ACataclysmMinion* Turret = SummonFor(Player, TEXT("BoltTurret"), -2.0f);
+	ACataclysmEnemyCharacter* Stranger = World->SpawnActor<ACataclysmEnemyCharacter>(
+		Player->GetActorLocation() + FVector(-3 * M, 0, 0), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a thrall was taken"), Thrall)
+		|| !TestNotNull(TEXT("an imp was summoned"), Imp)
+		|| !TestNotNull(TEXT("a turret was deployed"), Turret)
+		|| !TestNotNull(TEXT("and an enemy nobody took stands there"), Stranger))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the turret is a gadget"), Turret->IsDeployable());
+	TestFalse(TEXT("and the imp is not"), Imp->IsDeployable());
+	const FVector OldSpot = Thrall->GetActorLocation();
+
+	if (!TestTrue(TEXT("the player goes down a floor"), Mode->GoDownOneFloor(Player)))
+	{
+		return false;
+	}
+	const FVector Arrived = Player->GetActorLocation();
+
+	for (AActor* Follower : {static_cast<AActor*>(Thrall), static_cast<AActor*>(Imp)})
+	{
+		if (!TestFalse(FString::Printf(TEXT("%s came down the stairs"), *GetNameSafe(Follower)),
+					   Gone(Follower)))
+		{
+			continue;
+		}
+		const float Metres =
+			static_cast<float>(FVector::Dist2D(Follower->GetActorLocation(), Arrived)) / M;
+		TestTrue(FString::Printf(TEXT("%s stands beside the player: %.2f m away"),
+								 *GetNameSafe(Follower), Metres),
+				 Metres <= 2.0f);
+		TestTrue(FString::Printf(TEXT("%s stands on walkable floor"), *GetNameSafe(Follower)),
+				 Mode->CurrentFloor->GetPlan().IsFloor(
+					 Mode->CurrentFloor->CellOfWorld(Follower->GetActorLocation())));
+	}
+	if (!Gone(Thrall))
+	{
+		TestFalse(TEXT("the thrall is not where it stood on the last floor"),
+				  FVector::Dist2D(Thrall->GetActorLocation(), OldSpot) < 1.0f);
+		TestEqual(TEXT("and the player still commands both"),
+				  UCataclysmCommand::ThingsCommandedBy(Player).Num(), 2);
+	}
+	TestTrue(TEXT("the turret went with the floor"), Gone(Turret));
+	TestTrue(TEXT("and so did the enemy nobody took"), Gone(Stranger));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeavingEndsFollowersTest,
+	"Cataclysm.DungeonStairs.LeavingTheDungeonEndsEveryThrallImpAndGadget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30: leaving the dungeon ends the run, and every
+ * thrall, imp and gadget the player holds ends with it. Their Fervour reserves
+ * go too, because the reserve is read from what is commanded.
+ */
+bool FCataclysmLeavingEndsFollowersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStairsTest;
+	using namespace CataclysmStairsFollowersTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnModeOnAFloor(World, /*EnemyScale=*/0.0f);
+	ACataclysmPlayerCharacter* Player = Mode
+		? World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator)
+		: nullptr;
+	if (!TestNotNull(TEXT("a player on a floor"), Player)
+		|| !TestTrue(TEXT("placed on the first floor"), Mode->PlaceAtEntrance(Player)))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Thrall = TakeAThrall(World, Player);
+	ACataclysmMinion* Imp = SummonFor(Player, TEXT("Imp"), 2.0f);
+	ACataclysmMinion* Turret = SummonFor(Player, TEXT("BoltTurret"), -2.0f);
+	if (!TestNotNull(TEXT("a thrall"), Thrall) || !TestNotNull(TEXT("an imp"), Imp)
+		|| !TestNotNull(TEXT("a turret"), Turret))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the player commands three"),
+			  UCataclysmCommand::ThingsCommandedBy(Player).Num(), 3);
+
+	Mode->LeaveEmpireDungeon();
+
+	TestTrue(TEXT("the thrall ended with the run"), Gone(Thrall));
+	TestTrue(TEXT("the imp ended with the run"), Gone(Imp));
+	TestTrue(TEXT("the turret ended with the run"), Gone(Turret));
+	TestEqual(TEXT("and the player commands nothing"),
+			  UCataclysmCommand::ThingsCommandedBy(Player).Num(), 0);
+	TestEqual(TEXT("so nothing holds Fervour back"),
+			  UCataclysmCommand::ReservedFervourOf(Player), 0.0f, 0.001f);
 	return true;
 }
 

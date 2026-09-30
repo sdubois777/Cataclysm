@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — A player's thralls and summoned creatures go down the stairs with the player, gadgets stay with the floor, and leaving the dungeon ends them all
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorContents.cpp` and `.h` (`ClearTheFloor` takes
+`bCarryFollowers`), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` and `.h`
+(`BringFollowersTo`, `EndEveryPlayersFollowers`, and the floor change, `ClearFloorEnemies` and
+`LeaveEmpireDungeon` calling them), and `game/Source/Cataclysm/Tests/CataclysmDungeonStairsTests.cpp`
+(two tests). Issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202).
+
+### WHAT WAS WRONG
+
+- **A thrall was destroyed at every floor change, which the design forbids.** Subjugate's row,
+  `Demonic_Staff_Ultimate` in `game/Data/WeaponSkills.csv`, says the target is taken "permanently":
+  "it is restored to full health, fights for you until it dies". The skill table in
+  `docs/Cataclysm_GDD_v2.md` says the same: "it is taken permanently". But a thrall is a taken
+  `ACataclysmEnemyCharacter`, and both `UCataclysmFloorContents::ClearTheFloor` and
+  `ACataclysmDungeonGameMode::ClearFloorEnemies` destroyed every creature of that class when the player
+  took the stairs. **That was a bug**, ruled so on 2026-09-30.
+- **A summoned imp or a deployed gadget stood at its old coordinates on the new floor.** Every floor is
+  built at the same world position and `ACataclysmMinion` is not an enemy, so neither sweep reached one;
+  it stood wherever it had been in the last fight, which on the new floor could be inside rock.
+- **Issue #1202 said nothing sets a minion's life span. That is no longer true:**
+  `ACataclysmMinion::Spawn` sets one, the Duration its row states or 20 seconds.
+
+### WHAT CHANGED, RULED 2026-09-30
+
+| What the player commands | At a floor change | Why |
+| :-- | :-- | :-- |
+| A thrall | Goes down with the player | The design: "taken permanently", "fights for you until it dies" |
+| A summoned creature (an imp) | Goes down with the player, keeping what is left of its lifespan and its Fervour reserve | The genre, below |
+| A deployed gadget | Destroyed with the floor | **A judgement, not the design's:** a gadget stays where it was put rather than following its deployer (`Cataclysm.AI.ADeployedBallistaStaysPutRatherThanFollowingItsDeployer`), and the spot it was put on no longer exists |
+
+- **Carried followers are placed around the player** at the new floor's entrance: eight spots a metre
+  and a half out, keeping only those on walkable floor, or the entrance itself if none is. A follower
+  that was mid-attack needs nothing more; its controller chooses again on its next decision.
+- **Only a creature a player commands is carried.** A creature another creature commands is cleared as
+  before, and so is every enemy nobody took.
+- **A save restoring a floor clears exactly as it did.** `ClearTheFloor`'s new argument defaults to the
+  old behaviour, and only the floor change passes it.
+- **Horde waves are untouched.** A new wave keeps the arena (`bSameArenaAsLastFloor`), and in that case
+  neither sweep runs and the player is not moved, so nothing here is reached.
+- **Leaving the dungeon ends every thrall, imp and gadget a player commands**, ruled the same day: the
+  run is over. `LeaveEmpireDungeon`, where a run ends whether the dungeon was cleared or left, now
+  destroys them. It did not before: the level does not change when a run ends, so they outlived it.
+  Their Fervour reserves end with them, because the reserve is read from what is commanded.
+
+### WHAT THE GENRE SETTLES, AND WHAT IT DOES NOT
+
+- **Path of Exile**, the developers' own post on X, read 2026-09-30
+  (https://x.com/pathofexile/status/2030084086396768331): temporary minions that follow the player
+  "will now persist with you through area transitions" between combat areas. Permanent ones already did.
+- **Last Epoch**, a community reply and not a developer
+  (https://steamcommunity.com/app/899770/discussions/0/4338725580146807878/): minions "do not despawn";
+  they appear at the map entrance and run to the player.
+- **Diablo 4**: only reports of minions failing to follow, which imply they are meant to. No primary
+  source was read.
+- So the research settles that followers cross a zone change. It says nothing about stationary gadgets,
+  which is why that row is labelled a judgement.
+
+### TESTS
+
+Two new tests in `Cataclysm.DungeonStairs.`: a thrall and an imp come down with the player, stand
+within two metres of it on walkable floor, and are still commanded, while a turret and an enemy nobody
+took are gone; and leaving the dungeon ends a thrall, an imp and a turret, leaving nothing commanded
+and no Fervour held back.
+
+---
+
 ## 2026-09-30 — A row may scale with seconds on the floor, floors cleared this run, armour or unique bosses defeated
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (four scales
