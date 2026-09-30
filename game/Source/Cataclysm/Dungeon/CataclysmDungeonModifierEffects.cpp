@@ -261,6 +261,9 @@ ACataclysmDroppedItem* UCataclysmDungeonModifierEffects::FamishedBeastsNearestDr
 const TCHAR* UCataclysmDungeonModifierEffects::BattlefieldRelicsKey =
 	TEXT("War_Battlefield_Relics");
 
+const TCHAR* UCataclysmDungeonModifierEffects::PandorasBoxKey =
+	TEXT("Chaos_Pandora_s_Box");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -636,6 +639,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ContagiousTouchKey)
 		|| RowKey == FName(FamishedBeastsKey)
 		|| RowKey == FName(BattlefieldRelicsKey)
+		|| RowKey == FName(PandorasBoxKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
@@ -876,6 +880,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(ContagiousTouchKey),
 		FName(FamishedBeastsKey),
 		FName(BattlefieldRelicsKey),
+		FName(PandorasBoxKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),

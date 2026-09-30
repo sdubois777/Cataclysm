@@ -38955,4 +38955,239 @@ bool FCataclysmRelicsTakenSpiritTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Chaos_Pandora_s_Box. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BoxesRow(UCataclysmDungeonModifierEffects::PandorasBoxKey);
+	const FName OpenKey(UCataclysmDungeonModifierEffects::PandorasBoxOpen);
+
+	/** A dungeon carrying only Pandora's Box, on floor 2 with its own creatures cleared and its boxes placed. */
+	ACataclysmDungeonGameMode* ABoxFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {BoxesRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("three boxes"), Mode->PandorasBoxesNow().Num(),
+							   UCataclysmDungeonModifierEffects::PandorasBoxPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** How many drops lie in the world. */
+	int32 DropsInTheWorld(UWorld* World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** Every creature the boxes' waves brought, killed; each brought to one health first, whatever its rung gave it. */
+	bool KillTheChaosSpawn(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmDungeonGameMode* Mode)
+	{
+		for (ACataclysmEnemyCharacter* Spawn : Mode->ChaosSpawnStanding())
+		{
+			Spawn->GetAbilitySystemComponent()->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+			if (!KillIt(Test, Player, Spawn))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
+// THE FIGURES: THREE BOXES; EVEN ODDS, BELOW 50 THE WAVES; A BOSS'S KILL; THREE WAVES OF FOUR AT 6 M.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxFiguresBoxesOddsRewardAndWaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three boxes a floor"), Effects::PandorasBoxPerFloor, 3);
+	TestEqual(TEXT("one on a Horde arena"), Effects::PandorasBoxPerHordeArena, 1);
+	TestEqual(TEXT("even odds"), Effects::PandorasBoxUnleashBelow, 50.0f, 0.001f);
+	TestTrue(TEXT("49.9 lets out the waves"), Effects::PandorasBoxUnleashes(49.9f));
+	TestFalse(TEXT("50 gives the reward"), Effects::PandorasBoxUnleashes(50.0f));
+	TestEqual(TEXT("the reward is a Boss's kill"), Effects::PandorasBoxRewardRung, 4);
+	TestEqual(TEXT("three waves"), Effects::PandorasBoxWaveCount, 3);
+	TestEqual(TEXT("of four"), Effects::PandorasBoxWaveSize, 4);
+	TestEqual(TEXT("6 m from the box"), Effects::PandorasBoxWaveAwayCm, 600.0f, 0.001f);
+	return true;
+}
+
+// THREE BOXES AWAY FROM THE ENTRANCE, EACH OFFERING "OPEN", WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesPlacedTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxThreeStandAwayFromTheEntranceOfferingOpen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const ACataclysmFloorObject* Box : Mode->PandorasBoxesNow())
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Box->GetActorLocation(), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		TestEqual(TEXT("named"), Box->DisplayName, FString(TEXT("Pandora's Box")));
+		TestEqual(TEXT("placed by the row"), Box->RuleKey, BoxesRow);
+		if (TestEqual(TEXT("one choice"), Box->Choices.Num(), 1))
+		{
+			TestEqual(TEXT("to open it"), Box->Choices[0].Key, OpenKey);
+		}
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 3 unopened")));
+	return true;
+}
+
+// FROM 50: THE BOX GOES AND GIVES A BOSS'S KILL'S DROPS, AND NO WAVES COME.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesRewardTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesRewardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("75"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const int32 Before = DropsInTheWorld(World);
+	if (!TestTrue(TEXT("opening acted"), Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], OpenKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the box went"), Mode->PandorasBoxesNow().Num(), 2);
+	// A BOSS'S KILL GIVES FIVE ITEMS ON AVERAGE, DRAWN, ON A STREAM SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
+	TestTrue(FString::Printf(TEXT("it gave drops: %d"), Mode->PandorasBoxLastRewardDrops()),
+			 Mode->PandorasBoxLastRewardDrops() > 0);
+	TestEqual(TEXT("and they lie in the world"), DropsInTheWorld(World) - Before, Mode->PandorasBoxLastRewardDrops());
+	TestEqual(TEXT("no creature came"), Mode->ChaosSpawnStanding().Num(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("nor on the beat"), Mode->ChaosSpawnStanding().Num(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 2 unopened")));
+	return true;
+}
+
+// BELOW 50: NO REWARD; A WAVE OF FOUR "CHAOS SPAWN" AT ONCE, THE NEXT ONLY ONCE THE LAST IS ALL DEAD, THREE IN ALL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesWavesTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("25"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const int32 Before = DropsInTheWorld(World);
+	if (!TestTrue(TEXT("opening acted"), Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], OpenKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no reward"), DropsInTheWorld(World), Before);
+
+	const TArray<ACataclysmEnemyCharacter*> First = Mode->ChaosSpawnStanding();
+	TestEqual(TEXT("the first wave: four"), First.Num(), Effects::PandorasBoxWaveSize);
+	for (const ACataclysmEnemyCharacter* Spawn : First)
+	{
+		TestTrue(TEXT("\"Chaos Spawn\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Spawn).Contains(TEXT("Chaos Spawn")));
+		TestTrue(TEXT("raised by the rule"), Spawn->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Spawn->PaysForItsDeath());
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("no second wave while the first stands"), Mode->ChaosSpawnStanding().Num(), Effects::PandorasBoxWaveSize);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 2 unopened; wave 1 of 3")));
+
+	for (int32 Wave = 2; Wave <= Effects::PandorasBoxWaveCount; ++Wave)
+	{
+		if (!KillTheChaosSpawn(*this, Player, Mode))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("wave %d: four"), Wave), Mode->ChaosSpawnStanding().Num(),
+				  Effects::PandorasBoxWaveSize);
+		TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+				  FString::Printf(TEXT("pandora's box: 2 unopened; wave %d of 3"), Wave));
+	}
+	if (!KillTheChaosSpawn(*this, Player, Mode))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("no fourth wave"), Mode->ChaosSpawnStanding().Num(), 0);
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 2 unopened")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
