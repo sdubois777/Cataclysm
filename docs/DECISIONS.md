@@ -11,10 +11,7 @@ a rule); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (
 emptied on leaving, and the panel line); and the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmFloorBriefTests.cpp`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The row's new text in the design workbook, the
-tables generated from it, the Python check of the text, the Unreal compile, the automation tests and the guard proofs
-have NOT been done yet; they are done in one window with the build machine and the workbook, and added at the end of
-this entry.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** They were done in the window of 2026-09-30; the figures are at the end of this entry.
 
 ### The row
 
@@ -97,11 +94,24 @@ Four automation tests in `Cataclysm.FloorBrief.`:
   nothing (asserted as set-up, so the check below can fail), entering carries every row that does something and none
   that does nothing, some of a Cataclysm the run is not facing; leaving empties it.
 
-### Not yet done
+### The window of 2026-09-30
 
-The row's new text in `docs/All_Things_Cataclysm.xlsx`, the tables generated from it, a Python check of the new text,
-the compile, the automation tests, the whole-suite figure and the three guard proofs. They are done in one window with
-the build machine and the workbook.
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor` failed with the break in; passed restored.
+- **Pb PROVED**: the same test failed with the break in; passed restored.
+- **Pc PROVED**: `EnteringADungeonCarriesEveryBuiltRowForRealityTwister` failed with the break in; passed restored.
+
+And the workbook: the Dungeon Modifiers sheet's D19 holds the new text, written on development's current workbook; `generate_datatables.py` rewrote `DungeonModifiers.csv` alone, and `--check` printed "All 29 DataTable CSVs are up to date"; `DT_DungeonModifiers` was regenerated in the editor; `test_reality_twister_row_is_the_owners_reword` checks the text.
 
 ---
 
@@ -117,8 +127,7 @@ in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
 **Built on The Blackest Shadow's change, which merges first**; the chain is the vision system, Swarm of Locusts'
-obscuring, The Blackest Shadow, then this. The Unreal compile, the automation tests and the guard proofs have NOT run
-yet; the figures are added at the end of this entry when they have.
+obscuring, The Blackest Shadow, then this. They were done in the window of 2026-09-30; the figures are at the end of this entry.
 
 ### The row
 
@@ -243,10 +252,22 @@ early return of `StepFloorRulesThatChange` was also joined by the `&& !bX` rule 
 
 **SO SHADOWY ENEMIES RESTS ON ONE PROOF, Pc.** Two of its three proofs, Pa and Pb, failed on test faults -- exact blow sizes that a slashing weapon's tenth breaks -- not on the rule. The shroud gate (`bool bLit = !bRow || ...`) and the fire exposure (the `NoteHitForShadowyEnemies` call) are checked by tests but are not proved by breaks.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted, after The Blackest Shadow's change.
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa NOT A PROOF**: `AShroudedCreatureTakesNoDamageUntilALightReachesIt` failed with the files restored as well; the exact blow size above, not rerun.
+- **Pb NOT A PROOF**: `AFireHitExposesAShroudedCreatureForFourSeconds` failed with the files restored as well; the same cause, not rerun.
+- **Pc PROVED**: `ShadowyEnemiesLightsTheExitWhereTheBossStands` failed with the break in; passed restored.
 
 ---
 
@@ -263,8 +284,7 @@ and takes the buff, and remembers which creatures carry it); the automation test
 source writes its own key); and `tools/tests/test_commander_buff_matches_the_design.py` (the expected attack interval
 names the new factor). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Built on the vision system's change, which merges first.**
-The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
-entry when they have.
+They were done in the window of 2026-09-30; the figures are at the end of this entry.
 
 ### The row
 
@@ -352,10 +372,22 @@ into `CataclysmDungeonGameMode.cpp`; the declaration stays in the header, and no
 
 **A TEST THAT COULD NOT PASS, FOUND BY GUARD PROOF Pc, 2026-09-30, fixed in the window as the coordinating session ruled.** `AFloorWithoutTheBlackestShadowEndsEveryStalker` read, on floor 3, a stalker made on floor 2; changing floors destroys every creature of the last one, so it failed with the break in and with it out, reading figures from the destroyed creature. Now the player walks to 3 m of the stalker on floor 2, where the light takes the buff off, and floor 3 makes no stalker of a new Imp 20 m away. **Proof Pc is recorded as not a proof and is not rerun**: The Blackest Shadow has two proofs, Pa and Pb. The branch that writes a creature's damage back to its own when it stops being a stalker (`SetBlackestShadowDamageMultiplier(bStalker ? StalkerDamage : 1.0f)`) is checked by "its damage is its own" but is not proved by a break.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted, after the vision system's change.
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `OutsideTheLightACreatureIsHiddenAndAnInvisibleStalker` failed with the break in; passed restored.
+- **Pb PROVED**: the same test failed with the break in; passed restored.
+- **Pc NOT A PROOF**: `AFloorWithoutTheBlackestShadowEndsEveryStalker` failed with the files restored as well; the test fault above, not rerun.
 
 ---
 
@@ -367,8 +399,7 @@ comment, and the row moved from the partly built list to the built list); `game/
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (one new test, and the built-state assertion
 turned from partly built to built). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Built on the vision system's change, which merges first.**
-The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
-entry when they have.
+They were done in the window of 2026-09-30; the figures are at the end of this entry.
 
 ### What was missing
 
@@ -410,10 +441,22 @@ it cannot place: **lines removed from a list by the incoming side** (`resolve_li
 stacked side exactly, each found there once, and the stacked side's closing line is kept. The partly-built list now
 ends with Warzone Control Points, and Swarm of Locusts stands in the built list with its own comment.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted, after the vision system's change.
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `ASwarmOfLocustsCoveringThePlayerCutsTheirSightToFourMetres` failed with the break in; passed restored.
+- **Pb PROVED**: the same test failed with the break in; passed restored.
+- **Pc PROVED**: the same test failed with the break in; passed restored.
 
 ---
 
@@ -429,8 +472,7 @@ hidden creature cannot be clicked); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** They were done in the window of 2026-09-30; the figures are at the end of this entry.
 
 ### What was there
 
@@ -522,10 +564,22 @@ floor 2: the player walks to 5 m of the hidden creature and "walking within the 
 **Proof Pc is recorded as not a proof and is not rerun**: the vision system has two proofs, Pa and Pb. The un-hide branch
 is checked by the new assertion but is not proved by a break.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked` failed with the break in; passed restored.
+- **Pb PROVED**: `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked` failed with the break in; passed restored.
+- **Pc NOT A PROOF**: `WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened` failed with the files restored as well; the test fault above, not rerun.
 
 ---
 
@@ -545,9 +599,7 @@ per-floor reset, leaving the dungeon, the panel line); `docs/Cataclysm_GDD_v2.md
 taking drops); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check, and the new damage source in the check that every
 source writes its own key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and Grim Totems PARTLY built.** The panel's
-Widget Blueprint is generated in the Unreal editor, so it, the compile, the automation tests and the guard proofs have
-NOT been done yet; they are done in one window with the build machine, and added at the end of this entry.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and Grim Totems PARTLY built.** They were done in the window of 2026-09-30; the figures are at the end of this entry.
 
 ### What was there
 
@@ -690,11 +742,24 @@ place:
   order, and the incoming term joins the line that holds the base's last term, or stands on its own line past 120
   characters. Here, `&& !bGrimTotems` in the early return of `StepFloorRulesThatChange`, on its own line.
 
-### Not yet done
+### The window of 2026-09-30
 
-`WBP_ChoicePanel`, generated in the editor by `python tools/run_editor_python.py tools/generate_interface_assets.py`
-and committed; the compile, the automation tests, the whole-suite figure and the three guard proofs. They are done in one
-window with the build machine.
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites` failed with the break in; passed restored.
+- **Pb PROVED**: `CleansingAGrimTotemCleansesThePlayer` failed with the break in; passed restored.
+- **Pc PROVED**: its first run's build failed and no test ran -- the fault in The Blackest Shadow's entry, `IsAnInvisibleStalker` inline in the header; rerun with the same break once that was fixed, `TheChoicePanelOffersATotemsChoicesAndLeaveChoosesNothing` failed with the break in and passed restored.
+
+And `WBP_ChoicePanel` was generated in the editor with `run_editor_python.py generate_interface_assets.py`, which reported that one file, and committed.
 
 ---
 
@@ -711,8 +776,7 @@ Chaos Touched's notes name the cleanse); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
-entry when they have.
+They were done in the window of 2026-09-30; the figures are at the end of this entry.
 
 ### Why
 
@@ -822,10 +886,22 @@ Shadowy Enemies' first commit the default diff matched the start of its new func
 the middle of `StepGrimTotems`; the histogram diff placed them where they belong, and the block became two insertions.
 The coordinating session accepted the switch on 2026-09-30. The rules each change first needed are in its own entry.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `ItKeepsABuffAndABleedThePlayerPutOnItself` failed with the break in; passed restored.
+- **Pb PROVED**: `ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs`, `ItClearsRawSewageAndTheNextBeatTakesTheDiseaseOff` and `ItClearsTheStarvationCurse` failed with the break in; all three passed restored.
+- **Pc PROVED**: `ATimedCleanseActionFiresEveryFiveSecondsOfAFight` failed with the break in; passed restored.
 
 ---
 
