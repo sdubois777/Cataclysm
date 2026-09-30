@@ -2587,7 +2587,7 @@ public:
 	 * power of the totems grants temporary bonuses but may also trigger more difficult enemy spawns or curses.
 	 * Cleansing the totems purifies the environment, removing harmful effects and weakening nearby enemies."
 	 *
-	 * FIGURES BY THIS CHANGE UNDER THE OWNER'S DELEGATION, 2026-09-26, every one a play-test value, AND PARTLY BUILT:
+	 * FIGURES BY THIS CHANGE UNDER THE OWNER'S DELEGATION, 2026-09-26, every one a play-test value, AND BUILT:
 	 * - `GrimTotemsPerFloor` TOTEMS A FLOOR, `GrimTotemsPerHordeArena` ON A HORDE ARENA, kept across its waves, placed
 	 *   by Eternal Chorus's picker, each a floor object named "Grim Totem" with a zone drawn under it.
 	 * - EMBRACE: `GrimTotemsEmbraceDamageMorePercent` more damage for `GrimTotemsEmbraceSeconds`, and
@@ -2595,8 +2595,9 @@ public:
 	 *   totem. The totem goes.
 	 * - CLEANSE: every creature of the floor within `GrimTotemsCleanseRadiusCm` of the totem deals
 	 *   `GrimTotemsCleanseDamageLessPercent` less damage for as long as it lives. The totem goes.
-	 * - NOT BUILT: "removing harmful effects". Nothing in the game removes a floor rule's effects from a place or the
-	 *   player: the rules draw their zones again on the next beat, and no cleanse of the player's debuffs exists.
+	 * - "REMOVING HARMFUL EFFECTS", SINCE 2026-09-30: a dispelled totem also cleanses the player
+	 *   (`UCataclysmDebuffs::Cleanse`), removing what others put on the player. A floor rule's zones are not removed:
+	 *   the rules draw them again on the next beat.
 	 */
 	static const TCHAR* GrimTotemsKey;
 
