@@ -329,14 +329,19 @@ quote only what the run prints. Issues #1629 and #1665.
 failed with it out.
 
 **A clamp in `PreAttributeChange` cannot be guard-proven from an automation
-test, and writing the base value does not reach past it.** The usual attempt
-is `SetNumericAttributeBase` with an out-of-range value, on the understanding
+test, and it clamps only the CURRENT value.** The usual attempt is
+`SetNumericAttributeBase` with an out-of-range value, on the understanding
 that it sets the base while the clamp guards the current value. In Unreal
-Engine 5.8 that write is clamped before anything reads it: with no aggregator
-on the attribute, `SetAttributeBaseValue` goes through
-`SetNumericAttribute_Internal` to `PreAttributeChange`, so the clamp runs on
-the way to the current value. Breaking such a clamp fails nothing, and that is
-a fact about the engine rather than about the tests. Issue #1623.
+Engine 5.8 the current value is clamped before anything reads it:
+`SetAttributeBaseValue` goes through `SetNumericAttribute_Internal` to
+`PreAttributeChange`, with or without an aggregator. **But the stored base is
+kept as written**: `SetAttributeBaseValue` calls `PreAttributeBaseChange`,
+which no set in this project overrides, and stores the base before clamping
+the current value (GameplayEffect.cpp about 4001-4013). `ApplyModToAttribute`
+then adds to that base (4155-4161), so a gain at a full pool raises a hidden
+base unless something clamps it. Breaking such a clamp fails nothing that
+reads the current value once; a spend after a gain is what reads the base.
+Issues #1623 and #1036.
 
 **The same rule, for the opposite reason.** A crashed Unreal run reports no
 failures at all, so `failed` used to read as a guard that did not notice --
