@@ -44,6 +44,15 @@ returns to what the floor gives. The row is now listed as built.
 - The built-state control that the Abyssal Rifts change added now says "Swarm of Locusts is built: its swarm obscures
   vision". It is inside an existing test, so the count of tests does not move for it.
 
+### A merge rule first used at this change's move
+
+This change moved in a stack of seven on development c2eccb69. It takes Swarm of Locusts out of the partly-built list in
+`BuiltStateOf`, where on development the list had grown past it (Reality Rifts and Warzone Control Points were added
+after it). The conflict was resolved by a rule the coordinating session accepted on 2026-09-30, which refuses anything
+it cannot place: **lines removed from a list by the incoming side** (`resolve_list_remove.py`) are removed from the
+stacked side exactly, each found there once, and the stacked side's closing line is kept. The partly-built list now
+ends with Warzone Control Points, and Swarm of Locusts stands in the built list with its own comment.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
