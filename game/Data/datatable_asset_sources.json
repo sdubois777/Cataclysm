@@ -155,7 +155,7 @@
       "asset": "DT_SkillSlots",
       "csv": "SkillSlots.csv",
       "rows": 7,
-      "csv_sha256": "e15314526c137ad1e66268b9ada1c247ede0f56e9e0a2b3b05e21806f6e25a88"
+      "csv_sha256": "402fca60e960369b248fd3102cbc3f59fe43b3944c47295db18ac6a8aa1099fb"
     },
     {
       "asset": "DT_StatusEffects",
