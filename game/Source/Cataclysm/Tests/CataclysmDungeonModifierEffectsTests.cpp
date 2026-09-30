@@ -39771,8 +39771,8 @@ bool FCataclysmBannerAuraTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// HELD: A WAVE OF FOUR EVERY 15 S INSIDE; OUTSIDE THE HOLD PAUSES AND NO WAVE COMES; AT 60 S THE WAVES STOP AND THE AURA
-// DOUBLES.
+// HELD: A WAVE OF FOUR AS IT IS PLANTED AND EVERY 15 S INSIDE; OUTSIDE THE HOLD PAUSES AND NO WAVE COMES; AT 60 S NO
+// WAVE, THE WAVES STOP AND THE AURA DOUBLES.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerHeldTest,
 	"Cataclysm.DungeonModifierEffects.WarBannerHeldThroughTheWavesDoublesItsAura",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -39802,11 +39802,12 @@ bool FCataclysmBannerHeldTest::RunTest(const FString& Parameters)
 	}
 	StandAt(Player, At);
 
-	Beat(Mode, BeatsFor(Effects::WarBannerWaveEverySeconds) - 1);
-	TestEqual(TEXT("no wave at 14.75 s"), Mode->BannerAssailantsStanding().Num(), 0);
-	Beat(Mode, 1);
 	const TArray<ACataclysmEnemyCharacter*> First = Mode->BannerAssailantsStanding();
-	TestEqual(TEXT("four at 15 s"), First.Num(), Effects::WarBannerWaveSize);
+	TestEqual(TEXT("four as it is planted"), First.Num(), Effects::WarBannerWaveSize);
+	Beat(Mode, BeatsFor(Effects::WarBannerWaveEverySeconds) - 1);
+	TestEqual(TEXT("no second wave at 14.75 s"), Mode->BannerAssailantsStanding().Num(), Effects::WarBannerWaveSize);
+	Beat(Mode, 1);
+	TestEqual(TEXT("four more at 15 s"), Mode->BannerAssailantsStanding().Num(), 2 * Effects::WarBannerWaveSize);
 	for (const ACataclysmEnemyCharacter* Assailant : First)
 	{
 		TestTrue(TEXT("\"Assailant\" under its bar"),
@@ -39819,13 +39820,17 @@ bool FCataclysmBannerHeldTest::RunTest(const FString& Parameters)
 	StandAt(Player, At + FVector(2000.0f, 0.0f, 0.0f));
 	Beat(Mode, BeatsFor(20.0f));
 	TestEqual(TEXT("outside, the hold pauses"), Mode->WarBannerSecondsHeld(), 15.0f, 0.01f);
-	TestEqual(TEXT("and no wave comes"), Mode->BannerAssailantsStanding().Num(), Effects::WarBannerWaveSize);
+	TestEqual(TEXT("and no wave comes"), Mode->BannerAssailantsStanding().Num(), 2 * Effects::WarBannerWaveSize);
 
-	// INSIDE AGAIN FOR THE REST OF THE 60 S: THREE MORE WAVES, THEN HELD.
+	// INSIDE AGAIN FOR THE REST OF THE 60 S: TWO MORE WAVES, AT 30 AND 45 S, THEN HELD WITH NO WAVE AT 60 S.
 	StandAt(Player, At);
-	Beat(Mode, BeatsFor(Effects::WarBannerHoldSeconds - Effects::WarBannerWaveEverySeconds));
+	Beat(Mode, BeatsFor(Effects::WarBannerHoldSeconds - Effects::WarBannerWaveEverySeconds) - 1);
+	TestFalse(TEXT("not held at 59.75 s"), Mode->WarBannerIsHeld());
+	TestEqual(TEXT("four waves in all by 45 s"), Mode->BannerAssailantsStanding().Num(), 4 * Effects::WarBannerWaveSize);
+	Beat(Mode, 1);
 	TestTrue(TEXT("held at 60 s"), Mode->WarBannerIsHeld());
-	TestEqual(TEXT("four waves in all"), Mode->BannerAssailantsStanding().Num(), 4 * Effects::WarBannerWaveSize);
+	TestEqual(TEXT("and no wave as the hold completes"), Mode->BannerAssailantsStanding().Num(),
+			  4 * Effects::WarBannerWaveSize);
 	Beat(Mode, 1);
 	TestEqual(TEXT("40% more damage inside"), TotemRuleOn(Player, TEXT("attack_damage")), 40.0f, 0.001f);
 	TestEqual(TEXT("+30 resistance inside"), TotemRuleOn(Player, *FirstResistanceStat()), 30.0f, 0.001f);

@@ -2873,8 +2873,11 @@ private:
 	/** War Banner: the banner, its zone and its hold forgotten. */
 	void ForgetTheWarBanner();
 
-	/** War Banner: the one choice at the banner, which plants it where it stands. */
+	/** War Banner: the one choice at the banner, which plants it where it stands and brings the first wave. */
 	bool ChooseAtWarBanner(class ACataclysmFloorObject* Banner, FName ChoiceKey);
+
+	/** War Banner: one wave of assailants brought near the planted banner. */
+	void BringABannerWave();
 
 	/** War Banner, on the beat: the zone drawn, the hold counted, the waves brought and the aura written. */
 	void StepWarBanner(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
