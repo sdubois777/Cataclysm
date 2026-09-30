@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Famished Beasts: creatures walk to drops within 10 m and eat them for good, each a tenth stronger in damage and health, up to ten; The Infested Hoard's drops are left alone
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+which drops are eaten and the nearest one, the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+and `.cpp` (its own key of the damage map, the drops a creature ate, and the flag the brain reads);
+`game/Source/Cataclysm/Character/CataclysmEnemyController.h` and `.cpp` (the walk to a drop, and `SeekingADrop`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the beat, the eater's strength, Carrion Feast's
+health write, the panel line); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Gorged N"); the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+
+### The row
+
+`Famine_Famished_Beasts` in `game/Data/DungeonModifiers.csv`, weight 10: "Enemies actively seek out and consume dropped
+items, denying players their rewards and getting stronger with each item eaten." It states no figure.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md`, this log and `game/Source` for the row on 2026-09-30: none of them names it. Two
+things already existed. Demonic Guide's brain branch walks a creature to a point a floor rule sets, with the roam's
+acceptance radius and a straight-line fallback when there is no navigation mesh. Carrion Feast makes its feeders a tenth
+stronger in damage and maximum health for each carcass eaten, up to ten, on its own key of the damage map and its own
+record of each feeder's maximum health.
+
+### What the rule does
+
+On a floor carrying the row, every creature of the floor's kinds that takes hostile action walks to the nearest drop
+within 10 m before it chases the player, unless the player is within its attack reach, where it fights. Standing on a
+drop, within the roam's 50 cm acceptance radius, it eats it at once: the drop is destroyed and gone for good. Each drop
+eaten makes it a tenth stronger in damage and maximum health, added, up to ten drops, and it says "Gorged N" under its
+bar. Every drop is eaten, gear and material, except The Infested Hoard's. The panel reads "famished beasts: 3 drops
+eaten". The eater pays as its rung does, and nothing extra.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **Every drop on the floor is eaten, gear and material, EXCEPT The Infested Hoard's (`bInfested`).** That rule's drop
+  exists so the player can choose whether to pick it up and take its risk, and a creature eating it would remove the
+  other rule's choice.
+- **Any floor creature with a drop within 10 m walks to the nearest and eats it before chasing the player; with the
+  player within its attack reach, it fights instead.** Demonic Guide's walking branch, straight-line fallback included.
+- **Within the roam's acceptance radius it eats the drop at once, and the drop is destroyed.**
+- **Carrion Feast's mechanism and figures on the eater**: a tenth more damage and maximum health a drop, added, up to
+  ten, on its own key and its own maximum-health record. **With Carrion Feast on the same floor the two stack.**
+- **An eaten drop is gone for good**: the row's own "denying players their rewards".
+- **The eater pays as its rung does**, and nothing extra.
+- **The labels and the panel line**, with no count of the drops lying.
+
+**On the owner's play-check list**, added by the coordinating session: that creatures walk to loot and eat it, and
+whether losing a high-rarity drop for good feels fair.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **How the two rules' health stacks.** Neither rule has a share of a common health multiplier: each writes the maximum
+  itself, from its own record, so the later write would erase the other's share. So each writes its own record times
+  both multipliers. Carrion Feast's write in `StrengthenTheFeeders` now also multiplies by the feeder's
+  `FamishedBeastsMultiplier`, a one-line change to that rule, and `StrengthenTheEater` uses Carrion Feast's own record
+  of a feeder, times Carrion's multiplier. The two now agree in either order. Their damage stacks through the two keys
+  of the damage map, which already multiply.
+- **Who eats: a creature of the floor's seven kinds that takes hostile action.** A carcass, a vein, a beacon and the
+  other things rules stand on a floor are creature classes too and do not walk; a guide and a medic take no hostile
+  action.
+- **It goes on eating past ten**, and grows no stronger: the row denies the reward whatever the count.
+- **One drop a beat for each creature**, the nearest one under it.
+- **The game mode writes the flag the brain reads on every beat**, for every living creature in the world, as Demonic
+  Guide's flag is written, so a creature a rule brings later seeks on the next beat.
+- **The walk sits below a charge and a wind-up already under way**, which it does not cut, and above the choice of what
+  to do about the target.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| NetHack | [nethackwiki.com/wiki/Gelatinous_cube](https://nethackwiki.com/wiki/Gelatinous_cube) | "Gelatinous cubes are known for consuming any and all objects that they come across, and will attempt to eat or engulf items that are on a square they move onto"; what it engulfed comes back only when it is "polymorphed or outright killed" |
+| Diablo III | [the Puzzle Ring's item page](https://us.diablo3.blizzard.com/en-gb/item/puzzle-ring-Unique_Ring_004_x1) | "Summon a treasure goblin who picks up normal-quality items for you. After picking up 16 items, he drops a rare item with a chance for a legendary. [12 - 16]" |
+
+`diablo.fandom.com` refused the fetch. **What it settles:** a monster moving to items on the ground and taking them.
+**What it does not:** who seeks, how far, how much stronger; and in both games what was taken comes back in some form,
+where this row says the reward is denied, so the loss for good is the row's reading and not the genre's.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `FamishedBeasts`. **A test world has no
+navigation, so no creature walks anywhere in a test**: the seeking is measured through the brain's answer, and a drop is
+placed under a creature by hand to be eaten. **That creatures walk to loot in play is on the owner's play-check list.**
+
+- `FamishedBeastsFiguresReachShareAndMost`: 10 m; the eating radius is the brain's `RoamAcceptanceRadiusCm`; 10% and ten,
+  Carrion Feast's; the multiplier at 0, 1, 3, 10 and 11.
+- `FamishedBeastsACreatureWalksToADropWithinTenMetresUnlessThePlayerIsInReach`: the rule marks it; at 5 m its brain
+  answers `SeekingADrop`; at 11 m it does not; with the player within its reach it does not.
+- `FamishedBeastsADropUnderACreatureIsEatenAndMakesItStronger`: a gear drop eaten and gone, a tenth more damage on its own
+  key and a tenth more maximum health, "Gorged 1", the panel; a material drop eaten too; after ten more, ten eaten for
+  strength, twice the damage and the health, and twelve on the panel's count.
+- `FamishedBeastsAnInfestedDropIsNeverEaten`: under it, not eaten; at 5 m, not walked to.
+- `FamishedBeastsAFeederThatEatsStacksWithCarrionFeast`: a feeder that eats a drop carries both keys at a tenth each and a
+  maximum of its own times both; after a second carcass, Carrion Feast's write keeps the drop's share. The drops a kill
+  leaves are cleared first, so the test counts only its own.
+
+Two Python checks: the row still says "actively seek out", "consume dropped items", "denying players their rewards" and
+"stronger with each item eaten"; and its setter writes its own key of the damage map.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted, stacked with the rest of its group.
+
+---
+
 ## 2026-09-30 — Deployable Part 3: each active gadget raises evasion, counted from the machines a character commands
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (the count of

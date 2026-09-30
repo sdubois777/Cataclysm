@@ -629,6 +629,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetInfectionBloomDamageMultiplier(float NewMultiplier);
 
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetFamishedBeastsDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -639,6 +642,7 @@ public:
 	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
 	static constexpr const TCHAR* CarrionFeastDamageSource = TEXT("CarrionFeast");
 	static constexpr const TCHAR* InfectionBloomDamageSource = TEXT("InfectionBloom");
+	static constexpr const TCHAR* FamishedBeastsDamageSource = TEXT("FamishedBeasts");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -1186,6 +1190,15 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsACarrionFeeder = false;
+
+	/**
+	 * Famished Beasts: whether the brain sends this creature to the nearest drop within reach, and how many drops it
+	 * has eaten. Issues #1820 and #41. WRITTEN BY `ACataclysmDungeonGameMode` ON THE BEAT AND READ BY THE BRAIN, as
+	 * Demonic Guide's flag is. It says "Gorged N" under its bar.
+	 */
+	bool bSeeksDropsForTheFloorRule = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 DropsEaten = 0;
 
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
@@ -1759,7 +1772,8 @@ protected:
 	/**
 	 * What each rule that changes this creature's attack damage multiplies it by, under that
 	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
-	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
+	 * (Ravenous Hoard), `FamishedBeastsDamageSource` (Famished Beasts), `FloorDepthDamageSource`
+	 * (March of Progress), `SpireDamageSource`
 	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
 	 * `TrialOfEnduranceDamageSource` (Trial of Endurance), `ObsidianSarcophagiDamageSource` (Obsidian
 	 * Sarcophagi), `InfectionBloomDamageSource` (Infection Bloom) and `CarrionFeastDamageSource`

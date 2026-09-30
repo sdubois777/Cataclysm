@@ -583,6 +583,9 @@ public:
 	 */
 	static FString CarcassTextFor(const AActor* Actor);
 
+	/** "Gorged N" under the bar of a creature that has eaten N drops for Famished Beasts, or empty. Issues #1820, #41. */
+	static FString FamishedBeastsTextFor(const AActor* Actor);
+
 	/**
 	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
 	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.

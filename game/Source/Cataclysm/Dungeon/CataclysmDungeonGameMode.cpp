@@ -6797,7 +6797,10 @@ void ACataclysmDungeonGameMode::StrengthenTheFeeders()
 		Feeder->SetCarrionFeastDamageMultiplier(Multiplier);
 		UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Feeder);
 		const float OldMaximum = Abilities ? Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute()) : 0.0f;
-		const float NewMaximum = CarrionFeederOwnMaxHealth[Index] * Multiplier;
+		// AND ANY DROPS IT ATE FOR FAMISHED BEASTS, so the two rules' health stacks as their damage keys do: each writes
+		// its own maximum times both multipliers, in either order. Issues #1820 and #41.
+		const float NewMaximum = CarrionFeederOwnMaxHealth[Index] * Multiplier
+			* Effects::FamishedBeastsMultiplier(Feeder->DropsEaten);
 		if (OldMaximum <= 0.0f || NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
 		{
 			continue;
@@ -6805,6 +6808,95 @@ void ACataclysmDungeonGameMode::StrengthenTheFeeders()
 		const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
 		Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
 		Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+	}
+}
+
+void ACataclysmDungeonGameMode::StrengthenTheEater(ACataclysmEnemyCharacter* Eater)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Eater);
+	if (!IsValid(Eater) || !Abilities)
+	{
+		return;
+	}
+	const float Multiplier = Effects::FamishedBeastsMultiplier(Eater->DropsEaten);
+	Eater->SetFamishedBeastsDamageMultiplier(Multiplier);
+
+	// ITS OWN MAXIMUM, RECORDED WHEN IT FIRST ATE; a Carrion feeder's is the one Carrion Feast recorded, and it carries
+	// Carrion's multiplier too, so the two rules' health stacks in either order. Health keeps its share of the maximum.
+	const int32 AsFeeder = CarrionFeeders.IndexOfByPredicate(
+		[Eater](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Eater; });
+	const bool bFeeder = AsFeeder != INDEX_NONE && CarrionFeederOwnMaxHealth.IsValidIndex(AsFeeder);
+	const float OldMaximum = Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	const float Own = bFeeder ? CarrionFeederOwnMaxHealth[AsFeeder]
+		: FamishedBeastsOwnMaxHealth.FindOrAdd(Eater, OldMaximum);
+	const float NewMaximum = Own * Multiplier * (bFeeder ? Effects::CarrionFeastMultiplier(CarrionFeastStacks) : 1.0f);
+	if (OldMaximum <= 0.0f || NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
+	{
+		return;
+	}
+	const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
+	Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
+	Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+}
+
+void ACataclysmDungeonGameMode::StepFamishedBeasts()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	// A NEW FLOOR STARTS THE COUNT AGAIN.
+	if (FamishedBeastsFloor != FloorNumber)
+	{
+		FamishedBeastsFloor = FloorNumber;
+		FamishedBeastsDropsEaten = 0;
+		FamishedBeastsOwnMaxHealth.Reset();
+	}
+	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::FamishedBeastsKey));
+
+	int32 Eaten = 0;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		// A CREATURE OF THE FLOOR'S KINDS THAT FIGHTS: not a carcass, a vein or another thing a rule stands on the
+		// floor, and not a guide or a medic, which take no hostile action.
+		const bool bEats = bRow && IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
+			&& DungeonGameModeKindOf(Creature) != ECataclysmDungeonCreature::Count && !Creature->TakesNoHostileAction();
+		if (IsValid(Creature))
+		{
+			Creature->bSeeksDropsForTheFloorRule = bEats;
+		}
+		if (!bEats)
+		{
+			continue;
+		}
+		ACataclysmDroppedItem* Drop = Effects::FamishedBeastsNearestDrop(
+			World, Creature->GetActorLocation(), Effects::FamishedBeastsEatWithinCm);
+		if (!Drop)
+		{
+			continue;
+		}
+		// EATEN AND GONE FOR GOOD; STRONGER UP TO THE MOST, and it goes on eating past it.
+		UE_LOG(LogCataclysm, Log, TEXT("Famished Beasts: %s ate %s on floor %d"), *Creature->GetName(),
+			   *Drop->GetName(), FloorNumber);
+		Drop->Destroy();
+		++FamishedBeastsDropsEaten;
+		++Eaten;
+		if (Creature->DropsEaten < Effects::FamishedBeastsMostStacks)
+		{
+			++Creature->DropsEaten;
+			StrengthenTheEater(Creature);
+		}
+	}
+	if (Eaten > 0)
+	{
+		RefreshFloorModifierPanel();
 	}
 }
 
@@ -8580,6 +8672,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND CARRION FEAST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bCarrionFeast = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::CarrionFeastKey));
+	// AND FAMISHED BEASTS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bFamishedBeasts = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::FamishedBeastsKey));
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
@@ -8621,6 +8716,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRawSewage
 		&& !bDemonicGuide
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
+		&& !bFamishedBeasts
 		&& !bObsidianSarcophagi)
 	{
 		return;
@@ -8928,6 +9024,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bCarrionFeast)
 	{
 		StepCarrionFeast();
+	}
+
+	// AND FAMISHED BEASTS, WHOSE CREATURES WALK TO DROPS AND EAT THEM. AFTER CARRION FEAST, so a feeder that came this
+	// beat is already a creature of the floor. Issues #1820 and #41.
+	if (bFamishedBeasts)
+	{
+		StepFamishedBeasts();
 	}
 
 	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
@@ -11994,6 +12097,13 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%"),
 											  CarrionCarcassesNow().Num(), CarrionFeedersNow().Num(),
 											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
+	}
+
+	// AND FAMISHED BEASTS: the drops eaten on this floor. Issues #1820 and #41.
+	const FName Famished(Effects::FamishedBeastsKey);
+	if (FloorBrief.Modifiers.Contains(Famished))
+	{
+		Counting.Add(Famished, FString::Printf(TEXT("famished beasts: %d drops eaten"), FamishedBeastsDropsEatenNow()));
 	}
 
 	// AND VOID PARASITE: how many voidlings the player carries, and what clears them. Issues #1820 and #41.

@@ -34876,4 +34876,294 @@ bool FCataclysmCarrionFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Famine_Famished_Beasts. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName FamishedRow(UCataclysmDungeonModifierEffects::FamishedBeastsKey);
+
+	/** A dungeon carrying these rows, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AFamishedFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+											  const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** A drop at `At`: gear, or a crafting material. */
+	ACataclysmDroppedItem* ADropAt(UWorld* World, const FVector& At, bool bMaterial)
+	{
+		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(At, FRotator::ZeroRotator);
+		if (Drop && bMaterial)
+		{
+			Drop->Material = FName(TEXT("Material_Purified_Essence"));
+			Drop->MaterialQuantity = 1;
+			Drop->MaterialTier = 5;
+		}
+		else if (Drop)
+		{
+			Drop->Item.Base = FName(TEXT("Greataxe"));
+		}
+		return Drop;
+	}
+
+	/** Every drop in the world destroyed: what a kill leaves, so a test counts only the drops it places. */
+	void ClearTheDrops(UWorld* World)
+	{
+		TArray<ACataclysmDroppedItem*> Drops;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			Drops.Add(*It);
+		}
+		for (ACataclysmDroppedItem* Drop : Drops)
+		{
+			Drop->Destroy();
+		}
+	}
+
+	/** A creature's maximum health. */
+	float MaxHealthOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		return Creature->GetAbilitySystemComponent()->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	}
+}
+
+// THE FIGURES: 10 M TO SEEK, EATEN WITHIN THE ROAM'S ACCEPTANCE RADIUS, 10% A DROP, UP TO 10.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsFiguresReachShareAndMost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("seeks within 10 m"), Effects::FamishedBeastsSeekWithinCm, 1000.0f, 0.001f);
+	TestEqual(TEXT("eats within the roam's acceptance radius"), Effects::FamishedBeastsEatWithinCm,
+			  ACataclysmEnemyController::RoamAcceptanceRadiusCm, 0.001f);
+	TestEqual(TEXT("10% a drop, Carrion Feast's"), Effects::FamishedBeastsStrongerPercentPerDrop, 10.0f, 0.001f);
+	TestEqual(TEXT("up to 10, Carrion Feast's"), Effects::FamishedBeastsMostStacks, 10);
+	TestEqual(TEXT("none eaten"), Effects::FamishedBeastsMultiplier(0), 1.0f, 0.0001f);
+	TestEqual(TEXT("one, a tenth more"), Effects::FamishedBeastsMultiplier(1), 1.1f, 0.0001f);
+	TestEqual(TEXT("three, added"), Effects::FamishedBeastsMultiplier(3), 1.3f, 0.0001f);
+	TestEqual(TEXT("ten, twice"), Effects::FamishedBeastsMultiplier(10), 2.0f, 0.0001f);
+	TestEqual(TEXT("never past ten"), Effects::FamishedBeastsMultiplier(11), 2.0f, 0.0001f);
+	return true;
+}
+
+// A CREATURE WALKS TO A DROP WITHIN 10 M, NOT ONE FARTHER, AND FIGHTS INSTEAD WHEN THE PLAYER IS WITHIN ITS REACH.
+// Through the brain's answer: a test world has no navigation.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsSeekTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsACreatureWalksToADropWithinTenMetresUnlessThePlayerIsInReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsSeekTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	const FVector Feet = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Imp = Mode ? SpawnImpWithHealth(World, Feet + FVector(3000.0f, 0.0f, 0.0f), 1000.0f) : nullptr;
+	ACataclysmEnemyController* Brain = Imp ? Cast<ACataclysmEnemyController>(Imp->GetController()) : nullptr;
+	ACataclysmDroppedItem* Drop = Imp ? ADropAt(World, Imp->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f), false) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("with a brain"), Brain)
+		|| !TestNotNull(TEXT("and a drop"), Drop))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const int32 Seeking = static_cast<int32>(ECataclysmBrainAction::SeekingADrop);
+	TestTrue(TEXT("the rule marks it to seek"), Imp->bSeeksDropsForTheFloorRule);
+	TestEqual(TEXT("a drop at 5 m: it walks to it"), static_cast<int32>(Brain->Think()), Seeking);
+
+	Drop->SetActorLocation(Imp->GetActorLocation() + FVector(1100.0f, 0.0f, 0.0f));
+	TestNotEqual(TEXT("a drop at 11 m: it does not"), static_cast<int32>(Brain->Think()), Seeking);
+
+	Drop->SetActorLocation(Imp->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f));
+	const FVector At = Imp->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(At.X + Imp->AttackReachCm() * 0.5f, At.Y, Feet.Z));
+	TestNotEqual(TEXT("the player within its reach: it fights instead"), static_cast<int32>(Brain->Think()), Seeking);
+	return true;
+}
+
+// A DROP UNDER A CREATURE IS EATEN AND GONE, GEAR OR MATERIAL; EACH MAKES IT A TENTH STRONGER IN DAMAGE AND HEALTH, UP TO
+// TEN; IT GOES ON EATING PAST TEN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsEatTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsADropUnderACreatureIsEatenAndMakesItStronger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsEatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	ACataclysmEnemyCharacter* Imp = Mode
+		? SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	const float OwnMaximum = MaxHealthOf(Imp);
+	const TWeakObjectPtr<ACataclysmDroppedItem> Gear = ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	TestFalse(TEXT("the gear drop under it is eaten and gone"), Gear.IsValid());
+	TestEqual(TEXT("one drop eaten"), Imp->DropsEaten, 1);
+	TestEqual(TEXT("a tenth more damage, on its own key"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("a tenth more maximum health"), MaxHealthOf(Imp), OwnMaximum * 1.1f, 0.5f);
+	TestTrue(TEXT("\"Gorged 1\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Imp).Contains(TEXT("Gorged 1")));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(FamishedRow),
+			  FString(TEXT("famished beasts: 1 drops eaten")));
+
+	const TWeakObjectPtr<ACataclysmDroppedItem> Material = ADropAt(World, Imp->GetActorLocation(), true);
+	Beat(Mode, 1);
+	TestFalse(TEXT("a material drop is eaten too"), Material.IsValid());
+	TestEqual(TEXT("two eaten"), Imp->DropsEaten, 2);
+
+	for (int32 More = 0; More < Effects::FamishedBeastsMostStacks; ++More)
+	{
+		ADropAt(World, Imp->GetActorLocation(), false);
+		Beat(Mode, 1);
+	}
+	TestEqual(TEXT("it grows no stronger past ten"), Imp->DropsEaten, Effects::FamishedBeastsMostStacks);
+	TestEqual(TEXT("twice the damage"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 2.0f, 0.0001f);
+	TestEqual(TEXT("twice the maximum health"), MaxHealthOf(Imp), OwnMaximum * 2.0f, 0.5f);
+	TestEqual(TEXT("but it ate all twelve"), Mode->FamishedBeastsDropsEatenNow(), 12);
+	return true;
+}
+
+// THE INFESTED HOARD'S DROP IS NEVER SOUGHT OR EATEN: IT IS THE PLAYER'S CHOICE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsInfestedTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAnInfestedDropIsNeverEaten",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsInfestedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	ACataclysmEnemyCharacter* Imp = Mode
+		? SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f)
+		: nullptr;
+	ACataclysmEnemyController* Brain = Imp ? Cast<ACataclysmEnemyController>(Imp->GetController()) : nullptr;
+	ACataclysmDroppedItem* Infested = Imp ? ADropAt(World, Imp->GetActorLocation(), false) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("with a brain"), Brain)
+		|| !TestNotNull(TEXT("and a drop"), Infested))
+	{
+		return false;
+	}
+	Infested->bInfested = true;
+	Beat(Mode, 2);
+	TestTrue(TEXT("an infested drop under it is not eaten"), IsValid(Infested));
+	TestEqual(TEXT("nothing eaten"), Imp->DropsEaten, 0);
+	Infested->SetActorLocation(Imp->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f));
+	TestNotEqual(TEXT("nor walked to"), static_cast<int32>(Brain->Think()),
+				 static_cast<int32>(ECataclysmBrainAction::SeekingADrop));
+	return true;
+}
+
+// A CARRION FEEDER THAT EATS A DROP CARRIES BOTH RULES: BOTH KEYS OF ITS DAMAGE, AND BOTH MULTIPLIERS ON ITS HEALTH, IN
+// EITHER ORDER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsWithCarrionTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAFeederThatEatsStacksWithCarrionFeast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsWithCarrionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {CarrionRow, FamishedRow});
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: a feeder"), Mode->CarrionFeedersNow().Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Feeder = Mode->CarrionFeedersNow()[0];
+	const float Own = MaxHealthOf(Feeder) / Effects::CarrionFeastMultiplier(1);
+
+	ADropAt(World, Feeder->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: the feeder ate a drop"), Feeder->DropsEaten, 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Carrion Feast's key"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::CarrionFeastDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("and Famished Beasts' own"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("its health carries both"), MaxHealthOf(Feeder), Own * 1.1f * 1.1f, 0.5f);
+
+	// AND A SECOND CARCASS EATEN: CARRION FEAST'S WRITE KEEPS THE DROP'S SHARE.
+	if (!SlayForACarcass(*this, World, Mode, Player, true, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: two carcasses eaten"), Mode->CarrionFeastStacksNow(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Carrion Feast's write keeps the drop's share"), MaxHealthOf(Feeder), Own * 1.2f * 1.1f, 0.5f);
+	TestEqual(TEXT("and its own key is untouched"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
