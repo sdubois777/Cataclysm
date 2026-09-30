@@ -230,10 +230,24 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	// the Nth cast cheaper whenever that share is below the normal cost. Asked
 	// here, before the cast is paid for, because the count advances after. A
 	// free spell pays the share too.
-	const float Extra = Cataclysm && UCataclysmSkillEffects::IsSpell(SkillTagsForStats())
+	const float NthSpellExtra = Cataclysm && UCataclysmSkillEffects::IsSpell(SkillTagsForStats())
 		? Cataclysm->NthSpellExtraManaPercent() / 100.0f
 			* Cataclysm->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute())
 		: 0.0f;
+
+	// AND A SHARE OF THE MAXIMUM MANA, ON TOP IN THE SAME WAY. Issue #1833,
+	// ruled 2026-09-30: "Movement abilities cost 20%-50% of your maximum
+	// mana" is `mana_cost_as_maximum_mana_percent` scoped to Slot.Movement,
+	// PLUS the skill's own cost for the reason above: "instead" would make a
+	// drawback cheaper whenever the share is below the normal cost. Asked with
+	// this skill's tags, so the scope decides which skills pay it.
+	const float MaximumManaShare = Cataclysm
+		? FMath::Max(0.0f, Cataclysm->StatForSkill(FName(ManaCostAsMaximumManaPercentStat),
+												  SkillTagsForStats(), 0.0f)) / 100.0f
+			* Cataclysm->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute())
+		: 0.0f;
+
+	const float Extra = NthSpellExtra + MaximumManaShare;
 
 	if (Base <= 0.0f)
 	{
@@ -299,6 +313,8 @@ bool UCataclysmGameplayAbility::FervourCovers(
 
 const TCHAR* UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat =
 	TEXT("mana_cost_as_current_health_percent");
+const TCHAR* UCataclysmGameplayAbility::ManaCostAsMaximumManaPercentStat =
+	TEXT("mana_cost_as_maximum_mana_percent");
 
 float UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent(
 	const UAbilitySystemComponent* AbilitySystem) const

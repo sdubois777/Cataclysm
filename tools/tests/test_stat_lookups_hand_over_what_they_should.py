@@ -72,7 +72,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: one keeps an earlier miscount. A count describes a tree, so the label
 #: stays with the tree it was taken on and the movement is written out.
 #: Issue #1833 group C part 3a added one more on 2026-09-30, the share of
-#: armour a critical strike ignores.
+#: armour a critical strike ignores; part 3b one more, a share of the
+#: maximum mana added to a skill's cost.
 CALL_SITES = 63
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -531,6 +532,10 @@ INVENTORY = {
      'FName(UCataclysmDamageCalculation::CriticalArmorPenetrationStat), AssetTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor(), EnemiesStruckTogether'):
         'the share of armour a critical strike ignores, issue #1833, handed '
         'the same blow as armour penetration beside it',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(ManaCostAsMaximumManaPercentStat), SkillTagsForStats(), 0.0f'):
+        "a share of the maximum mana added to a skill's cost, issue #1833, "
+        "with the skill's tags and no blow, as the cost it is added to",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'FName(TEXT("crit_chance")), AssetTags, Offence->GetCritChance(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered( GetOwningActor()), GetOwningActor()'):
         'a critical strike stat, handed the whole blow since issue '

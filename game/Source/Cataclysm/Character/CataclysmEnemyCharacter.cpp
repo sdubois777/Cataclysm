@@ -324,8 +324,12 @@ void ACataclysmEnemyCharacter::HandleDeath()
 				Watching->GetPlayerState<ACataclysmPlayerState>();
 			if (State && bPays)
 			{
-				State->GrantExperience(UCataclysmEnemyScore::ScoreFor(
-					UCataclysmEnemyScore::FloorIn(World), RarityStep));
+				const int32 Score = UCataclysmEnemyScore::ScoreFor(
+					UCataclysmEnemyScore::FloorIn(World), RarityStep);
+
+				// LESS WHAT THE PLAYER'S OWN STATS HOLD BACK. Issue #1833: "Kills
+				// no longer generate any experience".
+				State->GrantExperience(State->ExperienceAfterGain(Score));
 			}
 
 			// AND A KILL CLEARS WHAT THE KILLER OWES. Issue #997. The

@@ -303,6 +303,14 @@ public:
 	static const TCHAR* ManaCostAsCurrentHealthPercentStat;
 
 	/**
+	 * `mana_cost_as_maximum_mana_percent`: a share of the maximum mana added to
+	 * a skill's cost in `ManaCostFor`. Issue #1833: "Movement abilities cost
+	 * 20%-50% of your maximum mana". No attribute, so it is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* ManaCostAsMaximumManaPercentStat;
+
+	/**
 	 * Mana one landed use RETURNS to the character holding it, at their level.
 	 *
 	 * ONLY THE BASIC ATTACK HAS ONE. game/Data/SkillSlots.csv gives the Basic

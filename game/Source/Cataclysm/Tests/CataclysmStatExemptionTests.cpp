@@ -4106,6 +4106,171 @@ namespace CataclysmStatExemptionTest
 			Ignored.RemovedByArmour, 0.0f, 0.01f);
 	}
 
+	/** Replace a character's stat lines with one modifier on one stat, base nought. */
+	void GrantOne(UCataclysmAbilitySystemComponent* System, const TCHAR* Stat,
+				  ECataclysmStatBucket Bucket, float Value)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = Bucket;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Value;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Row};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * `max_crit_chance`, read over the MaxCritChance attribute where a blow
+	 * takes its critical strike chance. Issue #1833, "Your critical strike
+	 * chance cannot exceed 30%-50%". Two attackers at 100% chance, the roll
+	 * pinned at 50; one carries flat -70, a ceiling of 30, and does not
+	 * critically strike.
+	 */
+	void ProbeMaxCritChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		IConsoleVariable* Roll =
+			IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+		if (!Test.TestNotNull(TEXT("the critical strike roll can be pinned"), Roll))
+		{
+			return;
+		}
+		const float PreviousRoll = Roll->GetFloat();
+		Roll->Set(50.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(PreviousRoll, ECVF_SetByConsole); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Capped(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		for (const FScopedFighter* Striker : {&Plain, &Capped})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 200.0f);
+		}
+		GrantOne(Capped.AbilitySystem, UCataclysmCombatAttributeSet::MaxCritChanceStat,
+				 ECataclysmStatBucket::Flat, -70.0f);
+
+		FCataclysmDamageResult Struck;
+		UCataclysmSkillEffects::ApplyHit(Plain.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Struck);
+		FCataclysmDamageResult Held;
+		UCataclysmSkillEffects::ApplyHit(Capped.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Held);
+
+		Test.TestTrue(TEXT("the plain attacker at 100% critically strikes on a roll of 50"),
+					  Struck.bWasCritical);
+		Test.TestFalse(TEXT("max_crit_chance is read: a ceiling of 30 does not critically strike on a roll of 50"),
+					   Held.bWasCritical);
+	}
+
+	/**
+	 * `energy_shield_recharge_ceiling`, read in `UCataclysmRegeneration::ApplyStep`.
+	 * Issue #1833, "Your energy shield cannot recharge above 50% of its
+	 * maximum". A shield of 400 of 1000 regenerating 1000 a second: one second
+	 * fills it, and flat -50 stops it at 500.
+	 */
+	void ProbeEnergyShieldRechargeCeiling(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Capped(World, /*AttackDamage=*/0.0f);
+		for (const FScopedFighter* Each : {&Plain, &Capped})
+		{
+			Each->AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 1000.0f);
+			Each->AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 400.0f);
+			Each->AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldRegenAttribute(), 1000.0f);
+		}
+		GrantOne(Capped.AbilitySystem, UCataclysmRegeneration::EnergyShieldRechargeCeilingStat,
+				 ECataclysmStatBucket::Flat, -50.0f);
+
+		UCataclysmRegeneration::ApplyStep(Plain.Actor, 1.0f, 100.0f);
+		UCataclysmRegeneration::ApplyStep(Capped.Actor, 1.0f, 100.0f);
+
+		Test.TestEqual(TEXT("with no ceiling, one second fills the shield"),
+					   Plain.AbilitySystem->GetNumericAttribute(Vital::GetEnergyShieldAttribute()),
+					   1000.0f, 0.01f);
+		Test.TestEqual(TEXT("energy_shield_recharge_ceiling is read: it stops at half, 500"),
+					   Capped.AbilitySystem->GetNumericAttribute(Vital::GetEnergyShieldAttribute()),
+					   500.0f, 0.01f);
+	}
+
+	/**
+	 * `experience_gain`, read by `ACataclysmPlayerState::ExperienceAfterGain`,
+	 * which the kill grant calls. Issue #1833, "Kills no longer generate any
+	 * experience": removed, a kill worth 100 grants nothing.
+	 */
+	void ProbeExperienceGain(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerState* Plain = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerState* Barred = World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* BarredSystem = Barred
+			? Cast<UCataclysmAbilitySystemComponent>(Barred->GetAbilitySystemComponent())
+			: nullptr;
+		if (!Test.TestNotNull(TEXT("a player state"), Plain)
+			|| !Test.TestNotNull(TEXT("a second one with an ability system"), BarredSystem))
+		{
+			return;
+		}
+		// THE ACTOR INFORMATION A LOOKUP READS, as a possessed player's has.
+		BarredSystem->InitAbilityActorInfo(Barred, Barred);
+		GrantOne(BarredSystem, ACataclysmPlayerState::ExperienceGainStat,
+				 ECataclysmStatBucket::Removed, 1.0f);
+
+		Test.TestEqual(TEXT("a kill worth 100 grants 100 to a character without the row"),
+					   Plain->ExperienceAfterGain(100), static_cast<int64>(100));
+		Test.TestEqual(TEXT("experience_gain is read: removed, it grants nothing"),
+					   Barred->ExperienceAfterGain(100), static_cast<int64>(0));
+	}
+
+	/**
+	 * `mana_cost_as_maximum_mana_percent`, read in
+	 * `UCataclysmGameplayAbility::ManaCostFor` with the skill's tags. Issue #1833,
+	 * "Movement abilities cost 20%-50% of your maximum mana". 20 flat on a
+	 * maximum of 1000 adds 200 to the skill's cost.
+	 */
+	void ProbeManaCostAsMaximumManaPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxManaAttribute(), 1000.0f);
+		UCataclysmSelfBuffSkill* Skill = SupportBuffOn(Fighter);
+		if (!Test.TestNotNull(TEXT("a skill"), Skill))
+		{
+			return;
+		}
+		const float Before = Skill->ManaCostFor(Fighter.AbilitySystem);
+		GrantOne(Fighter.AbilitySystem, UCataclysmGameplayAbility::ManaCostAsMaximumManaPercentStat,
+				 ECataclysmStatBucket::Flat, 20.0f);
+		Test.TestEqual(TEXT("mana_cost_as_maximum_mana_percent is read: 20% of 1000 adds 200"),
+					   Skill->ManaCostFor(Fighter.AbilitySystem), Before + 200.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4168,6 +4333,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("projectile_speed"), &ProbeProjectileSpeed},
 			{TEXT("minion_range"), &ProbeMinionRange},
 			{TEXT("critical_armor_penetration"), &ProbeCriticalArmorPenetration},
+			{TEXT("max_crit_chance"), &ProbeMaxCritChance},
+			{TEXT("energy_shield_recharge_ceiling"), &ProbeEnergyShieldRechargeCeiling},
+			{TEXT("experience_gain"), &ProbeExperienceGain},
+			{TEXT("mana_cost_as_maximum_mana_percent"), &ProbeManaCostAsMaximumManaPercent},
 		};
 		return Made;
 	}

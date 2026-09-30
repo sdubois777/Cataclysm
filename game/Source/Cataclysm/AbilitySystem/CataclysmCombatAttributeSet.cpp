@@ -4,6 +4,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Net/UnrealNetwork.h"
 
+const TCHAR* UCataclysmCombatAttributeSet::MaxCritChanceStat = TEXT("max_crit_chance");
+
 UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 {
 	// Defence and utility start at zero: a character has these only if its
