@@ -41,8 +41,21 @@ an overlap search that does not ask whether it is dead.
 explosion again and hurt the same enemies twice. It now returns at once unless `MarkDead` reports a
 first death. Ruled to be fixed here rather than filed.
 
+### A GADGET'S PLACE UNDER ITS SKILL'S CAP, FOUND AND FIXED IN THE SAME CHANGE
+
+`UCataclysmDeployableSkill::LivingDeployedCount`, which a deployable skill asks before placing
+another gadget, dropped only destroyed gadgets, not dead ones. A dead gadget held its place under the
+cap until its body was removed: until its lifespan ended before this change, and for half a second
+after it. It now drops dead gadgets too, as `UCataclysmSummonSkill::LivingMinionCount` has for
+minions since issue #1957. Found while making this change and fixed here under the coordinating
+session's ruling of 2026-09-30. This is shared minion code, not War class work.
+
 ### TESTS
 
+- **A third new test,** `Cataclysm.MinionDeath.AGadgetKilledThroughItsHealthFreesItsPlaceAtOnce`: a
+  Bolt Turret skill with a cap of one refuses a second placement while the first turret lives, and
+  places a new one as soon as the first is killed through its health, with the dead body still in
+  the level.
 - **Two new tests in `Cataclysm.MinionDeath.`:** a quiet death leaves a body that is still valid but
   no longer collides, has lost its speed and cannot move, with at most half a second of life left (the
   imp was summoned with 60); and a second death does not run the death again. That one kills an imp

@@ -2224,6 +2224,82 @@ bool FCataclysmMinionDeathOnceTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadGadgetFreesItsPlaceTest,
+	"Cataclysm.MinionDeath.AGadgetKilledThroughItsHealthFreesItsPlaceAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A dead gadget stops counting toward its skill's cap the moment it dies.
+ * Issue #1528, found while making that change and ruled the same day:
+ * `UCataclysmDeployableSkill::LivingDeployedCount` dropped only destroyed
+ * gadgets, so a dead one held its place until its body was removed -- the
+ * gadget version of issue #1957, which fixed the same thing for minions.
+ *
+ * A CAP OF ONE, so the second placement is refused while the first gadget
+ * lives and allowed once it has died, with its body still in the level for
+ * half a second.
+ */
+bool FCataclysmDeadGadgetFreesItsPlaceTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Count=1; MaxActive=1; Duration=20; Minions=BoltTurret:1"), TEXT("Bolt Turret"));
+	if (!TestNotNull(TEXT("a deployable skill"), Skill))
+	{
+		return false;
+	}
+	Skill->CooldownOverride = 0.0f;
+
+	Activate(Caster, Skill);
+	const TArray<AActor*> Placed = UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	if (!TestEqual(TEXT("one turret is placed"), Placed.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmMinion* First = Cast<ACataclysmMinion>(Placed[0]);
+	if (!TestNotNull(TEXT("and it is a minion"), First))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(First)) { First->Destroy(); } };
+
+	Activate(Caster, Skill);
+	TestEqual(TEXT("a second is refused while it lives: the cap is one"),
+			  UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 1);
+
+	Kill(First);
+	if (!TestTrue(TEXT("the turret is dead and its body is still here for now"),
+				  UCataclysmSkillEffects::IsDead(First) && IsValid(First)))
+	{
+		return false;
+	}
+
+	Activate(Caster, Skill);
+	const TArray<AActor*> After = UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	TestEqual(TEXT("its place is free at once, so a new turret is placed"), After.Num(), 1);
+	TestTrue(TEXT("and it is a new one, not the dead one"),
+			 After.Num() == 1 && After[0] != First);
+	for (AActor* Other : After)
+	{
+		if (IsValid(Other) && Other != First)
+		{
+			Other->Destroy();
+		}
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathWithoutTheStatTest,
 	"Cataclysm.MinionDeath.AMinionWhoseSummonerHasNotTakenItLeavesABodyAndHurtsNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
