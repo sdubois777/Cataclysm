@@ -21,6 +21,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
@@ -1632,6 +1633,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
 		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
 
+	// AND ITS GROUPS, NUMBERED AFTER EVERY GROUP PLACED BEFORE, for Morale Break. Issues #1820 and #41.
+	ArrivingPackGroupBase = PackGroupsPlaced;
+	PackGroupsPlaced += Population.PackCount;
+	ArrivingPackSites = Population.PackSites;
+
 	// THIS WAVE'S OWN CREATURES, EMPTIED BEFORE IT ARRIVES. What is left of the
 	// wave before stays in `FloorEnemies` and stops being counted here, which is
 	// what makes "10% or less of the previous wave" a question about one wave.
@@ -1666,6 +1672,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 			if (ACataclysmEnemyCharacter* Enemy =
 					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
 			{
+				NoteThePack(Enemy, Placement);
 				FloorEnemies.Add(Enemy);
 				CurrentWave.Add(Enemy);
 				++Spawned;
@@ -1687,6 +1694,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 		// AND THE FLOOR'S PLAGUE HARBINGERS, for the same reason. Issues #1820 and #41.
 		ChooseThePlagueHarbingers();
+
+		// AND MORALE BREAK'S LEADERS, for the same reason. Issues #1820 and #41.
+		ChooseTheMoraleLeaders();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -2002,6 +2012,7 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 		if (ACataclysmEnemyCharacter* Enemy = SpawnPlacedCreature(
 				WaveStillToArrive[Index], ArrivingSightRadiusMultiplier))
 		{
+			NoteThePack(Enemy, WaveStillToArrive[Index]);
 			FloorEnemies.Add(Enemy);
 			CurrentWave.Add(Enemy);
 			++WaveSpawned;
@@ -2030,6 +2041,9 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 
 		// AND THIS WAVE'S PLAGUE HARBINGERS, chosen per wave as ruled. Issues #1820 and #41.
 		ChooseThePlagueHarbingers();
+
+		// AND THIS WAVE'S MORALE BREAK LEADERS, one to a group of it. Issues #1820 and #41.
+		ChooseTheMoraleLeaders();
 	}
 
 	return Arrived;
@@ -3799,7 +3813,9 @@ int32 ACataclysmDungeonGameMode::LivingFloorEnemies() const
 	{
 		Living += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
 	}
-	return Living;
+	// AND MORALE BREAK'S ESCAPED, WHO ARE AWAY AND NOT DEAD, as ruled: the floor is not cleared while they are gone.
+	// Issues #1820 and #41.
+	return Living + MoraleBreakEscapedNow();
 }
 
 void ACataclysmDungeonGameMode::NoteTheFloorsClearTime()
@@ -4590,6 +4606,301 @@ void ACataclysmDungeonGameMode::PlaceTheGuide()
 	DemonicGuide = Guide;
 	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteThePack(ACataclysmEnemyCharacter* Enemy, const FCataclysmEnemyPlacement& Placement) const
+{
+	if (!Enemy || Placement.Pack == INDEX_NONE)
+	{
+		return;
+	}
+	Enemy->PackGroup = ArrivingPackGroupBase + Placement.Pack;
+	// THE POPULATION'S OWN MIDDLE, OR THE CREATURE'S CELL if a population ever came without one.
+	Enemy->PackMiddleCell = ArrivingPackSites.IsValidIndex(Placement.Pack) ? ArrivingPackSites[Placement.Pack] : Placement.Cell;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::MoraleLeadersNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		return Standing;
+	}
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		ACataclysmEnemyCharacter* Leader = Group.Leader.Get();
+		if (!Group.bFallen && IsValid(Leader) && !UCataclysmSkillEffects::IsDead(Leader))
+		{
+			Standing.Add(Leader);
+		}
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::MoraleBreakPanickedNow() const
+{
+	int32 Panicked = 0;
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		return Panicked;
+	}
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Creature : Group.Panicked)
+		{
+			Panicked += (Creature.IsValid() && !UCataclysmSkillEffects::IsDead(Creature.Get())) ? 1 : 0;
+		}
+	}
+	return Panicked;
+}
+
+int32 ACataclysmDungeonGameMode::MoraleBreakEscapedNow() const
+{
+	int32 Away = 0;
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		return Away;
+	}
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		Away += Group.bReturned ? 0 : Group.Escaped.Num();
+	}
+	return Away;
+}
+
+void ACataclysmDungeonGameMode::ForgetMoraleBreak()
+{
+	for (FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		if (ACataclysmEnemyCharacter* Leader = Group.Leader.Get())
+		{
+			Leader->bIsMoraleLeader = false;
+		}
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Weak : Group.Panicked)
+		{
+			if (ACataclysmEnemyCharacter* Creature = Weak.Get())
+			{
+				Creature->bIsPanicked = false;
+				Creature->StopFleeing();
+			}
+		}
+	}
+	MoraleBreakGroups.Reset();
+	MoraleBreakFloor = -1;
+	MoraleBreakPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::ChooseTheMoraleLeaders()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::MoraleBreakKey)))
+	{
+		return;
+	}
+	// A NEW FLOOR STARTS AGAIN, and what escaped the last one is forgotten with it.
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		ForgetMoraleBreak();
+		MoraleBreakFloor = FloorNumber;
+	}
+
+	// EACH GROUP'S HIGHEST RUNG, STRICTLY GREATER so a tie keeps the first placed, and how many of it stand.
+	TMap<int32, ACataclysmEnemyCharacter*> Highest;
+	TMap<int32, int32> InTheGroup;
+	TArray<int32> Order;
+	for (ACataclysmEnemyCharacter* Enemy : CurrentWave)
+	{
+		if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || Enemy->PackGroup == INDEX_NONE)
+		{
+			continue;
+		}
+		ACataclysmEnemyCharacter*& Best = Highest.FindOrAdd(Enemy->PackGroup, nullptr);
+		if (Best == nullptr)
+		{
+			Order.Add(Enemy->PackGroup);
+		}
+		if (Best == nullptr || Enemy->RarityStep > Best->RarityStep)
+		{
+			Best = Enemy;
+		}
+		++InTheGroup.FindOrAdd(Enemy->PackGroup, 0);
+	}
+
+	int32 Chosen = 0;
+	for (const int32 Group : Order)
+	{
+		ACataclysmEnemyCharacter* Leader = Highest.FindRef(Group);
+		if (!Leader || !Effects::MoraleBreakLeads(Leader->RarityStep, InTheGroup.FindRef(Group))
+			|| MoraleBreakGroups.ContainsByPredicate([Group](const FMoraleBreakGroup& Known) { return Known.Group == Group; }))
+		{
+			continue;
+		}
+		FMoraleBreakGroup& Added = MoraleBreakGroups.AddDefaulted_GetRef();
+		Added.Group = Group;
+		Added.Middle = Leader->PackMiddleCell;
+		Added.Leader = Leader;
+		// READ NOW AND ON EVERY BEAT IT STANDS: a leader can carry `Generic_Horde_Leader`, which rallies instead.
+		Added.bLeaderRallies = Leader->ModifierRows.Contains(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+		Leader->bIsMoraleLeader = true;
+		++Chosen;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Morale Break: %d leaders chosen on floor %d"), Chosen, FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepMoraleBreak(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::MoraleBreakKey)) || MoraleBreakFloor != FloorNumber)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const FName HordeLeader(UCataclysmEnemyModifiers::HordeLeaderRow);
+
+	for (FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		if (!Group.bFallen)
+		{
+			ACataclysmEnemyCharacter* Leader = Group.Leader.Get();
+			if (IsValid(Leader) && !UCataclysmSkillEffects::IsDead(Leader))
+			{
+				// READ WHILE IT STANDS, so a leader destroyed with its body is still known to have carried it.
+				Group.bLeaderRallies = Leader->ModifierRows.Contains(HordeLeader);
+				continue;
+			}
+			Group.bFallen = true;
+			if (IsValid(Leader))
+			{
+				Leader->bIsMoraleLeader = false;
+			}
+			if (Group.bLeaderRallies)
+			{
+				UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d's leader was a Horde Leader; it rallies"), Group.Group);
+				continue;
+			}
+			// ITS OWN GROUP PANICS, and no other.
+			for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+			{
+				ACataclysmEnemyCharacter* Creature = Enemy.Get();
+				if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature) && Creature != Leader
+					&& Creature->PackGroup == Group.Group)
+				{
+					Creature->bIsPanicked = true;
+					Group.Panicked.Add(Creature);
+				}
+			}
+			UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d's leader died; %d panic"), Group.Group,
+				   Group.Panicked.Num());
+		}
+		else if (Group.bLeaderRallies || Group.bReturned)
+		{
+			continue;
+		}
+		else if (!Group.bFlightOver)
+		{
+			Group.SecondsSinceFall += SecondsBetweenWaveChecks;
+		}
+		else
+		{
+			// AWAY, AND BACK WHEN DUE: each at its own rung, and its reinforcements at Common, at the group's middle.
+			Group.SecondsAway += SecondsBetweenWaveChecks;
+			if (Effects::MoraleBreakReturnIsDue(Group.SecondsAway))
+			{
+				int32 Back = 0;
+				for (const TPair<ECataclysmDungeonCreature, int32>& Escaped : Group.Escaped)
+				{
+					FCataclysmEnemyPlacement Placement;
+					Placement.Cell = Group.Middle;
+					Placement.Creature = Escaped.Key;
+					// NO GROUP: `NoteThePack` is not called, so what comes back never panics again.
+					if (ACataclysmEnemyCharacter* Returned =
+							SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Escaped.Value))
+					{
+						FloorEnemies.Add(Returned);
+						++Back;
+					}
+					for (int32 More = 0; More < Effects::MoraleBreakReinforcementsPerEscapee; ++More)
+					{
+						if (ACataclysmEnemyCharacter* Reinforcement = SpawnPlacedCreature(
+								Placement, FloorBrief.SightRadiusMultiplier, Effects::MoraleBreakReinforcementRung))
+						{
+							FloorEnemies.Add(Reinforcement);
+							++Back;
+						}
+					}
+				}
+				Group.bReturned = true;
+				UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d is back, %d creatures"), Group.Group, Back);
+			}
+			continue;
+		}
+
+		// THE FLIGHT: refreshed each beat from where the player stands, until it is over.
+		if (!Effects::MoraleBreakFlightIsOver(Group.SecondsSinceFall))
+		{
+			for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Weak : Group.Panicked)
+			{
+				ACataclysmEnemyCharacter* Creature = Weak.Get();
+				if (World && IsValid(Player) && IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+				{
+					Creature->FleeFrom(Player->GetActorLocation(), Now + Effects::MoraleBreakFleeSeconds);
+				}
+			}
+			continue;
+		}
+
+		// OVER: FAR ENOUGH AWAY IS ESCAPED AND LEAVES WITHOUT DYING; NEAR ENOUGH STOPS AND FIGHTS ON.
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Weak : Group.Panicked)
+		{
+			ACataclysmEnemyCharacter* Creature = Weak.Get();
+			if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature))
+			{
+				continue;
+			}
+			Creature->bIsPanicked = false;
+			Creature->StopFleeing();
+			const float Cm = IsValid(Player) ? FVector::Dist2D(Player->GetActorLocation(), Creature->GetActorLocation())
+											 : TNumericLimits<float>::Max();
+			if (!Effects::MoraleBreakHasEscaped(Cm))
+			{
+				continue;
+			}
+			const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Creature);
+			if (Kind == ECataclysmDungeonCreature::Count)
+			{
+				// NOT ONE OF THE FLOOR'S KINDS, so nothing could bring it back: it stays and fights instead.
+				continue;
+			}
+			Group.Escaped.Emplace(Kind, Creature->RarityStep);
+			Creature->Destroy();
+		}
+		Group.Panicked.Reset();
+		Group.bFlightOver = true;
+		// NOTHING ESCAPED, NOTHING COMES BACK.
+		Group.bReturned = Group.Escaped.IsEmpty();
+		UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d's flight is over; %d escaped"), Group.Group,
+			   Group.Escaped.Num());
+	}
+
+	int32 Back = 0;
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		if (Group.bFlightOver && !Group.bReturned)
+		{
+			Back = FMath::Max(Back, FMath::CeilToInt(Effects::MoraleBreakReturnSeconds - Group.SecondsAway));
+		}
+	}
+	const bool bAnyFallen = MoraleBreakGroups.ContainsByPredicate([](const FMoraleBreakGroup& Group) { return Group.bFallen; });
+	const int32 Key = (bAnyFallen ? 1 : 0) + MoraleBreakPanickedNow() * 10 + MoraleBreakEscapedNow() * 1000 + Back * 100000;
+	if (Key != MoraleBreakPanelKey)
+	{
+		MoraleBreakPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
 }
 
 void ACataclysmDungeonGameMode::StepDemonicGuide(
@@ -8045,6 +8356,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheRivers();
 	RawSewageStacks = 0;
 	ForgetTheGuide();
+	// AND MORALE BREAK'S LEADERS, FLIGHTS AND ESCAPED END WITH THE DUNGEON. Issues #1820 and #41.
+	ForgetMoraleBreak();
 	RawSewageSecondsInARiver = 0.0f;
 	bRawSewageInARiver = false;
 	ForgetTheVeins();
@@ -8580,6 +8893,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND CARRION FEAST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bCarrionFeast = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::CarrionFeastKey));
+	// AND MORALE BREAK, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bMoraleBreak = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::MoraleBreakKey));
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
@@ -8621,6 +8937,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRawSewage
 		&& !bDemonicGuide
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
+		&& !bMoraleBreak
 		&& !bObsidianSarcophagi)
 	{
 		return;
@@ -8928,6 +9245,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bCarrionFeast)
 	{
 		StepCarrionFeast();
+	}
+
+	// AND MORALE BREAK, WHOSE GROUPS RUN WHEN THEIR LEADER DIES AND COME BACK IF THEY GET AWAY. Issues #1820 and #41.
+	if (bMoraleBreak)
+	{
+		StepMoraleBreak(Player);
 	}
 
 	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
@@ -11994,6 +12317,28 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%"),
 											  CarrionCarcassesNow().Num(), CarrionFeedersNow().Num(),
 											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
+	}
+
+	// AND MORALE BREAK: whether a leader has fallen, how many run, how many are away and when they come back. Issues
+	// #1820 and #41.
+	const FName Morale(Effects::MoraleBreakKey);
+	if (FloorBrief.Modifiers.Contains(Morale) && MoraleBreakFloor == FloorNumber)
+	{
+		int32 Back = 0;
+		for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+		{
+			if (Group.bFlightOver && !Group.bReturned)
+			{
+				Back = FMath::Max(Back, FMath::CeilToInt(Effects::MoraleBreakReturnSeconds - Group.SecondsAway));
+			}
+		}
+		const int32 Away = MoraleBreakEscapedNow();
+		const bool bAnyFallen =
+			MoraleBreakGroups.ContainsByPredicate([](const FMoraleBreakGroup& Group) { return Group.bFallen; });
+		const FString BackIn = Away > 0 ? FString::Printf(TEXT(", back in %ds"), Back) : FString();
+		Counting.Add(Morale, !bAnyFallen
+			? FString(TEXT("morale break: no leader has fallen"))
+			: FString::Printf(TEXT("morale break: %d panicked, %d escaped%s"), MoraleBreakPanickedNow(), Away, *BackIn));
 	}
 
 	// AND VOID PARASITE: how many voidlings the player carries, and what clears them. Issues #1820 and #41.

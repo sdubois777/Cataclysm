@@ -2,6 +2,124 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Morale Break: when a group's Elite leader dies the rest of the group runs; those that get away come back 30 seconds later with one more of their kind each
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (each creature's group, and the "Leader" and
+"Panicked" flags); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the groups numbered as the
+floor is populated, the leaders, the beat, the living count, the panel line, the end of the dungeon);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Leader" and "Panicked"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+
+### The row
+
+`War_Morale_Break` in `game/Data/DungeonModifiers.csv`, weight 5: "Certain enemies panic and flee when their leader dies,
+but if allowed to escape, they return later with reinforcements." It states no figure.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md` and this log for morale, panic and leader on 2026-09-30: neither mentions them. The
+game had no leader. March of Progress' Commander is another rule's chosen creature, the Commander gameplay tag means
+"buffed by a commander", and `Generic_Horde_Leader` is an enemy modifier whose death enrages nearby enemies, the opposite
+reaction. `ACataclysmEnemyCharacter::FleeFrom` already named this row as a caller. The floor's population already places
+creatures in groups (`FCataclysmEnemyPlacement::Pack`): Imps ten to a group, Hellhounds three, Brutes two, and Abyssal
+Wardens and Corrupted Sentinels one; but nothing kept a creature's group once it was spawned.
+
+### What the rule does
+
+Once a floor's or wave's own creatures are placed, each group of two or more whose highest rung is Elite or above has a
+leader: that creature, the first placed on a tie. It says "Leader" under its bar. A group of Commons has none. When a
+leader dies, the living rest of its own group panic: they say "Panicked" and run from the player through `FleeFrom`, which
+moves them as fear does without the fear tag, refreshed each beat from where the player stands. Eight seconds after the
+death, each one still alive farther than 15 m from the player has escaped and leaves the floor without dying: no loot, no
+experience, no death rule. One nearer stops running and fights on. Thirty seconds after escaping, the escaped come back
+at their group's middle cell, each at its own rung, with one more creature of its kind each at Common. They come back
+once and belong to no group, so they never panic again, and every one pays as its rung does. While they are away they
+count as living, so the floor is not cleared. Leaving the floor forgets them. A leader carrying `Generic_Horde_Leader`
+rallies its group instead, and nobody panics. The panel reads "morale break: no leader has fallen", then "morale break: 3
+panicked, 0 escaped", and "morale break: 0 panicked, 3 escaped, back in 30s" while they are away.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A leader is a group's highest-rung creature, Elite or above, labelled "Leader"; a group of Commons has none.**
+- **Its own group panics**, and no other.
+- **They flee through `FleeFrom`, labelled "Panicked".**
+- **Escaped is alive at 8 seconds and beyond 15 m.**
+- **They return 30 seconds later at the group's middle cell, with one Common reinforcement for each, once only,
+  forgotten on leaving the floor.**
+- **The escaped count as living until they return.**
+- **Every returning creature pays as its rung does.**
+- **A leader carrying Horde Leader rallies instead of breaking.**
+- **The panel line.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Where a creature's group is kept: on the creature**, as `PackGroup` and `PackMiddleCell`, which the coordinating
+  session asked to be placed where nothing can drop it mid-floor. No `Forget*` of the game mode touches a creature's own
+  field, and it lasts exactly as long as the creature. It is **not saved**: `FCataclysmSaveApply::FloorInto` restores a
+  floor's creatures and nothing outside the tests calls it, so no floor is restored in play. If one ever is, the group
+  belongs in `FCataclysmSavedCreature` beside `bRisenFromTheDead`.
+- **Group numbers are counted up across the dungeon and never reset**, so a Horde arena's later wave never shares a number
+  with an earlier wave whose creatures still stand.
+- **A group is written only where the floor's own population is spawned**, all at once or as a wave, and never inside
+  `SpawnPlacedCreature`: Necrotic Bloom spawns copies of another population's placements, whose group numbers mean
+  nothing on this floor.
+- **What comes back joins the floor's creatures and not a Horde wave's count**, so a Horde arena's next wave is judged on
+  the wave it counted.
+- **Everything that comes back appears on the middle cell**, as a group was placed around it.
+- **A leader's Horde Leader is read when it is chosen and on every beat it stands**, so one destroyed with its body is
+  still known to have carried it.
+- **The floor number starts the rule again**, as The Plaguebearer's does, so the order of a floor's resets does not matter.
+
+### The research
+
+Both pages fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo II | [diablo2.io/monsters/fallen-t4199.html](https://diablo2.io/monsters/fallen-t4199.html) | "Fallen in the area may run away when they see their fellow friends killed" |
+| Total War: Rome II | [the manual's battle morale page](https://r2enc.totalwar.com/en/manual/single-player/0087_enc_page_battle_play_phase_conflict_morale/) | a broken unit "will rout - break from combat and begin to leave the battlefield"; "There is a chance that a routing unit can be persuaded to stay on the battlefield via the general's rally ability" |
+
+diablowiki.net and purediablo.com refused the fetch, so neither is quoted. **What it settles:** the shape: a death breaks
+the creatures around it, they run from the fight, and in Total War a routed unit can come back into it. **What it does
+not:** coming back with reinforcements, what counts as escaping, who leads, and every figure; those are specific to this
+game.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `MoraleBreak`. **A test world has no
+navigation, so no creature runs anywhere in a test**: the fleeing is measured through the brain's answer, and a creature
+is placed beyond or within 15 m by hand. **That they actually run, get away and come back in play is on the owner's
+play-check list.**
+
+- `MoraleBreakFiguresFlightEscapeAndReturn`: 8 s, 15 m, 30 s, one Common each, an Elite leads two or more; the edges of
+  each helper.
+- `MoraleBreakLeaderIsItsGroupsHighestRungEliteOrAbove`: the Elite leads and says so; a group of Commons has none; a
+  Legendary placed second leads; two Elites, the first placed leads; every group Common, no leader.
+- `MoraleBreakALeadersDeathPanicsItsOwnGroupAndNoOther`: the panel before; its group panics, says "Panicked" and its
+  brains answer `Fleeing`; another group does neither; the count and the panel.
+- `MoraleBreakBeyondFifteenMetresEscapesAndWithinFightsOn`: at 7.75 s the far one still runs; at 8 s the one at 20 m has
+  left, and the one at 10 m is alive, calm and not fleeing; the panel says it is back in 30 s.
+- `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor`: the whole group escapes; every other creature killed,
+  the escaped count as living and the floor is not cleared; nothing at 29.75 s; at 30 s twice as many of their kind, the
+  Elite back as an Elite and the rest Common, none in a group; the panel before and after.
+- `MoraleBreakAHordeLeaderRalliesItsGroupInstead`: a leader carrying Horde Leader dies and nobody panics.
+
+One Python check: the row still says "certain enemies", "panic and flee when their leader dies", "if allowed to escape"
+and "return later with reinforcements".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted, stacked with the rest of its group.
+
+---
+
 ## 2026-09-30 — Deployable Part 3: each active gadget raises evasion, counted from the machines a character commands
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (the count of

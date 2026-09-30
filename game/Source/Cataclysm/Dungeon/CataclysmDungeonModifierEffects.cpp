@@ -218,6 +218,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::DemonicGuideKey =
 const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
 	TEXT("Pestilence_Carrion_Feast");
 
+const TCHAR* UCataclysmDungeonModifierEffects::MoraleBreakKey =
+	TEXT("War_Morale_Break");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -551,6 +554,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(AbyssalRiftsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(DemonicGuideKey)
+		|| RowKey == FName(MoraleBreakKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(VoidParasiteKey)
@@ -784,6 +788,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DemonicGuideKey),
 		FName(InfestedVeinsKey),
 		FName(CarrionFeastKey),
+		FName(MoraleBreakKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
 		FName(ObsidianSarcophagiKey),
