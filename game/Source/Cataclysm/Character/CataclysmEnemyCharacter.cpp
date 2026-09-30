@@ -1347,6 +1347,11 @@ void ACataclysmEnemyCharacter::SetInfectionBloomDamageMultiplier(float NewMultip
 	SetDamageMultiplierFrom(InfectionBloomDamageSource, NewMultiplier);
 }
 
+void ACataclysmEnemyCharacter::SetPlaguebearerDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(PlaguebearerDamageSource, NewMultiplier);
+}
+
 void ACataclysmEnemyCharacter::SetDamageMultiplierFrom(const TCHAR* Source, float NewMultiplier)
 {
 	const float Wanted = FMath::Max(0.0f, NewMultiplier);

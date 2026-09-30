@@ -441,6 +441,19 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		return LastAction;
 	}
 
+	// A FLOOR RULE'S PLAGUEBEARER, WHEN IT IS NOT FLEEING, STANDS: it attacks nobody and does not come to the player,
+	// or it would walk in and flee out again. Issues #1820 and #41, The Plaguebearer. BELOW THE FLIGHT ABOVE, which is
+	// what moves it.
+	if (const ACataclysmEnemyCharacter* Bearer = Cast<ACataclysmEnemyCharacter>(Driven);
+		Bearer && Bearer->bIsPlaguebearer)
+	{
+		CurrentTarget = nullptr;
+		bHasRoamTarget = false;
+		StopMovement();
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
 	// A CHARGE ALREADY IN FLIGHT OUTRANKS EVERYTHING BELOW, and the brain does
 	// NOTHING while it runs. Issue #499.
 	//
