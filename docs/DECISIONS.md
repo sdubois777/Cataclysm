@@ -73,8 +73,15 @@ of a material or, when fewer are carried, none, and a stack taken to nothing emp
 - **8 Common angels of the floor's kinds, noticing the player from across the floor, the floor's creatures, paying.**
   What an angel is, is the owner's content question for later; these stand in for one.
 - **The panel lines "forced tithes: paid" and "forced tithes: unpaid; the angels will come".**
+- **Walking onto the stairs with the tithe unpaid is refusing**, ruled on review of this change. The stairs share the
+  exit cell and take the player down within 2 m of it; a click on the altar stops the walk 3 m from it, so opening the
+  altar from inside the floor stops short of them.
 
-**Judgements of this change, under the same delegation, not ruled separately:**
+**On the owner's play-check list**, added by the coordinating session: pay a tithe in each of the three prices, refuse
+one, and leave one unpaid; and **whether a player can reach the Tithe Altar without stepping onto the stairs by
+accident**. If play shows it too easy to miss, the altar moves to a cell beside the exit.
+
+**Judgements of this change, under the same delegation, accepted on review:**
 
 - **The angels come 8 m from the altar or the entrance**, Battlefield Relics' spirits' distance.
 - **The panel after a refusal reads "forced tithes: refused; the angels came"**, since "unpaid; the angels will come"
