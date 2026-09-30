@@ -2,6 +2,20 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — The design document says the Fervour reservation is built, for thralls and imps
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` (one sentence in the Fervour section). No code, data or test.
+
+The design document still said "**The reservation is designed and is not built.**", and that nothing
+separated available Fervour from total. Issue #1160 built it on 2026-09-30, for thralls, imps and
+replacement minions, and left gadgets out on purpose (issue #1934 stays open for them). The sentence is
+replaced by one that says what is built: each holds its skill's reserve back, the spendable Fervour is
+the maximum less what is held and is cut at once, a new one must fit, and the bar shows the held part.
+The change to the game is recorded in the entry "Every thrall and every imp holds its Fervour reserve
+back from the pool..." below.
+
+---
+
 ## 2026-09-30 — Skill, buff and debuff durations each have a stat a row can raise, and Chronomancer's Time-Lock works at two pieces
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp`
