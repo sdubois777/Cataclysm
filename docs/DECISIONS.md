@@ -137,6 +137,27 @@ basic attack takes a lone enemy behind it; and the basic attack's one target is 
 `Cataclysm.Passives.EverySwingLandsStopsARealRavagersMeleeBeingEvaded` now expects two rows and finds the evasion row
 by its stat. A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` shows the stat is read.
 
+### Run
+
+One window on 2026-09-30, with the build machine and the workbook, on `feat/every-swing-lands-arc` on development
+dafbfb8e, built from the main worktree. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard
+proof printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on `a9cb5802`, started with no workflow in progress | `5546 passed, 8 skipped` (JUnit 5,554, 0 failures, 0 errors) |
+| Workbook row, the three row counts, `generate_datatables.py` | Passive Effects 324 to 325 rows; `AUTHORED_ROWS`, the C++ `CHECK_TABLE` and `docs/README.md` 324 to 325; `PassiveEffects.csv` gained `Ravager_keystone_spine_002#2` only. The base had not moved the count first: all four copies read 324 at dafbfb8e |
+| Check of four data test files | `1 failed, 382 passed`: the asset hash |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| `Cataclysm.MeleeArc.` before the asset rebuild | `5 tests performed, 1 succeeded, 4 failed`; the spell test the one pass, each failure the built table's single row |
+| `Cataclysm.Passives.EverySwingLandsStopsARealRavagersMeleeBeingEvaded` before it | `1 tests performed, 0 succeeded, 1 failed` ("grants two stats" read 1) |
+| `generate_datatable_assets.py` | `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` changed, nothing else |
+| The same two after it | `5 tests performed, 5 succeeded, 0 failed`; `1 tests performed, 1 succeeded, 0 failed` |
+| Whole suite, started with no workflow in progress | `2778 tests performed, 2778 succeeded, 0 failed`; declared 2778, gap 0 |
+| Proof (a): `ArcDegrees` never finds the stat | PROVED: the three "behind" and one-target tests failed; restored 5 of 5 |
+| Proof (b): the melee check removed | PROVED: `ASpellConeIsNotWidenedByEverySwingLands` failed; restored 5 of 5 |
+| Proof (c): `SwingOnce` reads the row's angle again | PROVED: the same three failed; restored 5 of 5 |
+
 ---
 
 ## 2026-09-26 — Carrion Feast: a slain creature leaves a carcass that becomes a carrion feeder after 10 seconds unless fire burns it, and every carcass eaten makes the feeders 10% stronger; the purification altars wait on the interaction screen
