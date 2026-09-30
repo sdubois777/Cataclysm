@@ -355,6 +355,33 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 										 EnemiesStruckTogether)))).Final;
 }
 
+bool UCataclysmAbilitySystemComponent::StatBreakdownForSkill(
+	FName Stat, const FGameplayTagContainer& SkillTags,
+	FCataclysmStatBreakdown& Out) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		return false;
+	}
+
+	// EXACTLY WHAT `StatForSkill` RUNS WITH EVERY DEFAULT, written out, so the
+	// two cannot answer differently for the same stat. A test compares them.
+	Out = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, SkillTags,
+		WithEnemiesInReach(
+			Inputs->Modifiers,
+			WithTargetState(
+				Inputs->Modifiers, /*Target=*/nullptr,
+				CurrentConditions(/*SkillHealthCostPercent=*/-1.0f,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  /*TargetDistanceMetres=*/-1.0f,
+								  /*bTargetIsStaggered=*/false,
+								  /*EnemiesStruckTogether=*/-1))));
+	return true;
+}
+
 float UCataclysmAbilitySystemComponent::StatAppliedTo(
 	FName Stat, const FGameplayTagContainer& SkillTags, float Figure) const
 {

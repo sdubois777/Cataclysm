@@ -2751,6 +2751,34 @@ float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
 	{
 		Stat = Asking->StatForSkill(FName(CrowdControlResistanceStat),
 									FGameplayTagContainer(), Stat);
+
+		// A NEGATIVE TOTAL IS DIVIDED BY ITS INCREASES, NOT MULTIPLIED. Issue
+		// #2057, ruled 2026-09-30. The pipeline multiplies (base + flat) by
+		// (1 + increases), so with a drawback taking the total below zero,
+		// "increased crowd control resistance" made crowd control last LONGER.
+		// Here, and only here, a negative total is (base + flat) x more /
+		// (1 + increases): increases shrink the penalty, reductions deepen it.
+		// Six rows give this stat an increase: Masochist_basic_spine_009,
+		// Masochist_basic_fc_c1, Ravager_basic_a_stem2, Ravager_basic_a_c0,
+		// Ritualist_basic_c_c0 and Ravager_basic_spine_008#2.
+		//
+		// INCREASES OF -100% OR WORSE leave nothing to divide by, and are
+		// taken to the floor below. A judgement, not a ruling: no row reduces
+		// this stat at all today.
+		FCataclysmStatBreakdown Parts;
+		if (Asking->StatBreakdownForSkill(FName(CrowdControlResistanceStat),
+										  FGameplayTagContainer(), Parts)
+			&& Parts.RemovedCount == 0)
+		{
+			const float Unincreased =
+				(Parts.Base + Parts.Flat) * Parts.MoreMultiplier;
+			if (Unincreased < 0.0f)
+			{
+				const float Divisor = 1.0f + Parts.SumOfIncreases / 100.0f;
+				Stat = Divisor > 0.0f ? Unincreased / Divisor
+									  : MostCrowdControlLengthening;
+			}
+		}
 	}
 
 	// FLOORED AT -100 AND NOT CAPPED ABOVE, the decisions the header records.
