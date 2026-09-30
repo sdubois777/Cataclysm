@@ -424,14 +424,20 @@ public:
 	 * the same tag to run a death once -- would have granted the death bonus
 	 * again on every later write to a corpse's health.
 	 *
-	 * IT MARKS AND DOES NOT REMOVE. The actor still goes away on the lifespan
-	 * `Spawn` gave it, exactly as before, so nothing about spawning or the
-	 * summon cap changes. A dead minion's body staying in the level until then
-	 * is a separate fault and is issue #1528, which lists what
-	 * `ACataclysmEnemyCharacter::HandleDeath` does that a minion may or may not
-	 * want -- dropping loot and writing the run record are two it should not.
+	 * AND IT TAKES THE BODY AWAY. Issue #1528. A minion that explodes is
+	 * destroyed by the explosion, as before. One that dies quietly, a gadget
+	 * included, stops its movement and its collision at once and is
+	 * removed `DeadBodySeconds` later. Only the first death does any of this;
+	 * a second call returns at once.
 	 */
 	virtual void HandleDeath() override;
+
+	/**
+	 * How long a minion that died without exploding stays before it is
+	 * removed. Issue #1528, ruled 2026-09-30. A judgement: long enough for the
+	 * killing blow's impact and damage number to be drawn on it.
+	 */
+	static constexpr float DeadBodySeconds = 0.5f;
 
 	/**
 	 * Whether this minion's death will be an explosion. Issue #1515.

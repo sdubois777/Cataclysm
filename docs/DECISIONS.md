@@ -2,6 +2,63 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — A minion killed without exploding stops at once and is removed half a second later, gadgets included; a second death no longer explodes it again
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` and `.h`
+(`ACataclysmMinion::HandleDeath` and the new `DeadBodySeconds`),
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` (two new tests, three comments) and
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one comment). Issue
+[#1528](https://github.com/sdubois777/Cataclysm/issues/1528).
+
+### WHAT WAS WRONG
+
+A minion that died without exploding was marked dead and then left standing where it died, with its
+collision on, until the lifespan `ACataclysmMinion::Spawn` gave it ran out. An imp killed one second
+after its summoning stood for nineteen more. Its capsule could still block movement and be found by
+an overlap search that does not ask whether it is dead.
+
+### WHAT CHANGED, RULED 2026-09-30
+
+- **At the first death only**, a minion that did not explode has its movement disabled
+  (`DisableMovement`, which also clears its velocity) and its collision turned off, and
+  `SetLifeSpan(DeadBodySeconds)` removes it half a second later.
+- **Why a delay rather than `Destroy`.** The code that runs after a lethal blow draws the blow's
+  impact and damage number on the actor it struck. A minion destroyed in the same call would show
+  neither for the blow that killed it. **Half a second is a judgement**, not a figure from the design
+  or from research.
+- **Gadgets are included**, ruled the same day: a destroyed turret standing until its lifespan ends is
+  the same fault, and this is a change to every minion's death, not War class work. The comment in
+  `HandleDeath` that called a vanishing ballista a change to the deployable shape is reworded.
+- **Not copied from the enemy's death:** loot and the run record, which a summoned thing does not
+  have. **Not its tick either:** the ruling named it, but a minion's actor never ticks
+  (`PrimaryActorTick.bCanEverTick = false` in its constructor), so turning it off would do nothing
+  and a test of it could not fail.
+- **An exploding minion is unchanged:** `Explode` still destroys it at once.
+
+### A BUG IN THE SAME FUNCTION, FIXED IN THE SAME CHANGE
+
+`HandleDeath` ignored what `UCataclysmSkillEffects::MarkDead` answered, so a second call ran the
+explosion again and hurt the same enemies twice. It now returns at once unless `MarkDead` reports a
+first death. Ruled to be fixed here rather than filed.
+
+### TESTS
+
+- **Two new tests in `Cataclysm.MinionDeath.`:** a quiet death leaves a body that is still valid but
+  no longer collides, has lost its speed and cannot move, with at most half a second of life left (the
+  imp was summoned with 60); and a minion that exploded does not hurt the same enemy again on a second
+  death.
+- **Five existing assertions keep their text and their result.** Each reads the body at the moment of
+  death, when it is still valid for half a second; only their comments changed. They are
+  `Cataclysm.Fervour.ARitualistCommandingNothingGainsNoFervour`,
+  `Cataclysm.MinionDeath.AMinionWhoseSummonerHasNotTakenItLeavesABodyAndHurtsNothing`,
+  `Cataclysm.MinionDeath.ADeadMinionNoLongerHoldsAPlaceUnderTheSummonCap`,
+  `Cataclysm.MinionDeath.SharedRuinDealsAFifthOfTheDyingImpsMaximumHealthWithinFourMetres` and the
+  `minion_explodes_on_death` probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **The Fervour reserve is unaffected:** a dead minion already leaves `ThingsCommandedBy`, which
+  skips anything `IsDead` reports, so it stops reserving at its death, not at its removal.
+
+---
+
 ## 2026-09-30 — Increased crowd control resistance shrinks a negative total instead of deepening it: below zero the increases divide, in the crowd control reader only
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`

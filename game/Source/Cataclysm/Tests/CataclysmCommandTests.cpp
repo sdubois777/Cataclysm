@@ -30,6 +30,7 @@
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -1502,19 +1503,15 @@ bool FCataclysmRitualistNoMinionsTest::RunTest(const FString&)
 	TestTrue(TEXT("and the dead minion is recorded as dead"),
 		UCataclysmSkillEffects::IsDead(Imp));
 
-	// THE BODY IS STILL HERE, AND THIS ASSERTION DESCRIBES CURRENT BEHAVIOUR
-	// RATHER THAN ENDORSING IT. Issue #1528. `ACataclysmMinion::HandleDeath`
-	// marks and does not remove, so the lifespan `Spawn` gave the minion is
-	// still what takes it out of the level -- an imp killed a second after
-	// being summoned stands there for the remaining 19 of its 20 seconds.
+	// THE BODY IS STILL HERE, FOR HALF A SECOND. Issue #1528, ruled
+	// 2026-09-30: a minion that dies quietly stops at once and is removed
+	// `ACataclysmMinion::DeadBodySeconds` later, so at the moment of death its
+	// actor is still valid.
 	//
 	// IT IS ASSERTED BECAUSE THE GENERATOR HAS TO BE RIGHT WHILE IT HOLDS. The
-	// check below is only meaningful if the corpse is still present to be
+	// check below is only meaningful if the dead body is still present to be
 	// counted; without this line a run where the body had been removed would
 	// pass it for the wrong reason.
-	//
-	// IF #1528 REMOVES THE BODY, THIS IS THE LINE THAT CHANGES, and that issue
-	// says so in as many words so whoever changes it knows why it was here.
 	TestTrue(TEXT("its body is still in the level"), IsValid(Imp));
 
 	SetFervour(Commander, 0.0f);
@@ -2103,6 +2100,123 @@ bool FCataclysmMinionDeathExplodesTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathQuietBodyTest,
+	"Cataclysm.MinionDeath.AKilledMinionStopsAtOnceAndIsRemovedWithinHalfASecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion that dies without exploding stops at once and is removed half a
+ * second later. Issue #1528, ruled 2026-09-30. Until then it stood where it
+ * died, colliding and ticking, until the lifespan `Spawn` gave it ran out.
+ *
+ * READ AT THE MOMENT OF DEATH, NOT AFTER HALF A SECOND OF WORLD TIME. What is
+ * asserted is that the body can no longer collide or move, and that the
+ * lifespan left is at most half a second: this helper summons with 60, so a
+ * build that forgot the new lifespan reads 60 here.
+ */
+bool FCataclysmMinionDeathQuietBodyTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// THE STATE BEFORE, so the readings after are changes and not defaults.
+	TestTrue(TEXT("a living imp collides"), Imp->GetActorEnableCollision());
+	TestTrue(TEXT("and has more than half a second left"), Imp->GetLifeSpan() > 1.0f);
+
+	// A SPEED TO LOSE, as `CataclysmDeathTests.cpp` gives the dying enemy: a
+	// body standing still would read zero whether or not anything stopped it.
+	UCharacterMovementComponent* Movement = Imp->GetCharacterMovement();
+	if (!TestNotNull(TEXT("it has a movement component"), Movement))
+	{
+		return false;
+	}
+	Movement->Velocity = FVector(800.0f, 0.0f, 0.0f);
+
+	Kill(Imp);
+
+	TestTrue(TEXT("the imp is dead"), UCataclysmSkillEffects::IsDead(Imp));
+	if (!TestTrue(TEXT("and did not explode, so its body is still here for now"),
+				  IsValid(Imp)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("its body no longer collides"), Imp->GetActorEnableCollision());
+	TestEqual(TEXT("the speed it had is gone"), Movement->Velocity.Size(), 0.0, 0.01);
+	TestEqual(TEXT("and it is not allowed to move again"),
+			  static_cast<int32>(Movement->MovementMode), static_cast<int32>(MOVE_None));
+	const float Left = Imp->GetLifeSpan();
+	TestTrue(FString::Printf(TEXT("it is removed within half a second: %.3f s left"), Left),
+			 Left > 0.0f && Left <= 0.5f + 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathOnceTest,
+	"Cataclysm.MinionDeath.AMinionThatExplodedDoesNotExplodeAgainOnASecondDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A second death does nothing. Issue #1528, found while changing
+ * `ACataclysmMinion::HandleDeath` and fixed in the same change, ruled
+ * 2026-09-30: the function ignored what `MarkDead` answered, so a second call
+ * ran the explosion again and hurt the same enemy twice.
+ *
+ * THE SECOND CALL IS MADE DIRECTLY, on an actor the first explosion destroyed.
+ * It is still in memory until garbage is collected, which is exactly the state
+ * a second write at zero health in the same frame would find it in.
+ */
+bool FCataclysmMinionDeathOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	SwingsFor(Summoner, 1000.0f);
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f}});
+
+	FScopedCreature Near(World, FVector(11 * M, 0, 0));
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+
+	const float Before = Near.Health();
+	Kill(Imp);
+	const float AfterOne = Near.Health();
+	if (!TestTrue(TEXT("the first death exploded and hurt the enemy a metre away"),
+				  AfterOne < Before))
+	{
+		return false;
+	}
+
+	Imp->HandleDeath();
+	TestEqual(TEXT("and a second death hurts it no more"), Near.Health(), AfterOne, 0.1f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathWithoutTheStatTest,
 	"Cataclysm.MinionDeath.AMinionWhoseSummonerHasNotTakenItLeavesABodyAndHurtsNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2149,7 +2263,8 @@ bool FCataclysmMinionDeathWithoutTheStatTest::RunTest(const FString&)
 
 	// THE DAMAGE FIRST, THEN THE BODY, AND NOTHING IS ASKED OF A BODY THAT IS
 	// GONE. A build that exploded this minion would have destroyed the actor,
-	// and `IsDead` would then be reading a destroyed one.
+	// and `IsDead` would then be reading a destroyed one. A quiet death leaves
+	// the body for half a second (issue #1528), so it is still valid here.
 	TestEqual(TEXT("the enemy a metre away took nothing"),
 			  NearBefore - Near.Health(), 0.0f, 0.1f);
 	if (!TestTrue(TEXT("its body is still there"), IsValid(Imp)))
@@ -3330,6 +3445,8 @@ bool FCataclysmDeadMinionFreesItsPlaceTest::RunTest(const FString&)
 		return false;
 	}
 	Kill(Youngest);
+	// FOR HALF A SECOND, since issue #1528, which is long enough for this to
+	// read a dead body the cap must not count.
 	TestTrue(TEXT("the youngest's body stays in the level"), IsValid(Youngest));
 	TestEqual(TEXT("but the skill counts two living"), Skill->LivingMinionCount(),
 			  2);
@@ -3422,6 +3539,8 @@ bool FCataclysmSharedRuinBlastTest::RunTest(const FString&)
 			  InsideBefore - HealthOf(Inside), Maximum * 0.2f, 0.01f);
 	TestEqual(TEXT("one five metres away loses nothing"),
 			  OutsideBefore - HealthOf(Outside), 0.0f, 0.01f);
+	// A QUIET DEATH LEAVES THE BODY FOR HALF A SECOND (issue #1528) and an
+	// explosion destroys it at once, so this still tells the two apart.
 	TestTrue(TEXT("and the imp left its body, so that was not an explosion"),
 			 IsValid(Imp));
 	return true;
