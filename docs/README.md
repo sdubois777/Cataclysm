@@ -78,7 +78,7 @@ heading row describe their layout instead. Issue #1884.
 | Minion Types | 5 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
 | Minion Scaling | 2 | Attribute, Requires Tag, Stat, Percent Per Point |
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
-| Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown, Cooldown Lowest, Cooldown Highest, Mana Cost, Mana On Hit, Note |
+| Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown, Cooldown Lowest, Cooldown Highest, Mana Cost, Mana On Hit, Note, Fervour Cost |
 | Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale, Velocity Scale |
 | Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Colour, Note |
 | Item Sockets | 12 | Slot, Hands, Max Sockets, Note |

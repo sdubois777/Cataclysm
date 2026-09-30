@@ -1273,6 +1273,12 @@ struct FCataclysmSkillSlotRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
 	float ManaOnHit = 0.0f;
 
+	/** Fervour one use costs, on top of its mana. Issue #1478: the Ultimate
+	 *  slot costs 50, ruled 2026-09-09, and no other slot costs any. Not
+	 *  scaled by level: the ruling states one number. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float FervourCost = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
 	FString Note;
 };

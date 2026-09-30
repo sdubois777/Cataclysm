@@ -1613,6 +1613,12 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: and leaves with those rows.
 #: SCALE STEP HIGH LEFT with the kill counter's two rows, and the table is
 #: empty again.
+#:
+#: FERVOUR COST JOINED ON 2026-09-27 for issue #1478, the Ultimate slot's 50
+#: Fervour, built ahead of the Skill Slots column while the design workbook is
+#: with another session. It leaves when the column is added.
+#: FERVOUR COST LEFT with the Skill Slots column, and the table is empty
+#: again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -2482,6 +2488,13 @@ def skill_slots(book) -> list[dict]:
                 f"Skill Slots row {index}: {slot} deals {damage}% of weapon "
                 f"damage, outside its own band of {damage_low} to {damage_high}")
 
+        fervour_cost = number(_cell(raw, headers, "Fervour Cost") or 0,
+                              "Fervour Cost", index)
+        if fervour_cost < 0:
+            raise DataError(
+                f"Skill Slots row {index}: {slot} costs {fervour_cost} Fervour. "
+                "A cost below nothing would pay a character for casting.")
+
         out.append({
             "Name": slot,
             "Slot": slot,
@@ -2495,6 +2508,10 @@ def skill_slots(book) -> list[dict]:
                                "Mana Cost", index),
             "ManaOnHit": number(_cell(raw, headers, "Mana On Hit") or 0,
                                 "Mana On Hit", index),
+            # WHAT ONE USE COSTS IN FERVOUR, ON TOP OF ITS MANA. Issue #1478,
+            # ruled 2026-09-09: the Ultimate slot costs 50 and no other slot
+            # costs any. A slot figure, like the mana, so every class pays it.
+            "FervourCost": fervour_cost,
             "Note": _cell(raw, headers, "Note"),
         })
 

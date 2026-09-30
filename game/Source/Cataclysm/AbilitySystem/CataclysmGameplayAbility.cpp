@@ -4,6 +4,7 @@
 // For asking what a stat is worth with the character's own state in hand,
 // rather than reading a gameplay attribute that is zero by design. Issue #973.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -170,6 +171,7 @@ void UCataclysmGameplayAbility::EnsureSlotNumbersLoaded() const
 	SlotCooldown = Numbers.Cooldown;
 	SlotManaCostAtLevel100 = Numbers.ManaCostAtLevel100;
 	SlotManaOnHitAtLevel100 = Numbers.ManaOnHitAtLevel100;
+	SlotFervourCost = Numbers.FervourCost;
 }
 
 FString UCataclysmGameplayAbility::DisplayedName() const
@@ -269,6 +271,30 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	// but a negative flat row could, and a cost below zero would pay a character
 	// for casting.
 	return FMath::Max(0.0f, Asked) + Extra;
+}
+
+float UCataclysmGameplayAbility::FervourCostFor(
+	const UAbilitySystemComponent* AbilitySystem) const
+{
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()))
+	{
+		return 0.0f;
+	}
+	EnsureSlotNumbersLoaded();
+	return FMath::Max(0.0f, SlotFervourCost);
+}
+
+bool UCataclysmGameplayAbility::FervourCovers(
+	const UAbilitySystemComponent* AbilitySystem, float Cost)
+{
+	if (Cost <= 0.0f)
+	{
+		return true;
+	}
+	return AbilitySystem
+		&& AbilitySystem->GetNumericAttribute(
+			   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()) >= Cost;
 }
 
 const TCHAR* UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat =
@@ -396,6 +422,14 @@ bool UCataclysmGameplayAbility::CheckCost(
 	const UAbilitySystemComponent* AbilitySystem =
 		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 
+	// FERVOUR FIRST, BEFORE ANY OF THE MANA ANSWERS BELOW RETURN. Issue #1478:
+	// the Ultimate slot costs 50 Fervour, and that is a slot cost rather than a
+	// mana cost, so a cast whose mana is free or paid in health still pays it.
+	if (!FervourCovers(AbilitySystem, FervourCostFor(AbilitySystem)))
+	{
+		return false;
+	}
+
 	// WHAT IT COSTS THIS CHARACTER, NOT WHAT THE SLOT STATES. Issue #1815. The
 	// same function answers the payment below, an aura's upkeep and the skill
 	// bar, so a cast this refuses is one the character really cannot pay for.
@@ -445,6 +479,16 @@ void UCataclysmGameplayAbility::ApplyCost(
 	// mana below were taken, the answer could change with the mana it took.
 	// Cleared first, so a cast that pays in mana never carries the last one's.
 	LastManaCostPaidAsHealthPercent = ManaCostPaidAsHealthPercent(AbilitySystem);
+
+	// THE FERVOUR `CheckCost` ASKED FOR, TAKEN BEFORE THE MANA ANSWERS RETURN.
+	// Issue #1478. See `FervourCostFor`.
+	const float Fervour = FervourCostFor(AbilitySystem);
+	if (AbilitySystem && Fervour > 0.0f)
+	{
+		AbilitySystem->ApplyModToAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+			EGameplayModOp::Additive, -Fervour);
+	}
 
 	const float Cost = ManaCostFor(AbilitySystem);
 	if (Cost <= 0.0f)

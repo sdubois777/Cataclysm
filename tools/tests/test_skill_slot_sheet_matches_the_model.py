@@ -102,6 +102,23 @@ def test_only_the_basic_attack_restores_mana_on_hit(sheet, model):
         assert sheet[name]["Mana On Hit"] == pytest.approx(expected), name
 
 
+#: The Ultimate slot's Fervour, and the slot that pays it. Issue #1478, ruled
+#: 2026-09-09 by the project owner: "The Ultimate slot costs 50 Fervour", and
+#: no other slot costs any. Kept for every class on 2026-09-27.
+ULTIMATE_FERVOUR_COST = 50.0
+
+
+def test_only_the_ultimate_costs_fervour_and_it_costs_fifty(sheet, model):
+    """A shared bar buys a shared spender. The simulation does not model
+    Fervour, so the figure is pinned here against the ruling rather than
+    against `SKILL_SLOTS`."""
+    for name in model.SKILL_SLOTS:
+        expected = ULTIMATE_FERVOUR_COST if name == "Ultimate" else 0.0
+        assert sheet[name].get("Fervour Cost") is not None, (
+            f"the Skill Slots sheet has no Fervour Cost for {name}. Issue #1478.")
+        assert sheet[name]["Fervour Cost"] == pytest.approx(expected), name
+
+
 def test_the_sheet_carries_the_reason_each_slot_is_what_it_is(sheet, model):
     """The note column is what a reader of the sheet alone has to go on."""
     for name, slot in model.SKILL_SLOTS.items():

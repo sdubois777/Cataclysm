@@ -362,6 +362,9 @@ private:
 
 	/** Clear space between the bottom of a box and the skill's name. */
 	static constexpr float SkillBarNameGapPx = 4.0f;
+
+	/** How far above a box its "needs Fervour" words sit. Issue #1478. */
+	static constexpr float SkillBarFervourGapPx = 14.0f;
 	static constexpr float SkillBarNameScale = 1.0f;
 
 	/**

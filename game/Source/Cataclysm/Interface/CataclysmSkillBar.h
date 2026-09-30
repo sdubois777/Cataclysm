@@ -94,6 +94,21 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	bool bAffordable = true;
 
+	/** Fervour one use costs this character. Issue #1478: 50 for the Ultimate. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	float FervourCost = 0.0f;
+
+	/**
+	 * Whether the character holds less Fervour than one use costs. Issue #1478.
+	 *
+	 * A SECOND REASON FOR `bAffordable` TO BE FALSE, KEPT APART SO IT CAN BE
+	 * NAMED. A War character has no Fervour bar on screen at all, because
+	 * nothing fills it yet, so a grey Ultimate box with no words would leave
+	 * the player guessing at a mana pool that is full.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bShortOfFervour = false;
+
 	/**
 	 * Whether a lock is refusing this skill right now.
 	 *
@@ -304,6 +319,13 @@ public:
 	 * long, so a countdown here would be invented rather than read.
 	 */
 	static FString LockedNotice();
+
+	/**
+	 * The words over a box whose skill the character cannot pay Fervour for,
+	 * such as "Ultimate needs 50 Fervour", or empty. Issue #1478, worded as
+	 * ruled on 2026-09-27.
+	 */
+	static FString FervourTextFor(const FCataclysmSkillBarSlot& Slot);
 
 	/**
 	 * The line above the bar naming the next-use charges held, or empty when
