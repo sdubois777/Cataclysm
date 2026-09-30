@@ -488,6 +488,32 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float BannerResistancePercent = 0.0f;
 
 	/**
+	 * Pact of Temptation. Issues #1820 and #41. THE BUFF of the pact taken on the floor before, for this floor: damage
+	 * more (Wrath, Blood), attack and movement speed more (Haste), points on each resistance (the Bulwark) and magic
+	 * find added (Greed). THE CURSES of every pact taken in this dungeon, added: maximum health less (Wrath), points
+	 * off each resistance (Haste), movement speed less (the Bulwark) and healing received less (Blood). Greed's curse is
+	 * on the creatures, not here.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactDamageMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactAttackSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactResistancePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactMagicFindAdded = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactMaxHealthLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactCurseResistancePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactCurseSpeedLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactHealingLessPercent = 0.0f;
+
+	/**
 	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
 	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
 	 * long. Issues #1820 and #41.
@@ -565,6 +591,9 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& RelicDamageMorePercent <= 0.0f && RelicAttackSpeedMorePercent <= 0.0f
 			&& RelicSpeedMorePercent <= 0.0f && RelicResistancePercent <= 0.0f
 			&& BannerDamageMorePercent <= 0.0f && BannerResistancePercent <= 0.0f
+			&& PactDamageMorePercent <= 0.0f && PactAttackSpeedMorePercent <= 0.0f && PactSpeedMorePercent <= 0.0f
+			&& PactResistancePercent <= 0.0f && PactMagicFindAdded <= 0.0f && PactMaxHealthLessPercent <= 0.0f
+			&& PactCurseResistancePercent <= 0.0f && PactCurseSpeedLessPercent <= 0.0f && PactHealingLessPercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
@@ -2792,6 +2821,62 @@ public:
 	{
 		return Health - ForcedTithesHealthPrice(MaximumHealth) >= 1.0f;
 	}
+
+	/**
+	 * The row whose altar at a floor's end offers pacts: a buff for the next floor, a curse for the rest of the dungeon.
+	 * Issues #1820 and #41.
+	 *
+	 * "Players are offered pacts by the dungeon at the end of each floor. Accepting a pact grants a powerful buff for
+	 * the floor but applies a curse for the rest of the dungeon."
+	 *
+	 * THE OWNER DECIDED, 2026-09-30, asked by the coordinating session: THE FIVE PACTS AS DRAFTED, names and figures,
+	 * Greed's curse on the creatures approved. Each a buff for the next floor and a curse for the rest of the dungeon:
+	 * - WRATH: `PactWrathDamageMorePercent` more damage / `PactWrathMaxHealthLessPercent` less maximum health.
+	 * - HASTE: `PactHasteSpeedMorePercent` more attack and movement speed / `PactHasteCurseResistance` off every
+	 *   resistance.
+	 * - THE BULWARK: `PactBulwarkResistance` on every resistance / `PactBulwarkSpeedLessPercent` less movement speed.
+	 * - GREED: `PactGreedMagicFind` magic find / every creature `PactGreedCreatureDamagePercent` more damage, on its
+	 *   own key of the damage map.
+	 * - BLOOD: `PactBloodDamageMorePercent` more damage / `PactBloodHealingLessPercent` less healing received.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, AND BUILT:
+	 * - A floor object named "Pact Altar" ON THE EXIT CELL OF EVERY FLOOR BUT THE LAST, and on each wave of a Horde
+	 *   arena but the last. ANOTHER ALTAR AT THE EXIT GOES ONE CELL APART: see
+	 *   `ACataclysmDungeonGameMode::ExitAltarWorld`.
+	 * - `PactsOffered` OF THE FIVE OFFERED, DIFFERENT EACH FLOOR; AT MOST ONE ACCEPTED, and the altar goes then.
+	 * - THE BUFF LASTS THE NEXT FLOOR. THE CURSE LASTS UNTIL THE PLAYER LEAVES THE DUNGEON; it is not cleansed, and
+	 *   curses add, the same pact twice included.
+	 */
+	static const TCHAR* PactOfTemptationKey;
+
+	/** The five pacts, in the order the altar lists them. */
+	static constexpr int32 PactWrath = 0;
+	static constexpr int32 PactHaste = 1;
+	static constexpr int32 PactBulwark = 2;
+	static constexpr int32 PactGreed = 3;
+	static constexpr int32 PactBlood = 4;
+	static constexpr int32 PactKinds = 5;
+
+	/** A pact's name, "Wrath" to "Blood", which is also its choice's key; "" for no pact. */
+	static const TCHAR* PactName(int32 Pact);
+
+	/** The pact a choice's key names, or INDEX_NONE. */
+	static int32 PactOfChoice(FName ChoiceKey);
+
+	/** A pact's button: "Pact of Wrath: 50% more damage next floor; 10% less maximum health for the dungeon". */
+	static FString PactButtonLabel(int32 Pact);
+
+	/** A pact's curse at this many of it, for the panel: "-10% health", "creatures +20% damage". */
+	static FString PactCurseText(int32 Pact, int32 Taken);
+
+	/** What every creature's damage is multiplied by for this many Pacts of Greed taken: 10% more each, added. */
+	static float PactGreedDamageMultiplier(int32 Taken)
+	{
+		return 1.0f + FMath::Max(Taken, 0) * PactGreedCreatureDamagePercent / 100.0f;
+	}
+
+	/** The pact fields of the player's floor effects: this floor's buff, and the curses of every pact taken. */
+	static void WritePactEffects(FCataclysmPlayerFloorEffects& Into, int32 BuffPact, const TArray<int32>& CursesTaken);
 
 	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
@@ -5623,6 +5708,19 @@ public:
 	static constexpr int32 ForcedTithesAngelCount = 8;
 	static constexpr int32 ForcedTithesAngelRung = 0;
 	static constexpr float ForcedTithesAngelsAwayCm = 800.0f;
+
+	/** Pact of Temptation's figures, the owner's as drafted. See the key. */
+	static constexpr int32 PactsOffered = 3;
+	static constexpr float PactWrathDamageMorePercent = 50.0f;
+	static constexpr float PactWrathMaxHealthLessPercent = 10.0f;
+	static constexpr float PactHasteSpeedMorePercent = 30.0f;
+	static constexpr float PactHasteCurseResistance = 10.0f;
+	static constexpr float PactBulwarkResistance = 30.0f;
+	static constexpr float PactBulwarkSpeedLessPercent = 10.0f;
+	static constexpr float PactGreedMagicFind = 50.0f;
+	static constexpr float PactGreedCreatureDamagePercent = 10.0f;
+	static constexpr float PactBloodDamageMorePercent = 50.0f;
+	static constexpr float PactBloodHealingLessPercent = 25.0f;
 
 	/** Infernal Beacons' figures, every one a play-test value. See the key. */
 	static constexpr int32 InfernalBeaconsPerFloor = 1;
