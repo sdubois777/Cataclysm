@@ -2123,6 +2123,9 @@ public:
 	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
 	float VoidPortalHealth() const { return ImpHealth; }
 
+	/** Mind-Shattering Illusions, for the panel and tests: the phantasms that still stand. */
+	TArray<ACataclysmEnemyCharacter*> PhantasmsStanding() const;
+
 	/** Luxury Hoarders, for tests: where this floor's hoards lie. */
 	const TArray<FVector>& LuxuryHoardsNow() const { return LuxuryHoards; }
 
@@ -2581,6 +2584,16 @@ private:
 	 * it, and a coffin's Vampire Lord let out at the threshold.
 	 */
 	void NoteDeathForObsidianSarcophagi(const struct FCataclysmDeathNotice& Notice);
+
+	/** Mind-Shattering Illusions, on a blow: a phantasm's hit on the player slows them for a moment. */
+	void NoteHitForMindShatteringIllusions(const struct FCataclysmHitNotice& Notice);
+
+	/** Mind-Shattering Illusions, on the beat: phantasms on their clock, and the slow counted down and written. */
+	void StepMindShatteringIllusions(class ACataclysmPlayerCharacter* Player,
+									 class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** The phantasms destroyed and forgotten, with the clock and the slow. */
+	void ForgetThePhantasms();
 
 	/**
 	 * Blood Debt, on a death: a paying creature's death on a floor carrying the row pays one kill; the player's death
@@ -3615,6 +3628,16 @@ private:
 	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
 	TArray<FVoidPortal> VoidPortals;
 	int32 VoidPortalsPanelStanding = -1;
+
+	/**
+	 * Mind-Shattering Illusions: the phantasms, the clock, the slow's seconds left and what was last written on the
+	 * player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Phantasms;
+	float IllusionSecondsSinceLast = 0.0f;
+	float IllusionSlowLeft = 0.0f;
+	float IllusionSlowApplied = 0.0f;
+	int32 IllusionPanelKey = -1;
 
 	/** Luxury Hoarders: where the hoards lie, their guards, and how many drops the piles were laid with. */
 	TArray<FVector> LuxuryHoards;

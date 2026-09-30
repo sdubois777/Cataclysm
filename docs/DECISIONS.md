@@ -2,6 +2,136 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Mind-Shattering Illusions: every 30 seconds two phantasms of the floor's kinds appear 8 metres from the player; they hurt, fall to one hit, pay nothing, and a phantasm's hit slows the player 30% for 2 seconds
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, when phantasms are due, and a new player floor-effect field `IllusionSlowLessPercent` read by
+`StatModifiersFor`, `IsEmpty` and `Describe`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`
+(the phantasms, their clock, the slow on a phantasm's hit, the per-floor reset, the panel line); the automation tests
+in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** It has been run, stacked with four other rules; the figures are at the end of this entry.
+
+### The row
+
+`Void_Mind_Shattering_Illusions` in `game/Data/DungeonModifiers.csv`, weight 10: "The Void manipulates perception,
+creating hallucinations and phantasmal enemies that can harm or disorient players. They must discern reality from
+illusion, navigate through treacherous encounters, and maintain their sanity." It states no figure.
+
+**It is not `Chaos_Illusory_Enemies`.** That row makes a share of the floor's own creatures illusions whose damage is
+nothing, with no tell on screen. This row's phantasms come on their own clock and do harm.
+
+### What the rule does
+
+Every thirty seconds on a floor carrying the row, two phantasms appear: creatures of the floor's own kinds at Common,
+on floor cells within six metres of a point eight metres from the player at a random angle. They fight as those
+creatures do and deal their damage, but each has one point of health, so any hit that lands fells it. They pay
+nothing, are raised by the rule and are not the floor's creatures. When a phantasm's blow lands on the player, the
+player's movement speed is 30% less for two seconds; a second blow starts the two seconds again. A new floor, or a
+Horde dungeon's next wave, takes the phantasms away, ends the slow and starts the clock again. The panel reads
+"mind-shattering illusions: next in 12 s; 2 of 6 phantasms standing". At most six of the rule's phantasms stand; a
+due pair is cut to what fits, and the clock runs on while six stand, so one comes on the beat after one falls.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every figure is a
+play-test value:**
+
+- **Every 30 s, 2 phantasms of the floor's kinds appear 8 m from the player.**
+- **They deal damage, pay nothing, are not the floor's creatures, and die to any one hit**: "discern reality from
+  illusion" is that they fall at a touch.
+- **A phantasm's hit slows the player 30% for 2 s**: "disorient".
+- **At most 6 stand; a due pair is cut to what fits**, ruled on 2026-09-26 after this rule was registered: they pay
+  nothing and come without end, so a player who walks away from them would otherwise meet forty after ten minutes.
+  Portal Unleashing caps its creatures at four for the same reason. At five standing, one comes, so the panel never
+  reads more than six.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **"Die to any one hit" is one point of health.** Any hit that lands and deals any damage fells it; a hit it evades
+  does not.
+- **No mark under a phantasm's bar.** The row asks the player to discern it, and a label would do the discerning for
+  them; the panel counts how many stand.
+- **They stand on floor cells within six metres of the point eight metres away**, Necrotic Bloom's wave cells, so a
+  point off the floor still places them; a beat whose point has no floor within reach tries again on the next.
+- **A pair placed where there is no floor falls back to the cells around the player.** Phantasms stand on cells
+  within six metres of a point eight metres from the player at a random angle; a point with no floor within reach used
+  to lose that beat's pair in play, and the pair came only on a later beat whose point landed on the floor. So this is
+  a fix to what the player meets and not only to the test that expects two at 30 s. Approved by the coordinating
+  session, 2026-09-26.
+- **The slow is a Less on movement speed through a new player floor-effect field**, written when it starts and ends,
+  as Edict of Silence writes its lock.
+
+### The research: something that comes to the player, hurts, and disorients
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, Nightmare Dungeon affixes | https://maxroll.gg/d4/resources/nightmare-dungeons | Drifting Shades: "Drifting Shades chase players. On contact, they explode for heavy damage and create a Nightmare Field that Dazes victims." |
+
+**What it settles and what it does not.** Diablo IV ships a dungeon affix whose spawned things come to the player,
+hurt them and disorient them. That settles the pairing of harm and a short loss of control from the same source. The
+page describes shades that explode, not phantasms that fight and fall at a touch, so the thirty seconds, two, eight
+metres, one point of health, 30% and two seconds are this game's own.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `MindShatteringIllusionsFiguresPhantasmsAndSlow`: the figures; not due at 29.75 s and due at 30; due with five
+  standing and not with six; a pair with none standing, one with five, none with six.
+- `TwoPhantasmsAppearEveryThirtySecondsAndFallToOneHit`: none at 29.75 s; two at 30 s of the floor's kinds, with a
+  brain, paying nothing, not the floor's, with one point of health, near the player, with the panel; a hit of 5 fells
+  one, and one stands.
+- `APhantasmsHitSlowsThePlayerForTwoSeconds`: with the player unable to evade, another creature's hit slows nothing;
+  a phantasm's hit makes the player 30% slower, still at 1.75 s, and not by 2.25 s.
+- `ANewFloorTakesThePhantasmsAway`: the last floor's phantasms are gone on the next, and its clock starts at 30 s.
+- `NoNewPhantasmsWhileSixStand`: six stand after 90 s, still six 30 s later, and the panel reads "next in 0 s; 6 of 6
+  phantasms standing".
+
+One Python check: the row still says "phantasmal enemies", "can harm or disorient" and "discern reality from
+illusion".
+
+### The move onto development 9213a5e3
+
+The change was written on development b9b68113 in four commits, 20c0d85f to bd9f504d, and moved on 2026-09-27 as one
+commit. Six files conflicted, so it was rebuilt rather than rebased. The change's own edit scripts ran on development's
+copies; on b9b68113 the same scripts reproduce the first commit's game files exactly. The three later commits were then
+applied as a patch with `git apply -3`. Two places where both sides had added code were resolved by keeping both, less
+the first commit's one-argument `IllusionPhantasmsAreDue`, which the later commits replace. **The evidence that nothing
+was lost or added: the sorted changed lines of the moved commit against 9213a5e3 have the same checksum as bd9f504d's
+against b9b68113.** `tools/check_resolved_cpp.py` on the five changed C++ files printed "5 files read, 0 with
+complaints".
+
+### Run
+
+One window on 2026-09-30, on the five-modifier stack: Mind-Shattering Illusions, Reality Rifts, Warzone Control Points,
+Demonic Guide and Carrion Feast, in that order, on development 977edde4 (`feat/five-modifiers-stack` at be67ee2f).
+Every figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, with no CI run in progress | `5545 passed, 8 skipped` (JUnit 5,553, no failures), 2026-09-30 08:49 |
+| First build, at 6000e591 | `Build: Failed - 31 actions, 28 files compiled`, on Reality Rifts' C4456; no test ran |
+| Build after Reality Rifts' rename | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.25.cpp` |
+| Whole suite | `2765 tests performed, 2765 succeeded, 0 failed`; 2765 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+A Python of record taken on 2026-09-27 at 6000e591, before a pause in the work, was superseded when the rename changed
+the tree; the one above is on be67ee2f. All fifteen proofs of the window were as registered. This rule's three, with
+`prove_cpp_guard`, each anchor re-checked immediately before its run: each printed `1 tests performed, 0 succeeded, 1
+failed` with the break in and `1 tests performed, 1 succeeded, 0 failed` restored, failed on exactly the checks
+registered for it, and left the source hash as it found it (ac71a46f6bdab301 before and after every proof).
+
+| Break | The test that failed, and on what |
+|---|---|
+| No phantasm ever comes | `TwoPhantasmsAppearEveryThirtySecondsAndFallToOneHit`, one: "two at 30 s" |
+| A phantasm keeps its creature's full health | `TwoPhantasmsAppearEveryThirtySecondsAndFallToOneHit`, four: "with one point of health" for each of the two, "one small hit fells it" and "one stands" |
+| A phantasm's hit slows nothing | `APhantasmsHitSlowsThePlayerForTwoSeconds`, two: "a phantasm's hit: 30% slower" and "still slower at 1.75 s" |
+
+---
+
 ## 2026-09-27 — Deployable Part 2: a machine's blow is announced to its summoner, gadgets strip armour from what they hit, and grow with the seconds they have been active
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (the `deployable_hit` event and

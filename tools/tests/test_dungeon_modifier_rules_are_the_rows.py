@@ -4485,3 +4485,19 @@ def test_luxury_hoarders_row_still_has_guarded_piles_of_resources_and_a_choice_t
         assert phrase in lower, (
             f"Famine_Luxury_Hoarders no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "LuxuryHoardersKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_mind_shattering_illusions_row_still_has_phantasms_that_harm_or_disorient_and_must_be_discerned():
+    """The phrases the rule's readings rest on.
+
+    PHANTASMAL ENEMIES is the phantasms; CAN HARM is the damage they deal; OR DISORIENT is the slow a phantasm's hit
+    puts on the player; DISCERN REALITY FROM ILLUSION is why they fall at a touch. If any of them changes, the reading
+    must be revisited.
+    """
+    words = flat(rows()["Void_Mind_Shattering_Illusions"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("phantasmal enemies", "can harm or disorient", "discern reality from illusion"):
+        assert phrase in lower, (
+            f"Void_Mind_Shattering_Illusions no longer says {phrase.upper()!r}. A reading of the rule rests on it; "
+            "see MindShatteringIllusionsKey in CataclysmDungeonModifierEffects.h. " + words)

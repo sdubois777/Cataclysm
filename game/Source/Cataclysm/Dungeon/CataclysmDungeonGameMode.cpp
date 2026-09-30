@@ -5954,6 +5954,135 @@ bool ACataclysmDungeonGameMode::PlayerHasALivingMinion(const AActor* Player) con
 	return false;
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::PhantasmsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Phantasms)
+	{
+		ACataclysmEnemyCharacter* Phantasm = One.Get();
+		if (IsValid(Phantasm) && !UCataclysmSkillEffects::IsDead(Phantasm))
+		{
+			Standing.Add(Phantasm);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetThePhantasms()
+{
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Phantasms)
+	{
+		if (ACataclysmEnemyCharacter* Phantasm = One.Get())
+		{
+			Phantasm->Destroy();
+		}
+	}
+	Phantasms.Reset();
+	IllusionSecondsSinceLast = 0.0f;
+	IllusionSlowLeft = 0.0f;
+	IllusionSlowApplied = 0.0f;
+	IllusionPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::NoteHitForMindShatteringIllusions(const FCataclysmHitNotice& Notice)
+{
+	// A PHANTASM'S BLOW ON THE PLAYER: the slow starts, or starts again. The next beat writes it.
+	if (!Cast<ACataclysmPlayerCharacter>(Notice.Target) || !Notice.Attacker)
+	{
+		return;
+	}
+	const bool bAPhantasm = Phantasms.ContainsByPredicate(
+		[&Notice](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Notice.Attacker; });
+	if (bAPhantasm)
+	{
+		IllusionSlowLeft = UCataclysmDungeonModifierEffects::IllusionSlowSeconds;
+	}
+}
+
+void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// THE SLOW, WRITTEN WHEN IT CHANGED AND COUNTED DOWN ON THE BEAT.
+	const float Wanted = IllusionSlowLeft > 0.0f ? Effects::IllusionSlowLessPercent : 0.0f;
+	if (!FMath::IsNearlyEqual(Wanted, IllusionSlowApplied))
+	{
+		IllusionSlowApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+	IllusionSlowLeft = FMath::Max(0.0f, IllusionSlowLeft - SecondsBetweenWaveChecks);
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::MindShatteringIllusionsKey)))
+	{
+		return;
+	}
+
+	// PHANTASMS ON THEIR CLOCK, WHILE FEWER THAN THE MOST STAND: the floor's own kinds, on cells beside a point that
+	// far from the player at a random angle. They pay nothing, are raised by the rule, are not the floor's creatures,
+	// and have one point of health. THE CLOCK RUNS WHILE THE CAP IS FULL, as Portal Unleashing's does, so a pair
+	// comes on the next beat after one falls.
+	IllusionSecondsSinceLast += SecondsBetweenWaveChecks;
+	if (Effects::IllusionPhantasmsAreDue(IllusionSecondsSinceLast, PhantasmsStanding().Num()))
+	{
+		const FVector Feet = Player->GetActorLocation();
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const FVector Where(Feet.X + Effects::IllusionAppearsAwayCm * FMath::Cos(Angle),
+							Feet.Y + Effects::IllusionAppearsAwayCm * FMath::Sin(Angle), Feet.Z);
+		const FCataclysmFloorPopulation Population =
+			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		// A POINT WITH NO FLOOR WITHIN REACH FALLS BACK TO THE CELLS AROUND THE PLAYER, who stands on the floor. Until
+		// this, such a point lost that beat's pair in play and the pair came only when a later beat's point landed on the
+		// floor. Ruled by the coordinating session, 2026-09-26.
+		TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+		if (Cells.IsEmpty())
+		{
+			Cells = NecroticBloomWaveCells(*CurrentFloor, Feet);
+		}
+		int32 Placed = 0;
+		// A PAIR, CUT TO WHAT FITS UNDER THE MOST: at five standing, one comes.
+		const int32 ToSend = Effects::IllusionPhantasmsToSend(PhantasmsStanding().Num());
+		for (int32 Which = 0; Which < ToSend && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
+			 ++Which)
+		{
+			FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+			Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+			if (ACataclysmEnemyCharacter* Phantasm =
+					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0))
+			{
+				Phantasm->SetHealth(1.0f);
+				Phantasm->bDiesUnpaid = true;
+				Phantasm->bRaisedByARule = true;
+				CreaturesRaisedByARule.Add(Phantasm);
+				Phantasms.Add(Phantasm);
+				++Placed;
+			}
+		}
+		// THE CLOCK STARTS AGAIN ONLY WHEN THEY CAME, so a beat whose point had no floor beside it tries again.
+		if (Placed > 0)
+		{
+			IllusionSecondsSinceLast = 0.0f;
+			UE_LOG(LogCataclysm, Log, TEXT("Mind-Shattering Illusions: %d phantasm(s) on floor %d"), Placed,
+				   FloorNumber);
+		}
+	}
+
+	const int32 Key = FMath::CeilToInt(Effects::IllusionSecondsBetween - IllusionSecondsSinceLast) * 100
+		+ PhantasmsStanding().Num();
+	if (Key != IllusionPanelKey)
+	{
+		IllusionPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -7727,6 +7856,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
+	// AND MIND-SHATTERING ILLUSIONS, ON EVERY FLOOR CARRYING IT, AND WHILE ITS SLOW IS ON THE CHARACTER. Issues #1820
+	// and #41.
+	const bool bMindShatteringIllusions = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::MindShatteringIllusionsKey))
+		|| IllusionSlowApplied > 0.0f || IllusionSlowLeft > 0.0f;
 	// AND INSANITY BURSTS, ON EVERY FLOOR CARRYING IT, AND WHILE ITS LOCK IS STILL ON THE CHARACTER. Issues #1820
 	// and #41.
 	const bool bInsanityBursts = FloorBrief.Modifiers.Contains(
@@ -7788,6 +7922,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bMindShatteringIllusions
 		&& !bInsanityBursts
 		&& !bFunerealProcession
 		&& !bBloodDebt
@@ -8018,6 +8153,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPortalUnleashing)
 	{
 		StepPortalUnleashing();
+	}
+
+	// AND MIND-SHATTERING ILLUSIONS, WHICH SENDS PHANTASMS AND SLOWS THE PLAYER THEY HIT. Issues #1820 and #41.
+	if (bMindShatteringIllusions)
+	{
+		StepMindShatteringIllusions(Player, AbilitySystem);
 	}
 
 	// AND INSANITY BURSTS, WHICH LOCKS THE PLAYER'S SKILLS OR STUNS THEM. Issues #1820 and #41.
@@ -9053,6 +9194,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 		Effects.TouchedAttackSpeedLessPercent = Percent(Effects_::ChaosTouchedAttackSpeedLess);
 		Effects.TouchedResistanceLessPercent = Percent(Effects_::ChaosTouchedResistanceLess);
 	}
+
+	// AND A PHANTASM'S HIT'S SLOW AS LAST WRITTEN. Issues #1820 and #41. Read unconditionally like the rest.
+	Effects.IllusionSlowLessPercent = IllusionSlowApplied;
 
 	// AND THE BLOOD DEBT'S BLESSING AND CURSE AS LAST APPLIED. Issues #1820 and #41. Read unconditionally like the
 	// rest: a dungeon without the row pays nothing and curses nothing.
@@ -10550,6 +10694,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	NoteHitForHolyRepercussions(Notice);
 	NoteHitForTheReaper(Notice);
 	NoteHitForPlagueConvergence(Notice);
+	NoteHitForMindShatteringIllusions(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
@@ -10970,6 +11115,15 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Hoarders, FString::Printf(TEXT("luxury hoarders: %d hoard%s, %d guard%s standing"),
 			LuxuryHoards.Num(), LuxuryHoards.Num() == 1 ? TEXT("") : TEXT("s"), Guarding,
 			Guarding == 1 ? TEXT("") : TEXT("s")));
+	}
+
+	// AND MIND-SHATTERING ILLUSIONS: when the next phantasms come, and how many stand. Issues #1820 and #41.
+	const FName Illusions(Effects::MindShatteringIllusionsKey);
+	if (FloorBrief.Modifiers.Contains(Illusions))
+	{
+		Counting.Add(Illusions, FString::Printf(TEXT("mind-shattering illusions: next in %d s; %d of %d phantasms standing"),
+			FMath::Max(0, FMath::CeilToInt(Effects::IllusionSecondsBetween - IllusionSecondsSinceLast)),
+			PhantasmsStanding().Num(), Effects::IllusionMostStanding));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -13460,6 +13614,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		WingsOfTheHostMarks.Reset();
 		WingsOfTheHostWarningSoFar = 0.0f;
 		WingsOfTheHostSecondsSinceLast = 0.0f;
+
+		// AND MIND-SHATTERING ILLUSIONS: a floor's phantasms go with it, its clock starts again, and a slow under way
+		// ends, the call above having taken it off the character. Issues #1820 and #41.
+		ForgetThePhantasms();
 
 		// AND FUNEREAL PROCESSION, FOR THE SAME REASON: a procession crossing the last floor does not cross this one,
 		// and this floor's first sets out sixty seconds in. Issues #1820 and #41.
