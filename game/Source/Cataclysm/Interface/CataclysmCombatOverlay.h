@@ -592,6 +592,9 @@ public:
 	/** "Assailant" under the bar of a creature a War Banner's waves brought, or empty. Issues #1820 and #41. */
 	static FString BannerAssailantTextFor(const AActor* Actor);
 
+	/** "Angel" under the bar of a creature Forced Tithes brought, or empty. Issues #1820 and #41. */
+	static FString TitheAngelTextFor(const AActor* Actor);
+
 	/**
 	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
 	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.
