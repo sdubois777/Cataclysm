@@ -114,8 +114,9 @@ Ten automation tests in `Cataclysm.DungeonModifierEffects.`:
 - `PactOfTemptationOfferIsDifferentEachFloor`: drawn on floors 2 to 6, three different pacts each, never the floor
   before's three.
 - `PactOfWrathBuffsTheNextFloorAndCursesTheDungeon`: taken on floor 2, the altar goes, 10% less maximum health at once
-  and no damage, the panel; floor 3, 50% more attack and spell damage and the curse, the panel; **floor 4, with no new
-  pact, no damage and the curse still there**.
+  and no damage, the panel; floor 3, 50% more attack and spell damage and the curse, the panel; **floors 4 and 5, with no
+  new pact, no damage and the curse still there** -- on floor 5 nothing of the pact changed, so only the floor change
+  telling the beat puts it back.
 - `PactCursesAddAreNotCleansedAndEndWithTheDungeon`: Wrath twice is 20% less; a cleanse leaves it and the count;
   leaving the dungeon ends it, the count and the buff owed.
 - `PactOfGreedCursesEveryCreatureAndGivesMagicFind`: floor 2's Imp deals 10% more on the row's own key at once, no
