@@ -1839,7 +1839,8 @@ class TestScaleStepHigh:
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
-              "Stack Seconds High"]
+              "Stack Seconds High", "Condition 2", "Condition Value 2",
+              "Condition Value High"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -1955,8 +1956,7 @@ class TestSecondConditionAndThresholdHigh:
         [FREE_WORDS, "Generic", 3, "Stat.Utility.Mana", None,
          MELEE_WORDS, "Generic", 3, "Stat.Defense.Life"],
     ]
-    HEADER = TestScaleStepHigh.HEADER + ["Condition 2", "Condition Value 2",
-                                         "Condition Value High"]
+    HEADER = TestScaleStepHigh.HEADER
 
     def book(self, tmp_path, values):
         row = [values.get(column) for column in self.HEADER]
@@ -2064,7 +2064,8 @@ class TestEnchantmentEffects:
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
-              "Stack Seconds High"]
+              "Stack Seconds High", "Condition 2", "Condition Value 2",
+              "Condition Value High"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
