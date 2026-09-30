@@ -82,6 +82,10 @@
 #include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
+#include "Components/TextBlock.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -35527,6 +35531,43 @@ bool FCataclysmTotemsCleansePlayerTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestFalse(TEXT("the burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	return true;
+}
+
+// THE CHOICE PANEL'S ASSET: THE PATH THE PLAYER CONTROLLER OPENS LOADS, IS THE PANEL'S CLASS, AND ITS TREE HOLDS THE
+// THREE WIDGETS THE PANEL BINDS. Read from the asset's own widget tree, because a test world has no game instance for
+// `CreateWidget`. It fails until `tools/generate_interface_assets.py` has made `WBP_ChoicePanel`. Ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChoicePanelAssetTest,
+	"Cataclysm.DungeonModifierEffects.TheChoicePanelAssetLoadsAndHoldsItsBoundWidgets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChoicePanelAssetTest::RunTest(const FString& Parameters)
+{
+	// THE PATH THE CONTROLLER ITSELF HOLDS, read by reflection because the property is private, so the test cannot name
+	// a different path from the one play opens.
+	const FSoftClassProperty* Property =
+		FindFProperty<FSoftClassProperty>(ACataclysmPlayerController::StaticClass(), TEXT("ChoicePanelClass"));
+	if (!TestNotNull(TEXT("the player controller names a choice panel"), Property))
+	{
+		return false;
+	}
+	FSoftObjectPtr Path = Property->GetPropertyValue_InContainer(GetDefault<ACataclysmPlayerController>());
+	UClass* PanelClass = Cast<UClass>(Path.LoadSynchronous());
+	if (!TestNotNull(FString::Printf(TEXT("%s loads"), *Path.ToString()), PanelClass))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is the choice panel's class"), PanelClass->IsChildOf(UCataclysmChoicePanelWidget::StaticClass()));
+
+	const UWidgetBlueprintGeneratedClass* Generated = Cast<UWidgetBlueprintGeneratedClass>(PanelClass);
+	const UWidgetTree* Tree = Generated ? Generated->GetWidgetTreeArchetype() : nullptr;
+	if (!TestNotNull(TEXT("it is a widget blueprint with a tree"), Tree))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its tree holds TitleLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("TitleLabel"))) != nullptr);
+	TestTrue(TEXT("PromptLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("PromptLabel"))) != nullptr);
+	TestTrue(TEXT("and ChoiceBox, a panel"), Cast<UPanelWidget>(Tree->FindWidget(TEXT("ChoiceBox"))) != nullptr);
 	return true;
 }
 
