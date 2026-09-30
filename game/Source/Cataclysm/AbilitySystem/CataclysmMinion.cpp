@@ -840,8 +840,17 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 					GetGameTimeSinceCreation());
 			}
 		}
-		const float Damage = Own
-			* SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags);
+		// AND THE MINION'S OWN BUFFS, SINCE ISSUE #1771, ruled 2026-09-30. A
+		// minion's hits are its own, so a buff written onto its own ability
+		// system -- an aura's ally bonus is the one writer today -- reaches its
+		// blow, through the one reader of that list, with the minion's type
+		// tags as the blow's. The summoner's multiplier above reads the
+		// summoner's stat lines, a different list, so nothing is counted twice.
+		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
+			UCataclysmTargeting::AbilitySystemOf(this),
+			Own * SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
+			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
 		// THE MINION IS THE INSTIGATOR OF ITS OWN BLOW, SINCE ISSUE #1515. It
 		// was the summoner until 2026-09-17, which is why everything read off

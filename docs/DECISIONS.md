@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — A minion's blow reads the buffs on its own ability system; Conflagration's fire bonus still gives a minion nothing, because no minion deals fire damage
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (`ACataclysmMinion::AttackTarget`)
+and `game/Source/Cataclysm/Tests/CataclysmMinionOwnStatsTests.cpp` (one test). Issue
+[#1771](https://github.com/sdubois777/Cataclysm/issues/1771).
+
+### WHAT #1771 SAID, AND WHAT WAS STILL TRUE
+
+The issue said a minion's blow names its summoner as the source, so the Conflagration aura's ally bonus,
+written onto the minion, was never read. **The first half had gone stale**: since the owner's ruling of
+2026-09-17 a minion's blow names the minion. **The conclusion still held, for two separate reasons:**
+
+1. **The wiring.** A runtime buff written by `UCataclysmAbilitySystemComponent::AddStatModifier` is read
+   in exactly one place, `UCataclysmSkillEffects::ModifiedDamage`. A minion's blow went straight to
+   `ApplyDirectDamage` and never through it, so any buff on a minion's own ability system was ignored.
+   A thrall's attack goes through `ApplyHit`, which does call it.
+2. **The element.** Conflagration's ally bonus is "increased fire damage", written with the aura's element
+   as a required tag. No minion type deals fire damage: `game/Data/MinionTypes.csv` gives the Imp and the
+   machines no element tag.
+
+### WHAT CHANGED, RULED 2026-09-30
+
+- **(1) is fixed.** A minion's blow now passes through `ModifiedDamage` with the minion's own ability
+  system and its type tags, after the summoner's multiplier, as a minion's hits are its own.
+- **(2) is left as worded.** Conflagration's bonus still gives a minion nothing, because no minion's blow
+  is fire. It will reach a minion that deals fire damage, if one is ever added.
+
+### WHAT ELSE THIS COULD REACH, CHECKED
+
+- **Every writer of a runtime buff**, in code outside the tests: the Conflagration aura's ally step
+  (`UCataclysmAuraSkill::HelpAlliesInside`), which does reach minions, and the self-buff skill
+  (`UCataclysmSelfBuffSkill::GrantIncrease`), which writes only on its caster. A stat line is written only
+  by `UCataclysmPlayerClassStats::ApplyTo`, for the player character and its equipment, never a minion.
+- **Nothing is counted twice.** The summoner's multiplier (`SummonerMultiplierAgainst`) reads the
+  summoner's recorded stat lines, a different list from the minion's runtime buffs.
+- **`ModifiedDamage` does nothing else to a blow**: with an empty runtime list it returns the damage
+  unchanged, and otherwise it applies only that list. So a minion with no buff hits exactly as before.
+- **Not changed:** a minion's explosion and the Shared Ruin death blast, which also go straight to
+  `ApplyDirectDamage`. They are not "the minion's blow" the ruling named; the same call would extend to
+  them if wanted.
+
+### TEST
+
+`Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem`: an imp's blow with 50% increased
+written on its own ability system is half again as large; the same buff scoped to fire leaves it as it
+was.
+
+---
+
 ## 2026-09-30 — A player's thralls and summoned creatures go down the stairs with the player, gadgets stay with the floor, and leaving the dungeon ends them all
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorContents.cpp` and `.h` (`ClearTheFloor` takes
