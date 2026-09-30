@@ -686,6 +686,13 @@ FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::ChaosSpawnTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsAChaosSpawn ? FString(TEXT("Chaos Spawn"))
+																					  : FString();
+}
+
 FString UCataclysmCombatOverlay::RelicSpiritTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -745,6 +752,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
 		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
 		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
+		  ChaosSpawnTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),

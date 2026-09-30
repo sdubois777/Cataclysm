@@ -4779,3 +4779,20 @@ def test_battlefield_relics_row_still_names_activating_a_temporary_buff_and_purs
         assert phrase in lower, (
             f"War_Battlefield_Relics no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "BattlefieldRelicsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_pandoras_box_row_still_names_chests_and_one_outcome_or_the_other():
+    """The phrases the rule's readings rest on.
+
+    "Random chests appear throughout the dungeon. Opening them can either grant powerful rewards or unleash waves of
+    chaos-spawned enemies, forcing players to gamble on their luck." EITHER ... OR is one roll and one outcome, as
+    Trick or Treat's " or " is read; POWERFUL REWARDS is a Boss's kill's drops; WAVES OF CHAOS-SPAWNED ENEMIES is the
+    waves. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Chaos_Pandora_s_Box"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("random chests", " either ", " or ", "powerful rewards", "unleash waves", "chaos-spawned enemies"):
+        assert phrase in lower, (
+            f"Chaos_Pandora_s_Box no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "PandorasBoxKey in CataclysmDungeonModifierEffects.h. " + words)
