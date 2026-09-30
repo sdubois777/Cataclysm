@@ -71,13 +71,17 @@ whether an area skill should pay once per use instead.
   gameplay effect in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, so building them anywhere else would copy
   them. The swing is therefore sent through `ApplyHit` as always, with `bSwingIsAContagiousTouch` set on the creature, and
   the attribute set, straight after `UCataclysmDamageCalculation::Resolve`, keeps only the evasion answer, records it as
-  every blow's result is recorded, and stops: nothing is dealt, drawn, leeched, retaliated or announced. The creature
+  every blow's result is recorded, and stops: nothing is dealt, leeched, retaliated or announced. The creature
   reads the answer back through the defender's resolved-hit stamp, which also tells a blow refused before the pipeline --
   an untargetable player -- from one that reached it.
 - **A flag on the creature and not a tag on the blow**, because a new gameplay tag is generated from the design
   workbook's Tags sheet (`tools/generate_gameplay_tags.py`), which this change may not edit. The attribute set already
   reads the blow's causer for Perfect Aim.
-- **An evaded touch draws no "Evaded" number**, since the attribute set stops before the drawing.
+- **An evaded touch draws "Evaded", and nothing else is drawn**, ruled by the coordinating session: the player sees
+  that evasion worked, as with every evaded blow. It is the one call `PlayImpactEffect` makes for a blow's number,
+  `UCataclysmCombatOverlay::Record`, on the actor `UCataclysmImpactEffect::ActorToDrawOn` names; no particle. A world
+  built for a test has no heads-up display, so `Record` draws nothing there and **no test sees it**: it is on the
+  owner's play-check list.
 - **A swing at anything but the player is dealt as always**: the debuff is the player's, so a minion or a maddened ally
   struck by a creature takes its damage.
 - **The retaliation is an area blow**, so it cannot be evaded, as Brand of the Aggressor's nova is, and not damage over
