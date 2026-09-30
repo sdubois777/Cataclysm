@@ -2095,6 +2095,16 @@ public:
 	/** Infernal Beacons, for the panel and tests: the beacons standing, and the stacks this dungeon has activated. */
 	TArray<class ACataclysmFloorObject*> InfernalBeaconsNow() const;
 	int32 InfernalBeaconStacksNow() const { return InfernalBeaconStacks; }
+
+	/**
+	 * War Banner, for the panel and tests: the banner standing to be planted, or null; whether it is planted and held,
+	 * the seconds held, and the creatures its waves brought still standing.
+	 */
+	class ACataclysmFloorObject* WarBannerNow() const;
+	bool WarBannerIsPlanted() const { return bWarBannerPlanted; }
+	bool WarBannerIsHeld() const { return bWarBannerHeld; }
+	float WarBannerSecondsHeld() const { return WarBannerHeldSeconds; }
+	TArray<ACataclysmEnemyCharacter*> BannerAssailantsStanding() const;
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2763,6 +2773,18 @@ private:
 
 	/** Infernal Beacons: the one choice at a beacon. */
 	bool ChooseAtInfernalBeacon(class ACataclysmFloorObject* Beacon, FName ChoiceKey);
+
+	/** War Banner: this arena's banner placed, where a new arena is populated, and the last one's forgotten. #1820, #41. */
+	void PlaceTheWarBanner();
+
+	/** War Banner: the banner, its zone and its hold forgotten. */
+	void ForgetTheWarBanner();
+
+	/** War Banner: the one choice at the banner, which plants it where it stands. */
+	bool ChooseAtWarBanner(class ACataclysmFloorObject* Banner, FName ChoiceKey);
+
+	/** War Banner, on the beat: the zone drawn, the hold counted, the waves brought and the aura written. */
+	void StepWarBanner(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Infernal Beacons, on the beat: every creature's damage at the dungeon's stacks, and the player's magic find. */
 	void StepInfernalBeacons(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -4200,6 +4222,23 @@ private:
 	int32 InfernalBeaconStacks = 0;
 	int32 InfernalBeaconStacksApplied = 0;
 	int32 InfernalBeaconsPanelKey = -1;
+
+	/**
+	 * War Banner: the banner to be planted, whether it is planted and where, the seconds held and since the last wave,
+	 * whether it is held, the zone, the creatures its waves brought, what was last written on the player, and what the
+	 * panel last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> WarBanner;
+	bool bWarBannerPlanted = false;
+	FVector WarBannerAt = FVector::ZeroVector;
+	float WarBannerHeldSeconds = 0.0f;
+	float WarBannerSecondsSinceWave = 0.0f;
+	bool bWarBannerHeld = false;
+	TWeakObjectPtr<class ACataclysmGroundZone> WarBannerZone;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> BannerAssailants;
+	float WarBannerDamageApplied = 0.0f;
+	float WarBannerResistanceApplied = 0.0f;
+	int32 WarBannerPanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

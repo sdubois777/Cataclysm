@@ -2,6 +2,107 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — War Banner: one banner a floor, planted where it stands; inside its 12 m area 20% more damage and +15 resistance, and held 60 s through a wave of four every 15 s it doubles
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the two aura fields, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the banner,
+the hold, the waves, the aura, the panel line); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the
+"Assailant" flag); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Assailant"); the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The fifth of Group 2's chain and the last of its first
+window, on Infernal Beacons. **Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet;
+the figures are added at the end of this entry when they have.**
+
+### The row
+
+`War_War_Banner` in `game/Data/DungeonModifiers.csv`, weight 10: "Players can plant a "War Banner" that grants
+significant buffs in a radius but also attracts waves of enemies. The banner must be defended for a certain period to
+gain its full benefits." It states no figure.
+
+### What the design already said
+
+Nothing: the design document and this log name no planted banner. The player's inputs are Enhanced Input actions held in
+an editor data asset, `UCataclysmInputConfig`, so a new key is editor work; a click on a floor object's name needs
+nothing new, since the controller already walks to and opens a floor object.
+
+### What the rule does
+
+On a floor carrying the row, one "War Banner" stands where Eternal Chorus's picker puts things; one on a Horde arena.
+Its one choice, "Plant the banner", plants it where it stands: **the player chooses when to plant it, but not where**.
+A "plant here" key would need editor input assets, and is not built. Planted, a War-drawn zone 12 m across marks it for
+the rest of the floor; while the player stands inside, 20% more damage and +15 on every resistance. Standing inside is
+defending it: 60 s, counted only while the player is inside and never reset, with a wave of four creatures of the
+floor's kinds every 15 s of it, 15 m from the banner, noticing the player from anywhere on the floor, each saying
+"Assailant". Held, the waves stop and the aura inside becomes 40% and +30 for the rest of the floor. The banner cannot be
+harmed. The panel reads "war banner: planted, 37 s to hold; +20% damage, +15 resistances inside", then "war banner:
+held; +40% damage, +30 resistances inside".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "War Banner" with "Plant the banner"; one a floor, one on a Horde arena, placed by Eternal Chorus's
+  picker; it plants where it stands and needs no new input.** This entry says that the player chooses when to plant but
+  not where, and that a "plant here" key would need editor input assets and is not built now.
+- **A zone 1200 cm in radius, drawn as War, lasting the floor: 20% more damage and +15 to all resistances while the
+  player stands inside.**
+- **Defending means standing inside: 60 s, counted only while inside, without reset; a wave of four of the floor's
+  kinds every 15 s, 1500 cm from the banner, seeing across the floor, labelled "Assailant"**, the floor's creatures,
+  paying as their rung does.
+- **After 60 s held the waves stop and the aura becomes 40% more damage and +30 resistances inside, for the rest of the
+  floor.**
+- **The banner cannot be harmed**: "defended" means holding the ground.
+- **The labels and the panel line.**
+
+**On the owner's play-check list**, added by the coordinating session: plant the banner, hold it through the waves, and
+the aura doubles.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The fourth wave comes at 60 s, as the hold completes**: a wave at every 15 s held, 15, 30, 45 and 60, then held.
+- **The aura ends with the floor**, as a relic's buff does, reset in `ApplyFloorRulesToPlayer`; the zone is drawn again
+  on the next beat while the banner stands on that arena.
+- **The planted banner is not an object on the floor**: the floor object goes once planted, and the zone marks the place.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, War Banner | [poedb.tw/us/War_Banner](https://poedb.tw/us/War_Banner) | "place a banner with an aura. The aura will be larger and more powerful the more Valour was consumed."; it "will end early if you leave the aura" |
+| Diablo IV, cursed shrines | [maxroll.gg/d4/resources/shrines](https://maxroll.gg/d4/resources/shrines) | "60 seconds to slay up to 3 waves on monsters", then the reward |
+
+**What it settles:** a placed banner's aura helps only those inside it, and holding a place against waves for a set
+time earns the reward. **What it does not:** the figures, and what "defended" means where creatures attack only the
+player; here it is standing inside.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `WarBanner`:
+
+- `WarBannerFiguresAuraHoldAndWaves`.
+- `WarBannerStandsToBePlanted`: away from the entrance, named, placed by the row, one "Plant" choice, not planted, the
+  panel.
+- `WarBannerPlantedGivesItsAuraInsideAndNothingOutside`: planted, the banner to plant goes and the area is drawn; inside
+  20% more attack and spell damage and +15 resistance, and the panel; outside, nothing.
+- `WarBannerHeldThroughTheWavesDoublesItsAura`: no wave at 14.75 s, four "Assailant" at 15 s, raised and paying; 20 s
+  outside leaves the hold at 15 s and brings no wave; back inside, held at 60 s with four waves in all; 40% and +30
+  inside and the panel; 20 s more brings no wave.
+
+**The player is placed inside or outside by hand**: a world built for a test has no navigation, and nothing walks.
+
+One Python check: the row still says "can plant", "buffs in a radius", "attracts waves of enemies", "defended for a
+certain period" and "full benefits".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
+window, after the seven-stack merges.
+
+---
+
 ## 2026-09-30 — Infernal Beacons: one beacon a floor; each activated makes every creature of the dungeon deal 10% more damage and gives the player 10 magic find, for the rest of the dungeon, capped at 100
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,

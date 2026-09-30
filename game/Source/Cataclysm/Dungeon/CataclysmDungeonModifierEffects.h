@@ -479,6 +479,15 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float RelicResistancePercent = 0.0f;
 
 	/**
+	 * What a planted War Banner's aura gives the player while standing inside it: damage, more, and points on each
+	 * resistance. Issues #1820 and #41.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BannerDamageMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BannerResistancePercent = 0.0f;
+
+	/**
 	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
 	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
 	 * long. Issues #1820 and #41.
@@ -555,6 +564,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& GrimEmbraceDamageMorePercent <= 0.0f
 			&& RelicDamageMorePercent <= 0.0f && RelicAttackSpeedMorePercent <= 0.0f
 			&& RelicSpeedMorePercent <= 0.0f && RelicResistancePercent <= 0.0f
+			&& BannerDamageMorePercent <= 0.0f && BannerResistancePercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
@@ -2614,6 +2624,33 @@ public:
 
 	/** An Infernal Beacon's one choice. */
 	static constexpr const TCHAR* InfernalBeaconsActivate = TEXT("Activate");
+
+	/**
+	 * The row whose banner the player plants: an aura for standing inside it, doubled once it has been held through the
+	 * waves it draws. Issues #1820 and #41.
+	 *
+	 * "Players can plant a "War Banner" that grants significant buffs in a radius but also attracts waves of enemies.
+	 * The banner must be defended for a certain period to gain its full benefits."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `WarBannerPerFloor` A FLOOR, `WarBannerPerHordeArena` ON A HORDE ARENA, placed by Eternal Chorus's picker: a
+	 *   floor object named "War Banner" offering "Plant the banner". IT PLANTS WHERE IT STANDS: THE PLAYER CHOOSES WHEN
+	 *   TO PLANT IT BUT NOT WHERE. A "plant here" key would need editor input assets, and is not built.
+	 * - PLANTED, a zone `WarBannerRadiusCm` across, drawn as War, lasting the floor. While the player stands inside:
+	 *   `WarBannerDamageMorePercent` more damage and `WarBannerResistance` on every resistance.
+	 * - DEFENDING IS STANDING INSIDE. `WarBannerHoldSeconds`, counted only while the player is inside, never reset; a
+	 *   wave of `WarBannerWaveSize` creatures of the floor's kinds every `WarBannerWaveEverySeconds` of it,
+	 *   `WarBannerWaveAwayCm` from the banner, noticing the player from anywhere on the floor, each saying "Assailant".
+	 *   They are the floor's creatures, pay as their rung does and stay on their floor.
+	 * - HELD: the waves stop and the aura inside becomes `WarBannerHeldDamageMorePercent` and `WarBannerHeldResistance`
+	 *   for the rest of the floor.
+	 * - THE BANNER CANNOT BE HARMED: "defended" is holding the ground, since no creature attacks an object.
+	 */
+	static const TCHAR* WarBannerKey;
+
+	/** A War Banner's one choice. */
+	static constexpr const TCHAR* WarBannerPlant = TEXT("Plant");
 
 	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
@@ -5424,6 +5461,19 @@ public:
 	static constexpr int32 PandorasBoxWaveCount = 3;
 	static constexpr int32 PandorasBoxWaveSize = 4;
 	static constexpr float PandorasBoxWaveAwayCm = 600.0f;
+
+	/** War Banner's figures, every one a play-test value. See the key. */
+	static constexpr int32 WarBannerPerFloor = 1;
+	static constexpr int32 WarBannerPerHordeArena = 1;
+	static constexpr float WarBannerRadiusCm = 1200.0f;
+	static constexpr float WarBannerDamageMorePercent = 20.0f;
+	static constexpr float WarBannerResistance = 15.0f;
+	static constexpr float WarBannerHeldDamageMorePercent = 40.0f;
+	static constexpr float WarBannerHeldResistance = 30.0f;
+	static constexpr float WarBannerHoldSeconds = 60.0f;
+	static constexpr float WarBannerWaveEverySeconds = 15.0f;
+	static constexpr int32 WarBannerWaveSize = 4;
+	static constexpr float WarBannerWaveAwayCm = 1500.0f;
 
 	/** Infernal Beacons' figures, every one a play-test value. See the key. */
 	static constexpr int32 InfernalBeaconsPerFloor = 1;
