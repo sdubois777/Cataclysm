@@ -2,6 +2,59 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — The two Fervour clamps that no test noticed keep the stored base at or under the maximum; both stay, and two tests now show why
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp` (the comment on `Move`'s clamp),
+`game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.cpp` (the comment on the clamp in
+`PostGameplayEffectExecute`) and `game/Source/Cataclysm/Tests/CataclysmFervourTests.cpp` (two tests). No
+game behaviour changes. Issue [#1036](https://github.com/sdubois777/Cataclysm/issues/1036).
+
+### WHAT #1036 ASKED
+
+Three places clamp the Fervour pool: `PreAttributeChange`, `PostGameplayEffectExecute` and
+`UCataclysmFervour::Move`. Guard proofs on 2026-08-27 removed each of the last two and no test failed, so the
+issue asked whether they do anything: either find a route that skips `PreAttributeChange`, or delete them.
+
+### WHAT WAS READ IN THE ENGINE, UE 5.8 GAMEPLAYABILITIES SOURCE, 2026-09-30
+
+- **Every write of the CURRENT value reaches `PreAttributeChange`**, with or without an aggregator.
+  `SetAttributeBaseValue` (GameplayEffect.cpp about 4001-4040) either sets the aggregator's base, whose dirty
+  callback `OnAttributeAggregatorDirty` (about 3452) calls `InternalUpdateNumericalAttribute` (about 3949),
+  or calls that directly; that calls `SetNumericAttribute_Internal` (AbilitySystemComponent.cpp about 480),
+  then `SetNumericValueChecked`, then `PreAttributeChange` (AttributeSet.cpp about 82 and 95). So no route
+  skips the clamp on the current value. The comment on `Move` saying it depended on an aggregator was wrong.
+- **The STORED BASE is not clamped there.** `SetAttributeBaseValue` calls `PreAttributeBaseChange`, which
+  this set does not override, and stores the base as given (about 4013) before clamping the current value.
+- **`ApplyModToAttribute` adds to that base** (4155-4161). `Move` writes through it, and so does an instant
+  gameplay effect.
+
+### WHAT THE TWO CLAMPS ACTUALLY DO
+
+They keep the stored base at or under the maximum. Without `Move`'s, a gain at a full pool would raise the
+base above the maximum while the bar still read full, and the next spend would come off that hidden excess
+and leave the bar where it was. The clamp in `PostGameplayEffectExecute` does the same for an instant effect,
+by writing the pool back through its setter, which resets the base. **That part is inferred from the code
+above; the two tests below are what measure it.**
+
+**Why the 2026-08-27 proofs saw nothing:** every test then read only the current value after one write. A
+spend after a gain at a full pool is what reads the base.
+
+### RULED 2026-09-30
+
+Keep both clamps, correct their comments to say what they do, and add the tests. Clamping the base in a new
+`PreAttributeBaseChange` was considered and not chosen: it would have to be right for every case in which an
+infinite effect is live on the pool, which was not read.
+
+### TESTS
+
+- `Cataclysm.Fervour.AGainAtAFullPoolIsNotBankedForTheNextSpend`: at a full pool, a gain moves nothing, and a
+  spend after it takes the bar down by the whole spend. The gain and the spend are measured first, so the test
+  does not depend on the generator's rates.
+- `Cataclysm.Fervour.AnEffectAtAFullPoolIsNotBankedForTheNextSpend`: an instant effect adding 50 to a full
+  pool leaves it full, and an effect taking 10 after it takes the bar down by 10.
+
+---
+
 ## 2026-09-30 — A minion's blow reads the buffs on its own ability system; Conflagration's fire bonus still gives a minion nothing, because no minion deals fire damage
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (`ACataclysmMinion::AttackTarget`)

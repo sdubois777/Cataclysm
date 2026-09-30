@@ -410,6 +410,100 @@ CATACLYSM_TEST(FCataclysmFervourCeilingHoldsByEveryRouteTest,
 // Damage arrives through a real blow
 // ---------------------------------------------------------------------------
 
+CATACLYSM_TEST(FCataclysmFervourGainNotBankedTest,
+	"Cataclysm.Fervour.AGainAtAFullPoolIsNotBankedForTheNextSpend")
+{
+	// WHAT `UCataclysmFervour::Move`'S OWN CLAMP IS FOR. Issue #1036. The
+	// engine's `ApplyModToAttribute` adds to the STORED BASE, and
+	// `PreAttributeChange` clamps only the current value, so a gain written at
+	// a full pool without that clamp would raise the base above the maximum
+	// while the bar still read full -- and the next spend would come off the
+	// hidden excess, leaving the bar where it was. The amounts are measured
+	// first, so this does not depend on the generator's rates.
+	using namespace CataclysmFervourTest;
+
+	UWorld* World = MakeWorld();
+	{
+		const FScopedCharacter Character(World);
+		Character.SetHealth(500.0f, 500.0f);
+		Character.GiveTheMasochistGenerator();
+		const float Maximum = Character.AbilitySystem->GetNumericAttribute(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute());
+
+		Character.SetFervour(0.0f);
+		const float Gain = UCataclysmFervour::GainFromDamage(
+			Character.AbilitySystem, 50.0f, FGameplayTagContainer());
+		Character.SetFervour(Maximum);
+		const float Spent = -UCataclysmFervour::RemoveForHealing(
+			Character.AbilitySystem, 50.0f, FGameplayTagContainer());
+		if (!TestTrue(FString::Printf(TEXT("a gain of %.2f and a spend of %.2f, each under the "
+										   "maximum of %.2f"), Gain, Spent, Maximum),
+					  Gain > 0.0f && Spent > 0.0f && Gain < Maximum && Spent < Maximum))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		Character.SetFervour(Maximum);
+		TestEqual(TEXT("a gain at a full pool moves nothing"),
+				  UCataclysmFervour::GainFromDamage(
+					  Character.AbilitySystem, 50.0f, FGameplayTagContainer()),
+				  0.0f, 0.001f);
+		UCataclysmFervour::RemoveForHealing(
+			Character.AbilitySystem, 50.0f, FGameplayTagContainer());
+		TestEqual(TEXT("and the spend after it takes the bar down by the whole spend"),
+				  Character.Fervour(), Maximum - Spent, 0.01f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmFervourEffectNotBankedTest,
+	"Cataclysm.Fervour.AnEffectAtAFullPoolIsNotBankedForTheNextSpend")
+{
+	// WHAT THE CLAMP IN `PostGameplayEffectExecute` IS FOR, the same thing for
+	// an instant gameplay effect, which also adds to the stored base. Issue
+	// #1036. That clamp writes the pool back through its setter, which resets
+	// the base; without it a second effect taking 10 away would come off the
+	// excess and the bar would stay full.
+	using namespace CataclysmFervourTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	UWorld* World = MakeWorld();
+	{
+		const FScopedCharacter Character(World);
+		Character.SetHealth(500.0f, 500.0f);
+		const FGameplayAttribute Pool = Resource::GetClassResourceAttribute();
+		const float Maximum = Character.AbilitySystem->GetNumericAttribute(
+			Resource::GetMaxClassResourceAttribute());
+
+		const auto Apply = [&](const TCHAR* Name, float Amount)
+		{
+			UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+				GetTransientPackage(), FName(Name));
+			Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+			const int32 Index = Effect->Modifiers.Num();
+			Effect->Modifiers.SetNum(Index + 1);
+			FGameplayModifierInfo& Info = Effect->Modifiers[Index];
+			Info.Attribute = Pool;
+			Info.ModifierOp = EGameplayModOp::Additive;
+			Info.ModifierMagnitude = FScalableFloat(Amount);
+			Character.AbilitySystem->ApplyGameplayEffectToSelf(
+				Effect, 1.0f, Character.AbilitySystem->MakeEffectContext());
+		};
+
+		Character.SetFervour(Maximum);
+		Apply(TEXT("TestFervourOverfill"), 50.0f);
+		TestEqual(TEXT("an effect adding 50 to a full pool leaves it full"),
+				  Character.Fervour(), Maximum, 0.01f);
+		Apply(TEXT("TestFervourTakeTen"), -10.0f);
+		TestEqual(TEXT("and an effect taking 10 after it takes the bar down by 10"),
+				  Character.Fervour(), Maximum - 10.0f, 0.01f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmFervourFromARealHitTest,
 	"Cataclysm.Fervour.ARealBlowLandingFillsTheBar")
 {

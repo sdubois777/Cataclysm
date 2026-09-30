@@ -234,17 +234,22 @@ void UCataclysmClassResourceAttributeSet::PostGameplayEffectExecute(
 
 	if (Data.EvaluatedData.Attribute == GetClassResourceAttribute())
 	{
-		// ONE OF THREE PLACES THAT CLAMP THE POOL, and the only one of the three
-		// that NO TEST NOTICES THE LOSS OF. Issue #1036. A guard proof on
-		// 2026-08-27 removed this clamp, compiled, and ran every test under
-		// `Cataclysm.Fervour`: none failed, because `PreAttributeChange` above
-		// is reached first on every route a test takes, including an instant
-		// gameplay effect adding to the pool. It is kept as defence in depth,
-		// not deleted, because no one has yet established whether a route exists
-		// that skips `PreAttributeChange` -- which is what #1036 is for. What is
-		// NOT true is the claim this comment used to make, that a build
-		// honouring one site and not the other would let the pool pass its
-		// maximum by one route and not another.
+		// THIS KEEPS THE STORED BASE AT OR UNDER THE MAXIMUM, which
+		// `PreAttributeChange` does not. Issue #1036, read in the UE 5.8
+		// GameplayAbilities source on 2026-09-30: an instant effect reaches the
+		// pool through `FActiveGameplayEffectsContainer::ApplyModToAttribute`
+		// (GameplayEffect.cpp 4155-4161), which adds to the BASE and hands it to
+		// `SetAttributeBaseValue` (about 4001-4013). That stores the base as
+		// given -- this set does not override `PreAttributeBaseChange` -- and
+		// only then clamps the CURRENT value in `PreAttributeChange`. So an
+		// effect adding to a full pool left the base above the maximum, and the
+		// next effect taking Fervour away came off that hidden excess. Writing
+		// the pool back through its setter resets the base.
+		//
+		// A GUARD PROOF ON 2026-08-27 REMOVED THIS AND NOTHING FAILED, because
+		// every test then read only the current value, one write at a time.
+		// `Cataclysm.Fervour.AnEffectAtAFullPoolIsNotBankedForTheNextSpend`
+		// reads the second write.
 		SetClassResource(
 			FMath::Clamp(GetClassResource(), 0.0f, MaximumClassResourceAsked()));
 	}
