@@ -372,6 +372,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute: asked once per zone with the skill's tags, based at 100 by
 		// `EngineSuppliedBases`.
 		TEXT("zone_first_sweep_damage"),
+		// Points of maximum health reserved, read by
+		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
+		// ceiling and the regeneration step's hold read. Issue #1833, health
+		// reservation: "Each minion reserves 100-500 hp", scaled by the minions
+		// held. No gameplay attribute: asked by name with the character's state.
+		TEXT("health_reserved"),
+		// The share of maximum health reserved, read by the same function.
+		// Issue #1833: "80%-99% of your health is reserved". No gameplay
+		// attribute, for the same reason.
+		TEXT("health_reserved_percent"),
 	};
 	return Stats;
 }

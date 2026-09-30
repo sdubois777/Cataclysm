@@ -3808,6 +3808,58 @@ namespace CataclysmStatExemptionTest
 		return Made;
 	}
 
+	/**
+	 * `health_reserved` and `health_reserved_percent`, read by
+	 * `UCataclysmAbilitySystemComponent::HealthReserved`. Issue #1833, health
+	 * reservation. Each grants its stat on a character with a maximum of 1000
+	 * and asserts the unreserved maximum falls: 200 points, and a 20% share.
+	 */
+	float UnreservedWith(FAutomationTestBase& Test, const TCHAR* Stat, float Value)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return -1.0f;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System = Fighter.AbilitySystem;
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		if (Value > 0.0f)
+		{
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::Enchantment;
+			Flat.Value = Value;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+			System->SetStatInputs(MoveTemp(Inputs));
+		}
+		return System->UnreservedMaximumHealth();
+	}
+
+	void ProbeHealthReserved(FAutomationTestBase& Test)
+	{
+		const TCHAR* Stat = UCataclysmAbilitySystemComponent::HealthReservedStat;
+		Test.TestEqual(TEXT("health_reserved is read: 200 points of 1000 reserved leave 800"),
+					   UnreservedWith(Test, Stat, 200.0f), 800.0f, 0.01f);
+		Test.TestEqual(TEXT("and nothing granted leaves 1000"),
+					   UnreservedWith(Test, Stat, 0.0f), 1000.0f, 0.01f);
+	}
+
+	void ProbeHealthReservedPercent(FAutomationTestBase& Test)
+	{
+		const TCHAR* Stat = UCataclysmAbilitySystemComponent::HealthReservedPercentStat;
+		Test.TestEqual(TEXT("health_reserved_percent is read: 20% of 1000 reserved leaves 800"),
+					   UnreservedWith(Test, Stat, 20.0f), 800.0f, 0.01f);
+		Test.TestEqual(TEXT("and nothing granted leaves 1000"),
+					   UnreservedWith(Test, Stat, 0.0f), 1000.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -3861,6 +3913,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("non_critical_damage"), &ProbeNonCriticalDamage},
 			{TEXT("projectile_later_hit_damage"), &ProbeProjectileLaterHitDamage},
 			{TEXT("zone_first_sweep_damage"), &ProbeZoneFirstSweepDamage},
+			{TEXT("health_reserved"), &ProbeHealthReserved},
+			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 		};
 		return Made;
 	}
