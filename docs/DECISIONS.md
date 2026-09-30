@@ -856,6 +856,30 @@ cast and takes 50 and its mana; a mana-free Ultimate still costs 50; no other sl
 pool pays none; the skill bar greys the box and says "Ultimate needs 50 Fervour"; and the built `DT_SkillSlots`
 states 50 for the Ultimate and 0 for the other six. One in Python pins the sheet to the ruling.
 
+### Run
+
+One window on 2026-09-30, with the build machine and the workbook, on `feat/ultimate-fervour-cost` on development
+c2eccb69. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on `47ffda20`, started with no workflow in progress | `2 failed, 5544 passed, 8 skipped` (JUnit 5,554, 0 errors): the asset hash and the Fervour pin, as registered |
+| Workbook column, the two edits, `generate_datatables.py` | Fervour Cost added (Ultimate 50, the other six 0); `SkillSlots.csv` changed on the Ultimate row only. The registration said 7 lines; the other six already read 0.0 |
+| Check of five data test files | `1 failed, 374 passed`: the asset hash |
+| Build | `Build: Succeeded - 31 actions, 28 files compiled` |
+| `Cataclysm.UltimateFervour.` before the asset rebuild | `7 tests performed, 2 succeeded, 5 failed`, the five registered, each because the built table still said 0 |
+| `generate_datatable_assets.py` | `DT_SkillSlots.uasset` and `datatable_asset_sources.json` changed, nothing else |
+| `Cataclysm.UltimateFervour.` after it | `7 tests performed, 7 succeeded, 0 failed` |
+| Whole suite, started with no workflow in progress | `2772 tests performed, 2772 succeeded, 0 failed`; declared 2772, gap 0 |
+| Proof (a): `CheckCost` never refuses a cast short of Fervour | PROVED: `AnUltimateIsRefusedBelowFiftyFervourAndTakesNothing` and `AnUltimateWhoseManaIsFreeStillCostsFifty` failed; restored 7 of 7 |
+| Proof (b): `ApplyCost` never takes the Fervour | PROVED: `AnUltimateWithEnoughFervourIsCastAndTakesFifty` and `AnUltimateWhoseManaIsFreeStillCostsFifty` failed; restored 7 of 7 |
+| Proof (c): the skill bar never finds a box short of Fervour | PROVED: `TheSkillBarGreysAnUltimateShortOfFervourAndNamesIt` failed; restored 7 of 7 |
+
+**This entry's place in the log.** It sits below Deployable Part 2's entry, whose first commit (5d5416b9, 13:49 on
+2026-09-27) is newer than this one's (1eebebb7, 13:36), and above the entries first written earlier. The five
+dungeon-modifier entries above Deployable Part 2 were first written earlier still (fc94f14d, e04369ce, d5d9e478,
+dc4dbe00 and b4fa7f95, 10:55 to 11:19), so they stand out of that order; they are merged and were left where they are.
+
 ---
 
 ## 2026-09-27 — A skill made with a melee weapon is melee, whatever its area shape: eight Demonic skills gain Type.Melee, and the generator refuses a strike without it
