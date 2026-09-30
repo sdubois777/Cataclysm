@@ -157,6 +157,7 @@ proof printed.
 | Proof (a): `ArcDegrees` never finds the stat | PROVED: the three "behind" and one-target tests failed; restored 5 of 5 |
 | Proof (b): the melee check removed | PROVED: `ASpellConeIsNotWidenedByEverySwingLands` failed; restored 5 of 5 |
 | Proof (c): `SwingOnce` reads the row's angle again | PROVED: the same three failed; restored 5 of 5 |
+| Final Python, on `75321241`, started with no workflow in progress | `5546 passed, 8 skipped` (JUnit 5,554, no failures) |
 
 ---
 
