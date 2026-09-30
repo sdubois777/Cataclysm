@@ -35166,4 +35166,112 @@ bool FCataclysmFamishedBeastsWithCarrionTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A SHARE ANOTHER RULE ADDED ONTO THE MAXIMUM IS KEPT WHEN THE CREATURE EATS AGAIN. Soul Harvest's souls and Nothing
+// Is Forgotten's gift are added onto the current maximum, which the write below stands in for.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsOtherShareTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAHealthShareAnotherRuleAddedIsKept",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsOtherShareTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	ACataclysmEnemyCharacter* Imp = Mode
+		? SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	const float Own = MaxHealthOf(Imp);
+	ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: one drop eaten"), Imp->DropsEaten, 1))
+	{
+		return false;
+	}
+
+	// ANOTHER RULE ADDS 500 ONTO THE MAXIMUM, as Soul Harvest and Nothing Is Forgotten do.
+	Imp->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), MaxHealthOf(Imp) + 500.0f);
+	ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	TestEqual(TEXT("set-up: two drops eaten"), Imp->DropsEaten, 2);
+	TestEqual(TEXT("the other rule's 500 is kept, and the drops' fifth is on top of it"), MaxHealthOf(Imp),
+			  (Own + 500.0f) * 1.2f, 0.5f);
+	return true;
+}
+
+// A RUNG CHANGE WRITES THE WHOLE STAT BLOCK OVER, AND VOLATILE EVOLUTION PUTS THE DROPS' SHARE BACK AFTER IT, as it puts
+// Soul Harvest's back. Blood-Forged Champions makes the same call after its own rung change.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsRungTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsARungChangeKeepsTheDropsShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	const FVector Feet = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Eater = Mode ? SpawnImpWithHealth(World, Feet + FVector(3000.0f, 0.0f, 0.0f), 1000.0f) : nullptr;
+	ACataclysmEnemyCharacter* Fasting = Mode ? SpawnImpWithHealth(World, Feet + FVector(-3000.0f, 0.0f, 0.0f), 1000.0f) : nullptr;
+	if (!TestNotNull(TEXT("an Imp that eats"), Eater) || !TestNotNull(TEXT("and one that does not"), Fasting))
+	{
+		return false;
+	}
+	ADropAt(World, Eater->GetActorLocation(), false);
+	Beat(Mode, 1);
+	ADropAt(World, Eater->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: two drops eaten"), Eater->DropsEaten, 2))
+	{
+		return false;
+	}
+
+	// BOTH WOUNDED, AND THE FLOOR NOW CARRIES VOLATILE EVOLUTION: BOTH RISE A RUNG ON THE NEXT BEAT.
+	const int32 RungBefore = Eater->RarityStep;
+	for (ACataclysmEnemyCharacter* One : {Eater, Fasting})
+	{
+		One->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), MaxHealthOf(One) * 0.1f);
+	}
+	Mode->FloorBrief.Modifiers.Add(FName(UCataclysmDungeonModifierEffects::VolatileEvolutionKey));
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("set-up: the eater rose a rung"), Eater->RarityStep > RungBefore)
+		|| !TestEqual(TEXT("set-up: and so did the other"), Fasting->RarityStep, Eater->RarityStep))
+	{
+		return false;
+	}
+
+	// THE SAME KIND AT THE SAME RUNG, SO THE SAME DESIGNED MAXIMUM BUT FOR THE MODIFIERS EACH DREW.
+	const float Designed = MaxHealthOf(Fasting) / UCataclysmEnemyModifiers::MaxHealthMultiplier(Fasting->ModifierRows)
+		* UCataclysmEnemyModifiers::MaxHealthMultiplier(Eater->ModifierRows);
+	TestEqual(TEXT("after the rung change the eater still carries the drops' fifth"), MaxHealthOf(Eater),
+			  Designed * 1.2f, 0.5f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
