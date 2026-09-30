@@ -905,21 +905,15 @@ void ACataclysmMinion::HandleDeath()
 	// however many writes at zero health reach it -- a burn ticking on a body,
 	// two blows in the same frame.
 	//
-	// IT DOES NOT REMOVE THE ACTOR, deliberately, and that is the difference
-	// between this and the enemy's. `Spawn` gave every minion a lifespan and
-	// that is still what takes it out of the level, so the summon cap, the
-	// spawning path and every test that counts minions behave exactly as they
-	// did. Removing the body sooner is a separate change with its own issue.
-	//
-	// EXCEPT WHERE THE EXPLOSION BELOW REMOVES IT, since issue #1515. A
-	// minion whose summoner carries `minion_explodes_on_death` is destroyed
-	// by `Explode`, exactly as one the summon cap evicts already is, so that
-	// minion leaves no body and stops counting toward the cap at once. Every
-	// minion whose summoner has not taken that keystone behaves as before.
-	// What the cap does with a body that is dead and still present is
-	// https://github.com/sdubois777/Cataclysm/issues/1957 and is not changed
-	// here.
-	UCataclysmSkillEffects::MarkDead(this);
+	// AND A SECOND DEATH DOES NOTHING HERE EITHER. Issue #1528. Until then
+	// this ignored what `MarkDead` answered, so a second call still ran the
+	// explosion below, and a minion that exploded could explode twice. Found
+	// while changing this function and fixed in the same change, ruled
+	// 2026-09-30.
+	if (!UCataclysmSkillEffects::MarkDead(this))
+	{
+		return;
+	}
 
 	// AND IT MAY BLOW UP ON THE WAY OUT. Issue #1515.
 	// `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when
@@ -931,10 +925,8 @@ void ACataclysmMinion::HandleDeath()
 	// else the blow needs.
 	//
 	// BOTH FIGURES MUST BE THERE. A minion nobody told what its explosion is
-	// leaves a body, because `Explode` destroys the actor whether or not it
-	// finds anything to hurt, and a deployed ballista that vanished silently
-	// on death would be a change to the deployable shape rather than to this
-	// keystone.
+	// does not explode, because `Explode` destroys the actor whether or not it
+	// finds anything to hurt; it leaves the level the quiet way below instead.
 	//
 	// THE FERVOUR A SUMMONER GAINS FOR LOSING A MINION IS ALREADY SAFE. It is
 	// granted before this runs, and `CataclysmVitalAttributeSet.cpp` says why:
@@ -943,7 +935,35 @@ void ACataclysmMinion::HandleDeath()
 	if (ExplodesOnDeath())
 	{
 		Explode();
+		return;
 	}
+
+	// A MINION THAT DIED QUIETLY STOPS AT ONCE AND IS GONE HALF A SECOND
+	// LATER. Issue #1528, ruled 2026-09-30. Until then the body stood where it
+	// died, with its collision and its tick, until the lifespan `Spawn` gave
+	// it ran out: an imp killed a second after its summoning stood for
+	// nineteen more. Gadgets are minions and are included, ruled the same day:
+	// a destroyed turret standing until its lifespan ends is the same fault.
+	//
+	// WHAT STOPS AT ONCE is what the enemy's death stops, for the same
+	// reasons `ACataclysmEnemyCharacter::HandleDeath` gives: its movement
+	// (`DisableMovement` also clears the velocity) and its collision, so the
+	// body neither blocks anything nor is found by an overlap search. Not its
+	// tick, which the enemy also stops: a minion's actor never ticks, because
+	// the constructor sets `bCanEverTick` false.
+	// Not copied from there: loot and the run record, which a summoned thing
+	// does not have.
+	//
+	// WHY A DELAY RATHER THAN `Destroy`. The code after a lethal blow draws
+	// the blow's impact and damage number on the actor it struck; destroyed
+	// in the same call, the killing blow on a minion would show neither. Half
+	// a second is a judgement, not a figure from the design or research.
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->DisableMovement();
+	}
+	SetActorEnableCollision(false);
+	SetLifeSpan(DeadBodySeconds);
 }
 
 bool ACataclysmMinion::ExplodesOnDeath() const

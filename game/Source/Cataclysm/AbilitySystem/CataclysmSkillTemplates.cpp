@@ -3197,9 +3197,13 @@ void UCataclysmMovementSkill::FinishFlicker()
 
 int32 UCataclysmDeployableSkill::LivingDeployedCount()
 {
+	// DESTROYED OR DEAD, as `LivingMinionCount` below has counted since issue
+	// #1957. Found while making issue #1528 and fixed under the ruling of
+	// 2026-09-30: this dropped only destroyed gadgets, so a dead one held its
+	// place under the cap until its body was removed.
 	Deployed.RemoveAll([](const TObjectPtr<ACataclysmMinion>& Machine)
 	{
-		return !IsValid(Machine);
+		return !IsValid(Machine) || UCataclysmSkillEffects::IsDead(Machine);
 	});
 	return Deployed.Num();
 }
@@ -3314,8 +3318,8 @@ int32 UCataclysmSummonSkill::LivingMinionCount()
 	// DESTROYED OR DEAD. Issue #1957: a dead minion's body stays in the level
 	// until its lifespan ends, and while it did it held a slot, so a summon at
 	// the cap could explode a LIVING minion while a corpse went on counting. A
-	// corpse leaves the list the moment it dies; the body itself is left for its
-	// lifespan to remove, which nothing here changes.
+	// corpse leaves the list the moment it dies; the body itself is removed half
+	// a second later since issue #1528, by `ACataclysmMinion::HandleDeath`.
 	Minions.RemoveAll([](const TObjectPtr<ACataclysmMinion>& Minion)
 	{
 		return !IsValid(Minion) || UCataclysmSkillEffects::IsDead(Minion);

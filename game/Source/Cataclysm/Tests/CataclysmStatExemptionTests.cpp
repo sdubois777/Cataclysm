@@ -887,9 +887,10 @@ namespace CataclysmStatExemptionTest
 		KillMinion(PlainImp);
 		KillMinion(FlaggedImp);
 
-		// THE BODY IS THE READING. An explosion destroys the minion, so the
-		// difference between the two deaths is visible without a target: one
-		// leaves a corpse for the summon cap to count and the other does not.
+		// THE BODY IS THE READING. An explosion destroys the minion at once,
+		// and a quiet death leaves the body for half a second (issue #1528),
+		// so the difference between the two deaths is visible without a
+		// target at the moment of death.
 		Test.TestTrue(
 			TEXT("a minion whose summoner lacks the flag leaves its body"),
 			IsValid(PlainImp));

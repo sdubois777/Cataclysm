@@ -1594,7 +1594,8 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	TArray<TObjectPtr<ACataclysmMinion>> Deployed;
 
-	/** How many are still out, after dropping the ones that expired. */
+	/** How many are still out and alive, after dropping the ones that expired
+	 * or died. Issue #1528: a dead one no longer holds its place. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	int32 LivingDeployedCount();
 
