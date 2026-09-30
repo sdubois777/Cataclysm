@@ -34943,6 +34943,43 @@ bool FCataclysmCleanseRemovesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A CLEANSE REMOVES A FEAR A CREATURE PUT ON THE PLAYER, AND KEEPS THE FEAR'S IMMUNITY WINDOW. ITS OWN TEST, because a
+// fear that lands opens the shared window, so a stun beside it in one test would be refused.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseFearTest,
+	"Cataclysm.Cleanse.ItRemovesAFearACreaturePutOnThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseFearTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the fear lands"),
+				  UCataclysmFear::ApplyFear(Imp, Player.Character, 3.0f, Imp->GetActorLocation()))
+		|| !TestTrue(TEXT("set-up: the player is feared"), UCataclysmFear::IsFeared(Player.Character)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a cleanse removes one effect"), UCataclysmDebuffs::Cleanse(Player.Character), 1);
+	TestFalse(TEXT("the fear is gone"), UCataclysmFear::IsFeared(Player.Character));
+	TestTrue(TEXT("the shared window stays"), PlayerCarries(Player, UCataclysmSkillEffects::StunImmuneTag()));
+	return true;
+}
+
 // A CLEANSE KEEPS A BUFF AND A BLEED THE PLAYER PUT ON ITSELF; A CREATURE'S BURN BESIDE THEM IS THE CONTROL.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseKeepsTest,
 	"Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself",

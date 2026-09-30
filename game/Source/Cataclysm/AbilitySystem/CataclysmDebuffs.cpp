@@ -6,6 +6,7 @@
 // rather than reading the attribute. Issue #1033.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmFear.h"
 // For the attribute the duration stat is folded into. Issue #1033.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For refusing a corpse, which `HoldStep` does. Issue #1070.
@@ -148,7 +149,10 @@ int32 UCataclysmDebuffs::Cleanse(AActor* Character)
 	}
 
 	int32 Removed = 0;
-	const FGameplayTagContainer Roots = DebuffRoots();
+	// AND A FEAR, which lies outside the debuff roots but is crowd control someone else put on the player, as a
+	// stun is; ruled on 2026-09-26. Its immunity stays, as the stun's does.
+	FGameplayTagContainer Roots = DebuffRoots();
+	Roots.AddTag(UCataclysmFear::FearedTag());
 
 	// AN EMPTY CONTAINER WOULD MATCH EVERY EFFECT, buffs included, for the reason `HoldStep` gives, so nothing is
 	// removed when the vocabulary has lost every root. The announcement still goes, so the game mode's stacks clear.
