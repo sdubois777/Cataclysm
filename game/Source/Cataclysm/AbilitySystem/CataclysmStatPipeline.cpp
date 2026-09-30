@@ -1645,6 +1645,15 @@ bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modif
 		return false;
 	}
 
+	// AND THE SECOND, WHICH MUST HOLD TOO. Issue #1833, ruled 2026-09-30 under
+	// the owner's delegation: a sentence naming two states means both. Always
+	// holds, so a modifier stating one condition is unchanged.
+	if (!ConditionHolds(Modifier.Condition2, Modifier.ConditionValue2, State,
+						Modifier.ReachMetres))
+	{
+		return false;
+	}
+
 	const FGameplayTag Global = GlobalScopeTag();
 
 	for (const FGameplayTag& Required : Modifier.RequiredTags)
@@ -1668,6 +1677,23 @@ bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modif
 
 FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& Modifier)
 {
+	// THE SECOND CONDITION'S THRESHOLD IS BOUNDED AS THE FIRST'S IS. Issue #1833,
+	// ruled 2026-09-30. Checked by asking the same questions of a copy that
+	// carries it in the first place, so the bounds below are written once and a
+	// condition added to them later bounds both.
+	if (Modifier.Condition2 != ECataclysmStatCondition::Always)
+	{
+		FCataclysmStatModifier AsFirst = Modifier;
+		AsFirst.Condition = Modifier.Condition2;
+		AsFirst.ConditionValue = Modifier.ConditionValue2;
+		AsFirst.Condition2 = ECataclysmStatCondition::Always;
+		const FString Second = ValidateModifier(AsFirst);
+		if (!Second.IsEmpty())
+		{
+			return FString::Printf(TEXT("in its second condition, %s"), *Second);
+		}
+	}
+
 	if (Modifier.Bucket == ECataclysmStatBucket::More)
 	{
 		if (!CanGrantMore(Modifier.Source))

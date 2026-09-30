@@ -407,6 +407,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// reach and notice radius the minion's type states. Issue #1833:
 		// "Gadgets have 20%-40% increased attack range".
 		TEXT("minion_range"),
+		// The share of armour a critical strike ignores on top of the rest,
+		// asked in UCataclysmVitalAttributeSet where armour penetration is and
+		// added in UCataclysmDamageCalculation::Resolve after the roll. Issue
+		// #1833: "Your critical strikes ignore 20%-40% of enemy armor".
+		TEXT("critical_armor_penetration"),
 	};
 	return Stats;
 }

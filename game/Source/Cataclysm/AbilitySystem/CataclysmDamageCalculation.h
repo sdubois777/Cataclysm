@@ -68,6 +68,17 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	float ArmorPenetration = 0.0f;
 
 	/**
+	 * A further percentage of the defender's armor ignored WHEN THIS BLOW
+	 * CRITICALLY STRIKES, added to `ArmorPenetration` in `Resolve` after the
+	 * roll. Issue #1833, ruled 2026-09-30: "Your critical strikes ignore
+	 * 20%-40% of enemy armor". A stat of its own rather than a condition on
+	 * armour penetration, because penetration is asked before `Resolve` rolls
+	 * the critical strike, so no such condition could be answered there.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CriticalArmorPenetration = 0.0f;
+
+	/**
 	 * Whether this blow cannot be dodged at all.
 	 *
 	 * A PROPERTY OF THE BLOW AND NOT OF THE DEFENDER, which is what makes it
@@ -547,6 +558,15 @@ public:
 	 * read rather than two.
 	 */
 	static const TCHAR* ArmorPenetrationSuppressedStat;
+
+	/**
+	 * The share of armour a critical strike ignores on top of the rest, asked of
+	 * the ATTACKER where armour penetration is. Issue #1833, "Your critical
+	 * strikes ignore 20%-40% of enemy armor". Carried on
+	 * `FCataclysmIncomingHit::CriticalArmorPenetration`; no gameplay attribute,
+	 * so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* CriticalArmorPenetrationStat;
 
 	/**
 	 * The stat saying this character's melee attacks cannot be evaded. Issue

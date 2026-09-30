@@ -3173,6 +3173,22 @@ struct CATACLYSM_API FCataclysmStatModifier
 	float ConditionValue = 0.0f;
 
 	/**
+	 * A second state this modifier depends on, or Always. Issue #1833, ruled
+	 * 2026-09-30 under the owner's delegation: "You take 20%-35% increased
+	 * damage from melee attacks while your HP is above 75%" names two.
+	 *
+	 * BOTH CONDITIONS MUST HOLD, the literal reading of every sentence that
+	 * names two. Everything that reads `Condition` to decide what a lookup
+	 * gathers or when a reader asks again reads this too.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition2 = ECataclysmStatCondition::Always;
+
+	/** What the second condition compares against. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ConditionValue2 = 0.0f;
+
+	/**
 	 * A state of the CHARACTER this modifier's size grows with, or Fixed. #968.
 	 *
 	 * A SECOND AXIS BESIDE `Condition`, NOT AN ALTERNATIVE TO IT. One decides

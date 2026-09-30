@@ -1937,6 +1937,96 @@ class TestStackSecondsHigh:
                 "Scale Max Steps": None, "Stack Seconds": None}))
 
 
+class TestSecondConditionAndThresholdHigh:
+    """A second condition, and a threshold that rolls. Issue #1833 group C part
+    3a, ruled 2026-09-30 under the owner's delegation. "You take 20%-35%
+    increased damage from melee attacks while your HP is above 75%" names two
+    states, and both must hold; "Your abilities are free when above 80%-95% hp"
+    states its threshold as a range, which rolls with the value."""
+
+    FREE = "Positive_Your_abilities_are_free_when_above_80_95_hp"
+    FREE_WORDS = "Your abilities are free when above 80%-95% hp"
+    MELEE = "Negative_You_take_20_35_increased_damage_from_melee_att"
+    MELEE_WORDS = ("You take 20%-35% increased damage from melee attacks while "
+                   "your HP is above 75%")
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [FREE_WORDS, "Generic", 3, "Stat.Utility.Mana", None,
+         MELEE_WORDS, "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER + ["Condition 2", "Condition Value 2",
+                                         "Condition Value High"]
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "second_condition.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def melee(self, tmp_path, changes):
+        values = {"Enchantment": self.MELEE, "Effect": self.MELEE_WORDS,
+                  "Stat": "damage_taken", "Value Kind": "increased",
+                  "Value Low": 20, "Value High": 35,
+                  "Condition": "hit_is_melee_attack",
+                  "Condition 2": "health_above", "Condition Value 2": 75}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def free(self, tmp_path, changes):
+        values = {"Enchantment": self.FREE, "Effect": self.FREE_WORDS,
+                  "Stat": "mana_cost", "Value Kind": "more", "Value Low": -100,
+                  "Condition": "health_above", "Condition Value": 80,
+                  "Condition Value High": 95}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_second_condition_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.melee(tmp_path, {}))
+        assert (out[0]["Condition"], out[0]["Condition2"], out[0]["ConditionValue2"]) == (
+            "hit_is_melee_attack", "health_above", 75.0)
+
+    def test_a_second_condition_with_no_first_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="and no Condition"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition": None}))
+
+    def test_an_unknown_second_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which the game cannot judge"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition 2": "while_juggling"}))
+
+    def test_the_same_condition_twice_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="as both conditions"):
+            gen.enchantment_effects(self.melee(tmp_path, {
+                "Condition": "health_above", "Condition Value": 50}))
+
+    def test_a_second_value_out_of_bounds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="second condition value of 150"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition Value 2": 150}))
+
+    def test_a_second_value_with_no_second_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Condition 2, so it would be dropped"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition 2": None}))
+
+    def test_a_stated_threshold_range_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.free(tmp_path, {}))
+        assert (out[0]["ConditionValue"], out[0]["ConditionValueHigh"]) == (80.0, 95.0)
+
+    def test_a_threshold_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.free(tmp_path, {"Condition Value High": 90}))
+
+    def test_a_threshold_high_end_not_above_the_low_end_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Condition Value"):
+            gen.enchantment_effects(self.free(tmp_path, {"Condition Value": 95,
+                                                         "Condition Value High": 80}))
+
+    def test_a_threshold_high_end_with_no_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no condition that compares a value"):
+            gen.enchantment_effects(self.free(tmp_path, {"Condition": None,
+                                                         "Condition Value": None}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
@@ -2002,7 +2092,8 @@ class TestEnchantmentEffects:
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
             "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
             "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
-            "StackSecondsHigh": 0.0}]
+            "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
+            "ConditionValueHigh": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.

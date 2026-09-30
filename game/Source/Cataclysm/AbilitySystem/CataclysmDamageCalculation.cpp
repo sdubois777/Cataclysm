@@ -31,6 +31,8 @@ const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
 	TEXT("shield_absorbs_damage_over_time");
 const TCHAR* UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat =
 	TEXT("armor_penetration_suppressed");
+const TCHAR* UCataclysmDamageCalculation::CriticalArmorPenetrationStat =
+	TEXT("critical_armor_penetration");
 const TCHAR* UCataclysmDamageCalculation::MeleeEvasionSuppressedStat =
 	TEXT("melee_evasion_suppressed");
 
@@ -665,7 +667,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 
 		const float Ignored = bArmorCannotBeIgnored
 			? 0.0f
-			: FMath::Clamp(Hit.ArmorPenetration + FromWeapon, 0.0f, 100.0f);
+			: FMath::Clamp(Hit.ArmorPenetration + FromWeapon
+							   // AND A CRITICAL STRIKE'S OWN SHARE, known only now. Issue
+							   // #1833, ruled 2026-09-30. Inside the same clamp and
+							   // after the same suppression, so Ironhide still wins.
+							   + (Result.bWasCritical ? Hit.CriticalArmorPenetration : 0.0f),
+						   0.0f, 100.0f);
 		// THE BLOW IS PASSED NOW, WHICH IS THE WHOLE OF THIS CHANGE. Issue #947.
 		// `DefenderStat` already asked for this stat through the pipeline, so a
 		// modifier conditioned on the DEFENDER's own state -- the Masochist's
