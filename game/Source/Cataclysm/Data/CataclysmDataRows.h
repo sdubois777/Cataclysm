@@ -2309,4 +2309,15 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float ScaleStepHigh = 0.0f;
+
+	/**
+	 * The stacks' longest time when how long they last rolls with the value, or
+	 * 0 when `StackSeconds` is the one time. Issue #1833, ruled 2026-09-30:
+	 * "Killing an enemy triggers a 1-2 second global cooldown on all your
+	 * skills" is 1 to 2, and the item's roll picks the time where it picks the
+	 * value, as `ScaleStepHigh` does for a step. See
+	 * `UCataclysmItemModifiers::RolledStackSeconds`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float StackSecondsHigh = 0.0f;
 };

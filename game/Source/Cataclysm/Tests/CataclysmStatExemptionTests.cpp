@@ -3562,6 +3562,82 @@ namespace CataclysmStatExemptionTest
 	 * counter: the shipped row is flat -1 to -4 per 100,000 to 500,000 kills.
 	 * A player's ability system, because only a player state counts kills.
 	 */
+	/**
+	 * `skill_locked`, scaled by the row's own stacks, asked by
+	 * `UCataclysmSkillTemplate::CanActivateAbility` before any skill that is not
+	 * a basic attack. Issue #1833, the two skill-lock negatives: "Killing an
+	 * enemy triggers a 1-2 second global cooldown on all your skills" is a flat
+	 * 1 scaled by `own_stacks`, granted on a kill.
+	 *
+	 * TWO CASTERS CARRYING THE SAME LINE, one holding the stack and one not, for
+	 * the reason the skill-lock test in CataclysmSkillTemplateTests.cpp gives:
+	 * each activates once, so no cooldown can be what refuses the second. The
+	 * stack is the only difference between them.
+	 */
+	void ProbeScaledSkillLocked(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(TEXT("Probe:skill_locked"));
+		const auto Prepare = [&Key](FScopedSwinger& Caster)
+		{
+			FCataclysmStatModifier Lock;
+			Lock.Bucket = ECataclysmStatBucket::Flat;
+			Lock.Source = ECataclysmModifierSource::Enchantment;
+			Lock.Value = 1.0f;
+			Lock.Scale = ECataclysmStatScale::PerOwnStack;
+			Lock.ScaleStep = 1.0f;
+			Lock.ScaleMaxSteps = 1;
+			Lock.StackKey = Key;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmSkillSlots::LockedStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Lock};
+			Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+			const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support,
+				/*Level=*/1, Caster.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmSelfBuffSkill* Skill =
+				Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->SkillName = TEXT("A probe's buff");
+				Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Duration=6"));
+			}
+			return Skill;
+		};
+
+		FScopedSwinger Clean(World, FVector::ZeroVector);
+		FScopedSwinger Stacked(World, FVector(0, 100 * M, 0));
+		UCataclysmSelfBuffSkill* CleanSkill = Prepare(Clean);
+		UCataclysmSelfBuffSkill* StackedSkill = Prepare(Stacked);
+		if (!Test.TestNotNull(TEXT("a skill for the caster with no stack"), CleanSkill)
+			|| !Test.TestNotNull(TEXT("and for the caster holding one"), StackedSkill))
+		{
+			return;
+		}
+		Stacked.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/5.0f, /*Cap=*/1);
+
+		const auto Use = [](FScopedSwinger& Caster, UGameplayAbility* Ability)
+		{
+			return Caster.AbilitySystem->TryActivateAbility(
+				Ability->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+		};
+		// THE CONTROL FIRST, so the refusal below is evidence of the stack
+		// rather than of a skill refused for some other reason.
+		Test.TestTrue(TEXT("with no stack held the skill is used"), Use(Clean, CleanSkill));
+		Test.TestFalse(TEXT("skill_locked is asked for, so one stack held refuses the same skill"),
+					   Use(Stacked, StackedSkill));
+	}
+
 	void ProbeScaledResistanceCap(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -3649,6 +3725,7 @@ namespace CataclysmStatExemptionTest
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
+			{TEXT("skill_locked"),               &ProbeScaledSkillLocked},
 			{TEXT("attack_damage"),              &ProbeScaledAttackDamage},
 			{TEXT("spell_damage"),               &ProbeScaledSpellDamage},
 			{TEXT("attack_speed"),               &ProbeScaledAttackSpeed},

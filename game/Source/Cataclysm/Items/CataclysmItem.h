@@ -731,6 +731,14 @@ public:
 	static float RolledScaleStep(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
 
 	/**
+	 * How long a row's stacks last at this roll. Issue #1833, ruled 2026-09-30.
+	 * `StackSeconds` for a row stating one time; for a row stating
+	 * `StackSecondsHigh`, the number between the two at the roll's place, the
+	 * way `RolledScaleStep` picks a step.
+	 */
+	static float RolledStackSeconds(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
+
+	/**
 	 * Whether one more kill takes this item across a step of a `weapon_kills`
 	 * row one of its enchantments carries, from a count of `KillsBefore`.
 	 * Issue #1833. The equipment refreshes the grant only when it does.
