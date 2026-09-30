@@ -2,6 +2,142 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Pact of Temptation: a Pact Altar at every floor's exit but the last offers three of five pacts; one taken buffs the next floor and curses the rest of the dungeon
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, the five
+pacts, their figures, buttons and curse text, the nine floor-effect fields and how they reach the player, a helper that
+takes points off a stat, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the
+altar, the offer, the buff and curses, Greed's curse on the creatures, the panel line, and the exit order);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (Greed's key of the damage map); the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`;
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+The seventh of Group 2's chain, on Forced Tithes. **Applied. The Unreal compile, the automation tests and the guard
+proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+
+### The row
+
+`Demonic_Pact_of_Temptation` in `game/Data/DungeonModifiers.csv`, weight 5: "Players are offered pacts by the dungeon
+at the end of each floor. Accepting a pact grants a powerful buff for the floor but applies a curse for the rest of the
+dungeon." It states no figure and names no pact.
+
+### What the design already said
+
+Nothing: the design document and this log name no pact.
+
+### The owner's decision
+
+**THE OWNER DECIDED, 2026-09-30, asked directly by the coordinating session: the five pacts AS DRAFTED, names and
+figures, and Greed's curse on the creatures approved.**
+
+| Pact | Buff, the next floor | Curse, the rest of the dungeon |
+| :-- | :-- | :-- |
+| Wrath | 50% more damage | 10% less maximum health |
+| Haste | 30% more attack speed and 30% more movement speed | 10 off every resistance |
+| The Bulwark | +30 to every resistance | 10% less movement speed |
+| Greed | +50 magic find | every creature deals 10% more damage |
+| Blood | 50% more damage | 25% less healing received |
+
+### What the rule does
+
+On every floor carrying the row but the dungeon's last, a floor object named "Pact Altar" stands on the exit cell; on a
+Horde arena, one on each wave but the last. With a Blood Altar or a Tithe Altar also at the exit, it stands on the next
+walkable cell beside the exit, never sharing one: `ExitAltarWorld` now orders Blood Altar, Forced Tithes, then Pact of
+Temptation. It offers three of the five, never the same three as the floor before, each a button such as "Pact of Wrath:
+50% more damage next floor; 10% less maximum health for the dungeon". One may be taken, and the altar goes.
+
+The curse starts at once and lasts until the player leaves the dungeon; it is not cleansed, and curses add, the same pact
+twice included: two Pacts of Wrath are 20% less maximum health. The buff is the next floor's, and ends with it. Greed's
+curse is on every creature, on its own key of the damage map. The panel reads, for example, "pact of temptation: 2 pacts
+taken; this floor: Wrath; next floor: Haste; curses: -10% health, -10 resistances".
+
+**The curses are written again after every floor change.** `ApplyFloorRulesToPlayer` replaces the player's floor
+modifiers wholesale, so the rule's beat is told there that nothing of it is on the player, and puts buff and curses
+back; the Infernal Beacons fault of the same shape was found and fixed today.
+
+**Points off a stat are new.** Haste's curse takes 10 off every resistance, and until now a dungeon rule could add points
+to a stat or take a share off it, not take points. `DungeonModifierEffectsTakeFlat` writes a negative Flat, which the stat
+pipeline adds like any other. Blood's curse is on the stat Death's Embrace writes, `healing_received_reduction`, which is
+held between 0 and 100.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30:**
+
+- **"Pact Altar" on the exit cell of every floor but the last; a Horde arena's, one between waves; another altar at the
+  exit goes one cell apart, never on the same cell.**
+- **Three of the five offered, different each floor; at most one accepted, and the altar goes then.**
+- **The buff lasts the next floor. The curse lasts until the player leaves the dungeon, is not cleansable, and curses
+  add, the same pact twice too.**
+- **The buttons and the panel line** as above.
+
+**On the owner's play-check list**, added by the coordinating session: the choice at a floor's end, the buff on the next
+floor, and the curses in the panel.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **"Different each floor" is read as never the same three as the floor before.** Two floors apart may repeat an offer;
+  a pact may appear on consecutive floors among different companions.
+- **A curse starts on the floor its pact is taken**, since the row's "for the rest of the dungeon" begins there; Greed's
+  curse too, on that floor's creatures.
+- **On a Horde arena, the buff lasts the next wave**, which is the next floor.
+- **The panel adds "this floor: X"** while a buff is held, **reads "no pact taken" before one is**, and says "1 pact
+  taken" in the singular.
+- **The button for the Bulwark reads "Pact of the Bulwark"**, as the Battlefield Relic of the Bulwark does; its key is
+  "Bulwark".
+- **A test may pin the offer**, with `Cataclysm.PactOfTemptationOffer`; a pinned offer is the same on every floor.
+
+**A question for the coordinating session, not decided here: no curse has a ceiling.** The ruling says curses add and
+names none, so ten Pacts of Wrath are 100% less maximum health; the stat pipeline holds a single Less at 99%, so the
+player keeps 1%. Each pact is a choice the player makes, which is why nothing is capped until it is ruled.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Slay the Spire, Neow | [slaythespire.wiki.gg/wiki/Neow](https://slaythespire.wiki.gg/wiki/Neow) | the third blessing pairs a drawback -- "Lose Max HP", "Obtain a Curse" -- with an advantage |
+| Hades, Chaos | [hades.wiki.fextralife.com/Chaos](https://hades.wiki.fextralife.com/Chaos) | Chaos' boons "impose a debuff for a certain number of encounters, offering significantly greater power down the line" |
+
+**What it settles:** a reward taken with a lasting drawback, chosen from a short offer, is a shape shipped games use.
+**What it does not:** the pacts and their figures, which are the owner's as drafted.
+
+### Tests
+
+Ten automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `PactOfTemptationFiguresTheFivePacts`: the figures, Greed's multiplier at two, a button, the row built.
+- `PactOfTemptationAltarStandsOnTheExitOfferingThreePacts`: on the exit cell, named, placed by the row, Wrath, Haste and
+  the Bulwark offered with their buttons, the panel.
+- `PactOfTemptationOfferIsDifferentEachFloor`: drawn on floors 2 to 6, three different pacts each, never the floor
+  before's three.
+- `PactOfWrathBuffsTheNextFloorAndCursesTheDungeon`: taken on floor 2, the altar goes, 10% less maximum health at once
+  and no damage, the panel; floor 3, 50% more attack and spell damage and the curse, the panel; **floor 4, with no new
+  pact, no damage and the curse still there**.
+- `PactCursesAddAreNotCleansedAndEndWithTheDungeon`: Wrath twice is 20% less; a cleanse leaves it and the count;
+  leaving the dungeon ends it, the count and the buff owed.
+- `PactOfGreedCursesEveryCreatureAndGivesMagicFind`: floor 2's Imp deals 10% more on the row's own key at once, no
+  magic find yet; floor 3's Imp 10% more, +50 magic find, the panel.
+- `PactsOfHasteBulwarkAndBloodBuffAndCurseAsDrafted`: Haste, the Bulwark and Blood on floors 2 to 4, each buff on its
+  next floor only and the curses adding, on resistance, movement speed and healing; the panel on floor 5.
+- `PactOfTemptationAtMostOnePactAFloor`: a pact not offered is refused; after one is taken, a second is refused.
+- `PactOfTemptationAltarStandsApartFromTheOtherExitAltars`: with Blood Altar and Forced Tithes, on a walkable cell
+  beside the exit, on neither the exit cell nor the Tithe Altar's.
+- `PactOfTemptationTheLastFloorHasNoAltar`: a bound dungeon of two floors; floor 1 has one, floor 2 none.
+
+Python: the row still says "offered pacts", "at the end of each floor", "a powerful buff for the floor" and "a curse for
+the rest of the dungeon"; Greed's setter writes its own key of the damage map, in the check every such setter is in; and
+`PactMagicFindAdded` is recorded as a flat figure, as the other magic find fields are.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
+window.
+
+---
+
 ## 2026-09-30 — Forced Tithes: a Tithe Altar at every floor's exit but the last asks 20% of maximum health, a potion drink or 5 materials; refusing or leaving unpaid brings 8 angels
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its choices,
