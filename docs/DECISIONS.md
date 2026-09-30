@@ -2,6 +2,29 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — CLAUDE.md's note on `PreAttributeChange` now says it clamps only the current value, and that the stored base is kept as written
+
+**Affects:** `CLAUDE.md` (the paragraph beginning "A clamp in `PreAttributeChange` cannot be guard-proven"). Issues
+[#1623](https://github.com/sdubois777/Cataclysm/issues/1623) and [#1036](https://github.com/sdubois777/Cataclysm/issues/1036).
+
+**What was wrong.** The note said a base-value write "does not reach past" `PreAttributeChange`. While working on #1036
+on 2026-09-30, the Demonic session read Unreal Engine 5.8's GameplayAbilities source. `SetAttributeBaseValue` calls
+`PreAttributeBaseChange`, which no attribute set in this project overrides, and stores the base unclamped
+(GameplayEffect.cpp about 4001-4013). Only the current value then passes through `PreAttributeChange`.
+`ApplyModToAttribute` adds to that stored base (4155-4161). So the current value is clamped on every route, as the note
+said, but the stored base is not. A gain at a full Fervour pool would raise a hidden base, and the next spend would
+remove nothing the player can see. The two existing Fervour clamps are what prevent that; #1036's change keeps them and
+tests it.
+
+**What changed.** The paragraph keeps its first claim, that such a clamp cannot be guard-proven from a test that reads the
+current value once. It adds that the stored base is kept as written, with the engine lines, and that a spend after a gain
+is what reads the base. The drift is inferred from the engine code; #1036's tests measure it.
+
+**Who decided.** The owner, 2026-09-30, asked directly: "Update it". The coordinator made the edit; no child session edits
+CLAUDE.md.
+
+---
+
 ## 2026-09-30 — The design document says the Fervour reservation is built, for thralls and imps
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (one sentence in the Fervour section). No code, data or test.
