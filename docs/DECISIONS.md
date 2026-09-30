@@ -504,6 +504,14 @@ One Python check: the row still says "vision is limited" and "see a short distan
 
 **THE FIRST BUILD CAUGHT A FAULT, 2026-09-30, fixed in the window as the coordinating session ruled.** `ACataclysmPlayerController::IsClickableEnemy` was declared under `private:`, and the vision test calls it from outside the class, so the build stopped with C2248 on the two clickability checks. Its declaration and comment moved into a `public:` section; nothing else changed. No Python check reads a declaration's access, which is why only the compile could see it.
 
+**A TEST THAT COULD NOT PASS, FOUND BY GUARD PROOF Pc, 2026-09-30, fixed in the window as the coordinating session
+ruled.** `WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened` asserted that a creature the fog hid on floor 2 "still
+stands and is shown" on floor 3; changing floors destroys every creature of the last one
+(`UCataclysmFloorContents::ClearTheFloor`), so it failed with the break in and with it out. Its last check is now on
+floor 2: the player walks to 5 m of the hidden creature and "walking within the fog's ten metres shows the one it hid".
+**Proof Pc is recorded as not a proof and is not rerun**: the vision system has two proofs, Pa and Pb. The un-hide branch
+is checked by the new assertion but is not proved by a break.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

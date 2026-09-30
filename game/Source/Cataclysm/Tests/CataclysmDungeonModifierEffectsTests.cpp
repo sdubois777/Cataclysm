@@ -35765,7 +35765,7 @@ bool FCataclysmFogHidesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// A FLOOR WITHOUT THE FOG SHOWS WHAT THE FOG HID AND LIGHTENS THE CAMERA; A FLOOR THAT NEVER HAD IT HIDES NOTHING.
+// WALKING WITHIN THE FOG SHOWS WHAT IT HID; A FLOOR WITHOUT THE FOG LIGHTENS THE CAMERA AND HIDES NOTHING.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFogLiftsTest,
 	"Cataclysm.DungeonModifierEffects.WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -35794,6 +35794,13 @@ bool FCataclysmFogLiftsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// ON THE SAME FLOOR, WALKING TO 5 M OF IT: WITHIN THE FOG'S TEN METRES THE ONE IT HID IS SHOWN AGAIN. Here and not on
+	// the next floor, because changing floors destroys every creature of the last one.
+	const FVector Near = Far->GetActorLocation() - FVector(500.0f, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Player.Character->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("walking within the fog's ten metres shows the one it hid"), Far->IsHidden());
+
 	// THE NEXT FLOOR CARRIES NO FOG: THE SIGHT IS UNLIMITED, THE CAMERA IS LIGHTENED AND WHAT THE FOG HID IS SHOWN.
 	Mode->DungeonModifiers = {};
 	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
@@ -35805,7 +35812,6 @@ bool FCataclysmFogLiftsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("unlimited sight"), Mode->PlayerSightRadiusCm(), 0.0f, 0.001f);
 	TestEqual(TEXT("the camera is not darkened"), Player.Character->SightDarknessRadiusCm(), 0.0f, 0.001f);
 	TestTrue(TEXT("an Imp 20 m away on a floor without fog is seen"), Stranger && !Stranger->IsHidden());
-	TestTrue(TEXT("and the one the fog hid still stands and is shown"), IsValid(Far) && !Far->IsHidden());
 	return true;
 }
 
