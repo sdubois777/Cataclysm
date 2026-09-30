@@ -10006,7 +10006,7 @@ bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
 	using namespace CataclysmEnchantmentEffectTest;
 	using namespace CataclysmConditionRowsTest;
 
-	const auto CostAt = [](float Roll) -> float
+	const auto CostAt = [](float Roll, float Health) -> float
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!World)
@@ -10024,7 +10024,7 @@ bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
 		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
 		Wearer.Equipment->Equip(Piece, Removed, AlsoRemoved, Slot);
 		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
-		SetHealth(Wearer.AbilitySystem, 1000.0f, 900.0f);
+		SetHealth(Wearer.AbilitySystem, 1000.0f, Health);
 
 		const FGameplayAbilitySpecHandle Handle = Wearer.AbilitySystem->GiveAbilityInSlot(
 			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1,
@@ -10036,9 +10036,14 @@ bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
 		return Skill ? Skill->ManaCostFor(Wearer.AbilitySystem) : -1.0f;
 	};
 
-	const float Bottom = CostAt(0.0f);
-	const float Top = CostAt(1.0f);
+	const float Bottom = CostAt(0.0f, 900.0f);
+	const float BottomBelow = CostAt(0.0f, 700.0f);
+	const float Top = CostAt(1.0f, 900.0f);
 	TestEqual(TEXT("rolled at the bottom, a threshold of 80: free at 90% health"), Bottom, 0.0f, 0.001f);
+	// AND THE SAME PIECE BELOW ITS THRESHOLD PAYS: a conditioned removal
+	// removes the cost only while its condition holds.
+	TestTrue(*FString::Printf(TEXT("the same piece at 70%% health, below 80: it costs its mana, %.2f"), BottomBelow),
+			 BottomBelow > 0.0f);
 	TestTrue(*FString::Printf(TEXT("rolled at the top, a threshold of 95: it costs its mana at 90%%, %.2f"), Top),
 			 Top > 0.0f);
 	return true;
