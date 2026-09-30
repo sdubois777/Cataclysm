@@ -30,7 +30,7 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		{TEXT("Positive_Critical_hit_chance_is_increased_by_20_40_agai"),
 		 TEXT("Positive_Critical_strike_chance_is_increased_by_20_40_a")},
 		{TEXT("Positive_Critical_hits_apply_2_4_additional_bleed_stacks"),
-		 TEXT("Positive_Critical_strikes_apply_2_4_additional_bleed_stac")},
+		 TEXT("Positive_Your_critical_strikes_always_cause_bleeding")},
 		{TEXT("Positive_Your_critical_hits_ignore_20_40_of_enemy_armor"),
 		 TEXT("Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar")},
 		{TEXT("Positive_Critical_hits_restore_2_4_of_your_maximum_HP"),
@@ -55,6 +55,37 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Negative_Your_skills_deal_1_5_2_5_less_damage_for_every")},
 		{TEXT("Negative_Each_class_point_above_50_reduces_your_maximum_H"),
 		 TEXT("Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever")},
+		// THE THIRTEEN REWORDS the owner approved on 2026-09-30, from the #1833
+		// survey: sentences that counted stacks the one-stack rule does not allow,
+		// or that said something the engine already does. One of them renames a
+		// row the "critical strikes" pass had renamed already; its earlier line
+		// above now points at the new name too, so nothing chains.
+		{TEXT("Positive_Poison_stacks_on_an_enemy_reduce_their_damage_ou"),
+		 TEXT("Positive_Poisoned_enemies_deal_2_4_less_damage")},
+		{TEXT("Positive_Enemies_with_5_or_more_bleed_stacks_take_20_40"),
+		 TEXT("Positive_Bleeding_enemies_take_20_40_increased_damage_f")},
+		{TEXT("Positive_Critical_strikes_apply_2_4_additional_bleed_stac"),
+		 TEXT("Positive_Your_critical_strikes_always_cause_bleeding")},
+		{TEXT("Positive_When_an_enemy_dies_with_bleed_stacks_the_stacks"),
+		 TEXT("Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to")},
+		{TEXT("Positive_Enemies_with_5_or_more_poison_stacks_are_slowed"),
+		 TEXT("Positive_Poisoned_enemies_are_slowed_by_30_50")},
+		{TEXT("Positive_Your_bleed_stacks_also_reduce_enemy_movement_spe"),
+		 TEXT("Positive_Bleeding_enemies_move_5_10_slower")},
+		{TEXT("Positive_Every_time_you_apply_a_DOT_instead_add_2_4_stac"),
+		 TEXT("Positive_Your_damage_over_time_effects_deal_50_100_more")},
+		{TEXT("Positive_Necrosis_stacks_reduce_enemy_maximum_HP_by_1_2"),
+		 TEXT("Positive_Enemies_with_Necrosis_have_1_2_less_maximum_he")},
+		{TEXT("Positive_Each_void_splinter_stack_on_an_enemy_increases_y"),
+		 TEXT("Positive_You_deal_3_5_more_damage_to_an_enemy_carrying")},
+		{TEXT("Positive_Your_energy_shield_absorbs_10_20_of_HP_damage"),
+		 TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y")},
+		{TEXT("Positive_Your_movement_abilities_no_longer_share_a_cooldo"),
+		 TEXT("Positive_Your_movement_ability_has_2_charges")},
+		{TEXT("Positive_Your_melee_skills_have_20_40_increased_reach"),
+		 TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach")},
+		{TEXT("Negative_You_cannot_cure_or_reduce_bleed_stacks_on_yourse"),
+		 TEXT("Negative_Bleeding_on_you_lasts_50_100_longer")},
 	};
 	return Table;
 }
