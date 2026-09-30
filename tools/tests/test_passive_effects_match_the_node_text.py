@@ -639,7 +639,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 324 ON 2026-09-27, for the Ritualist's risen imps: a third row on the
 #: starting node, `curse_death_raises_imp` flat 1. The node already counted, so
 #: `AUTHORED_NODES` does not move. Issue #1479.
-AUTHORED_ROWS = 324
+#:
+#: AND TO 325 ON 2026-09-30, for Every Swing Lands' arc: a second row on
+#: `Ravager_keystone_spine_002`, `melee_arc_full_circle` flat 1. The node
+#: already counted, so `AUTHORED_NODES` does not move. Issue #1515.
+AUTHORED_ROWS = 325
 
 #: How many of the 441 nodes have an authored effect.
 #:
