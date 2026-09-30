@@ -35307,7 +35307,8 @@ bool FCataclysmFamishedBeastsFeederRungTest::RunTest(const FString& Parameters)
 	}
 	ClearTheDrops(World);
 	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
-	if (!TestEqual(TEXT("set-up: a feeder"), Mode->CarrionFeedersNow().Num(), 1))
+	if (!TestEqual(TEXT("set-up: a feeder"), Mode->CarrionFeedersNow().Num(), 1)
+		|| !TestEqual(TEXT("set-up: one carcass eaten"), Mode->CarrionFeastStacksNow(), 1))
 	{
 		return false;
 	}
