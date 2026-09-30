@@ -35492,6 +35492,44 @@ bool FCataclysmTotemsCleanseTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// CLEANSING ALSO CLEANSES THE PLAYER: A BURN AN IMP PUT ON THE PLAYER IS GONE WHEN A TOTEM IS DISPELLED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsCleansePlayerTest,
+	"Cataclysm.DungeonModifierEffects.CleansingAGrimTotemCleansesThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsCleansePlayerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Imp = Mode ? AnImpBeside(World, Player) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("an Imp"), Imp) || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 60.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the player burns"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag())))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("cleansing acted"), Mode->ChooseAtFloorObject(Mode->GrimTotemsNow()[0], CleanseKey)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	return true;
+}
+
 // THE PANEL: A TOTEM'S TWO CHOICES AND LEAVE; LEAVE CHOOSES NOTHING; A CHOICE PRESSED THERE REACHES THE RULE.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChoicePanelTest,
 	"Cataclysm.DungeonModifierEffects.TheChoicePanelOffersATotemsChoicesAndLeaveChoosesNothing",

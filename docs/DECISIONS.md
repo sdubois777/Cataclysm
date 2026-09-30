@@ -128,6 +128,27 @@ tested either. The tests drive what the click reaches.
 One Python check: the row still says "offers a choice", "temporary bonuses", "more difficult enemy spawns", "removing
 harmful effects" and "weakening nearby enemies".
 
+### Cleansing the player, added at the move; the row is built
+
+The coordinating session ruled on 2026-09-30 that this change adds the call the entry says the row waits on: choosing
+Cleanse at a totem also runs the player cleanse (`UCataclysmDebuffs::Cleanse`, from the player-cleanse change), which
+removes what others put on the player and keeps what the player put on itself. "Removing harmful effects" was the row's
+last missing clause, so `BuiltStateOf` answers `Built` for it. A floor rule's zones are still drawn again on the next
+beat; the row's words name harmful effects, and the ones on the player are what a cleanse removes. One test,
+`CleansingAGrimTotemCleansesThePlayer`: a burn an Imp put on the player is gone when a totem is dispelled.
+
+### Two merge rules first used at this change's move
+
+This change moved in a stack of seven on development c2eccb69. Two conflicts first met at this step were resolved by
+rules the coordinating session accepted on 2026-09-30, each of which keeps both sides and refuses anything it cannot
+place:
+- **A list's closing line reopened by both sides** (`resolve_list_close.py`): the stacked side's last item is reopened
+  and the incoming side's items follow, closing the list. Here, the Python check's setter and key pairs: Carrion Feast's
+  pair, then this change's.
+- **`&& !bX` terms added by both sides** (`resolve_and_terms.py`): every base term must survive on both sides, in any
+  order, and the incoming term joins the line that holds the base's last term, or stands on its own line past 120
+  characters. Here, `&& !bGrimTotems` in the early return of `StepFloorRulesThatChange`, on its own line.
+
 ### Not yet done
 
 `WBP_ChoicePanel`, generated in the editor by `python tools/run_editor_python.py tools/generate_interface_assets.py`

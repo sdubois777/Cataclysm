@@ -19,6 +19,7 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -7253,6 +7254,16 @@ bool ACataclysmDungeonGameMode::ChooseAtGrimTotem(ACataclysmFloorObject* Totem, 
 		}
 		UE_LOG(LogCataclysm, Log, TEXT("Grim Totems: a totem cleansed on floor %d, %d creature(s) weakened"),
 			   FloorNumber, Weakened);
+
+		// AND THE PLAYER'S HARMFUL EFFECTS, the row's "removing harmful effects": the player cleanse, which removes what
+		// others put on the player and keeps what the player put on itself. Ruled on 2026-09-30. The player is found
+		// the way the floor rules find it.
+		UWorld* World = GetWorld();
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		if (AActor* Player = Controller ? Controller->GetPawn() : nullptr)
+		{
+			UCataclysmDebuffs::Cleanse(Player);
+		}
 	}
 	else
 	{

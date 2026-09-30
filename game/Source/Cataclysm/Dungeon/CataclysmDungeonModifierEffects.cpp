@@ -552,6 +552,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(InfectionBloomKey)
 		|| RowKey == FName(InfestedHoardKey)
 		|| RowKey == FName(AbyssalRiftsKey)
+		// GRIM TOTEMS, BUILT SINCE A DISPELLED TOTEM ALSO CLEANSES THE PLAYER, the row's "removing harmful effects".
+		// Issues #1820 and #41.
+		|| RowKey == FName(GrimTotemsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(DemonicGuideKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -591,9 +594,6 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// CARRION FEAST. Carcasses become feeders unless burned, and the feeders grow stronger; the "purification
 		// altars" do nothing, because they wait on the interaction screen. Issues #1820 and #41.
 		|| RowKey == FName(CarrionFeastKey)
-		// GRIM TOTEMS. Embracing and cleansing are built; "removing harmful effects" is not, because nothing
-		// removes a floor rule's effects from a place or the player. Issues #1820 and #41.
-		|| RowKey == FName(GrimTotemsKey)
 		|| RowKey == FName(SingularityWellsKey)
 		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
