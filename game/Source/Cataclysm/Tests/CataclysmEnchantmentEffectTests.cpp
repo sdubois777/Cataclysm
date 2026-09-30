@@ -9423,4 +9423,71 @@ bool FCataclysmSkillLockRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReservedHealthRowTest,
+	"Cataclysm.Enchantments.TheReservedHealthRowReservesItsShareOfTheMaximum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "80%-99% of your health is reserved", worn at the top of its range, reserves
+ * 99% of maximum health and leaves the maximum where it was. Issue #1833, health
+ * reservation, ruled 2026-09-30.
+ */
+bool FCataclysmReservedHealthRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Plain(CataclysmEnchantmentEffectTest::DrawbackWithNoEffect, false);
+	FWorn Worn(TEXT("Negative_80_99_of_your_health_is_reserved"), false);
+	if (!TestNotNull(TEXT("a plain wearer"), Plain.ASC())
+		|| !TestNotNull(TEXT("a wearer of the row"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Whole = Worn.ASC()->GetNumericAttribute(Maximum);
+	TestEqual(TEXT("the maximum is the plain wearer's: reservation lowers nothing"),
+			  Whole, Plain.ASC()->GetNumericAttribute(Maximum), 0.01f);
+	TestEqual(TEXT("99% of it is reserved"), Worn.ASC()->HealthReserved(), Whole * 0.99f, 0.01f);
+	TestEqual(TEXT("and nothing is reserved without the row"), Plain.ASC()->HealthReserved(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionReserveRowTest,
+	"Cataclysm.Enchantments.TheMinionReserveRowReserves500ForEachMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each minion reserves 100-500 hp", worn at the top of its range, reserves
+ * nothing alone, 500 with one minion commanded and 1000 with two. Issue #1833,
+ * health reservation. The maximum is set to 5000 after the helm goes on, so the
+ * rule that 1 point stays unreserved cannot be what either figure shows.
+ */
+bool FCataclysmMinionReserveRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Each_minion_reserves_100_500_hp"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	Worn.ASC()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 5000.0f);
+	TestEqual(TEXT("no minion: nothing reserved"), Worn.ASC()->HealthReserved(), 0.0f, 0.001f);
+
+	AActor* Summoner = Worn.Wearer->Actor;
+	for (int32 Count = 1; Count <= 2; ++Count)
+	{
+		if (!TestNotNull(TEXT("an imp"), ACataclysmMinion::Spawn(
+				Summoner, FVector(300.0f * Count, 0.0f, 0.0f), /*Lifetime=*/60.0f,
+				/*bBurns=*/false, /*TypeName=*/TEXT("Imp"))))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%d minions: %d reserved"), Count, 500 * Count),
+				  Worn.ASC()->HealthReserved(), 500.0f * Count, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

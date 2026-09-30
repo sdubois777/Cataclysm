@@ -3,6 +3,7 @@
 #include "Save/CataclysmSaveApply.h"
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -148,6 +149,13 @@ bool FCataclysmSaveApply::VitalsInto(AActor& Actor, float Health, float Mana,
 	{
 		AbilitySystem->SetNumericAttributeBase(HealthAttribute, Health);
 		bWroteAnything = true;
+		// AND HELD TO WHAT IS NOT RESERVED, for a save written before the
+		// reservation grew. Issue #1833, ruled 2026-09-30.
+		if (UCataclysmAbilitySystemComponent* Holding =
+				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			Holding->HoldHealthToUnreserved();
+		}
 	}
 
 	const FGameplayAttribute ManaAttribute =

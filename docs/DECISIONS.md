@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Health reservation: reserved health stays in the maximum, no heal fills it, and low-health conditions read the whole maximum
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`
+(`HealthReserved`, `UnreservedMaximumHealth`, `HoldHealthToUnreserved`, and the stat names),
+`CataclysmRegeneration.cpp` (the heal ceiling and the step's hold), `CataclysmSkillTemplates.cpp`
+(the health a blow taken returns), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`
+(respawn), `CataclysmPlayerClassStats.cpp` (arriving, and the two names in `StatsWithNoAttribute()`),
+`game/Source/Cataclysm/Save/CataclysmSaveApply.cpp` (a save loaded),
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp` and `.h`, `CataclysmCombatOverlay.cpp` and `.h`
+(the reserved band), `CataclysmCharacterSheetLayout.cpp` (the Health line's note),
+`tools/generate_datatables.py` (`health_reserved` in `STATS_WITH_AN_ASKER`),
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/EnchantmentEffects.csv` and
+`game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+the new `game/Source/Cataclysm/Tests/CataclysmHealthReservationTests.cpp` (five tests),
+`CataclysmDeathTests.cpp` (one test), `CataclysmEnchantmentEffectTests.cpp` (two tests),
+`CataclysmStatExemptionTests.cpp` (three probes), `CataclysmDataTableTests.cpp` and `docs/README.md`
+(the row count), and `tools/tests/test_enchantment_effects_match_the_row_text.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### THE RULING, UNDER THE OWNER'S DELEGATION, 2026-09-30
+
+"Reserves" and "reserved" are health reservation, its own mechanism, not a lower maximum. The
+maximum stays; current health may not stand above the maximum less what is reserved, and every
+healing, regeneration, leech and potion stops there; low-health conditions read against the whole
+maximum. Both sentences use it:
+
+| Enchantment | Row |
+| :-- | :-- |
+| Each minion reserves 100-500 hp | `health_reserved` flat 100 to 500, scale `minions_held` step 1 |
+| 80%-99% of your health is reserved | `health_reserved_percent` flat 80 to 99 |
+
+**What the genre settles.** poedb.tw's Pain Attunement page: "You are on Low Life if you have 50% of
+your Maximum Life or less", and reserving at least 50% of life counts a character as on Low Life. So
+the conditions read the whole maximum. **What it does not settle, a judgement:** at least 1 point
+always stays unreserved, so no character is left able to hold no health at all.
+
+**"Full health" means the full maximum,** the literal reading, ruled the same day: reserving health
+forfeits any future full-health bonus. No shipped row reads full health (measured: the only
+`health_above` and `health_at_or_above` values are 50 and 75), so nothing changes today.
+
+**Accepted consequence, named here.** With 80%-99% reserved, health never stands above 20% of the
+maximum, so every "below 50%" condition is on for good — the Masochist's low-health nodes are always
+on, which is the genre's "low life" build — and a reserving character never trips
+`Negative_You_take_15_25_more_damage_while_above_50_HP`,
+`Negative_You_take_20_35_increased_damage_while_above_75` or `Masochist_capstone_50#5`.
+
+### WHERE THE CAP IS HELD
+
+Not in `PreAttributeChange`: a clamp there cannot be guard-proved from an automation test
+(issue #1623). Instead `UnreservedMaximumHealth` is read at:
+
+- **every heal:** `UCataclysmRegeneration::TopUp`'s ceiling is the lower of Point of No Return's and
+  the unreserved maximum; regeneration, leech, potions and an enchantment's restore all pass there;
+- **the health a blow taken returns,** in `CataclysmSkillTemplates.cpp`, which does not pass through
+  `TopUp`;
+- **each second:** `UCataclysmRegeneration::ApplyStep` calls `HoldHealthToUnreserved`, so a minion
+  summoned takes its reserve within one step. **Not inside `RefreshLiveMaximumHealth`, as first
+  proposed,** because that runs only for a character whose maximum moves with its state
+  (`MaximumHealthMovesWithState`); accepted as a deviation from the plan;
+- **every write of health to full:** arriving (`ApplyTo` with `FillToMaximum`), a respawn
+  (`ACataclysmPlayerCharacter::Revive`), a save loaded (`FCataclysmSaveApply::VitalsInto`).
+
+**The sweep of writes to health read every call, including those spanning several lines;** a
+single-line grep had missed `Revive`. Gear, level-up and passive points raise the maximum through
+`ApplyTo` with `LeaveAsTheyAre`, which tops nothing up. The rest are enemies', minions', damage, or
+writes to nought.
+
+**What shows it.** The HUD draws the reserved part as a dark band (`HealthReservedHex` `4A1712`) at the
+right-hand end of the health bar, under the figures, and the sheet's Health line carries "N
+reserved." as a note — a note rather than a line of its own, because the sheet's lines are the
+simulation's `STAT_GROUPS`.
+
+### THE PROPOSAL WAS WRONG ABOUT HOW THE STATS REACH PLAY, AND THE ROW TESTS CAUGHT IT
+
+The proposal said the two stats could be "asked by name the same way skill_locked is". They could
+not. `UCataclysmPlayerClassStats::ApplyTo` records inputs only for the stats its map names or
+`StatsWithNoAttribute()` lists, and `skill_locked` reaches play because it has an attribute and a map
+entry. The six mechanism tests passed, because they write the stat lines directly with
+`SetStatInputs`; the two row tests, which equip a real enchantment, read 0 after the asset rebuild —
+"99% of it is reserved" expected 504.9, "1 minions: 500 reserved" expected 500. The window stopped,
+and the coordinating session ruled the repair: both names joined `StatsWithNoAttribute()`, each with a
+probe in `EveryStatWithNoAttributeIsActuallyRead`, fixed inside the window. `ApplyTo`'s `Resolve`
+records each whole modifier, so the per-minion scale survives, and the two-minion assertion measured
+it.
+
+### THE RUN
+
+On `ed5a65f1`, the two engine commits moved onto development `5cc5db55` with no conflict;
+`shadow_check` "0 candidate(s) in 13 .cpp file(s)" and `check_resolved_cpp.py` "16 files read, 0 with
+complaints".
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `ed5a65f1` | "5556 passed, 8 skipped in 330.10s"; JUnit tests 5564, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `3fb01c1a` | EnchantmentEffects 394 to 396; `docs/README.md`, `CHECK_TABLE`, and `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` 394 and 316 to 396 and 318 |
+| Python after the rows | "1 failed, 5555 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp" |
+| Stale-asset step | "190 tests performed, 187 succeeded, 3 failed": the asset guard and the two row tests, as registered (190 counted by name beforehand) |
+| Asset rebuild `81d57335` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The new tests | "9 tests performed, 7 succeeded, 2 failed": NOT as registered; the two row tests read 0. See above |
+| Repair `112b60d9` | "Build: Succeeded - 5 actions, 2 files compiled"; `shadow_check` "0 candidate(s) in 2 .cpp file(s)"; collect-only 5564 with and without it, the sorted id lists identical |
+| The new tests again | "9 tests performed, 9 succeeded, 0 failed" |
+| Whole suite, `112b60d9`, in its own command | "2790 tests performed, 2790 succeeded, 0 failed"; 2790 declared, gap 0 |
+| Proof A, `TopUp` ignoring the unreserved maximum | PROVED, with 2 assertions against a registered 1: `EveryHealStopsAtTheUnreservedMaximum`, "80% reserved: the same heal stops at 200", read 600 (registered), and `AGrowingReservationTakesHealthDownAtTheNextStep`, "80% reserved: one step later health is 200", read 201 (not predicted); restored 5 of 5. The second fired because the same step's regeneration goes through `TopUp` after the hold, so the broken ceiling let 1 point back past it. What runs after proof B's break was read before registering; what runs after proof A's was not. Recorded as proved, not re-run, as the precedent allows |
+| Proof B, the hold removed from `ApplyStep` | PROVED: `AGrowingReservationTakesHealthDownAtTheNextStep` failed 1 assertion, "one step later health is 200", reading 1000; restored 5 of 5. What runs after the removed hold was read before registering: the step's `TopUp` returns when health is at or above its ceiling |
+| Proof C, the 1-point floor removed | PROVED: `EveryHealStopsAtTheUnreservedMaximum` failed 1 assertion, "100% asked for: 1 point stays unreserved", reading 0; restored 5 of 5 |
+
+---
+
 ## 2026-09-30 — A row on a minion stat may carry only a condition the minion's read can answer; a Python check now refuses one that would grant nothing
 
 **Affects:** `tools/tests/test_a_minion_row_asks_only_what_its_read_can_answer.py` (new). No game code, no

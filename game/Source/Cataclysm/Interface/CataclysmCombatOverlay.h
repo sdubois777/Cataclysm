@@ -152,6 +152,15 @@ public:
 	static const TCHAR* HealthFillHex;
 
 	/**
+	 * The reserved part of the player's health bar: the right-hand end, from the
+	 * most health it may hold to its maximum. Issue #1833, ruled 2026-09-30, "a
+	 * system needs a visible part". A much darker shade of the fill, so the bar
+	 * reads as health that cannot be filled rather than as damage taken, which
+	 * is the empty part's plain background.
+	 */
+	static const TCHAR* HealthReservedHex;
+
+	/**
 	 * An energy shield, and the same blue a shield-absorbed number is drawn in.
 	 *
 	 * DELIBERATELY NOT DEATH'S #8FD8EC. That pale icy blue is a damage type's
@@ -675,6 +684,13 @@ public:
 	 */
 	static bool VitalsOf(const AActor* Actor, float& OutHealth,
 						 float& OutMaxHealth);
+
+	/**
+	 * How much of this actor's maximum health is reserved, or 0 for an actor
+	 * whose ability system is not this project's. Issue #1833. The HUD draws it
+	 * as the dark band at the end of the health bar.
+	 */
+	static float HealthReservedOf(const AActor* Actor);
 
 	/** The same for an energy shield. False when the actor has no shield set. */
 	static bool ShieldOf(const AActor* Actor, float& OutShield,

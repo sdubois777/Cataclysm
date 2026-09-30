@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmBeaconCharacter.h"
@@ -41,6 +42,7 @@
 
 const TCHAR* UCataclysmCombatOverlay::BarBackingHex = TEXT("0A0F12");
 const TCHAR* UCataclysmCombatOverlay::HealthFillHex = TEXT("C0392B");
+const TCHAR* UCataclysmCombatOverlay::HealthReservedHex = TEXT("4A1712");
 const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
 const TCHAR* UCataclysmCombatOverlay::FervourFillHex = TEXT("C7398D");
@@ -680,6 +682,13 @@ bool UCataclysmCombatOverlay::VitalsOf(const AActor* Actor, float& OutHealth,
 	OutHealth = Vitals->GetHealth();
 	OutMaxHealth = Vitals->GetMaxHealth();
 	return true;
+}
+
+float UCataclysmCombatOverlay::HealthReservedOf(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Reserving =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	return Reserving ? Reserving->HealthReserved() : 0.0f;
 }
 
 bool UCataclysmCombatOverlay::ShieldOf(const AActor* Actor, float& OutShield,

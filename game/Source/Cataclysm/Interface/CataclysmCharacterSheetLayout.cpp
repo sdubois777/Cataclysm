@@ -3,6 +3,7 @@
 #include "Interface/CataclysmCharacterSheetLayout.h"
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -368,8 +369,18 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 	// -- the four pools, which show what is in them as well as how big they are
 	if (Stat == TEXT("max_health"))
 	{
+		// AND WHAT IS RESERVED, said beside the pool rather than as a line of its
+		// own. Issue #1833, ruled 2026-09-30: a system needs a visible part. The
+		// sheet's lines are the simulation's list, so a new one would be a model
+		// change; a note is not.
+		const UCataclysmAbilitySystemComponent* Reserving =
+			Cast<UCataclysmAbilitySystemComponent>(ASC);
+		const float Reserved = Reserving ? Reserving->HealthReserved() : 0.0f;
 		return FCataclysmStatLine(Name, PoolValue(ASC, FVital::GetHealthAttribute(),
-												  FVital::GetMaxHealthAttribute()));
+												  FVital::GetMaxHealthAttribute()),
+								  Reserved > 0.0f
+									  ? FString::Printf(TEXT("%s reserved."), *Number(Reserved))
+									  : FString());
 	}
 
 	if (Stat == TEXT("max_mana"))

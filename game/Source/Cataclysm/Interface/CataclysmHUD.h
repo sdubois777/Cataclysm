@@ -113,9 +113,13 @@ private:
 	 */
 	void DrawPlayerVitals();
 
-	/** One of the player's own pools: a bar in the corner, with its figures. */
+	/**
+	 * One of the player's own pools: a bar in the corner, with its figures.
+	 * `Reserved` is drawn as a dark band at the bar's right-hand end, under the
+	 * figures; only health has any. Issue #1833.
+	 */
 	void DrawPlayerPool(float Top, float Current, float Maximum,
-						const TCHAR* FillHex);
+						const TCHAR* FillHex, float Reserved = 0.0f);
 
 	/**
 	 * The player's six ability slots, along the bottom middle of the screen.
