@@ -299,6 +299,13 @@ public:
 	void ToggleCityScreen(int32 CityId);
 
 	/**
+	 * Open the choice panel for this floor object, or show its choices on the panel already open. Called when the
+	 * player clicks the object's name in reach, or arrives at it after a click from further off. Issues #1820 and
+	 * #41, the choice screen.
+	 */
+	void OpenChoicePanel(class ACataclysmFloorObject* Object);
+
+	/**
 	 * Scale the passive tree view, or fit the whole tree when given nothing.
 	 *
 	 * THE MOUSE WHEEL AND A DRAG ARE HOW THIS IS MEANT TO BE DRIVEN, and this
@@ -420,6 +427,9 @@ private:
 	 */
 	ACataclysmDroppedItem* DropUnderCursor() const;
 
+	/** The floor object whose name is under the cursor, or null, as `DropUnderCursor` finds a drop. */
+	class ACataclysmFloorObject* FloorObjectUnderCursor() const;
+
 	/**
 	 * Takes every crafting material lying near the character. Issue #851.
 	 *
@@ -446,6 +456,13 @@ private:
 	bool TakeDrop(ACataclysmDroppedItem* Drop);
 
 public:
+	/**
+	 * Whether an actor found under the cursor is an enemy the player may click: a living hostile that is not the
+	 * player's own pawn and is not hidden. A creature the vision system hides cannot be clicked: "a label you cannot see
+	 * is a label you cannot click". Static so a test can ask it. Issues #1820 and #41.
+	 */
+	static bool IsClickableEnemy(const AActor* Found, const AActor* ControlledPawn);
+
 	/**
 	 * The click's take and the per-frame sweep, exactly as play runs them, for automation
 	 * tests. Issues #1820 and #41: Trick or Treat's "clicked pickups only" rests on
@@ -479,6 +496,9 @@ private:
 	 * anything here is told about.
 	 */
 	void UpdatePendingPickup();
+
+	/** The floor object the player clicked from out of reach: its panel opens on arrival, as a drop is taken. */
+	void UpdatePendingObject();
 
 	// ----------------------------------------------------------------------
 	// The basic attack, which is on this button since issue #1187
@@ -617,6 +637,16 @@ private:
 	UPROPERTY()
 	TObjectPtr<UCataclysmCityScreenWidget> CityScreen = nullptr;
 
+	/** Which Widget Blueprint the choice panel is. Soft, for the reason the character creator's is. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<class UCataclysmChoicePanelWidget> ChoicePanelClass =
+		TSoftClassPtr<class UCataclysmChoicePanelWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_ChoicePanel.WBP_ChoicePanel_C")));
+
+	/** The choice panel, once it has been opened at least once. One widget for every floor object, told which. */
+	UPROPERTY()
+	TObjectPtr<class UCataclysmChoicePanelWidget> ChoicePanel = nullptr;
+
 	/** Which Widget Blueprint the floor's modifier panel is. Soft, for the reason
 	 *  the character creator's is. Issue #41. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
@@ -645,6 +675,9 @@ private:
 	 * away, when the player orders a move somewhere else, and on a stun.
 	 */
 	TWeakObjectPtr<ACataclysmDroppedItem> PendingPickup;
+
+	/** The floor object the player is walking to after a click from out of reach. Weak, for `PendingPickup`'s reason. */
+	TWeakObjectPtr<class ACataclysmFloorObject> PendingObject;
 
 	/**
 	 * The enemy the player clicked and is walking toward, if any.

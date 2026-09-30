@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmFloorObject.h"
 
 #include "AbilitySystem/CataclysmRegeneration.h"
 
@@ -18,6 +19,7 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -1138,6 +1140,10 @@ void ACataclysmDungeonGameMode::StartPlay()
 		// AND A DROP TAKEN ANYWHERE REACHES TRICK OR TREAT, bound for the same three reasons.
 		// Issues #1820 and #41.
 		Events->OnLootTaken.AddUObject(this, &ACataclysmDungeonGameMode::OnLootTaken);
+
+		// AND A CLEANSE OF THE PLAYER REACHES THE STACKS WHOSE ROWS SAY THEY ARE CLEANSED, bound for the same
+		// three reasons. Ruled 2026-09-26.
+		Events->OnCleansed.AddUObject(this, &ACataclysmDungeonGameMode::OnSomethingWasCleansed);
 	}
 }
 
@@ -1244,6 +1250,7 @@ FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 	// Unstable Dimensions extra, the enemy score -- treats the two the same.
 	Dungeon.Modifiers = ChooseModifiers(Dungeon.ModifierScore);
 	Dungeon.ModifierPool = DungeonModifierPool;
+	Dungeon.EveryBuiltModifier = DungeonEveryBuiltModifier;
 	return Dungeon;
 }
 
@@ -1605,6 +1612,15 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// waves keep them. Issues #1820 and #41.
 		ForgetTheVoidParasite();
 		PlaceTheLight();
+
+		// AND GRIM TOTEMS, FOR THE SAME REASON: a new arena's totems; a Horde arena's waves keep them. Issues #1820
+		// and #41.
+		PlaceTheTotems();
+
+		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
+		// waves keep them. Issues #1820 and #41.
+		ForgetTheShadowLights();
+		PlaceTheShadowLights();
 
 		// AND OBSIDIAN SARCOPHAGI, FOR THE SAME REASON; a Horde arena's waves keep its coffin and its count.
 		// Issues #1820 and #41.
@@ -2361,6 +2377,102 @@ void ACataclysmDungeonGameMode::NoteHitForTheReaper(const FCataclysmHitNotice& N
 	UCataclysmSkillEffects::ReduceHealthDirectly(Reaper, Player, FMath::Max(1.0f, Maximum));
 	UE_LOG(LogCataclysm, Log, TEXT("The Reaper: its blow landed and %s died"),
 		   *Player->GetName());
+}
+
+// IN THE SOURCE AND NOT INLINE IN THE HEADER: the weak pointer the lookup builds needs the complete creature class, which
+// the header only declares, so a file that includes the header without the creature's own failed to compile on its own.
+bool ACataclysmDungeonGameMode::IsAnInvisibleStalker(const ACataclysmEnemyCharacter* Creature) const
+{
+	return InvisibleStalkers.Contains(const_cast<ACataclysmEnemyCharacter*>(Creature));
+}
+
+void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	// THE SIGHT, FROM THE ROWS IN FORCE, and nothing else writes it.
+	PlayerSightRadius = Effects::SightRadiusFor(FloorBrief.Modifiers);
+
+	// AND A SWARM OF LOCUSTS COVERING THE PLAYER WHILE IT TRAVELS, the row's "obscuring vision": the shorter of the two.
+	// A shelter does not lift it; a shelter stops the burn, and the player is still inside the swarm. Issues #1820 and
+	// #41.
+	const ACataclysmGroundZone* Swarm = SwarmOfLocusts.Get();
+	if (FloorBrief.Modifiers.Contains(FName(Effects::SwarmOfLocustsKey)) && bSwarmOfLocustsTravelling && Swarm
+		&& Swarm->Covers(Player->GetActorLocation()))
+	{
+		PlayerSightRadius = PlayerSightRadius > 0.0f
+			? FMath::Min(PlayerSightRadius, Effects::SwarmOfLocustsSightCm)
+			: Effects::SwarmOfLocustsSightCm;
+	}
+	Player->SetSightDarkness(PlayerSightRadius);
+
+	// EVERY CREATURE BEYOND IT HIDDEN, measured flat, and every one within it, or on a floor with unlimited sight,
+	// shown again if it was this that hid it. ONLY THE CREATURE: what it sends -- a telegraph on the ground, a
+	// projectile -- is its own actor and stays drawn, so a hidden creature's attack can still be read and dodged, as
+	// ruled on 2026-09-26. Its brain and its attacks are unchanged.
+	const FVector Feet = Player->GetActorLocation();
+	const bool bDarkness = FloorBrief.Modifiers.Contains(FName(Effects::BlackestShadowKey));
+	const float StalkerDamage = 1.0f + Effects::InvisibleStalkerDamageMorePercent / 100.0f;
+	const float StalkerSpeed = 1.0f + Effects::InvisibleStalkerAttackSpeedMorePercent / 100.0f;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature))
+		{
+			continue;
+		}
+		const bool bBeyond = PlayerSightRadius > 0.0f
+			&& FVector::Dist2D(Creature->GetActorLocation(), Feet) > PlayerSightRadius;
+		if (bBeyond && !Creature->IsHidden())
+		{
+			Creature->SetActorHiddenInGame(true);
+			HiddenBySight.Add(Creature);
+		}
+		else if (!bBeyond && HiddenBySight.Contains(Creature))
+		{
+			Creature->SetActorHiddenInGame(false);
+			HiddenBySight.Remove(Creature);
+		}
+
+		// AND THE BLACKEST SHADOW'S INVISIBLE STALKER: 100% more damage and 50% faster attacks WHILE OUTSIDE THE
+		// LIGHT, and gone when it enters, as the owner decided on 2026-09-26. Written only when it changes, and taken
+		// off on a floor without the row. Issues #1820 and #41.
+		const bool bStalker = bDarkness
+			&& FVector::Dist2D(Creature->GetActorLocation(), Feet) > Effects::BlackestShadowLightCm;
+		if (bStalker != InvisibleStalkers.Contains(Creature))
+		{
+			Creature->SetBlackestShadowDamageMultiplier(bStalker ? StalkerDamage : 1.0f);
+			Creature->DarknessAttackSpeedMultiplier = bStalker ? StalkerSpeed : 1.0f;
+			if (bStalker)
+			{
+				InvisibleStalkers.Add(Creature);
+			}
+			else
+			{
+				InvisibleStalkers.Remove(Creature);
+			}
+		}
+	}
+	for (auto It = InvisibleStalkers.CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
+	for (auto It = HiddenBySight.CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
 }
 
 void ACataclysmDungeonGameMode::StepBloodBond(ACataclysmPlayerCharacter* Player)
@@ -7018,6 +7130,200 @@ ACataclysmGroundZone* ACataclysmDungeonGameMode::VoidParasiteLightNow() const
 	return VoidParasiteLight.Get();
 }
 
+TArray<FVector> ACataclysmDungeonGameMode::ShadowyEnemiesLightsNow() const
+{
+	TArray<FVector> Centres;
+	if (!CurrentFloor)
+	{
+		return Centres;
+	}
+	for (const FIntPoint& Cell : ShadowLightCells)
+	{
+		Centres.Add(CurrentFloor->WorldOfCell(Cell));
+	}
+	return Centres;
+}
+
+int32 ACataclysmDungeonGameMode::ShadowyEnemiesLightZonesDrawn() const
+{
+	int32 Drawn = 0;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Light : ShadowLights)
+	{
+		Drawn += Light.IsValid() ? 1 : 0;
+	}
+	return Drawn;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheShadowLights()
+{
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : ShadowLights)
+	{
+		if (ACataclysmGroundZone* Light = One.Get())
+		{
+			Light->Destroy();
+		}
+	}
+	ShadowLights.Reset();
+	ShadowLightCells.Reset();
+
+	// THE FIRE SECONDS AND NOT THE SHROUDS: the next beat takes every shroud off on a floor without the row, and
+	// writes each one again on a floor with it.
+	ShadowFireSecondsLeft.Reset();
+}
+
+void ACataclysmDungeonGameMode::PlaceTheShadowLights()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey)))
+	{
+		return;
+	}
+
+	// THE ROW'S ZONES, AT LEAST `EternalChorusApartCm` FROM THE ENTRANCE AND FROM EACH OTHER by Eternal Chorus's
+	// picker, AND ONE MORE ON THE EXIT WHEN A BOSS STANDS THERE, as ruled on 2026-09-26: a character with no fire
+	// could not otherwise be sure of hurting the boss it has to kill.
+	ShadowLightCells = EternalChorusCells(*CurrentFloor, Effects::ShadowyEnemiesLightZonesPerFloor);
+	if (FloorBrief.bBossAtTheExit)
+	{
+		ShadowLightCells.Add(CurrentFloor->GetPlan().Exit);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Shadowy Enemies: %d light zone(s) on floor %d"), ShadowLightCells.Num(),
+		   FloorNumber);
+}
+
+void ACataclysmDungeonGameMode::StepShadowyEnemies(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey))
+		&& CurrentFloor && CurrentFloor->IsBuilt();
+
+	// THE LIGHT ZONES DRAWN AGAIN whenever one is missing, which is after a Horde arena's every wave. They do no
+	// damage, and are drawn in Celestial's colours, as Void Parasite's light is.
+	TArray<FVector> Centres;
+	if (bRow)
+	{
+		if (ShadowLights.Num() != ShadowLightCells.Num())
+		{
+			ShadowLights.SetNum(ShadowLightCells.Num());
+		}
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+		for (int32 Index = 0; Index < ShadowLightCells.Num(); ++Index)
+		{
+			const FVector Where = CurrentFloor->WorldOfCell(ShadowLightCells[Index]);
+			Centres.Add(Where);
+			if (!ShadowLights[Index].IsValid() && Source)
+			{
+				ShadowLights[Index] = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::ShadowyEnemiesLightRadiusCm, 0.0f,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/FName(TEXT("Celestial")));
+			}
+		}
+	}
+
+	// THE FIRE SECONDS RUN DOWN BY THE BEAT, and a creature whose seconds are spent or which is gone is forgotten.
+	for (auto It = ShadowFireSecondsLeft.CreateIterator(); It; ++It)
+	{
+		It->Value -= SecondsBetweenWaveChecks;
+		if (!It->Key.IsValid() || It->Value <= 0.0f)
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	// EVERY FLOOR CREATURE SHROUDED UNLESS A LIGHT REACHES IT, measured flat. Not a creature a rule raised, and not
+	// one that cannot be hurt anyway: neither is a creature the floor put there, and the word under its bar would say
+	// something untrue of it.
+	const FVector Feet = Player->GetActorLocation();
+	const bool bOrb = FloorBrief.Modifiers.Contains(FName(Effects::BlackestShadowKey));
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		ACataclysmEnemyCharacter* Creature = Enemy.Get();
+		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature))
+		{
+			continue;
+		}
+		const FVector At = Creature->GetActorLocation();
+		bool bLit = !bRow || Creature->bRaisedByARule || Creature->bCannotBeHurt
+			|| CreaturesRaisedByARule.Contains(Creature) || ShadowFireSecondsLeft.Contains(Creature)
+			|| (bOrb && FVector::Dist2D(At, Feet) <= Effects::BlackestShadowLightCm);
+		for (int32 Index = 0; !bLit && Index < Centres.Num(); ++Index)
+		{
+			bLit = FVector::Dist2D(At, Centres[Index]) <= Effects::ShadowyEnemiesLightRadiusCm;
+		}
+		if (Creature->bShrouded == bLit)
+		{
+			Creature->bShrouded = !bLit;
+			if (bLit)
+			{
+				ShroudedCreatures.Remove(Creature);
+			}
+			else
+			{
+				ShroudedCreatures.Add(Creature);
+			}
+		}
+	}
+
+	// AND ON A FLOOR WITHOUT THE ROW, EVERY SHROUD THIS RULE GAVE IS TAKEN OFF, a creature no longer on the floor's
+	// list included.
+	for (auto It = ShroudedCreatures.CreateIterator(); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = It->Get();
+		if (!Creature)
+		{
+			It.RemoveCurrent();
+		}
+		else if (!bRow)
+		{
+			Creature->bShrouded = false;
+			It.RemoveCurrent();
+		}
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteHitForShadowyEnemies(const FCataclysmHitNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey)))
+	{
+		return;
+	}
+	ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Notice.Target);
+	if (!Creature || Notice.bEvaded)
+	{
+		return;
+	}
+
+	// FIRE IS THE DEMONIC ELEMENT, read as Carrion Feast reads it: a player's hit carries its skill's element on the
+	// damage effect. AN EVADED ONE EXPOSES NOTHING, as the decision of 2026-09-05 says an evaded attack applies
+	// nothing it was carrying; a blocked one does. A creature's own fire exposes nothing: the row asks it of the
+	// player.
+	static const FGameplayTag Fire = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+	if (!Notice.HasTag(Fire)
+		|| UCataclysmTeams::TeamOf(Notice.Attacker) == UCataclysmTeams::IdFor(ECataclysmTeam::Monsters))
+	{
+		return;
+	}
+
+	// EXPOSED AT ONCE, so the next blow lands without waiting for the beat; this blow itself dealt nothing.
+	ShadowFireSecondsLeft.Add(Creature, Effects::ShadowyEnemiesFireExposureSeconds);
+	if (Creature->bShrouded)
+	{
+		Creature->bShrouded = false;
+		ShroudedCreatures.Remove(Creature);
+	}
+}
+
 void ACataclysmDungeonGameMode::ForgetTheVoidParasite()
 {
 	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Voidlings)
@@ -7060,6 +7366,265 @@ void ACataclysmDungeonGameMode::PlaceTheLight()
 	}
 	UE_LOG(LogCataclysm, Log, TEXT("Void Parasite: %d light zone(s) on floor %d"), Cells.Num(), FloorNumber);
 	RefreshFloorModifierPanel();
+}
+
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::GrimTotemsNow() const
+{
+	TArray<ACataclysmFloorObject*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : GrimTotems)
+	{
+		if (ACataclysmFloorObject* Totem = One.Get(); IsValid(Totem))
+		{
+			Standing.Add(Totem);
+		}
+	}
+	return Standing;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::GrimTotemElitesStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : GrimTotemElites)
+	{
+		ACataclysmEnemyCharacter* Elite = One.Get();
+		if (IsValid(Elite) && !UCataclysmSkillEffects::IsDead(Elite))
+		{
+			Standing.Add(Elite);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheTotems()
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : GrimTotems)
+	{
+		if (ACataclysmFloorObject* Totem = One.Get())
+		{
+			Totem->Destroy();
+		}
+	}
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : GrimTotemZones)
+	{
+		if (ACataclysmGroundZone* Zone = One.Get())
+		{
+			Zone->Destroy();
+		}
+	}
+	GrimTotems.Reset();
+	GrimTotemZones.Reset();
+	GrimTotemElites.Reset();
+	GrimTotemsPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheTotems()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheTotems();
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::GrimTotemsKey)))
+	{
+		return;
+	}
+
+	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, where Eternal Chorus's picker puts its sources: away from the
+	// entrance, so the player walks to one. Each is a floor object the player clicks, offering its two choices.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::GrimTotemsPerHordeArena : Effects::GrimTotemsPerFloor;
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		ACataclysmFloorObject* Totem = World->SpawnActor<ACataclysmFloorObject>(
+			ACataclysmFloorObject::StaticClass(), CurrentFloor->WorldOfCell(Cell), FRotator::ZeroRotator, Spawn);
+		if (!Totem)
+		{
+			continue;
+		}
+		Totem->RuleKey = FName(Effects::GrimTotemsKey);
+		Totem->DisplayName = TEXT("Grim Totem");
+		Totem->Prompt = TEXT("Dark energy pours from it. Embrace its power, or cleanse it.");
+		FCataclysmFloorObjectChoice Embrace;
+		Embrace.Key = FName(Effects::GrimTotemsEmbrace);
+		Embrace.Label = FString::Printf(TEXT("Embrace: %d%% more damage for %d s, and %d Elite creatures come"),
+										FMath::RoundToInt(Effects::GrimTotemsEmbraceDamageMorePercent),
+										FMath::RoundToInt(Effects::GrimTotemsEmbraceSeconds),
+										Effects::GrimTotemsEliteCount);
+		FCataclysmFloorObjectChoice Cleanse;
+		Cleanse.Key = FName(Effects::GrimTotemsCleanse);
+		Cleanse.Label = FString::Printf(TEXT("Cleanse: creatures within %d m deal %d%% less damage"),
+										FMath::RoundToInt(Effects::GrimTotemsCleanseRadiusCm / 100.0f),
+										FMath::RoundToInt(Effects::GrimTotemsCleanseDamageLessPercent));
+		Totem->Choices = {Embrace, Cleanse};
+		GrimTotems.Add(Totem);
+	}
+	GrimTotemZones.SetNum(GrimTotems.Num());
+	UE_LOG(LogCataclysm, Log, TEXT("Grim Totems: %d totem(s) on floor %d"), GrimTotems.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Object, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Object))
+	{
+		return false;
+	}
+	const FCataclysmFloorObjectChoice* Choice = Object->ChoiceOf(ChoiceKey);
+	if (!Choice || !Choice->bAvailable)
+	{
+		return false;
+	}
+
+	// EACH RULE THAT PLACES FLOOR OBJECTS ANSWERS ITS OWN, by the row that placed the object.
+	if (Object->RuleKey == FName(Effects::GrimTotemsKey))
+	{
+		return ChooseAtGrimTotem(Object, ChoiceKey);
+	}
+	return false;
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtGrimTotem(ACataclysmFloorObject* Totem, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Index = GrimTotems.IndexOfByPredicate(
+		[Totem](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Totem; });
+	if (Index == INDEX_NONE || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return false;
+	}
+	const FVector At = Totem->GetActorLocation();
+
+	if (ChoiceKey == FName(Effects::GrimTotemsEmbrace))
+	{
+		// THE STRENGTH, written on the next beat, and THE ELITES AT ONCE: the floor's own kinds at the Elite rung, on
+		// cells beside a point that far from the totem at a random angle, noticing the player from anywhere on the
+		// floor as Plague Convergence's arrivals do. They are the floor's creatures and pay as the Elite rung does.
+		GrimEmbraceLeft = Effects::GrimTotemsEmbraceSeconds;
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const FVector Where(At.X + Effects::GrimTotemsEliteAwayCm * FMath::Cos(Angle),
+							At.Y + Effects::GrimTotemsEliteAwayCm * FMath::Sin(Angle), At.Z);
+		const FCataclysmFloorPopulation Population =
+			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		// A POINT OFF THE FLOOR, WITH NO FLOOR WITHIN REACH OF IT, FALLS BACK TO THE CELLS AROUND THE TOTEM, which stands on
+		// the floor: an embrace is a single press, with no later beat to try again on, so the Elites come either way.
+		TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+		if (Cells.IsEmpty())
+		{
+			Cells = NecroticBloomWaveCells(*CurrentFloor, At);
+		}
+		for (int32 Which = 0; Which < Effects::GrimTotemsEliteCount && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
+			 ++Which)
+		{
+			FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+			Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+			if (ACataclysmEnemyCharacter* Elite =
+					SpawnPlacedCreature(Placement, Effects::TheReaperSightMultiplier, Effects::GrimTotemsEliteRung))
+			{
+				Elite->bRaisedByARule = true;
+				CreaturesRaisedByARule.Add(Elite);
+				FloorEnemies.Add(Elite);
+				GrimTotemElites.Add(Elite);
+			}
+		}
+		UE_LOG(LogCataclysm, Log, TEXT("Grim Totems: a totem embraced on floor %d, %d Elite creature(s) came"),
+			   FloorNumber, GrimTotemElitesStanding().Num());
+	}
+	else if (ChoiceKey == FName(Effects::GrimTotemsCleanse))
+	{
+		// EVERY CREATURE OF THE FLOOR THAT NEAR, WEAKENED FOR AS LONG AS IT LIVES, through its own key of the damage
+		// map, so no other rule's multiplier is overwritten.
+		const float Multiplier = 1.0f - Effects::GrimTotemsCleanseDamageLessPercent / 100.0f;
+		int32 Weakened = 0;
+		for (ACataclysmEnemyCharacter* Creature : FloorEnemies)
+		{
+			if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
+				&& FVector::Dist2D(Creature->GetActorLocation(), At) <= Effects::GrimTotemsCleanseRadiusCm)
+			{
+				Creature->SetGrimTotemsDamageMultiplier(Multiplier);
+				++Weakened;
+			}
+		}
+		UE_LOG(LogCataclysm, Log, TEXT("Grim Totems: a totem cleansed on floor %d, %d creature(s) weakened"),
+			   FloorNumber, Weakened);
+
+		// AND THE PLAYER'S HARMFUL EFFECTS, the row's "removing harmful effects": the player cleanse, which removes what
+		// others put on the player and keeps what the player put on itself. Ruled on 2026-09-30. The player is found
+		// the way the floor rules find it.
+		UWorld* World = GetWorld();
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		if (AActor* Player = Controller ? Controller->GetPawn() : nullptr)
+		{
+			UCataclysmDebuffs::Cleanse(Player);
+		}
+	}
+	else
+	{
+		return false;
+	}
+
+	// EITHER WAY THE TOTEM GOES, and its zone with it.
+	Totem->Destroy();
+	if (GrimTotemZones.IsValidIndex(Index))
+	{
+		if (ACataclysmGroundZone* Zone = GrimTotemZones[Index].Get())
+		{
+			Zone->Destroy();
+		}
+		GrimTotemZones.RemoveAt(Index);
+	}
+	GrimTotems.RemoveAt(Index);
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepGrimTotems(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// THE ZONES DRAWN UNDER THE TOTEMS WHEREVER ONE IS MISSING. They do nothing themselves.
+	if (CurrentFloor && CurrentFloor->IsBuilt() && FloorBrief.Modifiers.Contains(FName(Effects::GrimTotemsKey)))
+	{
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+		GrimTotemZones.SetNum(GrimTotems.Num());
+		for (int32 Index = 0; Index < GrimTotems.Num(); ++Index)
+		{
+			const ACataclysmFloorObject* Totem = GrimTotems[Index].Get();
+			if (Totem && Source && !GrimTotemZones[Index].Get())
+			{
+				const FVector Where = Totem->GetActorLocation();
+				GrimTotemZones[Index] = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::GrimTotemsRadiusCm, 0.0f, /*bAffectsEveryone=*/false,
+					/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::GrimTotemsKey));
+			}
+		}
+	}
+
+	// AN EMBRACE'S STRENGTH, WRITTEN WHEN IT CHANGED AND COUNTED DOWN ON THE BEAT.
+	const float Wanted = GrimEmbraceLeft > 0.0f ? Effects::GrimTotemsEmbraceDamageMorePercent : 0.0f;
+	if (!FMath::IsNearlyEqual(Wanted, GrimEmbraceApplied))
+	{
+		GrimEmbraceApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+	GrimEmbraceLeft = FMath::Max(0.0f, GrimEmbraceLeft - SecondsBetweenWaveChecks);
+
+	const int32 Key = GrimTotemsNow().Num() * 1000 + FMath::CeilToInt(GrimEmbraceLeft);
+	if (Key != GrimTotemsPanelKey)
+	{
+		GrimTotemsPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
 }
 
 void ACataclysmDungeonGameMode::StepVoidParasite(
@@ -7435,6 +8000,52 @@ int32 ACataclysmDungeonGameMode::SoulHarvestSoulsOn(const ACataclysmEnemyCharact
 		}
 	}
 	return 0;
+}
+
+void ACataclysmDungeonGameMode::OnSomethingWasCleansed(AActor* Character)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE PLAYER ONLY. A creature's stacks are not the game mode's to keep.
+	if (!Cast<ACataclysmPlayerCharacter>(Character))
+	{
+		return;
+	}
+
+	// ONLY THE STACKS WHOSE ROWS SAY A CLEANSE ENDS THEM, as ruled on 2026-09-26: the row's own words decide.
+	// - Raw Sewage: "These disease stacks do not time out and must be cleansed."
+	// - The Starvation Curse: "These debuffs persist unless cleansed."
+	// - Chaos Touched: "will continue to stack unless cleansed", its debuff kinds only, the split a floor's boss
+	//   already makes, so its buffs stay.
+	// KEPT: Wasting Sickness ("can only be removed by defeating a floor boss"), The Nihil's Embrace ("you must defeat a
+	// high tier enemy"), Void Parasite (its light zone), and the stacks whose rows say nothing of a cleanse.
+	//
+	// LEFT TO THE BEAT, as a floor's boss's death leaves them: the next beat puts each change on the character and
+	// takes Raw Sewage's disease keyword off.
+	const bool bHeld = RawSewageStacks > 0 || StarvationCurseMovementStacks > 0 || StarvationCurseHealthStacks > 0;
+	bool bChaosDebuffHeld = false;
+	for (int32 Kind = Effects::ChaosTouchedFirstDebuff; Kind < Effects::ChaosTouchedKinds; ++Kind)
+	{
+		bChaosDebuffHeld |= ChaosTouchedStacks.IsValidIndex(Kind) && ChaosTouchedStacks[Kind] > 0;
+	}
+	if (!bHeld && !bChaosDebuffHeld)
+	{
+		return;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Cleanse: %d Raw Sewage, %d and %d Starvation Curse stack(s) cleared"),
+		   RawSewageStacks, StarvationCurseMovementStacks, StarvationCurseHealthStacks);
+	RawSewageStacks = 0;
+	RawSewageSecondsInARiver = 0.0f;
+	StarvationCurseMovementStacks = 0;
+	StarvationCurseHealthStacks = 0;
+	for (int32 Kind = Effects::ChaosTouchedFirstDebuff; Kind < Effects::ChaosTouchedKinds; ++Kind)
+	{
+		if (ChaosTouchedStacks.IsValidIndex(Kind))
+		{
+			ChaosTouchedStacks[Kind] = 0;
+		}
+	}
+	RefreshFloorModifierPanel();
 }
 
 void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Notice)
@@ -7939,6 +8550,18 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	DungeonModifierPool = UCataclysmDungeonModifierRules::PoolFor(
 		Run->ModifierPool, Run->ActiveCataclysms);
 
+	// AND EVERY ROW THAT DOES SOMETHING IN PLAY, OF ANY CATACLYSM, for Reality Twister, which draws "from any
+	// Cataclysm". Built and partly built: a partly built row still acts, and a row with no rule does nothing. Issues
+	// #1820 and #41.
+	DungeonEveryBuiltModifier.Reset();
+	for (const FCataclysmDungeonModifier& Row : Run->ModifierPool)
+	{
+		if (UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) != ECataclysmModifierBuilt::NotBuilt)
+		{
+			DungeonEveryBuiltModifier.Add(Row);
+		}
+	}
+
 	// EVERY POTION SLOT IS FULL ON ENTERING A DUNGEON, and only here. Issue
 	// #806. Path of Exile refills flasks in town; this game's town is the
 	// empire, and the way back into a fight from it is this function. Not on the
@@ -8001,6 +8624,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	DungeonModifierScore = 0.0f;
 	DungeonModifiers.Reset();
 	DungeonModifierPool.Reset();
+	DungeonEveryBuiltModifier.Reset();
 	FloorBrief = FCataclysmFloorBrief();
 
 	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR GOES WITH THE RUN. Issues #1820 and #41.
@@ -8050,7 +8674,9 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
 	ForgetTheCarrion();
+	ForgetTheShadowLights();
 	ForgetTheSarcophagi();
+	ForgetTheTotems();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -8583,11 +9209,24 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
+	// AND THE VISION SYSTEM, ON EVERY FLOOR WHOSE ROWS LIMIT SIGHT, AND ON THE FIRST FLOOR AFTER ONE, so what it hid is
+	// shown and the camera lightened. Issues #1820 and #41.
+	const bool bVision = UCataclysmDungeonModifierEffects::SightRadiusFor(FloorBrief.Modifiers) > 0.0f
+		|| FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey))
+		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0 || InvisibleStalkers.Num() > 0;
+	// AND SHADOWY ENEMIES, ON EVERY FLOOR CARRYING IT, AND ON THE FIRST FLOOR AFTER ONE WHILE A SHROUD IS HELD, so it is
+	// taken off. Issues #1820 and #41.
+	const bool bShadowyEnemies = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::ShadowyEnemiesKey))
+		|| ShroudedCreatures.Num() > 0;
 	// AND VOID PARASITE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON
 	// THE CHARACTER, as Chaos Touched is stepped. Issues #1820 and #41.
 	const bool bVoidParasite = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::VoidParasiteKey))
 		|| VoidParasiteStacks != VoidParasiteStacksApplied;
+	// AND GRIM TOTEMS, ON EVERY FLOOR CARRYING IT, AND WHILE AN EMBRACE IS ON THE CHARACTER. Issues #1820 and #41.
+	const bool bGrimTotems = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::GrimTotemsKey))
+		|| GrimEmbraceApplied > 0.0f || GrimEmbraceLeft > 0.0f;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -8621,7 +9260,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRawSewage
 		&& !bDemonicGuide
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
-		&& !bObsidianSarcophagi)
+		&& !bVision
+		&& !bGrimTotems
+		&& !bObsidianSarcophagi && !bShadowyEnemies)
 	{
 		return;
 	}
@@ -8936,11 +9577,29 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		StepTrialOfEndurance(Player);
 	}
 
+	// AND THE VISION SYSTEM, WHICH HIDES WHAT THE PLAYER CANNOT SEE. Issues #1820 and #41.
+	if (bVision)
+	{
+		StepVision(Player);
+	}
+
+	// AND SHADOWY ENEMIES, WHICH DRAWS ZONES AND SAYS WHICH CREATURES DAMAGE CAN REACH. Issues #1820 and #41.
+	if (bShadowyEnemies)
+	{
+		StepShadowyEnemies(Player);
+	}
+
 	// AND VOID PARASITE, WHICH DRAWS A ZONE, REMOVES CREATURES AND MOVES THE PLAYER'S STATS. Issues #1820
 	// and #41.
 	if (bVoidParasite)
 	{
 		StepVoidParasite(Player, AbilitySystem);
+	}
+
+	// AND GRIM TOTEMS, WHICH DRAWS ITS TOTEMS' ZONES AND TIMES AN EMBRACE. Issues #1820 and #41.
+	if (bGrimTotems)
+	{
+		StepGrimTotems(Player, AbilitySystem);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -9952,6 +10611,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// Three rows now move the same stat and each holds its own field, so a floor
 	// carrying all three composes instead of erasing. Issue #1765.
 	Effects.MushroomSpeedMorePercent = FungalOvergrowthSpeedMoreApplied;
+
+	// AND AN EMBRACED GRIM TOTEM'S STRENGTH AS LAST WRITTEN. Issues #1820 and #41. Read unconditionally like the rest.
+	Effects.GrimEmbraceDamageMorePercent = GrimEmbraceApplied;
 	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
 
 	// AND WHAT JUDGMENT IS TAKING OFF ONE RESISTANCE. Issues #1820 and #41. Read
@@ -11427,6 +12089,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	NoteHitForTheReaper(Notice);
 	NoteHitForPlagueConvergence(Notice);
 	NoteHitForMindShatteringIllusions(Notice);
+	NoteHitForShadowyEnemies(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
@@ -11716,6 +12379,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString(TEXT("raw sewage: no disease stacks")));
 	}
 
+	// AND REALITY TWISTER: the row it added to this floor, by its name. Issues #1820 and #41.
+	const FName Twister(FCataclysmDungeonFloorRules::RealityTwisterKey);
+	if (FloorBrief.Modifiers.Contains(Twister))
+	{
+		const FCataclysmDungeonModifier* Added = DungeonEveryBuiltModifier.FindByPredicate(
+			[this](const FCataclysmDungeonModifier& Row) { return Row.RowKey == FloorBrief.TwistedIn; });
+		Counting.Add(Twister, FloorBrief.TwistedIn.IsNone()
+			? FString(TEXT("reality twister: nothing was left to add on this floor"))
+			: FString::Printf(TEXT("reality twister: %s added on this floor"),
+							  *(Added ? Added->ModifierName : FloorBrief.TwistedIn).ToString()));
+	}
+
 	// AND SWARM OF LOCUSTS: the next swarm's seconds, or that one is crossing and a shelter stops it. Issues #1820
 	// and #41.
 	const FName Locusts(Effects::SwarmOfLocustsKey);
@@ -11973,6 +12648,20 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		}
 		Counting.Add(Coffins, Parts.IsEmpty() ? FString(TEXT("obsidian sarcophagi: none on this floor"))
 											  : TEXT("obsidian sarcophagi: ") + FString::Join(Parts, TEXT(", ")));
+	}
+
+	// AND GRIM TOTEMS: how many stand, and an embrace under way. Issues #1820 and #41.
+	const FName Totems(Effects::GrimTotemsKey);
+	if (FloorBrief.Modifiers.Contains(Totems))
+	{
+		FString Line = FString::Printf(TEXT("grim totems: %d standing"), GrimTotemsNow().Num());
+		if (GrimEmbraceLeft > 0.0f)
+		{
+			Line += FString::Printf(TEXT("; embraced: +%d%% damage for %d s"),
+									FMath::RoundToInt(Effects::GrimTotemsEmbraceDamageMorePercent),
+									FMath::CeilToInt(GrimEmbraceLeft));
+		}
+		Counting.Add(Totems, Line);
 	}
 
 	const FName Veins(Effects::InfestedVeinsKey);
@@ -14102,6 +14791,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// from creatures the player has left behind on the last floor.
 		JudgmentStacks = 0;
 		JudgmentStacksApplied = 0;
+
+		// AND GRIM TOTEMS: an embrace ends with the floor, the call above having taken its strength off the
+		// character, and the totems' zones went with the rules' other zones and are drawn again on the next beat. The
+		// totems are kept; a new arena replaces them. Issues #1820 and #41.
+		GrimEmbraceLeft = 0.0f;
+		GrimEmbraceApplied = 0.0f;
+		GrimTotemZones.Reset();
+		GrimTotemsPanelKey = -1;
 
 		// AND LEECH SPORES FORGETS ITS CLOUDS, which are already destroyed -- see the
 		// top of this function. Nothing else to clear: a cloud's drain is done the

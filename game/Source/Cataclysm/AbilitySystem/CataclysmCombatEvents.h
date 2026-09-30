@@ -281,6 +281,13 @@ struct CATACLYSM_API FCataclysmLootTakenNotice
 DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnLootTaken, const FCataclysmLootTakenNotice&);
 
 /**
+ * A character was cleansed, by `UCataclysmDebuffs::Cleanse`. The character only: what the cleanse removed from its
+ * ability system is already gone, and a listener clears what it holds for that character. The dungeon game mode is the
+ * one listener, for the stacks whose rows say they are cleansed. Ruled 2026-09-26.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnCleansed, AActor*);
+
+/**
  * The one place a hit, a death or a skill used is announced. Issue #41, slice 4.
  *
  * WHAT WAS HERE BEFORE IT. No hit or death notice existed. The game's multicast
@@ -315,6 +322,7 @@ public:
 	FCataclysmOnDeath OnDeath;
 	FCataclysmOnSkillUsed OnSkillUsed;
 	FCataclysmOnLootTaken OnLootTaken;
+	FCataclysmOnCleansed OnCleansed;
 
 	/**
 	 * Whose blow this is: the minion that dealt it, unless its summoner holds
@@ -391,6 +399,9 @@ public:
 	/** Announces a drop taken into `Taker`'s inventory. Called by `TakeInto` only. */
 	static void NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand,
 							  bool bMarked = false, bool bInfested = false);
+
+	/** Announces that `Character` was cleansed. Called by `UCataclysmDebuffs::Cleanse` only. */
+	static void NoteCleansed(AActor* Character);
 
 	/** How many of each have been sent in this world. Read by tests. */
 	uint32 HitsSent() const { return Hits; }

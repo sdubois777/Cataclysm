@@ -28,6 +28,8 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Dungeon/CataclysmFloorObject.h"
+#include "Interface/CataclysmChoicePanelWidget.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmBeaconCharacter.h"
@@ -80,6 +82,10 @@
 #include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
+#include "Components/TextBlock.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -2815,12 +2821,12 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 				  FName(UCataclysmDungeonModifierEffects::InfernalRainKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
-	// SWARM OF LOCUSTS IS PARTLY BUILT, and #2129 listed it as built. Nothing obscures vision, which the row names.
-	// Issues #1820 and #41.
-	TestEqual(TEXT("Swarm of Locusts is partly built: nothing obscures vision"),
+	// SWARM OF LOCUSTS IS BUILT since its swarm obscures vision through the vision system; until then it was partly
+	// built, and #2129 had listed it as built by mistake. Issues #1820 and #41.
+	TestEqual(TEXT("Swarm of Locusts is built: its swarm obscures vision"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
 				  FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey))),
-			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 
 	// THE NOT-BUILT CONTROL USED TO BE Void_Singularity_Wells AND THAT ROW IS NOW
 	// PARTLY BUILT, so it had to be replaced. Chaos_Echo_Chamber takes its place
@@ -34873,6 +34879,1542 @@ bool FCataclysmCarrionFloorTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("the carcass is gone"), Carcass.IsValid());
 	TestEqual(TEXT("none lying"), Mode->CarrionCarcassesNow().Num(), 0);
 	TestEqual(TEXT("the count starts again"), Mode->CarrionFeastStacksNow(), 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The player cleanse, `UCataclysmDebuffs::Cleanse`, ruled by the coordinating session under the owner's delegation on
+// 2026-09-26. In this file because three of its tests need the dungeon game mode and this file's helpers.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** Whether the player's ability system carries this tag, or one under it. */
+	bool PlayerCarries(const FPossessedPlayer& Player, const FGameplayTag& Tag)
+	{
+		return Tag.IsValid() && Player.AbilitySystem->HasMatchingGameplayTag(Tag);
+	}
+
+	/** An Imp beside the player, to be the one who put a debuff there. */
+	ACataclysmEnemyCharacter* AnImpBeside(UWorld* World, const FPossessedPlayer& Player)
+	{
+		const FVector At = Player.Character->GetActorLocation();
+		return SpawnImpWithHealth(World, FVector(At.X + 300.0f, At.Y, At.Z), 100.0f);
+	}
+}
+
+// A CLEANSE REMOVES A BURN, A CURSE AND A STUN THAT A CREATURE PUT ON THE PLAYER, AND KEEPS THE STUN'S IMMUNITY.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseRemovesTest,
+	"Cataclysm.Cleanse.ItRemovesTheBurnCurseAndStunACreaturePutOnThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseRemovesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp)
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 60.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	UCataclysmSkillEffects::ApplyNamedEffect(Imp, Player.Character, UCataclysmDebuffs::CrippleTag(), 60.0f);
+	UCataclysmSkillEffects::ApplyStun(Imp, Player.Character, 2.0f, 0.0f, /*bStunIsDesigned=*/true);
+	if (!TestTrue(TEXT("set-up: the player burns"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()))
+		|| !TestTrue(TEXT("set-up: is crippled"), PlayerCarries(Player, UCataclysmDebuffs::CrippleTag()))
+		|| !TestTrue(TEXT("set-up: is stunned"), PlayerCarries(Player, UCataclysmSkillEffects::StunnedTag()))
+		|| !TestTrue(TEXT("set-up: and immune to the next stun"),
+					 PlayerCarries(Player, UCataclysmSkillEffects::StunImmuneTag())))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a cleanse removes three effects"), UCataclysmDebuffs::Cleanse(Player.Character), 3);
+	TestFalse(TEXT("the burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	TestFalse(TEXT("the curse is gone"), PlayerCarries(Player, UCataclysmDebuffs::CrippleTag()));
+	TestFalse(TEXT("the stun is gone"), PlayerCarries(Player, UCataclysmSkillEffects::StunnedTag()));
+	TestTrue(TEXT("the stun's immunity stays"), PlayerCarries(Player, UCataclysmSkillEffects::StunImmuneTag()));
+	TestEqual(TEXT("no debuff is counted"), UCataclysmDebuffs::CountOn(Player.AbilitySystem), 0);
+	return true;
+}
+
+// A CLEANSE REMOVES A FEAR A CREATURE PUT ON THE PLAYER, AND KEEPS THE FEAR'S IMMUNITY WINDOW. ITS OWN TEST, because a
+// fear that lands opens the shared window, so a stun beside it in one test would be refused.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseFearTest,
+	"Cataclysm.Cleanse.ItRemovesAFearACreaturePutOnThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseFearTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the fear lands"),
+				  UCataclysmFear::ApplyFear(Imp, Player.Character, 3.0f, Imp->GetActorLocation()))
+		|| !TestTrue(TEXT("set-up: the player is feared"), UCataclysmFear::IsFeared(Player.Character)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a cleanse removes one effect"), UCataclysmDebuffs::Cleanse(Player.Character), 1);
+	TestFalse(TEXT("the fear is gone"), UCataclysmFear::IsFeared(Player.Character));
+	TestTrue(TEXT("the shared window stays"), PlayerCarries(Player, UCataclysmSkillEffects::StunImmuneTag()));
+	return true;
+}
+
+// A CLEANSE KEEPS A BUFF AND A BLEED THE PLAYER PUT ON ITSELF; A CREATURE'S BURN BESIDE THEM IS THE CONTROL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseKeepsTest,
+	"Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseKeepsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp)
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// THE MASOCHIST'S SHAPE: A BLEED WHOSE INSTIGATOR IS THE PLAYER, as `UCataclysmDamageConversion` applies it.
+	const FGameplayTag Commander =
+		UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Status.Buff.Commander")), false);
+	UCataclysmSkillEffects::ApplyTagForDuration(Imp, Player.Character, Commander, 60.0f);
+	UCataclysmSkillEffects::ApplyDamageOverTime(Player.Character, Player.Character, 1.0f, 60.0f,
+												UCataclysmDebuffs::BleedTag(), /*bScalesWithInstigator=*/false);
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 60.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the player carries a buff"), PlayerCarries(Player, Commander))
+		|| !TestTrue(TEXT("set-up: its own bleed"), PlayerCarries(Player, UCataclysmDebuffs::BleedTag()))
+		|| !TestTrue(TEXT("set-up: and a creature's burn"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag())))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a cleanse removes one effect"), UCataclysmDebuffs::Cleanse(Player.Character), 1);
+	TestFalse(TEXT("the creature's burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	TestTrue(TEXT("the buff stays"), PlayerCarries(Player, Commander));
+	TestTrue(TEXT("the player's own bleed stays"), PlayerCarries(Player, UCataclysmDebuffs::BleedTag()));
+	return true;
+}
+
+// A CLEANSE CLEARS RAW SEWAGE'S STACKS AT ONCE, AND THE NEXT BEAT TAKES THE DISEASE KEYWORD OFF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseSewageTest,
+	"Cataclysm.Cleanse.ItClearsRawSewageAndTheNextBeatTakesTheDiseaseOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseSewageTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASewageFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// A STACK FROM THE RIVER, THEN OUT OF IT, so the beat after the cleanse adds nothing.
+	StandInTheRiver(Mode, Player, true);
+	Beat(Mode, 1);
+	StandInTheRiver(Mode, Player, false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: one stack"), Mode->RawSewageStacksHeld(), 1)
+		|| !TestTrue(TEXT("set-up: and the disease keyword"), PlayerCarries(Player, SewageDiseaseTag())))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("a cleanse clears the stacks at once"), Mode->RawSewageStacksHeld(), 0);
+	Beat(Mode, 1);
+	TestFalse(TEXT("and the next beat takes the keyword off"), PlayerCarries(Player, SewageDiseaseTag()));
+	TestEqual(TEXT("still none"), Mode->RawSewageStacksHeld(), 0);
+	return true;
+}
+
+// A CLEANSE CLEARS BOTH KINDS OF STARVATION CURSE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseCurseTest,
+	"Cataclysm.Cleanse.ItClearsTheStarvationCurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseCurseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {StarvationCurse};
+	if (!TheCurseFloor(*this, Mode, 1, CurseSlowsMovement) || !TheCurseFloor(*this, Mode, 2, CurseLowersHealth)
+		|| !TestEqual(TEXT("set-up: one slowing stack"), Mode->StarvationCurseMovementStacksHeld(), 1)
+		|| !TestEqual(TEXT("set-up: and one on health"), Mode->StarvationCurseHealthStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("no slowing stack is left"), Mode->StarvationCurseMovementStacksHeld(), 0);
+	TestEqual(TEXT("and none on health"), Mode->StarvationCurseHealthStacksHeld(), 0);
+	return true;
+}
+
+// A CLEANSE CLEARS CHAOS TOUCHED'S DEBUFF KINDS AND KEEPS ITS BUFF KINDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseChaosTest,
+	"Cataclysm.Cleanse.ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseChaosTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ChaosTouched};
+
+	// A DRAW OF 0 IS MORE HEALTH, A BUFF; 50 IS LESS HEALTH, A DEBUFF.
+	if (!TheTouchedFloor(*this, Mode, 1, TEXT("0")) || !TheTouchedFloor(*this, Mode, 2, TEXT("50"))
+		|| !TestEqual(TEXT("set-up: one stack of more health"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 1)
+		|| !TestEqual(TEXT("set-up: and one of less health"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthLess), 1))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("the debuff kind is cleared"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthLess), 0);
+	TestEqual(TEXT("the buff kind stays"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 1);
+	return true;
+}
+
+// A CLEANSE POOL ACTION ON A CLOCK FIRES EVERY FIVE SECONDS OF A FIGHT, AND NEVER OUT OF ONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseTimedTest,
+	"Cataclysm.Cleanse.ATimedCleanseActionFiresEveryFiveSecondsOfAFight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseTimedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmEnemyCharacter* Imp = Player.IsUsable() ? AnImpBeside(World, Player) : nullptr;
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !TestNotNull(TEXT("an Imp"), Imp)
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* ASC = Player.AbilitySystem;
+
+	// THE ROW THE ENCHANTMENT SESSION WILL WRITE, BUILT BY HAND: the timed event, every 5 seconds, a cleanse.
+	FCataclysmPoolAction Cleanse;
+	Cleanse.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+	Cleanse.EverySeconds = 5.0f;
+	Cleanse.bCleanse = true;
+	TArray<FCataclysmPoolAction> Actions;
+	Actions.Add(Cleanse);
+	ASC->SetPoolActions(MoveTemp(Actions));
+
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 600.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the player burns"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag())))
+	{
+		return false;
+	}
+
+	// OUT OF COMBAT, however long.
+	World->TimeSeconds += 50.0f;
+	ASC->StepTimedGrants();
+	TestTrue(TEXT("fifty seconds out of combat cleanse nothing"),
+			 PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+
+	// IN COMBAT, kept there by a blow every second.
+	const float Began = World->TimeSeconds;
+	const auto FightUntil = [&](float Seconds)
+	{
+		while (World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			ASC->NoteHitDealt();
+			ASC->StepTimedGrants();
+		}
+	};
+	ASC->NoteHitDealt();
+	FightUntil(4.0f);
+	TestTrue(TEXT("four seconds into a fight: still burning"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	FightUntil(5.0f);
+	TestFalse(TEXT("five seconds in: cleansed"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	return true;
+}
+
+// A CLEANSE LEAVES WASTING SICKNESS AND VOID PARASITE, whose rows name another remedy: a floor's boss, and the light.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseLeavesTest,
+	"Cataclysm.Cleanse.ItLeavesWastingSicknessAndVoidParasite",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseLeavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// A FLOOR CARRYING BOTH ROWS, the player on its entrance, as `AParasiteFloor` sets one up.
+	Mode->DungeonModifiers = {ParasiteRow, WastingSickness};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.Character->GetActorLocation().Z));
+
+	// A VOIDLING, ATTACHED.
+	ACataclysmEnemyCharacter* Voidling =
+		KillForAVoidling(*this, World, Mode, Player, Entrance + FVector(0.0f, 0.0f, 100.0f));
+	if (!Voidling)
+	{
+		return false;
+	}
+	const FVector At = Voidling->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(At.X + 100.0f, At.Y, Player.Character->GetActorLocation().Z));
+	Beat(Mode, 1);
+
+	// A WASTING SICKNESS STACK FROM A CREATURE'S BLOW, the roll pinned so the chance cannot decide.
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	ACataclysmEnemyCharacter* Striker = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable)
+		|| !TestNotNull(TEXT("a creature that can hit"), Striker)
+		|| !TestTrue(TEXT("its blow landed"), UCataclysmSkillEffects::ApplyHit(Striker, Player.Character, 50.0f) > 0.0f))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: one voidling attached"), Mode->VoidParasiteStacksHeld(), 1)
+		|| !TestEqual(TEXT("set-up: one Wasting Sickness stack"), Mode->WastingSicknessStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestEqual(TEXT("the voidling stays attached"), Mode->VoidParasiteStacksHeld(), 1);
+	TestEqual(TEXT("the Wasting Sickness stack stays"), Mode->WastingSicknessStacksHeld(), 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Death_Grim_Totems, and the choice screen it is the first rule to use. Issues #1820 and #41.
+//
+// THE CLICK ITSELF IS NOT TESTED HERE. The HUD draws a floor object's name and the controller hit-tests it, and neither
+// runs in an automation test: `AHUD::DrawHUD` needs a renderer the automation command turns off, and a test world has no
+// cursor, which is why a drop's click is not tested either. These drive what the click reaches: the panel's own handler
+// and the game mode.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName TotemsRow(UCataclysmDungeonModifierEffects::GrimTotemsKey);
+	const FName EmbraceKey(UCataclysmDungeonModifierEffects::GrimTotemsEmbrace);
+	const FName CleanseKey(UCataclysmDungeonModifierEffects::GrimTotemsCleanse);
+
+	/** A dungeon carrying only Grim Totems, on floor 2 with its own creatures cleared and its totems drawn. */
+	ACataclysmDungeonGameMode* ATotemFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {TotemsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("two totems"), Mode->GrimTotemsNow().Num(),
+							   UCataclysmDungeonModifierEffects::GrimTotemsPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** What the dungeon's rules add to this stat, or 0 for none. */
+	float TotemRuleOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, Stat);
+		return Rule ? Rule->Value : 0.0f;
+	}
+}
+
+// THE FIGURES: TWO TOTEMS; EMBRACE 25% MORE DAMAGE FOR 30 S AND THREE ELITES 8 M AWAY; CLEANSE 25% LESS WITHIN 15 M.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.GrimTotemsFiguresTotemsEmbraceAndCleanse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two totems a floor"), Effects::GrimTotemsPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::GrimTotemsPerHordeArena, 1);
+	TestEqual(TEXT("embrace: 25% more damage"), Effects::GrimTotemsEmbraceDamageMorePercent, 25.0f, 0.001f);
+	TestEqual(TEXT("for 30 s"), Effects::GrimTotemsEmbraceSeconds, 30.0f, 0.001f);
+	TestEqual(TEXT("and three Elites"), Effects::GrimTotemsEliteCount, 3);
+	TestEqual(TEXT("8 m from the totem"), Effects::GrimTotemsEliteAwayCm, 800.0f, 0.001f);
+	TestEqual(TEXT("at Royal Guard's Elite rung"), Effects::GrimTotemsEliteRung, Effects::RoyalGuardLowestRungThatSummons);
+	TestEqual(TEXT("cleanse: within 15 m"), Effects::GrimTotemsCleanseRadiusCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("25% less damage"), Effects::GrimTotemsCleanseDamageLessPercent, 25.0f, 0.001f);
+	return true;
+}
+
+// TWO TOTEMS AWAY FROM THE ENTRANCE, EACH A FLOOR OBJECT OFFERING EMBRACE AND CLEANSE, DRAWN, WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.TwoGrimTotemsStandAwayFromTheEntranceOfferingTwoChoices",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const ACataclysmFloorObject* Totem : Mode->GrimTotemsNow())
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Totem->GetActorLocation(), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		TestEqual(TEXT("named"), Totem->DisplayName, FString(TEXT("Grim Totem")));
+		TestEqual(TEXT("placed by the row"), Totem->RuleKey, TotemsRow);
+		if (TestEqual(TEXT("two choices"), Totem->Choices.Num(), 2))
+		{
+			TestEqual(TEXT("embrace first"), Totem->Choices[0].Key, EmbraceKey);
+			TestEqual(TEXT("cleanse second"), Totem->Choices[1].Key, CleanseKey);
+			TestTrue(TEXT("both can be chosen"), Totem->Choices[0].bAvailable && Totem->Choices[1].bAvailable);
+		}
+	}
+	TestEqual(TEXT("a zone under each"), ZonesOnTheFloor(World), 2);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TotemsRow),
+			  FString(TEXT("grim totems: 2 standing")));
+	return true;
+}
+
+// EMBRACING: THE TOTEM GOES, 25% MORE DAMAGE FOR 30 S, AND THREE ELITES OF THE FLOOR'S KINDS COME; A TOTEM GONE REFUSES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsEmbraceTest,
+	"Cataclysm.DungeonModifierEffects.EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsEmbraceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Totem = Mode->GrimTotemsNow()[0];
+	TestEqual(TEXT("nothing before"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	if (!TestTrue(TEXT("embracing acted"), Mode->ChooseAtFloorObject(Totem, EmbraceKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the totem went"), Mode->GrimTotemsNow().Num(), 1);
+
+	const TArray<ACataclysmEnemyCharacter*> Elites = Mode->GrimTotemElitesStanding();
+	TestEqual(TEXT("three Elites came"), Elites.Num(), Effects::GrimTotemsEliteCount);
+	for (const ACataclysmEnemyCharacter* Elite : Elites)
+	{
+		TestEqual(TEXT("at the Elite rung"), Elite->RarityStep, Effects::GrimTotemsEliteRung);
+		TestTrue(TEXT("raised by the rule"), Elite->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Elite->PaysForItsDeath());
+	}
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("25% more attack damage"), TotemRuleOn(Player, TEXT("attack_damage")), 25.0f, 0.001f);
+	TestEqual(TEXT("25% more spell damage"), TotemRuleOn(Player, TEXT("spell_damage")), 25.0f, 0.001f);
+	TestEqual(TEXT("its zone went with it"), ZonesOnTheFloor(World), 1);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TotemsRow),
+			  FString(TEXT("grim totems: 1 standing; embraced: +25% damage for 30 s")));
+
+	Beat(Mode, BeatsFor(Effects::GrimTotemsEmbraceSeconds) - 2);
+	TestEqual(TEXT("still more at 29.75 s"), TotemRuleOn(Player, TEXT("attack_damage")), 25.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("gone by 30.25 s"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	TestFalse(TEXT("a totem gone offers nothing"), Mode->ChooseAtFloorObject(Totem, CleanseKey));
+	TestFalse(TEXT("and a choice no totem offers is refused"),
+			  Mode->ChooseAtFloorObject(Mode->GrimTotemsNow()[0], FName(TEXT("Worship"))));
+	return true;
+}
+
+// CLEANSING: THE TOTEM GOES, AND A CREATURE WITHIN 15 M DEALS 25% LESS DAMAGE WHILE ONE BEYOND DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsCleanseTest,
+	"Cataclysm.DungeonModifierEffects.CleansingAGrimTotemWeakensTheCreaturesNearIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsCleanseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Totem = Mode->GrimTotemsNow()[0];
+	const FVector At = Totem->GetActorLocation();
+	ACataclysmEnemyCharacter* Near = SpawnImpWithHealth(World, At + FVector(1400.0f, 0.0f, 100.0f), 100.0f);
+	ACataclysmEnemyCharacter* Far = SpawnImpWithHealth(World, At + FVector(0.0f, 1600.0f, 100.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature near"), Near) || !TestNotNull(TEXT("and one far"), Far))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Near);
+	Mode->FloorEnemies.Add(Far);
+
+	if (!TestTrue(TEXT("cleansing acted"), Mode->ChooseAtFloorObject(Totem, CleanseKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the totem went"), Mode->GrimTotemsNow().Num(), 1);
+	TestEqual(TEXT("the one 14 m away deals 25% less"),
+			  Near->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 0.75f, 0.001f);
+	TestEqual(TEXT("the one 16 m away is untouched"),
+			  Far->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and no Elites came"), Mode->GrimTotemElitesStanding().Num(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and no strength is on the player"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	return true;
+}
+
+// CLEANSING ALSO CLEANSES THE PLAYER: A BURN AN IMP PUT ON THE PLAYER IS GONE WHEN A TOTEM IS DISPELLED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsCleansePlayerTest,
+	"Cataclysm.DungeonModifierEffects.CleansingAGrimTotemCleansesThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsCleansePlayerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Imp = Mode ? AnImpBeside(World, Player) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("an Imp"), Imp) || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 60.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the player burns"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag())))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("cleansing acted"), Mode->ChooseAtFloorObject(Mode->GrimTotemsNow()[0], CleanseKey)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
+	return true;
+}
+
+// THE CHOICE PANEL'S ASSET: THE PATH THE PLAYER CONTROLLER OPENS LOADS, IS THE PANEL'S CLASS, AND ITS TREE HOLDS THE
+// THREE WIDGETS THE PANEL BINDS. Read from the asset's own widget tree, because a test world has no game instance for
+// `CreateWidget`. It fails until `tools/generate_interface_assets.py` has made `WBP_ChoicePanel`. Ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChoicePanelAssetTest,
+	"Cataclysm.DungeonModifierEffects.TheChoicePanelAssetLoadsAndHoldsItsBoundWidgets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChoicePanelAssetTest::RunTest(const FString& Parameters)
+{
+	// THE PATH THE CONTROLLER ITSELF HOLDS, read by reflection because the property is private, so the test cannot name
+	// a different path from the one play opens.
+	const FSoftClassProperty* Property =
+		FindFProperty<FSoftClassProperty>(ACataclysmPlayerController::StaticClass(), TEXT("ChoicePanelClass"));
+	if (!TestNotNull(TEXT("the player controller names a choice panel"), Property))
+	{
+		return false;
+	}
+	FSoftObjectPtr Path = Property->GetPropertyValue_InContainer(GetDefault<ACataclysmPlayerController>());
+	UClass* PanelClass = Cast<UClass>(Path.LoadSynchronous());
+	if (!TestNotNull(FString::Printf(TEXT("%s loads"), *Path.ToString()), PanelClass))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is the choice panel's class"), PanelClass->IsChildOf(UCataclysmChoicePanelWidget::StaticClass()));
+
+	const UWidgetBlueprintGeneratedClass* Generated = Cast<UWidgetBlueprintGeneratedClass>(PanelClass);
+	const UWidgetTree* Tree = Generated ? Generated->GetWidgetTreeArchetype() : nullptr;
+	if (!TestNotNull(TEXT("it is a widget blueprint with a tree"), Tree))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its tree holds TitleLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("TitleLabel"))) != nullptr);
+	TestTrue(TEXT("PromptLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("PromptLabel"))) != nullptr);
+	TestTrue(TEXT("and ChoiceBox, a panel"), Cast<UPanelWidget>(Tree->FindWidget(TEXT("ChoiceBox"))) != nullptr);
+	return true;
+}
+
+// THE PANEL: A TOTEM'S TWO CHOICES AND LEAVE; LEAVE CHOOSES NOTHING; A CHOICE PRESSED THERE REACHES THE RULE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChoicePanelTest,
+	"Cataclysm.DungeonModifierEffects.TheChoicePanelOffersATotemsChoicesAndLeaveChoosesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChoicePanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Totem = Mode->GrimTotemsNow()[0];
+
+	// NO BLUEPRINT IN A TEST, so the panel has no buttons; its keys are what the buttons would be.
+	UCataclysmChoicePanelWidget* Panel = NewObject<UCataclysmChoicePanelWidget>();
+	Panel->SetObject(Totem);
+	const TArray<FName> Expected = {EmbraceKey, CleanseKey, UCataclysmChoicePanelWidget::LeaveKey};
+	if (TestEqual(TEXT("the totem's two choices and Leave"), Panel->ChoiceKeys().Num(), Expected.Num()))
+	{
+		for (int32 Index = 0; Index < Expected.Num(); ++Index)
+		{
+			TestEqual(FString::Printf(TEXT("button %d"), Index), Panel->ChoiceKeys()[Index], Expected[Index]);
+		}
+	}
+
+	Panel->ChooseForTests(UCataclysmChoicePanelWidget::LeaveKey);
+	TestFalse(TEXT("Leave chooses nothing"), Panel->LastChoiceActed());
+	TestEqual(TEXT("and the totem stands"), Mode->GrimTotemsNow().Num(), 2);
+
+	Panel->SetObject(Totem);
+	Panel->ChooseForTests(CleanseKey);
+	TestTrue(TEXT("a choice pressed on the panel reaches the rule"), Panel->LastChoiceActed());
+	TestEqual(TEXT("and the totem went"), Mode->GrimTotemsNow().Num(), 1);
+	return true;
+}
+
+// A NEW FLOOR: NEW TOTEMS, AND AN EMBRACE UNDER WAY ENDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTotemsFloorTest,
+	"Cataclysm.DungeonModifierEffects.ANewFloorBringsNewGrimTotemsAndEndsTheEmbrace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTotemsFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmFloorObject> Left = Mode->GrimTotemsNow()[1];
+	Mode->ChooseAtFloorObject(Mode->GrimTotemsNow()[0], EmbraceKey);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("embraced on floor 2"), TotemRuleOn(Player, TEXT("attack_damage")), 25.0f, 0.001f)
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("floor 2's totem is gone"), Left.IsValid());
+	TestEqual(TEXT("floor 3 has two"), Mode->GrimTotemsNow().Num(), 2);
+	TestEqual(TEXT("and the embrace ended"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TotemsRow),
+			  FString(TEXT("grim totems: 2 standing")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The vision system, and War_Fog_of_War, the first rule to use it. Issues #1820 and #41.
+//
+// THE DARKENED CAMERA IS NOT LOOKED AT HERE. An automation test has no renderer, so these read the sight the camera was
+// darkened for, and what the hiding does: a creature's hidden flag, whether it may have a bar, and whether it may be
+// clicked.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName FogRow(UCataclysmDungeonModifierEffects::FogOfWarKey);
+
+	/** A dungeon carrying these rows, on floor 2 with its own creatures cleared, one beat in. */
+	ACataclysmDungeonGameMode* ASightFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+										   const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** An Imp this far along X from the player. */
+	ACataclysmEnemyCharacter* AnImpAway(UWorld* World, const FPossessedPlayer& Player, float Cm)
+	{
+		const FVector At = Player.Character->GetActorLocation();
+		return SpawnImpWithHealth(World, FVector(At.X + Cm, At.Y, At.Z), 100.0f);
+	}
+}
+
+// THE FIGURE, AND THE SIGHT THE ROWS GIVE: 10 M WITH FOG OF WAR, UNLIMITED WITHOUT IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFogFiguresTest,
+	"Cataclysm.DungeonModifierEffects.FogOfWarFiguresAndTheSightTheRowsGive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFogFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("10 m of sight"), Effects::FogOfWarSightCm, 1000.0f, 0.001f);
+	TestEqual(TEXT("fog gives 10 m"), Effects::SightRadiusFor({FogRow}), 1000.0f, 0.001f);
+	TestEqual(TEXT("no rows give unlimited"), Effects::SightRadiusFor({}), 0.0f, 0.001f);
+	TestEqual(TEXT("a row that does not limit sight gives unlimited"),
+			  Effects::SightRadiusFor({FName(Effects::TrialOfEnduranceKey)}), 0.0f, 0.001f);
+	return true;
+}
+
+// IN FOG A CREATURE MORE THAN 10 M AWAY IS HIDDEN, HAS NO BAR AND CANNOT BE CLICKED; ONE WITHIN IS NOT; COMING CLOSE SHOWS IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFogHidesTest,
+	"Cataclysm.DungeonModifierEffects.InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFogHidesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {FogRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Near = AnImpAway(World, Player, 900.0f);
+	ACataclysmEnemyCharacter* Far = AnImpAway(World, Player, 1100.0f);
+	if (!TestNotNull(TEXT("an Imp 9 m away"), Near) || !TestNotNull(TEXT("and one 11 m away"), Far))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("the player sees 10 m"), Mode->PlayerSightRadiusCm(), 1000.0f, 0.001f);
+	TestEqual(TEXT("and the camera is darkened for it"), Player.Character->SightDarknessRadiusCm(), 1000.0f, 0.001f);
+	TestFalse(TEXT("the Imp 9 m away is seen"), Near->IsHidden());
+	TestTrue(TEXT("the Imp 11 m away is hidden"), Far->IsHidden());
+	TestTrue(TEXT("the one seen may have a bar"),
+			 UCataclysmCombatOverlay::IsOverheadBarCandidate(Near, Player.Character));
+	TestFalse(TEXT("the hidden one may not"),
+			  UCataclysmCombatOverlay::IsOverheadBarCandidate(Far, Player.Character));
+	TestTrue(TEXT("the one seen can be clicked"),
+			 ACataclysmPlayerController::IsClickableEnemy(Near, Player.Character));
+	TestFalse(TEXT("the hidden one cannot"),
+			  ACataclysmPlayerController::IsClickableEnemy(Far, Player.Character));
+
+	// COMING WITHIN THE FOG SHOWS IT AGAIN.
+	const FVector At = Player.Character->GetActorLocation();
+	Far->SetActorLocation(FVector(At.X + 500.0f, At.Y, Far->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("5 m away it is seen again"), Far->IsHidden());
+	return true;
+}
+
+// WALKING WITHIN THE FOG SHOWS WHAT IT HID; A FLOOR WITHOUT THE FOG LIGHTENS THE CAMERA AND HIDES NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFogLiftsTest,
+	"Cataclysm.DungeonModifierEffects.WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFogLiftsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {FogRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Far = AnImpAway(World, Player, 2000.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 20 m away"), Far) || !TestTrue(TEXT("hidden in the fog"), Far->IsHidden()))
+	{
+		return false;
+	}
+
+	// ON THE SAME FLOOR, WALKING TO 5 M OF IT: WITHIN THE FOG'S TEN METRES THE ONE IT HID IS SHOWN AGAIN. Here and not on
+	// the next floor, because changing floors destroys every creature of the last one.
+	const FVector Near = Far->GetActorLocation() - FVector(500.0f, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Player.Character->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("walking within the fog's ten metres shows the one it hid"), Far->IsHidden());
+
+	// THE NEXT FLOOR CARRIES NO FOG: THE SIGHT IS UNLIMITED, THE CAMERA IS LIGHTENED AND WHAT THE FOG HID IS SHOWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Stranger = AnImpAway(World, Player, 2000.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("unlimited sight"), Mode->PlayerSightRadiusCm(), 0.0f, 0.001f);
+	TestEqual(TEXT("the camera is not darkened"), Player.Character->SightDarknessRadiusCm(), 0.0f, 0.001f);
+	TestTrue(TEXT("an Imp 20 m away on a floor without fog is seen"), Stranger && !Stranger->IsHidden());
+	return true;
+}
+
+// A TRAVELLING SWARM COVERING THE PLAYER CUTS THEIR SIGHT TO 4 M AND HIDES WHAT IS BEYOND; OUT OF IT, SIGHT RETURNS.
+// Famine_Swarm_of_Locusts' "obscuring vision", through the vision system. Issues #1820 and #41.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLocustsObscureTest,
+	"Cataclysm.DungeonModifierEffects.ASwarmOfLocustsCoveringThePlayerCutsTheirSightToFourMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLocustsObscureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("4 m of sight under a swarm"), Effects::SwarmOfLocustsSightCm, 400.0f, 0.001f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ALocustFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Swarm = ATravellingSwarm(*this, Mode);
+	if (!Swarm)
+	{
+		return false;
+	}
+
+	// UNDER THE SWARM, WITH AN IMP 5 M AWAY: SIGHT IS 4 M AND THE IMP IS HIDDEN.
+	const float Z = Player.Character->GetActorLocation().Z;
+	const FVector Under = Swarm->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(Under.X, Under.Y, Z));
+	ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(World, FVector(Under.X + 500.0f, Under.Y, Z), 100.0f);
+	if (!TestNotNull(TEXT("an Imp 5 m away"), Imp) || !TestTrue(TEXT("the swarm covers the player"), Swarm->Covers(Under)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("under the swarm the player sees 4 m"), Mode->PlayerSightRadiusCm(), 400.0f, 0.001f);
+	TestTrue(TEXT("and the Imp 5 m away is hidden"), Imp->IsHidden());
+
+	// FAR OUT OF THE SWARM, THE IMP BESIDE THEM AGAIN: SIGHT IS UNLIMITED AND THE IMP IS SEEN.
+	const FVector Clear = Under + FVector(0.0f, Effects::SwarmOfLocustsRadiusCm * 4.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Clear.X, Clear.Y, Z));
+	Imp->SetActorLocation(FVector(Clear.X + 500.0f, Clear.Y, Imp->GetActorLocation().Z));
+	if (!TestFalse(TEXT("out of the swarm"), Swarm->Covers(Clear)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("out of the swarm sight is unlimited"), Mode->PlayerSightRadiusCm(), 0.0f, 0.001f);
+	TestFalse(TEXT("and the Imp is seen"), Imp->IsHidden());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Void_The_Blackest_Shadow, on the vision system. Issues #1820 and #41. The Invisible Stalker buff holds only while
+// a creature is outside the light, as the owner decided on 2026-09-26.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName DarknessRow(UCataclysmDungeonModifierEffects::BlackestShadowKey);
+}
+
+// THE FIGURES: A 6 M LIGHT, AND A BUFF OF 100% MORE DAMAGE AND 50% FASTER ATTACKS; THE LIGHT IS THE PLAYER'S SIGHT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarknessFiguresTest,
+	"Cataclysm.DungeonModifierEffects.TheBlackestShadowFiguresLightAndStalker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarknessFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a 6 m light"), Effects::BlackestShadowLightCm, 600.0f, 0.001f);
+	TestEqual(TEXT("100% more damage"), Effects::InvisibleStalkerDamageMorePercent, 100.0f, 0.001f);
+	TestEqual(TEXT("50% faster attacks"), Effects::InvisibleStalkerAttackSpeedMorePercent, 50.0f, 0.001f);
+	TestEqual(TEXT("the light is the player's sight"), Effects::SightRadiusFor({DarknessRow}), 600.0f, 0.001f);
+	TestEqual(TEXT("with fog too, the shorter holds"), Effects::SightRadiusFor({DarknessRow, FogRow}), 600.0f, 0.001f);
+	return true;
+}
+
+// OUTSIDE THE LIGHT A CREATURE IS HIDDEN AND A STALKER: TWICE THE DAMAGE, AND ITS SWING INTERVAL A THIRD SHORTER; INSIDE
+// IT, NEITHER; WALKING INTO THE LIGHT TAKES THE BUFF OFF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarknessStalkerTest,
+	"Cataclysm.DungeonModifierEffects.OutsideTheLightACreatureIsHiddenAndAnInvisibleStalker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarknessStalkerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {DarknessRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Lit = AnImpAway(World, Player, 500.0f);
+	ACataclysmEnemyCharacter* Dark = AnImpAway(World, Player, 700.0f);
+	if (!TestNotNull(TEXT("an Imp 5 m away"), Lit) || !TestNotNull(TEXT("and one 7 m away"), Dark))
+	{
+		return false;
+	}
+	const float Own = Lit->SecondsBetweenAttacks();
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("the player sees 6 m"), Mode->PlayerSightRadiusCm(), 600.0f, 0.001f);
+	TestFalse(TEXT("the Imp in the light is seen"), Lit->IsHidden());
+	TestFalse(TEXT("and is no stalker"), Mode->IsAnInvisibleStalker(Lit));
+	TestEqual(TEXT("its damage is its own"),
+			  Lit->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and so is its swing interval"), Lit->SecondsBetweenAttacks(), Own, 0.001f);
+
+	TestTrue(TEXT("the Imp outside the light is hidden"), Dark->IsHidden());
+	TestTrue(TEXT("and a stalker"), Mode->IsAnInvisibleStalker(Dark));
+	TestEqual(TEXT("with twice the damage"),
+			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 2.0f, 0.001f);
+	TestEqual(TEXT("and a swing interval 1.5 times as fast"), Dark->SecondsBetweenAttacks(), Own / 1.5f, 0.001f);
+
+	// INTO THE LIGHT: SEEN, AND THE BUFF IS GONE.
+	const FVector At = Player.Character->GetActorLocation();
+	Dark->SetActorLocation(FVector(At.X + 300.0f, At.Y, Dark->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("in the light it is seen"), Dark->IsHidden());
+	TestFalse(TEXT("and is no longer a stalker"), Mode->IsAnInvisibleStalker(Dark));
+	TestEqual(TEXT("its damage is its own again"),
+			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and so is its swing interval"), Dark->SecondsBetweenAttacks(), Own, 0.001f);
+	return true;
+}
+
+// THE LIGHT TAKES A STALKER'S BUFF OFF; A FLOOR WITHOUT THE DARKNESS MAKES NO STALKER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarknessLiftsTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithoutTheBlackestShadowEndsEveryStalker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarknessLiftsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {DarknessRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Dark = AnImpAway(World, Player, 2000.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 20 m away"), Dark) || !TestTrue(TEXT("a stalker"), Mode->IsAnInvisibleStalker(Dark)))
+	{
+		return false;
+	}
+
+	// ON THE SAME FLOOR, WALKING TO 3 M OF IT: INSIDE THE LIGHT THE BUFF COMES OFF AND IT IS SEEN. Here and not on the next
+	// floor, because changing floors destroys every creature of the last one.
+	const FVector Near = Dark->GetActorLocation() - FVector(300.0f, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Player.Character->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("within the light it is no stalker"), Mode->IsAnInvisibleStalker(Dark));
+	TestEqual(TEXT("its damage is its own"),
+			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("its attack speed too"), Dark->DarknessAttackSpeedMultiplier, 1.0f, 0.001f);
+	TestFalse(TEXT("and it is seen"), Dark->IsHidden());
+
+	// A FLOOR WITHOUT THE ROW MAKES NO STALKER, even of a creature 20 m away.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Stranger = AnImpAway(World, Player, 2000.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 20 m away on floor 3"), Stranger))
+	{
+		return false;
+	}
+	TestFalse(TEXT("is no stalker"), Mode->IsAnInvisibleStalker(Stranger));
+	TestEqual(TEXT("with its own damage"),
+			  Stranger->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and attack speed"), Stranger->DarknessAttackSpeedMultiplier, 1.0f, 0.001f);
+	TestFalse(TEXT("and is seen"), Stranger->IsHidden());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Void_Shadowy_Enemies. Issues #1820 and #41. Every floor creature takes no damage until light reaches it: a light
+// zone, The Blackest Shadow's light, or four seconds after a fire hit. Ruled on 2026-09-26.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ShadowyRow(UCataclysmDungeonModifierEffects::ShadowyEnemiesKey);
+
+	/** An Imp this far along X from the player, put on the floor's list as the floor's own creatures are. */
+	ACataclysmEnemyCharacter* AFloorImpAway(ACataclysmDungeonGameMode* Mode, UWorld* World,
+											const FPossessedPlayer& Player, float Cm)
+	{
+		ACataclysmEnemyCharacter* Imp = AnImpAway(World, Player, Cm);
+		if (Imp)
+		{
+			Mode->FloorEnemies.Add(Imp);
+		}
+		return Imp;
+	}
+
+	/** A blow from the player carrying `Element.Demonic`, this project's fire, as Carrion Feast's tests deal one. */
+	void AFireHit(const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Target, float Damage)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.SkillElement = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Target, Damage, Delivery);
+	}
+}
+
+// THE FIGURES: THREE ZONES OF 4 M, AND FOUR SECONDS AFTER A FIRE HIT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyFiguresTest,
+	"Cataclysm.DungeonModifierEffects.ShadowyEnemiesFiguresZonesRadiusAndFireSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three light zones a floor"), Effects::ShadowyEnemiesLightZonesPerFloor, 3);
+	TestEqual(TEXT("each 4 m across its radius"), Effects::ShadowyEnemiesLightRadiusCm, 400.0f, 0.001f);
+	TestEqual(TEXT("four seconds after a fire hit"), Effects::ShadowyEnemiesFireExposureSeconds, 4.0f, 0.001f);
+	return true;
+}
+
+// A SHROUDED CREATURE TAKES NOTHING; IN A LIGHT ZONE IT IS HURT; OUT OF IT AGAIN IT KEEPS THE HURT AND TAKES NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyLightTest,
+	"Cataclysm.DungeonModifierEffects.AShroudedCreatureTakesNoDamageUntilALightReachesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyLightTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FVector> Lights = Mode->ShadowyEnemiesLightsNow();
+	if (!TestTrue(TEXT("the floor has light zones"), Lights.Num() > 0)
+		|| !TestEqual(TEXT("and every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	// AND A CONTROL THE RULE LEAVES ALONE: not one of the floor's creatures, so never shrouded. Each blow is dealt to both
+	// and the Imp's loss is compared with the control's, so what the blow itself is worth -- the player's slashing
+	// weapon adds its tenth to a hit on health -- is measured rather than assumed.
+	ACataclysmEnemyCharacter* Control = AnImpAway(World, Player, -300.0f);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestNotNull(TEXT("and a control Imp"), Control))
+	{
+		return false;
+	}
+	const auto Blow = [&Player](ACataclysmEnemyCharacter* Target)
+	{
+		const float Before = HealthOf(Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Target, 10.0f);
+		return Before - HealthOf(Target);
+	};
+	Beat(Mode, 1);
+	TestTrue(TEXT("away from every light it is shrouded"), Imp->bShrouded);
+	TestEqual(TEXT("and says so under its bar"), UCataclysmCombatOverlay::ShroudedTextFor(Imp), FString(TEXT("Shrouded")));
+	TestFalse(TEXT("the control is not shrouded"), Control->bShrouded);
+	const float Worth = Blow(Control);
+	if (!TestTrue(TEXT("a blow takes something off the control"), Worth > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow takes nothing off it"), Blow(Imp), 0.0f, 0.01f);
+
+	// INTO THE FIRST LIGHT: HURT AS ANY CREATURE IS.
+	Imp->SetActorLocation(FVector(Lights[0].X, Lights[0].Y, Imp->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("in the light it is not shrouded"), Imp->bShrouded);
+	TestTrue(TEXT("and nothing is said under its bar"), UCataclysmCombatOverlay::ShroudedTextFor(Imp).IsEmpty());
+	TestEqual(TEXT("a blow takes off it what it takes off the control"), Blow(Imp), Worth, 0.01f);
+
+	// OUT OF IT AGAIN: SHROUDED, KEEPING THE HURT.
+	const FVector At = Player.Character->GetActorLocation();
+	Imp->SetActorLocation(FVector(At.X + 300.0f, At.Y, Imp->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestTrue(TEXT("out of the light it is shrouded again"), Imp->bShrouded);
+	TestEqual(TEXT("and keeps what it took"), HealthOf(Imp), 100.0f - Worth, 0.01f);
+	TestEqual(TEXT("and a blow takes nothing more"), Blow(Imp), 0.0f, 0.01f);
+	return true;
+}
+
+// A FIRE HIT DEALS NOTHING AND EXPOSES THE CREATURE AT ONCE, FOR FOUR SECONDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyFireTest,
+	"Cataclysm.DungeonModifierEffects.AFireHitExposesAShroudedCreatureForFourSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyFireTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	// AND A CONTROL THE RULE LEAVES ALONE, for the shroud test's reason: the player's slashing weapon adds its tenth to a
+	// hit on health, so a blow's worth is measured on the control rather than assumed.
+	ACataclysmEnemyCharacter* Control = AnImpAway(World, Player, -300.0f);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestNotNull(TEXT("and a control Imp"), Control))
+	{
+		return false;
+	}
+	const auto Blow = [&Player](ACataclysmEnemyCharacter* Target)
+	{
+		const float Before = HealthOf(Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Target, 10.0f);
+		return Before - HealthOf(Target);
+	};
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("it is shrouded"), Imp->bShrouded))
+	{
+		return false;
+	}
+	const float Worth = Blow(Control);
+	if (!TestTrue(TEXT("a blow takes something off the control"), Worth > 0.0f))
+	{
+		return false;
+	}
+
+	AFireHit(Player, Imp, 10.0f);
+	TestEqual(TEXT("the fire hit itself takes nothing off"), HealthOf(Imp), 100.0f, 0.01f);
+	TestFalse(TEXT("and exposes it at once"), Imp->bShrouded);
+	TestEqual(TEXT("so the next blow takes off it what it takes off the control"), Blow(Imp), Worth, 0.01f);
+
+	// FOUR SECONDS ARE SIXTEEN BEATS: EXPOSED THROUGH THE FIFTEENTH, SHROUDED ON THE SIXTEENTH.
+	Beat(Mode, 15);
+	TestFalse(TEXT("still exposed after 3.75 s"), Imp->bShrouded);
+	Beat(Mode, 1);
+	TestTrue(TEXT("shrouded again after 4 s"), Imp->bShrouded);
+	TestEqual(TEXT("and a blow takes nothing"), Blow(Imp), 0.0f, 0.01f);
+	TestEqual(TEXT("so it keeps only the one blow's hurt"), HealthOf(Imp), 100.0f - Worth, 0.01f);
+	return true;
+}
+
+// AN EVADED FIRE HIT EXPOSES NOTHING; THE SAME HIT NOT EVADED DOES. As ruled on 2026-09-26, after the decision of
+// 2026-09-05 that an evaded attack applies nothing it was carrying.
+//
+// REAL BLOWS, SO THE TEST SHOWS AN EVADED DEMONIC BLOW ARRIVES MARKED EVADED, and not only that the rule reads the
+// mark. A creature holds no stat line, so its evasion is its attribute: at 100 the blow is evaded, which is asserted as
+// set-up; at 0 it is not, and that second blow is the control that shows a real fire blow exposes it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyEvadedTest,
+	"Cataclysm.DungeonModifierEffects.AnEvadedFireHitExposesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyEvadedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	UAbilitySystemComponent* ImpSystem = Imp ? Imp->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestNotNull(TEXT("with an ability system"), ImpSystem))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("it is shrouded"), Imp->bShrouded))
+	{
+		return false;
+	}
+
+	FCataclysmHitDelivery Fire;
+	Fire.SkillElement = FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Demonic")));
+
+	// EVASION 100: THE FIRE BLOW IS EVADED, and it leaves the Imp shrouded.
+	ImpSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	FCataclysmDamageResult Evaded;
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f, Fire, &Evaded);
+	if (!TestTrue(TEXT("set-up: the fire blow was evaded"), Evaded.bEvaded))
+	{
+		return false;
+	}
+	TestTrue(TEXT("an evaded fire hit leaves it shrouded"), Imp->bShrouded);
+
+	// EVASION 0: THE SAME FIRE BLOW LANDS, and exposes it.
+	ImpSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	FCataclysmDamageResult Landed;
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f, Fire, &Landed);
+	if (!TestFalse(TEXT("set-up: the control fire blow was not evaded"), Landed.bEvaded))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the same fire blow not evaded exposes it"), Imp->bShrouded);
+	return true;
+}
+
+// THE BLACKEST SHADOW'S LIGHT IS LIGHT: A CREATURE WITHIN IT IS EXPOSED, ONE BEYOND IT SHROUDED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyOrbTest,
+	"Cataclysm.DungeonModifierEffects.TheBlackestShadowsLightExposesAShroudedCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyOrbTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player,
+		{ShadowyRow, FName(UCataclysmDungeonModifierEffects::BlackestShadowKey)});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Lit = AFloorImpAway(Mode, World, Player, 500.0f);
+	ACataclysmEnemyCharacter* Dark = AFloorImpAway(Mode, World, Player, 700.0f);
+	if (!TestNotNull(TEXT("an Imp 5 m away"), Lit) || !TestNotNull(TEXT("and one 7 m away"), Dark))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("the Imp in the light is exposed"), Lit->bShrouded);
+	TestTrue(TEXT("the Imp beyond it is shrouded"), Dark->bShrouded);
+	return true;
+}
+
+// A FLOOR WITHOUT THE ROW TAKES EVERY SHROUD OFF, AND HAS NO LIGHT ZONES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyLiftsTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithoutShadowyEnemiesTakesEveryShroudOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyLiftsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestTrue(TEXT("shrouded"), Imp->bShrouded))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	// A CREATURE OF THIS FLOOR, since changing floors destroys every creature of the last one.
+	ACataclysmEnemyCharacter* Stranger = AFloorImpAway(Mode, World, Player, 300.0f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("an Imp 3 m away on floor 3"), Stranger))
+	{
+		return false;
+	}
+	TestFalse(TEXT("is not shrouded"), Stranger->bShrouded);
+	TestEqual(TEXT("the floor has no light zones"), Mode->ShadowyEnemiesLightsNow().Num(), 0);
+	TestEqual(TEXT("and none is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), 0);
+	return true;
+}
+
+// ON A FLOOR WITH A BOSS AT ITS EXIT, ONE MORE LIGHT ZONE LIES ON THE EXIT, AND THE GATEKEEPER THERE IS EXPOSED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyExitTest,
+	"Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsTheExitWhereTheBossStands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ShadowyRow};
+	Mode->TotalFloors = 2;
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Elite;
+
+	// FLOOR 1 OF AN ELITE DUNGEON HAS A BOSS AT ITS EXIT, as the Nothing Is Forgotten test finds.
+	if (!TestTrue(TEXT("floor 1 of an Elite dungeon"), Mode->GoToFloor(1))
+		|| !TestTrue(TEXT("has a boss at its exit"), Mode->FloorBrief.bBossAtTheExit))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<FVector> Lights = Mode->ShadowyEnemiesLightsNow();
+	const FVector Exit = Mode->CurrentFloor->ExitWorld();
+	ACataclysmEnemyCharacter* Gatekeeper = nullptr;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		if (IsValid(Creature) && Creature->IsA<ACataclysmGatekeeperCharacter>())
+		{
+			Gatekeeper = Creature;
+		}
+	}
+	if (!TestTrue(TEXT("the floor has light zones"), Lights.Num() > 0)
+		|| !TestNotNull(TEXT("a Gatekeeper stands"), Gatekeeper))
+	{
+		return false;
+	}
+
+	// SET-UP: NO ZONE BUT THE EXIT'S REACHES THE GATEKEEPER, so its being exposed below can only come from the exit's
+	// zone. Every zone not on the exit is checked, so a floor with no exit zone is checked whole.
+	// Asserted rather than assumed, as the coordinating session asked on 2026-09-26: a floor whose random zones fall
+	// on the exit would let this test pass with the exit's zone missing.
+	for (const FVector& Light : Lights)
+	{
+		if (FVector::Dist2D(Light, Exit) >= 1.0f
+			&& !TestTrue(TEXT("set-up: no random light zone reaches the Gatekeeper"),
+						 FVector::Dist2D(Light, Gatekeeper->GetActorLocation()) > Effects::ShadowyEnemiesLightRadiusCm))
+		{
+			return false;
+		}
+	}
+
+	TestTrue(TEXT("the last lies on the exit"), FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
+	TestTrue(TEXT("one more than the row's three, or all the floor had room for and one"),
+			 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	TestEqual(TEXT("every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num());
+	TestTrue(TEXT("on the exit's light"),
+			 FVector::Dist2D(Gatekeeper->GetActorLocation(), Exit) <= Effects::ShadowyEnemiesLightRadiusCm);
+	TestFalse(TEXT("so it is exposed"), Gatekeeper->bShrouded);
 	return true;
 }
 

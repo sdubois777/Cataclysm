@@ -456,6 +456,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ManaCostAsCurrentHealthPercent = 0.0f;
 
+	/** Damage a Grim Totem the player embraced gives, more, for a time. Issues #1820 and #41. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float GrimEmbraceDamageMorePercent = 0.0f;
+
 	/**
 	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
 	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
@@ -529,6 +533,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SkillsLockedValue <= 0.0f
 			&& SpellsLockedValue <= 0.0f
 			&& ManaCostAsCurrentHealthPercent <= 0.0f
+			&& GrimEmbraceDamageMorePercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
@@ -1794,6 +1799,8 @@ public:
 	 *   draws its own rung like every creature, so `IsBoss()` alone is a 1% draw.
 	 * - THE PLAYER'S OWN DEATH CLEARS BOTH, under the owner's ruling of 2026-09-10 that
 	 *   anything lasting only for a dungeon ends at a death. Leaving the dungeon empties them.
+	 * - A CLEANSE OF THE PLAYER CLEARS BOTH, since 2026-09-26: the row says "persist unless
+	 *   cleansed". `UCataclysmDebuffs::Cleanse`, heard by the dungeon game mode.
 	 * - FLOOR 1 COUNTS.
 	 */
 	static const TCHAR* StarvationCurseKey;
@@ -1863,6 +1870,8 @@ public:
 	 * - A FLOOR'S BOSS CLEANSES THE DEBUFFS ONLY, and the buffs stay: a cleanse removes what
 	 *   harms. The player's own death clears every stack (the owner's ruling of 2026-09-10),
 	 *   and leaving the dungeon empties them.
+	 * - A CLEANSE OF THE PLAYER CLEARS THE DEBUFFS ONLY TOO, since 2026-09-26, the split a
+	 *   floor's boss makes. `UCataclysmDebuffs::Cleanse`, heard by the dungeon game mode.
 	 * - FLOOR 1 COUNTS.
 	 */
 	static const TCHAR* ChaosTouchedKey;
@@ -2380,8 +2389,10 @@ public:
 	 *   `SwarmOfLocustsShelterRadiusCm` across, doing nothing, placed by Eternal Chorus's picker. A player inside
 	 *   one takes nothing from a swarm.
 	 * - CREATURES ARE NOT BURNED.
-	 * - NOT BUILT: "obscuring vision", which needs the vision system. "Use specific abilities" has no rule of its
-	 *   own: moving out of the swarm's line escapes it, and resistances meet its damage.
+	 * - "OBSCURING VISION": while a travelling swarm covers the player, the player's sight is
+	 *   `SwarmOfLocustsSightCm`, through the vision system; a shelter does not lift it. Accepted by the coordinating
+	 *   session, 2026-09-26. "Use specific abilities" has no rule of its own: moving out of the swarm's line escapes
+	 *   it, and resistances meet its damage.
 	 */
 	static const TCHAR* SwarmOfLocustsKey;
 
@@ -2423,9 +2434,9 @@ public:
 	 * - EACH STACK BURNS `RawSewagePercentPerStack` OF MAXIMUM HEALTH A SECOND, summed, typed as the row: the
 	 *   rule's own burn in Plague Convergence's pattern, a share of maximum health, and NOT the Disease ailment.
 	 * - THE STACKS ARE THE DUNGEON'S. They stay on later floors, with the row or not, and clear when a floor's boss
-	 *   dies or the player dies, as Wasting Sickness's do. No way for a player to cleanse their own debuffs exists
-	 *   in play yet; the enchantment "You are cleansed every 5 seconds" is text only, and must clear these stacks
-	 *   when it is built.
+	 *   dies or the player dies, as Wasting Sickness's do, AND WHEN THE PLAYER IS CLEANSED, since 2026-09-26:
+	 *   `UCataclysmDebuffs::Cleanse`, heard by the dungeon game mode, which the enchantment "You are cleansed every 5
+	 *   seconds" will call when its row is written, and Grim Totems' Cleanse choice when that change moves.
 	 */
 	static const TCHAR* RawSewageKey;
 
@@ -2515,6 +2526,63 @@ public:
 	static const TCHAR* TrialOfEnduranceKey;
 
 	/**
+	 * The row whose floor the player sees only a short way across: creatures beyond the player's sight are hidden, and
+	 * the camera is darkened. Issues #1820 and #41. The first rule to use the vision system (`SightRadiusFor`,
+	 * `ACataclysmDungeonGameMode::PlayerSightRadiusCm`).
+	 *
+	 * "Vision is limited by a thick battlefield fog. Players can only see a short distance ahead, making ambushes
+	 * frequent and navigating difficult."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-26: `FogOfWarSightCm` of sight, the
+	 * distance a drop's or a floor object's name is shown from. A play-test value.
+	 */
+	static const TCHAR* FogOfWarKey;
+
+	/**
+	 * The row whose floor is dark but for a small light around the player: creatures outside it are hidden and, while
+	 * outside it, deal more damage and attack faster. Issues #1820 and #41. On the vision system.
+	 *
+	 * "The dungeon is pitch black. A single, small orb of light follows the player, but it is not enough to illuminate
+	 * the entire dungeon. Enemies that are not in the light are completely invisible, and they gain a permanent
+	 * "Invisible Stalker" buff that grants them 100% more damage and 50% faster attack speed."
+	 *
+	 * DECIDED BY THE OWNER, 2026-09-26: the Invisible Stalker buff holds only while the creature is outside the light
+	 * and goes when it enters; "permanent" means it has no timer. The light is `BlackestShadowLightCm`, the player's
+	 * sight on such a floor, a play-test value accepted by the coordinating session. "Completely invisible" is the
+	 * body, bar and name, not the telegraph, as ruled for the vision system.
+	 */
+	static const TCHAR* BlackestShadowKey;
+
+	/**
+	 * The row whose creatures take no damage until light reaches them. Issues #1820 and #41.
+	 *
+	 * "Void dungeons could be infested with shadowy enemies that can only be harmed when exposed to light. Players
+	 * must use their abilities or environmental factors to illuminate and weaken these foes."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-26. The row states no figure:
+	 * - EVERY CREATURE THE FLOOR PUTS THERE IS SHROUDED (`ACataclysmEnemyCharacter::bShrouded`), the floor's boss and
+	 *   the exit's Gatekeeper included; not a creature a rule raised, and not one that cannot be hurt anyway. A
+	 *   shrouded creature takes no damage; its blows, and the blows on it, still resolve.
+	 * - IT IS EXPOSED, and takes damage as any creature does, while it stands within `ShadowyEnemiesLightRadiusCm`
+	 *   of a light zone's centre; while it stands in The Blackest Shadow's light on a floor carrying both rows; and
+	 *   for `ShadowyEnemiesFireExposureSeconds` after a fire hit reaches it: a blow carrying `Element.Demonic` from
+	 *   anyone but a creature, not evaded. The fire hit itself deals nothing.
+	 * - `ShadowyEnemiesLightZonesPerFloor` LIGHT ZONES A FLOOR, placed as Eternal Chorus's sources are, AND ONE MORE
+	 *   ON THE EXIT when a boss stands there, so the fight at the exit can always be won by a character with no fire.
+	 *   Visible and doing no damage; a Horde arena keeps its zones for its waves.
+	 * - BURNING GROUND EXPOSES NOTHING: a zone carries no element tag of its own. A flare the player carries, which
+	 *   would give every class a light of its own, is a later change.
+	 */
+	static const TCHAR* ShadowyEnemiesKey;
+
+	/**
+	 * The player's sight on a floor carrying these rows: the smallest radius any of them asks for, in centimetres, or 0
+	 * for unlimited. The vision system's one source of the radius, so a rule asks here and nothing else writes it.
+	 * Issues #1820 and #41.
+	 */
+	static float SightRadiusFor(const TArray<FName>& Modifiers);
+
+	/**
 	 * The row where a kill of the player's may leave a voidling that comes for the player and, reaching
 	 * them, takes some of their power until they stand in light. Issues #1820 and #41.
 	 *
@@ -2567,6 +2635,34 @@ public:
 	 *   creatures and paying normally, until the project owner names a creature for it.
 	 */
 	static const TCHAR* ObsidianSarcophagiKey;
+
+	/**
+	 * The row whose totems the player clicks and chooses at: embrace one for a moment's strength that brings Elite
+	 * creatures, or cleanse it to weaken the creatures near it. Issues #1820 and #41. The first rule to use the choice
+	 * screen (`ACataclysmFloorObject`, `UCataclysmChoicePanelWidget`).
+	 *
+	 * "Throughout the dungeons, players encounter grim totems emanating dark energy. Interacting with these totems
+	 * offers a choice between embracing their malevolent power or dispelling them to cleanse the area. Embracing the
+	 * power of the totems grants temporary bonuses but may also trigger more difficult enemy spawns or curses.
+	 * Cleansing the totems purifies the environment, removing harmful effects and weakening nearby enemies."
+	 *
+	 * FIGURES BY THIS CHANGE UNDER THE OWNER'S DELEGATION, 2026-09-26, every one a play-test value, AND BUILT:
+	 * - `GrimTotemsPerFloor` TOTEMS A FLOOR, `GrimTotemsPerHordeArena` ON A HORDE ARENA, kept across its waves, placed
+	 *   by Eternal Chorus's picker, each a floor object named "Grim Totem" with a zone drawn under it.
+	 * - EMBRACE: `GrimTotemsEmbraceDamageMorePercent` more damage for `GrimTotemsEmbraceSeconds`, and
+	 *   `GrimTotemsEliteCount` creatures of the floor's kinds at the Elite rung come `GrimTotemsEliteAwayCm` from the
+	 *   totem. The totem goes.
+	 * - CLEANSE: every creature of the floor within `GrimTotemsCleanseRadiusCm` of the totem deals
+	 *   `GrimTotemsCleanseDamageLessPercent` less damage for as long as it lives. The totem goes.
+	 * - "REMOVING HARMFUL EFFECTS", SINCE 2026-09-30: a dispelled totem also cleanses the player
+	 *   (`UCataclysmDebuffs::Cleanse`), removing what others put on the player. A floor rule's zones are not removed:
+	 *   the rules draw them again on the next beat.
+	 */
+	static const TCHAR* GrimTotemsKey;
+
+	/** Grim Totems' two choices, as the rule and the choice panel name them. */
+	static constexpr const TCHAR* GrimTotemsEmbrace = TEXT("Embrace");
+	static constexpr const TCHAR* GrimTotemsCleanse = TEXT("Cleanse");
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -5112,6 +5208,9 @@ public:
 	static constexpr float WarzoneDamageMorePercentPerPoint = 10.0f;
 	static constexpr float WarzoneResistancePercentPerPoint = 10.0f;
 
+	/** The player's sight while a travelling swarm covers them, a play-test value. */
+	static constexpr float SwarmOfLocustsSightCm = 400.0f;
+
 	static_assert(
 		SwarmOfLocustsSecondsBetween > SwarmOfLocustsWarningSeconds + SwarmOfLocustsTravelsCm / SwarmOfLocustsSpeedCmPerSecond,
 		"A swarm must have crossed before the next one is due, or two would stand at once.");
@@ -5191,6 +5290,18 @@ public:
 		return 1.0f + FMath::Clamp(Stacks, 0, CarrionFeastMostStacks) * CarrionFeastStrongerPercentPerCarcass / 100.0f;
 	}
 
+	/** Grim Totems' figures, every one a play-test value. See the key. The Elite rung is Royal Guard's. */
+	static constexpr int32 GrimTotemsPerFloor = 2;
+	static constexpr int32 GrimTotemsPerHordeArena = 1;
+	static constexpr float GrimTotemsRadiusCm = 150.0f;
+	static constexpr float GrimTotemsEmbraceDamageMorePercent = 25.0f;
+	static constexpr float GrimTotemsEmbraceSeconds = 30.0f;
+	static constexpr int32 GrimTotemsEliteCount = 3;
+	static constexpr float GrimTotemsEliteAwayCm = 800.0f;
+	static constexpr int32 GrimTotemsEliteRung = RoyalGuardLowestRungThatSummons;
+	static constexpr float GrimTotemsCleanseRadiusCm = 1500.0f;
+	static constexpr float GrimTotemsCleanseDamageLessPercent = 25.0f;
+
 	/**
 	 * Void Parasite's figures, every one a play-test value. See the key. The chance is Demon Prince's
 	 * ten per cent; five stacks of six take 30%, the bottom of the enchantment "You deal 20%-35% less
@@ -5234,6 +5345,19 @@ public:
 	static constexpr float TrialOfEnduranceSeconds = 300.0f;
 	static constexpr float TrialOfEnduranceDamageMultiplier = 2.0f;
 	static constexpr float TrialOfEnduranceResistanceMultiplier = 2.0f;
+
+	/** Fog of War's sight, a play-test value. See the key. */
+	static constexpr float FogOfWarSightCm = 1000.0f;
+
+	/** The Blackest Shadow's figures: the light, a play-test value the row does not state, and the buff, as it does. */
+	static constexpr float BlackestShadowLightCm = 600.0f;
+	static constexpr float InvisibleStalkerDamageMorePercent = 100.0f;
+	static constexpr float InvisibleStalkerAttackSpeedMorePercent = 50.0f;
+
+	/** Shadowy Enemies' figures, play-test values the row does not state. See the key. */
+	static constexpr int32 ShadowyEnemiesLightZonesPerFloor = 3;
+	static constexpr float ShadowyEnemiesLightRadiusCm = 400.0f;
+	static constexpr float ShadowyEnemiesFireExposureSeconds = 4.0f;
 
 	static_assert(TrialOfEnduranceDamageMultiplier == 2.0f && TrialOfEnduranceResistanceMultiplier == 2.0f,
 		"The row says doubled damage and resistances.");

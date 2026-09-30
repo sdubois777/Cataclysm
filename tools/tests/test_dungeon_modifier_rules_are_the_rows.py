@@ -3039,7 +3039,9 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource"),
                         ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource"),
                         ("SetInfectionBloomDamageMultiplier", "InfectionBloomDamageSource"),
-                        ("SetCarrionFeastDamageMultiplier", "CarrionFeastDamageSource")):
+                        ("SetCarrionFeastDamageMultiplier", "CarrionFeastDamageSource"),
+                        ("SetGrimTotemsDamageMultiplier", "GrimTotemsDamageSource"),
+                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4575,3 +4577,108 @@ def test_carrion_feast_row_still_names_carcasses_feeders_fire_and_altars():
         assert phrase in lower, (
             f"Pestilence_Carrion_Feast no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "CarrionFeastKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_the_rows_a_cleanse_clears_still_say_they_are_cleansed():
+    """The player cleanse clears exactly the dungeon stacks whose rows say a cleanse ends them, as ruled on
+    2026-09-26: `ACataclysmDungeonGameMode::OnSomethingWasCleansed`. If one of these rows stops saying so, the cleanse
+    is clearing stacks its row no longer offers to it, and the ruling must be revisited."""
+    for key, phrase in (("Pestilence_Raw_Sewage", "must be cleansed"),
+                        ("Famine_Starvation_Curse", "persist unless cleansed"),
+                        ("Chaos_Chaos_Touched", "unless cleansed")):
+        words = flat(rows()[key]["Description"])
+        assert phrase in words.lower(), (
+            f"{key} no longer says {phrase.upper()!r}, and the player cleanse clears its stacks because it did; see "
+            "OnSomethingWasCleansed in CataclysmDungeonGameMode.cpp. " + words)
+
+
+def test_grim_totems_row_still_offers_embracing_or_cleansing():
+    """The phrases the rule's readings rest on.
+
+    "Interacting with these totems offers a choice between embracing their malevolent power or dispelling them to
+    cleanse the area. Embracing the power of the totems grants temporary bonuses but may also trigger more difficult
+    enemy spawns or curses. Cleansing the totems purifies the environment, removing harmful effects and weakening
+    nearby enemies." A CHOICE is the choice panel; TEMPORARY BONUSES and MORE DIFFICULT ENEMY SPAWNS are embracing;
+    WEAKENING NEARBY ENEMIES is cleansing; REMOVING HARMFUL EFFECTS is the part not built. If any of them changes, the
+    reading must be revisited.
+    """
+    words = flat(rows()["Death_Grim_Totems"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("offers a choice", "temporary bonuses", "more difficult enemy spawns", "removing harmful effects",
+                   "weakening nearby enemies"):
+        assert phrase in lower, (
+            f"Death_Grim_Totems no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "GrimTotemsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_fog_of_war_row_still_limits_sight_to_a_short_distance():
+    """The phrases the rule's reading rests on.
+
+    "Vision is limited by a thick battlefield fog. Players can only see a short distance ahead, making ambushes
+    frequent and navigating difficult." VISION IS LIMITED is the vision system's sight radius; A SHORT DISTANCE is its
+    ten metres. If either changes, the reading must be revisited.
+    """
+    words = flat(rows()["War_Fog_of_War"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("vision is limited", "see a short distance"):
+        assert phrase in lower, (
+            f"War_Fog_of_War no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "FogOfWarKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_the_blackest_shadow_row_still_hides_and_empowers_what_is_outside_the_light():
+    """The phrases the rule's reading rests on.
+
+    "The dungeon is pitch black. A single, small orb of light follows the player ... Enemies that are not in the light
+    are completely invisible, and they gain a permanent "Invisible Stalker" buff that grants them 100% more damage and
+    50% faster attack speed." SMALL ORB OF LIGHT is the player's sight; COMPLETELY INVISIBLE is the hiding; the two
+    figures are the buff, which the owner decided on 2026-09-26 holds only while outside the light. If any changes,
+    the reading must be revisited.
+    """
+    words = flat(rows()["Void_The_Blackest_Shadow"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("small orb of light", "completely invisible", "100% more damage", "50% faster attack speed"):
+        assert phrase in lower, (
+            f"Void_The_Blackest_Shadow no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "BlackestShadowKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_shadowy_enemies_row_still_says_only_light_lets_them_be_harmed():
+    """The phrases the rule's reading rests on.
+
+    "Void dungeons could be infested with shadowy enemies that can only be harmed when exposed to light. Players must
+    use their abilities or environmental factors to illuminate and weaken these foes." INFESTED is why every floor
+    creature is shrouded; ONLY BE HARMED WHEN EXPOSED TO LIGHT is why a shrouded one takes nothing; ABILITIES is the
+    fire hit and ENVIRONMENTAL FACTORS the light zones, as ruled on 2026-09-26. If any changes, the reading must be
+    revisited.
+    """
+    words = flat(rows()["Void_Shadowy_Enemies"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("infested", "only be harmed when exposed to light", "abilities", "environmental factors"):
+        assert phrase in lower, (
+            f"Void_Shadowy_Enemies no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "ShadowyEnemiesKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_reality_twister_row_is_the_owners_reword():
+    """The row's text as the owner decided it, which the rule is built to.
+
+    "Each floor, one random dungeon modifier from any Cataclysm is added, even one this dungeon could not otherwise
+    draw. It is replaced on the next floor." EACH FLOOR is one row drawn per floor; FROM ANY CATACLYSM is the second
+    pool of every row that does something in play; REPLACED ON THE NEXT FLOOR is the draw made again. The old text,
+    "Every 30 seconds, a random modifier is added to the entire dungeon", described a rule that is not built; if it
+    comes back, the workbook was restored from an old copy.
+    """
+    words = flat(rows()["Chaos_Reality_Twister"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("each floor, one random dungeon modifier", "from any cataclysm", "even one this dungeon could not "
+                   "otherwise draw", "replaced on the next floor"):
+        assert phrase in lower, (
+            f"Chaos_Reality_Twister no longer says {phrase.upper()!r}. The rule is built to that text; see "
+            "RealityTwisterKey. " + words)
+    assert "every 30 seconds" not in lower, "Chaos_Reality_Twister has its old text back. " + words

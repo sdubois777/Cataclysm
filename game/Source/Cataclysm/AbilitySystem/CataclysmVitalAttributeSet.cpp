@@ -179,11 +179,24 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		// the lowered value before `PostGameplayEffectExecute` could put it back. Seen in the
 		// whole-suite run of 2026-09-24, where a write straight to health left the Reaper dead
 		// at full health.
+		//
+		// AND A SHROUDED ONE IS HELD WHERE IT IS: Shadowy Enemies. Issues #1820 and #41. Not at its
+		// maximum, since a creature hurt while it stood in the light keeps that hurt when it leaves
+		// it; its health may rise and may not fall.
 		const ACataclysmEnemyCharacter* Unhurt =
 			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
-		NewValue = Unhurt && Unhurt->bCannotBeHurt
-			? GetMaxHealth()
-			: FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
+		if (Unhurt && Unhurt->bCannotBeHurt)
+		{
+			NewValue = GetMaxHealth();
+		}
+		else if (Unhurt && Unhurt->bShrouded)
+		{
+			NewValue = FMath::Clamp(FMath::Max(NewValue, GetHealth()), 0.0f, GetMaxHealth());
+		}
+		else
+		{
+			NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
+		}
 	}
 	else if (Attribute == GetManaAttribute())
 	{
@@ -1082,8 +1095,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// AND A CREATURE NO DAMAGE REACHES: The Reaper. Issues #1820 and #41. The blow
 			// has resolved -- evaded, blocked or not -- and deals nothing, the way the
 			// immunity above deals nothing. After the save, so nothing is ever saved from a
-			// blow this then empties.
-			if (AsEnemy && AsEnemy->bCannotBeHurt)
+			// blow this then empties. AND A SHROUDED ONE, Shadowy Enemies, the same way: the blow
+			// still reaches the announcement below, which is how a fire hit on a shrouded
+			// creature exposes it.
+			if (AsEnemy && AsEnemy->TakesNoDamage())
 			{
 				Resolved.DealtToHealth = 0.0f;
 				Resolved.AbsorbedByShield = 0.0f;
@@ -1799,6 +1814,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 		// branch and never through the damage branch above. `PreAttributeChange` has already
 		// held the CURRENT value at the maximum, which is what keeps it alive; the base the
 		// effect lowered is left behind, and this writes it back so the two agree.
+		//
+		// A SHROUDED CREATURE NEEDS NOTHING HERE, Shadowy Enemies: `PreAttributeChange` held its
+		// current value where it was, and the clamp below writes that current value to the base.
 		const ACataclysmEnemyCharacter* Unhurt =
 			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
 		if (Unhurt && Unhurt->bCannotBeHurt)

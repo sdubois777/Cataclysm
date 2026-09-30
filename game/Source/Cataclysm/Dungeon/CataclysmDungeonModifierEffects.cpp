@@ -221,8 +221,40 @@ const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BlackestShadowKey =
+	TEXT("Void_The_Blackest_Shadow");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ShadowyEnemiesKey =
+	TEXT("Void_Shadowy_Enemies");
+
+const TCHAR* UCataclysmDungeonModifierEffects::FogOfWarKey =
+	TEXT("War_Fog_of_War");
+
+float UCataclysmDungeonModifierEffects::SightRadiusFor(const TArray<FName>& Modifiers)
+{
+	// THE SMALLEST ASKED FOR, so two rows that limit sight give the shorter sight and neither lengthens it.
+	float Radius = 0.0f;
+	const auto Ask = [&Radius](float Asked)
+	{
+		Radius = Radius <= 0.0f ? Asked : FMath::Min(Radius, Asked);
+	};
+	if (Modifiers.Contains(FName(FogOfWarKey)))
+	{
+		Ask(FogOfWarSightCm);
+	}
+	// THE BLACKEST SHADOW'S LIGHT IS THE PLAYER'S SIGHT: what is outside it is not seen.
+	if (Modifiers.Contains(FName(BlackestShadowKey)))
+	{
+		Ask(BlackestShadowLightCm);
+	}
+	return Radius;
+}
+
 const TCHAR* UCataclysmDungeonModifierEffects::TrialOfEnduranceKey =
 	TEXT("Celestial_Trial_of_Endurance");
+
+const TCHAR* UCataclysmDungeonModifierEffects::GrimTotemsKey =
+	TEXT("Death_Grim_Totems");
 
 const TCHAR* UCataclysmDungeonModifierEffects::VoidParasiteKey =
 	TEXT("Void_Void_Parasite");
@@ -549,12 +581,23 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(InfectionBloomKey)
 		|| RowKey == FName(InfestedHoardKey)
 		|| RowKey == FName(AbyssalRiftsKey)
+		// GRIM TOTEMS, BUILT SINCE A DISPELLED TOTEM ALSO CLEANSES THE PLAYER, the row's "removing harmful effects".
+		// Issues #1820 and #41.
+		|| RowKey == FName(GrimTotemsKey)
+		// SWARM OF LOCUSTS, BUILT SINCE ITS SWARM OBSCURES VISION through the vision system. Issues #1820 and #41.
+		|| RowKey == FName(SwarmOfLocustsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(DemonicGuideKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
+		|| RowKey == FName(FogOfWarKey)
+		|| RowKey == FName(BlackestShadowKey)
+		|| RowKey == FName(ShadowyEnemiesKey)
 		|| RowKey == FName(VoidParasiteKey)
-		|| RowKey == FName(ObsidianSarcophagiKey))
+		|| RowKey == FName(ObsidianSarcophagiKey)
+		// REALITY TWISTER. Its row is drawn onto each floor by `FCataclysmDungeonFloorRules::ModifiersFor`, rule 4.
+		// Issues #1820 and #41.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::RealityTwisterKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -593,10 +636,6 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
 		// Issues #1820 and #41.
 		|| RowKey == FName(InsanityBurstsKey)
-		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
-		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
-		// while its entry and its key's comment both said partly built. Issues #1820 and #41.
-		|| RowKey == FName(SwarmOfLocustsKey)
 		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
 		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
 		|| RowKey == FName(RealityRiftsKey)
@@ -785,9 +824,14 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfestedVeinsKey),
 		FName(CarrionFeastKey),
 		FName(TrialOfEnduranceKey),
+		FName(FogOfWarKey),
+		FName(BlackestShadowKey),
+		FName(ShadowyEnemiesKey),
 		FName(VoidParasiteKey),
+		FName(GrimTotemsKey),
 		FName(ObsidianSarcophagiKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
+		FName(FCataclysmDungeonFloorRules::RealityTwisterKey),
 	};
 }
 
@@ -1258,6 +1302,12 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::HealLessPerDrinkStat,
 								  Effects.PotionHealLessPerDrinkPercent);
 
+	// AND AN EMBRACED GRIM TOTEM'S STRENGTH, A MORE ON ATTACK AND SPELL DAMAGE. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.GrimEmbraceDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.GrimEmbraceDamageMorePercent);
+
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
 	//
@@ -1679,6 +1729,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	// AND DESPERATE MEASURES, SAID AS WHEN IT APPLIES AND WHAT IT COSTS. Issues
 	// #1820 and #41. The floor panel shows the row's own sentence; this reaches
 	// the per-floor log.
+	if (Effects.GrimEmbraceDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from an embraced grim totem"),
+									Effects.GrimEmbraceDamageMorePercent));
+	}
 	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(

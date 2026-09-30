@@ -2,6 +2,909 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Reality Twister: each floor gains one random row of any Cataclysm that does something in play, drawn again on the next floor, as the owner decided
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (the row's key, a second pool on the
+dungeon's identity, the row a floor gained, and a fourth rule in `FCataclysmDungeonFloorRules::ModifiersFor`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp` (the row among those built, and among the keys with
+a rule); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the pool filled on entering a dungeon and
+emptied on leaving, and the panel line); and the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmFloorBriefTests.cpp`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** They were done in the window of 2026-09-30; the figures are at the end of this entry.
+
+### The row
+
+`Chaos_Reality_Twister` in `game/Data/DungeonModifiers.csv`, weight 20, until the window: "Every 30 seconds, a random
+modifier is added to the entire dungeon. The modifier can be anything from increased enemy damage to reduced player
+movement speed, or even a beneficial one like increased magic find. The modifiers are permanent for the duration of the
+dungeon."
+
+### The owner's decision, 2026-09-26, relayed by the coordinating session
+
+**It replaces both earlier readings.** Each floor, one random dungeon modifier is added, drawn from any Cataclysm type,
+including ones this dungeon could not otherwise draw; it is replaced by a new draw on the next floor. The owner
+confirmed "any Cataclysm, even if not in the current run". **The row's text becomes:** "Each floor, one random dungeon
+modifier from any Cataclysm is added, even one this dungeon could not otherwise draw. It is replaced on the next floor."
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **It draws only rows that do something in play, built or partly built**, never Reality Twister itself, and never a row
+  already in force on that floor. A partly built row still acts; a row with no rule does nothing.
+- **The panel names the added row. Its danger counts toward that floor's creatures.**
+- **It is built on the per-floor re-draw the Volatile sub-type and Unstable Dimensions already use.**
+
+### What the rule does
+
+Entering a dungeon from the empire map fills a second pool on the game mode: every row of the whole modifier table whose
+`BuiltStateOf` is not `NotBuilt`, whatever its Cataclysm. On each floor whose modifiers include Reality Twister,
+`ModifiersFor` draws one row from that pool, leaving out every row the floor already carries (Reality Twister among
+them), from the floor's own seeded stream: the same floor always gains the same row, and the next floor draws again.
+The row is added to the floor's modifiers, its danger is added to the floor's score, and `FCataclysmFloorBrief::TwistedIn`
+names it. The panel reads "reality twister: <the row's name> added on this floor", by the row's name and not its key. Leaving the dungeon
+empties the pool.
+
+**Rules 2 and 3 are unchanged in what they do.** Rule 3's early `return` became a block, so that rule 4 can follow it;
+its draw, its pool and its stream are the same.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **After Unstable Dimensions' extra, and reading it**, as Unstable Dimensions reads the Volatile re-draw: the extra is
+  among the rows left out, and a Volatile floor that re-drew Reality Twister is twisted while one that did not is not.
+  The other way round: an Unstable Dimensions that Reality Twister draws adds nothing on that floor, because its rule has
+  already run.
+- **When nothing is left to draw**, the floor gains nothing, and the panel says "reality twister: nothing was left to
+  add on this floor".
+- **The pool is filled from the run's whole table** where the dungeon's own pool is narrowed, once on entering.
+
+### What a rule that keeps a count across the dungeon does when it is drawn for one floor
+
+The coordinating session asked this to be named. **Read on development b399d403, not run.** What a rule places, times
+or checks on a floor happens only on a floor whose modifiers carry it. What a rule carries across the dungeon stays
+after that floor, exactly as it does when a Volatile dungeon re-draws the row onto one floor:
+
+- **Raw Sewage's disease stacks** keep burning on later floors: its step runs while any stack is held
+  (`|| RawSewageStacks > 0` beside the row test in `StepFloorRulesThatChange`), and only a floor's boss's death or the
+  player's clears them (`NoteDeathForRawSewage`), whether or not a later floor carries the row.
+- **Abyssal Rifts' successes** are the dungeon's and end only at the player's death or on leaving the dungeon, and
+  `ApplyChangingFloorEffects` writes their magic find from them without asking whether the floor carries the row.
+- **Blood Debt** is not on development yet; its branch ends the debt at death.
+
+So "it acts on that floor only" is true of what a rule does on a floor and not of what it carries between floors.
+
+### The research
+
+The shape is the owner's decision rather than a proposal, so no genre source was sought for it.
+
+### Tests
+
+Four automation tests in `Cataclysm.FloorBrief.`:
+
+- `RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor`: over twenty floors of a War dungeon, each floor gains one row,
+  carried, never Reality Twister, never one of the dungeon's own, a built row whose danger is counted, the same row when
+  the floor is asked again; at least one floor draws a Chaos row, and more than one row is drawn; the same dungeon
+  without the row gains nothing.
+- `RealityTwisterDrawsOnlyARowNotAlreadyInForce`: with one row left every floor draws it; with none left a floor gains
+  nothing.
+- `AFloorCarryingRealityTwisterNamesTheRowItAdded`: on four built floors the row is in force, the creatures' score counts
+  its danger, and the panel names it by its name rather than its key.
+- `EnteringADungeonCarriesEveryBuiltRowForRealityTwister`: with the real table, which must still hold a row that does
+  nothing (asserted as set-up, so the check below can fail), entering carries every row that does something and none
+  that does nothing, some of a Cataclysm the run is not facing; leaving empties it.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor` failed with the break in; passed restored.
+- **Pb PROVED**: the same test failed with the break in; passed restored.
+- **Pc PROVED**: `EnteringADungeonCarriesEveryBuiltRowForRealityTwister` failed with the break in; passed restored.
+
+And the workbook: the Dungeon Modifiers sheet's D19 holds the new text, written on development's current workbook; `generate_datatables.py` rewrote `DungeonModifiers.csv` alone, and `--check` printed "All 29 DataTable CSVs are up to date"; `DT_DungeonModifiers` was regenerated in the editor; `test_reality_twister_row_is_the_owners_reword` checks the text.
+
+---
+
+## 2026-09-26 — Shadowy Enemies: every floor creature takes no damage until light reaches it, from a light zone, The Blackest Shadow's light, or a fire hit
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+and its place among the rows built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (`bShrouded` and
+`TakesNoDamage`); `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (a shrouded creature's blow is
+emptied and its health may not fall); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the light
+zones, the beat that shrouds and exposes, and the fire-hit listener);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Shrouded" under the bar); the automation tests
+in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Built on The Blackest Shadow's change, which merges first**; the chain is the vision system, Swarm of Locusts'
+obscuring, The Blackest Shadow, then this. They were done in the window of 2026-09-30; the figures are at the end of this entry.
+
+### The row
+
+`Void_Shadowy_Enemies` in `game/Data/DungeonModifiers.csv`, weight 15: "Void dungeons could be infested with shadowy
+enemies that can only be harmed when exposed to light. Players must use their abilities or environmental factors to
+illuminate and weaken these foes."
+
+### The research
+
+- Alan Wake, as Wikipedia describes it, fetched 2026-09-26: "The Taken are protected by a shield of darkness, initially
+  rendering them impervious to attack; they can only be injured with a firearm after exposure to light, which burns the
+  darkness away."
+- Path of Exile's Delve, from the poe-vault.com Delve guide, fetched 2026-09-26: "Monsters that are shrouded cannot be
+  damaged by the player." Delve's light comes from the crawler's path and from flares the player throws. poelab.com
+  (HTTP 403) and the fandom wikis (HTTP 402) could not be read.
+
+What the research settles: outside the light a creature takes no damage at all, not reduced damage, which is also what
+the row says. What it does not settle, and is specific to this game: which lights exist and their figures. Those are
+the rulings below.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+1. **Every creature the floor puts there is shrouded**, since the row says "infested": the floor's boss and the exit's
+   Gatekeeper included. A new field, `ACataclysmEnemyCharacter::bShrouded`, read where `bCannotBeHurt` is read in
+   `CataclysmVitalAttributeSet.cpp`. **Reusing `bCannotBeHurt` was refused**: subjugation refuses a creature carrying
+   it, Divine Wrath's beam passes it, and a Blood Bond's release clears it, and a shrouded creature is none of those.
+2. **Three light zones a floor, each 400 cm across its radius; and four seconds of exposure after a fire hit.**
+3. **No flare now.** A flare the player carries and throws, as in Delve, would give every class a light it can carry;
+   it needs an input, a count on the screen and an actor, and is a later change.
+4. **The Blackest Shadow's light exposes**: on a floor carrying both rows, a creature within its six metres is exposed.
+   Light is light.
+5. **One more light zone lies on the exit when a boss stands there.** A War character has no fire, and a boss that
+   could not be drawn into one of three random zones could make the floor impossible to finish. The fight at the exit
+   must always be winnable.
+6. **Only a direct hit carrying `Element.Demonic` is a fire hit. Burning ground exposes nothing**, because a ground
+   zone carries no element tag of its own (`CataclysmGroundZone.cpp`: "a zone carries no skill tags of its own to read
+   an Element.* tag from"). A zone recording the element of the skill that placed it is what would let it. Issue
+   [#803](https://github.com/sdubois777/Cataclysm/issues/803), closed, gave a player skill's element to its effects for
+   their colour and left zones without one; no open issue asks for it.
+7. **An evaded fire hit exposes nothing; a blocked one does**, following the decision of 2026-09-05 that an evaded
+   attack applies nothing it was carrying.
+
+### What was read before building
+
+A fire hit on a shrouded creature deals nothing, so the rule has to hear of a blow that did nothing. It does:
+`CataclysmVitalAttributeSet.cpp` empties the blow of a creature no damage reaches, then calls
+`UCataclysmCombatEvents::NoteBlow` with the emptied outcome and the effect's asset tags ("Every resolved blow reaches this
+line, evaded and blocked ones included"), and `NoteBlow` announces it to every listener. A player's skill puts its
+element on the damage effect for colour, which is where `Element.Demonic` is read, as Carrion Feast reads it. The tag
+comes from the skill's own element, so **every Demonic skill's hit is a fire hit**, not only those whose text names
+fire.
+
+### What the rule does
+
+On a floor carrying the row, on every beat, each creature on the floor's list is shrouded unless it stands within
+400 cm of a light zone's centre, stands within six metres of the player on a floor also carrying The Blackest Shadow,
+or was reached by a fire hit less than four seconds ago. A shrouded creature takes nothing from any blow, and its health
+may rise and may not fall; a creature hurt in the light keeps that hurt when it leaves it. The fire hit itself deals
+nothing and exposes the creature at once, so the next blow lands without waiting for the beat. "Shrouded" is written
+under a shrouded creature's bar. The light zones are drawn in Celestial's colours and do no damage. On a floor without
+the row, every shroud the rule gave is taken off.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **Not a creature a rule raised, and not one that cannot be hurt anyway.** Neither is a creature the floor put there,
+  and "Shrouded" under a coffin's or a portal's bar would say something untrue of it.
+- **"The floor's creatures" are the game mode's `FloorEnemies`**, which a Horde arena's waves join. A creature another
+  creature summons is not on it and is not shrouded.
+- **Health is held where it is, not at the maximum as the Reaper's is**, so a creature does not heal by leaving the
+  light.
+- **A creature's own fire exposes nothing**: the row asks the player to do it.
+- **The exit's zone is not kept apart from the other three**; the other three are placed by Eternal Chorus's picker, at
+  least twenty metres from the entrance and from each other.
+
+### Tests
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `ShadowyEnemiesFiguresZonesRadiusAndFireSeconds`: three zones, 400 cm, four seconds.
+- `AShroudedCreatureTakesNoDamageUntilALightReachesIt`: an Imp three metres from the player is shrouded, says so under
+  its bar, and a blow takes nothing; moved into a light zone it is exposed and a blow takes 10; moved out again it is
+  shrouded, keeps the 90 health it has, and a blow takes nothing.
+- `AFireHitExposesAShroudedCreatureForFourSeconds`: the fire hit takes nothing and exposes the Imp at once; the next
+  blow takes 10; it is still exposed after fifteen beats and shrouded on the sixteenth.
+- `AnEvadedFireHitExposesNothing`: with the Imp's evasion at 100, a real fire blow is evaded, which is asserted as
+  set-up, and the Imp stays shrouded; with its evasion at 0 the same blow lands and exposes it. Real blows and not a
+  notice the test builds, so it shows an evaded Demonic blow arrives marked evaded, and not only that the rule reads the
+  mark. Added at the coordinating session's request, 2026-09-26.
+- `TheBlackestShadowsLightExposesAShroudedCreature`: with both rows, an Imp five metres away is exposed and one seven
+  metres away is shrouded.
+- `AFloorWithoutShadowyEnemiesTakesEveryShroudOff`: on the next floor without the row the Imp is not shrouded, and there
+  are no light zones.
+- `ShadowyEnemiesLightsTheExitWhereTheBossStands`: on floor 1 of an Elite dungeon, the last light zone lies on the exit,
+  and the Gatekeeper standing there is exposed. As set-up it asserts that no zone but the exit's reaches the Gatekeeper,
+  so the Gatekeeper's exposure can only come from the exit's zone; asked for by the coordinating session, 2026-09-26. If
+  the test floor puts a random zone there, the set-up fails and the floor's seed is to be changed.
+
+**Not tested: a Horde arena keeping its light zones between waves.** The zones are redrawn on the beat whenever one is
+missing, as Void Parasite's light is, but no test runs a Horde arena with this row.
+
+One Python check: the row still says "infested", "only be harmed when exposed to light", "abilities" and
+"environmental factors".
+
+### A merge rule first used at this change's move
+
+This change moved in a stack of seven on development c2eccb69. Its word "Shrouded" joins the combat overlay's status-line
+list, which on development spans several lines and had gained words of its own (Quarantine's among them). The conflict
+was resolved by a rule the coordinating session accepted on 2026-09-30, which refuses anything it cannot place: **items
+inserted into a list over several lines** (`resolve_list_items.py`), the accepted one-line rule widened to a list over
+lines. Each item the change added goes after the item it followed, and after development's own additions there; only a
+line past 120 characters is wrapped. Here, `QuarantineTextFor(Actor), ShroudedTextFor(Actor),`. At this step the
+early return of `StepFloorRulesThatChange` was also joined by the `&& !bX` rule recorded in Grim Totems' entry: the term
+`&& !bShadowyEnemies` went inside the closing parenthesis, on the line that holds the base's last term.
+
+**A TEST THAT COULD NOT PASS, FOUND BY SCANNING FOR THE CLASS, 2026-09-30, fixed in the window as the coordinating session ruled.** `AFloorWithoutShadowyEnemiesTakesEveryShroudOff` checked on floor 3 that an Imp from floor 2 "still stands" and is not shrouded; changing floors destroys every creature of the last one. The check is now of a new Imp of floor 3, which is not shrouded. The light-zone checks are unchanged. It was found by a scan for tests that read a creature after a floor change, not by a proof, and no proof targets it.
+
+**A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `AShroudedCreatureTakesNoDamageUntilALightReachesIt` expected a blow of 10 to take 10 off a lit Imp; it took 11 in both runs. A diagnostic run, never committed, logged the blow: the player's weapon is `Slashing`, and a slashing hit on health gains `UCataclysmDamageCalculation::SubtypeBonus`, 10%; armour, damage reduction, the shield, a critical strike, a block, an evasion and the nth-hit bonus were all nought. That is the game as designed, so the test now deals each blow to a control Imp the rule leaves alone as well, and compares the losses. **Proof Pa is recorded as not a proof and is not rerun**, since it reached the tests: Shadowy Enemies' shroud gate (`bool bLit = !bRow || ...`) is checked by this test but not proved by a break.
+
+**THE FIRE TEST, THE SAME FAULT, FOUND BY GUARD PROOF Pb.** `AFireHitExposesAShroudedCreatureForFourSeconds` expected blows of 10 to take 10; they took 11 for the reason above. It now measures each blow against the same kind of control Imp. A sweep of every line this change adds for a player's blow whose size a test asserts found no other: `AnEvadedFireHitExposesNothing` deals blows but asserts only the shroud and the evaded flag. **Proof Pb is recorded as not a proof and is not rerun.**
+
+**SO SHADOWY ENEMIES RESTS ON ONE PROOF, Pc.** Two of its three proofs, Pa and Pb, failed on test faults -- exact blow sizes that a slashing weapon's tenth breaks -- not on the rule. The shroud gate (`bool bLit = !bRow || ...`) and the fire exposure (the `NoteHitForShadowyEnemies` call) are checked by tests but are not proved by breaks.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa NOT A PROOF**: `AShroudedCreatureTakesNoDamageUntilALightReachesIt` failed with the files restored as well; the exact blow size above, not rerun.
+- **Pb NOT A PROOF**: `AFireHitExposesAShroudedCreatureForFourSeconds` failed with the files restored as well; the same cause, not rerun.
+- **Pc PROVED**: `ShadowyEnemiesLightsTheExitWhereTheBossStands` failed with the break in; passed restored.
+
+---
+
+## 2026-09-26 — The Blackest Shadow: the player sees six metres, and a creature outside that light is hidden and, while outside it, deals 100% more damage and attacks 50% faster
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, figures, its
+light as a sight radius in `SightRadiusFor`, and its place among the rows built);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a key of `DamageMultipliersBySource`,
+`BlackestShadowDamageSource`, with its setter, and `DarknessAttackSpeedMultiplier`, one more factor in
+`SecondsBetweenAttacks`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the vision step gives
+and takes the buff, and remembers which creatures carry it); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`;
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check, and the new damage source in the check that every
+source writes its own key); and `tools/tests/test_commander_buff_matches_the_design.py` (the expected attack interval
+names the new factor). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Built on the vision system's change, which merges first.**
+They were done in the window of 2026-09-30; the figures are at the end of this entry.
+
+### The row
+
+`Void_The_Blackest_Shadow` in `game/Data/DungeonModifiers.csv`, weight 20: "The dungeon is pitch black. A single, small
+orb of light follows the player, but it is not enough to illuminate the entire dungeon. Enemies that are not in the
+light are completely invisible, and they gain a permanent "Invisible Stalker" buff that grants them 100% more damage and
+50% faster attack speed."
+
+### The owner's decision, 2026-09-26, relayed by the coordinating session
+
+**The Invisible Stalker buff holds only while the creature is outside the light, and goes when it enters. "Permanent"
+means it has no timer.** The other reading, a buff kept for the rest of the dungeon once a creature had been outside the
+light, was put to the owner beside this one, because the light is small and creatures spawn well beyond it, so under
+that reading nearly every creature on such a floor would have carried it.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **The light is six metres**, as the player's sight through the vision system: a creature further away is hidden, has
+  no bar and cannot be clicked, and the camera is darkened. A play-test value; the row states no radius.
+- **"Completely invisible" is the body, bar and name, not the telegraph**, as ruled for the vision system: a hidden
+  creature's telegraphs, projectiles and ground markers stay drawn.
+- **The damage is a key of the creature damage map of its own, and the attack speed one more factor in
+  `SecondsBetweenAttacks`' divisor**, tested through `SecondsBetweenAttacks()` itself. A creature's speeds do not read the
+  AttackSpeed attribute, so writing it would change nothing; `SecondsBetweenAttacks` is what the creature brain reads for
+  its swing (`CataclysmEnemyController.cpp`, the swing and the ability interval).
+
+### What the rule does
+
+On a floor carrying the row the player sees six metres. Every creature further away is hidden and carries the Invisible
+Stalker buff: its attack damage is doubled, and the seconds between its attacks are divided by 1.5. A creature that
+comes within six metres is seen and loses the buff; one that leaves the light gains it again. On a floor without the
+row, every creature carrying it loses it. On a floor with Fog of War as well, the shorter sight holds, which is six
+metres.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **The buff is written only when a creature's side of the light changes**, not on every beat, so its damage is
+  rewritten as seldom as it changes.
+- **Floor sources outside the light carry it too**, as every creature is measured; a floor source does not attack, so it
+  changes nothing for them.
+- **Only the creatures this rule buffed have it taken off**, as only what the vision system hid is shown again.
+
+### The research
+
+The vision system's entry quotes Path of Exile's Delve, where monsters "take massively reduced damage while they dwell
+within" the darkness, fetched on 2026-09-26: a creature favoured while it is in the dark and not while it is in the
+light, which is the shape the owner decided. The figures are the row's own.
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `TheBlackestShadowFiguresLightAndStalker`: six metres, 100% and 50%; the light is the player's sight, and with Fog of
+  War as well the shorter holds.
+- `OutsideTheLightACreatureIsHiddenAndAnInvisibleStalker`: the player sees six metres; an Imp five metres away is seen,
+  no stalker, with its own damage and swing interval; one seven metres away is hidden and a stalker, with twice the
+  damage and a swing interval divided by 1.5; moved into the light, it is seen and its damage and swing interval are its
+  own again.
+- `AFloorWithoutTheBlackestShadowEndsEveryStalker`: a stalker on the next floor without the row is no stalker, its
+  damage and attack speed are its own, and it is seen.
+
+One Python check: the row still says "small orb of light", "completely invisible", "100% more damage" and "50% faster
+attack speed".
+
+One Python check changed: `test_the_buff_divides_the_interval_rather_than_multiplying_it` in
+`tools/tests/test_commander_buff_matches_the_design.py` compares the whole return expression of `SecondsBetweenAttacks`
+with a fixed string, and now expects the third factor. Its comment's rule is that an effect naming attack speed alone
+is a factor of its own, outside `SpeedMultiplier`; the row's buff names attack speed and no movement.
+
+### The first Python run failed
+
+The first whole Python run, on the branch before that check was changed, printed "1 failed, 5516 passed, 8 skipped":
+the fixed-string check above failed because this change added the factor and not the check's expected string. The check
+was updated in the same branch, and the run after it printed "5517 passed, 8 skipped". The coordinating session read
+the change and accepted it on 2026-09-26.
+
+**A PROOF'S BUILD CAUGHT A FAULT, 2026-09-30, fixed in the window as the coordinating session ruled.**
+`ACataclysmDungeonGameMode::IsAnInvisibleStalker` had its body inline in `CataclysmDungeonGameMode.h`, where building
+the weak pointer for the lookup needs the complete `ACataclysmEnemyCharacter`, which that header only declares. The
+unity build hid it; Grim Totems' proof Pc edited `CataclysmChoicePanelWidget.cpp`, the adaptive build compiled that
+file on its own, and it stopped with C2338 ("TWeakObjectPtr can only be constructed with UObject types"). The body moved
+into `CataclysmDungeonGameMode.cpp`; the declaration stays in the header, and nothing else changed.
+
+**A TEST THAT COULD NOT PASS, FOUND BY GUARD PROOF Pc, 2026-09-30, fixed in the window as the coordinating session ruled.** `AFloorWithoutTheBlackestShadowEndsEveryStalker` read, on floor 3, a stalker made on floor 2; changing floors destroys every creature of the last one, so it failed with the break in and with it out, reading figures from the destroyed creature. Now the player walks to 3 m of the stalker on floor 2, where the light takes the buff off, and floor 3 makes no stalker of a new Imp 20 m away. **Proof Pc is recorded as not a proof and is not rerun**: The Blackest Shadow has two proofs, Pa and Pb. The branch that writes a creature's damage back to its own when it stops being a stalker (`SetBlackestShadowDamageMultiplier(bStalker ? StalkerDamage : 1.0f)`) is checked by "its damage is its own" but is not proved by a break.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `OutsideTheLightACreatureIsHiddenAndAnInvisibleStalker` failed with the break in; passed restored.
+- **Pb PROVED**: the same test failed with the break in; passed restored.
+- **Pc NOT A PROOF**: `AFloorWithoutTheBlackestShadowEndsEveryStalker` failed with the files restored as well; the test fault above, not rerun.
+
+---
+
+## 2026-09-26 — Swarm of Locusts obscures vision: while a travelling swarm covers the player, they see four metres, and the row is built
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the sight figure, the key's
+comment, and the row moved from the partly built list to the built list); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`
+(the vision system's step asks for the swarm's sight, and runs on every floor carrying the row); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (one new test, and the built-state assertion
+turned from partly built to built). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Built on the vision system's change, which merges first.**
+They were done in the window of 2026-09-30; the figures are at the end of this entry.
+
+### What was missing
+
+`Famine_Swarm_of_Locusts`: "Periodically, swarms of locusts sweep through the dungeon, obscuring vision and dealing
+continuous damage." Its swarms crossed the floor and burned a player outside a shelter, and it was listed as partly
+built because nothing could obscure vision: see the entry of 2026-09-25, "Swarm of Locusts, PARTLY BUILT", and the
+correction in the Abyssal Rifts entry that moved it to the partly built list.
+
+### What the rule does now
+
+While a swarm is travelling and covers the player, the player's sight is four metres through the vision system: a
+creature further away is hidden, has no bar and cannot be clicked, and the camera is darkened. On a floor that also
+limits sight another way, the shorter of the two holds. When the swarm has passed, or the player steps out of it, sight
+returns to what the floor gives. The row is now listed as built.
+
+### Rulings and judgements
+
+- **Four metres of sight under a swarm**, proposed by this session and accepted by the coordinating session under the
+  owner's delegation, 2026-09-26. A play-test value.
+- **Judgement of this change: a shelter does not lift it.** A shelter stops the burn, which is what the row's "find
+  shelter ... to survive" is about; a player in a shelter under a swarm is still inside the swarm.
+- **Judgement of this change: only while the swarm travels**, the same condition as its burn, so the warning before it
+  sets off does not already obscure anything.
+
+### Tests
+
+- `ASwarmOfLocustsCoveringThePlayerCutsTheirSightToFourMetres` (new): four metres; under a travelling swarm the player
+  sees four metres and an Imp five metres away is hidden; well out of the swarm, the Imp beside them again, sight is
+  unlimited and the Imp is seen.
+- The built-state control that the Abyssal Rifts change added now says "Swarm of Locusts is built: its swarm obscures
+  vision". It is inside an existing test, so the count of tests does not move for it.
+
+### A merge rule first used at this change's move
+
+This change moved in a stack of seven on development c2eccb69. It takes Swarm of Locusts out of the partly-built list in
+`BuiltStateOf`, where on development the list had grown past it (Reality Rifts and Warzone Control Points were added
+after it). The conflict was resolved by a rule the coordinating session accepted on 2026-09-30, which refuses anything
+it cannot place: **lines removed from a list by the incoming side** (`resolve_list_remove.py`) are removed from the
+stacked side exactly, each found there once, and the stacked side's closing line is kept. The partly-built list now
+ends with Warzone Control Points, and Swarm of Locusts stands in the built list with its own comment.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `ASwarmOfLocustsCoveringThePlayerCutsTheirSightToFourMetres` failed with the break in; passed restored.
+- **Pb PROVED**: the same test failed with the break in; passed restored.
+- **Pc PROVED**: the same test failed with the break in; passed restored.
+
+---
+
+## 2026-09-26 — The vision system: a creature beyond the player's sight is hidden, has no bar and cannot be clicked, and the camera is darkened; Fog of War, its first rule, gives ten metres of sight
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`SightRadiusFor`, the one
+place a rule asks for a sight radius, and Fog of War's key and figure, among the rows built);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`PlayerSightRadiusCm` and `StepVision`: the sight
+worked out on the beat, creatures beyond it hidden and shown again); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`
+and `.cpp` (`SetSightDarkness`, the camera darkened); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.cpp` (no
+bar for a hidden creature); `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (`IsClickableEnemy`: a
+hidden creature cannot be clicked); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** They were done in the window of 2026-09-30; the figures are at the end of this entry.
+
+### What was there
+
+Nothing limited what the player sees. The camera is a spring arm 800 cm long at a 60 degree pitch, and the mouse wheel
+moves it between 500 and 1200 cm; no light, fog or post-process setting is written anywhere in the game's source; no
+creature was ever hidden for play; and a creature's bar is drawn whenever it is hurt and in front of the camera, with no
+test of distance or of whether it can be seen. Creatures have their own sight, which a floor can scale
+(`FloorBrief.SightRadiusMultiplier`); the player had none. Four rows wait on it: `War_Fog_of_War`,
+`Void_The_Blackest_Shadow`, `Void_Shadowy_Enemies`, and Swarm of Locusts' "obscuring vision".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **The player's sight is one value**, worked out by the game mode on each beat as the smallest radius any rule in force
+  asks for, 0 for unlimited; a rule asks, and nothing else writes it.
+- **A creature further from the player than the sight is hidden**, and shown again when it comes within it or the rule
+  ends. Its bar, rarity name and status line are not drawn, and it cannot be clicked: the design document's "a label you
+  cannot see is a label you cannot click". Its brain and its attacks are unchanged.
+- **The screen, first: the camera's own vignette and a darker exposure**, set from the code with no asset. It is not an
+  edge at the radius. A radial darkness material is its own later change, checked in play by eye, on the owner's list.
+- **What a hidden creature sends stays drawn**: its telegraph on the ground, its projectiles and ground markers, so a
+  hidden attack can still be read and dodged, following the design's "the combat requires players to read and dodge
+  telegraphed attacks".
+- **"Completely invisible", in The Blackest Shadow, will be read the same way: the body, bar and name, not the
+  telegraph.** Stated here so the owner can overturn it before that row is built.
+- **No minimap** (issue #49); nothing else folded in.
+- **Fog of War first, at ten metres of sight**, in this change. Swarm of Locusts' obscuring, The Blackest Shadow and
+  Shadowy Enemies follow, each its own change.
+
+### What the rule does
+
+`War_Fog_of_War` in `game/Data/DungeonModifiers.csv`, weight 5: "Vision is limited by a thick battlefield fog. Players
+can only see a short distance ahead, making ambushes frequent and navigating difficult." On a floor carrying it the
+player sees ten metres: every creature further than that, measured flat, is hidden and cannot be clicked, and the camera
+has a strong vignette and is one stop darker. Coming within ten metres shows a creature again. On the first floor after
+one without it, everything it hid is shown and the camera is handed back to the map's settings.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **Ten metres is the distance a drop's or a floor object's name is shown from**, so the fog and the names agree on how
+  far the player sees.
+- **Every creature is measured, floor sources included**: a portal, a coffin or a carcass beyond the sight is hidden as
+  a creature is. They are things on the floor the player cannot see.
+- **A floor object is not hidden**: a Grim Totem, or any later altar or chest placed through the choice screen, is
+  not a creature, and the vision system measures only creatures, so its name stays shown within its own ten metres.
+  This is deliberate, accepted by the coordinating session on 2026-09-26, not an oversight.
+- **Only what the vision system hid is shown again**, so it can never show a creature something else hid.
+- **The darkening is a vignette of 1.0 and an exposure one stop down**, overridden only while sight is limited.
+- **A skill's own choice of target is unchanged**: `UCataclysmTargeting` does not ask whether a creature is hidden,
+  and this change does not make it. The ruling is about clicking and drawing; making skills blind as well would be its
+  own decision.
+
+### The research: darkness that limits sight and favours the monsters
+
+Done before the proposal; the page quoted was fetched on 2026-09-26 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Delve | https://poedb.tw/us/Delve | "The darkness in this mine obscures your vision, but it also deals you damage"; monsters "take massively reduced damage while they dwell within it"; "Flares are portable light sources that can be thrown to specific locations" |
+
+**What it settles and what it does not.** Path of Exile ships sight limited to a radius around a source, which a rule
+can make matter for the monsters. That settles the shape: a radius, and what lies outside it treated differently. Ten
+metres and the darkening are this game's own.
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.`. **The darkened camera is not looked at**: an automation
+test has no renderer, so the tests read the sight it was darkened for. **A hidden creature's telegraph staying drawn is
+not tested either**: a telegraph is its own actor and the rule never touches it, which is read from the code, not run.
+
+- `FogOfWarFiguresAndTheSightTheRowsGive`: ten metres; the fog gives ten metres, no rows and a row that does not limit
+  sight give unlimited.
+- `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked`: the player sees ten metres and the camera is darkened for
+  it; an Imp nine metres away is seen, may have a bar and can be clicked; one eleven metres away is hidden, may not have
+  a bar and cannot be clicked; brought to five metres it is seen again.
+- `WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened`: on the next floor without the fog the sight is unlimited, the
+  camera is not darkened, an Imp twenty metres away is seen, and the one the fog hid still stands and is shown.
+
+One Python check: the row still says "vision is limited" and "see a short distance".
+
+**THE FIRST BUILD CAUGHT A FAULT, 2026-09-30, fixed in the window as the coordinating session ruled.** `ACataclysmPlayerController::IsClickableEnemy` was declared under `private:`, and the vision test calls it from outside the class, so the build stopped with C2248 on the two clickability checks. Its declaration and comment moved into a `public:` section; nothing else changed. No Python check reads a declaration's access, which is why only the compile could see it.
+
+**A TEST THAT COULD NOT PASS, FOUND BY GUARD PROOF Pc, 2026-09-30, fixed in the window as the coordinating session
+ruled.** `WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened` asserted that a creature the fog hid on floor 2 "still
+stands and is shown" on floor 3; changing floors destroys every creature of the last one
+(`UCataclysmFloorContents::ClearTheFloor`), so it failed with the break in and with it out. Its last check is now on
+floor 2: the player walks to 5 m of the hidden creature and "walking within the fog's ten metres shows the one it hid".
+**Proof Pc is recorded as not a proof and is not rerun**: the vision system has two proofs, Pa and Pb. The un-hide branch
+is checked by the new assertion but is not proved by a break.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked` failed with the break in; passed restored.
+- **Pb PROVED**: `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked` failed with the break in; passed restored.
+- **Pc NOT A PROOF**: `WithoutFogNothingIsHiddenAndTheCameraIsNotDarkened` failed with the files restored as well; the test fault above, not rerun.
+
+---
+
+## 2026-09-26 — The choice screen: a floor object is clicked by its name like a drop and opens a panel of choices; Grim Totems is its first rule, embraced for 25% more damage and three Elites or cleansed to weaken the creatures near it
+
+**Affects:** two new classes, `game/Source/Cataclysm/Dungeon/CataclysmFloorObject.h` and `.cpp` (a thing on a floor
+that a rule placed and the player clicks) and `game/Source/Cataclysm/Interface/CataclysmChoicePanelWidget.h` and `.cpp`
+(the panel it opens); `game/Source/Cataclysm/Interface/CataclysmHUD.h` and `.cpp` (the object's name tag, drawn and
+hit-tested as a drop's is); `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (the click, the walk
+to an object out of reach, and opening the panel); `tools/generate_interface_assets.py` (the panel's layout,
+`WBP_ChoicePanel`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (Grim Totems' key,
+figures, a player floor-effect field `GrimEmbraceDamageMorePercent`, and its place among the rows partly built);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a key of `DamageMultipliersBySource`,
+`GrimTotemsDamageSource`, with its setter); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (a
+choice sent to the rule that placed its object, and Grim Totems: the totems, embracing, cleansing, the beat, the
+per-floor reset, leaving the dungeon, the panel line); `docs/Cataclysm_GDD_v2.md` (one paragraph beside the one on
+taking drops); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check, and the new damage source in the check that every
+source writes its own key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and Grim Totems PARTLY built.** They were done in the window of 2026-09-30; the figures are at the end of this entry.
+
+### What was there
+
+Nothing on a floor could be clicked except a creature and a drop, and no class or interface in the game's source was
+named for interacting. A drop is clicked through the name the HUD draws over it (`ACataclysmHUD::DropUnderPoint`), and
+a click from further than three metres walks the character there and takes it on arrival
+(`ACataclysmPlayerController`'s `PendingPickup`). Trick or Treat reacts to a drop taken by hand; it does not add a click
+of its own. The screens that offer choices (the city screen, the empire map, the passive tree, character creation and
+the character sheet) all use `UCataclysmChoiceButton`, laid out by Widget Blueprints the generator builds, and none
+pauses the game.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+- **A floor object**, placed by a rule, with a name and a list of choices, each with a key, a label and whether it can
+  be chosen now; not a creature.
+- **Clicked the way a drop is**: the HUD draws its name, a click on the name in reach opens its panel, and a click from
+  further off walks the character there first, within the three metres a drop is taken from. "A click on a name tag
+  with walk-to matches how the design already takes drops, so no new key is needed."
+- **A choice panel** with the object's name, a line, one button per choice and "Leave", laid out by a generated Widget
+  Blueprint from the existing choice button. It does not pause, like every other screen.
+- **A choice is sent to the game mode**, which hands it to the rule that placed the object.
+- **Tests** drive the panel's own handler and the game mode, as the city screen's tests do.
+- **Grim Totems is the first rule to use it**, in the same change. **A paragraph in the design document** beside the one
+  on taking drops says what a floor object is.
+
+### Grim Totems
+
+`Death_Grim_Totems` in `game/Data/DungeonModifiers.csv`: "Throughout the dungeons, players encounter grim totems
+emanating dark energy. Interacting with these totems offers a choice between embracing their malevolent power or
+dispelling them to cleanse the area. Embracing the power of the totems grants temporary bonuses but may also trigger
+more difficult enemy spawns or curses. Cleansing the totems purifies the environment, removing harmful effects and
+weakening nearby enemies." It states no figure.
+
+A new arena carrying the row gets two totems, one on a Horde arena and kept across its waves, placed away from the
+entrance as the Eternal Chorus's cells are, each a floor object named "Grim Totem" with a zone drawn under it.
+
+- **Embrace**: the player deals 25% more attack and spell damage for thirty seconds, and three creatures of the floor's
+  kinds at the Elite rung come about eight metres from the totem, noticing the player from anywhere on the floor. They
+  are the floor's creatures and pay as the Elite rung does.
+- **Cleanse**: every creature of the floor within fifteen metres of the totem deals 25% less damage for as long as it
+  lives.
+- Either way the totem and its zone go. The panel reads "grim totems: 1 standing; embraced: +25% damage for 12 s".
+- **Not built: "removing harmful effects".** Nothing in the game removes a floor rule's effects from a place or from
+  the player: the rules draw their zones again on the next beat, and there is no cleanse of the player's debuffs. The
+  row is listed among those partly built for that reason.
+  **The player-cleanse this waits on is the same one two other rows wait on**: Raw Sewage's "These disease stacks do
+  not time out and must be cleansed" (`Pestilence_Raw_Sewage`, whose stacks only a floor's boss's death or the
+  player's clears today), and the enchantment "You are cleansed every 5 seconds"
+  (`Positive_You_are_cleansed_every_5_seconds` in `game/Data/EnchantmentsPositive.csv`, which has text and no
+  rule). One cleanse action, when it is built, finishes all three. Ruled by the coordinating session, 2026-09-26.
+
+**Every Grim Totems figure is a judgement of this change under the owner's delegation, not ruled separately**, and each
+is a play-test value: two totems a floor and one a Horde arena; 25% more damage for 30 seconds; three Elites at Royal
+Guard's Elite rung, eight metres off; 25% less damage within fifteen metres. So are these:
+
+- **"More difficult enemy spawns" is Elites**, rather than "curses", which the row offers as an alternative.
+- **The Elites are raised by the rule**, so Blood Gates leaves them out, **and pay**, as the Elite rung does: they are
+  the price of the strength and the player earns what they drop.
+- **An embrace's Elites fall back to the cells around the totem** when the point eight metres off has no floor within
+  reach, because an embrace is one press with no later beat to try again on.
+- **The weakening is a key of the creature damage map of its own**, the route every rule that changes a creature's
+  damage takes, so no other rule's multiplier is overwritten.
+
+### Judgements about the choice screen, under the same delegation
+
+- **A drop's name is tested before a floor object's**, so a drop lying over an object's name is taken first.
+- **The panel stays open until a choice or "Leave"**, and a choice at an object already gone is refused.
+- **The name tag has a plain border**, the thinnest a drop's has, because an object has no rarity to show.
+- **The panel is pinned to the top right, below the floor's modifier panel**, for that panel's reason: it is open while
+  the floor is played, and a panel filling the screen would cover the creatures coming for the player.
+
+### The research
+
+Done before the build; the page quoted was fetched on 2026-09-26 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Eldritch Altars | https://poedb.tw/us/Eldritch_Altar | an altar offers "a choice between two options" that can increase rewards but also increase difficulty, and players "may choose to ignore them" |
+
+**What it settles and what it does not.** Path of Exile ships a thing on the floor that the player walks to and that
+offers a choice between options, each with an upside and a downside, which can be left alone. That settles the shape:
+an object offering a choice, and leaving as a real answer. The figures and the two halves are this game's own.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`. **The click itself is not tested**: the HUD's drawing
+needs a renderer the automation command turns off, and a test world has no cursor, which is why a drop's click is not
+tested either. The tests drive what the click reaches.
+
+- `GrimTotemsFiguresTotemsEmbraceAndCleanse`: the figures.
+- `TwoGrimTotemsStandAwayFromTheEntranceOfferingTwoChoices`: two totems away from the entrance, named, placed by the
+  row, offering embrace then cleanse, both available; a zone under each; the panel.
+- `EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites`: the totem goes; three Elites at the Elite rung,
+  raised by the rule and paying; 25% more attack and spell damage; its zone gone; the panel; still at 29.75 s and gone
+  by 30.25 s; a totem gone and a choice no totem offers are refused.
+- `CleansingAGrimTotemWeakensTheCreaturesNearIt`: the totem goes; a creature fourteen metres off deals 25% less and one
+  sixteen metres off is untouched; no Elites and no strength on the player.
+- `TheChoicePanelOffersATotemsChoicesAndLeaveChoosesNothing`: the panel offers embrace, cleanse and Leave; Leave chooses
+  nothing and the totem stands; cleanse pressed on the panel reaches the rule and the totem goes.
+- `ANewFloorBringsNewGrimTotemsAndEndsTheEmbrace`: the last floor's totem is gone, two new ones stand, and the embrace
+  has ended.
+
+One Python check: the row still says "offers a choice", "temporary bonuses", "more difficult enemy spawns", "removing
+harmful effects" and "weakening nearby enemies".
+
+### Cleansing the player, added at the move; the row is built
+
+The coordinating session ruled on 2026-09-30 that this change adds the call the entry says the row waits on: choosing
+Cleanse at a totem also runs the player cleanse (`UCataclysmDebuffs::Cleanse`, from the player-cleanse change), which
+removes what others put on the player and keeps what the player put on itself. "Removing harmful effects" was the row's
+last missing clause, so `BuiltStateOf` answers `Built` for it. A floor rule's zones are still drawn again on the next
+beat; the row's words name harmful effects, and the ones on the player are what a cleanse removes. One test,
+`CleansingAGrimTotemCleansesThePlayer`: a burn an Imp put on the player is gone when a totem is dispelled.
+
+### The choice panel's asset, tested; a proof swapped for the cleanse call
+
+Ruled by the coordinating session on 2026-09-30:
+- **One test that the asset exists and fits**, `TheChoicePanelAssetLoadsAndHoldsItsBoundWidgets`: the path the player
+  controller opens (`ChoicePanelClass`, read by reflection because it is private) loads, is a
+  `UCataclysmChoicePanelWidget`, and its widget tree holds `TitleLabel` and `PromptLabel` as text blocks and `ChoiceBox`
+  as a panel, the three the panel binds. It reads the asset's own tree because a test world has no game instance for
+  `CreateWidget`. It fails until the window runs `tools/generate_interface_assets.py`, and passes after.
+- **Proof Pb is now the cleanse call**: `UCataclysmDebuffs::Cleanse(Player);` written as `(void)Player;`, failing
+  `CleansingAGrimTotemCleansesThePlayer` on "the burn is gone". It replaces the weakening proof, because the cleanse
+  call is new code that no other test's failure would point at. Pa and Pc stay.
+- **The play check stays**: click a Grim Totem and see the panel with its title, prompt, Embrace, Cleanse and Leave.
+  The test shows the asset exists and fits; only play shows the panel opens where it should.
+
+### Two merge rules first used at this change's move
+
+This change moved in a stack of seven on development c2eccb69. Two conflicts first met at this step were resolved by
+rules the coordinating session accepted on 2026-09-30, each of which keeps both sides and refuses anything it cannot
+place:
+- **A list's closing line reopened by both sides** (`resolve_list_close.py`): the stacked side's last item is reopened
+  and the incoming side's items follow, closing the list. Here, the Python check's setter and key pairs: Carrion Feast's
+  pair, then this change's.
+- **`&& !bX` terms added by both sides** (`resolve_and_terms.py`): every base term must survive on both sides, in any
+  order, and the incoming term joins the line that holds the base's last term, or stands on its own line past 120
+  characters. Here, `&& !bGrimTotems` in the early return of `StepFloorRulesThatChange`, on its own line.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites` failed with the break in; passed restored.
+- **Pb PROVED**: `CleansingAGrimTotemCleansesThePlayer` failed with the break in; passed restored.
+- **Pc PROVED**: its first run's build failed and no test ran -- the fault in The Blackest Shadow's entry, `IsAnInvisibleStalker` inline in the header; rerun with the same break once that was fixed, `TheChoicePanelOffersATotemsChoicesAndLeaveChoosesNothing` failed with the break in and passed restored.
+
+And `WBP_ChoicePanel` was generated in the editor with `run_editor_python.py generate_interface_assets.py`, which reported that one file, and committed.
+
+---
+
+## 2026-09-26 — The player cleanse: one action removes the debuffs others put on the player and clears the dungeon stacks whose rows say they are cleansed
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (`UCataclysmDebuffs::Cleanse`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the `OnCleansed` announcement and
+`NoteCleansed`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`OnSomethingWasCleansed`, which
+clears the stacks); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the `cleanse`
+action name and its branch in `StepTimedGrants`); `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`
+(`FCataclysmPoolAction::bCleanse`); `game/Source/Cataclysm/Items/CataclysmItem.cpp` (a row whose Action is `cleanse`
+sets it); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` (Raw Sewage's, the Starvation Curse's and
+Chaos Touched's notes name the cleanse); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+They were done in the window of 2026-09-30; the figures are at the end of this entry.
+
+### Why
+
+Three waiting pieces each needed a way to cleanse the player, and there was none: Grim Totems' "removing harmful
+effects", Raw Sewage's "These disease stacks do not time out and must be cleansed", and the enchantment "You are
+cleansed every 5 seconds" (`Positive_You_are_cleansed_every_5_seconds`, text only). No cleanse, purge or dispel existed
+anywhere in the game, of the player's debuffs or of anyone's buffs.
+
+### The research
+
+Each page fetched on 2026-09-26 before it is quoted:
+
+- Diablo IV's Unstoppable (game8.co): the character will "remove all control impairing or CC (crowd control) effects
+  affecting them, including Stuns, Roots, Slows, and Fear"; "you can still take damage while the Unstoppable buff is
+  active". It also grants a short immunity.
+- Path of Exile's utility flasks (poedb.tw): Sin's Rebirth "Removes all Burning when used" and grants immunity to
+  Ignite for 4 seconds; Kiara's Determination grants "Immunity to Freeze, Chill, Curses and Stuns during Effect".
+- Path of Exile 2's Thawing Charm (pathofexile2.wiki.fextralife.com): used when you become Frozen, it "Grants Immunity
+  to Freeze" and lasts 3 seconds.
+- Not quoted, because no page with its text could be read: Grim Dawn's Nullification (grimtools.com's page carried no
+  skill text; its fandom wiki was not tried) and Last Epoch's potion cleanse (its fandom wiki returned HTTP 402).
+
+What the research settles: shipped games remove harmful effects by category (crowd control, a named ailment, curses),
+and a removal usually comes with a short immunity. What it does not settle, and is this game's own: a "cleanse" with no
+category named, and whether dungeon-rule stacks count. Those are the rulings below.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-26:**
+
+1. **What it removes:** every timed effect on the player granting a tag under `UCataclysmDebuffs::DebuffRoots`
+   (`Keyword.DoT`, `State.Stunned`, `Status.Debuff`) that somebody else put there: every damage over time, curse and
+   stun. **And the dungeon stacks whose rows say they are cleansed**: Raw Sewage's ("must be cleansed"), the
+   Starvation Curse's ("persist unless cleansed"), and Chaos Touched's ("will continue to stack unless cleansed"), its
+   debuff kinds only, the split a floor's boss already makes.
+2. **What it leaves:** buffs; `State.StunImmune`, which protects; knockdown, pin and stagger, which are not debuff
+   roots; **an effect the player put on itself**, since the Masochist's damage conversion puts a bleed on its own
+   character and removing it would delete damage converted and not yet taken; the stacks whose rows name another
+   remedy, Wasting Sickness ("can only be removed by defeating a floor boss"), The Nihil's Embrace ("you must defeat a
+   high tier enemy") and Void Parasite (its light zone); the stacks whose rows say nothing of a cleanse, Infested Hoard,
+   Plague Convergence, Holy Repercussions' Judgment, Death's Embrace and Brand of the Aggressor; and the effects a
+   floor ties to a place, Grasping Tentacles' and Singularity Wells' slows and Edict of Silence's and Anti-Magic
+   Zones' locks. **The row's own words decide.**
+3. **No immunity afterwards.** A cleanse every 5 seconds with even 2 seconds of immunity would make its wearer immune
+   about 40% of the time.
+4. **The shape:** `UCataclysmDebuffs::Cleanse(Character)` removes the effects and announces `OnCleansed` on
+   `UCataclysmCombatEvents`; the dungeon game mode listens, as it does to `OnHit`, and clears the stacks when the
+   character is the player, leaving the change to the next beat as a floor's boss's death does. The enchantment,
+   which runs in the ability system, and the game mode never call each other.
+5. **Fear**, `State.Feared`, lies outside the debuff roots but is crowd control someone else put on the player, and
+   Diablo IV's Unstoppable removes it: when the fear change merges, the cleanse removes it too. It had not merged when
+   this change was built, so it is added when this change moves onto it.
+6. **Grim Totems' Cleanse choice calls it**, added when that branch moves after this one merges; the two are not
+   stacked.
+7. **The enchantment side:** this change builds the `cleanse` action name, `FCataclysmPoolAction::bCleanse`, its match
+   in `CataclysmItem.cpp` and its branch in `StepTimedGrants`, tested with a pool action built by hand. The
+   `EnchantmentEffects.csv` row (ActionEvent `every_seconds`, EverySeconds 5) and the name in
+   `tools/generate_datatables.py`'s action vocabulary are the enchantment session's. **A caveat passed to it:**
+   `every_seconds` fires only in combat (ruled 2026-09-24), so the cleanse would not fire out of combat, while Raw
+   Sewage's stacks burn out of combat too.
+
+### Judgements of this change, under the same delegation, not ruled separately
+
+- **"Put there by the player" is an effect whose instigator is the character or its ability system's owner**, since a
+  player's ability system belongs to its player state.
+- **Only the timed event reads `bCleanse`.** A row asking for a cleanse on another event would need its own branch in
+  `ActOnEvent`; none does.
+- **Raw Sewage's river timer is reset with its stacks**, as a floor's boss's death resets it.
+
+### Tests
+
+Seven automation tests in `Cataclysm.Cleanse.`:
+
+- `ItRemovesTheBurnCurseAndStunACreaturePutOnThePlayer`: a burn, Cripple and a stun an Imp put on the player; a
+  cleanse removes three effects, and the stun's immunity stays.
+- `ItKeepsABuffAndABleedThePlayerPutOnItself`: a Commander buff and a bleed whose instigator is the player stay; an
+  Imp's burn beside them is removed, the one effect removed.
+- `ItClearsRawSewageAndTheNextBeatTakesTheDiseaseOff`: one stack, cleared at once; the next beat takes the disease
+  keyword off.
+- `ItClearsTheStarvationCurse`: one stack of each kind, both cleared.
+- `ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs`: a stack of more health and one of less; the second is cleared.
+- `ATimedCleanseActionFiresEveryFiveSecondsOfAFight`: a hand-built timed pool action; fifty seconds out of combat
+  cleanse nothing; four seconds into a fight the Imp's burn remains; at five it is gone.
+- `ItLeavesWastingSicknessAndVoidParasite`: with a voidling attached and a Wasting Sickness stack from a creature's
+  blow, a cleanse leaves both. Added at the coordinating session's request, 2026-09-26: the listener does not touch
+  them, and this is what holds a later edit to that. It reads Wasting Sickness through a new
+  `ACataclysmDungeonGameMode::WastingSicknessStacksHeld`, beside the other rules' counts.
+
+One Python check: the three rows still say "must be cleansed", "persist unless cleansed" and "unless cleansed".
+
+### Fear, added at the move
+
+Fear merged on development after this change was written (#2139, 012b2171), and the ruling of 2026-09-26 added it to
+what a cleanse removes when this change moved: `State.Feared` joins the tags `Cleanse` matches, with the same rule that
+keeps an effect the player put on itself, and `State.FearImmune` and the shared window stay, as a stun's immunity does.
+It has its own test, `ItRemovesAFearACreaturePutOnThePlayer`, because a fear that lands opens the shared window, so a
+stun beside it in one test would be refused.
+
+### How the stack of seven was moved
+
+This change is the first of seven moved together onto development c2eccb69 on 2026-09-30, in the order player cleanse,
+Grim Totems, vision, Swarm of Locusts obscuring vision, the Blackest Shadow, Shadowy Enemies and Reality Twister. Each
+change's commits were cherry-picked in turn, and every conflict was resolved by a rule the coordinating session accepted,
+each of which keeps both sides and refuses anything it cannot place; a block no rule accepted stopped the move. **Every
+cherry-pick used git's histogram diff** (`-X diff-algorithm=histogram`) with the base shown in each conflict. On
+Shadowy Enemies' first commit the default diff matched the start of its new functions, above `ForgetTheVoidParasite`, to
+the middle of `StepGrimTotems`; the histogram diff placed them where they belong, and the block became two insertions.
+The coordinating session accepted the switch on 2026-09-30. The rules each change first needed are in its own entry.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development `baad9c83`. The seven changes went through the window together, so the suite figures are the stack's, taken on its final head `db5f68a9`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2843 tests performed, 2843 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2843 tests in the tree at db5f68a9; 2843 performed, gap 0" |
+| Python | "5565 passed, 8 skipped in 415.01s"; JUnit: 5573 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: `ItKeepsABuffAndABleedThePlayerPutOnItself` failed with the break in; passed restored.
+- **Pb PROVED**: `ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs`, `ItClearsRawSewageAndTheNextBeatTakesTheDiseaseOff` and `ItClearsTheStarvationCurse` failed with the break in; all three passed restored.
+- **Pc PROVED**: `ATimedCleanseActionFiresEveryFiveSecondsOfAFight` failed with the break in; passed restored.
+
+---
+
 ## 2026-09-30 — CLAUDE.md's note on `PreAttributeChange` now says it clamps only the current value, and that the stored base is kept as written
 
 **Affects:** `CLAUDE.md` (the paragraph beginning "A clamp in `PreAttributeChange` cannot be guard-proven"). Issues

@@ -208,6 +208,13 @@ public:
 	 */
 	TArray<FCataclysmDungeonModifier> DungeonModifierPool;
 
+	/**
+	 * Every row of the whole modifier table that does something in play, whatever Cataclysm: what Reality Twister
+	 * draws from. Filled where `DungeonModifierPool` is, from the run's whole table, and emptied with it. Issues
+	 * #1820 and #41.
+	 */
+	TArray<FCataclysmDungeonModifier> DungeonEveryBuiltModifier;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
@@ -2055,8 +2062,31 @@ public:
 	/** Void Parasite, for the panel and tests: how many voidlings the player carries. */
 	int32 VoidParasiteStacksHeld() const { return VoidParasiteStacks; }
 
+	/** Wasting Sickness, for tests: how many stacks the player carries. */
+	int32 WastingSicknessStacksHeld() const { return WastingSicknessStacks; }
+
+	/**
+	 * The choice screen: a choice made at a floor object, sent to the rule that placed it. Answers whether anything
+	 * happened: false for an object gone, a choice it does not offer or cannot offer now, or a rule that does not
+	 * answer. Called by `UCataclysmChoicePanelWidget` and by tests. Issues #1820 and #41.
+	 */
+	bool ChooseAtFloorObject(class ACataclysmFloorObject* Object, FName ChoiceKey);
+
+	/** Grim Totems, for the panel and tests: the totems standing, and the Elite creatures embracing brought. */
+	TArray<class ACataclysmFloorObject*> GrimTotemsNow() const;
+	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
+
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
 	class ACataclysmGroundZone* VoidParasiteLightNow() const;
+
+	/**
+	 * Shadowy Enemies, for tests: the centres of this floor's light zones, the exit's last when a boss stands there;
+	 * empty on a floor without the row. Issues #1820 and #41.
+	 */
+	TArray<FVector> ShadowyEnemiesLightsNow() const;
+
+	/** Shadowy Enemies, for tests: how many of this floor's light zones are drawn now. */
+	int32 ShadowyEnemiesLightZonesDrawn() const;
 
 	/** Necrotic Bloom, for the panel and tests: the flowers still standing. */
 	TArray<ACataclysmEnemyCharacter*> NecroticBloomFlowersNow() const;
@@ -2272,6 +2302,15 @@ public:
 	bool TrialOfEnduranceRanOut() const { return bTrialRanOut; }
 
 	/**
+	 * The vision system: how far the player sees on this floor, in centimetres, or 0 for unlimited, as last worked out
+	 * on the beat from the rows in force. A creature further than this from the player is hidden. Issues #1820 and #41.
+	 */
+	float PlayerSightRadiusCm() const { return PlayerSightRadius; }
+
+	/** The Blackest Shadow, for tests: whether this creature carries the Invisible Stalker buff now. */
+	bool IsAnInvisibleStalker(const ACataclysmEnemyCharacter* Creature) const;
+
+	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
 	 */
@@ -2329,6 +2368,13 @@ private:
 	/** Trick or Treat, on every take: a clicked drop on a floor carrying the row rolls. */
 	void OnLootTaken(const struct FCataclysmLootTakenNotice& Notice);
 
+	/**
+	 * A cleanse, on every character cleansed: when it is the player, the dungeon stacks whose rows say they are
+	 * cleansed are cleared -- Raw Sewage's, the Starvation Curse's, and Chaos Touched's debuff kinds. The rest are
+	 * kept, as their rows name another remedy or none. Ruled 2026-09-26.
+	 */
+	void OnSomethingWasCleansed(AActor* Character);
+
 	/** Trick or Treat's trick: two creatures of the floor's kinds where the drop lay. */
 	void RaiseTheTrickOrTreatPair(const FVector& Where);
 
@@ -2354,6 +2400,50 @@ private:
 
 	/** Blood Bond, on the beat: the first elite that notices the player takes the bond. */
 	void StepBloodBond(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * The vision system, on the beat: the sight worked out from the rows in force, every creature beyond it hidden and
+	 * every other shown, and the camera darkened while sight is limited.
+	 */
+	void StepVision(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * The vision system: the player's sight as last worked out, and the creatures it hid, so only those are shown
+	 * again. Issues #1820 and #41.
+	 */
+	float PlayerSightRadius = 0.0f;
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> HiddenBySight;
+
+	/**
+	 * The Blackest Shadow: the creatures carrying the Invisible Stalker buff now, so only those have it taken off again.
+	 * Issues #1820 and #41.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> InvisibleStalkers;
+
+	/**
+	 * Shadowy Enemies: this floor's light zones' cells, the exit's last when a boss stands there; the zones drawn on
+	 * them; the creatures shrouded now, so only those are released; and the seconds each fire-hit creature stays
+	 * exposed. Issues #1820 and #41.
+	 */
+	TArray<FIntPoint> ShadowLightCells;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> ShadowLights;
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> ShroudedCreatures;
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> ShadowFireSecondsLeft;
+
+	/**
+	 * Shadowy Enemies, on the beat: the light zones kept drawn, and every floor creature shrouded or exposed as the
+	 * lights, The Blackest Shadow's light and its fire seconds say; on a floor without the row, every shroud taken off.
+	 */
+	void StepShadowyEnemies(class ACataclysmPlayerCharacter* Player);
+
+	/** Shadowy Enemies, on every blow: a fire hit on a floor creature exposes it at once, for the row's seconds. */
+	void NoteHitForShadowyEnemies(const struct FCataclysmHitNotice& Notice);
+
+	/** Shadowy Enemies: this arena's light cells chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheShadowLights();
+
+	/** Shadowy Enemies: the light zones destroyed and forgotten, and the fire seconds; the floor has ended. */
+	void ForgetTheShadowLights();
 
 	/** Blood Bond, on every death: the player's death kills the elite bonded on this floor. */
 	void NoteDeathForBloodBond(const struct FCataclysmDeathNotice& Notice);
@@ -2585,6 +2675,18 @@ private:
 
 	/** Void Parasite: this arena's light zone chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheLight();
+
+	/** Grim Totems: this arena's totems placed, where a new arena is populated. */
+	void PlaceTheTotems();
+
+	/** Grim Totems: every totem and its zone destroyed and forgotten. */
+	void ForgetTheTotems();
+
+	/** Grim Totems: a choice at one of its totems. */
+	bool ChooseAtGrimTotem(class ACataclysmFloorObject* Totem, FName ChoiceKey);
+
+	/** Grim Totems, on the beat: the totems' zones drawn, and an embrace's strength written and counted down. */
+	void StepGrimTotems(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Every voidling, the light zone and the player's stacks forgotten: the floor has ended. */
 	void ForgetTheVoidParasite();
@@ -3939,6 +4041,17 @@ private:
 	FIntPoint VoidParasiteLightCell = FIntPoint(-1, -1);
 	TWeakObjectPtr<class ACataclysmGroundZone> VoidParasiteLight;
 	int32 VoidParasitePanelStacks = -1;
+
+	/**
+	 * Grim Totems: the totems and the zones drawn under them, the Elite creatures embracing brought, an embrace's
+	 * seconds left and what was last written on the player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> GrimTotems;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> GrimTotemZones;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> GrimTotemElites;
+	float GrimEmbraceLeft = 0.0f;
+	float GrimEmbraceApplied = 0.0f;
+	int32 GrimTotemsPanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
