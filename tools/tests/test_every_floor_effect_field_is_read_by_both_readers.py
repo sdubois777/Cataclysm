@@ -93,8 +93,12 @@ def body_of(text: str, opening: str) -> str:
 #: `PotionsForbiddenValue` IS A FLAG FOR THE SAME REASON: Hard Mode writes 1 to
 #: `potions_forbidden`, and `UCataclysmPotions::Drink` refuses when it is above
 #: zero. Issue #806.
+#:
+#: `BeaconMagicFindAdded` IS A FLAT FIGURE FOR `RiftMagicFindAdded`'S REASON: Infernal
+#: Beacons adds magic find points, applied by `DungeonModifierEffectsAddFlat`. Issues
+#: #1820 and #41.
 NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "RiftMagicFindAdded",
-                   "PotionsForbiddenValue"}
+                   "PotionsForbiddenValue", "BeaconMagicFindAdded"}
 
 
 @pytest.fixture(scope="module")
