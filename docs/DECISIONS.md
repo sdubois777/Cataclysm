@@ -2,6 +2,56 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — A row on a minion stat may carry only a condition the minion's read can answer; a Python check now refuses one that would grant nothing
+
+**Affects:** `tools/tests/test_a_minion_row_asks_only_what_its_read_can_answer.py` (new). No game code, no
+data and no Unreal test changes. Issue [#1804](https://github.com/sdubois777/Cataclysm/issues/1804).
+
+### WHAT #1804 FOUND, AND WHAT ALREADY SETTLED IT
+
+A summoner's minion stats reach a minion through reads that hand the stat pipeline no blow and no
+skill. A row whose condition asks about the blow, the skill or the target was judged against an
+empty state, refused every time, and granted nothing. The generator accepted it, the row imported,
+and nothing reported it.
+
+**For the rows that exist, #2061 already did the work.** Of the minion rows on `origin/development`,
+exactly two carry a condition, both on `minion_damage`, both `target_damaged_by_you_within_seconds`:
+`Ritualist_basic_a_b0#1` Set Upon and `Ritualist_capstone_100#2` Set the Pack On. #2061 made
+`minion_damage` read against the enemy the minion is striking, through `SummonerMultiplierAgainst`
+and `MultiplierForStatAgainst`, so both grant. No Ravager row is affected.
+
+### WHAT IS ADDED: A CHECK FOR FUTURE ROWS
+
+Every other minion stat (`minion_health`, `minion_duration`, `minion_attack_speed`,
+`minion_explosion_damage` and the rest) is still read with no target, and `minion_damage` still
+with no blow and no skill. So a future row could still grant nothing silently. The check fails any
+row in `PassiveEffects.csv` or `EnchantmentEffects.csv` on a minion stat whose condition depends on
+the blow or the skill, except a target condition on `minion_damage`.
+
+**Both lists are parsed from the C++, not copied.** The blow-or-skill conditions are the case labels
+`UCataclysmStatPipeline::WhatConditionDependsOn` answers with `EOn::TheBlowOrSkill`; the target
+conditions are the case labels in `UCataclysmAbilitySystemComponent::WithTargetState`. A control
+asserts `minion_damage` is still read through `SummonerMultiplierAgainst`, so the exception is
+re-examined if that read changes. Parsed on `819e9ef5`: 27 blow-or-skill conditions, 11 target
+conditions, 43 minion rows (32 passive, 11 enchantment).
+
+### EVIDENCE
+
+- **Guard proofs**, `tools/prove_guard.py` in a `git archive` copy, command `python -m pytest` on the
+  new file. All three PROVED:
+  - a stand-in row `minion_health` with `target_is_boss`: "1 failed, 2 passed | restored: 3 passed",
+    `test_no_minion_row_asks_what_its_read_cannot_answer`;
+  - a stand-in row `minion_damage` with `hit_is_melee_attack`, a blow condition the target read
+    cannot answer: the same result and the same test;
+  - the classification parser made blind: "1 failed, 2 passed | restored: 3 passed",
+    `test_the_parsers_found_what_they_read`.
+- **Python of record, on the branch commit before this entry** (the jovial-bouman worktree, which
+  has built modules): "5549 passed, 8 skipped in 412.61s", JUnit tests=5557 failures=0 skipped=8.
+  This entry changes only `docs/DECISIONS.md`, so that run stands for the code; the whole of
+  `tools/tests` was run again after it.
+
+---
+
 ## 2026-09-30 — The rows written after the survey: +10 maximum resists, bleed duration, and two skill locks whose time rolls with the item
 
 **Affects:** `tools/generate_datatables.py` (the optional column Stack Seconds High and its refusals,
