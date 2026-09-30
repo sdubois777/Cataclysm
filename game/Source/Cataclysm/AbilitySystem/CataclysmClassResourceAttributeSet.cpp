@@ -4,6 +4,7 @@
 // For the lookup that applies a scaled row to the maximum, which the
 // forwarder below asks instead of reading the attribute. Issue #1515.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
 
@@ -130,7 +131,12 @@ float UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked() const
 			Cast<UCataclysmAbilitySystemComponent>(
 				GetOwningAbilitySystemComponent()))
 	{
-		return Cataclysm->MaximumClassResource();
+		// LESS WHAT THE ARMY HOLDS BACK. Issue #1160: "holding a thrall
+		// reserves 30 Fervour", and an imp its 10 (#1934). Every gain and every
+		// spend clamps to this figure, so a reserved share can be neither
+		// filled nor spent. Never below zero.
+		return FMath::Max(0.0f, Cataclysm->MaximumClassResource()
+			- UCataclysmCommand::ReservedFervourOf(Cataclysm->GetAvatarActor()));
 	}
 	return GetMaxClassResource();
 }

@@ -133,6 +133,11 @@ float UCataclysmSecondSelf::AreaMultiplierFor(const AActor* Follower)
 		FName(UCataclysmItemModifiers::AreaOfEffectStat), FGameplayTagContainer());
 }
 
+AActor* UCataclysmSecondSelf::Chosen(const AActor* Commander)
+{
+	return Holds(Commander) ? Choose(Commander) : nullptr;
+}
+
 int32 UCataclysmSecondSelf::ExtraThrallShares(const AActor* Commander)
 {
 	if (!Holds(Commander))

@@ -361,7 +361,13 @@ bool FCataclysmSecondSelfReserveTest::RunTest(const FString&)
 			}
 			ACataclysmEnemyCharacter* Creature =
 				SpawnCreature(World, FVector((3 + Index) * M, Along, 0.0f));
-			Taken += UCataclysmCommand::Subjugate(Commander.Actor, Creature) ? 1 : 0;
+			if (UCataclysmCommand::Subjugate(Commander.Actor, Creature))
+			{
+				// The Possess skill records a thrall's reserve on it; a direct
+				// `Subjugate` records nothing. Issue #1160.
+				Creature->ReservedFervour = 30.0f;
+				++Taken;
+			}
 		}
 		return Taken;
 	};

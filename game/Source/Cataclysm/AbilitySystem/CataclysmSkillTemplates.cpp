@@ -3234,6 +3234,12 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	if (Machine)
 	{
 		Deployed.Add(Machine);
+
+		// A GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: gadgets are
+		// War skills and the owner's mandate is no War work yet, so #1934 stays
+		// open for them. Their rows already state `FervourReserve`, so building
+		// it is this one line, with a fit check before the spawn like Summon
+		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
 	}
 	return Machine;
 }
@@ -3362,6 +3368,16 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		return nullptr;
 	}
 
+	// A REPLACEMENT RESERVES WHAT ITS SKILL STATES, ruled 2026-09-30: "at no
+	// cost" is the cast, and the row's reserve is held while the minion is out.
+	// The lost one has already left the total, so this normally fits; when the
+	// maximum fell meanwhile, nothing is summoned.
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags);
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
+	{
+		return nullptr;
+	}
+
 	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
 	const FString SummonedType =
 		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
@@ -3373,6 +3389,8 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		Minion->RecordExplosionRadius(Params.RadiusCm);
 		Minion->SummonedBy = this;
 		Minions.Add(Minion);
+		Minion->ReservedFervour = Reserve;
+		UCataclysmCommand::ClampFervourToSpendable(Self);
 	}
 	return Minion;
 }
@@ -3596,6 +3614,16 @@ bool UCataclysmSummonSkill::Possess()
 	}
 
 	bTookIt = UCataclysmCommand::Subjugate(Self, Target);
+	if (bTookIt)
+	{
+		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
+		// Fervour drops at once. Issue #1160.
+		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
+		{
+			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
+		}
+		UCataclysmCommand::ClampFervourToSpendable(Self);
+	}
 	return bTookIt;
 }
 
@@ -3619,7 +3647,24 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	const int32 SummonCap = MinionCapFor(Avatar(), Params, SkillTags);
 	const TArray<ACataclysmMinion*> Sharing =
 		SummonCap > 0 ? MinionsSharingTheCap() : TArray<ACataclysmMinion*>();
-	if (SummonCap > 0 && Sharing.Num() >= SummonCap)
+	const bool bEvicts = SummonCap > 0 && Sharing.Num() >= SummonCap;
+
+	// AND THE POOL MUST HOLD THE NEW ONE'S RESERVE. Issue #1934, ruling R1:
+	// both the count cap and the Fervour limit apply. At the cap the oldest is
+	// about to go, so its reserve is counted as freed first, ruled 2026-09-30;
+	// a press is refused only when the pool cannot hold the new imp, and then
+	// nothing is destroyed either.
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags);
+	const float Freed = bEvicts && IsValid(Sharing[0]) ? Sharing[0]->ReservedFervour : 0.0f;
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve, Freed))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' has no room in its pool for another reserving %.0f Fervour."),
+			*SkillName, Reserve);
+		return nullptr;
+	}
+
+	if (bEvicts)
 	{
 		ACataclysmMinion* Oldest = Sharing[0];
 		Minions.Remove(Oldest);
@@ -3677,6 +3722,10 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		Minion->RecordExplosionRadius(Params.RadiusCm);
 		Minion->SummonedBy = this;
 		Minions.Add(Minion);
+
+		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934.
+		Minion->ReservedFervour = Reserve;
+		UCataclysmCommand::ClampFervourToSpendable(Self);
 	}
 	return Minion;
 }

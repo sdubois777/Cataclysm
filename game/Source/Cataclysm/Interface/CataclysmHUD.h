@@ -116,10 +116,14 @@ private:
 	/**
 	 * One of the player's own pools: a bar in the corner, with its figures.
 	 * `Reserved` is drawn as a dark band at the bar's right-hand end, under the
-	 * figures; only health has any. Issue #1833.
+	 * figures, in `ReservedHex` (health's shade when null). Health (issue #1833)
+	 * and Fervour (issue #1160) have one; only Fervour's is labelled.
+	 * `Maximum` is always the whole maximum, reserved part included.
 	 */
 	void DrawPlayerPool(float Top, float Current, float Maximum,
-						const TCHAR* FillHex, float Reserved = 0.0f);
+						const TCHAR* FillHex, float Reserved = 0.0f,
+						const TCHAR* ReservedHex = nullptr,
+						bool bLabelReserved = false);
 
 	/**
 	 * The player's six ability slots, along the bottom middle of the screen.

@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Every thrall and every imp holds its Fervour reserve back from the pool, and one total decides what can be spent and what can still be summoned; gadgets reserve nothing yet
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmCharacterBase.h` (the field `ReservedFervour`),
+`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp` and `.h` (`ReservedFervourOf`,
+`HasRoomToReserve`, `ClampFervourToSpendable`, and `HasRoomForAnotherThrall` reading the same
+total), `CataclysmClassResourceAttributeSet.cpp` (`MaximumClassResourceAsked` subtracts the total),
+`CataclysmSecondSelf.cpp` and `.h` (`Chosen`), `CataclysmSkillTemplates.cpp` (Subjugate, Summon Imp
+and the Press-Ganged and Rekindled replacements record a reserve),
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.cpp` and `.h` and `CataclysmHUD.cpp` and
+`.h` (the reserved section of the Fervour bar), and
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` and `CataclysmSecondSelfTests.cpp`. Issues
+[#1160](https://github.com/sdubois777/Cataclysm/issues/1160) and
+[#1934](https://github.com/sdubois777/Cataclysm/issues/1934).
+
+### WHAT CHANGED
+
+- **Each commanded thing carries its own reserve.** `ACataclysmCharacterBase::ReservedFervour` is
+  set when the thing is made or taken, from its skill's `FervourReserve` after Crowned's reduction
+  (`FervourReserveFor`), and it does not change afterwards.
+- **One function totals it.** `UCataclysmCommand::ReservedFervourOf` adds the reserve of everything
+  `ThingsCommandedBy` returns, and adds A Second Self's chosen follower's reserve once more, because
+  that follower "reserves twice the Fervour it would".
+- **What can be spent is the maximum minus that total.** `MaximumClassResourceAsked`, which every
+  Fervour gain and every Fervour spend is clamped to, now returns it. The maximum itself,
+  `MaximumClassResource`, is unchanged.
+- **A new reserve must fit.** Subjugate, Summon Imp and a replacement are refused unless the
+  reserved total plus the new reserve is at most the maximum. `HasRoomForAnotherThrall` asks the
+  same total, so an imp out leaves less room for a thrall.
+- **The bar shows the reserved part.** The Fervour bar's whole length is the maximum; the reserved
+  section is drawn in a darker shade at the right end, labelled "N reserved".
+- **One drawing of a reserved section, shared with health.** Health reservation (issue #1833) added
+  the same `Reserved` parameter to `ACataclysmHUD::DrawPlayerPool` with its own band. Git merged the
+  two without a conflict and kept both bands, so every bar with a reserve would have drawn two. Ruled
+  2026-09-30: health's band is the one kept, with its convention (`Maximum` is the whole maximum and
+  the band is `Reserved / Maximum` at the right end). The Fervour call passes its full maximum, its
+  own shade and a label switch. Only the Fervour bar is labelled, because a Fervour reserve decides
+  whether the next summon is allowed; a health reserve is shown on the character sheet.
+- **A bug in this branch, fixed at the same move.** The Fervour bar was drawn only while the
+  spendable maximum was above zero, so with every point reserved it disappeared. It is now drawn
+  while the spendable maximum plus the reserve is above zero.
+
+### THE RULINGS, 2026-09-30
+
+| Question | Ruling |
+| :-- | :-- |
+| Summon Imp is at its own cap of imps out | The oldest imp is removed as before, and its reserve is counted as freed before the new imp is checked. When the new imp still does not fit, nothing is removed. |
+| The reserve rises above the Fervour held | The Fervour is cut to the new limit at once. The part cut off is lost; it does not come back when the reserve is freed. |
+| Gadgets | Left out. They reserve nothing in this build. See below. |
+| Press-Ganged and Rekindled replacements | Reserve their skill's figure after Crowned, like the minion they replace. |
+| Risen imps, and minions other systems spawn directly | Reserve nothing. No skill stated a reserve for them. |
+| The Ultimate costs 50 Fervour and a full army leaves little | Accepted, as the 2026-09-09 entry "The Ultimate slot costs 50 Fervour, and a Ritualist holding five thralls will not be able to cast one" already recorded. |
+
+### WHY GADGETS RESERVE NOTHING YET
+
+The 2026-09-09 ruling says "any minions/gadgets reserve it", and the gadget rows already state
+`FervourReserve`. Gadgets are War skills, and the owner's standing instruction is no War work yet, so
+they were left out on purpose. Issue #1934 stays open for them. Building it is one line in
+`UCataclysmDeployableSkill::DeployOne`, recording the reserve on the machine, plus a fit check
+before the spawn like Summon Imp's; a comment at that line says so.
+
+### TESTS
+
+- **Five new tests, group `Cataclysm.FervourReserve.`**: an imp reserves 10 and a full pool is cut
+  at once and not refilled; a pool of 25 refuses a third imp while a pool of 30 takes it; at the cap
+  the oldest imp's reserve is freed before the check; imps and a thrall share one pool of 40; a
+  minion spawned without a skill reserves nothing.
+- **Two existing tests take thralls with `UCataclysmCommand::Subjugate` directly**, which records no
+  reserve, and they counted thralls rather than reserves.
+  `Cataclysm.Command.TheArmyIsOnlyAsLargeAsTheResourcePool` and
+  `Cataclysm.SecondSelf.AChosenThrallCountsTwiceSoAHundredAndFiftyFervourHoldsFourNotFive` now record
+  30 on each thrall they take, as the Subjugate skill would. What they assert is unchanged.
+
+### NO GENRE RESEARCH IS RECORDED HERE
+
+The shape is the owner's, from the 2026-09-09 ruling and the rulings above. This entry does not claim
+it was derived from another game.
+
+---
+
 ## 2026-09-30 — Health reservation: reserved health stays in the maximum, no heal fills it, and low-health conditions read the whole maximum
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`

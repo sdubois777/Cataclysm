@@ -206,6 +206,13 @@ public:
 	 */
 	static const TCHAR* FervourFillHex;
 
+	/**
+	 * The reserved section at the right end of the Fervour bar. Issue #1160: a
+	 * darker shade of the Fervour fill, so it reads as Fervour that is there but
+	 * held back, not as empty bar.
+	 */
+	static const TCHAR* ReservedFervourHex;
+
 	/** A figure that reached health. Warm near-white. */
 	static const TCHAR* ReachedHealthHex;
 
@@ -710,6 +717,19 @@ public:
 	 * the character has spent a point on a generator, so the bar appearing IS
 	 * the confirmation that the node did something.
 	 */
+	/**
+	 * The Fervour this character's army holds back, for the bar's reserved
+	 * section. Issue #1160. What `FervourOf` answers as the maximum is already
+	 * the spendable part, so the whole bar is that plus this.
+	 */
+	static float ReservedFervourOf(const AActor* Actor);
+
+	/**
+	 * The words beside a reserved section, such as "30 reserved", or empty.
+	 * Issue #1160.
+	 */
+	static FString ReservedTextFor(float Reserved);
+
 	static bool FervourOf(const AActor* Actor, float& OutFervour,
 						  float& OutMaxFervour);
 

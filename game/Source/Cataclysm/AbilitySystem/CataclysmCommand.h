@@ -244,15 +244,13 @@ public:
 	 * passive tree ever grants is progress toward a sixth. That is the design's
 	 * own arithmetic, recorded in `docs/DECISIONS.md` on 2026-09-01.
 	 *
-	 * THE CAP IS THE WHOLE OF WHAT RESERVATION DOES TODAY, and that is worth
-	 * saying plainly. Nothing is subtracted from the character's usable pool,
-	 * which is issue #1160, and so far that has no visible effect: the
-	 * Ritualist fills the pool (its tree's first node, Fervour, generates it
-	 * from minions) but no node or skill of the Ritualist's spends it. The two
-	 * nodes that spend Fervour today, Wrung Out and Bought With Ruin, are the
-	 * Ravager's. Issue #1478 is the question of what should spend it. When
-	 * something the Ritualist holds does, this is where the reserved amount
-	 * comes from.
+	 * THE SAME TOTAL THE POOL IS REDUCED BY, since issues #1160 and #1934: what
+	 * everything commanded already reserves, from `ReservedFervourOf`, plus the
+	 * new thrall's share, against the whole maximum. Imps count as well as
+	 * thralls, so one pool bounds the whole army, ruled 2026-09-30 under the
+	 * owner's delegation. A Second Self's chosen one counts twice in the total;
+	 * when nothing is chosen yet, the new thrall would be, so its share counts
+	 * twice here.
 	 *
 	 * MEASURED AGAINST THE MAXIMUM AND NOT THE CURRENT VALUE. A reservation is a
 	 * standing claim on the pool rather than a payment out of it, which is how
@@ -264,6 +262,43 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Command")
 	static bool HasRoomForAnotherThrall(const AActor* Commander,
 										float PerThrall);
+
+	/**
+	 * The Fervour everything this character commands holds back from its pool.
+	 * Issues #1160 and #1934.
+	 *
+	 * THE SUM OF EACH LIVING FOLLOWER'S `ReservedFervour`, fixed when it was made
+	 * or taken, with A Second Self's chosen one counted twice: "reserves twice
+	 * the Fervour it would". A dead follower reserves nothing, because
+	 * `ThingsCommandedBy` leaves the dead out.
+	 *
+	 * WHAT THE POOL IS REDUCED BY. `UCataclysmClassResourceAttributeSet::
+	 * MaximumClassResourceAsked` subtracts it, so every gain and every spend,
+	 * which all clamp to that figure, respects it, and the bar shows it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Command")
+	static float ReservedFervourOf(const AActor* Commander);
+
+	/**
+	 * Whether a new follower reserving `NewReserve` fits in this character's
+	 * pool, with `Freed` Fervour about to be let go first. Issue #1934, ruling
+	 * R1: a summon needs a free slot under its cap AND enough unreserved Fervour.
+	 *
+	 * `Freed` IS SUMMON IMP'S EVICTED OLDEST, ruled 2026-09-30: at the cap the row
+	 * destroys the oldest imp, and that imp's reserve is counted as freed before
+	 * the fit is asked, so a press is refused only when the pool cannot hold the
+	 * new imp.
+	 */
+	static bool HasRoomToReserve(const AActor* Commander, float NewReserve,
+								 float Freed = 0.0f);
+
+	/**
+	 * Take current Fervour down to what the reserve leaves spendable. Issue
+	 * #1160, ruled 2026-09-30: when a reservation starts, the excess is lost at
+	 * once, as in Path of Exile, so the bar never reads above its own maximum.
+	 * Called whenever a follower that reserves something is made or taken.
+	 */
+	static void ClampFervourToSpendable(const AActor* Commander);
 
 	/**
 	 * The stat holding percentage points ADDED to the health threshold a blow

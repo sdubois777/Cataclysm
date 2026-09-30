@@ -253,7 +253,8 @@ void ACataclysmHUD::DrawOutlinedText(const FString& Text,
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
-								   const TCHAR* FillHex, float Reserved)
+								   const TCHAR* FillHex, float Reserved,
+								   const TCHAR* ReservedHex, bool bLabelReserved)
 {
 	const float Left = PlayerBarMarginPx;
 
@@ -271,7 +272,19 @@ void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
 		DrawBar(Left + PlayerBarWidthPx * (1.0f - Band), Top,
 				PlayerBarWidthPx * Band, PlayerBarHeightPx, 1.0f,
 				UCataclysmCombatOverlay::ColourFromHex(
-					UCataclysmCombatOverlay::HealthReservedHex), 1.0f);
+					ReservedHex ? ReservedHex
+								: UCataclysmCombatOverlay::HealthReservedHex), 1.0f);
+
+		// THE FIGURE, ON THE FERVOUR BAR ONLY. Ruled 2026-09-30: a Fervour
+		// reserve decides whether the next summon is allowed, so the player
+		// needs the number in a fight; a health reserve is on the sheet.
+		if (bLabelReserved)
+		{
+			DrawTextCentred(UCataclysmCombatOverlay::ReservedTextFor(Reserved),
+							FLinearColor::White,
+							Left + PlayerBarWidthPx * (1.0f - Band * 0.5f),
+							Top + 2.0f, 1.0f);
+		}
 	}
 
 	// THE FIGURES AS WELL AS THE BAR, because the whole reason this exists is to
@@ -600,12 +613,15 @@ void ACataclysmHUD::DrawPlayerVitals()
 	// above it appears: it is the one a player watches while being hit.
 	float Fervour = 0.0f;
 	float MaxFervour = 0.0f;
+	const float ReservedFervour = UCataclysmCombatOverlay::ReservedFervourOf(Pawn);
 	if (UCataclysmCombatOverlay::FervourOf(Pawn, Fervour, MaxFervour)
-		&& MaxFervour > 0.0f)
+		&& MaxFervour + ReservedFervour > 0.0f)
 	{
 		Top -= PlayerBarHeightPx + PlayerBarGapPx;
-		DrawPlayerPool(Top, Fervour, MaxFervour,
-					   UCataclysmCombatOverlay::FervourFillHex);
+		DrawPlayerPool(Top, Fervour, MaxFervour + ReservedFervour,
+					   UCataclysmCombatOverlay::FervourFillHex, ReservedFervour,
+					   UCataclysmCombatOverlay::ReservedFervourHex,
+					   /*bLabelReserved=*/true);
 	}
 
 	// AND WHAT IS HOLDING THE PLAYER, above the bars. Fear: a feared player is

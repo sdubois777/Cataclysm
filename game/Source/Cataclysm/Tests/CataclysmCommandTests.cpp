@@ -27,6 +27,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Interface/CataclysmCombatOverlay.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
@@ -545,8 +546,9 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 
 	// FERVOUR FOR EVERY CAST, AND THE POOL IS NOTHING ELSE HERE. Issue #1478: the
 	// Ultimate slot costs 50 Fervour, and this caster's pool is also its
-	// Fervour, so five casts need 250. An imp reserves nothing yet (issue
-	// #1934), so the pool's size changes only what can be paid.
+	// Fervour, so five casts need 250. Each imp here reserves 10 (issue #1934),
+	// and four imps' 40 fits in 250 with room left, so the pool's size decides
+	// only what can be paid.
 	constexpr float PoolForEveryCast = 50.0f * Casts;
 
 	const auto SummonRepeatedly = [&](FScopedCaster& Caster, const TCHAR* Row)
@@ -727,8 +729,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrownedLowersTheReserveTest,
  * with the keystone a thrall reserves 25.
  *
  * A POOL OF EXACTLY 25, WHICH IS THE ONLY SIZE THAT PROVES ANYTHING.
- * `HasRoomForAnotherThrall` asks whether `(thralls + 1) x reserve` fits in the
- * maximum pool. At 25 the ordinary reserve of 30 does not fit and the reduced 25
+ * `HasRoomForAnotherThrall` asks whether what is already reserved plus this
+ * reserve fits in the maximum pool. At 25 the ordinary reserve of 30 does not fit and the reduced 25
  * fits exactly. A larger pool would take the thrall either way and a smaller one
  * would refuse it either way, so a test at any other size would pass against a
  * build that ignored the stat.
@@ -737,15 +739,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrownedLowersTheReserveTest,
  * DAMAGE, the same arrangement the Dominion test uses and for the same reason:
  * what is under test is the reserve, so nothing else may decide the outcome.
  *
- * WHAT IS NOT TESTED HERE, AND CANNOT BE. **Nothing reads an imp's or a
- * deployable's reserve.** `FervourReserve` is read in exactly one place, the
- * helper this test exercises, and only for a skill that takes a thrall. While
- * the node said "Each thrall", a ruling asked for a test showing an imp's
- * reserve unchanged; since the owner's decision of 2026-09-16 it says "Each
- * minion", and the same test would show an imp's reserve lowered. Either way
- * no code consumes the Summon Imp row's 10, so there is no behaviour to
- * assert. Both are recorded in `docs/DECISIONS.md` rather than asserted by a
- * test that would only be testing itself.
+ * AN IMP'S RESERVE IS LOWERED THE SAME WAY. Since issue #1160 an imp reserves
+ * its skill's figure, after this keystone, and the `Cataclysm.FervourReserve.`
+ * tests check that. A deployable still reserves nothing; `docs/DECISIONS.md`
+ * says why.
  */
 bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 {
@@ -904,6 +901,10 @@ bool FCataclysmThrallCapIsThePoolTest::RunTest(const FString&)
 			UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f));
 		TestTrue(FString::Printf(TEXT("and thrall %d is taken"), Index + 1),
 			UCataclysmCommand::Subjugate(Commander.Actor, Creature->Actor));
+		// THE THRALL CARRIES ITS OWN RESERVE. Issue #1160: the Possess skill
+		// records it on the thrall when it takes one, and a direct `Subjugate`
+		// records nothing, so this test records it the way the skill would.
+		Creature->Actor->ReservedFervour = 30.0f;
 	}
 
 	TestEqual(TEXT("three thralls are held"),
@@ -3660,6 +3661,280 @@ bool FCataclysmVeilSparesItsOwnTest::RunTest(const FString&)
 		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, One));
 	TestTrue(TEXT("and the creature hunting it still is"),
 		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, Hunting.Actor) == One);
+	return true;
+}
+
+// ==========================================================================
+// The Fervour a commanded thing holds back. Issues #1160 and #1934.
+// ==========================================================================
+
+namespace CataclysmFervourReserveTest
+{
+	using namespace CataclysmCommandTest;
+
+	/** Summon Imp's shape, with the reserve the shipped row states. */
+	const TCHAR* const ImpRow =
+		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1; FervourReserve=10");
+
+	/**
+	 * Summon Imp in the Special slot, which costs no Fervour, with its cooldown
+	 * off, so every cast is decided by the reserve and nothing else.
+	 */
+	static UCataclysmSummonSkill* GrantImps(FScopedCaster& Caster,
+											const TCHAR* Row = ImpRow)
+	{
+		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+			Caster, ECataclysmAbilitySlot::Special, Row, TEXT("Summon Imp"));
+		if (Skill)
+		{
+			Skill->CooldownOverride = 0.0f;
+		}
+		return Skill;
+	}
+
+	static float SpendableOf(const FScopedCaster& Caster)
+	{
+		const UCataclysmClassResourceAttributeSet* Resource =
+			Caster.AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+		return Resource ? Resource->MaximumClassResourceAsked() : -1.0f;
+	}
+
+	static float FervourIn(const FScopedCaster& Caster)
+	{
+		return Caster.AbilitySystem->GetNumericAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAnImpReservesItsRowsFervourTest,
+	"Cataclysm.FervourReserve.AnImpReservesTenAndTheSpendableFervourDropsAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each imp reserves 10 Fervour while it is out." Issue #1934. The reserve is
+ * taken off what can be spent the moment the imp appears, and Fervour above
+ * the new limit is lost rather than held for later, ruled 2026-09-30.
+ */
+bool FCataclysmAnImpReservesItsRowsFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	TestEqual(TEXT("nothing out reserves nothing"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("so the whole pool can be spent"), SpendableOf(Caster),
+		RitualistPool, 0.001f);
+
+	TestTrue(TEXT("the summon fires"), Activate(Caster, Skill));
+	if (!TestEqual(TEXT("and one imp is out"),
+			UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the imp reserves 10"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 10.0f, 0.001f);
+	TestEqual(TEXT("so 140 of 150 can be spent"), SpendableOf(Caster),
+		RitualistPool - 10.0f, 0.001f);
+	TestEqual(TEXT("and a full pool is cut to 140 at once"), FervourIn(Caster),
+		RitualistPool - 10.0f, 0.001f);
+	TestEqual(TEXT("the maximum itself is unchanged"),
+		Caster.AbilitySystem->MaximumClassResource(), RitualistPool, 0.001f);
+
+	// THE BAR READS THE SAME TOTAL. What the overlay draws as the reserved
+	// section is this figure, and the words beside it say how much.
+	TestEqual(TEXT("the bar's reserved section is 10"),
+		UCataclysmCombatOverlay::ReservedFervourOf(Caster.Actor), 10.0f, 0.001f);
+	TestEqual(TEXT("and it is labelled"),
+		UCataclysmCombatOverlay::ReservedTextFor(10.0f), FString(TEXT("10 reserved")));
+	TestEqual(TEXT("and an empty reserve has no label"),
+		UCataclysmCombatOverlay::ReservedTextFor(0.0f), FString());
+
+	// THE EXCESS IS LOST, NOT RETURNED. When the imp goes, the limit rises
+	// back to 150 and the Fervour stays where the clamp left it.
+	for (AActor* Out : UCataclysmCommand::ThingsCommandedBy(Caster.Actor))
+	{
+		Out->Destroy();
+	}
+	TestEqual(TEXT("with the imp gone the reserve is freed"), SpendableOf(Caster),
+		RitualistPool, 0.001f);
+	TestEqual(TEXT("and the 10 cut off is not given back"), FervourIn(Caster),
+		RitualistPool - 10.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAFullPoolRefusesAnImpTest,
+	"Cataclysm.FervourReserve.APoolThatCannotHoldAnotherImpRefusesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Both limits apply, ruled for issue #1934: a summon that states no cap is
+ * still refused once the pool cannot hold another reserve. A pool of 25 holds
+ * two imps at 10 and not a third.
+ */
+bool FCataclysmAFullPoolRefusesAnImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/25.0f);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	for (int32 Cast = 0; Cast < 3; ++Cast)
+	{
+		Activate(Caster, Skill);
+	}
+	TestEqual(TEXT("three presses in a pool of 25 leave two imps"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 2);
+	TestEqual(TEXT("holding 20"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 20.0f, 0.001f);
+
+	// THE CONTROL: THE SAME PRESSES WITH ROOM FOR A THIRD. Without it, two
+	// imps would also be the answer if the third press never fired.
+	FScopedCaster Roomy(World, FVector(0, 30 * M, 0), /*Pool=*/30.0f);
+	UCataclysmSummonSkill* RoomySkill = GrantImps(Roomy);
+	for (int32 Cast = 0; RoomySkill && Cast < 3; ++Cast)
+	{
+		Activate(Roomy, RoomySkill);
+	}
+	TestEqual(TEXT("and a pool of 30 takes the third"),
+		UCataclysmCommand::ThingsCommandedBy(Roomy.Actor).Num(), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAnEvictedImpFreesItsReserveTest,
+	"Cataclysm.FervourReserve.AtTheCapTheOldestImpsReserveIsFreedBeforeTheCheck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * At its own cap, Summon Imp removes the oldest imp, and that imp's reserve is
+ * counted as freed before the new one is checked, ruled 2026-09-30. A pool of
+ * 30 with three imps out is full; the fourth press still replaces the oldest.
+ */
+bool FCataclysmAnEvictedImpFreesItsReserveTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/30.0f);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster,
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1; "
+			 "FervourReserve=10"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	Activate(Caster, Skill);
+	const TArray<AActor*> First = UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	if (!TestEqual(TEXT("the first press makes one imp"), First.Num(), 1))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<AActor> Oldest = First[0];
+
+	Activate(Caster, Skill);
+	Activate(Caster, Skill);
+	TestEqual(TEXT("three imps fill the pool of 30"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 30.0f, 0.001f);
+
+	Activate(Caster, Skill);
+	TestFalse(TEXT("the fourth press removes the oldest imp"),
+		Oldest.IsValid() && !Oldest->IsActorBeingDestroyed());
+	TestEqual(TEXT("and three imps are still out"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 3);
+	TestEqual(TEXT("reserving the same 30"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 30.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpsCountTowardTheThrallCapTest,
+	"Cataclysm.FervourReserve.ImpsAndThrallsShareOnePool",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * One total decides both, ruled for issue #1160: an imp out leaves less room
+ * for a thrall. A pool of 40 holds a thrall reserving 30 beside one imp and not
+ * beside two.
+ */
+bool FCataclysmImpsCountTowardTheThrallCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/40.0f);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	Activate(Caster, Skill);
+	TestTrue(TEXT("beside one imp a thrall fits"),
+		UCataclysmCommand::HasRoomForAnotherThrall(Caster.Actor, 30.0f));
+
+	Activate(Caster, Skill);
+	TestEqual(TEXT("two imps are out"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 2);
+	TestFalse(TEXT("and beside two a thrall no longer fits"),
+		UCataclysmCommand::HasRoomForAnotherThrall(Caster.Actor, 30.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmADirectMinionReservesNothingTest,
+	"Cataclysm.FervourReserve.AMinionMadeWithoutASkillReservesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Risen imps and minions spawned directly by other systems reserve nothing,
+ * ruled 2026-09-30: no skill stated a reserve for them.
+ */
+bool FCataclysmADirectMinionReservesNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Caster.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/true);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	TestEqual(TEXT("it is commanded"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 1);
+	TestEqual(TEXT("and reserves nothing"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("so the whole pool can be spent"), SpendableOf(Caster),
+		RitualistPool, 0.001f);
 	return true;
 }
 
