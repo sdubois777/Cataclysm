@@ -2,6 +2,125 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Battlefield Relics: two relics a floor, each of Fury, Haste or the Bulwark for 30 seconds, and activating one brings five spirits after the player; the floor-object and creature-bringing code taken out of Grim Totems
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the four player fields, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the two
+helpers, Grim Totems through them, the relics, their beat, the panel line, a console variable pinning the kinds);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the "Spirit" flag);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Spirit"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The first of Group 2's chain, built on the seven-stack.
+**Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have.**
+
+### The row
+
+`War_Battlefield_Relics` in `game/Data/DungeonModifiers.csv`, weight 10: "Scattered throughout the dungeon are ancient
+relics of war that can be activated to give powerful but temporary buffs. However, activating a relic also summons the
+spirits of fallen warriors who will relentlessly pursue the players until they are defeated." It states no figure.
+
+### What the design already said
+
+The design document's section on taking drops names relics among the floor objects a player clicks for a choice: "a
+totem to embrace or cleanse, and in time altars, chests and relics." Nothing else does. "Relic" is also the name of an
+equipment slot ("Jewelry: 8 Rings, Necklace, Relic"), which is why the floor object is named "Battlefield Relic". Grim
+Totems is the rule nearest this one: embracing a totem gives 25% more damage for 30 s and brings three Elites.
+
+### What the rule does
+
+On a floor carrying the row, two relics stand where Eternal Chorus's picker puts things, away from the entrance; one on
+a Horde arena, kept across its waves. Each is a floor object of one of three kinds, drawn when it is placed and named for
+it: "Battlefield Relic of Fury", "of Haste" or "of the Bulwark". Its one choice, "Activate", gives the player its buff
+for 30 s -- Fury 50% more damage; Haste 30% more attack speed and 30% more movement speed; the Bulwark +30 to every
+resistance -- and brings five Common creatures of the floor's kinds 8 m from the relic, noticing the player from anywhere
+on the floor, each saying "Spirit". The relic goes. The same kind again refreshes its 30 s; different kinds add. The
+buffs end with the floor. The panel reads "battlefield relics: 1 standing; Fury 23 s".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object named "Battlefield Relic", with "Activate" and the panel's leave button; two a floor, one on a Horde
+  arena, placed by Eternal Chorus's picker; it goes once activated.**
+- **Three kinds, drawn at placement and shown on its tag and the panel, each for 30 s**: Fury 50% more damage; Haste 30%
+  more attack speed and 30% more movement speed; Bulwark +30 to all resistances. The same kind refreshes its time;
+  different kinds add together.
+- **Five Common spirits of the floor's kinds, 800 cm from the relic, seeing across the floor, labelled "Spirit"**; the
+  floor's creatures, paying as their rung does, staying on their floor. Common rather than Elite to keep this row apart
+  from Grim Totems' three Elites: two relics of three Elites would be six Elites on a floor.
+- **The buff and the spirits are independent**; killing the spirits changes nothing about the buff.
+- **The labels and the panel line.**
+
+**An owner content question, recorded for later and not asked:** what a "spirit of a fallen warrior" is as a creature.
+Until the owner says, it is a stand-in of the floor's own kinds, as the Vampire Lord is.
+
+**On the owner's play-check list**, added by the coordinating session: activate a relic; the buff shows with its time
+left, and five spirits come after the player.
+
+**The build order**, ruled by the coordinating session: Group 2 is built as a chain, each row on the one before, and
+this row is first because it takes out the code every later row shares.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Two helpers taken out of Grim Totems, with nothing about Grim Totems changed.** `PlaceFloorObjects(RuleKey, Count,
+  DisplayName, Prompt)` places floor objects on Eternal Chorus's cells, as Grim Totems placed its totems.
+  `BringCreaturesNear(At, AwayCm, Count, FixedRung, SightMultiplier)` brings creatures of the floor's kinds beside a
+  point at a random angle, falling back to the cells around `At`, raised by a rule and paying, as the embrace brought
+  its Elites; it draws its random numbers in the order the embrace did. Grim Totems now calls both. Its six tests are
+  the check that nothing moved: `GrimTotemsFiguresTotemsEmbraceAndCleanse`,
+  `TwoGrimTotemsStandAwayFromTheEntranceOfferingTwoChoices`, `EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites`,
+  `CleansingAGrimTotemWeakensTheCreaturesNearIt`, `CleansingAGrimTotemCleansesThePlayer` and
+  `ANewFloorBringsNewGrimTotemsAndEndsTheEmbrace`.
+- **The kinds can be pinned for a test**, in order, by `Cataclysm.BattlefieldRelicKinds`: "0,1" makes the first relic
+  Fury and the second Haste. A single pinned kind, as the other rows' pinned rolls do it, could not put two kinds on one
+  floor, and "different kinds add together" needs two.
+- **No zone is drawn under a relic.** Grim Totems draws one under each totem; the ruling asks for none here, and a relic
+  shows its name as every floor object does.
+- **The buffs end with the floor**, as an embraced totem's does: `ApplyFloorRulesToPlayer` takes them off with the rest.
+- **Each kind has its own field on the player**: `RelicDamageMorePercent`, `RelicAttackSpeedMorePercent`,
+  `RelicSpeedMorePercent` and `RelicResistancePercent`, the resistance a Flat on each of the eight as Warzone's is.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, shrines | [poedb.tw/us/Shrine](https://poedb.tw/us/Shrine) | one large buff each, mostly for 45 s: Acceleration "50% increased Action Speed", Brutal "50% increased Damage", Resistance "+50% to all Elemental Resistances" |
+| Diablo IV, shrines | [maxroll.gg/d4/resources/shrines](https://maxroll.gg/d4/resources/shrines) | most last 30 seconds; a Cursed Shrine gives "60 seconds to slay up to 3 waves on monsters" before its reward |
+
+**What it settles:** a floor object that gives one strong buff for tens of seconds, and using it bringing monsters.
+**What it does not:** how many relics, which buffs, and what the spirits are.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `BattlefieldRelics`:
+
+- `BattlefieldRelicsFiguresKindsTimeAndSpirits`: two, one, 30 s, 50%, 30% and 30%, +30, five spirits at 8 m at Common,
+  three kinds.
+- `BattlefieldRelicsTwoStandAwayFromTheEntranceEachOfAKind`: kinds pinned "0,1": far from the entrance, placed by the
+  row, one "Activate" choice, the first Fury and the second Haste by kind and by name, and the panel.
+- `BattlefieldRelicsFuryGivesDamageForThirtySecondsAndFiveSpirits`: the relic goes; five spirits at Common, "Spirit",
+  raised by the rule and paying; 50% more attack and spell damage; the panel; still on at 29.75 s, gone by 30.25 s,
+  the spirits still standing; a relic gone and a choice no relic offers are refused.
+- `BattlefieldRelicsHasteAndTheBulwarkAddTogether`: 30% more attack and movement speed and +30 resistance together,
+  no damage, and the panel.
+- `BattlefieldRelicsTheSameKindAgainRefreshesItsTime`: two relics of Fury 20 s apart give 50%, not 100%, ending 30 s
+  after the second.
+- `BattlefieldRelicsANewFloorBringsNewRelicsAndEndsTheBuffs`.
+
+One Python check: the row still says "relics of war", "can be activated", "powerful but temporary buffs", "summons the
+spirits of fallen warriors" and "relentlessly pursue".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
+window, after the seven-stack merges.
+
+---
+
 ## 2026-09-26 — Reality Twister: each floor gains one random row of any Cataclysm that does something in play, drawn again on the next floor, as the owner decided
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (the row's key, a second pool on the

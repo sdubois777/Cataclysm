@@ -218,6 +218,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::DemonicGuideKey =
 const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
 	TEXT("Pestilence_Carrion_Feast");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BattlefieldRelicsKey =
+	TEXT("War_Battlefield_Relics");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -588,6 +591,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(SwarmOfLocustsKey)
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(DemonicGuideKey)
+		|| RowKey == FName(BattlefieldRelicsKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
@@ -823,6 +827,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DemonicGuideKey),
 		FName(InfestedVeinsKey),
 		FName(CarrionFeastKey),
+		FName(BattlefieldRelicsKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
@@ -1308,6 +1313,22 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
 										Effects.GrimEmbraceDamageMorePercent);
 
+	// AND THE ACTIVATED BATTLEFIELD RELICS: Fury a More on attack and spell damage, Haste a More on attack and movement
+	// speed, the Bulwark points on each of the eight resistances, a Flat as Warzone's are. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.RelicDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.RelicDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackSpeedStat),
+										Effects.RelicAttackSpeedMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.RelicSpeedMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.RelicResistancePercent);
+	}
+
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
 	//
@@ -1733,6 +1754,20 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from an embraced grim totem"),
 									Effects.GrimEmbraceDamageMorePercent));
+	}
+	if (Effects.RelicDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from a relic of fury"), Effects.RelicDamageMorePercent));
+	}
+	if (Effects.RelicAttackSpeedMorePercent > 0.0f || Effects.RelicSpeedMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("attack speed %.0f%% and movement speed %.0f%% more from a relic of haste"),
+									Effects.RelicAttackSpeedMorePercent, Effects.RelicSpeedMorePercent));
+	}
+	if (Effects.RelicResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("%.0f more to every resistance from a relic of the bulwark"),
+									Effects.RelicResistancePercent));
 	}
 	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
 	{

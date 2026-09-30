@@ -461,6 +461,20 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float GrimEmbraceDamageMorePercent = 0.0f;
 
 	/**
+	 * What activated Battlefield Relics give the player, for a time, each kind its own field: a Relic of Fury's damage,
+	 * more; a Relic of Haste's attack and movement speed, more; a Relic of the Bulwark's points on each resistance.
+	 * Issues #1820 and #41.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicDamageMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicAttackSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicResistancePercent = 0.0f;
+
+	/**
 	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
 	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
 	 * long. Issues #1820 and #41.
@@ -534,6 +548,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SpellsLockedValue <= 0.0f
 			&& ManaCostAsCurrentHealthPercent <= 0.0f
 			&& GrimEmbraceDamageMorePercent <= 0.0f
+			&& RelicDamageMorePercent <= 0.0f && RelicAttackSpeedMorePercent <= 0.0f
+			&& RelicSpeedMorePercent <= 0.0f && RelicResistancePercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
@@ -2505,6 +2521,36 @@ public:
 	 * - NOT BUILT: the "purification altars", which wait on the interaction screen.
 	 */
 	static const TCHAR* CarrionFeastKey;
+
+	/**
+	 * The row whose relics the player activates for a short buff that brings spirits after them. Issues #1820 and
+	 * #41.
+	 *
+	 * "Scattered throughout the dungeon are ancient relics of war that can be activated to give powerful but temporary
+	 * buffs. However, activating a relic also summons the spirits of fallen warriors who will relentlessly pursue the
+	 * players until they are defeated."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `BattlefieldRelicsPerFloor` RELICS A FLOOR, `BattlefieldRelicsPerHordeArena` ON A HORDE ARENA, kept across its
+	 *   waves, placed by Eternal Chorus's picker. Each is a floor object named for its kind -- "Battlefield Relic of
+	 *   Fury" -- not "Relic", which is the name of an equipment slot. It offers "Activate", and goes once activated.
+	 * - EACH IS ONE OF THREE KINDS, drawn when it is placed, each lasting `BattlefieldRelicsSeconds`: FURY,
+	 *   `BattlefieldRelicsFuryDamageMorePercent` more damage; HASTE, `BattlefieldRelicsHasteAttackSpeedMorePercent`
+	 *   more attack speed and `BattlefieldRelicsHasteSpeedMorePercent` more movement speed; BULWARK,
+	 *   `BattlefieldRelicsBulwarkResistance` on every resistance. The same kind again refreshes its time; different
+	 *   kinds add together. The buffs end with the floor.
+	 * - ACTIVATING BRINGS `BattlefieldRelicsSpiritCount` SPIRITS: creatures of the floor's kinds at Common,
+	 *   `BattlefieldRelicsSpiritAwayCm` from the relic, noticing the player from anywhere on the floor. They say
+	 *   "Spirit", are the floor's creatures, pay as their rung does and stay on their floor. The buff and the spirits
+	 *   are independent: killing the spirits changes nothing about the buff.
+	 * - WHAT A "SPIRIT OF A FALLEN WARRIOR" IS AS A CREATURE is a question for the owner; until then it is a stand-in of
+	 *   the floor's own kinds, as the Vampire Lord is.
+	 */
+	static const TCHAR* BattlefieldRelicsKey;
+
+	/** A Battlefield Relic's one choice. */
+	static constexpr const TCHAR* BattlefieldRelicsActivate = TEXT("Activate");
 
 	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
@@ -5288,6 +5334,32 @@ public:
 	static float CarrionFeastMultiplier(int32 Stacks)
 	{
 		return 1.0f + FMath::Clamp(Stacks, 0, CarrionFeastMostStacks) * CarrionFeastStrongerPercentPerCarcass / 100.0f;
+	}
+
+	/** Battlefield Relics' figures, every one a play-test value. See the key. */
+	static constexpr int32 BattlefieldRelicsPerFloor = 2;
+	static constexpr int32 BattlefieldRelicsPerHordeArena = 1;
+	static constexpr float BattlefieldRelicsSeconds = 30.0f;
+	static constexpr float BattlefieldRelicsFuryDamageMorePercent = 50.0f;
+	static constexpr float BattlefieldRelicsHasteAttackSpeedMorePercent = 30.0f;
+	static constexpr float BattlefieldRelicsHasteSpeedMorePercent = 30.0f;
+	static constexpr float BattlefieldRelicsBulwarkResistance = 30.0f;
+	static constexpr int32 BattlefieldRelicsSpiritCount = 5;
+	static constexpr float BattlefieldRelicsSpiritAwayCm = 800.0f;
+	static constexpr int32 BattlefieldRelicsSpiritRung = 0;
+
+	/** Battlefield Relics' three kinds, in the order a pinned list names them. */
+	static constexpr int32 BattlefieldRelicFury = 0;
+	static constexpr int32 BattlefieldRelicHaste = 1;
+	static constexpr int32 BattlefieldRelicBulwark = 2;
+	static constexpr int32 BattlefieldRelicKinds = 3;
+
+	/** A Battlefield Relic kind's name, as its tag and the panel say it: "Fury", "Haste", "the Bulwark". */
+	static const TCHAR* BattlefieldRelicKindName(int32 Kind)
+	{
+		return Kind == BattlefieldRelicHaste ? TEXT("Haste")
+			: Kind == BattlefieldRelicBulwark ? TEXT("the Bulwark")
+			: TEXT("Fury");
 	}
 
 	/** Grim Totems' figures, every one a play-test value. See the key. The Elite rung is Royal Guard's. */

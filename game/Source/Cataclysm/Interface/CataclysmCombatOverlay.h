@@ -583,6 +583,9 @@ public:
 	 */
 	static FString CarcassTextFor(const AActor* Actor);
 
+	/** "Spirit" under the bar of a creature a Battlefield Relic brought, or empty. Issues #1820 and #41. */
+	static FString RelicSpiritTextFor(const AActor* Actor);
+
 	/**
 	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
 	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.

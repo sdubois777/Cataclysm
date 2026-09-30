@@ -678,6 +678,18 @@ static TAutoConsoleVariable<float> CVarVolatileEvolutionRoll(
 	ECVF_Cheat);
 
 /**
+ * Pins the kinds Battlefield Relics are placed as, in order, so a test can have two kinds on one floor. Issues #1820
+ * and #41. A list of 0 (Fury), 1 (Haste) and 2 (the Bulwark), separated by commas, used from the first relic of each
+ * placing and repeated; empty draws each kind.
+ */
+static TAutoConsoleVariable<FString> CVarBattlefieldRelicKinds(
+	TEXT("Cataclysm.BattlefieldRelicKinds"),
+	TEXT(""),
+	TEXT("Pin the kinds Battlefield Relics are placed as, in order: 0 Fury, 1 Haste, 2 the Bulwark, comma separated. ")
+	TEXT("Empty draws each."),
+	ECVF_Cheat);
+
+/**
  * Pins the roll a badly hurt creature calls its guards on, so a test can assert what a
  * beat did. Issues #1820 and #41. Its own variable, for the reason
  * `Cataclysm.GraspingTentaclesRoll` gives.
@@ -1616,6 +1628,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// AND GRIM TOTEMS, FOR THE SAME REASON: a new arena's totems; a Horde arena's waves keep them. Issues #1820
 		// and #41.
 		PlaceTheTotems();
+
+		// AND BATTLEFIELD RELICS, FOR THE SAME REASON. Issues #1820 and #41.
+		PlaceTheRelics();
 
 		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
 		// waves keep them. Issues #1820 and #41.
@@ -7410,6 +7425,245 @@ void ACataclysmDungeonGameMode::ForgetTheTotems()
 	GrimTotemsPanelKey = -1;
 }
 
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PlaceFloorObjects(FName RuleKey, int32 Count,
+																		   const FString& DisplayName,
+																		   const FString& Prompt)
+{
+	TArray<ACataclysmFloorObject*> Placed;
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return Placed;
+	}
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		ACataclysmFloorObject* Object = World->SpawnActor<ACataclysmFloorObject>(
+			ACataclysmFloorObject::StaticClass(), CurrentFloor->WorldOfCell(Cell), FRotator::ZeroRotator, Spawn);
+		if (!Object)
+		{
+			continue;
+		}
+		Object->RuleKey = RuleKey;
+		Object->DisplayName = DisplayName;
+		Object->Prompt = Prompt;
+		Placed.Add(Object);
+	}
+	return Placed;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BringCreaturesNear(const FVector& At, float AwayCm,
+																			  int32 Count, int32 FixedRung,
+																			  float SightMultiplier)
+{
+	TArray<ACataclysmEnemyCharacter*> Brought;
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return Brought;
+	}
+	// CELLS BESIDE A POINT THAT FAR AWAY AT A RANDOM ANGLE. A POINT OFF THE FLOOR, WITH NO FLOOR WITHIN REACH OF IT,
+	// FALLS BACK TO THE CELLS AROUND `At`, which stands on the floor: the rules that call this act on a single press,
+	// with no later beat to try again on, so the creatures come either way.
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Where(At.X + AwayCm * FMath::Cos(Angle), At.Y + AwayCm * FMath::Sin(Angle), At.Z);
+	const FCataclysmFloorPopulation Population =
+		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+	if (Cells.IsEmpty())
+	{
+		Cells = NecroticBloomWaveCells(*CurrentFloor, At);
+	}
+	for (int32 Which = 0; Which < Count && !Population.Enemies.IsEmpty() && !Cells.IsEmpty(); ++Which)
+	{
+		FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+		if (ACataclysmEnemyCharacter* Creature = SpawnPlacedCreature(Placement, SightMultiplier, FixedRung))
+		{
+			Creature->bRaisedByARule = true;
+			CreaturesRaisedByARule.Add(Creature);
+			FloorEnemies.Add(Creature);
+			Brought.Add(Creature);
+		}
+	}
+	return Brought;
+}
+
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::BattlefieldRelicsNow() const
+{
+	TArray<ACataclysmFloorObject*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : BattlefieldRelics)
+	{
+		if (ACataclysmFloorObject* Relic = One.Get(); IsValid(Relic))
+		{
+			Standing.Add(Relic);
+		}
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::BattlefieldRelicKindOf(const ACataclysmFloorObject* Relic) const
+{
+	const int32 Index = BattlefieldRelics.IndexOfByPredicate(
+		[Relic](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Relic; });
+	return BattlefieldRelicKinds.IsValidIndex(Index) ? BattlefieldRelicKinds[Index] : INDEX_NONE;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::RelicSpiritsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : RelicSpirits)
+	{
+		ACataclysmEnemyCharacter* Spirit = One.Get();
+		if (IsValid(Spirit) && !UCataclysmSkillEffects::IsDead(Spirit))
+		{
+			Standing.Add(Spirit);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRelics()
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : BattlefieldRelics)
+	{
+		if (ACataclysmFloorObject* Relic = One.Get())
+		{
+			Relic->Destroy();
+		}
+	}
+	BattlefieldRelics.Reset();
+	BattlefieldRelicKinds.Reset();
+	RelicSpirits.Reset();
+	BattlefieldRelicsPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheRelics()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheRelics();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::BattlefieldRelicsKey)))
+	{
+		return;
+	}
+
+	// THE KINDS PINNED FOR A TEST, IN ORDER AND REPEATED, OR EACH DRAWN.
+	TArray<int32> Pinned;
+	TArray<FString> Parts;
+	CVarBattlefieldRelicKinds.GetValueOnGameThread().ParseIntoArray(Parts, TEXT(","));
+	for (const FString& Part : Parts)
+	{
+		Pinned.Add(FMath::Clamp(FCString::Atoi(*Part.TrimStartAndEnd()), 0, Effects::BattlefieldRelicKinds - 1));
+	}
+
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::BattlefieldRelicsPerHordeArena : Effects::BattlefieldRelicsPerFloor;
+	for (ACataclysmFloorObject* Relic : PlaceFloorObjects(FName(Effects::BattlefieldRelicsKey), Count,
+														  TEXT("Battlefield Relic"),
+														  TEXT("An ancient relic of war. Activating it wakes the fallen.")))
+	{
+		const int32 Kind = Pinned.IsEmpty() ? FMath::RandRange(0, Effects::BattlefieldRelicKinds - 1)
+											: Pinned[BattlefieldRelics.Num() % Pinned.Num()];
+		Relic->DisplayName = FString::Printf(TEXT("Battlefield Relic of %s"), Effects::BattlefieldRelicKindName(Kind));
+		const FString Gives = Kind == Effects::BattlefieldRelicHaste
+			? FString::Printf(TEXT("%d%% more attack speed and %d%% more movement speed"),
+							  FMath::RoundToInt(Effects::BattlefieldRelicsHasteAttackSpeedMorePercent),
+							  FMath::RoundToInt(Effects::BattlefieldRelicsHasteSpeedMorePercent))
+			: Kind == Effects::BattlefieldRelicBulwark
+			? FString::Printf(TEXT("+%d to every resistance"), FMath::RoundToInt(Effects::BattlefieldRelicsBulwarkResistance))
+			: FString::Printf(TEXT("%d%% more damage"), FMath::RoundToInt(Effects::BattlefieldRelicsFuryDamageMorePercent));
+		FCataclysmFloorObjectChoice Activate;
+		Activate.Key = FName(Effects::BattlefieldRelicsActivate);
+		Activate.Label = FString::Printf(TEXT("Activate: %s for %d s, and %d spirits come after you"), *Gives,
+										 FMath::RoundToInt(Effects::BattlefieldRelicsSeconds),
+										 Effects::BattlefieldRelicsSpiritCount);
+		Relic->Choices = {Activate};
+		BattlefieldRelics.Add(Relic);
+		BattlefieldRelicKinds.Add(Kind);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Battlefield Relics: %d relic(s) on floor %d"), BattlefieldRelics.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtBattlefieldRelic(ACataclysmFloorObject* Relic, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Index = BattlefieldRelics.IndexOfByPredicate(
+		[Relic](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Relic; });
+	if (Index == INDEX_NONE || ChoiceKey != FName(Effects::BattlefieldRelicsActivate) || !CurrentFloor
+		|| !CurrentFloor->IsBuilt())
+	{
+		return false;
+	}
+	const FVector At = Relic->GetActorLocation();
+	const int32 Kind = BattlefieldRelicKinds.IsValidIndex(Index) ? BattlefieldRelicKinds[Index] : Effects::BattlefieldRelicFury;
+
+	// THE KIND'S BUFF, WRITTEN ON THE NEXT BEAT: THE SAME KIND AGAIN REFRESHES ITS TIME, AND KINDS ADD TOGETHER.
+	float& Left = Kind == Effects::BattlefieldRelicHaste ? RelicHasteLeft
+		: Kind == Effects::BattlefieldRelicBulwark ? RelicBulwarkLeft
+		: RelicFuryLeft;
+	Left = Effects::BattlefieldRelicsSeconds;
+
+	// AND THE SPIRITS AT ONCE, independent of the buff: the floor's kinds at Common, noticing the player from anywhere on
+	// the floor, the "relentlessly pursue" of the row.
+	for (ACataclysmEnemyCharacter* Spirit : BringCreaturesNear(At, Effects::BattlefieldRelicsSpiritAwayCm,
+															   Effects::BattlefieldRelicsSpiritCount,
+															   Effects::BattlefieldRelicsSpiritRung,
+															   Effects::TheReaperSightMultiplier))
+	{
+		Spirit->bIsARelicSpirit = true;
+		RelicSpirits.Add(Spirit);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Battlefield Relics: a relic of %s activated on floor %d, %d spirit(s) came"),
+		   Effects::BattlefieldRelicKindName(Kind), FloorNumber, RelicSpiritsStanding().Num());
+
+	// THE RELIC GOES.
+	Relic->Destroy();
+	BattlefieldRelics.RemoveAt(Index);
+	if (BattlefieldRelicKinds.IsValidIndex(Index))
+	{
+		BattlefieldRelicKinds.RemoveAt(Index);
+	}
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepBattlefieldRelics(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// EACH KIND'S BUFF, WRITTEN WHEN IT CHANGED AND COUNTED DOWN ON THE BEAT.
+	const float Fury = RelicFuryLeft > 0.0f ? Effects::BattlefieldRelicsFuryDamageMorePercent : 0.0f;
+	const float Haste = RelicHasteLeft > 0.0f ? Effects::BattlefieldRelicsHasteAttackSpeedMorePercent : 0.0f;
+	const float Bulwark = RelicBulwarkLeft > 0.0f ? Effects::BattlefieldRelicsBulwarkResistance : 0.0f;
+	if (!FMath::IsNearlyEqual(Fury, RelicFuryApplied) || !FMath::IsNearlyEqual(Haste, RelicHasteApplied)
+		|| !FMath::IsNearlyEqual(Bulwark, RelicBulwarkApplied))
+	{
+		RelicFuryApplied = Fury;
+		RelicHasteApplied = Haste;
+		RelicBulwarkApplied = Bulwark;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+	RelicFuryLeft = FMath::Max(0.0f, RelicFuryLeft - SecondsBetweenWaveChecks);
+	RelicHasteLeft = FMath::Max(0.0f, RelicHasteLeft - SecondsBetweenWaveChecks);
+	RelicBulwarkLeft = FMath::Max(0.0f, RelicBulwarkLeft - SecondsBetweenWaveChecks);
+
+	const int32 Key = BattlefieldRelicsNow().Num() * 1000000 + FMath::CeilToInt(RelicFuryLeft) * 10000
+		+ FMath::CeilToInt(RelicHasteLeft) * 100 + FMath::CeilToInt(RelicBulwarkLeft);
+	if (Key != BattlefieldRelicsPanelKey)
+	{
+		BattlefieldRelicsPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::PlaceTheTotems()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -7422,22 +7676,12 @@ void ACataclysmDungeonGameMode::PlaceTheTotems()
 		return;
 	}
 
-	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, where Eternal Chorus's picker puts its sources: away from the
-	// entrance, so the player walks to one. Each is a floor object the player clicks, offering its two choices.
+	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, placed the one way floor objects are. Each is a floor object the
+	// player clicks, offering its two choices.
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::GrimTotemsPerHordeArena : Effects::GrimTotemsPerFloor;
-	FActorSpawnParameters Spawn;
-	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (ACataclysmFloorObject* Totem : PlaceFloorObjects(FName(Effects::GrimTotemsKey), Count, TEXT("Grim Totem"),
+														  TEXT("Dark energy pours from it. Embrace its power, or cleanse it.")))
 	{
-		ACataclysmFloorObject* Totem = World->SpawnActor<ACataclysmFloorObject>(
-			ACataclysmFloorObject::StaticClass(), CurrentFloor->WorldOfCell(Cell), FRotator::ZeroRotator, Spawn);
-		if (!Totem)
-		{
-			continue;
-		}
-		Totem->RuleKey = FName(Effects::GrimTotemsKey);
-		Totem->DisplayName = TEXT("Grim Totem");
-		Totem->Prompt = TEXT("Dark energy pours from it. Embrace its power, or cleanse it.");
 		FCataclysmFloorObjectChoice Embrace;
 		Embrace.Key = FName(Effects::GrimTotemsEmbrace);
 		Embrace.Label = FString::Printf(TEXT("Embrace: %d%% more damage for %d s, and %d Elite creatures come"),
@@ -7476,6 +7720,10 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	{
 		return ChooseAtGrimTotem(Object, ChoiceKey);
 	}
+	if (Object->RuleKey == FName(Effects::BattlefieldRelicsKey))
+	{
+		return ChooseAtBattlefieldRelic(Object, ChoiceKey);
+	}
 	return false;
 }
 
@@ -7497,31 +7745,12 @@ bool ACataclysmDungeonGameMode::ChooseAtGrimTotem(ACataclysmFloorObject* Totem, 
 		// cells beside a point that far from the totem at a random angle, noticing the player from anywhere on the
 		// floor as Plague Convergence's arrivals do. They are the floor's creatures and pay as the Elite rung does.
 		GrimEmbraceLeft = Effects::GrimTotemsEmbraceSeconds;
-		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
-		const FVector Where(At.X + Effects::GrimTotemsEliteAwayCm * FMath::Cos(Angle),
-							At.Y + Effects::GrimTotemsEliteAwayCm * FMath::Sin(Angle), At.Z);
-		const FCataclysmFloorPopulation Population =
-			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
-		// A POINT OFF THE FLOOR, WITH NO FLOOR WITHIN REACH OF IT, FALLS BACK TO THE CELLS AROUND THE TOTEM, which stands on
-		// the floor: an embrace is a single press, with no later beat to try again on, so the Elites come either way.
-		TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
-		if (Cells.IsEmpty())
+		for (ACataclysmEnemyCharacter* Elite : BringCreaturesNear(At, Effects::GrimTotemsEliteAwayCm,
+																  Effects::GrimTotemsEliteCount,
+																  Effects::GrimTotemsEliteRung,
+																  Effects::TheReaperSightMultiplier))
 		{
-			Cells = NecroticBloomWaveCells(*CurrentFloor, At);
-		}
-		for (int32 Which = 0; Which < Effects::GrimTotemsEliteCount && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
-			 ++Which)
-		{
-			FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
-			Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
-			if (ACataclysmEnemyCharacter* Elite =
-					SpawnPlacedCreature(Placement, Effects::TheReaperSightMultiplier, Effects::GrimTotemsEliteRung))
-			{
-				Elite->bRaisedByARule = true;
-				CreaturesRaisedByARule.Add(Elite);
-				FloorEnemies.Add(Elite);
-				GrimTotemElites.Add(Elite);
-			}
+			GrimTotemElites.Add(Elite);
 		}
 		UE_LOG(LogCataclysm, Log, TEXT("Grim Totems: a totem embraced on floor %d, %d Elite creature(s) came"),
 			   FloorNumber, GrimTotemElitesStanding().Num());
@@ -8670,6 +8899,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheShadowLights();
 	ForgetTheSarcophagi();
 	ForgetTheTotems();
+	ForgetTheRelics();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -9220,6 +9450,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND GRIM TOTEMS, ON EVERY FLOOR CARRYING IT, AND WHILE AN EMBRACE IS ON THE CHARACTER. Issues #1820 and #41.
 	const bool bGrimTotems = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::GrimTotemsKey))
 		|| GrimEmbraceApplied > 0.0f || GrimEmbraceLeft > 0.0f;
+	// AND BATTLEFIELD RELICS, ON EVERY FLOOR CARRYING IT, AND WHILE A RELIC'S BUFF IS ON THE CHARACTER. Issues #1820
+	// and #41.
+	const bool bBattlefieldRelics =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BattlefieldRelicsKey))
+		|| RelicFuryLeft > 0.0f || RelicHasteLeft > 0.0f || RelicBulwarkLeft > 0.0f || RelicFuryApplied > 0.0f
+		|| RelicHasteApplied > 0.0f || RelicBulwarkApplied > 0.0f;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -9255,6 +9491,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
 		&& !bVision
 		&& !bGrimTotems
+		&& !bBattlefieldRelics
 		&& !bObsidianSarcophagi && !bShadowyEnemies)
 	{
 		return;
@@ -9593,6 +9830,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bGrimTotems)
 	{
 		StepGrimTotems(Player, AbilitySystem);
+	}
+
+	// AND BATTLEFIELD RELICS, WHICH TIMES EACH KIND'S BUFF. Issues #1820 and #41.
+	if (bBattlefieldRelics)
+	{
+		StepBattlefieldRelics(Player, AbilitySystem);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -10607,6 +10850,12 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 
 	// AND AN EMBRACED GRIM TOTEM'S STRENGTH AS LAST WRITTEN. Issues #1820 and #41. Read unconditionally like the rest.
 	Effects.GrimEmbraceDamageMorePercent = GrimEmbraceApplied;
+	// AND THE ACTIVATED BATTLEFIELD RELICS, each kind its own field. Issues #1820 and #41.
+	Effects.RelicDamageMorePercent = RelicFuryApplied;
+	Effects.RelicAttackSpeedMorePercent = RelicHasteApplied;
+	Effects.RelicSpeedMorePercent = RelicHasteApplied > 0.0f ? UCataclysmDungeonModifierEffects::BattlefieldRelicsHasteSpeedMorePercent
+															 : 0.0f;
+	Effects.RelicResistancePercent = RelicBulwarkApplied;
 	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
 
 	// AND WHAT JUDGMENT IS TAKING OFF ONE RESISTANCE. Issues #1820 and #41. Read
@@ -12655,6 +12904,23 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 									FMath::CeilToInt(GrimEmbraceLeft));
 		}
 		Counting.Add(Totems, Line);
+	}
+
+	// AND BATTLEFIELD RELICS: how many stand, and each kind's buff under way. Issues #1820 and #41.
+	const FName Relics(Effects::BattlefieldRelicsKey);
+	if (FloorBrief.Modifiers.Contains(Relics))
+	{
+		FString Line = FString::Printf(TEXT("battlefield relics: %d standing"), BattlefieldRelicsNow().Num());
+		const float Lefts[] = {RelicFuryLeft, RelicHasteLeft, RelicBulwarkLeft};
+		const TCHAR* Names[] = {TEXT("Fury"), TEXT("Haste"), TEXT("Bulwark")};
+		for (int32 Kind = 0; Kind < Effects::BattlefieldRelicKinds; ++Kind)
+		{
+			if (Lefts[Kind] > 0.0f)
+			{
+				Line += FString::Printf(TEXT("; %s %d s"), Names[Kind], FMath::CeilToInt(Lefts[Kind]));
+			}
+		}
+		Counting.Add(Relics, Line);
 	}
 
 	const FName Veins(Effects::InfestedVeinsKey);
@@ -14792,6 +15058,16 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		GrimEmbraceApplied = 0.0f;
 		GrimTotemZones.Reset();
 		GrimTotemsPanelKey = -1;
+
+		// AND BATTLEFIELD RELICS: every kind's buff ends with the floor, the call above having taken it off the
+		// character. The relics are kept; a new arena replaces them. Issues #1820 and #41.
+		RelicFuryLeft = 0.0f;
+		RelicHasteLeft = 0.0f;
+		RelicBulwarkLeft = 0.0f;
+		RelicFuryApplied = 0.0f;
+		RelicHasteApplied = 0.0f;
+		RelicBulwarkApplied = 0.0f;
+		BattlefieldRelicsPanelKey = -1;
 
 		// AND LEECH SPORES FORGETS ITS CLOUDS, which are already destroyed -- see the
 		// top of this function. Nothing else to clear: a cloud's drain is done the
