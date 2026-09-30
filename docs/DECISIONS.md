@@ -495,6 +495,8 @@ not tested either**: a telegraph is its own actor and the rule never touches it,
 
 One Python check: the row still says "vision is limited" and "see a short distance".
 
+**THE FIRST BUILD CAUGHT A FAULT, 2026-09-30, fixed in the window as the coordinating session ruled.** `ACataclysmPlayerController::IsClickableEnemy` was declared under `private:`, and the vision test calls it from outside the class, so the build stopped with C2248 on the two clickability checks. Its declaration and comment moved into a `public:` section; nothing else changed. No Python check reads a declaration's access, which is why only the compile could see it.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

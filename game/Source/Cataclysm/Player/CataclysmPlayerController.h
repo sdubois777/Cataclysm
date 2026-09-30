@@ -431,13 +431,6 @@ private:
 	class ACataclysmFloorObject* FloorObjectUnderCursor() const;
 
 	/**
-	 * Whether an actor found under the cursor is an enemy the player may click: a living hostile that is not the
-	 * player's own pawn and is not hidden. A creature the vision system hides cannot be clicked: "a label you cannot see
-	 * is a label you cannot click". Static so a test can ask it. Issues #1820 and #41.
-	 */
-	static bool IsClickableEnemy(const AActor* Found, const AActor* ControlledPawn);
-
-	/**
 	 * Takes every crafting material lying near the character. Issue #851.
 	 *
 	 * RUN EVERY FRAME, beside UpdatePendingPickup, because the character walks
@@ -463,6 +456,13 @@ private:
 	bool TakeDrop(ACataclysmDroppedItem* Drop);
 
 public:
+	/**
+	 * Whether an actor found under the cursor is an enemy the player may click: a living hostile that is not the
+	 * player's own pawn and is not hidden. A creature the vision system hides cannot be clicked: "a label you cannot see
+	 * is a label you cannot click". Static so a test can ask it. Issues #1820 and #41.
+	 */
+	static bool IsClickableEnemy(const AActor* Found, const AActor* ControlledPawn);
+
 	/**
 	 * The click's take and the per-frame sweep, exactly as play runs them, for automation
 	 * tests. Issues #1820 and #41: Trick or Treat's "clicked pickups only" rests on
