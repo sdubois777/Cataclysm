@@ -2087,6 +2087,10 @@ public:
 	TArray<class ACataclysmFloorObject*> PandorasBoxesNow() const;
 	TArray<ACataclysmEnemyCharacter*> ChaosSpawnStanding() const;
 	int32 PandorasBoxLastRewardDrops() const { return PandorasBoxRewardDrops; }
+
+	/** Carrion Feast, for the panel and tests: its purification altar standing, or null; and whether it was used. */
+	class ACataclysmFloorObject* PurificationAltarNow() const;
+	bool AltarIsConsecrated() const { return bAltarConsecrated; }
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2737,6 +2741,24 @@ private:
 
 	/** Pandora's Box, on the beat: each box's next wave, once the last is all dead. */
 	void StepPandorasBox();
+
+	/** Carrion Feast's purification altar: this arena's altar placed, where a new arena is populated. #1820, #41. */
+	void PlaceTheAltar();
+
+	/** Carrion Feast's purification altar: the altar and its zone destroyed, and the consecration forgotten. */
+	void ForgetTheAltar();
+
+	/** Carrion Feast's purification altar: the one choice at it. */
+	bool ChooseAtPurificationAltar(class ACataclysmFloorObject* Altar, FName ChoiceKey);
+
+	/** Carrion Feast: the carcass at this index burned -- marked, and removed on the next beat -- by fire or an altar. */
+	void BurnTheCarcass(int32 Index);
+
+	/** Carrion Feast: whether a consecrated altar's area covers this point, measured flat. */
+	bool AltarConsecrates(const FVector& Where) const;
+
+	/** Carrion Feast: every carcass lying inside the consecrated area burned; how many. */
+	int32 BurnTheConsecratedCarcasses();
 
 	/** Grim Totems: every totem and its zone destroyed and forgotten. */
 	void ForgetTheTotems();
@@ -4144,6 +4166,15 @@ private:
 	TArray<FPandorasBoxWaves> PandorasBoxWaves;
 	int32 PandorasBoxRewardDrops = 0;
 	int32 PandorasBoxPanelKey = -1;
+
+	/**
+	 * Carrion Feast's purification altar: the altar standing, whether it was consecrated and where, and the zone drawn
+	 * there. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> PurificationAltar;
+	bool bAltarConsecrated = false;
+	FVector AltarAt = FVector::ZeroVector;
+	TWeakObjectPtr<class ACataclysmGroundZone> AltarZone;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

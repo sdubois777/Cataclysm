@@ -2509,8 +2509,8 @@ public:
 	 * with each corpse. Players can prevent this by burning bodies with fire-based abilities or finding "purification
 	 * altars" to consecrate the area."
 	 *
-	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25 AND 2026-09-26, AND PARTLY BUILT.
-	 * The row states no figure; every figure here is a play-test value:
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, 2026-09-26 AND 2026-09-30, AND
+	 * BUILT. The row states no figure; every figure here is a play-test value:
 	 * - A FLOOR CREATURE SLAIN LEAVES A CARCASS where it died: a floor source labelled "Carcass" that cannot be hurt.
 	 *   A creature a rule raised, a floor source and a feeder leave none.
 	 * - A CARCASS NOT BURNED WITHIN `CarrionFeastEatenAfterSeconds` IS EATEN: it goes, and a feeder of the floor's
@@ -2518,9 +2518,17 @@ public:
 	 * - EACH CARCASS EATEN MAKES EVERY FEEDER `CarrionFeastStrongerPercentPerCarcass` STRONGER in damage and health,
 	 *   up to `CarrionFeastMostStacks` carcasses. Feeders pay as the floor's creatures do.
 	 * - A HIT CARRYING `Element.Demonic`, THIS PROJECT'S FIRE, BURNS A CARCASS: it goes and no feeder comes.
-	 * - NOT BUILT: the "purification altars", which wait on the interaction screen.
+	 * - THE "PURIFICATION ALTARS", SINCE 2026-09-30: `CarrionFeastAltarsPerFloor` a floor, `CarrionFeastAltarsPerHordeArena`
+	 *   on a Horde arena kept across its waves, placed by Eternal Chorus's picker: a floor object named "Purification
+	 *   Altar" offering "Consecrate", which goes once used. Consecrating draws a Celestial zone
+	 *   `CarrionFeastAltarRadiusCm` across the altar, lasting the floor: every carcass lying inside burns at once, and
+	 *   every one that falls inside later burns on the next beat, through the burn a Demonic hit makes. Feeders already
+	 *   standing are not touched.
 	 */
 	static const TCHAR* CarrionFeastKey;
+
+	/** A Purification Altar's one choice. */
+	static constexpr const TCHAR* CarrionFeastConsecrate = TEXT("Consecrate");
 
 	/**
 	 * The row whose relics the player activates for a short buff that brings spirits after them. Issues #1820 and
@@ -5351,6 +5359,11 @@ public:
 	{
 		return FMath::Clamp(Stacks + 1, 0, CarrionFeastMostStacks);
 	}
+
+	/** Carrion Feast's purification altars, every figure a play-test value. See the key. */
+	static constexpr int32 CarrionFeastAltarsPerFloor = 1;
+	static constexpr int32 CarrionFeastAltarsPerHordeArena = 1;
+	static constexpr float CarrionFeastAltarRadiusCm = 1500.0f;
 
 	/** Carrion Feast: whether a carcass eaten brings a feeder while this many stand. */
 	static bool CarrionFeastFeederComes(int32 Standing) { return Standing < CarrionFeastMostFeeders; }
