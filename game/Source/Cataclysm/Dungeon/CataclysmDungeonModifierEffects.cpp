@@ -594,7 +594,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(BlackestShadowKey)
 		|| RowKey == FName(ShadowyEnemiesKey)
 		|| RowKey == FName(VoidParasiteKey)
-		|| RowKey == FName(ObsidianSarcophagiKey))
+		|| RowKey == FName(ObsidianSarcophagiKey)
+		// REALITY TWISTER. Its row is drawn onto each floor by `FCataclysmDungeonFloorRules::ModifiersFor`, rule 4.
+		// Issues #1820 and #41.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::RealityTwisterKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -828,6 +831,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GrimTotemsKey),
 		FName(ObsidianSarcophagiKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
+		FName(FCataclysmDungeonFloorRules::RealityTwisterKey),
 	};
 }
 
