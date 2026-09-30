@@ -13,11 +13,13 @@ about the ranged close-range reword:
     "a renamed row would orphan every saved item carrying it. A reword that
      changed the first 48 characters would have that cost and this one does not."
 
-IT HAS ALREADY HAPPENED SIXTEEN TIMES, which is why a written rule was not
-enough. Walking every revision of the two enchantment tables and comparing the
-Name sets finds fifteen rows renamed in one wording pass -- "critical hits"
-became "critical strikes" -- and one more when a number inside the first 48
-characters changed. Nothing failed, because the name lives in a generated file
+IT HAS ALREADY HAPPENED EIGHTEEN TIMES, which is why a written rule was not
+enough. Walking every revision of the two enchantment tables and pairing rows by
+position finds fifteen rows renamed in one wording pass -- "critical hits"
+became "critical strikes" -- one more when a number inside the first 48
+characters changed, and two class-point rows reworded in the same commit. This
+said sixteen until 2026-09-30; the two class-point pairs share neither a long
+opening nor a long ending, so `paired` below does not pair them. Nothing failed, because the name lives in a generated file
 that the generator rewrites wholesale and nothing compared it to anything.
 
 SO THE PIN IS A SEPARATE FILE THAT THE GENERATOR DOES NOT WRITE.
@@ -25,11 +27,12 @@ SO THE PIN IS A SEPARATE FILE THAT THE GENERATOR DOES NOT WRITE.
 human act, and that is the entire mechanism: a rename cannot land without
 somebody opening that file and seeing the pair.
 
-WHAT THIS DOES NOT DO. It does not stop a rename, and it should not -- the
-project owner may well decide the saved games of a pre-release build are not
-worth keeping. Issue #1799 carries that question. This only makes the rename
-visible at the moment it is made, rather than discovered by reading rows by hand
-weeks later.
+A RENAME NOW CARRIES AN ALIAS. The owner decided on 2026-09-30, answering issue
+#1799, to build a name alias: `FCataclysmEnchantmentRenames::Aliases()` points a
+loaded save's items at the new name. A renamed row is written `old -> new` in the
+pin file, and `test_the_pin_s_renames_are_the_alias_table` requires those lines
+and that table to hold the same pairs. So a rename still cannot land in silence,
+and it now cannot orphan a saved item either.
 """
 import csv
 import pathlib
@@ -80,10 +83,33 @@ def current() -> list[str]:
     return names
 
 
-@pytest.fixture(scope="module")
-def pinned() -> list[str]:
+def pin_lines() -> list[str]:
     lines = PINNED.read_text(encoding="utf-8").splitlines()
     return [line for line in lines if line and not line.startswith("#")]
+
+
+def pin_renames() -> dict[str, str]:
+    """The pin file's `old -> new` lines, old name to new.
+
+    A ROW RENAMED TWICE HAS ONE LINE NAMING BOTH OLD NAMES, `older, old -> new`,
+    because the alias table maps each straight to the current row rather than
+    chaining one to the other. So the pin still holds each current row once.
+    """
+    out: dict[str, str] = {}
+    for line in pin_lines():
+        if " -> " not in line:
+            continue
+        olds, new = line.split(" -> ", 1)
+        for old in olds.split(", "):
+            out[old] = new
+    return out
+
+
+@pytest.fixture(scope="module")
+def pinned() -> list[str]:
+    """Every CURRENT row name the pin holds: a plain line, or the new side of a
+    rename line."""
+    return [line.split(" -> ", 1)[-1] for line in pin_lines()]
 
 
 def paired(removed: list[str], added: list[str]) -> list[tuple[str, str]]:
@@ -124,8 +150,10 @@ def test_no_enchantment_row_has_been_renamed(current, pinned):
         "of the enchantment's sentence, and a dropped item stores that name, so "
         "a renamed row is orphaned on every saved item carrying it. If a rename "
         "is what you meant, say so out loud and update "
-        f"{PINNED.name}; issue #1799 carries the question of whether existing "
-        "saves matter. If it is not what you meant, reword later in the "
+        f"{PINNED.name}: write the renamed line as `old -> new`, and add the "
+        "same pair to FCataclysmEnchantmentRenames::Aliases() so a saved item "
+        "carrying the old name still finds its row (the owner's decision on "
+        "issue #1799). If it is not what you meant, reword later in the "
         "sentence: a change past the first "
         f"{NAME_CHARACTERS} characters leaves the name alone.")
 
@@ -194,3 +222,19 @@ def test_the_rename_pairing_reads_a_rename_as_one_event():
     # invent a rename that did not happen.
     assert paired(["Positive_You_have_no_armor"],
                   ["Negative_Kills_no_longer_generate_any_experience"]) == []
+
+
+def test_the_pin_s_renames_are_the_alias_table():
+    """Every `old -> new` line in the pin file is a pair in the engine's alias
+    table, and every pair there has its line. Issue #1799, the owner's decision
+    of 2026-09-30. A rename made in only one of the two places is refused: in
+    the pin alone it would orphan saved items, and in the table alone nobody
+    would have said it out loud."""
+    in_pin = pin_renames()
+    in_engine = gen.enchantment_aliases()
+    only_pin = sorted(set(in_pin.items()) - set(in_engine.items()))
+    only_engine = sorted(set(in_engine.items()) - set(in_pin.items()))
+    assert not only_pin and not only_engine, (
+        f"renames in {PINNED.name} but not in FCataclysmEnchantmentRenames::"
+        f"Aliases(): {only_pin}; in the alias table but not in the pin: "
+        f"{only_engine}")

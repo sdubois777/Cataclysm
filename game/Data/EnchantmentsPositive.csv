@@ -39,7 +39,7 @@ Positive_Skills_have_1_2_additional_charges_when_fighting,"Skills have 1-2 addit
 Positive_Blocking_an_attack_has_a_20_40_chance_to_fully,Blocking an attack has a 20%-40% chance to fully negate all damage,Generic,2.0,Stat.Defense.Block,False
 Positive_You_block_for_65_75_of_damage_instead_of_the_n,You block for 65%-75% of damage instead of the normal 50%,Generic,2.0,Stat.Defense.Block,False
 Positive_Gain_3_8_additional_class_points,Gain 3-8 additional class points,Generic,2.0,Stat.Progression.ClassPoints,False
-Positive_Every_time_you_apply_a_DOT_instead_add_2_4_stac,"Every time you apply a DOT, instead add 2-4 stacks",Generic,2.0,Keyword.DoT.Generic,False
+Positive_Your_damage_over_time_effects_deal_50_100_more,Your damage over time effects deal 50%-100% more damage,Generic,2.0,Keyword.DoT.Generic,False
 Positive_Projectiles_ricochet_1_4_times,Projectiles ricochet 1-4 times,Generic,2.0,"Type.Projectile, Type.Ranged",False
 Positive_Enemies_killed_by_you_explode_for_the_overkill_a,Enemies killed by you explode for the overkill amount,Generic,2.0,"Type.AOE.PointBlank, Trigger.OnKill",False
 Positive_Your_armor_is_doubled_against_melee_attacks,Your armor is doubled against melee attacks,Generic,2.0,"Stat.Defense.Armor, Stat.Defense.Melee",False
@@ -94,7 +94,7 @@ Positive_Staggered_enemies_take_20_35_increased_damage,Staggered enemies take 20
 Positive_Enemies_you_stagger_are_also_briefly_rooted_for,Enemies you stagger are also briefly rooted for 0.5-1.5 seconds,Generic,4.0,"Keyword.Stagger, Keyword.CC",False
 Positive_Charge_skills_deal_30_60_bonus_damage_proporti,Charge skills deal 30%-60% bonus damage proportional to distance traveled,Generic,3.0,"Keyword.Charge, Stat.Offense.Global",False
 Positive_Charge_skills_leave_a_persistent_AOE_zone_at_the,Charge skills leave a persistent AOE zone at the impact point for 3-6 seconds,Generic,4.0,"Keyword.Charge, Type.AOE.Persistent",False
-Positive_Your_energy_shield_absorbs_10_20_of_HP_damage,Your energy shield absorbs 10%-20% of HP damage before your HP is affected,Generic,3.0,"Keyword.Shield, Stat.Defense.EnergyShield",False
+Positive_10_20_of_bleed_damage_you_take_is_taken_from_y,10%-20% of bleed damage you take is taken from your energy shield instead of your health,Generic,3.0,"Keyword.Shield, Stat.Defense.EnergyShield",False
 Positive_When_your_energy_shield_fully_recharges_release,"When your energy shield fully recharges, release a nova dealing 50%-100% weapon damage to nearby enemies",Generic,4.0,"Keyword.Shield, Type.AOE.PointBlank",False
 Positive_Damage_absorbed_by_your_energy_shield_is_convert,Damage absorbed by your energy shield is converted to bonus damage on your next attack,Generic,4.0,"Keyword.Shield, Stat.Defense.EnergyShield, Stat.Offense.Global",False
 Positive_Each_summon_reduces_all_your_skill_cooldowns_by,Each summon reduces all your skill cooldowns by 1-2 seconds,Generic,3.0,"Keyword.Summon, Type.Summon",False
@@ -137,11 +137,11 @@ Positive_Burn_effects_you_apply_deal_30_60_increased_da,Burn effects you apply d
 Positive_Burn_effects_you_apply_spread_to_1_2_nearby_enem,Burn effects you apply spread to 1-2 nearby enemies,Generic,2.0,"Keyword.DoT.Burn, Type.AOE.PointBlank",False
 Positive_Your_burn_effects_have_a_20_40_chance_to_explo,Your burn effects have a 20%-40% chance to explode for double their remaining damage when they expire,Generic,3.0,"Keyword.DoT.Burn, Type.AOE.PointBlank",False
 Positive_Poison_effects_you_apply_deal_30_60_increased,Poison effects you apply deal 30%-60% increased damage per second,Generic,3.0,Keyword.DoT.Poison,False
-Positive_Poison_stacks_on_an_enemy_reduce_their_damage_ou,Poison stacks on an enemy reduce their damage output by 2%-4% per stack,Generic,4.0,"Keyword.DoT.Poison, Type.Debuff",False
+Positive_Poisoned_enemies_deal_2_4_less_damage,Poisoned enemies deal 2%-4% less damage,Generic,4.0,"Keyword.DoT.Poison, Type.Debuff",False
 Positive_Disease_effects_you_apply_spread_to_1_3_nearby_e,Disease effects you apply spread to 1-3 nearby enemies when the afflicted enemy dies,Generic,3.0,"Keyword.DoT.Disease, Trigger.OnDeath",False
 Positive_Disease_effects_reduce_enemy_healing_by_50_100,Disease effects reduce enemy healing by 50%-100%,Generic,4.0,"Keyword.DoT.Disease, Type.Debuff",False
 Positive_Necrosis_effects_deal_20_40_of_their_remaining,Necrosis effects deal 20%-40% of their remaining damage instantly when you land a critical strike,Generic,3.0,"Keyword.DoT.Necrosis, Trigger.OnCrit",False
-Positive_Necrosis_stacks_reduce_enemy_maximum_HP_by_1_2,Necrosis stacks reduce enemy maximum HP by 1%-2% per stack,Generic,3.0,"Keyword.DoT.Necrosis, Type.Debuff",False
+Positive_Enemies_with_Necrosis_have_1_2_less_maximum_he,Enemies with Necrosis have 1%-2% less maximum health,Generic,3.0,"Keyword.DoT.Necrosis, Type.Debuff",False
 Positive_Void_splinter_stacks_detonate_for_50_100_incre,Void splinter stacks detonate for 50%-100% increased damage,Generic,3.0,Keyword.DoT.VoidSplinter,False
 Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh,Void splinter stacks spread to nearby enemies when the afflicted enemy dies,Generic,3.0,"Keyword.DoT.VoidSplinter, Trigger.OnDeath, Type.AOE.PointBlank",False
 Positive_Your_retaliation_damage_is_increased_by_50_100,Your retaliation damage is increased by 50%-100%,Generic,3.0,Stat.Defense.Retaliation,False
@@ -177,9 +177,9 @@ Positive_Strike_skills_deal_20_40_increased_damage_agai,Strike skills deal 20%-4
 Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi,"Strike skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6 stacks",Generic,3.0,"Type.Strike, Stat.Defense.Armor",False
 Positive_Strike_skills_have_a_10_20_chance_to_execute_e,Strike skills have a 10%-20% chance to execute enemies below 15% HP,Generic,3.0,"Type.Strike, Trigger.LowLife",False
 Positive_Bleed_stacks_you_apply_deal_30_60_increased_da,Bleed stacks you apply deal 30%-60% increased damage,Generic,3.0,Keyword.DoT.Bleed,False
-Positive_Enemies_with_5_or_more_bleed_stacks_take_20_40,Enemies with 5 or more bleed stacks take 20%-40% increased damage from all sources,Generic,3.0,"Keyword.DoT.Bleed, Stat.Offense.Global",False
-Positive_Critical_strikes_apply_2_4_additional_bleed_stac,Critical strikes apply 2-4 additional bleed stacks,Generic,3.0,"Keyword.DoT.Bleed, Trigger.OnCrit",False
-Positive_When_an_enemy_dies_with_bleed_stacks_the_stacks,When an enemy dies with bleed stacks the stacks spread to the nearest enemy within 5 meters,Generic,4.0,"Keyword.DoT.Bleed, Trigger.OnDeath, Type.AOE.PointBlank",False
+Positive_Bleeding_enemies_take_20_40_increased_damage_f,Bleeding enemies take 20%-40% increased damage from all sources,Generic,3.0,"Keyword.DoT.Bleed, Stat.Offense.Global",False
+Positive_Your_critical_strikes_always_cause_bleeding,Your critical strikes always cause bleeding,Generic,3.0,"Keyword.DoT.Bleed, Trigger.OnCrit",False
+Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to,"When a bleeding enemy dies, its bleed spreads to the nearest enemy within 5 metres",Generic,4.0,"Keyword.DoT.Bleed, Trigger.OnDeath, Type.AOE.PointBlank",False
 Positive_Bleed_damage_you_deal_also_leeches_10_20_of_it,Bleed damage you deal also leeches 10%-20% of its value as HP,Generic,3.0,"Keyword.DoT.Bleed, Stat.Recovery.Leech",False
 Positive_Persistent_AOE_zones_deal_10_20_increased_dama,Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them,Generic,3.0,"Type.AOE.Persistent, Stat.Offense.Global",False
 Positive_You_deal_15_30_increased_damage_to_enemies_sta,You deal 15%-30% increased damage to enemies standing in your persistent AOE zones,Generic,4.0,"Type.AOE.Persistent, Stat.Offense.Global",False
@@ -199,7 +199,7 @@ Positive_You_take_5_20_less_damage_from_melee_attacks,You take 5-20% less damage
 Positive_Unaffected_by_bleeding,Unaffected by bleeding,Generic,3.0,Keyword.DoT.Bleed,False
 Positive_You_are_cleansed_every_5_seconds,You are cleansed every 5 seconds,Generic,2.0,Trigger.Timer,False
 Positive_DoTs_deal_damage_to_your_mana_pool_first,DoTs deal damage to your mana pool first,Generic,3.0,"Keyword.DoT.Generic, Stat.Resource.Mana",False
-Positive_Your_movement_abilities_no_longer_share_a_cooldo,Your movement abilities no longer share a cooldown,Generic,3.0,Slot.Movement,False
+Positive_Your_movement_ability_has_2_charges,Your movement ability has 2 charges,Generic,3.0,Slot.Movement,False
 Positive_Gain_5_15_of_your_damage_as_health_leech,Gain 5%-15% of your damage as health leech,Generic,2.0,Stat.Recovery.Leech,False
 Positive_Each_skill_has_a_20_40_chance_to_cast_a_duplic,Each skill has a 20%-40% chance to cast a duplicate at 50% damage,Generic,2.0,Scope.Global,False
 Positive_Blocking_attacks_deals_200_400_of_your_armor_a,Blocking attacks deals 200%-400% of your armor as damage to nearby enemies,Generic,3.0,"Stat.Defense.Armor, Stat.Defense.Block, Type.AOE.PointBlank",False
@@ -268,7 +268,7 @@ Positive_While_stationary_your_gadgets_deal_20_40_incr,"While stationary, your g
 Positive_While_stationary_your_aura_radius_is_doubled,"While stationary, your aura radius is doubled",Generic,4.0,"Scope.WhileStationary, Slot.Aura, Type.AOE.Aura",False
 Positive_Your_first_hit_against_each_enemy_has_a_50_100,Your first hit against each enemy has a 50%-100% chance to stagger them,Generic,3.0,"Scope.FirstHit, Keyword.Stagger, Keyword.CC",False
 Positive_Your_ranged_skills_have_20_40_increased_range,Your ranged skills have 20%-40% increased range,Generic,4.0,"Stat.Offense.Range, Type.Ranged",False
-Positive_Your_melee_skills_have_20_40_increased_reach,Your melee skills have 20%-40% increased reach,Generic,4.0,"Stat.Offense.Range, Type.Melee",False
+Positive_Your_melee_skills_have_0_5_1_metre_reach,Your melee skills have +0.5-1 metre reach,Generic,4.0,"Stat.Offense.Range, Type.Melee",False
 Positive_Your_aura_radius_is_increased_by_30_60,Your aura radius is increased by 30%-60%,Generic,4.0,"Stat.Offense.Range, Slot.Aura, Type.AOE.Aura",False
 Positive_Your_retaliation_damage_also_applies_a_random_Do,Your retaliation damage also applies a random DoT to attackers,Generic,4.0,"Keyword.DoT.Generic, Stat.Defense.Retaliation",False
 Positive_Regenerate_2_5_of_your_maximum_mana_per_second,Regenerate 2%-5% of your maximum mana per second,Generic,4.0,"Stat.Recovery.Regen, Stat.Resource.Mana",False
@@ -286,10 +286,10 @@ Positive_Healing_skills_also_restore_10_20_of_the_heale,Healing skills also rest
 Positive_Using_a_healing_skill_grants_10_20_increased_d,Using a healing skill grants 10%-20% increased damage for 5 seconds,Generic,4.0,"Type.Heal, Stat.Offense.Global",False
 Positive_Summoned_minions_have_30_50_increased_HP,Summoned minions have 30%-50% increased HP,Generic,4.0,"Type.Summon, Type.Minion",False
 Positive_Enemies_affected_by_your_burn_effects_have_10_2,Enemies affected by your burn effects have 10%-20% reduced armor,Generic,4.0,"Keyword.DoT.Burn, Stat.Defense.Armor",False
-Positive_Enemies_with_5_or_more_poison_stacks_are_slowed,Enemies with 5 or more poison stacks are slowed by 30%-50%,Generic,4.0,"Keyword.DoT.Poison, Keyword.CC",False
+Positive_Poisoned_enemies_are_slowed_by_30_50,Poisoned enemies are slowed by 30%-50%,Generic,4.0,"Keyword.DoT.Poison, Keyword.CC",False
 Positive_Poison_stacks_you_apply_have_30_60_increased_d,Poison stacks you apply have 30%-60% increased duration,Generic,4.0,Keyword.DoT.Poison,False
 Positive_Disease_effects_you_apply_also_reduce_enemy_armo,Disease effects you apply also reduce enemy armor by 5%-15%,Generic,4.0,"Keyword.DoT.Disease, Stat.Defense.Armor",False
-Positive_Each_void_splinter_stack_on_an_enemy_increases_y,Each void splinter stack on an enemy increases your damage against them by 3%-5%,Generic,3.0,"Keyword.DoT.VoidSplinter, Stat.Offense.Global",False
+Positive_You_deal_3_5_more_damage_to_an_enemy_carrying,You deal 3%-5% more damage to an enemy carrying a void splinter,Generic,3.0,"Keyword.DoT.VoidSplinter, Stat.Offense.Global",False
 Positive_Your_retaliation_damage_also_applies_a_bleed_sta,Your retaliation damage also applies a bleed stack to the attacker,Generic,4.0,"Stat.Defense.Retaliation, Keyword.DoT.Bleed",False
 Positive_Retaliation_damage_has_a_20_40_chance_to_stagg,Retaliation damage has a 20%-40% chance to stagger the attacker,Generic,4.0,"Stat.Defense.Retaliation, Keyword.Stagger",False
 Positive_Retaliation_damage_applies_a_2_4_second_slow_to,Retaliation damage applies a 2-4 second slow to the attacker,Generic,4.0,"Stat.Defense.Retaliation, Keyword.CC",False
@@ -303,7 +303,7 @@ Positive_Blocked_attacks_restore_1_3_of_your_maximum_ma,Blocked attacks restore 
 Positive_Strike_skills_have_a_15_30_chance_to_apply_a_r,Strike skills have a 15%-30% chance to apply a random debuff on hit,Generic,4.0,"Type.Strike, Type.Debuff",False
 Positive_Strike_skills_generate_5_10_of_your_class_reso,Strike skills generate 5%-10% of your class resource on hit,Generic,4.0,"Type.Strike, Stat.Resource.ClassResource",False
 Positive_Bleed_stacks_you_apply_have_50_100_increased_d,Bleed stacks you apply have 50%-100% increased duration,Generic,4.0,Keyword.DoT.Bleed,False
-Positive_Your_bleed_stacks_also_reduce_enemy_movement_spe,Your bleed stacks also reduce enemy movement speed by 5%-10% per stack,Generic,4.0,"Keyword.DoT.Bleed, Keyword.CC",False
+Positive_Bleeding_enemies_move_5_10_slower,Bleeding enemies move 5%-10% slower,Generic,4.0,"Keyword.DoT.Bleed, Keyword.CC",False
 Positive_Your_persistent_AOE_zones_also_slow_enemies_with,Your persistent AOE zones also slow enemies within them by 20%-35%,Generic,4.0,"Type.AOE.Persistent, Keyword.CC",False
 Positive_Enemies_that_enter_your_persistent_AOE_zones_are,Enemies that enter your persistent AOE zones are briefly staggered,Generic,4.0,"Type.AOE.Persistent, Keyword.Stagger, Keyword.CC",False
 Positive_Persistent_AOE_zones_apply_a_DoT_to_enemies_stan,Persistent AOE zones apply a DoT to enemies standing in them,Generic,4.0,"Type.AOE.Persistent, Keyword.DoT.Generic",False

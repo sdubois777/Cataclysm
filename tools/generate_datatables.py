@@ -5906,6 +5906,50 @@ _STATS_WITH_NO_ATTRIBUTE = re.compile(
     re.S)
 
 
+#: Where the engine keeps the enchantment row names that were renamed. Issue
+#: #1799, the owner's decision of 2026-09-30.
+ENCHANTMENT_RENAMES_CPP = (
+    REPO_ROOT / "game" / "Source" / "Cataclysm" / "Items"
+    / "CataclysmEnchantmentRenames.cpp")
+
+#: The shape of that table, so a rename of the accessor fails loudly here.
+_ENCHANTMENT_ALIASES = re.compile(
+    r"FCataclysmEnchantmentRenames::Aliases\(\)\s*\{.*?"
+    r"static const TMap<FName, FName> Table = \{(?P<body>.*?)\n\t\};",
+    re.S)
+_ALIAS_PAIR = re.compile(r'\{\s*TEXT\("([^"]+)"\)\s*,\s*TEXT\("([^"]+)"\)\s*\}')
+
+
+def enchantment_aliases() -> dict[str, str]:
+    """Every renamed enchantment row, old name to new, READ FROM THE ENGINE.
+
+    One table, in `FCataclysmEnchantmentRenames::Aliases()`, which the save
+    loader applies. Read here rather than restated, so the checks on it in
+    `tools/tests/` look at the table the game uses.
+
+    RAISES RATHER THAN RETURNING EMPTY when the table cannot be found or holds
+    no pair, for the reason `stats_with_no_attribute` gives: an empty answer
+    would make every check on it pass while reading nothing.
+    """
+    if not ENCHANTMENT_RENAMES_CPP.is_file():
+        raise DataError(f"{ENCHANTMENT_RENAMES_CPP} is missing, so the renamed "
+                        f"enchantment rows cannot be read.")
+    found = _ENCHANTMENT_ALIASES.search(
+        ENCHANTMENT_RENAMES_CPP.read_text(encoding="utf-8", errors="replace"))
+    if not found:
+        raise DataError(f"FCataclysmEnchantmentRenames::Aliases() was not found in "
+                        f"{ENCHANTMENT_RENAMES_CPP.name} in its expected shape.")
+    pairs = _ALIAS_PAIR.findall(found.group("body"))
+    if not pairs:
+        raise DataError("FCataclysmEnchantmentRenames::Aliases() parsed to no pair.")
+    aliases: dict[str, str] = {}
+    for old, new in pairs:
+        if old in aliases:
+            raise DataError(f"{old} is renamed twice in the alias table.")
+        aliases[old] = new
+    return aliases
+
+
 def stats_with_no_attribute() -> set[str]:
     """The stats exempt from needing a gameplay attribute, READ FROM THE ENGINE.
 
