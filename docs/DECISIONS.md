@@ -2,6 +2,74 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Increased crowd control resistance shrinks a negative total instead of deepening it: below zero the increases divide, in the crowd control reader only
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`
+(`UCataclysmSkillEffects::AfterCrowdControlResistance`),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h` (the new
+`StatBreakdownForSkill`), and `game/Source/Cataclysm/Tests/CataclysmCrowdControlResistanceTests.cpp`
+(two tests). Issue [#2057](https://github.com/sdubois777/Cataclysm/issues/2057).
+
+### WHAT WAS WRONG
+
+The stat pipeline computes every stat as `(base + flat) × (1 + increases) × more`. The drawback "CC
+effects applied to you last 40%-70% longer" can take `crowd_control_resistance` below zero, and
+since issue #1951 a total below zero lengthens crowd control. With the total negative, a positive
+sum of increases made it more negative, so the passive nodes that grant "increased crowd control
+resistance" made crowd control last longer. Worked example from the issue: a Ravager at -65 with 36%
+increased stood at -88.4, so a 1 second effect lasted 1.884 seconds.
+
+### WHAT CHANGED, RULED 2026-09-30
+
+- **Below zero, the increases divide.** In `AfterCrowdControlResistance` only, when
+  `(base + flat) × more` is negative, the total is `(base + flat) × more / (1 + increases)`. The
+  example above becomes -65 / 1.36 = -47.79, so the effect lasts 1.478 seconds. A reduction deepens
+  the penalty by the same rule: -40 with 50% reduced is -80, not -20.
+- **Not in the pipeline.** Every other stat is still computed as before. The ruling limited the
+  change to this one reader. This is the only stat checked for the same shape, which issue #2057
+  says under Scope.
+- **Positive totals are unchanged.** So is a stat that a removal row has removed, which stays 0.
+- **The floor of -100 still applies** after the division.
+- **A judgement, not part of the ruling:** increases of -100% or worse leave nothing to divide by,
+  and are taken straight to the floor. No row reduces this stat today.
+
+The six rows that grant this stat an increase, which the change affects only while the total is
+negative:
+
+| Row | Per point |
+| :-- | :-- |
+| `Masochist_basic_spine_009` Hardened Nerves | 2% |
+| `Masochist_basic_fc_c1` Unflinching | 2% |
+| `Ravager_basic_a_stem2` Rooted | 3% |
+| `Ravager_basic_a_c0` Stubborn | 3% |
+| `Ritualist_basic_c_c0` Unhurried | 2% |
+| `Ravager_basic_spine_008#2` | 5%, from 4 points |
+
+The issue listed five rows. The sixth, `Ravager_basic_spine_008#2`, was found by listing every
+`crowd_control_resistance` row in `game/Data/PassiveEffects.csv` on `origin/development`.
+
+### HOW THE READER GETS THE PARTS
+
+`StatForSkill` returns only the result. `UCataclysmAbilitySystemComponent::StatBreakdownForSkill`
+runs the same pipeline pass with every default (no skill cost, no blow, no target) and returns every
+bucket. It returns false when nothing was recorded for the stat, and then the reader keeps the
+attribute, as before. The existing `StatForSkill` call in the reader is unchanged, so the Python
+inventory of stat lookups (`tools/tests/test_stat_lookups_hand_over_what_they_should.py`) is
+unchanged too. A test compares the two functions' results so they cannot drift apart.
+
+### TESTS
+
+Two new tests in `Cataclysm.CrowdControl.`: one checks the issue's example, a reduction and a
+positive total; the other checks that the breakdown's result equals `StatForSkill`'s.
+
+### NO GENRE RESEARCH IS RECORDED HERE
+
+This corrects a sign against the nodes' own words ("increased" resistance must not make crowd
+control longer). The division is the ruling's shape. This entry does not claim it was taken from
+another game.
+
+---
+
 ## 2026-09-30 — Every thrall and every imp holds its Fervour reserve back from the pool, and one total decides what can be spent and what can still be summoned; gadgets reserve nothing yet
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmCharacterBase.h` (the field `ReservedFervour`),

@@ -593,4 +593,126 @@ CATACLYSM_CC_TEST(FCataclysmUnyieldingKnockdownTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Increases on a negative total. Issue #2057.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmCrowdControlTest
+{
+	/**
+	 * A stat line of one flat and one increased figure, on a real creature's
+	 * Cataclysm ability system, so the reader asks the pipeline as it does for
+	 * a player. Null when the creature has no such ability system.
+	 */
+	static UCataclysmAbilitySystemComponent* WithLine(FScopedCreature& Creature,
+													   float Flat, float Increased)
+	{
+		UCataclysmAbilitySystemComponent* Abilities =
+			Cast<UCataclysmAbilitySystemComponent>(
+				Creature.Actor->GetAbilitySystemComponent());
+		if (!Abilities)
+		{
+			return nullptr;
+		}
+
+		FCataclysmStatModifier FlatPart;
+		FlatPart.Bucket = ECataclysmStatBucket::Flat;
+		FlatPart.Source = ECataclysmModifierSource::PassiveKeystone;
+		FlatPart.Value = Flat;
+
+		FCataclysmStatModifier IncreasedPart;
+		IncreasedPart.Bucket = ECataclysmStatBucket::Increased;
+		IncreasedPart.Source = ECataclysmModifierSource::PassiveKeystone;
+		IncreasedPart.Value = Increased;
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		FCataclysmStatInputs& Line = Stats.FindOrAdd(
+			FName(UCataclysmSkillEffects::CrowdControlResistanceStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {FlatPart, IncreasedPart};
+		Abilities->SetStatInputs(MoveTemp(Stats));
+		return Abilities;
+	}
+}
+
+CATACLYSM_CC_TEST(FCataclysmCrowdControlIncreasesShrinkAPenaltyTest,
+	"Cataclysm.CrowdControl.IncreasesShrinkANegativeTotalRatherThanDeepenIt")
+{
+	// THE ISSUE'S OWN EXAMPLE. A Ravager at -65 with 36% increased: the
+	// pipeline's -65 x 1.36 = -88.4 made a 1 second effect last 1.884. Ruled
+	// 2026-09-30: -65 / 1.36 = -47.79, so it lasts 1.478.
+	using namespace CataclysmCrowdControlTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCreature Penalised(World, 0.0f, FVector(200.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a creature with a Cataclysm ability system"),
+					 WithLine(Penalised, -65.0f, 36.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("-65 with 36% increased lengthens a 1 second effect to 1.478, not 1.884"),
+			  UCataclysmSkillEffects::AfterCrowdControlResistance(Penalised.Actor, 1.0f),
+			  1.0f + 65.0f / 136.0f, 0.001f);
+
+	// AND A REDUCTION DEEPENS IT, the same rule read the other way.
+	FScopedCreature Reduced(World, 0.0f, FVector(400.0f, 0.0f, 0.0f));
+	WithLine(Reduced, -40.0f, -50.0f);
+	TestEqual(TEXT("-40 with 50% reduced lengthens a 1 second effect to 1.8, not 1.2"),
+			  UCataclysmSkillEffects::AfterCrowdControlResistance(Reduced.Actor, 1.0f),
+			  1.8f, 0.001f);
+
+	// A POSITIVE TOTAL IS UNTOUCHED: 50 x 1.36 = 68 resisted.
+	FScopedCreature Resisting(World, 0.0f, FVector(600.0f, 0.0f, 0.0f));
+	WithLine(Resisting, 50.0f, 36.0f);
+	TestEqual(TEXT("50 with 36% increased still shortens a 1 second effect to 0.32"),
+			  UCataclysmSkillEffects::AfterCrowdControlResistance(Resisting.Actor, 1.0f),
+			  0.32f, 0.001f);
+	return true;
+}
+
+CATACLYSM_CC_TEST(FCataclysmStatBreakdownMatchesTheLookupTest,
+	"Cataclysm.CrowdControl.TheBreakdownReaderAnswersWhatTheLookupAnswers")
+{
+	// `StatBreakdownForSkill` writes out the pipeline pass `StatForSkill` runs
+	// with every default. This is what keeps the two from drifting apart.
+	using namespace CataclysmCrowdControlTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCreature Creature(World, 0.0f, FVector(200.0f, 0.0f, 0.0f));
+	UCataclysmAbilitySystemComponent* Abilities = WithLine(Creature, -65.0f, 36.0f);
+	if (!TestNotNull(TEXT("a creature with a Cataclysm ability system"), Abilities))
+	{
+		return false;
+	}
+
+	const FName Stat(UCataclysmSkillEffects::CrowdControlResistanceStat);
+	FCataclysmStatBreakdown Parts;
+	TestTrue(TEXT("a recorded stat has a breakdown"),
+			 Abilities->StatBreakdownForSkill(Stat, FGameplayTagContainer(), Parts));
+	TestEqual(TEXT("its flat part is -65"), Parts.Flat, -65.0f, 0.001f);
+	TestEqual(TEXT("its increases are 36"), Parts.SumOfIncreases, 36.0f, 0.001f);
+	TestEqual(TEXT("and its result is what the lookup answers"), Parts.Final,
+			  Abilities->StatForSkill(Stat, FGameplayTagContainer(), 12345.0f), 0.001f);
+
+	FCataclysmStatBreakdown Untouched;
+	Untouched.Final = 7.0f;
+	TestFalse(TEXT("a stat nothing recorded has none"),
+			  Abilities->StatBreakdownForSkill(FName(TEXT("no_such_stat")),
+											   FGameplayTagContainer(), Untouched));
+	TestEqual(TEXT("and the breakdown is left as it was"), Untouched.Final, 7.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -966,6 +966,20 @@ public:
 					   int32 EnemiesStruckTogether = -1) const;
 
 	/**
+	 * The same pipeline pass as `StatForSkill` with no state handed over, but
+	 * every bucket rather than only the result. False, and `Out` untouched,
+	 * when nothing was recorded for the stat, which is where `StatForSkill`
+	 * answers its fallback. Issue #2057: a reader that must treat the
+	 * increases differently from the rest of the formula needs the parts.
+	 *
+	 * NO STATE IS HANDED OVER, as in a three-argument `StatForSkill` call: no
+	 * skill cost, no blow, no target. A caller that needs a conditioned row
+	 * judged against any of those must not use this.
+	 */
+	bool StatBreakdownForSkill(FName Stat, const FGameplayTagContainer& SkillTags,
+							   FCataclysmStatBreakdown& Out) const;
+
+	/**
 	 * This stat's modifiers applied to a figure THE CALLER SUPPLIES, with the
 	 * character's current conditions in hand. Issue #1815.
 	 *
