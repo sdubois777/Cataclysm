@@ -1777,6 +1777,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// consecration forgotten. Issues #1820 and #41.
 		PlaceTheAltar();
 
+		// AND INFERNAL BEACONS, FOR THE SAME REASON: a new arena's beacon. The dungeon's stacks are kept. Issues #1820
+		// and #41.
+		PlaceTheInfernalBeacons();
+
 		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
 		// waves keep them. Issues #1820 and #41.
 		ForgetTheShadowLights();
@@ -8833,6 +8837,120 @@ void ACataclysmDungeonGameMode::StepPandorasBox()
 	}
 }
 
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::InfernalBeaconsNow() const
+{
+	TArray<ACataclysmFloorObject*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : InfernalBeacons)
+	{
+		if (ACataclysmFloorObject* Beacon = One.Get(); IsValid(Beacon))
+		{
+			Standing.Add(Beacon);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheInfernalBeacons()
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : InfernalBeacons)
+	{
+		if (ACataclysmFloorObject* Beacon = One.Get())
+		{
+			Beacon->Destroy();
+		}
+	}
+	InfernalBeacons.Reset();
+	InfernalBeaconsPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheInfernalBeacons()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheInfernalBeacons();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::InfernalBeaconsKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::InfernalBeaconsPerHordeArena : Effects::InfernalBeaconsPerFloor;
+	for (ACataclysmFloorObject* Beacon : PlaceFloorObjects(FName(Effects::InfernalBeaconsKey), Count, TEXT("Infernal Beacon"),
+														   TEXT("A beacon of hellfire. Lighting it draws power to the dungeon and fortune to you.")))
+	{
+		FCataclysmFloorObjectChoice Activate;
+		Activate.Key = FName(Effects::InfernalBeaconsActivate);
+		Activate.Label = FString::Printf(TEXT("Activate: for the rest of the dungeon, enemies deal %d%% more damage and "
+											  "you gain %d magic find"),
+										 FMath::RoundToInt(Effects::InfernalBeaconsDamagePercentPerStack),
+										 FMath::RoundToInt(Effects::InfernalBeaconsMagicFindPerStack));
+		Beacon->Choices = {Activate};
+		InfernalBeacons.Add(Beacon);
+	}
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtInfernalBeacon(ACataclysmFloorObject* Beacon, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Index = InfernalBeacons.IndexOfByPredicate(
+		[Beacon](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Beacon; });
+	if (Index == INDEX_NONE || ChoiceKey != FName(Effects::InfernalBeaconsActivate))
+	{
+		return false;
+	}
+
+	// ONE STACK MORE FOR THE REST OF THE DUNGEON, written on the next beat; THE BEACON GOES.
+	++InfernalBeaconStacks;
+	UE_LOG(LogCataclysm, Log, TEXT("Infernal Beacons: a beacon activated on floor %d, %d stack(s) in this dungeon"),
+		   FloorNumber, InfernalBeaconStacks);
+	Beacon->Destroy();
+	InfernalBeacons.RemoveAt(Index);
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepInfernalBeacons(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE, the sweep Pestilent Empowerment makes, at the dungeon's stacks; the
+	// floor sources are left alone, since they do nothing. Written only when it changed.
+	const float Multiplier = Effects::InfernalBeaconsDamageMultiplier(InfernalBeaconStacks);
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| !UCataclysmTargeting::IsHostileTo(Creature, Player)
+			|| FMath::IsNearlyEqual(Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource),
+									Multiplier))
+		{
+			continue;
+		}
+		Creature->SetInfernalBeaconsDamageMultiplier(Multiplier);
+	}
+
+	// AND THE PLAYER'S MAGIC FIND, written when the stacks changed.
+	if (InfernalBeaconStacks != InfernalBeaconStacksApplied)
+	{
+		InfernalBeaconStacksApplied = InfernalBeaconStacks;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	const int32 Key = InfernalBeaconsNow().Num() * 1000 + InfernalBeaconStacks;
+	if (Key != InfernalBeaconsPanelKey)
+	{
+		InfernalBeaconsPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::PlaceTheTotems()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -8900,6 +9018,10 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	if (Object->RuleKey == FName(Effects::CarrionFeastKey))
 	{
 		return ChooseAtPurificationAltar(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::InfernalBeaconsKey))
+	{
+		return ChooseAtInfernalBeacon(Object, ChoiceKey);
 	}
 	return false;
 }
@@ -10086,6 +10208,10 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheRelics();
 	ForgetTheBoxes();
 	ForgetTheAltar();
+	// AND INFERNAL BEACONS' STACKS END WITH THE DUNGEON. Issues #1820 and #41.
+	ForgetTheInfernalBeacons();
+	InfernalBeaconStacks = 0;
+	InfernalBeaconStacksApplied = 0;
 
 	// THE RUN IS OVER, AND WHAT THE PLAYER COMMANDED ENDS WITH IT. Issue
 	// #1202, ruled 2026-09-30. Their Fervour reserves go with them, because
@@ -10659,6 +10785,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PANDORA'S BOX, ON EVERY FLOOR CARRYING IT, AND WHILE A BOX'S WAVES ARE UNDER WAY. Issues #1820 and #41.
 	const bool bPandorasBox = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::PandorasBoxKey))
 		|| !PandorasBoxWaves.IsEmpty();
+	// AND INFERNAL BEACONS, ON EVERY FLOOR CARRYING IT, AND ON EVERY FLOOR OF A DUNGEON WHOSE BEACONS HAVE STACKS.
+	// Issues #1820 and #41.
+	const bool bInfernalBeacons =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::InfernalBeaconsKey))
+		|| InfernalBeaconStacks > 0 || InfernalBeaconStacksApplied > 0;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -10696,6 +10827,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bGrimTotems
 		&& !bBattlefieldRelics
 		&& !bPandorasBox
+		&& !bInfernalBeacons
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts)
 	{
 		return;
@@ -11066,6 +11198,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPandorasBox)
 	{
 		StepPandorasBox();
+	}
+
+	// AND INFERNAL BEACONS, WHICH WRITES THE DUNGEON'S STACKS ON THE CREATURES AND THE PLAYER. Issues #1820 and #41.
+	if (bInfernalBeacons)
+	{
+		StepInfernalBeacons(Player, AbilitySystem);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -12055,6 +12193,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// rest: a player who has closed none is owed nothing.
 	Effects.RiftMagicFindAdded =
 		UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(AbyssalRiftSuccessesApplied);
+
+	// AND THE INFERNAL BEACONS ACTIVATED IN THIS DUNGEON. Issues #1820 and #41.
+	Effects.BeaconMagicFindAdded = UCataclysmDungeonModifierEffects::InfernalBeaconsMagicFind(InfernalBeaconStacksApplied);
 
 	// AND WHAT THE ATTACHED VOIDLINGS TAKE, on its own field. Issues #1820 and #41. Read unconditionally like
 	// the rest: a player carrying none is owed nothing.
@@ -14140,6 +14281,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 									FMath::CeilToInt(GrimEmbraceLeft));
 		}
 		Counting.Add(Totems, Line);
+	}
+
+	// AND INFERNAL BEACONS: how many this dungeon has activated and what they give, on a floor carrying the row or once
+	// any is activated. Issues #1820 and #41.
+	const FName Beacons(Effects::InfernalBeaconsKey);
+	if (FloorBrief.Modifiers.Contains(Beacons) || InfernalBeaconStacks > 0)
+	{
+		Counting.Add(Beacons, FString::Printf(TEXT("infernal beacons: %d activated; enemies +%d%% damage; +%d magic find"),
+											  InfernalBeaconStacks,
+											  FMath::RoundToInt((Effects::InfernalBeaconsDamageMultiplier(InfernalBeaconStacks) - 1.0f) * 100.0f),
+											  FMath::RoundToInt(Effects::InfernalBeaconsMagicFind(InfernalBeaconStacks))));
 	}
 
 	// AND PANDORA'S BOX: how many are unopened, and the wave under way. Issues #1820 and #41.

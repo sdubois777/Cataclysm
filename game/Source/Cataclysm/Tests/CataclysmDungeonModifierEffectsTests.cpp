@@ -39440,4 +39440,193 @@ bool FCataclysmAltarConsecrateTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Demonic_Infernal_Beacons. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName InfernalRow(UCataclysmDungeonModifierEffects::InfernalBeaconsKey);
+	const FName LightKey(UCataclysmDungeonModifierEffects::InfernalBeaconsActivate);
+
+	/** A dungeon carrying only Infernal Beacons, on floor 2 with its own creatures cleared and its beacon placed. */
+	ACataclysmDungeonGameMode* ABeaconFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {InfernalRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("one beacon"), Mode->InfernalBeaconsNow().Num(),
+							   UCataclysmDungeonModifierEffects::InfernalBeaconsPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** An Imp of 1000 health beside the player, one of the floor's creatures. */
+	ACataclysmEnemyCharacter* ABeaconsImp(UWorld* World, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		ACataclysmEnemyCharacter* Imp =
+			SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(600.0f, 0.0f, 0.0f), 1000.0f);
+		if (Imp)
+		{
+			Mode->FloorEnemies.Add(Imp);
+		}
+		return Imp;
+	}
+}
+
+// THE FIGURES: ONE A FLOOR; 10% DAMAGE AND 10 MAGIC FIND A STACK, ADDED, CAPPED AT 100% AND 100.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsFiguresStacksAndCaps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one a floor"), Effects::InfernalBeaconsPerFloor, 1);
+	TestEqual(TEXT("one on a Horde arena"), Effects::InfernalBeaconsPerHordeArena, 1);
+	TestEqual(TEXT("no stack, no more damage"), Effects::InfernalBeaconsDamageMultiplier(0), 1.0f, 0.0001f);
+	TestEqual(TEXT("one, 10% more"), Effects::InfernalBeaconsDamageMultiplier(1), 1.1f, 0.0001f);
+	TestEqual(TEXT("three, 30%, added"), Effects::InfernalBeaconsDamageMultiplier(3), 1.3f, 0.0001f);
+	TestEqual(TEXT("ten, 100%"), Effects::InfernalBeaconsDamageMultiplier(10), 2.0f, 0.0001f);
+	TestEqual(TEXT("capped at 100%"), Effects::InfernalBeaconsDamageMultiplier(12), 2.0f, 0.0001f);
+	TestEqual(TEXT("one, 10 magic find"), Effects::InfernalBeaconsMagicFind(1), 10.0f, 0.0001f);
+	TestEqual(TEXT("capped at 100"), Effects::InfernalBeaconsMagicFind(12), 100.0f, 0.0001f);
+	return true;
+}
+
+// ONE BEACON AWAY FROM THE ENTRANCE, OFFERING "ACTIVATE", WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalPlacedTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsOneStandsOfferingActivate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmFloorObject* Beacon = Mode->InfernalBeaconsNow()[0];
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Beacon->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+	TestEqual(TEXT("named"), Beacon->DisplayName, FString(TEXT("Infernal Beacon")));
+	TestEqual(TEXT("placed by the row"), Beacon->RuleKey, InfernalRow);
+	if (TestEqual(TEXT("one choice"), Beacon->Choices.Num(), 1))
+	{
+		TestEqual(TEXT("to activate it"), Beacon->Choices[0].Key, LightKey);
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(InfernalRow),
+			  FString(TEXT("infernal beacons: 0 activated; enemies +0% damage; +0 magic find")));
+	return true;
+}
+
+// ACTIVATING: THE BEACON GOES; EVERY CREATURE DEALS 10% MORE ON ITS OWN KEY, AND THE PLAYER GAINS 10 MAGIC FIND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalActivateTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsActivatingOneStrengthensCreaturesAndGivesMagicFind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalActivateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Imp = Mode ? ABeaconsImp(World, Mode, Player) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("nothing before"), Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource),
+			  1.0f, 0.0001f);
+	if (!TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the beacon went"), Mode->InfernalBeaconsNow().Num(), 0);
+	TestEqual(TEXT("one stack"), Mode->InfernalBeaconStacksNow(), 1);
+	Beat(Mode, 1);
+	TestEqual(TEXT("10% more damage, on its own key"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("10 magic find"), TotemRuleOn(Player, TEXT("magic_find")), 10.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(InfernalRow),
+			  FString(TEXT("infernal beacons: 1 activated; enemies +10% damage; +10 magic find")));
+	return true;
+}
+
+// THE STACKS LAST THE DUNGEON: A SECOND BEACON ON THE NEXT FLOOR MAKES TWO, ON THAT FLOOR'S CREATURES; LEAVING CLEARS THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalDungeonTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsTheStacksLastTheDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("the first activated"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey))
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	if (!TestEqual(TEXT("a new beacon on floor 3"), Mode->InfernalBeaconsNow().Num(), 1)
+		|| !TestTrue(TEXT("the second activated"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = ABeaconsImp(World, Mode, Player);
+	if (!TestNotNull(TEXT("an Imp of floor 3"), Imp))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("two stacks, kept across the floors"), Mode->InfernalBeaconStacksNow(), 2);
+	TestEqual(TEXT("20% more damage on floor 3's creature"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.2f, 0.0001f);
+	TestEqual(TEXT("20 magic find"), TotemRuleOn(Player, TEXT("magic_find")), 20.0f, 0.001f);
+
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving the dungeon clears the stacks"), Mode->InfernalBeaconStacksNow(), 0);
+	TestEqual(TEXT("and the magic find"), TotemRuleOn(Player, TEXT("magic_find")), 0.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
