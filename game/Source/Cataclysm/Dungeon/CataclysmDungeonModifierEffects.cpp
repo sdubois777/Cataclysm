@@ -175,6 +175,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
 const TCHAR* UCataclysmDungeonModifierEffects::MindShatteringIllusionsKey =
 	TEXT("Void_Mind_Shattering_Illusions");
 
+const TCHAR* UCataclysmDungeonModifierEffects::RealityRiftsKey =
+	TEXT("Chaos_Reality_Rifts");
+
 const TCHAR* UCataclysmDungeonModifierEffects::LuxuryHoardersKey =
 	TEXT("Famine_Luxury_Hoarders");
 
@@ -579,7 +582,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// SWARM OF LOCUSTS. Its swarms cross the floor and burn a player outside a shelter; nothing obscures vision,
 		// which the row names, because that waits on the vision system. #2129 listed it with the built rows by mistake
 		// while its entry and its key's comment both said partly built. Issues #1820 and #41.
-		|| RowKey == FName(SwarmOfLocustsKey))
+		|| RowKey == FName(SwarmOfLocustsKey)
+		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
+		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
+		|| RowKey == FName(RealityRiftsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -746,6 +752,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PestilentEmpowermentKey),
 		FName(PortalUnleashingKey),
 		FName(MindShatteringIllusionsKey),
+		FName(RealityRiftsKey),
 		FName(LuxuryHoardersKey),
 		FName(InsanityBurstsKey),
 		FName(FunerealProcessionKey),
@@ -1096,6 +1103,12 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 
 	// AND A PHANTASM'S HIT, A LESS ON MOVEMENT SPEED FOR A MOMENT. Issues #1820 and #41.
 	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat, Effects.IllusionSlowLessPercent);
+
+	// AND A GIFT RIFT'S DAMAGE, A MORE ON ATTACK AND SPELL DAMAGE, as Void Parasite's is taken. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.RealityGiftDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.RealityGiftDamageMorePercent);
 
 	// AND THE BLOOD DEBT'S BLESSING AND ITS CURSE, ON DAMAGE AS VOID PARASITE'S IS TAKEN: a More and a Less on
 	// attack damage and on spell damage. Issues #1820 and #41.
@@ -1542,6 +1555,10 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from a phantasm's hit"),
 									Effects.IllusionSlowLessPercent));
+	}
+	if (Effects.RealityGiftDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from a gift rift"), Effects.RealityGiftDamageMorePercent));
 	}
 	if (Effects.BloodDebtDamageMorePercent > 0.0f)
 	{

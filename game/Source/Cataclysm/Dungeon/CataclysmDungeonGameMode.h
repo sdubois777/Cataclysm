@@ -2126,6 +2126,15 @@ public:
 	/** Mind-Shattering Illusions, for the panel and tests: the phantasms that still stand. */
 	TArray<ACataclysmEnemyCharacter*> PhantasmsStanding() const;
 
+	/**
+	 * Reality Rifts, for tests: this arena's rift cells. The first `RealityRiftPairs` pairs are paired in order, 0 with
+	 * 1 and 2 with 3; the last is the gift rift.
+	 */
+	const TArray<FIntPoint>& RealityRiftCellsNow() const { return RealityRiftCells; }
+
+	/** Reality Rifts, for tests: whether the gift rift has been used on this arena. */
+	bool RealityGiftTaken() const { return bRealityGiftTaken; }
+
 	/** Luxury Hoarders, for tests: where this floor's hoards lie. */
 	const TArray<FVector>& LuxuryHoardsNow() const { return LuxuryHoards; }
 
@@ -2403,6 +2412,12 @@ private:
 
 	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
 	void PlaceThePortals();
+
+	/** Reality Rifts: this arena's rifts chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheRealityRifts();
+
+	/** Reality Rifts, on the beat: the rifts drawn, a step into one answered, and the gift written on the player. */
+	void StepRealityRifts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Luxury Hoarders: this arena's hoards, their piles and guards, placed where a new arena is populated. */
 	void PlaceTheHoards();
@@ -3638,6 +3653,19 @@ private:
 	float IllusionSlowLeft = 0.0f;
 	float IllusionSlowApplied = 0.0f;
 	int32 IllusionPanelKey = -1;
+
+	/**
+	 * Reality Rifts: this arena's rift cells and the zones drawn there, whether the gift has been taken, the seconds
+	 * the rifts rest and the gift lasts, what was last written on the player, and what the panel last showed. Issues
+	 * #1820 and #41.
+	 */
+	TArray<FIntPoint> RealityRiftCells;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> RealityRiftZones;
+	bool bRealityGiftTaken = false;
+	float RealityRiftRestLeft = 0.0f;
+	float RealityGiftLeft = 0.0f;
+	float RealityGiftApplied = 0.0f;
+	int32 RealityRiftPanelKey = -1;
 
 	/** Luxury Hoarders: where the hoards lie, their guards, and how many drops the piles were laid with. */
 	TArray<FVector> LuxuryHoards;

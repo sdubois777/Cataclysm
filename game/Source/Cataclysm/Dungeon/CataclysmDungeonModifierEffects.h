@@ -304,6 +304,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float IllusionSlowLessPercent = 0.0f;
 
+	/** Damage a Reality Rifts gift rift gives the player for a time, more. Issues #1820 and #41. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RealityGiftDamageMorePercent = 0.0f;
+
 	/** The damage the blood debt paid so far blesses the player with, more. Blood Debt. Issues #1820 and #41. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float BloodDebtDamageMorePercent = 0.0f;
@@ -493,6 +497,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& ParasiteLessPercent <= 0.0f
 			&& IllusionSlowLessPercent <= 0.0f
+			&& RealityGiftDamageMorePercent <= 0.0f
 			&& BloodDebtDamageMorePercent <= 0.0f
 			&& BloodDebtDamageLessPercent <= 0.0f
 			&& RiftMagicFindAdded <= 0.0f
@@ -2149,6 +2154,23 @@ public:
 	 * - A PHANTASM'S HIT SLOWS THE PLAYER `IllusionSlowLessPercent` FOR `IllusionSlowSeconds`: "disorient".
 	 */
 	static const TCHAR* MindShatteringIllusionsKey;
+
+	/**
+	 * The row whose floor holds rifts the player can use: paired rifts that carry the player from one to the other, and
+	 * a rift that gives a moment's strength. Issues #1820 and #41.
+	 *
+	 * "The fabric of reality is unstable in Chaos Lord dungeons, leading to the creation of temporary portals or rifts.
+	 * Players can use these rifts strategically to teleport, gain buffs, or access hidden areas."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, AND PARTLY BUILT. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - `RealityRiftPairs` PAIRS A FLOOR: stepping into one rift carries the player to the other of its pair; then the
+	 *   rifts rest for `RealityRiftRestSeconds`.
+	 * - ONE GIFT RIFT A FLOOR: stepping into it gives `RealityGiftDamageMorePercent` more damage for
+	 *   `RealityGiftSeconds`.
+	 * - "ACCESS HIDDEN AREAS" IS NOT BUILT: it waits on changing the floor's layout during play.
+	 */
+	static const TCHAR* RealityRiftsKey;
 
 	/**
 	 * The row whose floors hold piles of loot guarded by Elite creatures. Issues #1820 and #41.
@@ -4880,6 +4902,16 @@ public:
 	static constexpr float IllusionAppearsAwayCm = 800.0f;
 	static constexpr float IllusionSlowLessPercent = 30.0f;
 	static constexpr float IllusionSlowSeconds = 2.0f;
+
+	/**
+	 * Reality Rifts' figures, every one a play-test value. See the key. A rift's reach is the size of Void Parasite's
+	 * light.
+	 */
+	static constexpr int32 RealityRiftPairs = 2;
+	static constexpr float RealityRiftRadiusCm = 150.0f;
+	static constexpr float RealityRiftRestSeconds = 20.0f;
+	static constexpr float RealityGiftDamageMorePercent = 20.0f;
+	static constexpr float RealityGiftSeconds = 20.0f;
 
 	/**
 	 * Luxury Hoarders' figures, every one a play-test value. See the key. The pile's rung is Legendary's step in
