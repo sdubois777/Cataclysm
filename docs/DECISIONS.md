@@ -12,8 +12,7 @@ gift, the per-floor reset, the panel line); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and PARTLY built.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied, and PARTLY built.** It has been run, stacked with four other rules; the figures are at the end of this entry.
 
 ### The row
 
@@ -115,10 +114,30 @@ the sweep:** a declaration whose name is already declared in a scope still open 
 found exactly this one; on development's own compiled changes, 9213a5e3 to 977edde4, it found none, which is its
 control. Two sibling blocks declaring the same name are legal and are not flagged.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted.
+One window on 2026-09-30, on the five-modifier stack: Mind-Shattering Illusions, Reality Rifts, Warzone Control Points,
+Demonic Guide and Carrion Feast, in that order, on development 977edde4 (`feat/five-modifiers-stack` at be67ee2f).
+Every figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, with no CI run in progress | `5545 passed, 8 skipped` (JUnit 5,553, no failures), 2026-09-30 08:49 |
+| First build, at 6000e591 | `Build: Failed - 31 actions, 28 files compiled`, on Reality Rifts' C4456; no test ran |
+| Build after Reality Rifts' rename | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.25.cpp` |
+| Whole suite | `2765 tests performed, 2765 succeeded, 0 failed`; 2765 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+A Python of record taken on 2026-09-27 at 6000e591, before a pause in the work, was superseded when the rename changed
+the tree; the one above is on be67ee2f. All fifteen proofs of the window were as registered. This rule's three, with
+`prove_cpp_guard`, each anchor re-checked immediately before its run: each printed `1 tests performed, 0 succeeded, 1
+failed` with the break in and `1 tests performed, 1 succeeded, 0 failed` restored, failed on exactly the checks
+registered for it, and left the source hash as it found it (ac71a46f6bdab301 before and after every proof).
+
+| Break | The test that failed, and on what |
+|---|---|
+| A rift carries the player onto its own cell | `ARealityRiftCarriesThePlayerToItsPairThenRests`, three: "carried to rift 1", "still at rift 1 at 19.75 s" and "rift 3 carries to rift 2" |
+| The gift gives no time of more damage | `TheGiftRiftGivesTwentyPercentMoreDamageOnce`, three: "20% more attack damage", "20% more spell damage" and "still more at 19.75 s" |
+| The rifts never rest | `ARealityRiftCarriesThePlayerToItsPairThenRests`, three: "the panel while they rest", "still at rift 1 at 19.75 s" and "carried back to rift 0 at 20 s", the last two because of the odd number of beats |
 
 ---
 
