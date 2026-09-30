@@ -151,6 +151,16 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 				UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute()),
 			0.0f, 100.0f);
 		Ceiling *= (100.0f - Reduction) / 100.0f;
+
+		// AND NO HEAL FILLS WHAT IS RESERVED. Issue #1833, ruled 2026-09-30:
+		// "every healing, regeneration, leech and potion stops at that cap".
+		// The lower of the two ceilings, so a character carrying both stops at
+		// whichever it reaches first.
+		if (const UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(&AbilitySystem))
+		{
+			Ceiling = FMath::Min(Ceiling, Cataclysm->UnreservedMaximumHealth());
+		}
 	}
 
 	// A POOL WITH NO MAXIMUM IS NOT A POOL. A class with no energy shield is a
@@ -241,6 +251,13 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 		{
 			Cataclysm->RefreshLiveMaximumHealth();
 		}
+
+		// AND A RESERVATION THAT GREW TAKES ITS SHARE. Issue #1833. "Each minion
+		// reserves 100-500 hp" grows with a count no event announces, like the
+		// live maximum above, so every step asks. Here rather than inside
+		// `RefreshLiveMaximumHealth`, which runs only for a character whose
+		// maximum moves with its state and would miss one whose reservation does.
+		Cataclysm->HoldHealthToUnreserved();
 	}
 
 	// THE HEALTH STEP SAYS IT IS REGENERATION, and the other two do not bother

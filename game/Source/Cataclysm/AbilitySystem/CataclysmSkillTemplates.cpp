@@ -4090,10 +4090,16 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 	// says "returns health", with no duration, against the design's leech
 	// section which states one.
 	//
-	// CAPPED AT MAXIMUM HEALTH, which `SetHealth` would not do on its own.
+	// CAPPED AT MAXIMUM HEALTH, which `SetHealth` would not do on its own, LESS
+	// WHAT IS RESERVED: issue #1833, ruled 2026-09-30, every heal stops there.
+	// This one does not pass through `UCataclysmRegeneration::TopUp`, so it
+	// asks here.
 	using Vitals = UCataclysmVitalAttributeSet;
-	const float Maximum =
-		AbilitySystem->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
+	const UCataclysmAbilitySystemComponent* Reserving =
+		Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float Maximum = Reserving
+		? Reserving->UnreservedMaximumHealth()
+		: AbilitySystem->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
 	const float Current =
 		AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
 	const float Offered = DealtToHealth * Params.HealthFromHitTaken / 100.0f;

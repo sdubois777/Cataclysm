@@ -1627,6 +1627,12 @@ void ACataclysmPlayerCharacter::Revive()
 			UCataclysmVitalAttributeSet::GetHealthAttribute(),
 			AbilitySystem->GetNumericAttribute(
 				UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+		// WHOLE, LESS WHAT IS RESERVED. Issue #1833, ruled 2026-09-30.
+		if (UCataclysmAbilitySystemComponent* Holding =
+				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			Holding->HoldHealthToUnreserved();
+		}
 		AbilitySystem->SetNumericAttributeBase(
 			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
 			AbilitySystem->GetNumericAttribute(

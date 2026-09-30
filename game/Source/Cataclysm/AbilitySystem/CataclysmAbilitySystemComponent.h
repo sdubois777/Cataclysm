@@ -1041,6 +1041,52 @@ public:
 	float MaximumEnergyShield() const;
 
 	/**
+	 * The stats a row reserves health through. Issue #1833, ruled 2026-09-30
+	 * under the owner's delegation. `health_reserved` is a number of points,
+	 * "Each minion reserves 100-500 hp" scaled by the minions held;
+	 * `health_reserved_percent` is a share of maximum health, "80%-99% of your
+	 * health is reserved". Neither has an attribute: both are asked by name.
+	 */
+	static const TCHAR* HealthReservedStat;
+	static const TCHAR* HealthReservedPercentStat;
+
+	/**
+	 * How much of maximum health is reserved: the points plus the share, held
+	 * so that at least 1 point stays unreserved. Issue #1833.
+	 *
+	 * RESERVATION AS THE GENRE HAS IT, not a lower maximum. Path of Exile's
+	 * reserved life stays part of maximum life and cannot be filled, and
+	 * reserving half of it counts as low life (poedb.tw, Pain Attunement). So
+	 * the maximum attribute is untouched, every condition reading health against
+	 * the maximum keeps reading the whole of it, and only how far health may be
+	 * filled changes. See `UnreservedMaximumHealth`.
+	 *
+	 * ZERO WHEN THERE IS NO HEALTH ATTRIBUTE, and for every character with no
+	 * row naming either stat.
+	 */
+	float HealthReserved() const;
+
+	/**
+	 * The most health this character may hold: maximum health less what is
+	 * reserved. Issue #1833. Every heal stops here -- `UCataclysmRegeneration::TopUp`
+	 * holds its ceiling to it -- and `HoldHealthToUnreserved` brings health
+	 * down to it when the reservation grows or something writes health to full.
+	 */
+	float UnreservedMaximumHealth() const;
+
+	/**
+	 * Bring current health down to the unreserved maximum when it stands above
+	 * it, and do nothing otherwise. Issue #1833. Called by the regeneration step
+	 * each second, so a minion summoned takes its reserve within one, and after
+	 * each write of health to full: arriving in the world, a respawn, a save
+	 * loaded, and the health a blow taken returns.
+	 *
+	 * NOT A CLAMP IN `PreAttributeChange`, ruled 2026-09-30: a clamp there cannot
+	 * be guard-proved from an automation test (issue #1623), and one here can.
+	 */
+	void HoldHealthToUnreserved();
+
+	/**
 	 * The character's maximum class resource, with any row that scales it.
 	 *
 	 * THE SAME SHAPE AS `MaximumEnergyShield` ABOVE AND FOR THE SAME REASON.

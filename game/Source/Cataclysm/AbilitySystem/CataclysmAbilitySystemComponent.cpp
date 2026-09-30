@@ -396,6 +396,57 @@ float UCataclysmAbilitySystemComponent::MaximumEnergyShield() const
 										 GetNumericAttribute(Maximum));
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::HealthReservedStat = TEXT("health_reserved");
+const TCHAR* UCataclysmAbilitySystemComponent::HealthReservedPercentStat =
+	TEXT("health_reserved_percent");
+
+float UCataclysmAbilitySystemComponent::HealthReserved() const
+{
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+	const float Whole = GetNumericAttribute(Maximum);
+
+	// ASKED WITH NO TAGS AND A FIGURE OF NOUGHT, so each is exactly what its rows
+	// add: the points summed, the share summed, each with the character's state,
+	// which is what lets "each minion" count the minions held now.
+	const float Points =
+		StatAppliedTo(FName(HealthReservedStat), FGameplayTagContainer(), 0.0f);
+	const float Share =
+		StatAppliedTo(FName(HealthReservedPercentStat), FGameplayTagContainer(), 0.0f);
+
+	// AT LEAST ONE POINT STAYS UNRESERVED, so "99% reserved" on a small maximum,
+	// or four minions at 500 each, never leaves a character that cannot hold any
+	// health at all. A judgement under the owner's delegation, 2026-09-30.
+	return FMath::Clamp(Points + Whole * Share / 100.0f, 0.0f, FMath::Max(0.0f, Whole - 1.0f));
+}
+
+float UCataclysmAbilitySystemComponent::UnreservedMaximumHealth() const
+{
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+	return GetNumericAttribute(Maximum) - HealthReserved();
+}
+
+void UCataclysmAbilitySystemComponent::HoldHealthToUnreserved()
+{
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!HasAttributeSetForAttribute(Health))
+	{
+		return;
+	}
+	const float Ceiling = UnreservedMaximumHealth();
+	if (GetNumericAttribute(Health) > Ceiling)
+	{
+		SetNumericAttributeBase(Health, Ceiling);
+	}
+}
+
 float UCataclysmAbilitySystemComponent::MaximumClassResource() const
 {
 	const FGameplayAttribute Maximum =

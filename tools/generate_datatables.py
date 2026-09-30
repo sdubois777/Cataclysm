@@ -6001,6 +6001,12 @@ STATS_WITH_AN_ASKER = frozenset({
     # a basic attack; `ProbeScaledSkillLocked` measures that with the scale the
     # rows carry.
     "skill_locked",
+    # ADDED 2026-09-30 FOR "Each minion reserves 100-500 hp", issue #1833,
+    # health reservation. `UCataclysmAbilitySystemComponent::HealthReserved`
+    # asks it through `StatAppliedTo` with the character's state, and every
+    # heal's ceiling and the regeneration step's hold read that;
+    # `ProbeScaledHealthReserved` measures it with the scale the row carries.
+    "health_reserved",
     # ADDED 2026-09-25 FOR "You lose 1-4% max resistances for every 100,000 -
     # 500,000 kills", issue #1833, the kill counter.
     # `UCataclysmDamageCalculation::ResistanceCapOf` asks it through

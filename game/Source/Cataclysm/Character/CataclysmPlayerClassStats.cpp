@@ -1657,5 +1657,14 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 			Pool.Key, AbilitySystem->GetNumericAttribute(Pool.Value));
 	}
 
+	// AND HEALTH ONLY TO WHAT IS NOT RESERVED. Issue #1833, ruled 2026-09-30. A
+	// character arriving with "80%-99% of your health is reserved" arrives at
+	// the unreserved maximum, not full.
+	if (UCataclysmAbilitySystemComponent* Holding =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Holding->HoldHealthToUnreserved();
+	}
+
 	return Written;
 }

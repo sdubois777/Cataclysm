@@ -253,13 +253,26 @@ void ACataclysmHUD::DrawOutlinedText(const FString& Text,
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
-								   const TCHAR* FillHex)
+								   const TCHAR* FillHex, float Reserved)
 {
 	const float Left = PlayerBarMarginPx;
 
 	DrawBar(Left, Top, PlayerBarWidthPx, PlayerBarHeightPx,
 			UCataclysmCombatOverlay::BarFractionFor(Current, Maximum),
 			UCataclysmCombatOverlay::ColourFromHex(FillHex), 1.0f);
+
+	// THE RESERVED PART, AT THE END THE FILL CAN NEVER REACH. Issue #1833. Its
+	// share of the bar is the same fraction the fill uses, so a character with
+	// 80% reserved sees the last four fifths of its bar dark, and the fill
+	// stops where the band begins. Before the figures, which stay readable.
+	const float Band = UCataclysmCombatOverlay::BarFractionFor(Reserved, Maximum);
+	if (Band > 0.0f)
+	{
+		DrawBar(Left + PlayerBarWidthPx * (1.0f - Band), Top,
+				PlayerBarWidthPx * Band, PlayerBarHeightPx, 1.0f,
+				UCataclysmCombatOverlay::ColourFromHex(
+					UCataclysmCombatOverlay::HealthReservedHex), 1.0f);
+	}
 
 	// THE FIGURES AS WELL AS THE BAR, because the whole reason this exists is to
 	// judge combat numbers. A bar answers "how close am I to dying" and the
@@ -538,7 +551,8 @@ void ACataclysmHUD::DrawPlayerVitals()
 	float Top = Canvas->SizeY - PlayerBarMarginPx - PlayerBarHeightPx;
 
 	DrawPlayerPool(Top, Health, MaxHealth,
-				   UCataclysmCombatOverlay::HealthFillHex);
+				   UCataclysmCombatOverlay::HealthFillHex,
+				   UCataclysmCombatOverlay::HealthReservedOf(Pawn));
 
 	// MANA NEXT, AND ALWAYS. Every class has a mana pool -- the design's stat
 	// table gives all three Demonic classes one -- so unlike the shield below

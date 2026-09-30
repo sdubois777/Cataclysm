@@ -2458,6 +2458,64 @@ namespace CataclysmStatExemptionTest
 	 * `UCataclysmAbilitySystemComponent::MaximumEnergyShield`. Issue #1973: this
 	 * is the pairing that granted nothing until that lookup existed.
 	 */
+	/**
+	 * `health_reserved`, scaled by minions held, asked by
+	 * `UCataclysmAbilitySystemComponent::HealthReserved`, which every heal's
+	 * ceiling and the regeneration step's hold read. Issue #1833: "Each minion
+	 * reserves 100-500 hp" is a flat 100-500 scaled by `minions_held`.
+	 *
+	 * A FLAT ROW RATHER THAN `ScaledBy`'S INCREASE, because a reservation has no
+	 * base for an increase to act on: the row states points.
+	 */
+	void ProbeScaledHealthReserved(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner.Actor));
+		if (!Test.TestNotNull(TEXT("an ability system"), System))
+		{
+			return;
+		}
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+
+		FCataclysmStatModifier Points;
+		Points.Bucket = ECataclysmStatBucket::Flat;
+		Points.Source = ECataclysmModifierSource::Enchantment;
+		Points.Value = 100.0f;
+		Points.Scale = ECataclysmStatScale::PerMinionHeld;
+		Points.ScaleStep = 1.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+			FName(UCataclysmAbilitySystemComponent::HealthReservedStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Points};
+		System->SetStatInputs(MoveTemp(Inputs));
+
+		const float Alone = System->UnreservedMaximumHealth();
+		ACataclysmMinion* Imp = SummonImp(Test, World, Summoner.Actor);
+		if (!Imp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Holding = System->UnreservedMaximumHealth();
+
+		Test.TestTrue(
+			FString::Printf(TEXT("health_reserved is asked for, so a minion lowers "
+								 "the health that may be held: %.2f against %.2f"),
+							Holding, Alone),
+			Holding < Alone - 0.001f);
+	}
+
 	void ProbeScaledMaximumEnergyShield(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -3741,6 +3799,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_enemy_in_reach"), &ProbeScaledFervourPerEnemyInReach},
 			{TEXT("class_resource"),             &ProbeScaledMaximumClassResource},
 			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
+			{TEXT("health_reserved"),            &ProbeScaledHealthReserved},
 			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
 			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
 			{TEXT("evasion"),                    &ProbeScaledEvasion},

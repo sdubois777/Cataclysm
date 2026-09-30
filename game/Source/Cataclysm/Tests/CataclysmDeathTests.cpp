@@ -563,6 +563,54 @@ CATACLYSM_TEST(FCataclysmPlayerDiesOnceTest,
 	return true;
 }
 
+/**
+ * A respawn fills health only to what is not reserved. Issue #1833, ruled
+ * 2026-09-30: `ACataclysmPlayerCharacter::Revive` writes health to the maximum
+ * and then holds it to the unreserved maximum, so a player with 80% of its
+ * health reserved stands back up at a fifth of it. The reservation is written
+ * after the death, so nothing the death clears can be what the figure shows.
+ */
+CATACLYSM_TEST(FCataclysmRespawnReservedTest,
+	"Cataclysm.Death.ARespawnFillsOnlyWhatIsNotReserved")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* ASC = Player
+		? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player))
+		: nullptr;
+	if (TestNotNull(TEXT("a player"), ASC) && TestNotNull(TEXT("a killer"), Killer))
+	{
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		FCataclysmStatModifier Share;
+		Share.Bucket = ECataclysmStatBucket::Flat;
+		Share.Source = ECataclysmModifierSource::Enchantment;
+		Share.Value = 80.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmAbilitySystemComponent::HealthReservedPercentStat))
+			.Modifiers = {Share};
+		ASC->SetStatInputs(MoveTemp(Inputs));
+
+		Player->Revive();
+		TestFalse(TEXT("it is no longer dead"), UCataclysmSkillEffects::IsDead(Player));
+		TestEqual(TEXT("80% of 1000 reserved: it stands back up at 200"),
+			ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			200.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmPlayerRevivesTest,
 	"Cataclysm.Death.APlayerStandsBackUpRatherThanBeingRemoved")
 {
