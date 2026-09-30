@@ -237,6 +237,8 @@ early return of `StepFloorRulesThatChange` was also joined by the `&& !bX` rule 
 
 **A TEST THAT COULD NOT PASS, FOUND BY SCANNING FOR THE CLASS, 2026-09-30, fixed in the window as the coordinating session ruled.** `AFloorWithoutShadowyEnemiesTakesEveryShroudOff` checked on floor 3 that an Imp from floor 2 "still stands" and is not shrouded; changing floors destroys every creature of the last one. The check is now of a new Imp of floor 3, which is not shrouded. The light-zone checks are unchanged. It was found by a scan for tests that read a creature after a floor change, not by a proof, and no proof targets it.
 
+**A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `AShroudedCreatureTakesNoDamageUntilALightReachesIt` expected a blow of 10 to take 10 off a lit Imp; it took 11 in both runs. A diagnostic run, never committed, logged the blow: the player's weapon is `Slashing`, and a slashing hit on health gains `UCataclysmDamageCalculation::SubtypeBonus`, 10%; armour, damage reduction, the shield, a critical strike, a block, an evasion and the nth-hit bonus were all nought. That is the game as designed, so the test now deals each blow to a control Imp the rule leaves alone as well, and compares the losses. **Proof Pa is recorded as not a proof and is not rerun**, since it reached the tests: Shadowy Enemies' shroud gate (`bool bLit = !bRow || ...`) is checked by this test but not proved by a break.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

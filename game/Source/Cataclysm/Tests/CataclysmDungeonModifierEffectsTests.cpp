@@ -36094,32 +36094,45 @@ bool FCataclysmShadowyLightTest::RunTest(const FString& Parameters)
 	}
 
 	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
-	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp))
+	// AND A CONTROL THE RULE LEAVES ALONE: not one of the floor's creatures, so never shrouded. Each blow is dealt to both
+	// and the Imp's loss is compared with the control's, so what the blow itself is worth -- the player's slashing
+	// weapon adds its tenth to a hit on health -- is measured rather than assumed.
+	ACataclysmEnemyCharacter* Control = AnImpAway(World, Player, -300.0f);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestNotNull(TEXT("and a control Imp"), Control))
 	{
 		return false;
 	}
+	const auto Blow = [&Player](ACataclysmEnemyCharacter* Target)
+	{
+		const float Before = HealthOf(Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Target, 10.0f);
+		return Before - HealthOf(Target);
+	};
 	Beat(Mode, 1);
 	TestTrue(TEXT("away from every light it is shrouded"), Imp->bShrouded);
 	TestEqual(TEXT("and says so under its bar"), UCataclysmCombatOverlay::ShroudedTextFor(Imp), FString(TEXT("Shrouded")));
-	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
-	TestEqual(TEXT("a blow takes nothing off it"), HealthOf(Imp), 100.0f, 0.01f);
+	TestFalse(TEXT("the control is not shrouded"), Control->bShrouded);
+	const float Worth = Blow(Control);
+	if (!TestTrue(TEXT("a blow takes something off the control"), Worth > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow takes nothing off it"), Blow(Imp), 0.0f, 0.01f);
 
 	// INTO THE FIRST LIGHT: HURT AS ANY CREATURE IS.
 	Imp->SetActorLocation(FVector(Lights[0].X, Lights[0].Y, Imp->GetActorLocation().Z));
 	Beat(Mode, 1);
 	TestFalse(TEXT("in the light it is not shrouded"), Imp->bShrouded);
 	TestTrue(TEXT("and nothing is said under its bar"), UCataclysmCombatOverlay::ShroudedTextFor(Imp).IsEmpty());
-	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
-	TestEqual(TEXT("a blow takes 10 off it"), HealthOf(Imp), 90.0f, 0.01f);
+	TestEqual(TEXT("a blow takes off it what it takes off the control"), Blow(Imp), Worth, 0.01f);
 
 	// OUT OF IT AGAIN: SHROUDED, KEEPING THE HURT.
 	const FVector At = Player.Character->GetActorLocation();
 	Imp->SetActorLocation(FVector(At.X + 300.0f, At.Y, Imp->GetActorLocation().Z));
 	Beat(Mode, 1);
 	TestTrue(TEXT("out of the light it is shrouded again"), Imp->bShrouded);
-	TestEqual(TEXT("and keeps what it took"), HealthOf(Imp), 90.0f, 0.01f);
-	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
-	TestEqual(TEXT("and a blow takes nothing more"), HealthOf(Imp), 90.0f, 0.01f);
+	TestEqual(TEXT("and keeps what it took"), HealthOf(Imp), 100.0f - Worth, 0.01f);
+	TestEqual(TEXT("and a blow takes nothing more"), Blow(Imp), 0.0f, 0.01f);
 	return true;
 }
 
