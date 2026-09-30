@@ -71,11 +71,14 @@ held between 0 and 100.
 - **The buff lasts the next floor. The curse lasts until the player leaves the dungeon, is not cleansable, and curses
   add, the same pact twice too.**
 - **The buttons and the panel line** as above.
+- **No curse has a ceiling**, ruled on review of this change: every pact is the player's own choice, one a floor at most,
+  and the stat pipeline's bound of 99% on a single Less already keeps 1% of maximum health when ten Pacts of Wrath would
+  take all of it.
 
 **On the owner's play-check list**, added by the coordinating session: the choice at a floor's end, the buff on the next
-floor, and the curses in the panel.
+floor, and the curses in the panel; and **whether stacking the same pact's curse over a long dungeon needs a ceiling**.
 
-**Judgements of this change, under the same delegation, not ruled separately:**
+**Judgements of this change, under the same delegation, accepted on review:**
 
 - **"Different each floor" is read as never the same three as the floor before.** Two floors apart may repeat an offer;
   a pact may appear on consecutive floors among different companions.
@@ -87,10 +90,6 @@ floor, and the curses in the panel.
 - **The button for the Bulwark reads "Pact of the Bulwark"**, as the Battlefield Relic of the Bulwark does; its key is
   "Bulwark".
 - **A test may pin the offer**, with `Cataclysm.PactOfTemptationOffer`; a pinned offer is the same on every floor.
-
-**A question for the coordinating session, not decided here: no curse has a ceiling.** The ruling says curses add and
-names none, so ten Pacts of Wrath are 100% less maximum health; the stat pipeline holds a single Less at 99%, so the
-player keeps 1%. Each pact is a choice the player makes, which is why nothing is capped until it is ruled.
 
 ### The research
 
