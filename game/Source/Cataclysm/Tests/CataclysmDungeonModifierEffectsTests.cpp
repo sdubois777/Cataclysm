@@ -39937,4 +39937,510 @@ bool FCataclysmBannerTakenTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Celestial_Forced_Tithes. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName TithesRow(UCataclysmDungeonModifierEffects::ForcedTithesKey);
+	const FName PayHealthKey(UCataclysmDungeonModifierEffects::ForcedTithesPayHealth);
+	const FName PayPotionKey(UCataclysmDungeonModifierEffects::ForcedTithesPayPotion);
+	const FName PayMaterialsKey(UCataclysmDungeonModifierEffects::ForcedTithesPayMaterials);
+	const FName RefuseKey(UCataclysmDungeonModifierEffects::ForcedTithesRefuse);
+
+	/** A dungeon carrying these rows, on floor 2 with its own creatures cleared, a beat taken, and its altar placed. */
+	ACataclysmDungeonGameMode* ATitheFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+										   const TArray<FName>& Rows = {TithesRow})
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestNotNull(TEXT("a tithe altar stands"), Mode->TitheAltarNow()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** Goes to this floor, clears its own creatures and takes one beat, so owed angels come and nothing else stands. */
+	bool TheNextTitheFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32 Floor)
+	{
+		if (!Test.TestTrue(FString::Printf(TEXT("floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return true;
+	}
+
+	/** The choice with this key on the altar, or null. */
+	const FCataclysmFloorObjectChoice* TitheChoice(ACataclysmDungeonGameMode* Mode, FName Key)
+	{
+		ACataclysmFloorObject* Altar = Mode->TitheAltarNow();
+		return Altar ? Altar->ChoiceOf(Key) : nullptr;
+	}
+
+	/** The player's health and maximum health. */
+	float HealthOf(const FPossessedPlayer& Player)
+	{
+		return Player.Read(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
+	float MaximumHealthOf(const FPossessedPlayer& Player)
+	{
+		return Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	}
+}
+
+// THE FIGURES: 20% OF MAXIMUM HEALTH, 10 POTION CHARGES OR 5 MATERIALS; 8 ANGELS AT COMMON, 8 M AWAY.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesFiguresTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesFiguresPricesAndAngels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("20% of maximum health"), Effects::ForcedTithesHealthPercent, 20.0f, 0.001f);
+	TestEqual(TEXT("so 200 of 1000"), Effects::ForcedTithesHealthPrice(1000.0f), 200.0f, 0.001f);
+	TestTrue(TEXT("payable at 201 of 1000, leaving 1"), Effects::ForcedTithesHealthIsAffordable(201.0f, 1000.0f));
+	TestFalse(TEXT("not at 200 of 1000, which would leave none"), Effects::ForcedTithesHealthIsAffordable(200.0f, 1000.0f));
+	TestEqual(TEXT("10 potion charges, one drink"), Effects::ForcedTithesPotionCharges, UCataclysmPotions::ChargesPerDrink,
+			  0.001f);
+	TestEqual(TEXT("5 materials"), Effects::ForcedTithesMaterials, 5);
+	TestEqual(TEXT("8 angels"), Effects::ForcedTithesAngelCount, 8);
+	TestEqual(TEXT("at Common"), Effects::ForcedTithesAngelRung, 0);
+	TestEqual(TEXT("8 m away"), Effects::ForcedTithesAngelsAwayCm, 800.0f, 0.001f);
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(FName(Effects::ForcedTithesKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+// ONE ALTAR, ON THE EXIT CELL, NAMED, ITS THREE PRICES AND "REFUSE", AND THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesAltarTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesAltarStandsOnTheExitWithThreePricesAndRefuse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesAltarTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Altar = Mode->TitheAltarNow();
+	int32 Objects = 0;
+	for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
+	{
+		Objects += It->RuleKey == TithesRow ? 1 : 0;
+	}
+	TestEqual(TEXT("one altar on the floor"), Objects, 1);
+	TestEqual(TEXT("on the exit cell"),
+			  FVector::Dist2D(Altar->GetActorLocation(), Mode->CurrentFloor->ExitWorld()), 0.0f, 1.0f);
+	TestEqual(TEXT("named"), Altar->DisplayName, FString(TEXT("Tithe Altar")));
+	TestEqual(TEXT("placed by the row"), Altar->RuleKey, TithesRow);
+	if (TestEqual(TEXT("four choices"), Altar->Choices.Num(), 4))
+	{
+		TestEqual(TEXT("health"), Altar->Choices[0].Key, PayHealthKey);
+		TestEqual(TEXT("a potion drink"), Altar->Choices[1].Key, PayPotionKey);
+		TestEqual(TEXT("materials"), Altar->Choices[2].Key, PayMaterialsKey);
+		TestEqual(TEXT("and refuse"), Altar->Choices[3].Key, RefuseKey);
+	}
+	TestFalse(TEXT("not paid"), Mode->TitheWasPaid());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TithesRow),
+			  FString(TEXT("forced tithes: unpaid; the angels will come")));
+	return true;
+}
+
+// PAYING IN HEALTH TAKES A FIFTH OF MAXIMUM HEALTH OFF CURRENT; THE ALTAR GOES, AND THE NEXT FLOOR BRINGS NO ANGELS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesHealthTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesPayingInHealthTakesAFifthOfMaximumAndOwesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesHealthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Maximum = MaximumHealthOf(Player);
+	if (!TestTrue(TEXT("set-up: the player has maximum health"), Maximum > 10.0f))
+	{
+		return false;
+	}
+	const float Before = HealthOf(Player);
+	TestTrue(TEXT("set-up: the price can be paid"), Before - 0.2f * Maximum >= 1.0f);
+
+	if (!TestTrue(TEXT("paying in health acted"), Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), PayHealthKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a fifth of maximum health was taken"), HealthOf(Player), Before - 0.2f * Maximum, 0.01f);
+	TestTrue(TEXT("paid"), Mode->TitheWasPaid());
+	TestNull(TEXT("the altar went"), Mode->TitheAltarNow());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TithesRow),
+			  FString(TEXT("forced tithes: paid")));
+
+	if (!TheNextTitheFloor(*this, Mode, 3))
+	{
+		return false;
+	}
+	TestFalse(TEXT("nothing owed"), Mode->TitheAngelsAreOwed());
+	TestEqual(TEXT("no angel came"), Mode->TitheAngelsStanding().Num(), 0);
+	TestNotNull(TEXT("and the next floor asks its own tithe"), Mode->TitheAltarNow());
+	return true;
+}
+
+// A POTION DRINK TAKES 10 CHARGES FROM THE FULLEST SLOT; MATERIALS TAKE 5 OF THE ONE CARRIED MOST OF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesPotionMaterialsTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesPayingWithAPotionOrMaterialsTakesFromTheFullest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesPotionMaterialsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(*this, World, Player);
+	UCataclysmInventoryComponent* Inventory = Player.Character ? Player.Character->GetInventory() : nullptr;
+	if (!Mode || !TestNotNull(TEXT("the player carries an inventory"), Inventory))
+	{
+		return false;
+	}
+
+	// THE POTION: the second slot is the fullest.
+	Player.AbilitySystem->SetPotionCharges(0, 10.0f);
+	Player.AbilitySystem->SetPotionCharges(1, 30.0f);
+	Player.AbilitySystem->SetPotionCharges(2, 20.0f);
+	Player.AbilitySystem->SetPotionCharges(3, 0.0f);
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("paying with a potion drink acted"),
+				  Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), PayPotionKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the fullest slot gave 10"), Player.AbilitySystem->GetPotionCharges(1), 20.0f, 0.001f);
+	TestEqual(TEXT("the first is untouched"), Player.AbilitySystem->GetPotionCharges(0), 10.0f, 0.001f);
+	TestEqual(TEXT("the third is untouched"), Player.AbilitySystem->GetPotionCharges(2), 20.0f, 0.001f);
+	TestTrue(TEXT("paid"), Mode->TitheWasPaid());
+
+	// THE MATERIALS, ON THE NEXT FLOOR'S ALTAR: Whispering Ash is carried most.
+	if (!TheNextTitheFloor(*this, Mode, 3) || !TestNotNull(TEXT("floor 3's altar"), Mode->TitheAltarNow()))
+	{
+		return false;
+	}
+	const FName Mote(TEXT("Material_Corrupted_Mote"));
+	const FName Ash(TEXT("Material_Whispering_Ash"));
+	Inventory->AddMaterial(Mote, 7);
+	Inventory->AddMaterial(Ash, 12);
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("paying in materials acted"),
+				  Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), PayMaterialsKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the material carried most gave 5"), Inventory->CountOfMaterial(Ash), 7);
+	TestEqual(TEXT("the other is untouched"), Inventory->CountOfMaterial(Mote), 7);
+	TestTrue(TEXT("paid"), Mode->TitheWasPaid());
+	TestNull(TEXT("the altar went"), Mode->TitheAltarNow());
+	return true;
+}
+
+// A PRICE THE PLAYER CANNOT PAY IS SHOWN AND REFUSED; REFUSE IS ALWAYS THERE; A PRICE BECOMES PAYABLE WHEN IT IS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesUnaffordableTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesAPriceThePlayerCannotPayIsShownAndRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesUnaffordableTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// A FIFTH OF MAXIMUM HEALTH EXACTLY, WHICH PAYING WOULD TAKE TO NOTHING; EVERY POTION BELOW A DRINK; NO MATERIAL.
+	const float Maximum = MaximumHealthOf(Player);
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.2f * Maximum);
+	for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+	{
+		Player.AbilitySystem->SetPotionCharges(Slot, 5.0f);
+	}
+	Beat(Mode, 1);
+	const float Health = HealthOf(Player);
+	for (const FName Key : {PayHealthKey, PayPotionKey, PayMaterialsKey})
+	{
+		const FCataclysmFloorObjectChoice* Choice = TitheChoice(Mode, Key);
+		if (TestNotNull(*FString::Printf(TEXT("%s is shown"), *Key.ToString()), Choice))
+		{
+			TestFalse(*FString::Printf(TEXT("%s cannot be chosen"), *Key.ToString()), Choice->bAvailable);
+		}
+		TestFalse(*FString::Printf(TEXT("%s is refused"), *Key.ToString()),
+				  Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), Key));
+	}
+	const FCataclysmFloorObjectChoice* Refuse = TitheChoice(Mode, RefuseKey);
+	TestTrue(TEXT("refuse can always be chosen"), Refuse && Refuse->bAvailable);
+	TestEqual(TEXT("no health was taken"), HealthOf(Player), Health, 0.01f);
+	TestEqual(TEXT("no charge was taken"), Player.AbilitySystem->GetPotionCharges(0), 5.0f, 0.001f);
+	TestFalse(TEXT("not paid"), Mode->TitheWasPaid());
+	TestNotNull(TEXT("and the altar stands"), Mode->TitheAltarNow());
+
+	// HEALED, THE HEALTH PRICE CAN BE PAID ON THE NEXT BEAT.
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum);
+	Beat(Mode, 1);
+	const FCataclysmFloorObjectChoice* Healthy = TitheChoice(Mode, PayHealthKey);
+	TestTrue(TEXT("healed, health can be chosen"), Healthy && Healthy->bAvailable);
+	return true;
+}
+
+// REFUSING BRINGS EIGHT COMMON ANGELS BESIDE THE ALTAR AT ONCE, AND THE ALTAR GOES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesRefuseTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesRefusingBringsEightAngelsBesideTheAltarAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesRefuseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->TitheAltarNow()->GetActorLocation();
+	TestEqual(TEXT("no angel before"), Mode->TitheAngelsStanding().Num(), 0);
+	if (!TestTrue(TEXT("refusing acted"), Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), RefuseKey)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Angels = Mode->TitheAngelsStanding();
+	TestEqual(TEXT("eight angels came at once"), Angels.Num(), Effects::ForcedTithesAngelCount);
+	for (const ACataclysmEnemyCharacter* Angel : Angels)
+	{
+		TestEqual(TEXT("at Common"), Angel->RarityStep, Effects::ForcedTithesAngelRung);
+		TestTrue(TEXT("\"Angel\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Angel).Contains(TEXT("Angel")));
+		TestTrue(TEXT("raised by the rule"), Angel->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Angel->PaysForItsDeath());
+		TestTrue(TEXT("beside the altar"),
+				 FVector::Dist2D(Angel->GetActorLocation(), At) <= Effects::ForcedTithesAngelsAwayCm + 1200.0f);
+	}
+	TestTrue(TEXT("refused"), Mode->TitheWasRefused());
+	TestNull(TEXT("the altar went"), Mode->TitheAltarNow());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TithesRow),
+			  FString(TEXT("forced tithes: refused; the angels came")));
+
+	// REFUSED IS NOT UNPAID: THE NEXT FLOOR OWES NOTHING MORE.
+	if (!TheNextTitheFloor(*this, Mode, 3))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the next floor owes nothing"), Mode->TitheAngelsAreOwed());
+	TestEqual(TEXT("and brings no angel"), Mode->TitheAngelsStanding().Num(), 0);
+	return true;
+}
+
+// LEAVING UNPAID IS REFUSING: THE ANGELS COME AT THE NEXT FLOOR'S ENTRANCE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesLeavingTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesLeavingUnpaidBringsTheAngelsToTheNextEntrance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesLeavingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	TestEqual(TEXT("no angel on the floor left unpaid"), Mode->TitheAngelsStanding().Num(), 0);
+
+	if (!TheNextTitheFloor(*this, Mode, 3))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Angels = Mode->TitheAngelsStanding();
+	TestEqual(TEXT("eight angels came on the next floor"), Angels.Num(), Effects::ForcedTithesAngelCount);
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const ACataclysmEnemyCharacter* Angel : Angels)
+	{
+		TestTrue(TEXT("at its entrance"),
+				 FVector::Dist2D(Angel->GetActorLocation(), Entrance) <= Effects::ForcedTithesAngelsAwayCm + 1200.0f);
+		TestTrue(TEXT("\"Angel\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Angel).Contains(TEXT("Angel")));
+	}
+	TestFalse(TEXT("owed no longer"), Mode->TitheAngelsAreOwed());
+
+	// ONCE: A LATER BEAT BRINGS NO MORE.
+	Beat(Mode, 4);
+	TestEqual(TEXT("a later beat brings no more"), Mode->TitheAngelsStanding().Num(), Effects::ForcedTithesAngelCount);
+	return true;
+}
+
+// WITH A BLOOD ALTAR AT THE EXIT, THE TITHE ALTAR STANDS ONE CELL AWAY, ON A WALKABLE CELL BESIDE IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesBesideBloodAltarTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesAltarStandsOneCellFromABloodAltar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesBesideBloodAltarTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(
+		*this, World, Player, {FName(UCataclysmDungeonModifierEffects::BloodAltarKey), TithesRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor* Floor = Mode->CurrentFloor.Get();
+	const FVector At = Mode->TitheAltarNow()->GetActorLocation();
+	TestTrue(TEXT("not on the exit cell, the Blood Altar's"), FVector::Dist2D(At, Floor->ExitWorld()) > 1.0f);
+
+	bool bOnACellBeside = false;
+	const FIntPoint Exit = Floor->GetPlan().Exit;
+	for (int32 X = -1; X <= 1; ++X)
+	{
+		for (int32 Y = -1; Y <= 1; ++Y)
+		{
+			const FIntPoint Cell = Exit + FIntPoint(X, Y);
+			bOnACellBeside |= (X != 0 || Y != 0) && Floor->GetPlan().IsFloor(Cell)
+				&& FVector::Dist2D(At, Floor->WorldOfCell(Cell)) < 1.0f;
+		}
+	}
+	TestTrue(TEXT("on a walkable cell beside the exit"), bOnACellBeside);
+	return true;
+}
+
+// THE DUNGEON'S LAST FLOOR ASKS NO TITHE: FLOOR 1 OF TWO HAS ITS ALTAR, FLOOR 2 NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesLastFloorTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesTheLastFloorHasNoAltar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesLastFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel)
+		{
+			Chosen = Index;
+		}
+	}
+	if (!TestTrue(TEXT("the run has an ordinary dungeon"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// TWO FLOORS, AN ORDINARY SUB-TYPE AND THIS ROW ALONE, as Blood Gates' last-floor test builds one.
+	FCataclysmDungeon& Dungeon = Run->Dungeons[Chosen];
+	Dungeon.Floors = 2;
+	Dungeon.SubType = ECataclysmDungeonSubType::None;
+	Dungeon.Modifiers = {TithesRow};
+	if (!TestTrue(TEXT("the dungeon was entered"), Mode->EnterEmpireDungeon(Dungeon.DungeonId)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("floor 1 is not the last"), Mode->IsOnTheLastFloor());
+	TestNotNull(TEXT("and it has an altar"), Mode->TitheAltarNow());
+
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("floor 2 is the last"), Mode->IsOnTheLastFloor());
+	TestNull(TEXT("and it has none"), Mode->TitheAltarNow());
+	TestFalse(TEXT("so the panel has no line for it"), Mode->LiveCountsForTheFloor().Contains(TithesRow));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

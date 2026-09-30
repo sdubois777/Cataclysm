@@ -2748,6 +2748,52 @@ public:
 	static constexpr const TCHAR* WarBannerPlant = TEXT("Plant");
 
 	/**
+	 * The row whose altar at a floor's end asks a price to go on: health, a potion drink or materials, or angels.
+	 * Issues #1820 and #41.
+	 *
+	 * "At the end of each floor, players must pay a tithe (e.g., currency, consumables, health) to progress. Refusing or
+	 * offering too little summons a horde of angels that attack with relentless zeal."
+	 *
+	 * THE OWNER DECIDED, 2026-09-30, asked by the coordinating session: payable in HEALTH, A POTION DRINK and CRAFTING
+	 * MATERIALS, all three built now; CURRENCY is added once gold exists, since the game has none yet.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - A floor object named "Tithe Altar" ON THE EXIT CELL OF EVERY FLOOR BUT THE LAST, and on each wave of a Horde
+	 *   arena but the last. ANOTHER ALTAR AT THE EXIT GOES ONE CELL APART, never on the same cell: see
+	 *   `ACataclysmDungeonGameMode::ExitAltarWorld`.
+	 * - FIXED PRICES, one paid whole: `ForcedTithesHealthPercent` of maximum health taken from current health, never
+	 *   leaving less than 1; `ForcedTithesPotionCharges` charges from the fullest potion slot; `ForcedTithesMaterials` of
+	 *   the most plentiful crafting material carried. A PRICE THE PLAYER CANNOT PAY IS SHOWN AND REFUSED; no partial
+	 *   offer. Paying, the altar goes.
+	 * - "Refuse" BRINGS THE ANGELS AT ONCE, beside the altar, and the altar goes. LEAVING UNPAID IS REFUSING: the angels
+	 *   come at the next floor's entrance, or on a Horde arena at the entrance as the next wave arrives.
+	 * - THE ANGELS: `ForcedTithesAngelCount` creatures of the floor's kinds at Common, `ForcedTithesAngelsAwayCm` from
+	 *   where they come, noticing the player from anywhere on the floor, each saying "Angel". They are the floor's
+	 *   creatures and pay as their rung does. What an angel is, is the owner's content question for later; these stand
+	 *   in for one.
+	 */
+	static const TCHAR* ForcedTithesKey;
+
+	/** A Tithe Altar's four choices: the three prices and the refusal. */
+	static constexpr const TCHAR* ForcedTithesPayHealth = TEXT("Health");
+	static constexpr const TCHAR* ForcedTithesPayPotion = TEXT("Potion");
+	static constexpr const TCHAR* ForcedTithesPayMaterials = TEXT("Materials");
+	static constexpr const TCHAR* ForcedTithesRefuse = TEXT("Refuse");
+
+	/** Forced Tithes' health price for this maximum health. */
+	static float ForcedTithesHealthPrice(float MaximumHealth)
+	{
+		return MaximumHealth * ForcedTithesHealthPercent / 100.0f;
+	}
+
+	/** Whether a player at this health can pay the health price: it never leaves them below 1. */
+	static bool ForcedTithesHealthIsAffordable(float Health, float MaximumHealth)
+	{
+		return Health - ForcedTithesHealthPrice(MaximumHealth) >= 1.0f;
+	}
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5569,6 +5615,14 @@ public:
 	static constexpr float WarBannerWaveEverySeconds = 15.0f;
 	static constexpr int32 WarBannerWaveSize = 4;
 	static constexpr float WarBannerWaveAwayCm = 1500.0f;
+
+	/** Forced Tithes' figures, every one a play-test value. See the key. */
+	static constexpr float ForcedTithesHealthPercent = 20.0f;
+	static constexpr float ForcedTithesPotionCharges = 10.0f;
+	static constexpr int32 ForcedTithesMaterials = 5;
+	static constexpr int32 ForcedTithesAngelCount = 8;
+	static constexpr int32 ForcedTithesAngelRung = 0;
+	static constexpr float ForcedTithesAngelsAwayCm = 800.0f;
 
 	/** Infernal Beacons' figures, every one a play-test value. See the key. */
 	static constexpr int32 InfernalBeaconsPerFloor = 1;

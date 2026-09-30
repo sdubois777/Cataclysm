@@ -4834,3 +4834,23 @@ def test_war_banner_row_still_names_planting_an_aura_waves_and_a_defended_period
         assert phrase in lower, (
             f"War_War_Banner no longer says {phrase.upper()!r}. A reading of the rule rests on it; see WarBannerKey "
             "in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_forced_tithes_row_still_names_a_floors_end_its_prices_and_the_angels():
+    """The phrases the rule's readings rest on.
+
+    "At the end of each floor, players must pay a tithe (e.g., currency, consumables, health) to progress. Refusing or
+    offering too little summons a horde of angels that attack with relentless zeal." AT THE END OF EACH FLOOR is the
+    altar on the exit cell; CURRENCY, CONSUMABLES, HEALTH are the prices, the owner deciding on health, a potion drink
+    and materials with currency once gold exists; REFUSING OR OFFERING TOO LITTLE is "Refuse" and leaving unpaid, a
+    price not payable being refused rather than part-paid; A HORDE OF ANGELS is the eight. If any of them changes, the
+    reading must be revisited.
+    """
+    words = flat(rows()["Celestial_Forced_Tithes"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("at the end of each floor", "pay a tithe", "currency, consumables, health",
+                   "refusing or offering too little", "a horde of angels"):
+        assert phrase in lower, (
+            f"Celestial_Forced_Tithes no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "ForcedTithesKey in CataclysmDungeonModifierEffects.h. " + words)
