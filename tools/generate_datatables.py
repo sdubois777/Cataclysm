@@ -1622,11 +1622,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: STACK SECONDS HIGH JOINED ON 2026-09-30 for issue #1833's two skill-lock
 #: rows, built ahead of them while the design workbook is with another
 #: session, and leaves with those rows.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Stack Seconds High": "issue #1833: the skill-lock rows add this column",
-    },
-}
+#: STACK SECONDS HIGH LEFT with the two skill-lock rows, and the table is
+#: empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):
