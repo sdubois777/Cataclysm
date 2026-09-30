@@ -97,8 +97,11 @@ def body_of(text: str, opening: str) -> str:
 #: `BeaconMagicFindAdded` IS A FLAT FIGURE FOR `RiftMagicFindAdded`'S REASON: Infernal
 #: Beacons adds magic find points, applied by `DungeonModifierEffectsAddFlat`. Issues
 #: #1820 and #41.
+#:
+#: `PactMagicFindAdded` IS A FLAT FIGURE FOR THE SAME REASON: a Pact of Greed adds magic find points for the next
+#: floor, applied by `DungeonModifierEffectsAddFlat`. Issues #1820 and #41.
 NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "RiftMagicFindAdded",
-                   "PotionsForbiddenValue", "BeaconMagicFindAdded"}
+                   "PotionsForbiddenValue", "BeaconMagicFindAdded", "PactMagicFindAdded"}
 
 
 @pytest.fixture(scope="module")
