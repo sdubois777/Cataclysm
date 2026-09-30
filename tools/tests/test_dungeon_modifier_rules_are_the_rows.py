@@ -4662,3 +4662,23 @@ def test_shadowy_enemies_row_still_says_only_light_lets_them_be_harmed():
         assert phrase in lower, (
             f"Void_Shadowy_Enemies no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "ShadowyEnemiesKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_reality_twister_row_is_the_owners_reword():
+    """The row's text as the owner decided it, which the rule is built to.
+
+    "Each floor, one random dungeon modifier from any Cataclysm is added, even one this dungeon could not otherwise
+    draw. It is replaced on the next floor." EACH FLOOR is one row drawn per floor; FROM ANY CATACLYSM is the second
+    pool of every row that does something in play; REPLACED ON THE NEXT FLOOR is the draw made again. The old text,
+    "Every 30 seconds, a random modifier is added to the entire dungeon", described a rule that is not built; if it
+    comes back, the workbook was restored from an old copy.
+    """
+    words = flat(rows()["Chaos_Reality_Twister"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("each floor, one random dungeon modifier", "from any cataclysm", "even one this dungeon could not "
+                   "otherwise draw", "replaced on the next floor"):
+        assert phrase in lower, (
+            f"Chaos_Reality_Twister no longer says {phrase.upper()!r}. The rule is built to that text; see "
+            "RealityTwisterKey. " + words)
+    assert "every 30 seconds" not in lower, "Chaos_Reality_Twister has its old text back. " + words
