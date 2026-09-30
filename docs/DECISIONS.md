@@ -115,6 +115,17 @@ keeps an effect the player put on itself, and `State.FearImmune` and the shared 
 It has its own test, `ItRemovesAFearACreaturePutOnThePlayer`, because a fear that lands opens the shared window, so a
 stun beside it in one test would be refused.
 
+### How the stack of seven was moved
+
+This change is the first of seven moved together onto development c2eccb69 on 2026-09-30, in the order player cleanse,
+Grim Totems, vision, Swarm of Locusts obscuring vision, the Blackest Shadow, Shadowy Enemies and Reality Twister. Each
+change's commits were cherry-picked in turn, and every conflict was resolved by a rule the coordinating session accepted,
+each of which keeps both sides and refuses anything it cannot place; a block no rule accepted stopped the move. **Every
+cherry-pick used git's histogram diff** (`-X diff-algorithm=histogram`) with the base shown in each conflict. On
+Shadowy Enemies' first commit the default diff matched the start of its new functions, above `ForgetTheVoidParasite`, to
+the middle of `StepGrimTotems`; the histogram diff placed them where they belong, and the block became two insertions.
+The coordinating session accepted the switch on 2026-09-30. The rules each change first needed are in its own entry.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
