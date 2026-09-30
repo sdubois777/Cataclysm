@@ -2,6 +2,149 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-26 — Demonic Guide: a guide that cannot be hurt walks from the entrance to the exit and waits for a player more than 15 metres behind; a player more than 12 metres from it takes 25% more damage
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, its place among the rows that are built, and a new player floor-effect field `GuideDamageTakenMorePercent`
+read by `StatModifiersFor`, `IsEmpty` and `Describe`); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+(a guide's flag, destination and wait, and a guide taking no hostile action);
+`game/Source/Cataclysm/Character/CataclysmEnemyController.h` and `.cpp` (a new brain action `Guiding`, appended, and
+the branch of `Think()` that walks a guide); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`
+(the "Guide" label); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (raising the guide, the
+beat, the per-floor reset, leaving the dungeon, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** It has been run, stacked with four other rules; the figures are at the end of this entry.
+
+### The row
+
+`Demonic_Demonic_Guide` in `game/Data/DungeonModifiers.csv`, weight 10: "Player's are chained to a demonic guide.
+Straying too far from their guide will cause the player to take increased damage." It states no figure.
+
+### What the rule does
+
+A new arena carrying the row raises a guide at its entrance: an Imp at the Common rung that cannot be hurt, pays
+nothing, takes no hostile action and is labelled "Guide" under its health bar. Its brain walks it to the floor's exit
+and does nothing else: it notices nobody and chooses no ability. While the player is more than 15 metres from it, it
+waits. A zone 12 metres across its radius is drawn around it as its chain, and drawn again where it stands once it has
+moved a metre; the zone does nothing. While the player is more than 12 metres from the guide, measured flat, the player
+takes 25% more damage. Nothing holds the player back. A Horde dungeon's waves keep the guide, since its arena does not
+change; a new arena replaces it. The panel reads "demonic guide: within its chain", or "demonic guide: beyond its
+chain, 25% more damage taken; it waits for you".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25 and 2026-09-26. The row states no figure;
+every figure is a play-test value:**
+
+- **A creature that takes no hostile action and cannot be hurt, labelled "Guide", walks toward the floor's exit and
+  waits when the player is more than 15 m behind.**
+- **Beyond 12 m from the guide, the player takes 25% more damage. The chain is drawn as a zone around the guide. There
+  is no leash that holds the player.**
+- **The walk is a branch at the top of the creature brain's `Think()`**, accepted 2026-09-26 as the one new mechanism
+  this row needs: before it, a creature could only chase a target, follow a commander or roam, and the brain's next
+  pass replaced any move order the game mode gave.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The guide is an Imp**, the creature whose health every floor source already takes, raised at the entrance as The
+  Reaper is.
+- **It is not on the floor's list of creatures**, so a Horde arena's waves keep it and a count of the floor's
+  creatures does not include it; it is raised by the rule, so Blood Gates leaves it out.
+- **A waiting guide stops and reports `Idle`**, and a walking one reports the new `Guiding`; a guide that has arrived at
+  the exit also reports `Idle`. The new value is appended to the enumeration, as its comment requires.
+- **The damage is a More on the player's damage-taken stat**, the stat Communion of Pain's "take more damage" already
+  uses, so it multiplies the hit after the player's own reductions rather than being capped with them.
+- **The chain is drawn again once the guide has moved a metre** from where it was drawn. It is only a drawing; the
+  damage is measured from the guide itself.
+
+### The research: staying near something that moves
+
+Done after the rulings and before the build; the page quoted was fetched on 2026-09-26 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, local events | https://maxroll.gg/d4/resources/local-events | Wayward Soul, an escort: "Stay in the circle to keep it moving. When you leave the circle, it gets attacked and stops moving." |
+
+**What it settles and what it does not.** Diablo IV ships a creature that walks to a destination with a circle drawn
+around it, and that stops when the player leaves the circle. That settles the shape: a drawn circle around a moving
+guide, and a guide that stops for a player who falls behind. In Diablo IV the penalty is to the escort; here it is to
+the player, as the row states, so the 25%, the 12 metres and the 15 metres are this game's own.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.`. **None of them watches the guide walk.** An automation
+test world does not tick, so path following never moves a creature in one, and no test in the project asserts that a
+creature moved under `MoveTo`; the brain's tests read the action `Think()` reports. These do the same.
+
+- `DemonicGuideFiguresChainWaitAndDamage`: the figures.
+- `TheGuideStandsAtTheEntranceAndCannotBeHurt`: at the entrance; cannot be hurt, pays nothing, raised by the rule,
+  takes no hostile action, sent to the exit, labelled "Guide"; its chain drawn, with the panel.
+- `BeyondTwelveMetresFromTheGuideThePlayerTakesAQuarterMoreDamage`: nothing at 11.9 m, 25% more at 12.1 m with the
+  panel, nothing again at 11 m.
+- `TheGuideHeadsForTheExitAndWaitsBeyondFifteenMetres`: at 14.9 m it does not wait and its brain reports `Guiding`,
+  noticing nobody; at 15.1 m it waits and its brain reports `Idle`, with the panel.
+  **"Heads for the exit" is measured through the brain's goal and `Think()`'s answer, not by movement**: a world
+  built for a test has no navigation system (the entry on Nowhere to Run's flights, 2026-09-26). The guide
+  walking to the exit in play is for the owner's play check.
+- `ANewFloorBringsANewGuideAndEndsTheDamage`: the last floor's guide is gone, a new one stands at the next entrance,
+  and the damage has ended.
+
+One Python check: the row still says "chained to a demonic guide", "straying too far" and "take increased damage".
+
+### The move onto development 9213a5e3
+
+The change was written on development 4f1a3549 in one commit, 7a33ae20, and moved on 2026-09-27. A rebase conflicted in
+four files beside this log, so it was rebuilt rather than rebased. The change's own edit scripts ran on development's
+copies, every edit finding its place; on 4f1a3549 the same scripts reproduce 7a33ae20's game files exactly. The Python
+row check was applied as a patch with `git apply -3`, and the one place where both sides had added a check was resolved
+by keeping both. **The evidence that nothing was lost or added: the sorted changed lines of the moved commit, taken
+before this section was written, against 9213a5e3 are identical to 7a33ae20's against 4f1a3549.** The guide's "Guide"
+label sits in the combat overlay's status line beside "Harbinger"; development's "Maddened" label, from Insanity Bursts,
+is a separate part of the same line, and neither reads the other.
+
+**On a development head that carries the Ritualist's risen imps (#2159), the status-line list conflicts.** That change
+put `RisenTextFor(Actor)` after `HarbingerTextFor(Actor)` on the list's first line, where the guide puts
+`GuideTextFor(Actor)`. The rule, accepted by the coordinating session on 2026-09-27: when each side only inserted items
+into one list line, keep every item, development's first, refuse any removal or reorder, and wrap at 120 characters as
+the list's other lines are wrapped. Read back after the rehearsal on 9f9225c0:
+
+```
+		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
+		  ChorusTextFor(Actor), BloomTextFor(Actor),
+```
+
+### Run
+
+One window on 2026-09-30, on the five-modifier stack: Mind-Shattering Illusions, Reality Rifts, Warzone Control Points,
+Demonic Guide and Carrion Feast, in that order, on development 977edde4 (`feat/five-modifiers-stack` at be67ee2f).
+Every figure below is what `pytest`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+| Step | Printed |
+|---|---|
+| Python of record, with no CI run in progress | `5545 passed, 8 skipped` (JUnit 5,553, no failures), 2026-09-30 08:49 |
+| First build, at 6000e591 | `Build: Failed - 31 actions, 28 files compiled`, on Reality Rifts' C4456; no test ran |
+| Build after Reality Rifts' rename | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.25.cpp` |
+| Whole suite | `2765 tests performed, 2765 succeeded, 0 failed`; 2765 declared, gap 0; 40 skipped part of what they check, the Paragon art tests a worktree cannot run |
+
+A Python of record taken on 2026-09-27 at 6000e591, before a pause in the work, was superseded when the rename changed
+the tree; the one above is on be67ee2f. All fifteen proofs of the window were as registered. This rule's three, with
+`prove_cpp_guard`, each anchor re-checked immediately before its run: each printed `1 tests performed, 0 succeeded, 1
+failed` with the break in and `1 tests performed, 1 succeeded, 0 failed` restored, failed on exactly the checks
+registered for it, and left the source hash as it found it (ac71a46f6bdab301 before and after every proof).
+
+| Break | The test that failed, and on what |
+|---|---|
+| A player beyond the chain takes no more damage | `BeyondTwelveMetresFromTheGuideThePlayerTakesAQuarterMoreDamage`, two: "25% more damage taken at 12.1 m" and "the panel" |
+| The game mode never tells the guide to wait | `TheGuideHeadsForTheExitAndWaitsBeyondFifteenMetres`, three: "it waits at 15.1 m", "and stands" and "the panel" |
+| The brain walks a guide on though told to wait | `TheGuideHeadsForTheExitAndWaitsBeyondFifteenMetres`, one: "and stands" |
+
+The final Python on the stack's Run-section head, ff94d4a3: `5545 passed, 8 skipped` (JUnit 5,553, no failures or
+errors), the same as the Python of record.
+
+---
+
 ## 2026-09-26 — Warzone Control Points: two points a floor, captured by standing in one for 30 seconds while creatures come, each held point giving 10% more damage and 10 resistance until the floor ends; allied soldiers and shortcuts are not built
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
