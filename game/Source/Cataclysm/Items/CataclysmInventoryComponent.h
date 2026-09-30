@@ -227,6 +227,18 @@ public:
 	int32 SlotOfMaterial(FName Material) const;
 
 	/**
+	 * Takes this many of a crafting material out of its stack. Issues #1820 and #41.
+	 *
+	 * @return whether they were taken. **ALL OR NOTHING**: fewer carried than asked takes none, so a price is paid
+	 *         whole or not at all. A stack taken to zero empties its slot, as `RemoveItemAt` leaves one.
+	 *
+	 * Built for Forced Tithes, whose altar takes materials as one of its prices. It is the first thing in the game that
+	 * spends a material; crafting will be the second.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Inventory")
+	bool RemoveMaterial(FName Material, int32 Quantity);
+
+	/**
 	 * The item in a slot, or nullptr when the slot is empty, holds a material,
 	 * or is not a slot.
 	 *

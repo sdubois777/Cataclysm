@@ -2168,6 +2168,23 @@ public:
 	bool WarBannerIsHeld() const { return bWarBannerHeld; }
 	float WarBannerSecondsHeld() const { return WarBannerHeldSeconds; }
 	TArray<ACataclysmEnemyCharacter*> BannerAssailantsStanding() const;
+
+	/**
+	 * Forced Tithes, for the panel and tests: the altar standing, or null; whether this floor's tithe was paid or
+	 * refused; whether angels are owed for a tithe left unpaid; and the angels still standing.
+	 */
+	class ACataclysmFloorObject* TitheAltarNow() const;
+	bool TitheWasPaid() const { return bTithePaid; }
+	bool TitheWasRefused() const { return bTitheRefused; }
+	bool TitheAngelsAreOwed() const { return bTitheAngelsDue; }
+	TArray<ACataclysmEnemyCharacter*> TitheAngelsStanding() const;
+
+	/**
+	 * Where a rule standing an altar at the floor's exit puts it: THE EXIT CELL FOR THE FIRST, and for each after it the
+	 * next walkable cell beside the exit, so two altars never share a cell. The first is the earliest in a fixed order
+	 * of such rows the floor carries: Blood Altar, then Forced Tithes. Issues #1820 and #41.
+	 */
+	FVector ExitAltarWorld(FName RuleKey) const;
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2881,6 +2898,35 @@ private:
 
 	/** War Banner, on the beat: the zone drawn, the hold counted, the waves brought and the aura written. */
 	void StepWarBanner(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Forced Tithes, on every floor and every wave: angels owed if the last altar was left unpaid, the last altar
+	 * forgotten, and this floor's placed at the exit unless it is the dungeon's last. Issues #1820 and #41.
+	 */
+	void PlaceTheTitheAltar();
+
+	/** Forced Tithes: the altar and this floor's tithe forgotten. The angels owed are not touched. */
+	void ForgetTheTitheAltar();
+
+	/** Forced Tithes: a choice at the altar, a price paid or the tithe refused. */
+	bool ChooseAtTitheAltar(class ACataclysmFloorObject* Altar, FName ChoiceKey);
+
+	/**
+	 * Forced Tithes: whether the player can pay this price now, and what paying takes -- the potion slot or the
+	 * material. False for a key that is not a price.
+	 */
+	bool CanPayTheTithe(FName ChoiceKey, class ACataclysmPlayerCharacter* Player, int32* OutPotionSlot,
+						FName* OutMaterial) const;
+
+	/** Forced Tithes: the angels brought near this point. */
+	void BringTheTitheAngels(const FVector& At);
+
+	/** Forced Tithes, on the beat: owed angels brought to the entrance, and the altar's prices shown as payable or not. */
+	void StepForcedTithes(class ACataclysmPlayerCharacter* Player);
+
+	/** A floor object at this point, carrying the rule's key, the name and the prompt given. Issues #1820 and #41. */
+	class ACataclysmFloorObject* PlaceFloorObjectAt(FName RuleKey, const FVector& Where, const FString& DisplayName,
+													const FString& Prompt);
 
 	/** Infernal Beacons, on the beat: every creature's damage at the dungeon's stacks, and the player's magic find. */
 	void StepInfernalBeacons(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -4393,6 +4439,19 @@ private:
 	float WarBannerDamageApplied = 0.0f;
 	float WarBannerResistanceApplied = 0.0f;
 	int32 WarBannerPanelKey = -1;
+
+	/**
+	 * Forced Tithes: this floor's altar; whether one was placed, and whether its tithe was paid or refused; whether
+	 * angels are owed at the next beat for an altar left unpaid; the angels brought; and what the panel last showed.
+	 * Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> TitheAltar;
+	bool bTitheAltarPlaced = false;
+	bool bTithePaid = false;
+	bool bTitheRefused = false;
+	bool bTitheAngelsDue = false;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> TitheAngels;
+	int32 TithePanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
