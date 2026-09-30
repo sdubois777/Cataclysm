@@ -107,6 +107,14 @@ Seven automation tests in `Cataclysm.Cleanse.`:
 
 One Python check: the three rows still say "must be cleansed", "persist unless cleansed" and "unless cleansed".
 
+### Fear, added at the move
+
+Fear merged on development after this change was written (#2139, 012b2171), and the ruling of 2026-09-26 added it to
+what a cleanse removes when this change moved: `State.Feared` joins the tags `Cleanse` matches, with the same rule that
+keeps an effect the player put on itself, and `State.FearImmune` and the shared window stay, as a stun's immunity does.
+It has its own test, `ItRemovesAFearACreaturePutOnThePlayer`, because a fear that lands opens the shared window, so a
+stun beside it in one test would be refused.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
