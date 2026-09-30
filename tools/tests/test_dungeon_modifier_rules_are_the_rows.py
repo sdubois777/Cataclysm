@@ -4760,3 +4760,22 @@ def test_famished_beasts_row_still_names_seeking_eating_denying_and_growing():
         assert phrase in lower, (
             f"Famine_Famished_Beasts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "FamishedBeastsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_battlefield_relics_row_still_names_activating_a_temporary_buff_and_pursuing_spirits():
+    """The phrases the rule's readings rest on.
+
+    "Scattered throughout the dungeon are ancient relics of war that can be activated to give powerful but temporary
+    buffs. However, activating a relic also summons the spirits of fallen warriors who will relentlessly pursue the
+    players until they are defeated." CAN BE ACTIVATED is the floor object's one choice; TEMPORARY BUFFS are the three
+    kinds for thirty seconds; SUMMONS THE SPIRITS is the creatures activating brings; RELENTLESSLY PURSUE is their
+    noticing the player from anywhere on the floor. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["War_Battlefield_Relics"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("relics of war", "can be activated", "powerful but temporary buffs",
+                   "summons the spirits of fallen warriors", "relentlessly pursue"):
+        assert phrase in lower, (
+            f"War_Battlefield_Relics no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "BattlefieldRelicsKey in CataclysmDungeonModifierEffects.h. " + words)

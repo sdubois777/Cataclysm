@@ -1293,6 +1293,13 @@ public:
 	int32 DropsEaten = 0;
 
 	/**
+	 * Whether activating a Battlefield Relic brought this creature: a spirit of a fallen warrior, which says "Spirit"
+	 * under its bar. Issues #1820 and #41. A stand-in of the floor's own kinds until the owner says what a spirit is.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsARelicSpirit = false;
+
+	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.
 	 *
