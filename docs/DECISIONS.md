@@ -137,6 +137,20 @@ last missing clause, so `BuiltStateOf` answers `Built` for it. A floor rule's zo
 beat; the row's words name harmful effects, and the ones on the player are what a cleanse removes. One test,
 `CleansingAGrimTotemCleansesThePlayer`: a burn an Imp put on the player is gone when a totem is dispelled.
 
+### The choice panel's asset, tested; a proof swapped for the cleanse call
+
+Ruled by the coordinating session on 2026-09-30:
+- **One test that the asset exists and fits**, `TheChoicePanelAssetLoadsAndHoldsItsBoundWidgets`: the path the player
+  controller opens (`ChoicePanelClass`, read by reflection because it is private) loads, is a
+  `UCataclysmChoicePanelWidget`, and its widget tree holds `TitleLabel` and `PromptLabel` as text blocks and `ChoiceBox`
+  as a panel, the three the panel binds. It reads the asset's own tree because a test world has no game instance for
+  `CreateWidget`. It fails until the window runs `tools/generate_interface_assets.py`, and passes after.
+- **Proof Pb is now the cleanse call**: `UCataclysmDebuffs::Cleanse(Player);` written as `(void)Player;`, failing
+  `CleansingAGrimTotemCleansesThePlayer` on "the burn is gone". It replaces the weakening proof, because the cleanse
+  call is new code that no other test's failure would point at. Pa and Pc stay.
+- **The play check stays**: click a Grim Totem and see the panel with its title, prompt, Embrace, Cleanse and Leave.
+  The test shows the asset exists and fits; only play shows the panel opens where it should.
+
 ### Two merge rules first used at this change's move
 
 This change moved in a stack of seven on development c2eccb69. Two conflicts first met at this step were resolved by
