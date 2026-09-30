@@ -173,6 +173,7 @@ namespace
 		{ TEXT("character_kills"),     ECataclysmStatScale::PerKillOfTheCharacter },
 		{ TEXT("weapon_kills"),        ECataclysmStatScale::PerKillOfThisWeapon },
 		{ TEXT("minion_seconds_active"), ECataclysmStatScale::PerSecondTheMinionHasBeenActive },
+		{ TEXT("deployables_active"),  ECataclysmStatScale::PerDeployableActive },
 	};
 
 	/**
@@ -1561,6 +1562,10 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		return State.MinionSecondsActive < 0.0f
 			? 0.0f
 			: StackedValue(Modifier, FMath::FloorToInt32(State.MinionSecondsActive));
+
+	// THE DEPLOYABLE MACHINES COMMANDED NOW. Issue #1833, deployable Part 3.
+	case ECataclysmStatScale::PerDeployableActive:
+		return StackedValue(Modifier, State.DeployablesActive);
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
