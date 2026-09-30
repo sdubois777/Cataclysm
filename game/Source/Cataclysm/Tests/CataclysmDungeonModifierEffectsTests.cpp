@@ -41036,4 +41036,362 @@ bool FCataclysmPactGreedTakenTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Demonic_Blood_Price. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BloodPriceRow(UCataclysmDungeonModifierEffects::BloodPriceKey);
+
+	/** What every priced button ends with. */
+	const TCHAR* PricedSuffix = TEXT(" (costs 10% health)");
+
+	/** The bleed keyword the player carries while a stack is held. */
+	FGameplayTag BleedingTag()
+	{
+		return UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Keyword.DoT.Bleed")), false);
+	}
+
+	/**
+	 * A dungeon carrying these rows, on floor 2 with its own creatures cleared, the player at a hundred thousand
+	 * maximum health and full, and a beat taken so the buttons are priced.
+	 */
+	ACataclysmDungeonGameMode* ABloodPriceFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+												const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		if (!GiveThePlayerHealthForTypedDamage(Test, Player))
+		{
+			return nullptr;
+		}
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** The player's health now. */
+	float BloodHealthOf(const FPossessedPlayer& Player)
+	{
+		return Player.Read(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
+
+	/** Sets the player's health. */
+	void SetBloodHealth(const FPossessedPlayer& Player, float Health)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+	}
+}
+
+// THE FIGURES: 10% OF CURRENT HEALTH, LEAVING 1; 0.25% A SECOND A STACK, AT MOST 10 STACKS; A TITHE PAID IS NOT PRICED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodPriceFiguresTest,
+	"Cataclysm.DungeonModifierEffects.BloodPriceFiguresCostBleedAndCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodPriceFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("10% of current health"), Effects::BloodPriceHealthPercent, 10.0f, 0.001f);
+	TestEqual(TEXT("so 100 of 1000"), Effects::BloodPriceCost(1000.0f), 100.0f, 0.001f);
+	TestEqual(TEXT("5 of 50"), Effects::BloodPriceCost(50.0f), 5.0f, 0.001f);
+	TestEqual(TEXT("nothing from 1: it never kills"), Effects::BloodPriceCost(1.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("0.25% a second a stack"), Effects::BloodPricePercentPerSecond(1), 0.25f, 0.0001f);
+	TestEqual(TEXT("2.5% at ten"), Effects::BloodPricePercentPerSecond(10), 2.5f, 0.0001f);
+	TestEqual(TEXT("no more past ten"), Effects::BloodPricePercentPerSecond(11), 2.5f, 0.0001f);
+	TestEqual(TEXT("ten stacks at most"), Effects::BloodPriceMostStacks, 10);
+	TestFalse(TEXT("paying a tithe is not priced"),
+			  Effects::BloodPriceIsAsked(FName(Effects::ForcedTithesKey), FName(Effects::ForcedTithesPayHealth)));
+	TestTrue(TEXT("refusing one is"),
+			 Effects::BloodPriceIsAsked(FName(Effects::ForcedTithesKey), FName(Effects::ForcedTithesRefuse)));
+	TestTrue(TEXT("opening a Pandora's Box is"),
+			 Effects::BloodPriceIsAsked(FName(Effects::PandorasBoxKey), FName(Effects::PandorasBoxOpen)));
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(FName(Effects::BloodPriceKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+// A CHOICE COSTS A TENTH OF CURRENT HEALTH AND LEAVES A BLEED STACK; THE BUTTON SAYS SO; THE KEYWORD; THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodPriceChoiceTest,
+	"Cataclysm.DungeonModifierEffects.BloodPriceAChoiceCostsATenthOfCurrentHealthAndLeavesABleed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodPriceChoiceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodPriceFloor(*this, World, Player, {BloodPriceRow, BannerRow});
+	if (!Mode || !TestNotNull(TEXT("a banner stands"), Mode->WarBannerNow()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its button says what it costs"), Mode->WarBannerNow()->Choices[0].Label.EndsWith(PricedSuffix));
+	TestEqual(TEXT("the panel before"), Mode->LiveCountsForTheFloor().FindRef(BloodPriceRow),
+			  FString(TEXT("blood price: 0 bleed stacks, 0% health a second; each choice costs 10% of current health")));
+
+	SetBloodHealth(Player, 50000.0f);
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tenth of current health was taken"), BloodHealthOf(Player), 45000.0f, 1.0f);
+	TestEqual(TEXT("one bleed stack"), Mode->BloodPriceStacksHeld(), 1);
+	Beat(Mode, 1);
+	TestTrue(TEXT("the player carries the bleed keyword"), Player.AbilitySystem->HasMatchingGameplayTag(BleedingTag()));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BloodPriceRow),
+			  FString(TEXT("blood price: 1 bleed stack, 0.25% health a second; each choice costs 10% of current health")));
+	return true;
+}
+
+// THE BLEED: 0.25% OF MAXIMUM HEALTH A SECOND A STACK, ONCE A SECOND, ON A FLOOR WITHOUT THE ROW TOO.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodPriceBleedTest,
+	"Cataclysm.DungeonModifierEffects.BloodPriceTheBleedTakesAQuarterPercentAStackEachSecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodPriceBleedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// TWO RELICS OF FURY, WHICH CHANGE NO HEALTH OR RESISTANCE: TWO CHOICES, TWO STACKS.
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodPriceFloor(
+		*this, World, Player, {BloodPriceRow, FName(Effects::BattlefieldRelicsKey)});
+	if (!Mode || !TestEqual(TEXT("two relics"), Mode->BattlefieldRelicsNow().Num(), 2))
+	{
+		return false;
+	}
+	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+	for (ACataclysmFloorObject* Relic : Relics)
+	{
+		TestTrue(TEXT("a relic activated"),
+				 Mode->ChooseAtFloorObject(Relic, FName(Effects::BattlefieldRelicsActivate)));
+	}
+	if (!TestEqual(TEXT("two stacks"), Mode->BloodPriceStacksHeld(), 2))
+	{
+		return false;
+	}
+
+	const float PerSecond = HealthForTypedDamage * Effects::BloodPricePercentPerSecond(2) / 100.0f;
+	float Before = BloodHealthOf(Player);
+	Beat(Mode, BeatsFor(2.0f));
+	float Lost = Before - BloodHealthOf(Player);
+	TestTrue(FString::Printf(TEXT("the stacks bleed (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(FString::Printf(TEXT("once a second, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
+			 Lost <= 2.0f * PerSecond + 0.5f);
+
+	// A FLOOR WITHOUT THE ROW: THE STACKS STAY, AND BLEED.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Before = BloodHealthOf(Player);
+	Beat(Mode, BeatsFor(2.0f));
+	Lost = Before - BloodHealthOf(Player);
+	TestEqual(TEXT("the stacks are still two"), Mode->BloodPriceStacksHeld(), 2);
+	TestTrue(FString::Printf(TEXT("and still bleed (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(TEXT("and the bleed keyword is still held"), Player.AbilitySystem->HasMatchingGameplayTag(BleedingTag()));
+	return true;
+}
+
+// THE PRICE NEVER KILLS: AT 1 HEALTH A CHOICE TAKES NOTHING, AND STILL LEAVES ITS STACK.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodPriceNeverKillsTest,
+	"Cataclysm.DungeonModifierEffects.BloodPriceNeverKills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodPriceNeverKillsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodPriceFloor(*this, World, Player, {BloodPriceRow, BannerRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	SetBloodHealth(Player, 1.0f);
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the player keeps 1 health"), BloodHealthOf(Player), 1.0f, 0.001f);
+	TestFalse(TEXT("and lives"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("the stack is still left"), Mode->BloodPriceStacksHeld(), 1);
+	return true;
+}
+
+// WITH PANDORA'S BOX, THE PACT ALTAR AND THE TITHE ALTAR: OPENING A BOX AND TAKING A PACT COST; PAYING A TITHE DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodPriceAltarsTest,
+	"Cataclysm.DungeonModifierEffects.BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodPriceAltarsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("75"));
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodPriceFloor(
+		*this, World, Player,
+		{BloodPriceRow, FName(Effects::PandorasBoxKey), PactRow, TithesRow});
+	if (!Mode || !TestTrue(TEXT("a box stands"), Mode->PandorasBoxesNow().Num() > 0)
+		|| !TestNotNull(TEXT("a pact altar stands"), Mode->PactAltarNow())
+		|| !TestNotNull(TEXT("a tithe altar stands"), Mode->TitheAltarNow()))
+	{
+		return false;
+	}
+
+	// THE BUTTONS: THE BOX'S AND THE PACTS' PRICED, THE TITHE'S PRICES NOT, ITS REFUSAL PRICED.
+	TestTrue(TEXT("the box's button is priced"), Mode->PandorasBoxesNow()[0]->Choices[0].Label.EndsWith(PricedSuffix));
+	TestTrue(TEXT("a pact's button is priced"), Mode->PactAltarNow()->Choices[0].Label.EndsWith(PricedSuffix));
+	const FCataclysmFloorObjectChoice* PayInHealth = Mode->TitheAltarNow()->ChoiceOf(PayHealthKey);
+	const FCataclysmFloorObjectChoice* Refuse = Mode->TitheAltarNow()->ChoiceOf(RefuseKey);
+	TestTrue(TEXT("paying a tithe's button is not"), PayInHealth && !PayInHealth->Label.EndsWith(PricedSuffix));
+	TestTrue(TEXT("refusing one is"), Refuse && Refuse->Label.EndsWith(PricedSuffix));
+
+	// OPENING THE BOX COSTS A TENTH.
+	float Before = BloodHealthOf(Player);
+	if (!TestTrue(TEXT("the box opened"),
+				  Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], FName(Effects::PandorasBoxOpen))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("opening a box cost a tenth"), BloodHealthOf(Player), 0.9f * Before, 1.0f);
+	TestEqual(TEXT("one stack"), Mode->BloodPriceStacksHeld(), 1);
+
+	// TAKING A PACT COSTS A TENTH.
+	Before = BloodHealthOf(Player);
+	if (!TestTrue(TEXT("a pact was taken"), Mode->ChooseAtFloorObject(Mode->PactAltarNow(), WrathKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("taking a pact cost a tenth"), BloodHealthOf(Player), 0.9f * Before, 1.0f);
+	TestEqual(TEXT("two stacks"), Mode->BloodPriceStacksHeld(), 2);
+
+	// PAYING A TITHE IN HEALTH COSTS THE TITHE ONLY.
+	Before = BloodHealthOf(Player);
+	const float Maximum = Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the tithe was paid in health"), Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), PayHealthKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the tithe's fifth of maximum health and nothing more"), BloodHealthOf(Player),
+			  Before - Effects::ForcedTithesHealthPrice(Maximum), 1.0f);
+	TestEqual(TEXT("and no stack"), Mode->BloodPriceStacksHeld(), 2);
+	return true;
+}
+
+// A CHOICE THAT DOES NOT ACT COSTS NOTHING: A PACT THE ALTAR DOES NOT OFFER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodPriceRefusedTest,
+	"Cataclysm.DungeonModifierEffects.BloodPriceAChoiceThatDoesNotActCostsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodPriceRefusedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodPriceFloor(*this, World, Player, {BloodPriceRow, PactRow});
+	if (!Mode || !TestNotNull(TEXT("a pact altar stands"), Mode->PactAltarNow()))
+	{
+		return false;
+	}
+	const float Before = BloodHealthOf(Player);
+	TestFalse(TEXT("a pact not offered is refused"), Mode->ChooseAtFloorObject(Mode->PactAltarNow(), GreedKey));
+	TestEqual(TEXT("no health was taken"), BloodHealthOf(Player), Before, 0.01f);
+	TestEqual(TEXT("and no stack left"), Mode->BloodPriceStacksHeld(), 0);
+	return true;
+}
+
+// THE STACKS LAST THE DUNGEON: KEPT ON THE NEXT FLOOR AND BY A CLEANSE; LEAVING THE DUNGEON ENDS THEM AND THE KEYWORD.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodPriceDungeonTest,
+	"Cataclysm.DungeonModifierEffects.BloodPriceStacksLastTheDungeonAndAreNotCleansed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodPriceDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodPriceFloor(*this, World, Player, {BloodPriceRow, BannerRow});
+	if (!Mode || !TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey))
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestEqual(TEXT("the stack is kept on floor 3"), Mode->BloodPriceStacksHeld(), 1);
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	Beat(Mode, 1);
+	TestEqual(TEXT("a cleanse leaves it"), Mode->BloodPriceStacksHeld(), 1);
+	TestTrue(TEXT("and the bleed keyword"), Player.AbilitySystem->HasMatchingGameplayTag(BleedingTag()));
+
+	Mode->LeaveEmpireDungeon();
+	Beat(Mode, 1);
+	TestEqual(TEXT("leaving the dungeon ends it"), Mode->BloodPriceStacksHeld(), 0);
+	TestFalse(TEXT("and the keyword"), Player.AbilitySystem->HasMatchingGameplayTag(BleedingTag()));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
