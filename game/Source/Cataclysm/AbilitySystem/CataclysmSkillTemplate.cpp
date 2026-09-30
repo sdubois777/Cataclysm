@@ -728,7 +728,7 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	if (Params.MovementMode == ECataclysmMovementMode::Swap
 		&& UCataclysmCommand::ThingsCommandedBy(
 			   ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar(),
-			   Params.RangeCm).IsEmpty())
+			   ScaledRangeCm()).IsEmpty())
 	{
 		return false;
 	}
@@ -780,7 +780,7 @@ float UCataclysmSkillTemplate::RequirementReachCm() const
 	//
 	// THE SCALED RADIUS, not the written one, so a character with area of effect
 	// may activate on an enemy its widened ring will actually reach.
-	return Params.RangeCm > 0.0f ? Params.RangeCm : ScaledRadiusCm();
+	return Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm();
 }
 
 bool UCataclysmSkillTemplate::RequirementsAreMet(
@@ -2572,6 +2572,43 @@ float UCataclysmSkillTemplate::OwnDurationMultiplier(bool bIsBuff) const
 		Increases += Mine->IncreasesForStat(FName(BuffDurationStat), SkillTags);
 	}
 	return FMath::Max(0.0f, 1.0f + Increases);
+}
+
+const TCHAR* UCataclysmSkillTemplate::SkillRangeStat = TEXT("skill_range");
+const TCHAR* UCataclysmSkillTemplate::ProjectileSpeedStat = TEXT("projectile_speed");
+
+namespace
+{
+	/**
+	 * The caster's increases to one stat, asked with a skill's tags, or nought
+	 * when the skill has no owner yet. GetCurrentActorInfo rather than
+	 * GetAbilitySystemComponentFromActorInfo, which ensures on missing actor
+	 * information; this one ensures only on the class default object, which is
+	 * never given to a character.
+	 */
+	float OwnersIncreasesFor(const UCataclysmSkillTemplate& Skill, const TCHAR* Stat)
+	{
+		const FGameplayAbilityActorInfo* Info = Skill.GetCurrentActorInfo();
+		const UCataclysmAbilitySystemComponent* Mine = Info
+			? Cast<UCataclysmAbilitySystemComponent>(Info->AbilitySystemComponent.Get())
+			: nullptr;
+		return Mine ? Mine->IncreasesForStat(FName(Stat), Skill.SkillTags) : 0.0f;
+	}
+}
+
+float UCataclysmSkillTemplate::ScaledRangeCm() const
+{
+	return Params.RangeCm
+		* FMath::Max(0.0f, 1.0f + OwnersIncreasesFor(*this, SkillRangeStat));
+}
+
+float UCataclysmSkillTemplate::ScaledProjectileSpeed() const
+{
+	// INCREASED AND REDUCED IN ONE BUCKET, the shape Path of Exile's
+	// "increased Projectile Speed" and "reduced Projectile Speed" share, and the
+	// project's rule for increases to one figure.
+	return Params.SpeedCmPerSecond
+		* FMath::Max(0.1f, 1.0f + OwnersIncreasesFor(*this, ProjectileSpeedStat));
 }
 
 float UCataclysmSkillTemplate::MeleeReachBonusCm() const

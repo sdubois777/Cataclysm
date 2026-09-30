@@ -576,8 +576,23 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 				Minion->TypeTags.AddTag(Tag);
 			}
 		}
-		Minion->ReachCm = Type->ReachCm;
-		Minion->NoticeRadiusCm = Type->NoticeRadiusCm;
+		// AND LENGTHENED BY THE SUMMONER'S `minion_range`, asked with this
+		// minion's type tags so "Gadgets have 20%-40% increased attack range"
+		// reaches a machine and not an imp. Issue #1833, ruled 2026-09-30.
+		//
+		// BOTH FIGURES, a judgement of that ruling: a minion finds what to attack
+		// within its notice radius and strikes within its reach, so a gadget
+		// whose reach alone grew would still fire only at what it noticed. The
+		// two are equal on Bolt Turret and Ballista today.
+		//
+		// A SNAPSHOT AT THE SUMMONING, as health and duration are, and a
+		// multiplier of nought or less keeps the stated figures, as duration's
+		// does.
+		const float RangeMultiplier =
+			SummonerMultiplierFor(InSummoner, TEXT("minion_range"), Minion->TypeTags);
+		const float Lengthened = RangeMultiplier > 0.0f ? RangeMultiplier : 1.0f;
+		Minion->ReachCm = Type->ReachCm * Lengthened;
+		Minion->NoticeRadiusCm = Type->NoticeRadiusCm * Lengthened;
 		Minion->AttackIntervalSeconds = Type->AttackIntervalSeconds;
 
 		// THE MOVE SPEED IS WRITTEN IN METRES PER SECOND and Unreal walks in
