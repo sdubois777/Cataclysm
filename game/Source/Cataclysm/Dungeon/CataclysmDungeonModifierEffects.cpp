@@ -640,6 +640,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(FamishedBeastsKey)
 		|| RowKey == FName(BattlefieldRelicsKey)
 		|| RowKey == FName(PandorasBoxKey)
+		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
+		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
@@ -680,9 +682,6 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
-		// CARRION FEAST. Carcasses become feeders unless burned, and the feeders grow stronger; the "purification
-		// altars" do nothing, because they wait on the interaction screen. Issues #1820 and #41.
-		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(SingularityWellsKey)
 		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.

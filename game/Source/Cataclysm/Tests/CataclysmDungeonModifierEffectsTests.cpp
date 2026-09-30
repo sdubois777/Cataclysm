@@ -34712,7 +34712,7 @@ bool FCataclysmCarrionCarcassTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("it cannot be hurt"), Carcass->bCannotBeHurt);
 	TestTrue(TEXT("labelled"), UCataclysmCombatOverlay::StatusLineFor(Carcass).Contains(TEXT("Carcass")));
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
-			  FString(TEXT("carrion feast: 1 carcasses lying, 0 feeders standing, feeders +0%")));
+			  FString(TEXT("carrion feast: 1 carcasses lying, 0 feeders standing, feeders +0%; an altar stands")));
 
 	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds) - 1);
 	TestEqual(TEXT("still a carcass at 9.75 s"), Mode->CarrionCarcassesNow().Num(), 1);
@@ -34735,7 +34735,7 @@ bool FCataclysmCarrionCarcassTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("10% more damage"),
 			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::CarrionFeastDamageSource), 1.1f, 0.001f);
 	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
-			  FString(TEXT("carrion feast: 0 carcasses lying, 1 feeders standing, feeders +10%")));
+			  FString(TEXT("carrion feast: 0 carcasses lying, 1 feeders standing, feeders +10%; an altar stands")));
 	return true;
 }
 
@@ -39246,6 +39246,147 @@ bool FCataclysmBoxesTakenSpawnTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the second wave came with the thrall alive"), Mode->ChaosSpawnStanding().Num(),
 			  Effects::PandorasBoxWaveSize);
 	TestFalse(TEXT("the thrall is alive"), UCataclysmSkillEffects::IsDead(Taken));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Carrion_Feast's purification altars. Issues #1820 and #41. The click itself is not tested, for the reason
+// Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ConsecrateKey(UCataclysmDungeonModifierEffects::CarrionFeastConsecrate);
+}
+
+// THE FIGURES: ONE ALTAR, ONE ON A HORDE ARENA, 15 M; AND CARRION FEAST IS BUILT NOW ITS ALTARS ARE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAltarFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PurificationAltarFiguresAndCarrionFeastIsBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAltarFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one altar a floor"), Effects::CarrionFeastAltarsPerFloor, 1);
+	TestEqual(TEXT("one on a Horde arena"), Effects::CarrionFeastAltarsPerHordeArena, 1);
+	TestEqual(TEXT("15 m"), Effects::CarrionFeastAltarRadiusCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("Carrion Feast is built"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(Effects::CarrionFeastKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+// ONE ALTAR ON A CARRION FEAST FLOOR, AWAY FROM THE ENTRANCE, OFFERING "CONSECRATE", WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAltarPlacedTest,
+	"Cataclysm.DungeonModifierEffects.PurificationAltarStandsOnACarrionFeastFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAltarPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	const ACataclysmFloorObject* Altar = Mode ? Mode->PurificationAltarNow() : nullptr;
+	if (!TestNotNull(TEXT("an altar stands"), Altar))
+	{
+		return false;
+	}
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Altar->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+	TestEqual(TEXT("named"), Altar->DisplayName, FString(TEXT("Purification Altar")));
+	TestEqual(TEXT("placed by Carrion Feast"), Altar->RuleKey, CarrionRow);
+	if (TestEqual(TEXT("one choice"), Altar->Choices.Num(), 1))
+	{
+		TestEqual(TEXT("to consecrate it"), Altar->Choices[0].Key, ConsecrateKey);
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
+			  FString(TEXT("carrion feast: 0 carcasses lying, 0 feeders standing, feeders +0%; an altar stands")));
+	return true;
+}
+
+// CONSECRATING: THE ALTAR GOES AND ITS AREA IS DRAWN; A CARCASS INSIDE BURNS AT ONCE AND ONE OUTSIDE DOES NOT; ONE THAT
+// FALLS INSIDE LATER BURNS ON THE NEXT BEAT; THE ONE OUTSIDE IS STILL EATEN AND BECOMES A FEEDER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAltarConsecrateTest,
+	"Cataclysm.DungeonModifierEffects.PurificationAltarBurnsTheCarcassesInsideNowAndLater",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAltarConsecrateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	ACataclysmFloorObject* Altar = Mode ? Mode->PurificationAltarNow() : nullptr;
+	FVector DiedAt;
+	if (!TestNotNull(TEXT("an altar stands"), Altar) || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt)
+		|| !SlayForACarcass(*this, World, Mode, Player, true, DiedAt))
+	{
+		return false;
+	}
+	TArray<ACataclysmEnemyCharacter*> Lying = Mode->CarrionCarcassesNow();
+	if (!TestEqual(TEXT("set-up: two carcasses"), Lying.Num(), 2))
+	{
+		return false;
+	}
+
+	// THE FIRST CARCASS INSIDE: THE ALTAR STANDS ON IT. THE SECOND OUTSIDE: 30 M FROM IT.
+	ACataclysmEnemyCharacter* Inside = Lying[0];
+	ACataclysmEnemyCharacter* Outside = Lying[1];
+	const FVector Here = Inside->GetActorLocation();
+	Altar->SetActorLocation(Here);
+	Outside->SetActorLocation(Here + FVector(3000.0f, 0.0f, 0.0f));
+	const int32 ZonesBefore = ZonesOnTheFloor(World);
+
+	if (!TestTrue(TEXT("consecrating acted"), Mode->ChooseAtFloorObject(Altar, ConsecrateKey)))
+	{
+		return false;
+	}
+	TestNull(TEXT("the altar went"), Mode->PurificationAltarNow());
+	Lying = Mode->CarrionCarcassesNow();
+	TestEqual(TEXT("the carcass inside burned at once"), Lying.Num(), 1);
+	TestTrue(TEXT("and the one outside did not"), Lying.Contains(Outside));
+	Beat(Mode, 1);
+	TestEqual(TEXT("the area is drawn"), ZonesOnTheFloor(World), ZonesBefore + 1);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
+			  FString(TEXT("carrion feast: 1 carcasses lying, 0 feeders standing, feeders +0%; the altar is used")));
+
+	// A CARCASS THAT FALLS INSIDE LATER BURNS ON THE NEXT BEAT.
+	if (!SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the later carcass fell inside"),
+				  FVector::Dist2D(DiedAt, Here) <= Effects::CarrionFeastAltarRadiusCm))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: it lies, until the beat"), Mode->CarrionCarcassesNow().Num(), 2);
+	Beat(Mode, 1);
+	TestEqual(TEXT("it burned on the next beat"), Mode->CarrionCarcassesNow().Num(), 1);
+
+	// THE ONE OUTSIDE IS STILL EATEN: ONE FEEDER, AND NONE FROM THE TWO BURNED.
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	TestEqual(TEXT("the carcass outside was eaten"), Mode->CarrionCarcassesNow().Num(), 0);
+	TestEqual(TEXT("and one feeder stands"), Mode->CarrionFeedersNow().Num(), 1);
 	return true;
 }
 
