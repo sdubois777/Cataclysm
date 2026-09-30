@@ -135,6 +135,12 @@ bool FCataclysmReservationCapsHealsTest::RunTest(const FString&)
 			  Reserved.Get(FVital::GetHealthAttribute()), 200.0f, 0.01f);
 	TestEqual(TEXT("and the maximum is still 1000"),
 			  Reserved.Get(FVital::GetMaxHealthAttribute()), 1000.0f, 0.01f);
+
+	// AND ONE POINT ALWAYS STAYS UNRESERVED, a judgement under the owner's
+	// delegation: a reservation asking for all of it leaves 1.
+	Reserved.Reserve(100.0f);
+	TestEqual(TEXT("100% asked for: 1 point stays unreserved"),
+			  Reserved.ASC->UnreservedMaximumHealth(), 1.0f, 0.01f);
 	return true;
 }
 
