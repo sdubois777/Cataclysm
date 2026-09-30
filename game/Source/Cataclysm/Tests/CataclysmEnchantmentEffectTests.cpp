@@ -2312,9 +2312,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4287,9 +4287,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -4367,6 +4367,69 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 			FName(*FString::Printf(TEXT("%s:armor"), ShieldBenefit)));
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStackSecondsRollTest,
+	"Cataclysm.Enchantments.AStackTimeStatedAsARangeRollsWithTheItem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row whose stacks last "0.5-1 second" gives a worn item a time inside that
+ * range, picked by the item's roll. Issue #1833, ruled 2026-09-30 under the
+ * owner's delegation, following Scale Step High: "Critical strikes trigger a
+ * 0.5-1 second global cooldown on all your skills".
+ *
+ * THREE ROLLS, because two ends alone would pass a helper that ignored the
+ * roll's middle: the lowest roll gets 0.5, the highest 1, and the middle a
+ * time strictly between. AND A ROW STATING ONE TIME keeps it at every roll, so
+ * the new column changes nothing for the rows written before it.
+ */
+bool FCataclysmStackSecondsRollTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UDataTable* Positive =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	UDataTable* Negative =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("the positive enchantments"), Positive)
+		|| !TestNotNull(TEXT("the negative enchantments"), Negative))
+	{
+		return false;
+	}
+
+	// THE TIME ONE DRAWBACK PIECE AT THIS ROLL GIVES ITS GRANT, or -1 when the
+	// row made no grant.
+	const auto TimeAt = [&](float Roll, float StackSecondsHigh)
+	{
+		UDataTable* Effects = EffectTableFrom(
+			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
+						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
+			+ FString::Printf(
+				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g\n"),
+				DrawbackWithNoEffect, DrawbackWithNoEffect, StackSecondsHigh));
+		if (!Effects)
+		{
+			return -1.0f;
+		}
+		FCataclysmItem Piece = Carrying(TEXT("Head_Helm"), ShieldBenefit, DrawbackWithNoEffect);
+		Piece.Enchantments[0].NegativeRoll = Roll;
+		TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+		TArray<FCataclysmPoolAction> Actions;
+		UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+			Totals, {Piece}, Effects, Positive, Negative, &Actions);
+		return Actions.Num() == 1 ? Actions[0].StackSeconds : -1.0f;
+	};
+
+	TestEqual(TEXT("0.5-1 second, the lowest roll: 0.5"), TimeAt(0.0f, 1.0f), 0.5f, 0.001f);
+	TestEqual(TEXT("0.5-1 second, the highest roll: 1"), TimeAt(1.0f, 1.0f), 1.0f, 0.001f);
+	const float Middle = TimeAt(0.5f, 1.0f);
+	TestTrue(FString::Printf(TEXT("0.5-1 second, the middle roll: strictly between, "
+								  "and it was %.3f"), Middle),
+			 Middle > 0.5f + 0.001f && Middle < 1.0f - 0.001f);
+	TestEqual(TEXT("one stated time, the highest roll: still 0.5"), TimeAt(1.0f, 0.0f), 0.5f, 0.001f);
 	return true;
 }
 
@@ -9207,6 +9270,156 @@ bool FCataclysmGadgetEvasionRowTest::RunTest(const FString&)
 	TestEqual(TEXT("two: 20%"), Increase(), 0.20f, 0.0001f);
 	Summoner.Make(TEXT("Imp"));
 	TestEqual(TEXT("and an imp beside them adds nothing"), Increase(), 0.20f, 0.0001f);
+	return true;
+}
+
+namespace CataclysmRowsNowTest
+{
+	const TCHAR* MaximumResists = TEXT("Positive_You_have_10_maximum_resists");
+	const TCHAR* BleedDuration = TEXT("Positive_Bleed_stacks_you_apply_have_50_100_increased_d");
+	const TCHAR* KillLock = TEXT("Negative_Killing_an_enemy_triggers_a_1_2_second_global_co");
+	const TCHAR* CritLock = TEXT("Negative_Critical_strikes_trigger_a_0_5_1_second_global_c");
+
+	/** A skill's tags for one slot, which is all the lock is asked with. */
+	FGameplayTagContainer SlotTags(const TCHAR* Slot)
+	{
+		return FGameplayTagContainer(FGameplayTag::RequestGameplayTag(FName(Slot)));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaximumResistsRowTest,
+	"Cataclysm.Enchantments.TheMaximumResistsRowRaisesTheCapBy10",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You have +10 maximum resists", worn, raises the resistance cap from 70 to
+ * 80. Issue #1833, the rows written after the survey of 2026-09-30.
+ * `UCataclysmDamageCalculation::ResistanceCapOf` asks `resistance_cap` on every
+ * blow and on the sheet. A wearer carrying a pair with no effect row is the
+ * control, so the 10 is the row's and nothing else's.
+ */
+bool FCataclysmMaximumResistsRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmRowsNowTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Plain(CataclysmEnchantmentEffectTest::BenefitWithNoEffect, true);
+	FWorn Worn(MaximumResists, true);
+	if (!TestNotNull(TEXT("a plain wearer"), Plain.ASC())
+		|| !TestNotNull(TEXT("a wearer of the row"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a pair with no effect leaves the cap at 70"),
+			  UCataclysmDamageCalculation::ResistanceCapOf(Plain.ASC()), 70.0f, 0.001f);
+	TestEqual(TEXT("+10 maximum resists: 80"),
+			  UCataclysmDamageCalculation::ResistanceCapOf(Worn.ASC()), 80.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedDurationRowTest,
+	"Cataclysm.Enchantments.TheBleedDurationRowLengthensOnlyABleed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Bleed stacks you apply have 50%-100% increased duration", worn at the top of
+ * its range, doubles a bleed's duration and leaves a disease's alone. Issue
+ * #1833. The same reading the shipped poison-duration row is measured by in
+ * `TheAilmentScopedDotRowsReachOnlyTheirOwnAilment`: `DamageOverTimeNumbers`
+ * asked with the ailment's own tag and with another's.
+ */
+bool FCataclysmBleedDurationRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmRowsNowTest;
+	using namespace CataclysmSmallHalvesTest;
+
+	const FGameplayTag Bleed = Keyword(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Disease = Keyword(TEXT("Keyword.DoT.Disease"));
+	if (!TestTrue(TEXT("both ailment tags are in the vocabulary"),
+				  Bleed.IsValid() && Disease.IsValid()))
+	{
+		return false;
+	}
+	FWorn Worn(BleedDuration, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const float Own = UCataclysmSkillEffects::DamageOverTimeNumbers(
+		Worn.ASC(), 100.0f, 8.0f, FGameplayTagContainer(Bleed)).DurationSeconds;
+	const float Other = UCataclysmSkillEffects::DamageOverTimeNumbers(
+		Worn.ASC(), 100.0f, 8.0f, FGameplayTagContainer(Disease)).DurationSeconds;
+	if (TestTrue(TEXT("bleed duration: both ask something"), Own > 0.0f && Other > 0.0f))
+	{
+		TestEqual(TEXT("bleed duration: 100% longer, and only for a bleed"),
+				  Own / Other, 2.0f, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLockRowsTest,
+	"Cataclysm.Enchantments.TheKillAndCritLockRowsLockEverySkillForTheirTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Killing an enemy triggers a 1-2 second global cooldown on all your skills"
+ * and "Critical strikes trigger a 0.5-1 second global cooldown on all your
+ * skills", each worn at the top of its range: 2 seconds and 1 second. Issue
+ * #1833. Each is `skill_locked` flat 1 scaled by the row's own stacks, granted
+ * on its event and lasting the rolled time; the skill template refuses any
+ * skill that is not a basic attack while the lock reads above nought.
+ *
+ * NOT LOCKED BEFORE THE EVENT, locked after it in two slots, still locked just
+ * before the time runs out and free just after it. Each drawback is worn on its
+ * own, so one row's stack cannot be what the other's reading shows.
+ */
+bool FCataclysmSkillLockRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmRowsNowTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	const FName Locked(UCataclysmSkillSlots::LockedStat);
+	const FGameplayTagContainer Movement = SlotTags(TEXT("Slot.Movement"));
+	const FGameplayTagContainer Special = SlotTags(TEXT("Slot.Special"));
+
+	struct FCase
+	{
+		const TCHAR* Drawback;
+		const TCHAR* Event;
+		float Seconds;
+	};
+	for (const FCase& Case : {FCase{KillLock, TEXT("kill"), 2.0f},
+							  FCase{CritLock, TEXT("critical_strike"), 1.0f}})
+	{
+		FWorn Worn(Case.Drawback, false);
+		UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+		if (!TestNotNull(TEXT("a wearer in a world"), ASC))
+		{
+			return false;
+		}
+		UWorld* World = ASC->GetWorld();
+		const auto LockOn = [&](const FGameplayTagContainer& Tags)
+		{
+			return ASC->StatForSkill(Locked, Tags, 0.0f);
+		};
+
+		TestEqual(FString::Printf(TEXT("%s: nothing is locked before a %s"), Case.Event, Case.Event),
+				  LockOn(Movement), 0.0f, 0.001f);
+
+		ASC->ActOnEvent(FName(Case.Event));
+		TestTrue(FString::Printf(TEXT("%s: the movement skill is locked after it"), Case.Event),
+				 LockOn(Movement) > 0.0f);
+		TestTrue(FString::Printf(TEXT("%s: and so is the special skill"), Case.Event),
+				 LockOn(Special) > 0.0f);
+
+		World->TimeSeconds += Case.Seconds - 0.1f;
+		TestTrue(FString::Printf(TEXT("%s: still locked 0.1 s before %.1f s"), Case.Event, Case.Seconds),
+				 LockOn(Movement) > 0.0f);
+
+		World->TimeSeconds += 0.2f;
+		TestEqual(FString::Printf(TEXT("%s: free 0.1 s after %.1f s"), Case.Event, Case.Seconds),
+				  LockOn(Movement), 0.0f, 0.001f);
+	}
 	return true;
 }
 

@@ -975,6 +975,14 @@ float UCataclysmItemModifiers::RolledScaleStep(const FCataclysmEnchantmentEffect
 		: Effect.ScaleStep;
 }
 
+float UCataclysmItemModifiers::RolledStackSeconds(const FCataclysmEnchantmentEffectRow& Effect,
+												  float Roll)
+{
+	return Effect.StackSecondsHigh > Effect.StackSeconds
+		? UCataclysmItemValues::EnchantmentValue(Effect.StackSeconds, Effect.StackSecondsHigh, Roll)
+		: Effect.StackSeconds;
+}
+
 bool UCataclysmItemModifiers::KillCrossesAStep(const FCataclysmItem& Item, int32 KillsBefore,
 											   const UDataTable* EffectTable)
 {
@@ -1089,7 +1097,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				FCataclysmPoolAction Stack;
 				Stack.Event = FName(*Effect->ActionEvent);
 				Stack.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(*Effect);
-				Stack.StackSeconds = Effect->StackSeconds;
+				Stack.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
 				Stack.StackCap = Effect->ScaleMaxSteps;
 				// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
 				Stack.EverySeconds = Effect->EverySeconds;
@@ -1211,7 +1219,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.PlacedKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
-						Action.StackSeconds = Effect->StackSeconds;
+						Action.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
 						Action.StackCap = Effect->ScaleMaxSteps;
 						Action.bPlacedCutsDamage = bDamageRemoved;
 					}

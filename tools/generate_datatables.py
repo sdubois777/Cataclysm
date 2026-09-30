@@ -1619,6 +1619,11 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: with another session. It leaves when the column is added.
 #: FERVOUR COST LEFT with the Skill Slots column, and the table is empty
 #: again.
+#: STACK SECONDS HIGH JOINED ON 2026-09-30 for issue #1833's two skill-lock
+#: rows, built ahead of them while the design workbook is with another
+#: session, and leaves with those rows.
+#: STACK SECONDS HIGH LEFT with the two skill-lock rows, and the table is
+#: empty again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -5541,6 +5546,34 @@ def enchantment_effects(book) -> list[dict]:
                     f"{words[name]!r} do not state as a range, so the hover "
                     f"text would show one step and the effect use another.")
 
+        # THE STACKS' HIGH END, WHEN HOW LONG THEY LAST ROLLS WITH THE VALUE.
+        # Issue #1833, ruled 2026-09-30 under the owner's delegation, following
+        # Scale Step High: "Killing an enemy triggers a 1-2 second global
+        # cooldown on all your skills" states the time as a range, and the
+        # item's roll picks one time where it picks the value. The pair is a
+        # range the sentence states, low end first, and the high end is inside
+        # the bound every stack's time keeps.
+        stack_high_text = clean(_cell(raw, headers, "Stack Seconds High"))
+        stack_seconds_high = 0.0
+        if stack_high_text:
+            stack_seconds_high = number(stack_high_text, "Stack Seconds High", index)
+            if not stack_seconds:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states Stack "
+                    f"Seconds High and no Stack Seconds, so it would be dropped.")
+            if not stack_seconds < stack_seconds_high <= MAX_STACK_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has stacks lasting "
+                    f"{stack_seconds:g} to {stack_seconds_high:g} seconds. The "
+                    f"high end is above Stack Seconds and at most "
+                    f"{MAX_STACK_SECONDS:g}.")
+            if (stack_seconds, stack_seconds_high) not in enchantment_ranges(words[name]):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has stacks lasting "
+                    f"{stack_seconds:g} to {stack_seconds_high:g} seconds, which "
+                    f"its words {words[name]!r} do not state as a range, so the "
+                    f"hover text would show one time and the effect use another.")
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -5563,6 +5596,7 @@ def enchantment_effects(book) -> list[dict]:
             "EverySeconds": every_seconds,
             "EveryNth": every_nth,
             "ScaleStepHigh": scale_step_high,
+            "StackSecondsHigh": stack_seconds_high,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
@@ -5959,6 +5993,14 @@ STATS_WITH_AN_ASKER = frozenset({
     # CataclysmDamageCalculation.cpp asks it through `StatForSkill` on every
     # blow; `ProbeScaledEvasion` measures that with the scale the row carries.
     "evasion",
+    # ADDED 2026-09-30 FOR THE TWO SKILL-LOCK NEGATIVES, issue #1833: "Killing
+    # an enemy triggers a 1-2 second global cooldown on all your skills" and
+    # its critical strike twin, each a row counting its own stacks.
+    # `UCataclysmSkillTemplate::CanActivateAbility` asks it through
+    # `StatForSkill` with the skill's tags before every activation that is not
+    # a basic attack; `ProbeScaledSkillLocked` measures that with the scale the
+    # rows carry.
+    "skill_locked",
     # ADDED 2026-09-25 FOR "You lose 1-4% max resistances for every 100,000 -
     # 500,000 kills", issue #1833, the kill counter.
     # `UCataclysmDamageCalculation::ResistanceCapOf` asks it through

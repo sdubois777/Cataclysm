@@ -1838,7 +1838,8 @@ class TestScaleStepHigh:
               "Value High", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
-              "Every Seconds", "Every Nth", "Scale Step High"]
+              "Every Seconds", "Every Nth", "Scale Step High",
+              "Stack Seconds High"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -1869,6 +1870,71 @@ class TestScaleStepHigh:
     def test_a_high_end_with_no_scale_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="no scale"):
             gen.enchantment_effects(self.book(tmp_path, {"Scale": None, "Scale Step": None}))
+
+
+class TestStackSecondsHigh:
+    """How long stacks last, rolling with the value. Issue #1833, ruled
+    2026-09-30 under the owner's delegation, following Scale Step High:
+    "Killing an enemy triggers a 1-2 second global cooldown on all your
+    skills" states the time as a range, and a row writes it as Stack Seconds
+    and Stack Seconds High so the item's roll picks one time where it picks
+    the value."""
+
+    LOCK = "Negative_Killing_an_enemy_triggers_a_1_2_second_global_co"
+    LOCK_WORDS = "Killing an enemy triggers a 1-2 second global cooldown on all your skills"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        ["Double your energy shield", "Generic", 1, "Stat.Defense.EnergyShield",
+         None, LOCK_WORDS, "Generic", 3, "Stat.Utility.Cooldown"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER + ["Stack Seconds High"]
+
+    def book(self, tmp_path, changes):
+        values = {"Enchantment": self.LOCK, "Effect": self.LOCK_WORDS,
+                  "Stat": "skill_locked", "Value Kind": "flat",
+                  "Value Low": 1, "Value High": 1, "Scale": "own_stacks",
+                  "Scale Step": 1, "Action Event": "kill",
+                  "Scale Max Steps": 1, "Stack Seconds": 1,
+                  "Stack Seconds High": 2}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "stack_seconds_high.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_stated_time_range_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {}))
+        assert (out[0]["StackSeconds"], out[0]["StackSecondsHigh"]) == (1.0, 2.0)
+
+    def test_one_stated_time_carries_no_high_end(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds High": None}))
+        assert (out[0]["StackSeconds"], out[0]["StackSecondsHigh"]) == (1.0, 0.0)
+
+    def test_a_time_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds High": 3}))
+
+    def test_a_high_end_below_the_low_end_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds": 2,
+                                                         "Stack Seconds High": 1}))
+
+    def test_a_high_end_equal_to_the_low_end_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds High": 1}))
+
+    def test_a_high_end_past_the_bound_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, {
+                "Stack Seconds High": gen.MAX_STACK_SECONDS + 1}))
+
+    def test_a_high_end_with_no_stack_seconds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds, so it would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, {
+                "Scale": None, "Scale Step": None, "Action Event": None,
+                "Scale Max Steps": None, "Stack Seconds": None}))
 
 
 class TestEnchantmentEffects:
@@ -1907,7 +1973,8 @@ class TestEnchantmentEffects:
               "Value High", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
-              "Every Seconds", "Every Nth", "Scale Step High"]
+              "Every Seconds", "Every Nth", "Scale Step High",
+              "Stack Seconds High"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1934,7 +2001,8 @@ class TestEnchantmentEffects:
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
             "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
-            "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0}]
+            "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
+            "StackSecondsHigh": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.

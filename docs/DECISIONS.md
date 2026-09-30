@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — The rows written after the survey: +10 maximum resists, bleed duration, and two skill locks whose time rolls with the item
+
+**Affects:** `tools/generate_datatables.py` (the optional column Stack Seconds High and its refusals,
+and `skill_locked` in `STATS_WITH_AN_ASKER`), `game/Source/Cataclysm/Data/CataclysmDataRows.h`
+(`FCataclysmEnchantmentEffectRow::StackSecondsHigh`), `game/Source/Cataclysm/Items/CataclysmItem.cpp` and
+`.h` (`UCataclysmItemModifiers::RolledStackSeconds`, used at both places a Stack Seconds is copied),
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/EnchantmentEffects.csv` and
+`game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (four tests),
+`CataclysmStatExemptionTests.cpp` (the `skill_locked` probe), `CataclysmEnchantmentRollTests.cpp` and
+`CataclysmEnchantmentSetTests.cpp` (the new column in their hand-written tables),
+`CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_generate_datatables.py` (`TestStackSecondsHigh`) and
+`tools/tests/test_enchantment_effects_match_the_row_text.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHERE THESE CAME FROM
+
+A read-only survey of 2026-09-30 classified the 260 enchantment sentences that still had no effect
+row on development `977edde4`. Three could be written with rows alone and four more needed only a
+stat added to `STATS_WITH_AN_ASKER`. The coordinating session accepted doing those first, as one
+change, and ruled the rest of this entry's shape under the owner's delegation.
+
+| Enchantment | Row |
+| :-- | :-- |
+| You have +10 maximum resists | `resistance_cap` flat 10 |
+| Bleed stacks you apply have 50%-100% increased duration | `dot_duration` increased 50 to 100, Required Tags `Keyword.DoT.Bleed` |
+| Killing an enemy triggers a 1-2 second global cooldown on all your skills | `skill_locked` flat 1, scale `own_stacks`, cap 1, on `kill`, Stack Seconds 1 to 2 |
+| Critical strikes trigger a 0.5-1 second global cooldown on all your skills | the same on `critical_strike`, Stack Seconds 0.5 to 1 |
+
+**The bleed sentence keeps its wording.** It is on the one-stack rule's list (#913), but its row is
+the same whichever way it is worded, and rewording a sentence renames its rows; the shipped poison
+duration row kept its wording the same way. Ruled 2026-09-30.
+
+### THE RULINGS, UNDER THE OWNER'S DELEGATION, 2026-09-30
+
+- **A stack's time rolls with the item, through a new column, Stack Seconds High,** following Scale
+  Step High. Without it the item's roll would never reach "1-2 seconds". The generator refuses a high
+  end at or below Stack Seconds, one past the 60-second bound, and a pair the sentence does not state
+  as a range. It sat in `OPTIONAL_COLUMNS` for the engine commit and left with these rows.
+- **The leech and `mana_cost` registrations moved out of this change** to the changes that write rows
+  scaling them. `EveryStatTheDataScalesIsAskedForThroughThePipeline` runs a probe only for a stat the
+  shipped data scales, and nothing scales those yet, so their probes could not have been proved here.
+- **"Each minion reserves 100-500 hp" came out of this change.** Read as lowering maximum health it
+  would have settled a question the survey had left open; it was ruled to be health reservation, its
+  own mechanism and its own change.
+
+**The lock probe uses a Support skill, not an Ultimate,** because the Ultimate's 50 Fervour cost
+(#2166) would have refused the control caster for a reason that is not the lock.
+
+### THREE "HELD" NOTES IN EARLIER ENTRIES ARE OUT OF DATE
+
+Merged entries are not edited, so this says so here.
+
+- **2026-09-23, "A row can ask about the debuffs on its target, …", under "Not written here":** "While
+  leeching, reduce your max resistances by 1%-3% per second" was held because "it needs a
+  maximum-resistance stat, which does not exist". It exists now: `resistance_cap`, asked by
+  `UCataclysmDamageCalculation::ResistanceCapOf` since the kill counter (2026-09-25), and written by the
+  first row above.
+- **2026-09-12, "Nine enchantment rows that name where a hit came from …":** N138 "While stationary
+  you take 20%-35% increased damage from ranged attacks" was held for "a stationary state, which
+  nothing records". The condition `while_stationary` records it now. The row still needs two
+  conditions on one modifier, which the survey counted separately.
+- **2026-08-17, "Critical strike chance is hard-capped at 100% …":** it says a per-character ceiling
+  has "nowhere … to live". The later entry of the same day gave it one, the attribute `MaxCritChance`.
+  What is still missing for "Your critical strike chance cannot exceed 30%-50%" is a stat name that
+  maps to that attribute; measured 2026-09-30, none does.
+
+### A CONFLICT JOIN THAT DROPPED A FUNCTION'S CLOSING, CAUGHT BEFORE ANY BUILD
+
+Moving the engine commit onto development `dafbfb8e` met an append-append conflict at the end of
+`CataclysmEnchantmentEffectTests.cpp`. Both sides' last test ended `return true; }`, and git left
+those lines once, after the markers, so joining development's side and then this one's left
+development's `FCataclysmGadgetEvasionRowTest` with no ending. The lines were restored and the tail
+compared with `git show dafbfb8e:`. `tools/check_resolved_cpp.py` does catch it: on a copy of the
+broken join it printed "1 more { than its partner … 1 files read, 1 with complaints".
+
+The same move regenerated `EnchantmentEffects.csv` rather than merging it: every row equalled
+development's once the new column was removed, and the column was 0.0 on every row.
+
+### THE RUN
+
+On `26a3ad97`, the engine commit moved onto development `819e9ef5` with no conflict;
+`shadow_check` "0 candidate(s) in 5 .cpp file(s)" and `check_resolved_cpp.py` "7 files read, 0 with
+complaints".
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `26a3ad97` | "1 failed, 5552 passed, 8 skipped in 357.40s"; JUnit tests 5561. The failure is the stale CSV hash, predicted because the engine commit regenerates the CSV to add its column |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `92cb4dd7` | the workbook gains Stack Seconds High at U1 and four rows; EnchantmentEffects 390 to 394; `docs/README.md`, `CHECK_TABLE`, and `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` 390 and 312 to 394 and 316 moved; the column leaves `OPTIONAL_COLUMNS` |
+| Python after the rows | "1 failed, 5552 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp" |
+| Stale-asset step | "153 tests performed, 149 succeeded, 4 failed": the asset guard and the resists, bleed and lock row tests, as registered (153 counted by name beforehand) |
+| Asset rebuild `e89a800c` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The four new tests and the scaled-stat test | "5 tests performed, 5 succeeded, 0 failed" |
+| Whole suite, `e89a800c`, in its own command | "2782 tests performed, 2782 succeeded, 0 failed"; 2782 declared, gap 0 |
+| Proof A, the item's roll ignored for a stack's time | PROVED: `AStackTimeStatedAsARangeRollsWithTheItem` failed 2 assertions (the highest roll reading 0.5, the middle roll not between) and `TheKillAndCritLockRowsLockEverySkillForTheirTime` failed 2 ("still locked 0.1 s before 2.0 s" and "before 1.0 s"); restored 2 of 2 |
+| Proof B, a row's own stacks reading 0 | PROVED: `EveryStatTheDataScalesIsAskedForThroughThePipeline` failed 1 assertion, "skill_locked is asked for, so one stack held refuses the same skill"; restored 1 of 1 |
+| Proof C, in a git-archive copy, the generator accepting a high end equal to Stack Seconds | PROVED: only `test_a_high_end_equal_to_the_low_end_is_refused` failed; restored "7 passed" |
+
+---
+
 ## 2026-09-30 — Deployable Part 3: each active gadget raises evasion, counted from the machines a character commands
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (the count of
