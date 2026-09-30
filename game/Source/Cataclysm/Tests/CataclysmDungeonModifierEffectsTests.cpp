@@ -40432,4 +40432,556 @@ bool FCataclysmTithesTakenTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Demonic_Pact_of_Temptation. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives
+// above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName PactRow(UCataclysmDungeonModifierEffects::PactOfTemptationKey);
+	const FName WrathKey(UCataclysmDungeonModifierEffects::PactName(UCataclysmDungeonModifierEffects::PactWrath));
+	const FName HasteKey(UCataclysmDungeonModifierEffects::PactName(UCataclysmDungeonModifierEffects::PactHaste));
+	const FName BulwarkKey(UCataclysmDungeonModifierEffects::PactName(UCataclysmDungeonModifierEffects::PactBulwark));
+	const FName GreedKey(UCataclysmDungeonModifierEffects::PactName(UCataclysmDungeonModifierEffects::PactGreed));
+	const FName BloodKey(UCataclysmDungeonModifierEffects::PactName(UCataclysmDungeonModifierEffects::PactBlood));
+
+	/**
+	 * A dungeon carrying these rows, on floor 2 with its own creatures cleared, a beat taken, and its pact altar placed.
+	 * The offer is pinned by the caller's `FScopedConsoleString`, or drawn.
+	 */
+	ACataclysmDungeonGameMode* APactFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+										  const TArray<FName>& Rows = {PactRow})
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestNotNull(TEXT("a pact altar stands"), Mode->PactAltarNow()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** Goes to this floor, clears its own creatures and takes one beat. */
+	bool TheNextPactFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32 Floor)
+	{
+		if (!Test.TestTrue(FString::Printf(TEXT("floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return true;
+	}
+
+	/** Takes this pact at the floor's altar and lets a beat write it. */
+	bool TakeThePact(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, FName Pact)
+	{
+		if (!Test.TestTrue(FString::Printf(TEXT("the Pact of %s was taken"), *Pact.ToString()),
+						   Mode->ChooseAtFloorObject(Mode->PactAltarNow(), Pact)))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		return true;
+	}
+
+	/** The sum of every dungeon-rule modifier on this stat of the player: a buff and a curse on one stat add. */
+	float PactRulesOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatInputs* Inputs = Player.AbilitySystem->GetStatInputs(FName(Stat));
+		float Sum = 0.0f;
+		if (Inputs)
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				Sum += Modifier.Source == ECataclysmModifierSource::DungeonRule ? Modifier.Value : 0.0f;
+			}
+		}
+		return Sum;
+	}
+
+	/** The pacts' panel line. */
+	FString PactPanel(ACataclysmDungeonGameMode* Mode)
+	{
+		return Mode->LiveCountsForTheFloor().FindRef(PactRow);
+	}
+}
+
+// THE FIGURES: THE FIVE PACTS AS DRAFTED, THREE OFFERED; A BUTTON; GREED'S CURSE ADDS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PactOfTemptationFiguresTheFivePacts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("five pacts"), Effects::PactKinds, 5);
+	TestEqual(TEXT("three offered"), Effects::PactsOffered, 3);
+	TestEqual(TEXT("Wrath: 50% more damage"), Effects::PactWrathDamageMorePercent, 50.0f, 0.001f);
+	TestEqual(TEXT("cursed 10% less maximum health"), Effects::PactWrathMaxHealthLessPercent, 10.0f, 0.001f);
+	TestEqual(TEXT("Haste: 30% more attack and movement speed"), Effects::PactHasteSpeedMorePercent, 30.0f, 0.001f);
+	TestEqual(TEXT("cursed 10 off every resistance"), Effects::PactHasteCurseResistance, 10.0f, 0.001f);
+	TestEqual(TEXT("the Bulwark: +30 resistances"), Effects::PactBulwarkResistance, 30.0f, 0.001f);
+	TestEqual(TEXT("cursed 10% less movement speed"), Effects::PactBulwarkSpeedLessPercent, 10.0f, 0.001f);
+	TestEqual(TEXT("Greed: +50 magic find"), Effects::PactGreedMagicFind, 50.0f, 0.001f);
+	TestEqual(TEXT("cursed: creatures 10% more damage"), Effects::PactGreedCreatureDamagePercent, 10.0f, 0.001f);
+	TestEqual(TEXT("Blood: 50% more damage"), Effects::PactBloodDamageMorePercent, 50.0f, 0.001f);
+	TestEqual(TEXT("cursed 25% less healing"), Effects::PactBloodHealingLessPercent, 25.0f, 0.001f);
+	TestEqual(TEXT("two Pacts of Greed: creatures 20% more"), Effects::PactGreedDamageMultiplier(2), 1.2f, 0.0001f);
+	TestEqual(TEXT("the button"), Effects::PactButtonLabel(Effects::PactWrath),
+			  FString(TEXT("Pact of Wrath: 50% more damage next floor; 10% less maximum health for the dungeon")));
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(FName(Effects::PactOfTemptationKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+// ONE ALTAR ON THE EXIT CELL, OFFERING THREE PACTS, EACH ITS BUTTON; THE PANEL BEFORE ANY IS TAKEN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactAltarTest,
+	"Cataclysm.DungeonModifierEffects.PactOfTemptationAltarStandsOnTheExitOfferingThreePacts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactAltarTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!TestNotNull(TEXT("the offer can be pinned"), Offer.Variable) || !Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Altar = Mode->PactAltarNow();
+	TestEqual(TEXT("on the exit cell"),
+			  static_cast<float>(FVector::Dist2D(Altar->GetActorLocation(), Mode->CurrentFloor->ExitWorld())), 0.0f, 1.0f);
+	TestEqual(TEXT("named"), Altar->DisplayName, FString(TEXT("Pact Altar")));
+	TestEqual(TEXT("placed by the row"), Altar->RuleKey, PactRow);
+	if (TestEqual(TEXT("three pacts offered"), Altar->Choices.Num(), 3))
+	{
+		TestEqual(TEXT("Wrath"), Altar->Choices[0].Key, WrathKey);
+		TestEqual(TEXT("Haste"), Altar->Choices[1].Key, HasteKey);
+		TestEqual(TEXT("the Bulwark"), Altar->Choices[2].Key, BulwarkKey);
+		TestEqual(TEXT("each its button"), Altar->Choices[0].Label, Effects::PactButtonLabel(Effects::PactWrath));
+	}
+	TestEqual(TEXT("the panel"), PactPanel(Mode), FString(TEXT("pact of temptation: no pact taken")));
+	return true;
+}
+
+// THE OFFER, DRAWN: THREE DIFFERENT PACTS, AND NOT THE SAME THREE AS THE FLOOR BEFORE, ON FIVE FLOORS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactOfferTest,
+	"Cataclysm.DungeonModifierEffects.PactOfTemptationOfferIsDifferentEachFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactOfferTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT(""));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	TArray<int32> Before;
+	for (int32 Floor = 2; Floor <= 6; ++Floor)
+	{
+		if (Floor > 2 && !TheNextPactFloor(*this, Mode, Floor))
+		{
+			return false;
+		}
+		const TArray<int32> Now = Mode->PactsOfferedNow();
+		TestEqual(*FString::Printf(TEXT("floor %d offers three"), Floor), Now.Num(), 3);
+		TSet<int32> Distinct;
+		Distinct.Append(Now);
+		TestEqual(*FString::Printf(TEXT("floor %d's are different pacts"), Floor), Distinct.Num(), 3);
+		TestTrue(*FString::Printf(TEXT("floor %d's are not the floor before's"), Floor), Floor == 2 || Now != Before);
+		Before = Now;
+	}
+	return true;
+}
+
+// WRATH: THE CURSE AT ONCE, THE BUFF ON THE NEXT FLOOR ONLY, AND THE CURSE KEPT ACROSS A FLOOR CHANGE WITH NO NEW PACT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactWrathTest,
+	"Cataclysm.DungeonModifierEffects.PactOfWrathBuffsTheNextFloorAndCursesTheDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactWrathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode || !TakeThePact(*this, Mode, WrathKey))
+	{
+		return false;
+	}
+
+	// FLOOR 2, WHERE IT WAS TAKEN: THE CURSE, NOT THE BUFF.
+	TestNull(TEXT("the altar went"), Mode->PactAltarNow());
+	TestEqual(TEXT("one pact taken"), Mode->PactsTakenNow(), 1);
+	TestEqual(TEXT("cursed at once: 10% less maximum health"), PactRulesOn(Player, TEXT("max_health")), -10.0f, 0.001f);
+	TestEqual(TEXT("no damage yet"), PactRulesOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), PactPanel(Mode),
+			  FString(TEXT("pact of temptation: 1 pact taken; next floor: Wrath; curses: -10% health")));
+
+	// FLOOR 3: THE BUFF.
+	if (!TheNextPactFloor(*this, Mode, 3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("this floor's buff"), Mode->PactBuffThisFloor(), Effects::PactWrath);
+	TestEqual(TEXT("50% more attack damage"), PactRulesOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("and spell damage"), PactRulesOn(Player, TEXT("spell_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("the curse is kept"), PactRulesOn(Player, TEXT("max_health")), -10.0f, 0.001f);
+	TestEqual(TEXT("the panel"), PactPanel(Mode),
+			  FString(TEXT("pact of temptation: 1 pact taken; this floor: Wrath; curses: -10% health")));
+
+	// FLOOR 4, NO NEW PACT: THE BUFF IS GONE AND THE CURSE IS PUT BACK AFTER THE FLOOR CHANGE TOOK IT OFF.
+	if (!TheNextPactFloor(*this, Mode, 4))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no buff on floor 4"), PactRulesOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the curse is still there on floor 4"), PactRulesOn(Player, TEXT("max_health")), -10.0f, 0.001f);
+	return true;
+}
+
+// CURSES ADD, THE SAME PACT TWICE INCLUDED; A CLEANSE DOES NOT TAKE THEM; LEAVING THE DUNGEON DOES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactCursesTest,
+	"Cataclysm.DungeonModifierEffects.PactCursesAddAreNotCleansedAndEndWithTheDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactCursesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode || !TakeThePact(*this, Mode, WrathKey) || !TheNextPactFloor(*this, Mode, 3)
+		|| !TakeThePact(*this, Mode, WrathKey))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two pacts taken"), Mode->PactsTakenNow(), 2);
+	TestEqual(TEXT("two Pacts of Wrath: 20% less maximum health"), PactRulesOn(Player, TEXT("max_health")), -20.0f,
+			  0.001f);
+
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	Beat(Mode, 1);
+	TestEqual(TEXT("a cleanse leaves the curses"), PactRulesOn(Player, TEXT("max_health")), -20.0f, 0.001f);
+	TestEqual(TEXT("and the count"), Mode->PactsTakenNow(), 2);
+
+	Mode->LeaveEmpireDungeon();
+	Beat(Mode, 1);
+	TestEqual(TEXT("leaving the dungeon ends them"), PactRulesOn(Player, TEXT("max_health")), 0.0f, 0.001f);
+	TestEqual(TEXT("and the count"), Mode->PactsTakenNow(), 0);
+	TestEqual(TEXT("and the buff owed"), Mode->PactBuffNextFloor(), INDEX_NONE);
+	return true;
+}
+
+// GREED: EVERY CREATURE 10% MORE DAMAGE FROM THE PACT ON, ON ITS OWN KEY, THE NEXT FLOOR'S TOO; +50 MAGIC FIND NEXT FLOOR.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactGreedTest,
+	"Cataclysm.DungeonModifierEffects.PactOfGreedCursesEveryCreatureAndGivesMagicFind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactGreedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("1,2,3"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("an Imp of floor 2"), Imp) || !TakeThePact(*this, Mode, GreedKey))
+	{
+		return false;
+	}
+	TestEqual(TEXT("floor 2's Imp deals 10% more, on the row's own key"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("no magic find yet"), PactRulesOn(Player, TEXT("magic_find")), 0.0f, 0.001f);
+
+	if (!TheNextPactFloor(*this, Mode, 3))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Next = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("an Imp of floor 3"), Next))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("floor 3's Imp deals 10% more"),
+			  Next->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("+50 magic find on floor 3"), PactRulesOn(Player, TEXT("magic_find")), 50.0f, 0.001f);
+	TestEqual(TEXT("the panel"), PactPanel(Mode),
+			  FString(TEXT("pact of temptation: 1 pact taken; this floor: Greed; curses: creatures +10% damage")));
+	return true;
+}
+
+// HASTE, THE BULWARK AND BLOOD ON THREE FLOORS: EACH BUFF ITS NEXT FLOOR ONLY, AND THE CURSES ADDING UP.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactThreeTest,
+	"Cataclysm.DungeonModifierEffects.PactsOfHasteBulwarkAndBloodBuffAndCurseAsDrafted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactThreeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("1,2,4"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	const FString Resistance = FirstResistanceStat();
+	if (!Mode || !TakeThePact(*this, Mode, HasteKey))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Haste's curse at once: 10 off every resistance"), PactRulesOn(Player, *Resistance), -10.0f, 0.001f);
+
+	// FLOOR 3: HASTE'S BUFF; THE BULWARK TAKEN.
+	if (!TheNextPactFloor(*this, Mode, 3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("30% more attack speed"), PactRulesOn(Player, TEXT("attack_speed")), 30.0f, 0.001f);
+	TestEqual(TEXT("30% more movement speed"), PactRulesOn(Player, TEXT("movement_speed")), 30.0f, 0.001f);
+	if (!TakeThePact(*this, Mode, BulwarkKey))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the Bulwark's curse at once: 30% more and 10% less movement speed"),
+			  PactRulesOn(Player, TEXT("movement_speed")), 20.0f, 0.001f);
+
+	// FLOOR 4: THE BULWARK'S BUFF, HASTE'S GONE; BLOOD TAKEN.
+	if (!TheNextPactFloor(*this, Mode, 4))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no attack speed now"), PactRulesOn(Player, TEXT("attack_speed")), 0.0f, 0.001f);
+	TestEqual(TEXT("+30 and -10 on every resistance"), PactRulesOn(Player, *Resistance), 20.0f, 0.001f);
+	TestEqual(TEXT("10% less movement speed"), PactRulesOn(Player, TEXT("movement_speed")), -10.0f, 0.001f);
+	if (!TakeThePact(*this, Mode, BloodKey))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Blood's curse at once: 25% less healing"), PactRulesOn(Player, TEXT("healing_received_reduction")),
+			  25.0f, 0.001f);
+
+	// FLOOR 5: BLOOD'S BUFF, AND ALL THREE CURSES.
+	if (!TheNextPactFloor(*this, Mode, 5))
+	{
+		return false;
+	}
+	TestEqual(TEXT("50% more attack damage"), PactRulesOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("-10 on every resistance"), PactRulesOn(Player, *Resistance), -10.0f, 0.001f);
+	TestEqual(TEXT("10% less movement speed"), PactRulesOn(Player, TEXT("movement_speed")), -10.0f, 0.001f);
+	TestEqual(TEXT("25% less healing"), PactRulesOn(Player, TEXT("healing_received_reduction")), 25.0f, 0.001f);
+	TestEqual(TEXT("the panel"), PactPanel(Mode),
+			  FString(TEXT("pact of temptation: 3 pacts taken; this floor: Blood; curses: -10 resistances, "
+						   "-10% movement speed, -25% healing")));
+	return true;
+}
+
+// AT MOST ONE PACT A FLOOR, AND ONLY ONE OFFERED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactOneTest,
+	"Cataclysm.DungeonModifierEffects.PactOfTemptationAtMostOnePactAFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactOneTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Altar = Mode->PactAltarNow();
+	TestFalse(TEXT("a pact not offered is refused"), Mode->ChooseAtFloorObject(Altar, GreedKey));
+	TestEqual(TEXT("and nothing was taken"), Mode->PactsTakenNow(), 0);
+	if (!TakeThePact(*this, Mode, WrathKey))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a second pact on the same floor is refused"), Mode->ChooseAtFloorObject(Altar, HasteKey));
+	TestEqual(TEXT("one pact taken"), Mode->PactsTakenNow(), 1);
+	TestEqual(TEXT("and the next floor's is Wrath's"), Mode->PactBuffNextFloor(),
+			  UCataclysmDungeonModifierEffects::PactWrath);
+	return true;
+}
+
+// WITH A BLOOD ALTAR AND A TITHE ALTAR, THE PACT ALTAR STANDS ON ANOTHER CELL BESIDE THE EXIT, APART FROM BOTH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactBesideTest,
+	"Cataclysm.DungeonModifierEffects.PactOfTemptationAltarStandsApartFromTheOtherExitAltars",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactBesideTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(
+		*this, World, Player,
+		{FName(UCataclysmDungeonModifierEffects::BloodAltarKey), FName(UCataclysmDungeonModifierEffects::ForcedTithesKey),
+		 PactRow});
+	if (!Mode || !TestNotNull(TEXT("a tithe altar stands too"), Mode->TitheAltarNow()))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor* Floor = Mode->CurrentFloor.Get();
+	const FVector Pact = Mode->PactAltarNow()->GetActorLocation();
+	const FVector Tithe = Mode->TitheAltarNow()->GetActorLocation();
+	TestTrue(TEXT("not on the exit cell, the Blood Altar's"), FVector::Dist2D(Pact, Floor->ExitWorld()) > 1.0f);
+	TestTrue(TEXT("not on the tithe altar's cell"), FVector::Dist2D(Pact, Tithe) > 1.0f);
+
+	bool bOnACellBeside = false;
+	const FIntPoint Exit = Floor->GetPlan().Exit;
+	for (int32 X = -1; X <= 1; ++X)
+	{
+		for (int32 Y = -1; Y <= 1; ++Y)
+		{
+			const FIntPoint Cell = Exit + FIntPoint(X, Y);
+			bOnACellBeside |= (X != 0 || Y != 0) && Floor->GetPlan().IsFloor(Cell)
+				&& FVector::Dist2D(Pact, Floor->WorldOfCell(Cell)) < 1.0f;
+		}
+	}
+	TestTrue(TEXT("on a walkable cell beside the exit"), bOnACellBeside);
+	return true;
+}
+
+// THE DUNGEON'S LAST FLOOR OFFERS NO PACT: FLOOR 1 OF TWO HAS ITS ALTAR, FLOOR 2 NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactLastFloorTest,
+	"Cataclysm.DungeonModifierEffects.PactOfTemptationTheLastFloorHasNoAltar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactLastFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel)
+		{
+			Chosen = Index;
+		}
+	}
+	if (!TestTrue(TEXT("the run has an ordinary dungeon"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// TWO FLOORS, AN ORDINARY SUB-TYPE AND THIS ROW ALONE, as Blood Gates' last-floor test builds one.
+	FCataclysmDungeon& Dungeon = Run->Dungeons[Chosen];
+	Dungeon.Floors = 2;
+	Dungeon.SubType = ECataclysmDungeonSubType::None;
+	Dungeon.Modifiers = {PactRow};
+	if (!TestTrue(TEXT("the dungeon was entered"), Mode->EnterEmpireDungeon(Dungeon.DungeonId)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("floor 1 is not the last"), Mode->IsOnTheLastFloor());
+	TestNotNull(TEXT("and it has an altar"), Mode->PactAltarNow());
+
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("floor 2 is the last"), Mode->IsOnTheLastFloor());
+	TestNull(TEXT("and it has none"), Mode->PactAltarNow());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
