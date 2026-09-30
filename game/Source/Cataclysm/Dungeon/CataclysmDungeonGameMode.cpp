@@ -10011,6 +10011,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForMortalDecay(Notice);
 	NoteDeathForWastingSickness(Notice);
 	NoteDeathForSporeClouds(Notice);
+	NoteDeathForContagiousTouch(Notice);
 	NoteDeathForHellfire(Notice);
 	NoteDeathForDemonPrince(Notice);
 	NoteDeathForEpidemic(Notice);
@@ -11423,6 +11424,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	NoteHitForWastingSickness(Notice);
 	NoteHitForCarrionFeast(Notice);
 	NoteHitForBrandOfTheAggressor(Notice);
+	NoteHitForContagiousTouch(Notice);
 	NoteHitForHolyRepercussions(Notice);
 	NoteHitForTheReaper(Notice);
 	NoteHitForPlagueConvergence(Notice);
@@ -11996,6 +11998,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
 	}
 
+	// AND CONTAGIOUS TOUCH: the stacks the player carries and what each hit costs. Issues #1820 and #41.
+	const FName Contagion(Effects::ContagiousTouchKey);
+	if (FloorBrief.Modifiers.Contains(Contagion))
+	{
+		const int32 Stacks = ContagionStacksNow();
+		Counting.Add(Contagion, FString::Printf(TEXT("contagious touch: %d stacks, hits cost %d%% of the target's health"),
+												Stacks,
+												FMath::RoundToInt(Stacks * Effects::ContagiousTouchPercentPerStack)));
+	}
+
 	// AND VOID PARASITE: how many voidlings the player carries, and what clears them. Issues #1820 and #41.
 	const FName Parasite(Effects::VoidParasiteKey);
 	if (FloorBrief.Modifiers.Contains(Parasite))
@@ -12506,6 +12518,107 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	}
 
 	return Counting;
+}
+
+ACataclysmDungeonGameMode* ACataclysmDungeonGameMode::InWorld(UWorld* World)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+	for (TActorIterator<ACataclysmDungeonGameMode> It(World); It; ++It)
+	{
+		return *It;
+	}
+	return nullptr;
+}
+
+bool ACataclysmDungeonGameMode::ContagiousTouchIsOn() const
+{
+	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::ContagiousTouchKey));
+}
+
+int32 ACataclysmDungeonGameMode::ContagionStacksNow() const
+{
+	// EVERY LIVING CREATURE IN THE WORLD, NOT ONLY THE FLOOR'S LIST, so a creature a rule raised counts as any other.
+	int32 Stacks = 0;
+	UWorld* World = GetWorld();
+	if (!World || !ContagiousTouchIsOn())
+	{
+		return Stacks;
+	}
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It))
+		{
+			Stacks += It->ContagionStacksApplied;
+		}
+	}
+	return Stacks;
+}
+
+void ACataclysmDungeonGameMode::NoteContagiousTouch(ACataclysmEnemyCharacter* Toucher)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Toucher) || !ContagiousTouchIsOn())
+	{
+		return;
+	}
+	const int32 Added = Effects::ContagiousTouchStacksAdded(ContagionStacksNow());
+	Toucher->ContagionStacksApplied += Added;
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForContagiousTouch(const FCataclysmDeathNotice& Notice)
+{
+	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (ContagiousTouchIsOn() && Fallen && Fallen->ContagionStacksApplied > 0)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteHitForContagiousTouch(const FCataclysmHitNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// BRAND OF THE AGGRESSOR'S THREE CHECKS, as ruled: a blow that landed, struck by the player, on a creature. A
+	// minion's hit is credited to the minion, so it does not count; the row says "When you hit an enemy".
+	if (!ContagiousTouchIsOn() || Notice.Landed <= 0.0f)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	const ACataclysmEnemyCharacter* Struck = Cast<ACataclysmEnemyCharacter>(Notice.Target);
+	if (!Player || Notice.Attacker != Player || !Struck)
+	{
+		return;
+	}
+
+	// EVERY STACK CARRIED, OF THE STRUCK CREATURE'S MAXIMUM HEALTH: "a percentage of their total health as damage for
+	// every stack". A blow that killed a creature that applied stacks has already removed them.
+	const int32 Stacks = ContagionStacksNow();
+	const UAbilitySystemComponent* StruckSystem = Struck->GetAbilitySystemComponent();
+	const float Retaliation = StruckSystem
+		? Effects::ContagiousTouchRetaliation(
+			StruckSystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), Stacks)
+		: 0.0f;
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (Retaliation <= 0.0f || !Source || UCataclysmSkillEffects::IsDead(Player))
+	{
+		return;
+	}
+
+	// FROM THE FLOOR'S HAZARD SOURCE, SO IT IS NEVER HEARD AS THE PLAYER'S OWN HIT and cannot feed itself. TYPED AS THE
+	// ROW, as Raw Sewage's burn is (`DungeonGameModeTypeOfRow(Effects::RawSewageKey)` in `StepRawSewage`). AN AREA
+	// BLOW, so it cannot be evaded, as Brand of the Aggressor's nova is; not damage over time, so a shield meets it.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::ContagiousTouchKey);
+	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Retaliation, Delivery);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
