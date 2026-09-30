@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — A renamed enchantment row keeps its saved items: a name alias, and the 13 rewords the owner approved
+
+**Affects:** the new `game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.h` and `.cpp`
+(`FCataclysmEnchantmentRenames`), `game/Source/Cataclysm/Save/CataclysmSaveStorage.cpp` (`FromJson`),
+`tools/generate_datatables.py` (`enchantment_aliases`), `tools/tests/enchantment_row_names.txt`,
+`tools/tests/test_a_reword_must_not_rename_a_row.py`, the new
+`tools/tests/test_every_enchantment_alias_points_at_a_current_row.py`, the new
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentRenameTests.cpp` (two tests),
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/EnchantmentsPositive.csv` and
+`EnchantmentsNegative.csv`, `game/Content/Data/DT_EnchantmentsPositive.uasset` and
+`DT_EnchantmentsNegative.uasset` (regenerated), and `game/Data/datatable_asset_sources.json`. Issues
+[#1799](https://github.com/sdubois777/Cataclysm/issues/1799) and
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### THE OWNER'S DECISION, 2026-09-30
+
+Asked directly, answering #1799: **build a name alias.** An enchantment's row name is the first 48
+characters of its sentence, and a dropped item stores that name, so a reword that renames a row would
+leave every saved item carrying the old name with an enchantment that finds nothing, silently. The
+scope was ruled the same day under the owner's delegation: one table, old name to new, applied where
+a saved record's items are loaded; the past renames and these rewords together; a save-load test; a
+rename must carry an alias line; a target that is not a current row, and a chain, are refused.
+
+### WHAT WAS BUILT
+
+- **The table, `FCataclysmEnchantmentRenames::Aliases()`**, 31 lines: 18 past renames and 13 rewords.
+- **Applied in `FCataclysmSaveStorage::FromJson`**, after a record's fields are read, by a walk over
+  its `SaveGame` fields that goes into nested structs and arrays of structs and points every
+  `FCataclysmRolledEnchantment` at its current row. There is no in-play path that loads a character
+  record yet, and `FromJson` is the one door every future load goes through; a walk rather than a
+  list of fields, so a record shape added later is covered.
+- **The name only is carried, and nothing can land out of range.** An item stores where its roll
+  landed inside the range, `PositiveRoll` and `NegativeRoll` from 0 to 1, not the number. So an aliased
+  item reads the same place against the new row's range: the old retaliation row's item, rolled for
+  "5%-10%", reads inside the new "2%-4%". Nothing is clamped because nothing needs to be.
+- **A rename is written twice, and a test holds the two together.** The pin file writes a renamed row
+  `old -> new`; `test_the_pin_s_renames_are_the_alias_table` requires those lines and the C++ table to
+  hold the same pairs. `test_every_enchantment_alias_points_at_a_current_row.py` refuses a target that
+  is not a current row, a target that is itself renamed, and an old name still in use, on the real
+  table and on made-up ones.
+
+### THE PAST RENAMES WERE EIGHTEEN, NOT SIXTEEN
+
+Rebuilt by walking both enchantment tables' history and pairing rows by position: 15 in `b628582e`
+(the "critical hits" to "critical strikes" pass, #660), then in `10243aa6` (#1512) a number inside the
+first 48 characters of the retaliation row and two reworded class-point rows. The test's docstring and
+the pin file's header said sixteen; the two class-point pairs share neither a long opening nor a long
+ending, so the test's pairing helper does not pair them. Both now say eighteen, with the reason.
+
+**No alias for two deleted rows,** which have no successor: the block-against-area-damage row
+(`b620c049`) and the two minion-count rows merged into one (`261a4b2a`). #1799's own example of a
+minion row renamed to "reduced HP" never landed; the table still has "less hp".
+
+### THE 13 REWORDS
+
+The owner approved them as drafted on 2026-09-30. Eleven counted stacks the one-stack rule does not
+allow; the rest said something the engine already does.
+
+| Old sentence | New sentence |
+| :-- | :-- |
+| Poison stacks on an enemy reduce their damage output by 2%-4% per stack | Poisoned enemies deal 2%-4% less damage |
+| Enemies with 5 or more bleed stacks take 20%-40% increased damage from all sources | Bleeding enemies take 20%-40% increased damage from all sources |
+| Critical strikes apply 2-4 additional bleed stacks | Your critical strikes always cause bleeding |
+| When an enemy dies with bleed stacks the stacks spread to the nearest enemy within 5 meters | When a bleeding enemy dies, its bleed spreads to the nearest enemy within 5 metres |
+| Enemies with 5 or more poison stacks are slowed by 30%-50% | Poisoned enemies are slowed by 30%-50% |
+| Your bleed stacks also reduce enemy movement speed by 5%-10% per stack | Bleeding enemies move 5%-10% slower |
+| Every time you apply a DOT, instead add 2-4 stacks | Your damage over time effects deal 50%-100% more damage |
+| Necrosis stacks reduce enemy maximum HP by 1%-2% per stack | Enemies with Necrosis have 1%-2% less maximum health |
+| Each void splinter stack on an enemy increases your damage against them by 3%-5% | You deal 3%-5% more damage to an enemy carrying a void splinter |
+| Your energy shield absorbs 10%-20% of HP damage before your HP is affected | 10%-20% of bleed damage you take is taken from your energy shield instead of your health |
+| Your movement abilities no longer share a cooldown | Your movement ability has 2 charges |
+| Your melee skills have 20%-40% increased reach | Your melee skills have +0.5-1 metre reach |
+| You cannot cure or reduce bleed stacks on yourself (negative) | Bleeding on you lasts 50%-100% longer |
+
+**One renamed a row renamed before.** "Critical strikes apply 2-4 additional bleed stacks" was itself
+the target of a "critical hits" rename. Its earlier line's target was edited to the new name rather
+than chained, so both old names point straight at `Positive_Your_critical_strikes_always_cause_bleeding`,
+and the pin file writes that row with both old names on one line.
+
+None of the 13 has an effect row yet, so no effect changes.
+
+### THE RUN
+
+On `b9cee4a8`, the engine commit moved onto development `c6f779b1` with no conflict; `shadow_check`
+"0 candidate(s) in 3 .cpp file(s)" and `check_resolved_cpp.py` "4 files read, 0 with complaints".
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `b9cee4a8` | "5559 passed, 8 skipped in 350.56s"; JUnit tests 5567, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rewords commit `f28471a8` | 13 sentences reworded (A141, A181-A183, A290, A307, A42, A145, A293, A97, A203, A272 and F99), 13 alias lines and 13 pin lines; the alias table reads 31 |
+| Python after the rewords | "1 failed, 5558 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.9.cpp" |
+| Stale-asset step | "158 tests performed, 157 succeeded, 1 failed": the asset guard, as registered (158 counted by name beforehand) |
+| Asset rebuild `ace1171b` | only the two enchantment tables' assets and `datatable_asset_sources.json` |
+| The two new tests | "2 tests performed, 2 succeeded, 0 failed" |
+| Whole suite, `ace1171b`, in its own command | "2802 tests performed, 2802 succeeded, 0 failed"; 2802 declared, gap 0 |
+| Proof A, the `RenameIn` call removed from `FromJson` | PROVED: `AnItemSavedUnderAnOldEnchantmentNameLoadsUnderItsNewRow` failed 2 assertions, the positive and the negative name each reading its old name; restored 6 of 6 |
+| Proof B, the walk's array branch removed | PROVED: the round trip's same 2, and `TheRenameWalkChangesOnlyRenamedNamesAndCountsThem`'s "one renamed name moves" (0 against 1) and "to its current row"; restored 6 of 6 |
+| Proof C, in a git-archive copy, the chain refusal removed | PROVED: only `test_the_checks_refuse_each_mistake` failed; restored "2 passed" |
+
+---
+
 ## 2026-09-30 — A minion killed without exploding stops at once and is removed half a second later, gadgets included; a second death no longer explodes it again
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` and `.h`
