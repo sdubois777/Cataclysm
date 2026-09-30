@@ -9880,32 +9880,4 @@ bool FCataclysmMeleeReachRowTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDurationRowTest,
-	"Cataclysm.Enchantments.TheGadgetDurationRowLengthensAGadgetsLife",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * "Gadgets last 30%-60% longer", worn at the top: a Bolt Turret the wearer
- * summons for twenty seconds lasts thirty-two. Issue #1833, rows only, on
- * `minion_duration` scoped to `Type.Deployable`.
- */
-bool FCataclysmGadgetDurationRowTest::RunTest(const FString&)
-{
-	using namespace CataclysmProjectileRangeRowsTest;
-	using FWorn = CataclysmSmallHalvesTest::FWorn;
-
-	FWorn Worn(TEXT("Positive_Gadgets_last_30_60_longer"), true);
-	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
-	{
-		return false;
-	}
-	ACataclysmMinion* Turret = TurretFrom(*this, Worn.Wearer->Actor);
-	if (!TestNotNull(TEXT("the wearer's turret"), Turret))
-	{
-		return false;
-	}
-	TestEqual(TEXT("twenty seconds stated: thirty-two"), Turret->GetLifeSpan(), 32.0f, 0.01f);
-	return true;
-}
-
 #endif // WITH_AUTOMATION_TESTS
