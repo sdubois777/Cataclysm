@@ -1236,6 +1236,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsAChaosSpawn = false;
 
+	/** Whether a planted War Banner's waves brought this creature; it says "Assailant". Issues #1820 and #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsABannerAssailant = false;
+
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.

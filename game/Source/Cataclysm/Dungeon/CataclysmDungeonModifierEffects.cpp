@@ -227,6 +227,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PandorasBoxKey =
 const TCHAR* UCataclysmDungeonModifierEffects::InfernalBeaconsKey =
 	TEXT("Demonic_Infernal_Beacons");
 
+const TCHAR* UCataclysmDungeonModifierEffects::WarBannerKey =
+	TEXT("War_War_Banner");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -600,6 +603,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(BattlefieldRelicsKey)
 		|| RowKey == FName(PandorasBoxKey)
 		|| RowKey == FName(InfernalBeaconsKey)
+		|| RowKey == FName(WarBannerKey)
 		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
 		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -837,6 +841,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(BattlefieldRelicsKey),
 		FName(PandorasBoxKey),
 		FName(InfernalBeaconsKey),
+		FName(WarBannerKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
@@ -1340,6 +1345,18 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.RelicResistancePercent);
 	}
 
+	// AND A PLANTED WAR BANNER'S AURA, while the player stands inside: a More on attack and spell damage, and points on
+	// each resistance, a Flat as Warzone's are. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.BannerDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.BannerDamageMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.BannerResistancePercent);
+	}
+
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
 	//
@@ -1784,6 +1801,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("%.0f more to every resistance from a relic of the bulwark"),
 									Effects.RelicResistancePercent));
+	}
+	if (Effects.BannerDamageMorePercent > 0.0f || Effects.BannerResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and %.0f more to every resistance inside a war banner's aura"),
+									Effects.BannerDamageMorePercent, Effects.BannerResistancePercent));
 	}
 	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
 	{

@@ -1658,6 +1658,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// and #41.
 		PlaceTheInfernalBeacons();
 
+		// AND WAR BANNER, FOR THE SAME REASON: a new arena's banner, and the last one's hold forgotten. Issues #1820 and
+		// #41.
+		PlaceTheWarBanner();
+
 		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
 		// waves keep them. Issues #1820 and #41.
 		ForgetTheShadowLights();
@@ -8089,6 +8093,162 @@ void ACataclysmDungeonGameMode::StepInfernalBeacons(
 	}
 }
 
+ACataclysmFloorObject* ACataclysmDungeonGameMode::WarBannerNow() const
+{
+	ACataclysmFloorObject* Banner = WarBanner.Get();
+	return IsValid(Banner) ? Banner : nullptr;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BannerAssailantsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : BannerAssailants)
+	{
+		ACataclysmEnemyCharacter* Assailant = One.Get();
+		if (IsValid(Assailant) && !UCataclysmSkillEffects::IsDead(Assailant))
+		{
+			Standing.Add(Assailant);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheWarBanner()
+{
+	if (ACataclysmFloorObject* Banner = WarBanner.Get())
+	{
+		Banner->Destroy();
+	}
+	if (ACataclysmGroundZone* Zone = WarBannerZone.Get())
+	{
+		Zone->Destroy();
+	}
+	WarBanner = nullptr;
+	WarBannerZone = nullptr;
+	bWarBannerPlanted = false;
+	WarBannerAt = FVector::ZeroVector;
+	WarBannerHeldSeconds = 0.0f;
+	WarBannerSecondsSinceWave = 0.0f;
+	bWarBannerHeld = false;
+	BannerAssailants.Reset();
+	WarBannerPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheWarBanner()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheWarBanner();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::WarBannerKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::WarBannerPerHordeArena : Effects::WarBannerPerFloor;
+	for (ACataclysmFloorObject* Banner : PlaceFloorObjects(FName(Effects::WarBannerKey), Count, TEXT("War Banner"),
+														   TEXT("A war banner, furled. Plant it here and hold the ground around it.")))
+	{
+		FCataclysmFloorObjectChoice Plant;
+		Plant.Key = FName(Effects::WarBannerPlant);
+		Plant.Label = FString::Printf(TEXT("Plant the banner: +%d%% damage and +%d resistance within %d m; hold it %d s "
+										   "through the waves to double it"),
+									  FMath::RoundToInt(Effects::WarBannerDamageMorePercent),
+									  FMath::RoundToInt(Effects::WarBannerResistance),
+									  FMath::RoundToInt(Effects::WarBannerRadiusCm / 100.0f),
+									  FMath::RoundToInt(Effects::WarBannerHoldSeconds));
+		Banner->Choices = {Plant};
+		WarBanner = Banner;
+	}
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtWarBanner(ACataclysmFloorObject* Banner, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Banner) || Banner != WarBanner.Get() || ChoiceKey != FName(Effects::WarBannerPlant))
+	{
+		return false;
+	}
+	// PLANTED WHERE IT STANDS; the zone is drawn and the hold counted on the beat. The floor object goes: it has nothing
+	// more to offer.
+	WarBannerAt = Banner->GetActorLocation();
+	bWarBannerPlanted = true;
+	UE_LOG(LogCataclysm, Log, TEXT("War Banner: planted on floor %d"), FloorNumber);
+	Banner->Destroy();
+	WarBanner = nullptr;
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepWarBanner(ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	bool bInside = false;
+	if (bWarBannerPlanted)
+	{
+		// THE ZONE, DRAWN WHEREVER IT IS MISSING, as Grim Totems' are.
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(GetWorld());
+		if (Source && !WarBannerZone.Get())
+		{
+			WarBannerZone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, WarBannerAt, WarBannerAt, Effects::WarBannerRadiusCm, 0.0f, /*bAffectsEveryone=*/false,
+				/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::WarBannerKey));
+		}
+		bInside = FVector::Dist2D(Player->GetActorLocation(), WarBannerAt) <= Effects::WarBannerRadiusCm;
+
+		// THE HOLD, COUNTED ONLY WHILE THE PLAYER IS INSIDE AND NEVER RESET; A WAVE EVERY STRETCH OF IT, THEN HELD.
+		if (bInside && !bWarBannerHeld)
+		{
+			WarBannerHeldSeconds += SecondsBetweenWaveChecks;
+			WarBannerSecondsSinceWave += SecondsBetweenWaveChecks;
+			if (WarBannerSecondsSinceWave >= Effects::WarBannerWaveEverySeconds - KINDA_SMALL_NUMBER)
+			{
+				WarBannerSecondsSinceWave = 0.0f;
+				for (ACataclysmEnemyCharacter* Assailant : BringCreaturesNear(WarBannerAt, Effects::WarBannerWaveAwayCm,
+																			  Effects::WarBannerWaveSize, /*FixedRung=*/-1,
+																			  Effects::TheReaperSightMultiplier))
+				{
+					Assailant->bIsABannerAssailant = true;
+					BannerAssailants.Add(Assailant);
+				}
+				UE_LOG(LogCataclysm, Log, TEXT("War Banner: a wave came on floor %d, %.0f s held"), FloorNumber,
+					   WarBannerHeldSeconds);
+			}
+			if (WarBannerHeldSeconds >= Effects::WarBannerHoldSeconds - KINDA_SMALL_NUMBER)
+			{
+				bWarBannerHeld = true;
+				UE_LOG(LogCataclysm, Log, TEXT("War Banner: held on floor %d; the waves stop"), FloorNumber);
+			}
+		}
+	}
+
+	// THE AURA, INSIDE ONLY, DOUBLED ONCE HELD; written when it changed.
+	const float Damage = !bInside ? 0.0f
+		: bWarBannerHeld ? Effects::WarBannerHeldDamageMorePercent : Effects::WarBannerDamageMorePercent;
+	const float Resistance = !bInside ? 0.0f
+		: bWarBannerHeld ? Effects::WarBannerHeldResistance : Effects::WarBannerResistance;
+	if (!FMath::IsNearlyEqual(Damage, WarBannerDamageApplied) || !FMath::IsNearlyEqual(Resistance, WarBannerResistanceApplied))
+	{
+		WarBannerDamageApplied = Damage;
+		WarBannerResistanceApplied = Resistance;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	const int32 Key = (WarBannerNow() ? 1 : 0) + (bWarBannerPlanted ? 10 : 0) + (bWarBannerHeld ? 100 : 0)
+		+ FMath::CeilToInt(WarBannerHeldSeconds) * 1000;
+	if (Key != WarBannerPanelKey)
+	{
+		WarBannerPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::PlaceTheTotems()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -8160,6 +8320,10 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	if (Object->RuleKey == FName(Effects::InfernalBeaconsKey))
 	{
 		return ChooseAtInfernalBeacon(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::WarBannerKey))
+	{
+		return ChooseAtWarBanner(Object, ChoiceKey);
 	}
 	return false;
 }
@@ -9343,6 +9507,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheInfernalBeacons();
 	InfernalBeaconStacks = 0;
 	InfernalBeaconStacksApplied = 0;
+	ForgetTheWarBanner();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -9907,6 +10072,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bInfernalBeacons =
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::InfernalBeaconsKey))
 		|| InfernalBeaconStacks > 0 || InfernalBeaconStacksApplied > 0;
+	// AND WAR BANNER, ON EVERY FLOOR CARRYING IT, AND WHILE ITS AURA IS ON THE CHARACTER. Issues #1820 and #41.
+	const bool bWarBanner = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::WarBannerKey))
+		|| WarBannerDamageApplied > 0.0f || WarBannerResistanceApplied > 0.0f;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -9945,6 +10113,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bBattlefieldRelics
 		&& !bPandorasBox
 		&& !bInfernalBeacons
+		&& !bWarBanner
 		&& !bObsidianSarcophagi && !bShadowyEnemies)
 	{
 		return;
@@ -10301,6 +10470,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bInfernalBeacons)
 	{
 		StepInfernalBeacons(Player, AbilitySystem);
+	}
+
+	// AND WAR BANNER, WHICH COUNTS THE HOLD, BRINGS THE WAVES AND WRITES THE AURA. Issues #1820 and #41.
+	if (bWarBanner)
+	{
+		StepWarBanner(Player, AbilitySystem);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -11324,6 +11499,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	Effects.RelicSpeedMorePercent = RelicHasteApplied > 0.0f ? UCataclysmDungeonModifierEffects::BattlefieldRelicsHasteSpeedMorePercent
 															 : 0.0f;
 	Effects.RelicResistancePercent = RelicBulwarkApplied;
+	// AND A PLANTED WAR BANNER'S AURA, while the player stands inside. Issues #1820 and #41.
+	Effects.BannerDamageMorePercent = WarBannerDamageApplied;
+	Effects.BannerResistancePercent = WarBannerResistanceApplied;
 	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
 
 	// AND WHAT JUDGMENT IS TAKING OFF ONE RESISTANCE. Issues #1820 and #41. Read
@@ -13372,6 +13550,23 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 									FMath::CeilToInt(GrimEmbraceLeft));
 		}
 		Counting.Add(Totems, Line);
+	}
+
+	// AND WAR BANNER: whether it is planted, how long is left to hold, and what the aura gives inside. Issues #1820 and
+	// #41.
+	const FName Banner(Effects::WarBannerKey);
+	if (FloorBrief.Modifiers.Contains(Banner))
+	{
+		Counting.Add(Banner, !bWarBannerPlanted
+			? FString(TEXT("war banner: not planted"))
+			: bWarBannerHeld
+			? FString::Printf(TEXT("war banner: held; +%d%% damage, +%d resistances inside"),
+							  FMath::RoundToInt(Effects::WarBannerHeldDamageMorePercent),
+							  FMath::RoundToInt(Effects::WarBannerHeldResistance))
+			: FString::Printf(TEXT("war banner: planted, %d s to hold; +%d%% damage, +%d resistances inside"),
+							  FMath::CeilToInt(Effects::WarBannerHoldSeconds - WarBannerHeldSeconds),
+							  FMath::RoundToInt(Effects::WarBannerDamageMorePercent),
+							  FMath::RoundToInt(Effects::WarBannerResistance)));
 	}
 
 	// AND INFERNAL BEACONS: how many this dungeon has activated and what they give, on a floor carrying the row or once
@@ -15565,6 +15760,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		RelicHasteApplied = 0.0f;
 		RelicBulwarkApplied = 0.0f;
 		BattlefieldRelicsPanelKey = -1;
+
+		// AND A WAR BANNER'S AURA ENDS WITH THE FLOOR; its zone went with the rules' others and is drawn again on the
+		// next beat while the banner stands on this arena. Issues #1820 and #41.
+		WarBannerDamageApplied = 0.0f;
+		WarBannerResistanceApplied = 0.0f;
+		WarBannerZone = nullptr;
+		WarBannerPanelKey = -1;
 
 		// AND LEECH SPORES FORGETS ITS CLOUDS, which are already destroyed -- see the
 		// top of this function. Nothing else to clear: a cloud's drain is done the

@@ -37247,4 +37247,215 @@ bool FCataclysmInfernalDungeonTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// War_War_Banner. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BannerRow(UCataclysmDungeonModifierEffects::WarBannerKey);
+	const FName PlantKey(UCataclysmDungeonModifierEffects::WarBannerPlant);
+
+	/** A dungeon carrying only War Banner, on floor 2 with its own creatures cleared and its banner placed. */
+	ACataclysmDungeonGameMode* ABannerFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {BannerRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestNotNull(TEXT("a banner stands"), Mode->WarBannerNow()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** Puts the player at this point, measured flat, at the player's own height. */
+	void StandAt(const FPossessedPlayer& Player, const FVector& Where)
+	{
+		Player.Character->SetActorLocation(FVector(Where.X, Where.Y, Player.Character->GetActorLocation().Z));
+	}
+}
+
+// THE FIGURES: ONE A FLOOR; 12 M; +20%/+15 INSIDE, +40%/+30 ONCE HELD; 60 S HELD; FOUR EVERY 15 S AT 15 M.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerFiguresTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerFiguresAuraHoldAndWaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one a floor"), Effects::WarBannerPerFloor, 1);
+	TestEqual(TEXT("one on a Horde arena"), Effects::WarBannerPerHordeArena, 1);
+	TestEqual(TEXT("12 m across"), Effects::WarBannerRadiusCm, 1200.0f, 0.001f);
+	TestEqual(TEXT("20% more damage inside"), Effects::WarBannerDamageMorePercent, 20.0f, 0.001f);
+	TestEqual(TEXT("+15 resistance inside"), Effects::WarBannerResistance, 15.0f, 0.001f);
+	TestEqual(TEXT("40% once held"), Effects::WarBannerHeldDamageMorePercent, 40.0f, 0.001f);
+	TestEqual(TEXT("+30 once held"), Effects::WarBannerHeldResistance, 30.0f, 0.001f);
+	TestEqual(TEXT("held after 60 s"), Effects::WarBannerHoldSeconds, 60.0f, 0.001f);
+	TestEqual(TEXT("a wave every 15 s"), Effects::WarBannerWaveEverySeconds, 15.0f, 0.001f);
+	TestEqual(TEXT("of four"), Effects::WarBannerWaveSize, 4);
+	TestEqual(TEXT("15 m from the banner"), Effects::WarBannerWaveAwayCm, 1500.0f, 0.001f);
+	return true;
+}
+
+// ONE BANNER, AWAY FROM THE ENTRANCE, OFFERING TO BE PLANTED, WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerStandsTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerStandsToBePlanted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerStandsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmFloorObject* Banner = Mode->WarBannerNow();
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Banner->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+	TestEqual(TEXT("named"), Banner->DisplayName, FString(TEXT("War Banner")));
+	TestEqual(TEXT("placed by the row"), Banner->RuleKey, BannerRow);
+	if (TestEqual(TEXT("one choice"), Banner->Choices.Num(), 1))
+	{
+		TestEqual(TEXT("to plant it"), Banner->Choices[0].Key, PlantKey);
+	}
+	TestFalse(TEXT("not planted yet"), Mode->WarBannerIsPlanted());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BannerRow), FString(TEXT("war banner: not planted")));
+	return true;
+}
+
+// PLANTED WHERE IT STANDS: ITS AREA IS DRAWN; INSIDE, 20% MORE DAMAGE AND +15 RESISTANCE; OUTSIDE, NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerAuraTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerPlantedGivesItsAuraInsideAndNothingOutside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerAuraTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->WarBannerNow()->GetActorLocation();
+	const int32 ZonesBefore = ZonesOnTheFloor(World);
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("planted"), Mode->WarBannerIsPlanted());
+	TestNull(TEXT("the banner to plant went"), Mode->WarBannerNow());
+
+	StandAt(Player, At);
+	Beat(Mode, 1);
+	const FString Resistance = FirstResistanceStat();
+	TestEqual(TEXT("its area is drawn"), ZonesOnTheFloor(World), ZonesBefore + 1);
+	TestEqual(TEXT("inside: 20% more attack damage"), TotemRuleOn(Player, TEXT("attack_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("and spell damage"), TotemRuleOn(Player, TEXT("spell_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("and +15 resistance"), TotemRuleOn(Player, *Resistance), 15.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BannerRow),
+			  FString(TEXT("war banner: planted, 60 s to hold; +20% damage, +15 resistances inside")));
+
+	StandAt(Player, At + FVector(2000.0f, 0.0f, 0.0f));
+	Beat(Mode, 1);
+	TestEqual(TEXT("outside: no more damage"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("and no resistance"), TotemRuleOn(Player, *Resistance), 0.0f, 0.001f);
+	return true;
+}
+
+// HELD: A WAVE OF FOUR EVERY 15 S INSIDE; OUTSIDE THE HOLD PAUSES AND NO WAVE COMES; AT 60 S THE WAVES STOP AND THE AURA
+// DOUBLES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerHeldTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerHeldThroughTheWavesDoublesItsAura",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerHeldTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->WarBannerNow()->GetActorLocation();
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	StandAt(Player, At);
+
+	Beat(Mode, BeatsFor(Effects::WarBannerWaveEverySeconds) - 1);
+	TestEqual(TEXT("no wave at 14.75 s"), Mode->BannerAssailantsStanding().Num(), 0);
+	Beat(Mode, 1);
+	const TArray<ACataclysmEnemyCharacter*> First = Mode->BannerAssailantsStanding();
+	TestEqual(TEXT("four at 15 s"), First.Num(), Effects::WarBannerWaveSize);
+	for (const ACataclysmEnemyCharacter* Assailant : First)
+	{
+		TestTrue(TEXT("\"Assailant\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Assailant).Contains(TEXT("Assailant")));
+		TestTrue(TEXT("raised by the rule"), Assailant->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Assailant->PaysForItsDeath());
+	}
+
+	// OUTSIDE FOR 20 S: THE HOLD PAUSES, NOT RESET, AND NO WAVE COMES.
+	StandAt(Player, At + FVector(2000.0f, 0.0f, 0.0f));
+	Beat(Mode, BeatsFor(20.0f));
+	TestEqual(TEXT("outside, the hold pauses"), Mode->WarBannerSecondsHeld(), 15.0f, 0.01f);
+	TestEqual(TEXT("and no wave comes"), Mode->BannerAssailantsStanding().Num(), Effects::WarBannerWaveSize);
+
+	// INSIDE AGAIN FOR THE REST OF THE 60 S: THREE MORE WAVES, THEN HELD.
+	StandAt(Player, At);
+	Beat(Mode, BeatsFor(Effects::WarBannerHoldSeconds - Effects::WarBannerWaveEverySeconds));
+	TestTrue(TEXT("held at 60 s"), Mode->WarBannerIsHeld());
+	TestEqual(TEXT("four waves in all"), Mode->BannerAssailantsStanding().Num(), 4 * Effects::WarBannerWaveSize);
+	Beat(Mode, 1);
+	TestEqual(TEXT("40% more damage inside"), TotemRuleOn(Player, TEXT("attack_damage")), 40.0f, 0.001f);
+	TestEqual(TEXT("+30 resistance inside"), TotemRuleOn(Player, *FirstResistanceStat()), 30.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BannerRow),
+			  FString(TEXT("war banner: held; +40% damage, +30 resistances inside")));
+
+	Beat(Mode, BeatsFor(20.0f));
+	TestEqual(TEXT("the waves have stopped"), Mode->BannerAssailantsStanding().Num(), 4 * Effects::WarBannerWaveSize);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
