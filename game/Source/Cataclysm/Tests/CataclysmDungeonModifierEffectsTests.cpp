@@ -37935,4 +37935,83 @@ bool FCataclysmFamishedBeastsRungTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A CARRION FEEDER THAT ATE A DROP AND RISES A RUNG KEEPS BOTH SHARES ON THE NEW RUNG'S MAXIMUM, AND CARRION FEAST'S
+// RECORD IS TAKEN AGAIN: the next carcass moves its maximum by 1.2 / 1.1 exactly. Its kind is drawn at random, so it is
+// measured against itself.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsFeederRungTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAFeederThatRisesARungKeepsBothShares",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsFeederRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {CarrionRow, FamishedRow});
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: a feeder"), Mode->CarrionFeedersNow().Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Feeder = Mode->CarrionFeedersNow()[0];
+	ADropAt(World, Feeder->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: the feeder ate a drop"), Feeder->DropsEaten, 1))
+	{
+		return false;
+	}
+
+	// WOUNDED, AND THE FLOOR NOW CARRIES VOLATILE EVOLUTION: IT RISES A RUNG ON THE NEXT BEAT.
+	const int32 RungBefore = Feeder->RarityStep;
+	const float MaximumBefore = MaxHealthOf(Feeder);
+	Feeder->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), MaximumBefore * 0.1f);
+	const FName Volatile(Effects::VolatileEvolutionKey);
+	Mode->FloorBrief.Modifiers.Add(Volatile);
+	Beat(Mode, 1);
+	Mode->FloorBrief.Modifiers.Remove(Volatile);
+	if (!TestTrue(TEXT("set-up: the feeder rose a rung"), Feeder->RarityStep > RungBefore))
+	{
+		return false;
+	}
+	const float OnTheNewRung = MaxHealthOf(Feeder);
+	TestEqual(TEXT("its drop's key is kept"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+
+	// A SECOND CARCASS EATEN: CARRION FEAST WRITES FROM ITS RECORD, WHICH MUST BE THE NEW RUNG'S.
+	if (!SlayForACarcass(*this, World, Mode, Player, true, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: two carcasses eaten"), Mode->CarrionFeastStacksNow(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("both shares were on the new rung's maximum, and Carrion Feast's record is the new rung's"),
+			  MaxHealthOf(Feeder), OnTheNewRung / Effects::CarrionFeastMultiplier(1) * Effects::CarrionFeastMultiplier(2),
+			  0.5f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

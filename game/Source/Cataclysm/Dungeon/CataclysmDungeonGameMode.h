@@ -2721,6 +2721,14 @@ private:
 	 */
 	void StrengthenTheEater(ACataclysmEnemyCharacter* Eater, bool bFreshBlock = false);
 
+	/**
+	 * After a rung change has written a creature's whole stat block over, put the floor rules' health shares back on
+	 * the new rung's maximum: a Carrion feeder's, with Carrion Feast's own record taken again from that maximum, and
+	 * the drops it ate for Famished Beasts. Called by Volatile Evolution and Blood-Forged Champions right after the
+	 * rung is written, before the pools are held to the new maximum. Issues #1820 and #41.
+	 */
+	void PutTheHealthSharesBack(ACataclysmEnemyCharacter* Creature);
+
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
 
