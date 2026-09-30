@@ -137,6 +137,23 @@ public:
 	int32 SwingOnce(float DamagePercent = -1.0f);
 
 	/**
+	 * The stat that turns every melee arc into a full circle. Issue #1515's
+	 * deferred clause: `Ravager_keystone_spine_002` Every Swing Lands, "and your
+	 * melee arc is a full circle rather than a cone." A flag: the node's row sets
+	 * it to one.
+	 */
+	static const TCHAR* MeleeArcFullCircleStat;
+
+	/**
+	 * The width, in degrees, this swing picks its targets across: the row's
+	 * `Angle`, or 360 for a melee skill whose caster holds
+	 * `MeleeArcFullCircleStat`. Ruled 2026-09-30 under the owner's delegation:
+	 * every melee swing, the basic attack included, with its target limit
+	 * unchanged and no damage taken off; a spell's cone is never widened.
+	 */
+	float ArcDegrees() const;
+
+	/**
 	 * Drive the weapon into the ground and leave it standing. Public so a test
 	 * can drive it without waiting for a swing.
 	 *

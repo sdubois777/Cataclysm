@@ -316,6 +316,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// rises as an imp for it, read by UCataclysmRisenImps::CurserOf. A flag:
 		// the Ritualist's starting node sets it to one. Issue #1479.
 		TEXT("curse_death_raises_imp"),
+		// Whether this character's melee swings pick their targets across a
+		// full circle, read by UCataclysmStrikeSkill::ArcDegrees. A flag: Every
+		// Swing Lands' second row sets it to one. Issue #1515.
+		TEXT("melee_arc_full_circle"),
 		// How far a Ritualist's minions draw nearby enemies off their summoner,
 		// and how many minions that takes. Both read by
 		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil

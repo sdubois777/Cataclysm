@@ -10009,17 +10009,26 @@ bool FCataclysmPassiveEverySwingOnARealCharacterTest::RunTest(const FString&)
 	const FName Node(TEXT("Ravager_keystone_spine_002"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
-	if (!TestEqual(TEXT("Every Swing Lands grants one stat"), Effects.Num(), 1))
+	// TWO ROWS SINCE THE ARC WAS BUILT, one per clause, so the evasion row is
+	// found by its stat rather than by its place. Issue #1515.
+	if (!TestEqual(TEXT("Every Swing Lands grants two stats"), Effects.Num(), 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is whether melee evasion is refused"),
-			  Effects[0]->Stat,
-			  FString(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat));
-	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+	const FCataclysmPassiveEffectRow* const* Found = Effects.FindByPredicate(
+		[](const FCataclysmPassiveEffectRow* Row)
+		{
+			return Row->Stat == FString(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat);
+		});
+	if (!TestNotNull(TEXT("one of them is whether melee evasion is refused"), Found))
+	{
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Evasion = *Found;
+	TestEqual(TEXT("stated as a flat flag"), Evasion->ValueKind,
 			  FString(TEXT("flat")));
-	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
-	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+	TestEqual(TEXT("of one"), Evasion->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition"), Evasion->Condition,
 			  FString());
 
 	const FGameplayAttribute Flag = Combat::GetMeleeEvasionSuppressedAttribute();
@@ -15639,6 +15648,331 @@ bool FCataclysmPassiveOverreachOnARealCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("and with the point given back, no further"),
 			  UCataclysmBasicAttack::ReachCmOf(Player.AbilitySystem), Unspent,
 			  0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Every Swing Lands' second clause, the full-circle melee arc. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmMeleeArcTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	const FName EverySwingLands(TEXT("Ravager_keystone_spine_002"));
+
+	/** A real Ravager, with or without Every Swing Lands, read from its rows. */
+	void Hold(FRealCharacter& Player, bool bTaken)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (bTaken)
+		{
+			Allocation.Add(EverySwingLands, 1);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/** A creature that takes blows and never dies of them. */
+	ACataclysmEnemyCharacter* Enemy(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(1000000.0f);
+			Made->SetAttackDamage(0.0f);
+		}
+		return Made;
+	}
+
+	float HealthOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute())
+					  : 0.0f;
+	}
+
+	/** Where the swing points with no cursor: the character's own facing. */
+	FVector Facing(const AActor* Actor)
+	{
+		FVector Forward = Actor->GetActorForwardVector();
+		Forward.Z = 0.0f;
+		return Forward.GetSafeNormal();
+	}
+
+	/** A 60-degree swing granted to the real player, scoped by the tag cell. */
+	UCataclysmStrikeSkill* GrantSwing(FRealCharacter& Player, const TCHAR* TagCell)
+	{
+		const FGameplayAbilitySpecHandle Handle = Player.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy,
+			/*Level=*/100, Player.Character);
+		FGameplayAbilitySpec* Spec = Player.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmStrikeSkill* Skill =
+			Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = TEXT("Test Swing");
+			Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=60"));
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		}
+		return Skill;
+	}
+
+	/** The basic attack an equipped weapon granted, or null. */
+	UCataclysmStrikeSkill* BasicAttackOf(const FRealCharacter& Player)
+	{
+		for (const FGameplayAbilitySpec& Spec : Player.AbilitySystem->GetActivatableAbilities())
+		{
+			UCataclysmStrikeSkill* Skill = Cast<UCataclysmStrikeSkill>(Spec.GetPrimaryInstance());
+			if (Skill && Skill->Slot == ECataclysmAbilitySlot::BasicAttack)
+			{
+				return Skill;
+			}
+		}
+		return nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeArcRowsTest,
+	"Cataclysm.MeleeArc.EverySwingLandsGrantsBothItsRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_spine_002` Every Swing Lands: "Your melee attacks cannot be
+ * evaded, and your melee arc is a full circle rather than a cone." One row for
+ * each clause, read from the built effect table.
+ */
+bool FCataclysmMeleeArcRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmMeleeArcTest;
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		return false;
+	}
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, EverySwingLands);
+	if (!TestEqual(TEXT("Every Swing Lands carries two rows"), Effects.Num(), 2))
+	{
+		return false;
+	}
+	TSet<FString> Stats;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		Stats.Add(Row->Stat);
+	}
+	TestTrue(TEXT("one says melee attacks cannot be evaded"),
+			 Stats.Contains(TEXT("melee_evasion_suppressed")));
+	TestTrue(TEXT("and one makes the melee arc a full circle"),
+			 Stats.Contains(FString(UCataclysmStrikeSkill::MeleeArcFullCircleStat)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeArcHitsBehindTest,
+	"Cataclysm.MeleeArc.AMeleeSwingHitsAnEnemyBehindARealRavagerHoldingEverySwingLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMeleeArcHitsBehindTest::RunTest(const FString&)
+{
+	using namespace CataclysmMeleeArcTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete()))
+	{
+		return false;
+	}
+	UCataclysmStrikeSkill* Swing = GrantSwing(Player, TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: a 60-degree melee swing is granted"), Swing))
+	{
+		return false;
+	}
+
+	const FVector Here = Player.Character->GetActorLocation();
+	const FVector Ahead = Facing(Player.Character);
+	ACataclysmEnemyCharacter* Front = Enemy(World, Here + Ahead * 150.0f);
+	ACataclysmEnemyCharacter* Behind = Enemy(World, Here - Ahead * 150.0f);
+	if (!TestNotNull(TEXT("set-up: an enemy in front"), Front)
+		|| !TestNotNull(TEXT("set-up: and one behind"), Behind))
+	{
+		return false;
+	}
+
+	Hold(Player, false);
+	if (!TestEqual(TEXT("without the node, the swing hits the one in front only"),
+				   Swing->SwingOnce(), 1))
+	{
+		return false;
+	}
+
+	Hold(Player, true);
+	const float BehindBefore = HealthOf(Behind);
+	TestEqual(TEXT("with Every Swing Lands, it hits both"), Swing->SwingOnce(), 2);
+	TestTrue(TEXT("including the one behind"), HealthOf(Behind) < BehindBefore);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeArcSpellTest,
+	"Cataclysm.MeleeArc.ASpellConeIsNotWidenedByEverySwingLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Your MELEE arc": a spell's cone stays a cone, ruled 2026-09-30. */
+bool FCataclysmMeleeArcSpellTest::RunTest(const FString&)
+{
+	using namespace CataclysmMeleeArcTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete()))
+	{
+		return false;
+	}
+	UCataclysmStrikeSkill* Spell = GrantSwing(Player, TEXT("Type.Spell"));
+	if (!TestNotNull(TEXT("set-up: a 60-degree spell cone is granted"), Spell))
+	{
+		return false;
+	}
+
+	const FVector Here = Player.Character->GetActorLocation();
+	const FVector Ahead = Facing(Player.Character);
+	if (!TestNotNull(TEXT("set-up: an enemy in front"), Enemy(World, Here + Ahead * 150.0f))
+		|| !TestNotNull(TEXT("set-up: and one behind"), Enemy(World, Here - Ahead * 150.0f)))
+	{
+		return false;
+	}
+
+	Hold(Player, true);
+	TestEqual(TEXT("with Every Swing Lands, a spell cone still hits the one in front only"),
+			  Spell->SwingOnce(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeArcBasicAttackTest,
+	"Cataclysm.MeleeArc.ARealRavagersBasicAttackTakesALoneEnemyBehindIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** The basic attack is a melee arc, ruled 2026-09-30, and it holds one target. */
+bool FCataclysmMeleeArcBasicAttackTest::RunTest(const FString&)
+{
+	using namespace CataclysmMeleeArcTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	UCataclysmWeaponSlotsComponent* Slots = Player.Character
+		? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>()
+		: nullptr;
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete())
+		|| !TestNotNull(TEXT("and weapon slots"), Slots))
+	{
+		return false;
+	}
+	Slots->EquipWeaponType(TEXT("Sword"));
+	UCataclysmStrikeSkill* Basic = BasicAttackOf(Player);
+	const float Reach = UCataclysmBasicAttack::ReachCmOf(Player.AbilitySystem);
+	if (!TestNotNull(TEXT("set-up: the Sword grants a strike as its basic attack"), Basic)
+		|| !TestTrue(TEXT("set-up: which reaches"), Reach > 0.0f)
+		|| !TestTrue(TEXT("set-up: and is a cone narrower than a circle"),
+					 Basic->Params.AngleDegrees < 360.0f))
+	{
+		return false;
+	}
+
+	const FVector Here = Player.Character->GetActorLocation();
+	const FVector Ahead = Facing(Player.Character);
+	ACataclysmEnemyCharacter* Behind = Enemy(World, Here - Ahead * (Reach * 0.6f));
+	if (!TestNotNull(TEXT("set-up: a lone enemy behind"), Behind))
+	{
+		return false;
+	}
+
+	Hold(Player, false);
+	TestEqual(TEXT("without the node, the basic attack finds nothing in front"),
+			  Basic->SwingOnce(), 0);
+
+	Hold(Player, true);
+	const float Before = HealthOf(Behind);
+	TestEqual(TEXT("with Every Swing Lands, it takes the enemy behind"), Basic->SwingOnce(), 1);
+	TestTrue(TEXT("and hurts it"), HealthOf(Behind) < Before);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeArcTargetLimitTest,
+	"Cataclysm.MeleeArc.TheBasicAttacksOneTargetStillHoldsInAFullCircle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** MaxTargets is unchanged, ruled 2026-09-30: the nearer of two is the one hit. */
+bool FCataclysmMeleeArcTargetLimitTest::RunTest(const FString&)
+{
+	using namespace CataclysmMeleeArcTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	UCataclysmWeaponSlotsComponent* Slots = Player.Character
+		? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>()
+		: nullptr;
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete())
+		|| !TestNotNull(TEXT("and weapon slots"), Slots))
+	{
+		return false;
+	}
+	Slots->EquipWeaponType(TEXT("Sword"));
+	UCataclysmStrikeSkill* Basic = BasicAttackOf(Player);
+	const float Reach = UCataclysmBasicAttack::ReachCmOf(Player.AbilitySystem);
+	if (!TestNotNull(TEXT("set-up: the Sword grants a strike as its basic attack"), Basic)
+		|| !TestEqual(TEXT("set-up: which takes one target"), Basic->Params.MaxTargets, 1))
+	{
+		return false;
+	}
+
+	const FVector Here = Player.Character->GetActorLocation();
+	const FVector Ahead = Facing(Player.Character);
+	ACataclysmEnemyCharacter* NearBehind = Enemy(World, Here - Ahead * (Reach * 0.4f));
+	ACataclysmEnemyCharacter* FarAhead = Enemy(World, Here + Ahead * (Reach * 0.8f));
+	if (!TestNotNull(TEXT("set-up: an enemy near, behind"), NearBehind)
+		|| !TestNotNull(TEXT("set-up: and one further off, in front"), FarAhead))
+	{
+		return false;
+	}
+
+	Hold(Player, true);
+	const float NearBefore = HealthOf(NearBehind);
+	const float FarBefore = HealthOf(FarAhead);
+	TestEqual(TEXT("with Every Swing Lands, the basic attack still hits one"),
+			  Basic->SwingOnce(), 1);
+	TestTrue(TEXT("the nearer, behind"), HealthOf(NearBehind) < NearBefore);
+	TestEqual(TEXT("and not the one in front"), HealthOf(FarAhead), FarBefore, 0.01f);
 	return true;
 }
 

@@ -3370,6 +3370,54 @@ namespace CataclysmStatExemptionTest
 					  UCataclysmRisenImps::CurserOf(FlaggedVictim.Actor) == Flagged.Actor);
 	}
 
+	/**
+	 * `melee_arc_full_circle`, asked by `UCataclysmStrikeSkill::ArcDegrees`. Every
+	 * Swing Lands, issue #1515. Two fighters, one holding the flag, each with the
+	 * same 60-degree melee swing, so neither answer can be the other's.
+	 */
+	void ProbeMeleeArcFullCircle(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Flagged(World, /*AttackDamage=*/0.0f);
+		GrantFlat(Flagged.Actor, UCataclysmStrikeSkill::MeleeArcFullCircleStat, 1.0f);
+
+		const auto MeleeSwing = [&Test](FScopedFighter& Who) -> UCataclysmStrikeSkill*
+		{
+			const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy,
+				/*Level=*/1, Who.Actor);
+			FGameplayAbilitySpec* Spec = Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+			UCataclysmStrikeSkill* Skill =
+				Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=60"));
+				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+			}
+			Test.TestNotNull(TEXT("set-up: a melee swing is granted"), Skill);
+			return Skill;
+		};
+		const UCataclysmStrikeSkill* PlainSwing = MeleeSwing(Plain);
+		const UCataclysmStrikeSkill* FlaggedSwing = MeleeSwing(Flagged);
+		if (!PlainSwing || !FlaggedSwing)
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("a swing without melee_arc_full_circle keeps its 60 degrees"),
+					   PlainSwing->ArcDegrees(), 60.0f, 0.001f);
+		Test.TestEqual(TEXT("and one holding it is a full circle, so ArcDegrees really "
+							"reads melee_arc_full_circle"),
+					   FlaggedSwing->ArcDegrees(), 360.0f, 0.001f);
+	}
+
 	/** `potions_forbidden`, asked by `UCataclysmPotions::Drink`. Hard Mode. */
 	void ProbePotionsForbidden(FAutomationTestBase& Test)
 	{
@@ -3652,6 +3700,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("knockback_suppressed"), &ProbeSetStance},
 			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
 			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
+			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},
 			{TEXT("potion_kill_charges_less_percent"), &ProbePotionKillChargesLess},
 			{TEXT("potion_heal_less_percent_per_drink"), &ProbePotionHealLessPerDrink},
 			{TEXT("minion_held_longest_becomes_your_equal"), &ProbeSecondSelf},
