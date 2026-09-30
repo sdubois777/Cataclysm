@@ -2,6 +2,75 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Deployable Part 3: each active gadget raises evasion, counted from the machines a character commands
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (the count of
+deployable machines commanded), `CataclysmStatPipeline.cpp` and `.h` (the scale `deployables_active`
+and `FCataclysmStatConditions::DeployablesActive`), `tools/generate_datatables.py` (the scale's bounds,
+and `evasion` in `STATS_WITH_AN_ASKER`), `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/EnchantmentEffects.csv` and `game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json`, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(one test), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (the evasion probe),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` and
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED
+
+- **A character's state counts the deployable machines it commands.** Of the things
+  `UCataclysmCommand::ThingsCommandedBy` returns, only an `ACataclysmMinion` whose `IsDeployable()`
+  is true is counted, so an imp commanded beside two ballistae adds nothing. The count is the scale
+  `deployables_active`, bounded 0 to 20.
+- **Evasion is asked through the pipeline.** `DefenderStat` in `CataclysmDamageCalculation.cpp`
+  already asked `evasion` through `StatForSkill`; it joins `STATS_WITH_AN_ASKER` so a scaled row on it
+  is accepted, and `ProbeScaledEvasion` measures the ask: with the evasion roll pinned at 25, a
+  defender at 20 is hit, and with one ballista commanded and a row of 50% increased per machine it
+  stands at 30 and the same blow is evaded.
+
+| Enchantment | Row |
+| :-- | :-- |
+| Each active gadget increases your evasion chance by 5%-10% | `evasion` increased 5 to 10, scale `deployables_active` step 1 |
+
+**Written as increased,** as "While moving, your evasion chance is increased by 10%-20%" already is.
+
+### THE PROOF GATE WAS READ THIS TIME
+
+The two gate proofs in deployable Parts 1 and 2 could not fail, because a Required Tags filter after
+the gate refused the imp on its own. Before registering proof A here, the code after the
+`IsDeployable()` check was read: the count goes straight into the scale, and no tag filter follows
+it. The proof failed as registered.
+
+### ONE REGISTERED FIGURE WAS WRONG BEFORE THE WINDOW
+
+The first registration said two new Unreal tests, counting `EveryStatTheDataScalesIsAskedForThroughThePipeline`,
+which already existed and only gains the evasion probe. `unreal_build.declared_tests()` on
+development's source and on this branch gave 2772 and 2773, the one added test being
+`TheGadgetEvasionRowCountsEachMachineCommanded`. The whole-suite figure was corrected to 2773 before
+the window opened.
+
+### THE RUN
+
+On `eb6638a1`, the engine commit moved onto development `7c2fed74`, with no conflict;
+`shadow_check` "0 candidate(s) in 4 .cpp file(s)" and `tools/check_resolved_cpp.py` "5 files read, 0
+with complaints".
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `eb6638a1` | "5546 passed, 8 skipped in 341.45s"; JUnit tests 5554, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Rows commit `032c350c` | EnchantmentEffects 389 to 390 rows; five pins moved: `docs/README.md` 389 to 390, `CHECK_TABLE` 389 to 390, `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` 389 and 311 to 390 and 312, `BUILT_AHEAD_OF_THEIR_ROWS` emptied, `EXPECTED_NAMED_BY_A_ROW` 30 to 31 |
+| Python after the rows | "1 failed, 5545 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp" |
+| Stale-asset step | "149 tests performed, 147 succeeded, 2 failed": the asset guard and the new test, as registered (149 counted by name beforehand) |
+| Asset rebuild `3f9b1146` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The new test and the scaled-stat test | "2 tests performed, 2 succeeded, 0 failed" |
+| Whole suite, `3f9b1146`, in its own command | "2773 tests performed, 2773 succeeded, 0 failed"; 2773 declared, gap 0 |
+| Proof A, every commanded minion counted as a machine | PROVED: `TheGadgetEvasionRowCountsEachMachineCommanded` failed 1 assertion, "and an imp beside them adds nothing", reading 0.3 against 0.2; restored "1 tests performed, 1 succeeded" |
+| Proof C, the `deployables_active` scale returning 0 | PROVED: `EveryStatTheDataScalesIsAskedForThroughThePipeline` failed 1 assertion, "evasion is asked for, so a machine commanded turns a hit into an evade: hit then hit"; restored 1 of 1. This is also the evidence that the evasion probe runs once the asset scales evasion |
+
+---
+
 ## 2026-09-26 — Carrion Feast: a slain creature leaves a carcass that becomes a carrion feeder after 10 seconds unless fire burns it, and every carcass eaten makes the feeders 10% stronger; the purification altars wait on the interaction screen
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
