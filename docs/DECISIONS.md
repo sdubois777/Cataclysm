@@ -83,8 +83,16 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `In
 - `InfernalBeaconsOneStandsOfferingActivate`: away from the entrance, named, placed by the row, one "Activate", the panel.
 - `InfernalBeaconsActivatingOneStrengthensCreaturesAndGivesMagicFind`: the beacon goes, one stack; an Imp of the floor
   deals 10% more on the row's own key; the player has 10 magic find; the panel.
-- `InfernalBeaconsTheStacksLastTheDungeon`: a beacon on floor 2 and another on floor 3 make two stacks: 20% more on
-  floor 3's Imp and 20 magic find; leaving the dungeon clears the stacks and the magic find.
+- `InfernalBeaconsTheStacksLastTheDungeon`: a beacon on floor 2; floor 3, before its own is activated, keeps 10 magic
+  find; the second makes two stacks: 20% more on floor 3's Imp and 20 magic find; leaving the dungeon clears the stacks
+  and the magic find.
+
+**A FAULT FOUND BY READING, BEFORE ANY WINDOW, AND FIXED ON THIS BRANCH** as the coordinating session ruled. A floor
+change replaces the player's floor modifiers wholesale in `ApplyFloorRulesToPlayer`, and the beat wrote the magic find
+again only when the stacks moved, so a floor on which no beacon was activated left the player none for the rest of the
+dungeon. `InfernalBeaconStacksApplied` is now reset there, as March of Progress resets its armour, and the test above
+checks floor 3 before its beacon. The test as first written could not see it: it activated a second beacon on floor 3,
+which moved the stacks.
 
 Two Python checks: the row still says "each floor contains an infernal beacon", "stacking power score buff", "per beacon
 activated" and "stacking magic find buff"; and its setter writes its own key of the damage map.

@@ -39607,6 +39607,12 @@ bool FCataclysmInfernalDungeonTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->ClearFloorEnemies();
+
+	// THE FIRST STACK'S MAGIC FIND IS KEPT ON A FLOOR WHERE NONE HAS BEEN ACTIVATED YET: the floor change replaced the
+	// player's floor modifiers wholesale, and the beat puts it back.
+	Beat(Mode, 1);
+	TestEqual(TEXT("floor 3 keeps 10 magic find"), TotemRuleOn(Player, TEXT("magic_find")), 10.0f, 0.001f);
+
 	if (!TestEqual(TEXT("a new beacon on floor 3"), Mode->InfernalBeaconsNow().Num(), 1)
 		|| !TestTrue(TEXT("the second activated"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))
 	{
