@@ -1773,6 +1773,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// arena's creatures. Issues #1820 and #41.
 		PlaceTheBoxes();
 
+		// AND CARRION FEAST'S PURIFICATION ALTAR, FOR THE SAME REASON: a new arena's altar, and the last arena's
+		// consecration forgotten. Issues #1820 and #41.
+		PlaceTheAltar();
+
 		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
 		// waves keep them. Issues #1820 and #41.
 		ForgetTheShadowLights();
@@ -7440,11 +7444,112 @@ void ACataclysmDungeonGameMode::NoteHitForCarrionFeast(const FCataclysmHitNotice
 	{
 		return;
 	}
-	// MARKED, AND REMOVED ON THE NEXT BEAT rather than destroyed inside the blow that is still resolving on it.
+	BurnTheCarcass(Index);
+}
+
+void ACataclysmDungeonGameMode::BurnTheCarcass(int32 Index)
+{
+	if (!CarrionCarcassSeconds.IsValidIndex(Index) || CarrionCarcassSeconds[Index] < 0.0f)
+	{
+		return;
+	}
+	// MARKED, AND REMOVED ON THE NEXT BEAT rather than destroyed inside the blow that is still resolving on it. THE ONE
+	// BURN, whether fire or a consecrated altar did it, as ruled: the altar reuses this rather than a copy.
 	CarrionCarcassSeconds[Index] = -1.0f;
 	UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: a carcass burned on floor %d"), FloorNumber);
 	RefreshFloorModifierPanel();
 }
+
+bool ACataclysmDungeonGameMode::AltarConsecrates(const FVector& Where) const
+{
+	return bAltarConsecrated
+		&& FVector::Dist2D(AltarAt, Where) <= UCataclysmDungeonModifierEffects::CarrionFeastAltarRadiusCm;
+}
+
+int32 ACataclysmDungeonGameMode::BurnTheConsecratedCarcasses()
+{
+	int32 Burned = 0;
+	for (int32 Index = 0; Index < CarrionCarcasses.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Carcass = CarrionCarcasses[Index].Get();
+		if (IsValid(Carcass) && CarrionCarcassSeconds.IsValidIndex(Index) && CarrionCarcassSeconds[Index] >= 0.0f
+			&& AltarConsecrates(Carcass->GetActorLocation()))
+		{
+			BurnTheCarcass(Index);
+			++Burned;
+		}
+	}
+	return Burned;
+}
+
+ACataclysmFloorObject* ACataclysmDungeonGameMode::PurificationAltarNow() const
+{
+	ACataclysmFloorObject* Altar = PurificationAltar.Get();
+	return IsValid(Altar) ? Altar : nullptr;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheAltar()
+{
+	if (ACataclysmFloorObject* Altar = PurificationAltar.Get())
+	{
+		Altar->Destroy();
+	}
+	if (ACataclysmGroundZone* Zone = AltarZone.Get())
+	{
+		Zone->Destroy();
+	}
+	PurificationAltar = nullptr;
+	AltarZone = nullptr;
+	bAltarConsecrated = false;
+	AltarAt = FVector::ZeroVector;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheAltar()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheAltar();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::CarrionFeastKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::CarrionFeastAltarsPerHordeArena : Effects::CarrionFeastAltarsPerFloor;
+	for (ACataclysmFloorObject* Altar : PlaceFloorObjects(FName(Effects::CarrionFeastKey), Count, TEXT("Purification Altar"),
+														  TEXT("An altar of cleansing light. Consecrating it burns the dead around it.")))
+	{
+		FCataclysmFloorObjectChoice Consecrate;
+		Consecrate.Key = FName(Effects::CarrionFeastConsecrate);
+		Consecrate.Label = FString::Printf(TEXT("Consecrate: every carcass within %d m burns, now and for the rest of the floor"),
+										   FMath::RoundToInt(Effects::CarrionFeastAltarRadiusCm / 100.0f));
+		Altar->Choices = {Consecrate};
+		PurificationAltar = Altar;
+	}
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtPurificationAltar(ACataclysmFloorObject* Altar, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Altar) || Altar != PurificationAltar.Get() || ChoiceKey != FName(Effects::CarrionFeastConsecrate))
+	{
+		return false;
+	}
+	AltarAt = Altar->GetActorLocation();
+	bAltarConsecrated = true;
+
+	// EVERY CARCASS LYING INSIDE BURNS AT ONCE; the zone is drawn on the next beat and kept drawn for the floor.
+	const int32 BurnedNow = BurnTheConsecratedCarcasses();
+	UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: the purification altar consecrated on floor %d, %d carcass(es) burned"),
+		   FloorNumber, BurnedNow);
+
+	// THE ALTAR GOES.
+	Altar->Destroy();
+	PurificationAltar = nullptr;
+	RefreshFloorModifierPanel();
+	return true;
+}
+
 
 void ACataclysmDungeonGameMode::StepCarrionFeast()
 {
@@ -7453,6 +7558,20 @@ void ACataclysmDungeonGameMode::StepCarrionFeast()
 	if (!CurrentFloor || !CurrentFloor->IsBuilt())
 	{
 		return;
+	}
+
+	// A CONSECRATED AREA: ITS ZONE DRAWN WHEREVER IT IS MISSING, and a carcass that fell inside burned on this beat.
+	if (bAltarConsecrated)
+	{
+		UWorld* World = GetWorld();
+		ACataclysmFloorHazardSource* Source = World ? ACataclysmFloorHazardSource::ForFloor(World) : nullptr;
+		if (Source && !AltarZone.Get())
+		{
+			AltarZone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, AltarAt, AltarAt, UCataclysmDungeonModifierEffects::CarrionFeastAltarRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/FName(TEXT("Celestial")));
+		}
+		BurnTheConsecratedCarcasses();
 	}
 
 	bool bChanged = false;
@@ -8778,6 +8897,10 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	{
 		return ChooseAtPandorasBox(Object, ChoiceKey);
 	}
+	if (Object->RuleKey == FName(Effects::CarrionFeastKey))
+	{
+		return ChooseAtPurificationAltar(Object, ChoiceKey);
+	}
 	return false;
 }
 
@@ -9962,6 +10085,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheTotems();
 	ForgetTheRelics();
 	ForgetTheBoxes();
+	ForgetTheAltar();
 
 	// THE RUN IS OVER, AND WHAT THE PLAYER COMMANDED ENDS WITH IT. Issue
 	// #1202, ruled 2026-09-30. Their Fervour reserves go with them, because
@@ -14063,9 +14187,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	const FName Carrion(Effects::CarrionFeastKey);
 	if (FloorBrief.Modifiers.Contains(Carrion))
 	{
-		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%"),
+		// AND THE PURIFICATION ALTAR, SINCE 2026-09-30: whether one stands or was used.
+		const FString Altar = PurificationAltarNow() ? FString(TEXT("; an altar stands"))
+			: bAltarConsecrated ? FString(TEXT("; the altar is used"))
+			: FString();
+		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%%s"),
 											  CarrionCarcassesNow().Num(), CarrionFeedersNow().Num(),
-											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
+											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f),
+											  *Altar));
 	}
 
 	// AND THE PLAGUEBEARER: the stacks every other creature carries and what they add, whether it is running, or that it

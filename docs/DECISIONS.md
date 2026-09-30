@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Carrion Feast's purification altars: one altar a floor; consecrating it burns every carcass within 15 m, now and for the rest of the floor; Carrion Feast is built
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the altar's figures and
+choice, the row's note, and Carrion Feast moved from partly built to built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the altar, the burn taken out of the hit so the altar reuses it, the consecrated area on the beat, the panel
+line); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, one of Carrion
+Feast's own among them. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). The third of Group 2's chain, on Pandora's Box. **Applied. The
+Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
+entry when they have.**
+
+### The row
+
+`Pestilence_Carrion_Feast`, weight 10: "Rotting carcasses attract swarms of carrion feeders that consume the bodies,
+growing stronger and more numerous with each corpse. Players can prevent this by burning bodies with fire-based
+abilities or finding "purification altars" to consecrate the area." The carcasses, the feeders and the burning were
+built on 2026-09-26 (the entry of that date); the altars waited on the choice screen, and the row was partly built.
+
+### What the rule does now
+
+On a floor carrying the row, one "Purification Altar" stands where Eternal Chorus's picker puts things; one on a Horde
+arena, kept across its waves. Its one choice, "Consecrate", draws a Celestial zone 15 m across the altar for the rest of
+the floor: every carcass lying inside burns at once, and every carcass that falls inside later burns on the next beat,
+exactly as a Demonic hit burns one -- it goes and no feeder comes. Feeders already standing are not touched. The altar
+goes. Carrion Feast's panel line gains "; an altar stands" or "; the altar is used". **Carrion Feast is now built**:
+`BuiltStateOf` answers Built, and the row is no longer in the partly-built list.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "Purification Altar" with "Consecrate" and the leave button; one on a floor carrying Carrion Feast,
+  one on a Horde arena kept across its waves, placed by Eternal Chorus's picker; it goes once used.**
+- **A consecrated zone 1500 cm in radius around the altar, drawn as Celestial, lasting the floor**: every carcass inside
+  burns at once, and every one that falls inside later burns on the next beat, exactly as a Demonic hit burns one.
+  Feeders already standing are not touched. **The burn path the Demonic hit uses is reused, not copied.**
+- **No second choice.**
+- **The labels and the panel line.**
+- **When built, Carrion Feast moves from partly built to built; this entry and the partly-built list both say so.**
+
+**On the owner's play-check list**, added by the coordinating session: consecrate the altar; carcasses inside the zone
+burn and no feeder rises there.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The burn is one function now.** `NoteHitForCarrionFeast` marked a carcass burned in three lines; those lines are
+  `BurnTheCarcass(Index)`, which the hit and the altar both call. It refuses a carcass already marked.
+- **The altar belongs to Carrion Feast's row**, so its floor object carries `CarrionFeastKey` and the choice goes to
+  `ChooseAtPurificationAltar` by that key. No new row key.
+- **The zone is drawn on the beat and drawn again wherever it is missing**, as Grim Totems' zones are, so it lasts the
+  floor although the rules' zones are cleared between a Horde arena's waves.
+- **One of Carrion Feast's tests reads its panel line twice**, `ASlainCreatureLeavesACarcassThatBecomesAFeederAfterTenSeconds`,
+  at "the panel" and "the panel after"; an altar now stands on its floor untouched, so both expected lines end "; an
+  altar stands". That is the line changing, not the test weakened.
+
+### The research
+
+Fetched on 2026-09-30 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, consecrated ground | [poedb.tw/us/Consecrated_Ground](https://poedb.tw/us/Consecrated_Ground) | "The character and their allies affected by it regenerate an additional 6% of their maximum life per second"; created by skills, items and "Map and area modifiers that add 'patches of Consecrated Ground'" |
+
+**What it settles:** little: consecrated ground in the genre is a holy area that helps whoever stands in it. **What it
+does not:** no shipped rule found has consecrating ground stop corpses being used; burning the carcasses is this game's
+reading of the row's "prevent this".
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `PurificationAltar`:
+
+- `PurificationAltarFiguresAndCarrionFeastIsBuilt`: one, one, 15 m, and `BuiltStateOf` answering Built.
+- `PurificationAltarStandsOnACarrionFeastFloor`: away from the entrance, named, placed by Carrion Feast, one
+  "Consecrate", and the panel.
+- `PurificationAltarBurnsTheCarcassesInsideNowAndLater`: the altar moved onto one carcass and another carcass moved 30 m
+  away; consecrating burns the first at once and not the second; the area is drawn; the panel; a carcass that falls
+  inside later burns on the next beat; the one outside is still eaten and one feeder stands.
+
+No new Python check: Carrion Feast's own already pins "purification altars".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
+window, after the seven-stack merges.
+
+---
+
 ## 2026-09-30 — Pandora's Box: three boxes a floor; opening one is even odds of a Boss's kill's drops or three waves of four creatures, each wave once the last is dead
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
