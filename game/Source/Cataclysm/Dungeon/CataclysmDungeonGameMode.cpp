@@ -13376,10 +13376,11 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 
 	// AND INFERNAL BEACONS: how many this dungeon has activated and what they give, on a floor carrying the row or once
 	// any is activated. Issues #1820 and #41.
-	const FName Beacons(Effects::InfernalBeaconsKey);
-	if (FloorBrief.Modifiers.Contains(Beacons) || InfernalBeaconStacks > 0)
+	// NAMED `Infernal`, NOT `Beacons`: Pestilent Empowerment's line below already declares that in this function.
+	const FName Infernal(Effects::InfernalBeaconsKey);
+	if (FloorBrief.Modifiers.Contains(Infernal) || InfernalBeaconStacks > 0)
 	{
-		Counting.Add(Beacons, FString::Printf(TEXT("infernal beacons: %d activated; enemies +%d%% damage; +%d magic find"),
+		Counting.Add(Infernal, FString::Printf(TEXT("infernal beacons: %d activated; enemies +%d%% damage; +%d magic find"),
 											  InfernalBeaconStacks,
 											  FMath::RoundToInt((Effects::InfernalBeaconsDamageMultiplier(InfernalBeaconStacks) - 1.0f) * 100.0f),
 											  FMath::RoundToInt(Effects::InfernalBeaconsMagicFind(InfernalBeaconStacks))));
