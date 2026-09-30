@@ -40054,7 +40054,7 @@ bool FCataclysmTithesAltarTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("one altar on the floor"), Objects, 1);
 	TestEqual(TEXT("on the exit cell"),
-			  FVector::Dist2D(Altar->GetActorLocation(), Mode->CurrentFloor->ExitWorld()), 0.0f, 1.0f);
+			  static_cast<float>(FVector::Dist2D(Altar->GetActorLocation(), Mode->CurrentFloor->ExitWorld())), 0.0f, 1.0f);
 	TestEqual(TEXT("named"), Altar->DisplayName, FString(TEXT("Tithe Altar")));
 	TestEqual(TEXT("placed by the row"), Altar->RuleKey, TithesRow);
 	if (TestEqual(TEXT("four choices"), Altar->Choices.Num(), 4))
