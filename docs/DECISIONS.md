@@ -64,6 +64,33 @@ whether losing a high-rarity drop for good feels fair.
   `FamishedBeastsMultiplier`, a one-line change to that rule, and `StrengthenTheEater` uses Carrion Feast's own record
   of a feeder, times Carrion's multiplier. The two now agree in either order. Their damage stacks through the two keys
   of the damage map, which already multiply.
+- **Any other eater's health is written as Soul Harvest writes it**: what is there now, less what this rule added, with
+  the new share on top. So a share another rule added onto the maximum is kept in either order.
+
+### Every writer of a creature's maximum health, surveyed for this change
+
+Asked by the coordinating session: for each writer of a creature's maximum health in the game module, which rule it
+is, whether it can meet this one on a floor, and whether either write erases the other's share. Read on this branch.
+Any two rows can meet on one floor through a Volatile dungeon's draw, so "can meet" is yes for every rule.
+
+| Writer | Rule | Erases a share? | What this change does |
+| :-- | :-- | :-- | :-- |
+| `StrengthenTheFeeders` | Carrion Feast | yes, it wrote its record times its own multiplier | multiplies by the feeder's `FamishedBeastsMultiplier` too; tested |
+| `ApplySoulHarvestFigures` | Soul Harvest | no: it takes off only its own share and adds the new one | this rule now writes the same way, so a soul added after a drop is kept; tested with a write standing in for it |
+| `ApplyNothingIsForgottenFigures` | Nothing Is Forgotten | no: it adds onto the current maximum | the same; covered by the same test |
+| `ACataclysmEnemyCharacter::ApplyStartingAttributes`, reached through `SetRarityStep` and `DrawModifiersForRarity` | a rung change on a creature already standing: Volatile Evolution and Blood-Forged Champions | yes, it writes the designed maximum over everything | both put Soul Harvest's and Nothing Is Forgotten's shares back after it; they now put this rule's back too; tested through Volatile Evolution |
+| the same, reached at spawn (`ApplyDesignedStats` and the rules that place or raise a creature) | every rule that spawns one | no: nothing has eaten yet | nothing |
+| `UCataclysmMinion` at spawn | the player's minions | no: a minion is not a creature class, so it never eats | nothing |
+| `RefreshLiveMaximumHealth`, `UCataclysmSecondSelf` | the player's own stats and the player's copy | no: not a creature | nothing |
+| `FCataclysmSaveApply` | restoring a floor | no: nothing in play calls it | nothing |
+
+The writes of current health that heal up to the maximum -- the Medic, Leech Spores, Sacrifice, a command's refill --
+do not change the maximum and are not writers here.
+
+**Not changed, and left to its own rule:** Carrion Feast writes its feeders absolutely and does not put its share back
+after a rung change, so a feeder that Volatile Evolution or Blood-Forged Champions raises loses Carrion Feast's share
+until the next carcass is eaten. That is Carrion Feast's gap and not this rule's, so for a feeder this rule does not
+put its own share back either; the next carcass eaten puts both back.
 - **Who eats: a creature of the floor's seven kinds that takes hostile action.** A carcass, a vein, a beacon and the
   other things rules stand on a floor are creature classes too and do not walk; a guide and a medic take no hostile
   action.
@@ -89,7 +116,7 @@ where this row says the reward is denied, so the loss for good is the row's read
 
 ### Tests
 
-Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `FamishedBeasts`. **A test world has no
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `FamishedBeasts`. **A test world has no
 navigation, so no creature walks anywhere in a test**: the seeking is measured through the brain's answer, and a drop is
 placed under a creature by hand to be eaten. **That creatures walk to loot in play is on the owner's play-check list.**
 
@@ -104,6 +131,12 @@ placed under a creature by hand to be eaten. **That creatures walk to loot in pl
 - `FamishedBeastsAFeederThatEatsStacksWithCarrionFeast`: a feeder that eats a drop carries both keys at a tenth each and a
   maximum of its own times both; after a second carcass, Carrion Feast's write keeps the drop's share. The drops a kill
   leaves are cleared first, so the test counts only its own.
+
+- `FamishedBeastsAHealthShareAnotherRuleAddedIsKept`: after one drop, 500 is added onto the maximum, as Soul Harvest
+  and Nothing Is Forgotten add theirs; after a second drop the maximum is the creature's own plus 500, times 1.2.
+- `FamishedBeastsARungChangeKeepsTheDropsShare`: an Imp that ate two drops and one that ate none, both wounded, rise a
+  rung through Volatile Evolution with its roll pinned; the eater's maximum is the other's, corrected for the modifiers
+  each drew, times 1.2.
 
 Two Python checks: the row still says "actively seek out", "consume dropped items", "denying players their rewards" and
 "stronger with each item eaten"; and its setter writes its own key of the damage map.

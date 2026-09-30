@@ -7375,7 +7375,7 @@ void ACataclysmDungeonGameMode::StrengthenTheFeeders()
 	}
 }
 
-void ACataclysmDungeonGameMode::StrengthenTheEater(ACataclysmEnemyCharacter* Eater)
+void ACataclysmDungeonGameMode::StrengthenTheEater(ACataclysmEnemyCharacter* Eater, bool bFreshBlock)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 	using Vital = UCataclysmVitalAttributeSet;
@@ -7388,22 +7388,58 @@ void ACataclysmDungeonGameMode::StrengthenTheEater(ACataclysmEnemyCharacter* Eat
 	const float Multiplier = Effects::FamishedBeastsMultiplier(Eater->DropsEaten);
 	Eater->SetFamishedBeastsDamageMultiplier(Multiplier);
 
-	// ITS OWN MAXIMUM, RECORDED WHEN IT FIRST ATE; a Carrion feeder's is the one Carrion Feast recorded, and it carries
-	// Carrion's multiplier too, so the two rules' health stacks in either order. Health keeps its share of the maximum.
 	const int32 AsFeeder = CarrionFeeders.IndexOfByPredicate(
 		[Eater](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Eater; });
 	const bool bFeeder = AsFeeder != INDEX_NONE && CarrionFeederOwnMaxHealth.IsValidIndex(AsFeeder);
 	const float OldMaximum = Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	const float Own = bFeeder ? CarrionFeederOwnMaxHealth[AsFeeder]
-		: FamishedBeastsOwnMaxHealth.FindOrAdd(Eater, OldMaximum);
-	const float NewMaximum = Own * Multiplier * (bFeeder ? Effects::CarrionFeastMultiplier(CarrionFeastStacks) : 1.0f);
-	if (OldMaximum <= 0.0f || NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
+	if (OldMaximum <= 0.0f)
+	{
+		return;
+	}
+
+	// A CARRION FEEDER: CARRION FEAST'S OWN RECORD, TIMES BOTH MULTIPLIERS, which is what Carrion Feast's write does too,
+	// so the two agree in either order. Carrion Feast writes its feeders absolutely and does not put its share back
+	// after a rung change, so neither does this: after one, the next carcass eaten puts both back.
+	if (bFeeder)
+	{
+		if (bFreshBlock)
+		{
+			return;
+		}
+		const float NewMaximum = CarrionFeederOwnMaxHealth[AsFeeder] * Multiplier
+			* Effects::CarrionFeastMultiplier(CarrionFeastStacks);
+		if (NewMaximum > 0.0f && !FMath::IsNearlyEqual(OldMaximum, NewMaximum))
+		{
+			const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
+			Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
+			Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+		}
+		return;
+	}
+
+	// ANY OTHER EATER: WHAT IS THERE NOW LESS WHAT THIS RULE ADDED, AND THE NEW SHARE ON TOP, as Soul Harvest does. So a
+	// share another rule added onto the maximum -- Soul Harvest's souls, Nothing Is Forgotten's gift -- is kept, in
+	// either order. After a rung change nothing this rule added is still there. Health keeps its share of the maximum,
+	// Carrion Feast's shape; after a rung change it is left as the rung change left it.
+	float& Added = FamishedBeastsHealthAdded.FindOrAdd(Eater, 0.0f);
+	if (bFreshBlock)
+	{
+		Added = 0.0f;
+	}
+	const float Own = OldMaximum - Added;
+	const float NewAdded = Own * (Multiplier - 1.0f);
+	const float NewMaximum = Own + NewAdded;
+	Added = NewAdded;
+	if (NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
 	{
 		return;
 	}
 	const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
 	Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
-	Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+	if (!bFreshBlock)
+	{
+		Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepFamishedBeasts()
@@ -7420,7 +7456,7 @@ void ACataclysmDungeonGameMode::StepFamishedBeasts()
 	{
 		FamishedBeastsFloor = FloorNumber;
 		FamishedBeastsDropsEaten = 0;
-		FamishedBeastsOwnMaxHealth.Reset();
+		FamishedBeastsHealthAdded.Reset();
 	}
 	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::FamishedBeastsKey));
 
@@ -12556,6 +12592,11 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
 	ApplyVengefulWraithFigures(Champion);
 	ApplyNothingIsForgottenFigures(Champion);
 	ApplySoulHarvestFigures(Champion, /*bFreshBlock=*/true);
+	// AND THE DROPS IT ATE FOR FAMISHED BEASTS, for the same reason. Issues #1820 and #41.
+	if (Champion->DropsEaten > 0)
+	{
+		StrengthenTheEater(Champion, /*bFreshBlock=*/true);
+	}
 
 	// AND ITS TALLY STARTS AGAIN, so the next rung costs the same as this one did.
 	BloodForgedChampionsFed[Champion] = 0;
@@ -15109,6 +15150,11 @@ void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter*
 		ApplyVengefulWraithFigures(Creature);
 		ApplyNothingIsForgottenFigures(Creature);
 		ApplySoulHarvestFigures(Creature, /*bFreshBlock=*/true);
+		// AND THE DROPS IT ATE FOR FAMISHED BEASTS, for the same reason. Issues #1820 and #41.
+		if (Creature->DropsEaten > 0)
+		{
+			StrengthenTheEater(Creature, /*bFreshBlock=*/true);
+		}
 
 		VolatileEvolutionMutated.Add(Creature);
 		++VolatileEvolutionMutations;

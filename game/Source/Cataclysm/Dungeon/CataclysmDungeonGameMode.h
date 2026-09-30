@@ -2714,8 +2714,12 @@ private:
 	/** Famished Beasts' beat: which creatures seek drops, and each one standing on a drop eats it. Issue #41. */
 	void StepFamishedBeasts();
 
-	/** Famished Beasts: an eater's damage and maximum health for the drops it has eaten. Issues #1820 and #41. */
-	void StrengthenTheEater(ACataclysmEnemyCharacter* Eater);
+	/**
+	 * Famished Beasts: an eater's damage and maximum health for the drops it has eaten. Issues #1820 and #41.
+	 * `bFreshBlock` after a rung change has written its whole stat block over, as Soul Harvest's is: nothing this rule
+	 * added is still on it.
+	 */
+	void StrengthenTheEater(ACataclysmEnemyCharacter* Eater, bool bFreshBlock = false);
 
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
@@ -4081,12 +4085,13 @@ private:
 	int32 MoraleBreakPanelKey = -1;
 
 	/**
-	 * Famished Beasts: the drops eaten on the floor, the floor they belong to, and each eater's own maximum health,
-	 * recorded when it first ate, as Carrion Feast records its feeders'. THE FLOOR NUMBER STARTS THEM AGAIN. Issue #41.
+	 * Famished Beasts: the drops eaten on the floor, the floor they belong to, and the maximum health this rule has added
+	 * to each eater that is not a Carrion feeder, as Soul Harvest keeps what its souls added. THE FLOOR NUMBER STARTS
+	 * THEM AGAIN. Issue #41.
 	 */
 	int32 FamishedBeastsDropsEaten = 0;
 	int32 FamishedBeastsFloor = -1;
-	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> FamishedBeastsOwnMaxHealth;
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> FamishedBeastsHealthAdded;
 
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein
