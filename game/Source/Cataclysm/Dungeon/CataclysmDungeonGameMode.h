@@ -2142,6 +2142,14 @@ public:
 	TArray<class ACataclysmFloorObject*> BattlefieldRelicsNow() const;
 	int32 BattlefieldRelicKindOf(const class ACataclysmFloorObject* Relic) const;
 	TArray<ACataclysmEnemyCharacter*> RelicSpiritsStanding() const;
+
+	/**
+	 * Pandora's Box, for the panel and tests: the boxes standing, the creatures its waves brought still standing, and the
+	 * drops the last box opened for a reward gave.
+	 */
+	TArray<class ACataclysmFloorObject*> PandorasBoxesNow() const;
+	TArray<ACataclysmEnemyCharacter*> ChaosSpawnStanding() const;
+	int32 PandorasBoxLastRewardDrops() const { return PandorasBoxRewardDrops; }
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2810,6 +2818,18 @@ private:
 
 	/** Battlefield Relics, on the beat: each kind's buff written when it changed and counted down. */
 	void StepBattlefieldRelics(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Pandora's Box: this arena's boxes placed, where a new arena is populated. Issues #1820 and #41. */
+	void PlaceTheBoxes();
+
+	/** Pandora's Box: every box destroyed and forgotten, and every wave under way forgotten. */
+	void ForgetTheBoxes();
+
+	/** Pandora's Box: the one choice at a box. */
+	bool ChooseAtPandorasBox(class ACataclysmFloorObject* Box, FName ChoiceKey);
+
+	/** Pandora's Box, on the beat: each box's next wave, once the last is all dead. */
+	void StepPandorasBox();
 
 	/** Grim Totems: every totem and its zone destroyed and forgotten. */
 	void ForgetTheTotems();
@@ -4257,6 +4277,24 @@ private:
 	float RelicHasteApplied = 0.0f;
 	float RelicBulwarkApplied = 0.0f;
 	int32 BattlefieldRelicsPanelKey = -1;
+
+	/** Pandora's Box: one opened box's waves, where they come from, how many have come, and the wave standing. */
+	struct FPandorasBoxWaves
+	{
+		FVector At = FVector::ZeroVector;
+		int32 Came = 0;
+		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Standing;
+	};
+
+	/**
+	 * Pandora's Box: the boxes standing, each box's seed for its reward, the waves under way, the drops the last reward
+	 * gave, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> PandorasBoxes;
+	TArray<int32> PandorasBoxSeeds;
+	TArray<FPandorasBoxWaves> PandorasBoxWaves;
+	int32 PandorasBoxRewardDrops = 0;
+	int32 PandorasBoxPanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

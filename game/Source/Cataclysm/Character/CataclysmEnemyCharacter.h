@@ -1299,6 +1299,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsARelicSpirit = false;
 
+	/** Whether opening a Pandora's Box brought this creature in one of its waves; it says "Chaos Spawn". #1820, #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsAChaosSpawn = false;
+
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.

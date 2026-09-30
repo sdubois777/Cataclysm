@@ -2647,6 +2647,31 @@ public:
 	static constexpr const TCHAR* BattlefieldRelicsActivate = TEXT("Activate");
 
 	/**
+	 * The row whose chests either give a boss's loot or let out waves of creatures. Issues #1820 and #41.
+	 *
+	 * "Random chests appear throughout the dungeon. Opening them can either grant powerful rewards or unleash waves of
+	 * chaos-spawned enemies, forcing players to gamble on their luck."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `PandorasBoxPerFloor` BOXES A FLOOR, `PandorasBoxPerHordeArena` ON A HORDE ARENA, kept across its waves, placed
+	 *   by Eternal Chorus's picker: floor objects named "Pandora's Box" offering "Open". A box goes once opened.
+	 * - ONE OUTCOME, NOT BOTH: the row says "either ... or". One roll from 0 to 100, pinned for tests by
+	 *   `Cataclysm.PandorasBoxRoll`: below `PandorasBoxUnleashBelow` it lets out the waves; otherwise it gives the
+	 *   reward.
+	 * - THE REWARD is the drops of a kill at `PandorasBoxRewardRung` (the Boss rung) at the box, with the player's own
+	 *   magic find and loot quantity, through `UCataclysmDropSpawner::SpawnDropsFor`: no new rarity floor.
+	 * - THE WAVES: `PandorasBoxWaveCount` waves of `PandorasBoxWaveSize` creatures of the floor's kinds, their rung drawn
+	 *   as usual, `PandorasBoxWaveAwayCm` from the box, noticing the player from anywhere on the floor, each saying
+	 *   "Chaos Spawn". The next wave comes once the last is all dead. They are the floor's creatures, pay as their rung
+	 *   does and stay on their floor.
+	 */
+	static const TCHAR* PandorasBoxKey;
+
+	/** A Pandora's Box's one choice. */
+	static constexpr const TCHAR* PandorasBoxOpen = TEXT("Open");
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5441,6 +5466,18 @@ public:
 	static constexpr int32 BattlefieldRelicsSpiritCount = 5;
 	static constexpr float BattlefieldRelicsSpiritAwayCm = 800.0f;
 	static constexpr int32 BattlefieldRelicsSpiritRung = 0;
+
+	/** Pandora's Box's figures, every one a play-test value. See the key. */
+	static constexpr int32 PandorasBoxPerFloor = 3;
+	static constexpr int32 PandorasBoxPerHordeArena = 1;
+	static constexpr float PandorasBoxUnleashBelow = 50.0f;
+	static constexpr int32 PandorasBoxRewardRung = 4;
+	static constexpr int32 PandorasBoxWaveCount = 3;
+	static constexpr int32 PandorasBoxWaveSize = 4;
+	static constexpr float PandorasBoxWaveAwayCm = 600.0f;
+
+	/** Pandora's Box: whether a box opened on this roll lets out its waves rather than giving its reward. */
+	static bool PandorasBoxUnleashes(float Roll) { return Roll < PandorasBoxUnleashBelow; }
 
 	/** Battlefield Relics' three kinds, in the order a pinned list names them. */
 	static constexpr int32 BattlefieldRelicFury = 0;

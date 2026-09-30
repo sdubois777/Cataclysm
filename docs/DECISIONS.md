@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Pandora's Box: three boxes a floor; opening one is even odds of a Boss's kill's drops or three waves of four creatures, each wave once the last is dead
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the roll, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the boxes, the roll
+pinned for tests, the reward, the waves, the beat, the panel line); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+(the "Chaos Spawn" flag); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Chaos Spawn"); the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The second of Group 2's chain, on Battlefield Relics, whose
+`PlaceFloorObjects` and `BringCreaturesNear` it uses. **Applied. The Unreal compile, the automation tests and the guard
+proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+
+### The row
+
+`Chaos_Pandora_s_Box` in `game/Data/DungeonModifiers.csv`, weight 10: "Random chests appear throughout the dungeon.
+Opening them can either grant powerful rewards or unleash waves of chaos-spawned enemies, forcing players to gamble on
+their luck." It states no figure.
+
+### What the design already said
+
+The design document names chests among the floor objects a player clicks for a choice. Trick or Treat is the nearest
+built rule: a clicked pickup rolls 0 to 100 at even odds, pinned for tests, between creatures and a buff, and a Python
+check pins its " or " as one outcome. Luxury Hoarders gives a pile of drop rolls on a stream seeded from the floor.
+
+### What the rule does
+
+On a floor carrying the row, three boxes stand where Eternal Chorus's picker puts things; one on a Horde arena, kept
+across its waves. Each is a floor object named "Pandora's Box" offering "Open". Opening one rolls 0 to 100 once. Below
+50 it lets out three waves of four creatures of the floor's kinds, their rung drawn as usual, 6 m from the box, noticing
+the player from anywhere on the floor, each saying "Chaos Spawn"; the first comes at once and each next one once the
+last is all dead. From 50 it gives the drops of a Boss-rung kill at the box, with the player's own magic find and loot
+quantity. The box goes either way. The panel reads "pandora's box: 2 unopened; wave 2 of 3".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "Pandora's Box" with "Open" and the leave button; three a floor, one on a Horde arena, placed by
+  Eternal Chorus's picker; it goes once opened.**
+- **Even odds, one roll from 0 to 100, pinned by `Cataclysm.PandorasBoxRoll`.** The row says "either ... or", so it is
+  one outcome, not both, and the row-phrase check pins " either " and " or " as Trick or Treat's does.
+- **The reward: the drops of a Boss-rung kill** through `UCataclysmDropSpawner::SpawnDropsFor` with the player's magic
+  find and loot quantity. No new rarity floor.
+- **The waves: three of four of the floor's kinds, rarity drawn as usual, 600 cm from the box, the next once the last is
+  all dead**; seeing across the floor, labelled "Chaos Spawn", the floor's creatures, paying, staying on their floor.
+- **The labels and the panel line.**
+- **Blood Price makes opening a box cost health**; whichever of the two is built second carries a test with both on one
+  floor. Blood Price is last in this chain, so it carries that test.
+
+**On the owner's play-check list**, added by the coordinating session: whether a Boss kill's drops from half of three
+boxes a floor is too generous.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Each box's reward is on a stream seeded from the floor and the box**, as Luxury Hoarders' pile is, so the same box
+  of the same floor gives the same loot.
+- **Waves from different boxes run separately**, each on its own count; the panel shows the first under way.
+- **A new arena forgets the waves under way** with the last arena's creatures.
+
+### The research
+
+Fetched on 2026-09-30 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, strongboxes | [poedb.tw/us/Strongbox](https://poedb.tw/us/Strongbox) | "When opened, a strongbox will release groups of Monsters to surround and attack the character. Only once all of the ambushing monsters are slain will a strongbox relinquish its loot." |
+
+A search summary says Diablo III's cursed chests run five waves before a reward chest; that page was not fetched, so it
+is not quoted. **What it settles:** opening a container as a risk, with monsters in waves and loot. **What it does not:**
+both games give monsters and loot together, where this row says "either ... or"; one outcome is this game's reading.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `PandorasBox`:
+
+- `PandorasBoxFiguresBoxesOddsRewardAndWaves`: three, one, even odds with 49.9 letting out the waves and 50 giving the
+  reward, the Boss rung, three waves of four at 6 m.
+- `PandorasBoxThreeStandAwayFromTheEntranceOfferingOpen`.
+- `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves`: roll pinned at 75: the box goes, it gave drops, the drops lie
+  in the world, and no creature comes, then or on the beat. **The drops are drawn on the floor's seeded stream**, so the
+  count is the same on every run of this floor; a floor whose draw were nought would fail here every time, not now and
+  then.
+- `PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother`: roll pinned at 25: no reward; four "Chaos Spawn", raised
+  and paying; no second wave while the first stands; each wave killed brings the next, the panel counting; no fourth.
+  Each creature is brought to one health before it is killed, since its rung is drawn.
+
+One Python check: the row still says "random chests", " either ", " or ", "powerful rewards", "unleash waves" and
+"chaos-spawned enemies".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
+window, after the seven-stack merges.
+
+---
+
 ## 2026-09-30 — Battlefield Relics: two relics a floor, each of Fury, Haste or the Bulwark for 30 seconds, and activating one brings five spirits after the player; the floor-object and creature-bringing code taken out of Grim Totems
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
