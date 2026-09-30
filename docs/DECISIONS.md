@@ -95,7 +95,9 @@ Six automation tests in `Cataclysm.DungeonModifierEffects.`:
   the next beat.
 - `ThePlaguebearerFleesWithinTenMetresAndStandsBeyond`: at 10.1 m its brain reports `Idle` with no target; at 9.9 m
   `Fleeing`, and the panel ends "; it flees". **Measured through the brain's answer, not by movement**: a world built for a
-  test has no navigation system. **That it runs from the player in play is on the owner's play-check list.**
+  test has no navigation system. **A flight set once in a test lasts the rest of that test**, because `Beat` does not
+  advance the world clock; so no test shows the 2-second flight ending and being refreshed. **That it runs from the
+  player in play, and that its flight ends and is refreshed, are on the owner's play-check list.**
 - `ThePlaguebearersDeathClearsEveryStack`: at three stacks, its death clears them, the others deal their own damage, the
   panel says it is dead, and six seconds later still nothing.
 
