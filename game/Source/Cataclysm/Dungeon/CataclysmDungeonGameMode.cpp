@@ -682,6 +682,14 @@ static TAutoConsoleVariable<float> CVarVolatileEvolutionRoll(
  * and #41. A list of 0 (Fury), 1 (Haste) and 2 (the Bulwark), separated by commas, used from the first relic of each
  * placing and repeated; empty draws each kind.
  */
+/** Pins the roll a Pandora's Box is opened on, 0 to 100: below 50 its waves, from 50 its reward. Issues #1820, #41. */
+static TAutoConsoleVariable<float> CVarPandorasBoxRoll(
+	TEXT("Cataclysm.PandorasBoxRoll"),
+	-1.0f,
+	TEXT("Pin the roll a Pandora's Box is opened on, 0 to 100: below 50 lets out its waves, from 50 gives its reward. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 static TAutoConsoleVariable<FString> CVarBattlefieldRelicKinds(
 	TEXT("Cataclysm.BattlefieldRelicKinds"),
 	TEXT(""),
@@ -919,6 +927,12 @@ namespace
 	float DungeonGameModeStarvationCurseRoll()
 	{
 		const float Pinned = CVarStarvationCurseRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModePandorasBoxRoll()
+	{
+		const float Pinned = CVarPandorasBoxRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -1631,6 +1645,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 		// AND BATTLEFIELD RELICS, FOR THE SAME REASON. Issues #1820 and #41.
 		PlaceTheRelics();
+
+		// AND PANDORA'S BOX, FOR THE SAME REASON: a new arena's boxes, and any waves under way forgotten with the last
+		// arena's creatures. Issues #1820 and #41.
+		PlaceTheBoxes();
 
 		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
 		// waves keep them. Issues #1820 and #41.
@@ -7664,6 +7682,176 @@ void ACataclysmDungeonGameMode::StepBattlefieldRelics(
 	}
 }
 
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PandorasBoxesNow() const
+{
+	TArray<ACataclysmFloorObject*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : PandorasBoxes)
+	{
+		if (ACataclysmFloorObject* Box = One.Get(); IsValid(Box))
+		{
+			Standing.Add(Box);
+		}
+	}
+	return Standing;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::ChaosSpawnStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FPandorasBoxWaves& Waves : PandorasBoxWaves)
+	{
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Waves.Standing)
+		{
+			ACataclysmEnemyCharacter* Spawn = One.Get();
+			if (IsValid(Spawn) && !UCataclysmSkillEffects::IsDead(Spawn))
+			{
+				Standing.Add(Spawn);
+			}
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheBoxes()
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : PandorasBoxes)
+	{
+		if (ACataclysmFloorObject* Box = One.Get())
+		{
+			Box->Destroy();
+		}
+	}
+	PandorasBoxes.Reset();
+	PandorasBoxSeeds.Reset();
+	PandorasBoxWaves.Reset();
+	PandorasBoxPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheBoxes()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheBoxes();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::PandorasBoxKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::PandorasBoxPerHordeArena : Effects::PandorasBoxPerFloor;
+	for (ACataclysmFloorObject* Box : PlaceFloorObjects(FName(Effects::PandorasBoxKey), Count, TEXT("Pandora's Box"),
+														TEXT("A chest sealed with chaos. It holds treasure, or something else.")))
+	{
+		FCataclysmFloorObjectChoice Open;
+		Open.Key = FName(Effects::PandorasBoxOpen);
+		Open.Label = FString::Printf(TEXT("Open: even odds of a boss's loot, or %d waves of %d creatures"),
+									 Effects::PandorasBoxWaveCount, Effects::PandorasBoxWaveSize);
+		Box->Choices = {Open};
+		// EACH BOX'S REWARD ON A STREAM SEEDED FROM THE FLOOR, as Luxury Hoarders' pile is, so the same box gives the
+		// same loot.
+		PandorasBoxSeeds.Add(CurrentFloor->GetPlan().Seed ^ (0x9A7D + PandorasBoxes.Num()));
+		PandorasBoxes.Add(Box);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: %d box(es) on floor %d"), PandorasBoxes.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtPandorasBox(ACataclysmFloorObject* Box, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Index = PandorasBoxes.IndexOfByPredicate(
+		[Box](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Box; });
+	UWorld* World = GetWorld();
+	if (Index == INDEX_NONE || ChoiceKey != FName(Effects::PandorasBoxOpen) || !World || !CurrentFloor
+		|| !CurrentFloor->IsBuilt())
+	{
+		return false;
+	}
+	const FVector At = Box->GetActorLocation();
+
+	// ONE ROLL, ONE OUTCOME.
+	if (Effects::PandorasBoxUnleashes(DungeonGameModePandorasBoxRoll()))
+	{
+		// THE FIRST WAVE AT ONCE; THE REST ON THE BEAT, EACH ONCE THE LAST IS ALL DEAD.
+		FPandorasBoxWaves& Waves = PandorasBoxWaves.AddDefaulted_GetRef();
+		Waves.At = At;
+		for (ACataclysmEnemyCharacter* Spawn : BringCreaturesNear(At, Effects::PandorasBoxWaveAwayCm,
+																  Effects::PandorasBoxWaveSize, /*FixedRung=*/-1,
+																  Effects::TheReaperSightMultiplier))
+		{
+			Spawn->bIsAChaosSpawn = true;
+			Waves.Standing.Add(Spawn);
+		}
+		Waves.Came = 1;
+		UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: a box let out its waves on floor %d, the first of %d"),
+			   FloorNumber, Effects::PandorasBoxWaveCount);
+	}
+	else
+	{
+		// A BOSS'S KILL'S DROPS AT THE BOX, WITH THE PLAYER'S OWN MAGIC FIND AND LOOT QUANTITY.
+		float MagicFind = 0.0f;
+		float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+		UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+		FRandomStream Stream(PandorasBoxSeeds.IsValidIndex(Index) ? PandorasBoxSeeds[Index] : 0);
+		PandorasBoxRewardDrops = UCataclysmDropSpawner::SpawnDropsFor(
+			World, Effects::PandorasBoxRewardRung, MagicFind, LootQuantity, At, Stream);
+		UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: a box gave its reward on floor %d, %d drop(s)"), FloorNumber,
+			   PandorasBoxRewardDrops);
+	}
+
+	// THE BOX GOES.
+	Box->Destroy();
+	PandorasBoxes.RemoveAt(Index);
+	if (PandorasBoxSeeds.IsValidIndex(Index))
+	{
+		PandorasBoxSeeds.RemoveAt(Index);
+	}
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepPandorasBox()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	for (int32 Index = PandorasBoxWaves.Num() - 1; Index >= 0; --Index)
+	{
+		FPandorasBoxWaves& Waves = PandorasBoxWaves[Index];
+		const bool bAllDead = !Waves.Standing.ContainsByPredicate(
+			[](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One)
+			{
+				return IsValid(One.Get()) && !UCataclysmSkillEffects::IsDead(One.Get());
+			});
+		if (!bAllDead)
+		{
+			continue;
+		}
+		if (Waves.Came >= Effects::PandorasBoxWaveCount)
+		{
+			PandorasBoxWaves.RemoveAt(Index);
+			continue;
+		}
+		Waves.Standing.Reset();
+		for (ACataclysmEnemyCharacter* Spawn : BringCreaturesNear(Waves.At, Effects::PandorasBoxWaveAwayCm,
+																  Effects::PandorasBoxWaveSize, /*FixedRung=*/-1,
+																  Effects::TheReaperSightMultiplier))
+		{
+			Spawn->bIsAChaosSpawn = true;
+			Waves.Standing.Add(Spawn);
+		}
+		++Waves.Came;
+		UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: wave %d of %d came on floor %d"), Waves.Came,
+			   Effects::PandorasBoxWaveCount, FloorNumber);
+	}
+
+	const int32 Wave = PandorasBoxWaves.IsEmpty() ? 0 : PandorasBoxWaves[0].Came;
+	const int32 Key = PandorasBoxesNow().Num() * 100 + Wave;
+	if (Key != PandorasBoxPanelKey)
+	{
+		PandorasBoxPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::PlaceTheTotems()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -7723,6 +7911,10 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	if (Object->RuleKey == FName(Effects::BattlefieldRelicsKey))
 	{
 		return ChooseAtBattlefieldRelic(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::PandorasBoxKey))
+	{
+		return ChooseAtPandorasBox(Object, ChoiceKey);
 	}
 	return false;
 }
@@ -8900,6 +9092,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheSarcophagi();
 	ForgetTheTotems();
 	ForgetTheRelics();
+	ForgetTheBoxes();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -9456,6 +9649,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BattlefieldRelicsKey))
 		|| RelicFuryLeft > 0.0f || RelicHasteLeft > 0.0f || RelicBulwarkLeft > 0.0f || RelicFuryApplied > 0.0f
 		|| RelicHasteApplied > 0.0f || RelicBulwarkApplied > 0.0f;
+	// AND PANDORA'S BOX, ON EVERY FLOOR CARRYING IT, AND WHILE A BOX'S WAVES ARE UNDER WAY. Issues #1820 and #41.
+	const bool bPandorasBox = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::PandorasBoxKey))
+		|| !PandorasBoxWaves.IsEmpty();
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -9492,6 +9688,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bVision
 		&& !bGrimTotems
 		&& !bBattlefieldRelics
+		&& !bPandorasBox
 		&& !bObsidianSarcophagi && !bShadowyEnemies)
 	{
 		return;
@@ -9836,6 +10033,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bBattlefieldRelics)
 	{
 		StepBattlefieldRelics(Player, AbilitySystem);
+	}
+
+	// AND PANDORA'S BOX, WHICH BRINGS EACH OPENED BOX'S NEXT WAVE. Issues #1820 and #41.
+	if (bPandorasBox)
+	{
+		StepPandorasBox();
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -12904,6 +13107,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 									FMath::CeilToInt(GrimEmbraceLeft));
 		}
 		Counting.Add(Totems, Line);
+	}
+
+	// AND PANDORA'S BOX: how many are unopened, and the wave under way. Issues #1820 and #41.
+	const FName Boxes(Effects::PandorasBoxKey);
+	if (FloorBrief.Modifiers.Contains(Boxes))
+	{
+		FString Line = FString::Printf(TEXT("pandora's box: %d unopened"), PandorasBoxesNow().Num());
+		if (!PandorasBoxWaves.IsEmpty())
+		{
+			Line += FString::Printf(TEXT("; wave %d of %d"), PandorasBoxWaves[0].Came, Effects::PandorasBoxWaveCount);
+		}
+		Counting.Add(Boxes, Line);
 	}
 
 	// AND BATTLEFIELD RELICS: how many stand, and each kind's buff under way. Issues #1820 and #41.

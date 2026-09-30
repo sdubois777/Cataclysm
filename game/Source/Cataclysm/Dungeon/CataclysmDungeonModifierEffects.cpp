@@ -221,6 +221,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
 const TCHAR* UCataclysmDungeonModifierEffects::BattlefieldRelicsKey =
 	TEXT("War_Battlefield_Relics");
 
+const TCHAR* UCataclysmDungeonModifierEffects::PandorasBoxKey =
+	TEXT("Chaos_Pandora_s_Box");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -592,6 +595,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(RawSewageKey)
 		|| RowKey == FName(DemonicGuideKey)
 		|| RowKey == FName(BattlefieldRelicsKey)
+		|| RowKey == FName(PandorasBoxKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
@@ -828,6 +832,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfestedVeinsKey),
 		FName(CarrionFeastKey),
 		FName(BattlefieldRelicsKey),
+		FName(PandorasBoxKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
