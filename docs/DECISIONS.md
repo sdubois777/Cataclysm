@@ -2,6 +2,108 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Blood Price: every choice at a floor object costs 10% of current health and leaves a bleed of 0.25% of maximum health a second for the rest of the dungeon, at most ten
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, which choices
+are priced, the price, the bleed, the cap, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the price taken where every choice passes, the bleed, the keyword, the priced buttons, the panel line); the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+The eighth and last of Group 2's chain, on Pact of Temptation. **Applied. The Unreal compile, the automation tests and
+the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+
+### The row
+
+`Demonic_Blood_Price` in `game/Data/DungeonModifiers.csv`, weight 5: "Interacting with chests, shrines, or levers costs a
+percentage of current HP. Gain a permanent, uncleansable stack of bleed each time." It states no figure.
+
+### What the design already said
+
+Nothing: the design document and this log name no price in health for a choice. The game has no chest, shrine or lever
+of its own; the things a player interacts with on a floor are the floor objects the choice screen opens.
+
+### What the rule does
+
+On a floor carrying the row, every choice made at a floor object -- a relic, a totem, a banner, a box, a beacon, an
+altar -- costs 10% of the player's current health, never the last point, and leaves one bleed stack, except paying a
+Tithe Altar's price. The panel's "Leave" is not a choice and costs nothing. Every priced button ends "(costs 10%
+health)".
+
+Each stack bleeds 0.25% of maximum health a second, dealt once a second as damage over time typed as the row, Demonic,
+from the floor's hazard source, on every floor for the rest of the dungeon, at most ten stacks, 2.5% a second. While any
+stack is held the player carries `Keyword.DoT.Bleed`, which every reader of the player's debuffs sees. A cleanse does not
+remove them; leaving the dungeon does. The panel reads "blood price: 2 bleed stacks, 0.5% health a second; each choice
+costs 10% of current health".
+
+**The price is taken where every choice passes.** `ChooseAtFloorObject` now reads whether the choice is priced and the
+player's health first, sends the choice to its rule through `ChooseAtFloorObjectForItsRule` -- the dispatch it held
+before, unchanged -- and takes the price only once the rule answers that the choice acted, from the health held before
+it. So a choice refused costs nothing, and no rule that places a floor object has to know this row exists.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **Every choice at any floor object costs; the leave button does not; paying a tithe does not; accepting a pact and
+  opening a box do.**
+- **10% of current health before the choice acts, never kills.**
+- **One stack a choice for the rest of the dungeon: 0.25% of maximum health a second a stack, typed as the row, from the
+  hazard source, as damage over time, `Keyword.DoT.Bleed` on while held, at most 10 (2.5% a second), not removed by a
+  cleanse.**
+- **The panel line, and the buttons say "(costs 10% health)".**
+- **The tests with Pandora's Box, the Pact Altar and the Tithe Altar go with whichever is built second**: this one.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Refusing a tithe costs**: only paying one is excepted, and refusing is a choice.
+- **The price is taken once the choice has acted, from the health held before it**, so a choice refused costs nothing;
+  and it leaves at least 1 of the health held after it too.
+- **The price is asked only on a floor carrying the row; the stacks bleed on every floor**, as Raw Sewage's do.
+- **At ten stacks a choice still costs health**, and adds no stack.
+- **The first bleed comes a second after the first stack**, and the player's death does not end the stacks.
+- **The panel says "1 bleed stack" in the singular**, and the percentage without trailing zeros: "0.25%", "2.5%".
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| The Binding of Isaac, Blood Donation Machine | [bindingofisaacrebirth.wiki.gg/wiki/Blood_Donation_Machine](https://bindingofisaacrebirth.wiki.gg/wiki/Blood_Donation_Machine) | "Bumping into the Blood Donation Machine will damage Isaac", and it pays out coins |
+| Hades, Chaos Gate | [hades.wiki.fextralife.com/Chaos](https://hades.wiki.fextralife.com/Chaos) | "Sacrificing a portion of Zagreus' health is required to enter a Chaos Gate." |
+
+**What it settles:** a price in health for using something on the floor is a shape shipped games use. **What it does
+not:** the figures and the bleed, which are this row's own.
+
+### Tests
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `BloodPriceFiguresCostBleedAndCap`: 100 of 1000, nothing from 1, 0.25% a stack, 2.5% at ten and past it; a tithe paid
+  not priced, a tithe refused and a box opened priced; the row built.
+- `BloodPriceAChoiceCostsATenthOfCurrentHealthAndLeavesABleed`: the banner's button priced and the panel at nought;
+  planting at 50,000 of 100,000 leaves 45,000, one stack, the keyword, the panel.
+- `BloodPriceTheBleedTakesAQuarterPercentAStackEachSecond`: two relics of Fury, two stacks; two seconds lose between one
+  and two seconds' bleed; on a floor without the row the stacks stay, bleed and keep the keyword.
+- `BloodPriceNeverKills`: at 1 health a choice takes nothing, the player lives, and the stack is left.
+- `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar`: the box's and a pact's buttons priced, the tithe's price not
+  and its refusal priced; opening the box costs a tenth, taking a pact a tenth, and paying the tithe in health only the
+  tithe's fifth of maximum health, with no stack.
+- `BloodPriceAChoiceThatDoesNotActCostsNothing`: a pact not offered is refused, with no health taken and no stack.
+- `BloodPriceStacksLastTheDungeonAndAreNotCleansed`: kept on the next floor and by a cleanse, keyword included;
+  leaving the dungeon ends them and the keyword.
+
+One Python check: the row still says "interacting with chests, shrines, or levers", "a percentage of current hp",
+"permanent, uncleansable" and "stack of bleed each time".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
+window.
+
+---
+
 ## 2026-09-30 — Pact of Temptation: a Pact Altar at every floor's exit but the last offers three of five pacts; one taken buffs the next floor and curses the rest of the dungeon
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, the five

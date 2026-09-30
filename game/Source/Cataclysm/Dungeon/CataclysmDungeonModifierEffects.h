@@ -2879,6 +2879,43 @@ public:
 	static void WritePactEffects(FCataclysmPlayerFloorEffects& Into, int32 BuffPact, const TArray<int32>& CursesTaken);
 
 	/**
+	 * The row where every choice at a floor object costs health and leaves a bleed for the rest of the dungeon. Issues
+	 * #1820 and #41.
+	 *
+	 * "Interacting with chests, shrines, or levers costs a percentage of current HP. Gain a permanent, uncleansable
+	 * stack of bleed each time."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - EVERY CHOICE AT ANY FLOOR OBJECT COSTS, on a floor carrying the row; the panel's "Leave" does not, and neither
+	 *   does PAYING A TITHE. Opening a Pandora's Box and accepting a pact do cost. See `BloodPriceIsAsked`.
+	 * - `BloodPriceHealthPercent` OF CURRENT HEALTH, read before the choice acts, and NEVER KILLS: it leaves at least 1.
+	 * - ONE BLEED STACK A CHOICE, for the rest of the dungeon, at most `BloodPriceMostStacks`: `BloodPricePercentPerStack`
+	 *   of maximum health a second a stack, dealt once a second as damage over time typed as the row, from the floor's
+	 *   hazard source; the player carries `Keyword.DoT.Bleed` while any stack is held. NOT REMOVED BY A CLEANSE.
+	 * - Each button says "(costs 10% health)"; the panel says the stacks, the bleed and the price.
+	 */
+	static const TCHAR* BloodPriceKey;
+
+	/** Whether a choice at an object the rule of this key placed costs the blood price: every one but a tithe paid. */
+	static bool BloodPriceIsAsked(FName RuleKey, FName ChoiceKey)
+	{
+		return RuleKey != FName(ForcedTithesKey) || ChoiceKey == FName(ForcedTithesRefuse);
+	}
+
+	/** The blood price at this current health: its share, leaving at least 1, and nothing from 1 or less. */
+	static float BloodPriceCost(float CurrentHealth)
+	{
+		return FMath::Max(0.0f, FMath::Min(CurrentHealth * BloodPriceHealthPercent / 100.0f, CurrentHealth - 1.0f));
+	}
+
+	/** The bleed a second at this many stacks, as a percentage of maximum health, at most the cap's. */
+	static float BloodPricePercentPerSecond(int32 Stacks)
+	{
+		return FMath::Clamp(Stacks, 0, BloodPriceMostStacks) * BloodPricePercentPerStack;
+	}
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5721,6 +5758,11 @@ public:
 	static constexpr float PactGreedCreatureDamagePercent = 10.0f;
 	static constexpr float PactBloodDamageMorePercent = 50.0f;
 	static constexpr float PactBloodHealingLessPercent = 25.0f;
+
+	/** Blood Price's figures, every one a play-test value. See the key. */
+	static constexpr float BloodPriceHealthPercent = 10.0f;
+	static constexpr float BloodPricePercentPerStack = 0.25f;
+	static constexpr int32 BloodPriceMostStacks = 10;
 
 	/** Infernal Beacons' figures, every one a play-test value. See the key. */
 	static constexpr int32 InfernalBeaconsPerFloor = 1;
