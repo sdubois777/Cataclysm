@@ -9038,15 +9038,32 @@ bool ACataclysmDungeonGameMode::ChooseAtWarBanner(ACataclysmFloorObject* Banner,
 	{
 		return false;
 	}
-	// PLANTED WHERE IT STANDS; the zone is drawn and the hold counted on the beat. The floor object goes: it has nothing
-	// more to offer.
+	// PLANTED WHERE IT STANDS, AND PLANTING BRINGS THE FIRST WAVE; the zone is drawn and the hold counted on the beat.
+	// The floor object goes: it has nothing more to offer.
 	WarBannerAt = Banner->GetActorLocation();
 	bWarBannerPlanted = true;
 	UE_LOG(LogCataclysm, Log, TEXT("War Banner: planted on floor %d"), FloorNumber);
 	Banner->Destroy();
 	WarBanner = nullptr;
+	BringABannerWave();
 	RefreshFloorModifierPanel();
 	return true;
+}
+
+void ACataclysmDungeonGameMode::BringABannerWave()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	WarBannerSecondsSinceWave = 0.0f;
+	for (ACataclysmEnemyCharacter* Assailant : BringCreaturesNear(WarBannerAt, Effects::WarBannerWaveAwayCm,
+																  Effects::WarBannerWaveSize, /*FixedRung=*/-1,
+																  Effects::TheReaperSightMultiplier))
+	{
+		Assailant->bIsABannerAssailant = true;
+		BannerAssailants.Add(Assailant);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("War Banner: a wave came on floor %d, %.0f s held"), FloorNumber,
+		   WarBannerHeldSeconds);
 }
 
 void ACataclysmDungeonGameMode::StepWarBanner(ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -9071,28 +9088,20 @@ void ACataclysmDungeonGameMode::StepWarBanner(ACataclysmPlayerCharacter* Player,
 		}
 		bInside = FVector::Dist2D(Player->GetActorLocation(), WarBannerAt) <= Effects::WarBannerRadiusCm;
 
-		// THE HOLD, COUNTED ONLY WHILE THE PLAYER IS INSIDE AND NEVER RESET; A WAVE EVERY STRETCH OF IT, THEN HELD.
+		// THE HOLD, COUNTED ONLY WHILE THE PLAYER IS INSIDE AND NEVER RESET. Planting brought the first wave; another
+		// after every stretch of it. HELD IS ASKED FIRST, so no wave comes as the hold completes: the waves stop there.
 		if (bInside && !bWarBannerHeld)
 		{
 			WarBannerHeldSeconds += SecondsBetweenWaveChecks;
 			WarBannerSecondsSinceWave += SecondsBetweenWaveChecks;
-			if (WarBannerSecondsSinceWave >= Effects::WarBannerWaveEverySeconds - KINDA_SMALL_NUMBER)
-			{
-				WarBannerSecondsSinceWave = 0.0f;
-				for (ACataclysmEnemyCharacter* Assailant : BringCreaturesNear(WarBannerAt, Effects::WarBannerWaveAwayCm,
-																			  Effects::WarBannerWaveSize, /*FixedRung=*/-1,
-																			  Effects::TheReaperSightMultiplier))
-				{
-					Assailant->bIsABannerAssailant = true;
-					BannerAssailants.Add(Assailant);
-				}
-				UE_LOG(LogCataclysm, Log, TEXT("War Banner: a wave came on floor %d, %.0f s held"), FloorNumber,
-					   WarBannerHeldSeconds);
-			}
 			if (WarBannerHeldSeconds >= Effects::WarBannerHoldSeconds - KINDA_SMALL_NUMBER)
 			{
 				bWarBannerHeld = true;
 				UE_LOG(LogCataclysm, Log, TEXT("War Banner: held on floor %d; the waves stop"), FloorNumber);
+			}
+			else if (WarBannerSecondsSinceWave >= Effects::WarBannerWaveEverySeconds - KINDA_SMALL_NUMBER)
+			{
+				BringABannerWave();
 			}
 		}
 	}
