@@ -73,6 +73,39 @@ session's ruling of 2026-09-30. This is shared minion code, not War class work.
 - **The Fervour reserve is unaffected:** a dead minion already leaves `ThingsCommandedBy`, which
   skips anything `IsDead` reports, so it stops reserving at its death, not at its removal.
 
+### THE WINDOW'S RUN, FOR THE WHOLE STACK OF THREE
+
+This change was built and tested in one window together with the two merged before it, stacked in
+this order on `development` 7600e9a0: the Fervour reserve (issue #1160, head 663c6dcd), then the
+negative crowd control total (issue #2057, head f69c5965), then this one (head fbebfd1e). **Those two
+entries, "Every thrall and every imp holds its Fervour reserve back from the pool..." and "Increased
+crowd control resistance shrinks a negative total...", carry no run table of their own; this one is
+theirs as well.** Run 2026-09-30 in the jovial-bouman worktree, which has built modules.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | fbebfd1e | Build: Succeeded - 31 actions, 28 files compiled |
+| Whole Unreal suite | fbebfd1e | 2800 tests performed, 2800 succeeded, 0 failed; declared 2800, gap 0 (registered 2790 + 10) |
+| Python of record | fbebfd1e | 5556 passed, 8 skipped in 376.12s; JUnit tests=5564 failures=0 errors=0 skipped=8 |
+
+The whole suite and the Python of record ran only at the top of the stack. Each proof below ran at
+its own branch's head, building and running its own group there.
+
+| Branch | Proof: what was broken | As printed |
+| :-- | :-- | :-- |
+| Fervour reserve, 663c6dcd, `Cataclysm.FervourReserve.` | a. the fit check ignores what is already reserved | PROVED: with the break in: 5 tests performed, 3 succeeded, 2 failed: APoolThatCannotHoldAnotherImpRefusesIt, ImpsAndThrallsShareOnePool \| restored: 5 tests performed, 5 succeeded, 0 failed |
+| | b. the spendable maximum no longer subtracts the reserve | PROVED: with the break in: 5 tests performed, 4 succeeded, 1 failed: AnImpReservesTenAndTheSpendableFervourDropsAtOnce \| restored: 5 tests performed, 5 succeeded, 0 failed |
+| | c. the removed imp's reserve is not freed before the check | PROVED: with the break in: 5 tests performed, 4 succeeded, 1 failed: AtTheCapTheOldestImpsReserveIsFreedBeforeTheCheck \| restored: 5 tests performed, 5 succeeded, 0 failed |
+| #2057, f69c5965, `Cataclysm.CrowdControl.` | a. the increases multiply a negative total again | PROVED: with the break in: 8 tests performed, 7 succeeded, 1 failed: IncreasesShrinkANegativeTotalRatherThanDeepenIt \| restored: 8 tests performed, 8 succeeded, 0 failed |
+| | b. the breakdown reader answers that nothing was recorded | PROVED: with the break in: 8 tests performed, 6 succeeded, 2 failed: IncreasesShrinkANegativeTotalRatherThanDeepenIt, TheBreakdownReaderAnswersWhatTheLookupAnswers \| restored: 8 tests performed, 8 succeeded, 0 failed |
+| | c. a positive total is divided too | PROVED: with the break in: 8 tests performed, 7 succeeded, 1 failed: IncreasesShrinkANegativeTotalRatherThanDeepenIt \| restored: 8 tests performed, 8 succeeded, 0 failed |
+| This change, fbebfd1e, `Cataclysm.MinionDeath.` | a. a quiet death leaves the collision on | PROVED: with the break in: 16 tests performed, 15 succeeded, 1 failed: AKilledMinionStopsAtOnceAndIsRemovedWithinHalfASecond \| restored: 16 tests performed, 16 succeeded, 0 failed |
+| | b. a quiet death leaves the body for its whole lifespan | PROVED: with the break in: 16 tests performed, 15 succeeded, 1 failed: AKilledMinionStopsAtOnceAndIsRemovedWithinHalfASecond \| restored: 16 tests performed, 16 succeeded, 0 failed |
+| | c. a second death runs again | PROVED: with the break in: 16 tests performed, 15 succeeded, 1 failed: ASecondDeathDoesNotRunTheDeathAgain \| restored: 16 tests performed, 16 succeeded, 0 failed |
+
+The gadget cap change in this entry has no proof of its own; the window's budget of three per change
+was spent on the three above, as ruled.
+
 ---
 
 ## 2026-09-30 — Increased crowd control resistance shrinks a negative total instead of deepening it: below zero the increases divide, in the crowd control reader only
