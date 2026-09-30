@@ -39090,7 +39090,12 @@ bool FCataclysmBoxesRewardTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("75"));
-	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	// AND THE DUNGEON PINNED, SO THE FLOOR'S SEED -- AND THE BOX'S REWARD STREAM SEEDED FROM IT -- IS THE SAME ON EVERY
+	// RUN. It already is by default: `ChooseSeed` answers the game mode's `DungeonSeed` of 1 while this variable is 0.
+	// Pinned here so a machine that set the variable cannot make the drop count vary.
+	FScopedConsoleString Seed(TEXT("Cataclysm.DungeonSeed"), TEXT("1"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable)
+		|| !TestNotNull(TEXT("and the dungeon"), Seed.Variable))
 	{
 		return false;
 	}
