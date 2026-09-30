@@ -36418,4 +36418,322 @@ bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Pestilence_The_Plaguebearer. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName PlaguebearerRow(UCataclysmDungeonModifierEffects::PlaguebearerKey);
+
+	/** A dungeon carrying only The Plaguebearer, on floor 2 with its own creatures placed and its Plaguebearer chosen. */
+	ACataclysmDungeonGameMode* APlaguebearerFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {PlaguebearerRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor has a Plaguebearer"), Mode->PlaguebearerOnTheFloor()))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** A living creature of the floor other than the Plaguebearer, or null. */
+	ACataclysmEnemyCharacter* APlaguebearersNeighbour(ACataclysmDungeonGameMode* Mode)
+	{
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy != Mode->PlaguebearerOnTheFloor())
+			{
+				return Enemy;
+			}
+		}
+		return nullptr;
+	}
+
+	/** Puts the player this far from the Plaguebearer, measured flat, at the player's own height. */
+	void StandFromTheBearer(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, float Cm)
+	{
+		const FVector At = Mode->PlaguebearerOnTheFloor()->GetActorLocation();
+		Player.Character->SetActorLocation(FVector(At.X + Cm, At.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** The Plaguebearer's own key of a creature's damage map. */
+	float PlagueMultiplierOn(const ACataclysmEnemyCharacter* Creature)
+	{
+		return Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource);
+	}
+}
+
+// THE FIGURES: 5% A STACK, ADDED; TEN STACKS; ONE EVERY 3 S; IT FLEES WITHIN 10 M, FOR 2 S AT A TIME; AN ELITE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PlaguebearerFiguresStacksReachAndRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("5% a stack, as the row says"), Effects::PlaguebearerDamagePercentPerStack, 5.0f, 0.001f);
+	TestEqual(TEXT("ten stacks at most, as the row says"), Effects::PlaguebearerMostStacks, 10);
+	TestEqual(TEXT("a stack every 3 s"), Effects::PlaguebearerSecondsBetweenStacks, 3.0f, 0.001f);
+	TestEqual(TEXT("it flees within 10 m"), Effects::PlaguebearerFleeWithinCm, 1000.0f, 0.001f);
+	TestEqual(TEXT("for 2 s at a time"), Effects::PlaguebearerFleeSeconds, 2.0f, 0.001f);
+	TestEqual(TEXT("an Elite"), Effects::PlaguebearerRung, 1);
+	TestEqual(TEXT("no stack, no more damage"), Effects::PlaguebearerMultiplier(0), 1.0f, 0.0001f);
+	TestEqual(TEXT("one stack, 5% more"), Effects::PlaguebearerMultiplier(1), 1.05f, 0.0001f);
+	TestEqual(TEXT("three, 15% more, added"), Effects::PlaguebearerMultiplier(3), 1.15f, 0.0001f);
+	TestEqual(TEXT("ten, 50% more"), Effects::PlaguebearerMultiplier(10), 1.5f, 0.0001f);
+	TestEqual(TEXT("never past ten"), Effects::PlaguebearerMultiplier(11), 1.5f, 0.0001f);
+	TestEqual(TEXT("nine and one more is ten"), Effects::PlaguebearerStacksAfter(9), 10);
+	TestEqual(TEXT("ten stays ten"), Effects::PlaguebearerStacksAfter(10), 10);
+	TestFalse(TEXT("not due at 2.99 s"), Effects::PlaguebearerStackIsDue(2.99f));
+	TestTrue(TEXT("due at 3 s"), Effects::PlaguebearerStackIsDue(3.0f));
+	return true;
+}
+
+// ONE ELITE OF THE FLOOR IS THE PLAGUEBEARER, NEVER THE FLOOR'S BOSS; IT TAKES NO HOSTILE ACTION AND SAYS WHAT IT IS; A
+// FLOOR WITH NO ELITE RAISES A COMMON TO ELITE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerChosenTest,
+	"Cataclysm.DungeonModifierEffects.OneEliteOfTheFloorIsThePlaguebearerOrACommonRaisedToElite",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerChosenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	auto CountBearers = [Mode]()
+	{
+		int32 Count = 0;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			Count += IsValid(Enemy) && Enemy->bIsPlaguebearer ? 1 : 0;
+		}
+		return Count;
+	};
+	ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+	TestEqual(TEXT("one Plaguebearer on the floor"), CountBearers(), 1);
+	TestEqual(TEXT("at the Elite rung"), Bearer->RarityStep, Effects::PlaguebearerRung);
+	TestFalse(TEXT("never the floor's boss"), Bearer->IsBoss() || Bearer->IsA<ACataclysmGatekeeperCharacter>());
+	TestTrue(TEXT("it takes no hostile action"), Bearer->TakesNoHostileAction());
+	TestTrue(TEXT("\"Plaguebearer\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Bearer).Contains(TEXT("Plaguebearer")));
+
+	// EVERY CREATURE MADE COMMON, AND THE CHOICE MADE AGAIN: A COMMON IS RAISED TO ELITE.
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && !Enemy->IsBoss() && !Enemy->IsA<ACataclysmGatekeeperCharacter>())
+		{
+			Enemy->SetRarityStep(0);
+		}
+	}
+	Mode->ForgetThePlaguebearer();
+	Mode->ChooseThePlaguebearer();
+	ACataclysmEnemyCharacter* Raised = Mode->PlaguebearerOnTheFloor();
+	if (!TestNotNull(TEXT("with no Elite, a Plaguebearer is still chosen"), Raised))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Common raised to Elite"), Raised->RarityStep, Effects::PlaguebearerRung);
+	TestEqual(TEXT("and still only one"), CountBearers(), 1);
+	return true;
+}
+
+// EVERY 3 S EVERY OTHER CREATURE GAINS A STACK, UP TO TEN: 5% MORE DAMAGE EACH, ADDED; "Diseased N" UNDER ITS BAR.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerStacksTest,
+	"Cataclysm.DungeonModifierEffects.EveryOtherCreatureGainsAStackEveryThreeSecondsToTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Other = Mode ? APlaguebearersNeighbour(Mode) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("another creature on the floor"), Other))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+	StandFromTheBearer(Mode, Player, 5000.0f);
+
+	Beat(Mode, BeatsFor(Effects::PlaguebearerSecondsBetweenStacks) - 1);
+	TestEqual(TEXT("no stack at 2.75 s"), Mode->PlaguebearerStacksNow(), 0);
+	TestEqual(TEXT("and no more damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("one stack at 3 s"), Mode->PlaguebearerStacksNow(), 1);
+	TestEqual(TEXT("5% more damage"), PlagueMultiplierOn(Other), 1.05f, 0.0001f);
+	TestTrue(TEXT("\"Diseased 1\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Other).Contains(TEXT("Diseased 1")));
+
+	Beat(Mode, BeatsFor(9.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	TestEqual(TEXT("ten stacks at 30 s"), Mode->PlaguebearerStacksNow(), 10);
+	TestEqual(TEXT("50% more damage"), PlagueMultiplierOn(Other), 1.5f, 0.0001f);
+	Beat(Mode, BeatsFor(Effects::PlaguebearerSecondsBetweenStacks));
+	TestEqual(TEXT("still ten at 33 s"), Mode->PlaguebearerStacksNow(), 10);
+	TestEqual(TEXT("still 50%"), PlagueMultiplierOn(Other), 1.5f, 0.0001f);
+	TestTrue(TEXT("\"Diseased 10\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Other).Contains(TEXT("Diseased 10")));
+	TestEqual(TEXT("never on the Plaguebearer itself"), PlagueMultiplierOn(Bearer), 1.0f, 0.0001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(PlaguebearerRow),
+			  FString(TEXT("the plaguebearer: 10 stacks, +50% damage")));
+	return true;
+}
+
+// A CREATURE THAT COMES LATER JOINS AT THE COUNT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerLateTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureThatComesLaterJoinsThePlaguebearersCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerLateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	StandFromTheBearer(Mode, Player, 5000.0f);
+	Beat(Mode, BeatsFor(3.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	if (!TestEqual(TEXT("set-up: three stacks"), Mode->PlaguebearerStacksNow(), 3))
+	{
+		return false;
+	}
+	const FVector At = Mode->PlaguebearerOnTheFloor()->GetActorLocation();
+	ACataclysmEnemyCharacter* Late = SpawnImpWithHealth(World, At + FVector(0.0f, 600.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature that comes later"), Late))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Late);
+	TestEqual(TEXT("it carries nothing yet"), PlagueMultiplierOn(Late), 1.0f, 0.0001f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and joins at three stacks on the next beat"), PlagueMultiplierOn(Late), 1.15f, 0.0001f);
+	return true;
+}
+
+// IT FLEES WITHIN 10 M AND STANDS BEYOND, NOTICING NOBODY. Through the brain's answer: a test world has no navigation.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerFleesTest,
+	"Cataclysm.DungeonModifierEffects.ThePlaguebearerFleesWithinTenMetresAndStandsBeyond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerFleesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+	ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Bearer->GetController());
+	if (!TestNotNull(TEXT("the Plaguebearer has a brain"), Brain))
+	{
+		return false;
+	}
+
+	StandFromTheBearer(Mode, Player, 1010.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("at 10.1 m it stands"), static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::Idle));
+	TestNull(TEXT("noticing nobody"), Brain->CurrentTarget.Get());
+
+	StandFromTheBearer(Mode, Player, 990.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("at 9.9 m it flees"), static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::Fleeing));
+	TestTrue(TEXT("and the panel says so"),
+			 Mode->LiveCountsForTheFloor().FindRef(PlaguebearerRow).EndsWith(TEXT("; it flees")));
+	return true;
+}
+
+// ITS DEATH CLEARS EVERY STACK AT ONCE, AND NO MORE COME THAT FLOOR.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlaguebearersDeathClearsEveryStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Other = Mode ? APlaguebearersNeighbour(Mode) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("another creature on the floor"), Other))
+	{
+		return false;
+	}
+	StandFromTheBearer(Mode, Player, 5000.0f);
+	Beat(Mode, BeatsFor(3.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	if (!TestEqual(TEXT("set-up: 15% more damage at three stacks"), PlagueMultiplierOn(Other), 1.15f, 0.0001f)
+		|| !KillIt(*this, Player, Mode->PlaguebearerOnTheFloor()))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("its death clears every stack"), Mode->PlaguebearerStacksNow(), 0);
+	TestEqual(TEXT("so the others deal their own damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(PlaguebearerRow),
+			  FString(TEXT("the plaguebearer is dead")));
+	Beat(Mode, BeatsFor(2.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	TestEqual(TEXT("and no more come that floor"), Mode->PlaguebearerStacksNow(), 0);
+	TestEqual(TEXT("still their own damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -1703,6 +1703,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 		// AND THE FLOOR'S PLAGUE HARBINGERS, for the same reason. Issues #1820 and #41.
 		ChooseThePlagueHarbingers();
+
+		// AND THE FLOOR'S PLAGUEBEARER, for the same reason. Issues #1820 and #41.
+		ChooseThePlaguebearer();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -2046,6 +2049,9 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 
 		// AND THIS WAVE'S PLAGUE HARBINGERS, chosen per wave as ruled. Issues #1820 and #41.
 		ChooseThePlagueHarbingers();
+
+		// AND THE FLOOR'S PLAGUEBEARER, for the same reason. Issues #1820 and #41.
+		ChooseThePlaguebearer();
 	}
 
 	return Arrived;
@@ -4702,6 +4708,141 @@ void ACataclysmDungeonGameMode::PlaceTheGuide()
 	DemonicGuide = Guide;
 	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::ForgetThePlaguebearer()
+{
+	if (ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get())
+	{
+		Bearer->bIsPlaguebearer = false;
+	}
+	Plaguebearer = nullptr;
+	PlaguebearerStacks = 0;
+	PlaguebearerSecondsSinceStack = 0.0f;
+	PlaguebearerFloor = -1;
+	bPlaguebearerChosen = false;
+	bPlaguebearerFallen = false;
+	PlaguebearerPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::ChooseThePlaguebearer()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::PlaguebearerKey)))
+	{
+		return;
+	}
+	// A NEW FLOOR STARTS AGAIN; ONE A FLOOR, so a Horde arena's later waves on the same floor keep it, dead or alive.
+	if (PlaguebearerFloor != FloorNumber)
+	{
+		ForgetThePlaguebearer();
+		PlaguebearerFloor = FloorNumber;
+	}
+	if (bPlaguebearerChosen)
+	{
+		return;
+	}
+
+	// ONE RANDOM ELITE OF THIS FLOOR'S OWN CREATURES, never a floor's boss; A COMMON RAISED TO ELITE when there is none.
+	TArray<ACataclysmEnemyCharacter*> Elites;
+	TArray<ACataclysmEnemyCharacter*> Commons;
+	for (ACataclysmEnemyCharacter* Enemy : CurrentWave)
+	{
+		if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || DiedAsAFloorsBoss(Enemy))
+		{
+			continue;
+		}
+		if (Enemy->RarityStep == Effects::PlaguebearerRung)
+		{
+			Elites.Add(Enemy);
+		}
+		else if (Enemy->RarityStep == 0)
+		{
+			Commons.Add(Enemy);
+		}
+	}
+	TArray<ACataclysmEnemyCharacter*>& From = Elites.IsEmpty() ? Commons : Elites;
+	if (From.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("The Plaguebearer: no Elite or Common creature to choose on floor %d"),
+			   FloorNumber);
+		return;
+	}
+	ACataclysmEnemyCharacter* Chosen = From[FMath::RandRange(0, From.Num() - 1)];
+	const bool bRaised = Elites.IsEmpty();
+	if (bRaised)
+	{
+		Chosen->SetRarityStep(Effects::PlaguebearerRung);
+	}
+	Chosen->bIsPlaguebearer = true;
+	Plaguebearer = Chosen;
+	bPlaguebearerChosen = true;
+	UE_LOG(LogCataclysm, Log, TEXT("The Plaguebearer: %s on floor %d%s"), *Chosen->GetName(), FloorNumber,
+		   bRaised ? TEXT(", a Common raised to Elite") : TEXT(""));
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepPlaguebearer(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::PlaguebearerKey)) && PlaguebearerFloor == FloorNumber;
+	ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get();
+	const bool bAlive = bRow && IsValid(Bearer) && !UCataclysmSkillEffects::IsDead(Bearer);
+
+	if (!bRow)
+	{
+		// A FLOOR WITHOUT THE ROW, OR A NEW ONE NOT YET CHOSEN ON: no stack is carried there.
+		PlaguebearerStacks = 0;
+	}
+	else if (bPlaguebearerChosen && !bAlive && !bPlaguebearerFallen)
+	{
+		// ITS DEATH CLEARS EVERY STACK AT ONCE, and no more come this floor.
+		bPlaguebearerFallen = true;
+		PlaguebearerStacks = 0;
+		UE_LOG(LogCataclysm, Log, TEXT("The Plaguebearer: dead on floor %d, every stack cleared"), FloorNumber);
+	}
+	else if (bAlive)
+	{
+		// IT FLEES THE PLAYER WITHIN REACH, refreshed each beat, through `FleeFrom`, which is not fear.
+		if (World && IsValid(Player)
+			&& FVector::Dist2D(Player->GetActorLocation(), Bearer->GetActorLocation()) <= Effects::PlaguebearerFleeWithinCm)
+		{
+			Bearer->FleeFrom(Player->GetActorLocation(), World->GetTimeSeconds() + Effects::PlaguebearerFleeSeconds);
+		}
+
+		// A STACK EVERY FEW SECONDS, UP TO THE MOST.
+		PlaguebearerSecondsSinceStack += SecondsBetweenWaveChecks;
+		if (Effects::PlaguebearerStackIsDue(PlaguebearerSecondsSinceStack))
+		{
+			PlaguebearerSecondsSinceStack = 0.0f;
+			PlaguebearerStacks = Effects::PlaguebearerStacksAfter(PlaguebearerStacks);
+		}
+	}
+
+	// EVERY OTHER FLOOR CREATURE CARRIES THE COUNT, one that came later included; written only when it changed.
+	const float Multiplier = Effects::PlaguebearerMultiplier(PlaguebearerStacks);
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		ACataclysmEnemyCharacter* Creature = Enemy.Get();
+		if (IsValid(Creature) && Creature != Bearer
+			&& !FMath::IsNearlyEqual(Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource),
+									 Multiplier))
+		{
+			Creature->SetPlaguebearerDamageMultiplier(Multiplier);
+		}
+	}
+
+	FVector Ignored;
+	const bool bFleeing = bAlive && Bearer->FleeSourceNow(Ignored);
+	const int32 Key = PlaguebearerStacks * 100 + (bPlaguebearerFallen ? 10 : 0) + (bFleeing ? 1 : 0);
+	if (Key != PlaguebearerPanelKey)
+	{
+		PlaguebearerPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
 }
 
 void ACataclysmDungeonGameMode::StepDemonicGuide(
@@ -8670,6 +8811,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	RawSewageStacks = 0;
 	ForgetTheGuide();
 	RawSewageSecondsInARiver = 0.0f;
+	// AND THE PLAGUEBEARER AND ITS STACKS END WITH THE DUNGEON. Issues #1820 and #41.
+	ForgetThePlaguebearer();
 	bRawSewageInARiver = false;
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
@@ -9206,6 +9349,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND CARRION FEAST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bCarrionFeast = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::CarrionFeastKey));
+	// AND THE PLAGUEBEARER, ON EVERY FLOOR CARRYING IT, AND WHILE STACKS ARE CARRIED. Issues #1820 and #41.
+	const bool bPlaguebearer = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::PlaguebearerKey)) || PlaguebearerStacks > 0;
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
@@ -9262,7 +9408,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
 		&& !bVision
 		&& !bGrimTotems
-		&& !bObsidianSarcophagi && !bShadowyEnemies)
+		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer)
 	{
 		return;
 	}
@@ -9569,6 +9715,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bCarrionFeast)
 	{
 		StepCarrionFeast();
+	}
+
+	// AND THE PLAGUEBEARER, WHICH RUNS FROM THE PLAYER AND STRENGTHENS EVERY OTHER CREATURE. Issues #1820 and #41.
+	if (bPlaguebearer)
+	{
+		StepPlaguebearer(Player);
 	}
 
 	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
@@ -12683,6 +12835,21 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%"),
 											  CarrionCarcassesNow().Num(), CarrionFeedersNow().Num(),
 											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
+	}
+
+	// AND THE PLAGUEBEARER: the stacks every other creature carries and what they add, whether it is running, or that it
+	// is dead. Issues #1820 and #41.
+	const FName BearerRow(Effects::PlaguebearerKey);
+	if (FloorBrief.Modifiers.Contains(BearerRow) && bPlaguebearerChosen && PlaguebearerFloor == FloorNumber)
+	{
+		const ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get();
+		FVector Ignored;
+		const bool bFleeing = !bPlaguebearerFallen && IsValid(Bearer) && Bearer->FleeSourceNow(Ignored);
+		Counting.Add(BearerRow, bPlaguebearerFallen
+			? FString(TEXT("the plaguebearer is dead"))
+			: FString::Printf(TEXT("the plaguebearer: %d stacks, +%d%% damage%s"), PlaguebearerStacks,
+							  FMath::RoundToInt((Effects::PlaguebearerMultiplier(PlaguebearerStacks) - 1.0f) * 100.0f),
+							  bFleeing ? TEXT("; it flees") : TEXT("")));
 	}
 
 	// AND VOID PARASITE: how many voidlings the player carries, and what clears them. Issues #1820 and #41.

@@ -600,6 +600,12 @@ public:
 	static FString CarcassTextFor(const AActor* Actor);
 
 	/**
+	 * "Plaguebearer" under the bar of The Plaguebearer's creature, and "Diseased N" under the bar of a creature carrying
+	 * N of its stacks, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason.
+	 */
+	static FString PlaguebearerTextFor(const AActor* Actor);
+
+	/**
 	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
 	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.
 	 */

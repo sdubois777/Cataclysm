@@ -653,6 +653,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetBlackestShadowDamageMultiplier(float NewMultiplier);
 
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetPlaguebearerDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -665,6 +668,7 @@ public:
 	static constexpr const TCHAR* InfectionBloomDamageSource = TEXT("InfectionBloom");
 	static constexpr const TCHAR* GrimTotemsDamageSource = TEXT("GrimTotems");
 	static constexpr const TCHAR* BlackestShadowDamageSource = TEXT("BlackestShadow");
+	static constexpr const TCHAR* PlaguebearerDamageSource = TEXT("Plaguebearer");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -946,7 +950,8 @@ public:
 	virtual bool TakesNoHostileAction() const override
 	{
 		// AND DEMONIC GUIDE'S GUIDE, which leads the player and is no enemy of theirs. Issues #1820 and #41.
-		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule;
+		// AND THE PLAGUEBEARER, which "doesn't directly attack you". Issues #1820 and #41.
+		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule || bIsPlaguebearer;
 	}
 	//~ End
 
@@ -1220,6 +1225,13 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsACarrionFeeder = false;
+
+	/**
+	 * Whether this creature is its floor's Plaguebearer. Issues #1820 and #41. It never attacks
+	 * (`TakesNoHostileAction`), stands when it is not fleeing, and says "Plaguebearer" under its bar.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsPlaguebearer = false;
 
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
@@ -1818,8 +1830,8 @@ protected:
 	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
 	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
 	 * `TrialOfEnduranceDamageSource` (Trial of Endurance), `ObsidianSarcophagiDamageSource` (Obsidian
-	 * Sarcophagi), `InfectionBloomDamageSource` (Infection Bloom) and `CarrionFeastDamageSource`
-	 * (Carrion Feast). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
+	 * Sarcophagi), `InfectionBloomDamageSource` (Infection Bloom), `CarrionFeastDamageSource`
+	 * (Carrion Feast) and `PlaguebearerDamageSource` (The Plaguebearer). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
 	 * by every entry. Issues #1820 and #41.
 	 *
 	 * ONE MAP RATHER THAN A FIELD PER SOURCE, as ruled by the coordinating session on

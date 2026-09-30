@@ -3041,7 +3041,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetInfectionBloomDamageMultiplier", "InfectionBloomDamageSource"),
                         ("SetCarrionFeastDamageMultiplier", "CarrionFeastDamageSource"),
                         ("SetGrimTotemsDamageMultiplier", "GrimTotemsDamageSource"),
-                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource")):
+                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource"),
+                        ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4682,3 +4683,23 @@ def test_reality_twister_row_is_the_owners_reword():
             f"Chaos_Reality_Twister no longer says {phrase.upper()!r}. The rule is built to that text; see "
             "RealityTwisterKey. " + words)
     assert "every 30 seconds" not in lower, "Chaos_Reality_Twister has its old text back. " + words
+
+
+def test_plaguebearer_row_still_names_an_elite_that_empowers_by_stacks_and_flees():
+    """The phrases the rule's readings rest on.
+
+    "One random elite on each floor is a "Plaguebearer." This enemy doesn't directly attack you, but it constantly
+    applies a stacking disease debuff to all other enemies in the dungeon. The Plaguebearer's debuff increases the
+    damage of other enemies by 5% per stack, to a maximum of 10 stacks. The Plaguebearer will flee when you get close,
+    forcing you to hunt it down to make the rest of the floor manageable." ONE RANDOM ELITE is who; DOESN'T DIRECTLY
+    ATTACK YOU is TakesNoHostileAction; 5% PER STACK and A MAXIMUM OF 10 STACKS are the figures; FLEE WHEN YOU GET
+    CLOSE is FleeFrom within its reach. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_The_Plaguebearer"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("one random elite", "doesn't directly attack you", "5% per stack", "a maximum of 10 stacks",
+                   "flee when you get close"):
+        assert phrase in lower, (
+            f"Pestilence_The_Plaguebearer no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "PlaguebearerKey in CataclysmDungeonModifierEffects.h. " + words)

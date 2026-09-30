@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — The Plaguebearer: one Elite a floor never attacks and runs from the player; every 3 seconds every other creature of the floor gains a stack of 5% more damage, up to ten; its death clears them all
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the Plaguebearer's flag, its
+own key of the damage map, and `TakesNoHostileAction`); `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`
+(it stands when it is not fleeing); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the choice,
+the beat, the panel line, the end of the dungeon); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`
+("Plaguebearer" and "Diseased N"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
+guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+
+### The row
+
+`Pestilence_The_Plaguebearer` in `game/Data/DungeonModifiers.csv`, weight 15: "One random elite on each floor is a
+"Plaguebearer." This enemy doesn't directly attack you, but it constantly applies a stacking disease debuff to all other
+enemies in the dungeon. The Plaguebearer's debuff increases the damage of other enemies by 5% per stack, to a maximum of
+10 stacks. The Plaguebearer will flee when you get close, forcing you to hunt it down to make the rest of the floor
+manageable." It states two figures: 5% a stack and ten stacks.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md` and this log for the row, fleeing and disease on 2026-09-30. The design document
+does not name a Plaguebearer. This log said the row "needs a creature that flees the player, which no creature does";
+`ACataclysmEnemyCharacter::FleeFrom` has done that since #2139, and its own comment names this row as a caller. **The
+design document's Disease is a player ailment that deals damage** ("12 damage a second for 6 seconds, and on the target's
+death it spreads its remaining duration to nearby enemies", in the ailment table); the row's disease only raises damage,
+so it is read as a separate stacking effect, not that ailment.
+
+### What the rule does
+
+On each floor carrying the row, once its creatures are placed, one of them is the Plaguebearer: a random creature at the
+Elite rung, or, on a floor with no Elite, a Common raised to Elite. Never a boss or the Gatekeeper. It says "Plaguebearer"
+under its bar, takes no hostile action (no swing, no ability, no hostile aura from its modifiers), and stands when it is
+not fleeing. While the player is within 10 m it runs from the player, through `FleeFrom`, which moves it as fear does
+without the fear tag, so no crowd-control immunity or resistance touches it. Every 3 seconds every other creature of the
+floor gains a stack, up to ten, and deals 5% more damage a stack, added: 1 + 0.05 n, so 50% more at ten. It is written
+through the Plaguebearer's own key of the damage map, so no other rule's multiplier is overwritten, and a creature that
+comes later joins at the count on the next beat. Each says "Diseased N" under its bar. The panel reads "the plaguebearer:
+3 stacks, +15% damage", with "; it flees" while it runs. **Its death clears every stack at once**, and no more come that
+floor; the panel then reads "the plaguebearer is dead". A new floor chooses a new one and starts at nought. It pays as its
+rung does.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure but the row's two a play-test
+value:**
+
+- **One Elite a floor, or a Common raised to Elite; never a boss or the Gatekeeper.**
+- **It never attacks, stands when not fleeing, and flees within 10 m**, refreshed each beat for 2 seconds.
+- **A stack every 3 seconds to every other floor creature, up to ten**; a creature that comes later joins at the count.
+- **Additive, 1 + 0.05 n**, so 50% at ten: the plain reading of "5% per stack, to a maximum of 10 stacks".
+- **Its death clears every stack at once**, "to make the rest of the floor manageable".
+- **The three labels**, and it pays as its rung does.
+- **The disease is a separate stacking effect**, not the player's Disease ailment.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The Plaguebearer is chosen where the Medic, the Commander and the Plague Harbingers are**, after the floor's creatures
+  are placed, and again when a walking wave has finished arriving; one a floor, so a later call on the same floor keeps
+  the one chosen, dead or alive.
+- **The floor number starts the rule again**, rather than a reset beside the other rules', so the order in which a floor's
+  resets run does not matter.
+- **"; it flees" is shown only while it runs.**
+
+### The research
+
+Both pages fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile | [poedb.tw/us/Tormented_Spirit](https://poedb.tw/us/Tormented_Spirit) | Tormented spirits "flee when encountered and imbue nearby monsters with dangerous powers" |
+| Diablo IV | [diablo4.wiki.fextralife.com/Treasure+Goblins](https://diablo4.wiki.fextralife.com/Treasure+Goblins) | "attacking the Treasure Goblin will cause it to flee"; "Players must act quickly to defeat the goblin before it escapes through a portal" |
+
+**What it settles:** the shape: a creature that does not fight, runs from the player, strengthens the monsters around it,
+and has to be chased down. **What it does not:** any figure; each game states its own, and the reach, the cadence and
+the rung here are play-test values.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `PlaguebearerFiguresStacksReachAndRung`: 5%, ten, 3 s, 10 m, 2 s, the Elite rung; the multiplier at 0, 1, 3, 10 and 11
+  stacks (1, 1.05, 1.15, 1.5, 1.5); a stack not due at 2.99 s and due at 3.
+- `OneEliteOfTheFloorIsThePlaguebearerOrACommonRaisedToElite`: one on the floor, at the Elite rung, never the boss, taking
+  no hostile action, labelled; then every creature made Common and the choice made again: a Common raised to Elite.
+- `EveryOtherCreatureGainsAStackEveryThreeSecondsToTen`: none at 2.75 s, one at 3 s (5% more, "Diseased 1"), ten at 30 s
+  (50% more), still ten at 33 s, "Diseased 10", never on the Plaguebearer itself, and the panel.
+- `ACreatureThatComesLaterJoinsThePlaguebearersCount`: at three stacks a creature added to the floor carries three on
+  the next beat.
+- `ThePlaguebearerFleesWithinTenMetresAndStandsBeyond`: at 10.1 m its brain reports `Idle` with no target; at 9.9 m
+  `Fleeing`, and the panel ends "; it flees". **Measured through the brain's answer, not by movement**: a world built for a
+  test has no navigation system. **That it runs from the player in play is on the owner's play-check list.**
+- `ThePlaguebearersDeathClearsEveryStack`: at three stacks, its death clears them, the others deal their own damage, the
+  panel says it is dead, and six seconds later still nothing.
+
+Two Python checks: the row still says "one random elite", "doesn't directly attack you", "5% per stack", "a maximum of
+10 stacks" and "flee when you get close"; and its setter writes its own key of the damage map.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
+when the build machine is granted, stacked with the rest of its group.
+
+---
+
 ## 2026-09-26 — Reality Twister: each floor gains one random row of any Cataclysm that does something in play, drawn again on the next floor, as the owner decided
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (the row's key, a second pool on the

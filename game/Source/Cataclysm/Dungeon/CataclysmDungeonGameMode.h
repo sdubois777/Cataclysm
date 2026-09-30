@@ -1951,6 +1951,19 @@ public:
 	/** Demonic Guide, for the panel and tests: the floor's guide, or null. */
 	ACataclysmEnemyCharacter* DemonicGuideOnTheFloor() const { return DemonicGuide.Get(); }
 
+	/** The Plaguebearer on this floor, or null; and the stacks every other creature carries. Issues #1820 and #41. */
+	ACataclysmEnemyCharacter* PlaguebearerOnTheFloor() const { return Plaguebearer.Get(); }
+	int32 PlaguebearerStacksNow() const { return PlaguebearerStacks; }
+
+	/**
+	 * The Plaguebearer is chosen from this floor's own creatures once they are placed: a random one at the Elite rung, or
+	 * a Common raised to it. Public so a test can choose again after changing the creatures' rungs. Issues #1820 and #41.
+	 */
+	void ChooseThePlaguebearer();
+
+	/** Forget the Plaguebearer and its stacks. Public for the reason above. */
+	void ForgetThePlaguebearer();
+
 	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
 
@@ -2650,6 +2663,9 @@ private:
 	 * a player beyond the chain takes written on the player.
 	 */
 	void StepDemonicGuide(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** The Plaguebearer's beat: its flight, the stacks, and every other floor creature's multiplier. Issue #41. */
+	void StepPlaguebearer(class ACataclysmPlayerCharacter* Player);
 
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
@@ -3964,6 +3980,18 @@ private:
 	TWeakObjectPtr<class ACataclysmGroundZone> DemonicGuideChain;
 	float DemonicGuideApplied = 0.0f;
 	int32 DemonicGuidePanelKey = -1;
+
+	/**
+	 * The Plaguebearer, its stacks, and the floor they belong to. Issues #1820 and #41. THE FLOOR NUMBER IS WHAT STARTS
+	 * THEM AGAIN, so the reset does not depend on which of the floor's resets runs first.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> Plaguebearer;
+	int32 PlaguebearerStacks = 0;
+	float PlaguebearerSecondsSinceStack = 0.0f;
+	int32 PlaguebearerFloor = -1;
+	bool bPlaguebearerChosen = false;
+	bool bPlaguebearerFallen = false;
+	int32 PlaguebearerPanelKey = -1;
 
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein

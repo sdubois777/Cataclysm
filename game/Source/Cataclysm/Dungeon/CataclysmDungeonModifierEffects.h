@@ -2507,6 +2507,29 @@ public:
 	static const TCHAR* CarrionFeastKey;
 
 	/**
+	 * The row whose Plaguebearer strengthens every other creature of the floor and runs from the player. Issues #1820
+	 * and #41.
+	 *
+	 * "One random elite on each floor is a "Plaguebearer." This enemy doesn't directly attack you, but it constantly
+	 * applies a stacking disease debuff to all other enemies in the dungeon. The Plaguebearer's debuff increases the
+	 * damage of other enemies by 5% per stack, to a maximum of 10 stacks. The Plaguebearer will flee when you get close,
+	 * forcing you to hunt it down to make the rest of the floor manageable."
+	 *
+	 * THE ROW STATES 5% A STACK AND 10 STACKS. RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION,
+	 * 2026-09-30, every other figure a play-test value, AND BUILT:
+	 * - ONE A FLOOR: a random floor creature at the Elite rung, or a Common raised to it when the floor has no Elite;
+	 *   never a boss or the Gatekeeper. It never attacks (`TakesNoHostileAction`) and stands when it is not fleeing.
+	 * - IT FLEES while the player is within `PlaguebearerFleeWithinCm`, through `FleeFrom`, which is not fear.
+	 * - EVERY `PlaguebearerSecondsBetweenStacks` every other floor creature gains a stack, up to
+	 *   `PlaguebearerMostStacks`; a creature that comes later joins at the count. `PlaguebearerDamagePercentPerStack`
+	 *   more damage a stack, ADDED, so 1 + 0.05n: +50% at ten. Through its own key of the damage map.
+	 * - ITS DEATH clears every stack at once, and no more come that floor. A new floor starts again at nought.
+	 * - THE DISEASE IS NOT THE PLAYER'S DISEASE AILMENT, which deals damage (the design document's ailment table);
+	 *   this one only raises damage.
+	 */
+	static const TCHAR* PlaguebearerKey;
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5301,6 +5324,29 @@ public:
 	static constexpr int32 GrimTotemsEliteRung = RoyalGuardLowestRungThatSummons;
 	static constexpr float GrimTotemsCleanseRadiusCm = 1500.0f;
 	static constexpr float GrimTotemsCleanseDamageLessPercent = 25.0f;
+
+	/** The Plaguebearer's figures. The row states 5% and 10; the rest are play-test values. See the key. */
+	static constexpr float PlaguebearerDamagePercentPerStack = 5.0f;
+	static constexpr int32 PlaguebearerMostStacks = 10;
+	static constexpr float PlaguebearerSecondsBetweenStacks = 3.0f;
+	static constexpr float PlaguebearerFleeWithinCm = 1000.0f;
+	static constexpr float PlaguebearerFleeSeconds = 2.0f;
+	static constexpr int32 PlaguebearerRung = RoyalGuardLowestRungThatSummons;
+
+	/** The Plaguebearer: the stacks after one more is added, up to the most. */
+	static int32 PlaguebearerStacksAfter(int32 Stacks) { return FMath::Clamp(Stacks + 1, 0, PlaguebearerMostStacks); }
+
+	/** The Plaguebearer: whether a stack is due this long after the last. */
+	static bool PlaguebearerStackIsDue(float SecondsSinceLast)
+	{
+		return SecondsSinceLast >= PlaguebearerSecondsBetweenStacks - KINDA_SMALL_NUMBER;
+	}
+
+	/** The Plaguebearer: what every other creature's damage is multiplied by at this many stacks, added: 1 + 0.05n. */
+	static float PlaguebearerMultiplier(int32 Stacks)
+	{
+		return 1.0f + FMath::Clamp(Stacks, 0, PlaguebearerMostStacks) * PlaguebearerDamagePercentPerStack / 100.0f;
+	}
 
 	/**
 	 * Void Parasite's figures, every one a play-test value. See the key. The chance is Demon Prince's
