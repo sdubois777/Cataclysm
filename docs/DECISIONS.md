@@ -235,6 +235,8 @@ line past 120 characters is wrapped. Here, `QuarantineTextFor(Actor), ShroudedTe
 early return of `StepFloorRulesThatChange` was also joined by the `&& !bX` rule recorded in Grim Totems' entry: the term
 `&& !bShadowyEnemies` went inside the closing parenthesis, on the line that holds the base's last term.
 
+**A TEST THAT COULD NOT PASS, FOUND BY SCANNING FOR THE CLASS, 2026-09-30, fixed in the window as the coordinating session ruled.** `AFloorWithoutShadowyEnemiesTakesEveryShroudOff` checked on floor 3 that an Imp from floor 2 "still stands" and is not shrouded; changing floors destroys every creature of the last one. The check is now of a new Imp of floor 3, which is not shrouded. The light-zone checks are unchanged. It was found by a scan for tests that read a creature after a floor change, not by a proof, and no proof targets it.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
@@ -341,6 +343,8 @@ the weak pointer for the lookup needs the complete `ACataclysmEnemyCharacter`, w
 unity build hid it; Grim Totems' proof Pc edited `CataclysmChoicePanelWidget.cpp`, the adaptive build compiled that
 file on its own, and it stopped with C2338 ("TWeakObjectPtr can only be constructed with UObject types"). The body moved
 into `CataclysmDungeonGameMode.cpp`; the declaration stays in the header, and nothing else changed.
+
+**A TEST THAT COULD NOT PASS, FOUND BY GUARD PROOF Pc, 2026-09-30, fixed in the window as the coordinating session ruled.** `AFloorWithoutTheBlackestShadowEndsEveryStalker` read, on floor 3, a stalker made on floor 2; changing floors destroys every creature of the last one, so it failed with the break in and with it out, reading figures from the destroyed creature. Now the player walks to 3 m of the stalker on floor 2, where the light takes the buff off, and floor 3 makes no stalker of a new Imp 20 m away. **Proof Pc is recorded as not a proof and is not rerun**: The Blackest Shadow has two proofs, Pa and Pb. The branch that writes a creature's damage back to its own when it stops being a stalker (`SetBlackestShadowDamageMultiplier(bStalker ? StalkerDamage : 1.0f)`) is checked by "its damage is its own" but is not proved by a break.
 
 ### Not yet run
 

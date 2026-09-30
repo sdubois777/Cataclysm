@@ -35959,7 +35959,7 @@ bool FCataclysmDarknessStalkerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// A FLOOR WITHOUT THE DARKNESS TAKES EVERY STALKER'S BUFF OFF.
+// THE LIGHT TAKES A STALKER'S BUFF OFF; A FLOOR WITHOUT THE DARKNESS MAKES NO STALKER.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarknessLiftsTest,
 	"Cataclysm.DungeonModifierEffects.AFloorWithoutTheBlackestShadowEndsEveryStalker",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -35988,18 +35988,34 @@ bool FCataclysmDarknessLiftsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// ON THE SAME FLOOR, WALKING TO 3 M OF IT: INSIDE THE LIGHT THE BUFF COMES OFF AND IT IS SEEN. Here and not on the next
+	// floor, because changing floors destroys every creature of the last one.
+	const FVector Near = Dark->GetActorLocation() - FVector(300.0f, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Player.Character->GetActorLocation().Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("within the light it is no stalker"), Mode->IsAnInvisibleStalker(Dark));
+	TestEqual(TEXT("its damage is its own"),
+			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("its attack speed too"), Dark->DarknessAttackSpeedMultiplier, 1.0f, 0.001f);
+	TestFalse(TEXT("and it is seen"), Dark->IsHidden());
+
+	// A FLOOR WITHOUT THE ROW MAKES NO STALKER, even of a creature 20 m away.
 	Mode->DungeonModifiers = {};
 	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
 	{
 		return false;
 	}
+	ACataclysmEnemyCharacter* Stranger = AnImpAway(World, Player, 2000.0f);
 	Beat(Mode, 1);
-	TestTrue(TEXT("it still stands"), IsValid(Dark));
-	TestFalse(TEXT("and is no stalker"), Mode->IsAnInvisibleStalker(Dark));
-	TestEqual(TEXT("its damage is its own"),
-			  Dark->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
-	TestEqual(TEXT("its attack speed too"), Dark->DarknessAttackSpeedMultiplier, 1.0f, 0.001f);
-	TestFalse(TEXT("and it is seen"), Dark->IsHidden());
+	if (!TestNotNull(TEXT("an Imp 20 m away on floor 3"), Stranger))
+	{
+		return false;
+	}
+	TestFalse(TEXT("is no stalker"), Mode->IsAnInvisibleStalker(Stranger));
+	TestEqual(TEXT("with its own damage"),
+			  Stranger->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestEqual(TEXT("and attack speed"), Stranger->DarknessAttackSpeedMultiplier, 1.0f, 0.001f);
+	TestFalse(TEXT("and is seen"), Stranger->IsHidden());
 	return true;
 }
 
@@ -36289,9 +36305,14 @@ bool FCataclysmShadowyLiftsTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// A CREATURE OF THIS FLOOR, since changing floors destroys every creature of the last one.
+	ACataclysmEnemyCharacter* Stranger = AFloorImpAway(Mode, World, Player, 300.0f);
 	Beat(Mode, 1);
-	TestTrue(TEXT("it still stands"), IsValid(Imp));
-	TestFalse(TEXT("and is not shrouded"), Imp->bShrouded);
+	if (!TestNotNull(TEXT("an Imp 3 m away on floor 3"), Stranger))
+	{
+		return false;
+	}
+	TestFalse(TEXT("is not shrouded"), Stranger->bShrouded);
 	TestEqual(TEXT("the floor has no light zones"), Mode->ShadowyEnemiesLightsNow().Num(), 0);
 	TestEqual(TEXT("and none is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), 0);
 	return true;
