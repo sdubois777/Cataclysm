@@ -1617,12 +1617,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: FERVOUR COST JOINED ON 2026-09-27 for issue #1478, the Ultimate slot's 50
 #: Fervour, built ahead of the Skill Slots column while the design workbook is
 #: with another session. It leaves when the column is added.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Skill Slots": {
-        "Fervour Cost": "issue #1478: the Ultimate slot costs 50 Fervour, "
-                        "ruled 2026-09-09",
-    },
-}
+#: FERVOUR COST LEFT with the Skill Slots column, and the table is empty
+#: again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):
