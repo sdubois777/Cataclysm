@@ -215,6 +215,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
 const TCHAR* UCataclysmDungeonModifierEffects::DemonicGuideKey =
 	TEXT("Demonic_Demonic_Guide");
 
+const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
+	TEXT("Pestilence_Carrion_Feast");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -582,6 +585,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
+		// CARRION FEAST. Carcasses become feeders unless burned, and the feeders grow stronger; the "purification
+		// altars" do nothing, because they wait on the interaction screen. Issues #1820 and #41.
+		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(SingularityWellsKey)
 		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
@@ -777,6 +783,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(RawSewageKey),
 		FName(DemonicGuideKey),
 		FName(InfestedVeinsKey),
+		FName(CarrionFeastKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
 		FName(ObsidianSarcophagiKey),
