@@ -9490,4 +9490,177 @@ bool FCataclysmMinionReserveRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmDurationRowsTest
+{
+	/** A self-buff skill granted to this wearer in this slot, with that slot's tag. */
+	UCataclysmSelfBuffSkill* BuffOn(UCataclysmAbilitySystemComponent* ASC, AActor* Avatar,
+									ECataclysmAbilitySlot Slot, const TCHAR* SlotTag)
+	{
+		const FGameplayAbilitySpecHandle Handle =
+			ASC->GiveAbilityInSlot(UCataclysmSelfBuffSkill::StaticClass(), Slot, /*Level=*/1, Avatar);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSelfBuffSkill* Skill =
+			Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(SlotTag);
+		}
+		return Skill;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSupportDurationRowTest,
+	"Cataclysm.Enchantments.TheSupportDurationRowDoublesOnlyASupportSkillsDurations",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your support ability duration is increased by 50%-100%", worn at the top of
+ * its range, doubles every duration a Support skill sets and leaves a Special
+ * skill's alone. Issue #1833, ruled 2026-09-30: `skill_duration` scoped to
+ * `Slot.Support`, read by the buff, the effect, the mark and the terrain.
+ */
+bool FCataclysmSupportDurationRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDurationRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_support_ability_duration_is_increased_by_50"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	UCataclysmSelfBuffSkill* Support =
+		BuffOn(Worn.ASC(), Worn.Wearer->Actor, ECataclysmAbilitySlot::Support, TEXT("Slot.Support"));
+	UCataclysmSelfBuffSkill* Special =
+		BuffOn(Worn.ASC(), Worn.Wearer->Actor, ECataclysmAbilitySlot::Special, TEXT("Slot.Special"));
+	if (!TestNotNull(TEXT("a Support buff"), Support) || !TestNotNull(TEXT("a Special buff"), Special))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Support skill's own durations: doubled"),
+			  Support->OwnDurationMultiplier(false), 2.0f, 0.001f);
+	TestEqual(TEXT("and its buff: doubled"), Support->OwnDurationMultiplier(true), 2.0f, 0.001f);
+	TestEqual(TEXT("a Special skill's: unchanged"), Special->OwnDurationMultiplier(false), 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffDurationRowsTest,
+	"Cataclysm.Enchantments.TheBuffDurationRowsLengthenAndShortenABuffOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Buff effects you apply last 30%-60% longer", worn at the top, makes a buff
+ * 1.6 times as long and leaves the skill's other durations alone; "Buff effects
+ * applied to you last 30%-50% less time", worn at the top, makes it half as
+ * long. Issue #1833. The second reads as the wearer's own buffs in a
+ * one-player game, a judgement ruled 2026-09-30 that co-op would change.
+ */
+bool FCataclysmBuffDurationRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDurationRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		bool bBenefit;
+		float Buff;
+	};
+	for (const FCase& Case : {FCase{TEXT("Positive_Buff_effects_you_apply_last_30_60_longer"), true, 1.6f},
+							  FCase{TEXT("Negative_Buff_effects_applied_to_you_last_30_50_less_ti"), false, 0.5f}})
+	{
+		FWorn Worn(Case.Enchantment, Case.bBenefit);
+		if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+		{
+			return false;
+		}
+		UCataclysmSelfBuffSkill* Skill =
+			BuffOn(Worn.ASC(), Worn.Wearer->Actor, ECataclysmAbilitySlot::Support, TEXT("Slot.Support"));
+		if (!TestNotNull(TEXT("a buff"), Skill))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%s: the buff"), Case.Enchantment),
+				  Skill->OwnDurationMultiplier(true), Case.Buff, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: the skill's other durations"), Case.Enchantment),
+				  Skill->OwnDurationMultiplier(false), 1.0f, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebuffDurationRowTest,
+	"Cataclysm.Enchantments.TheDebuffDurationRowLengthensWhatYouApply",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Debuff effects you apply last 30%-60% longer", worn at the top, makes every
+ * debuff the wearer places on an enemy 1.6 times as long. Issue #1833.
+ */
+bool FCataclysmDebuffDurationRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Debuff_effects_you_apply_last_30_60_longer"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("debuffs the wearer applies: 1.6 times as long"),
+			  UCataclysmSkillEffects::DebuffDurationMultiplierOf(Worn.ASC()), 1.6f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChronomancerSetTest,
+	"Cataclysm.Enchantments.ChronomancersTwoPiecesLengthenDebuffsAndShortenBuffs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Chronomancer's Time-Lock, written whole at its first threshold. Issue #1833.
+ * Two pieces each carrying the 2-piece bonus, "All debuffs you apply to enemies
+ * now last 50% longer", and the set's drawback, "All buffs you apply to
+ * yourself now last 25% less time": debuffs 1.5 times as long and a buff 0.75.
+ * One piece is below the threshold, so neither applies.
+ */
+bool FCataclysmChronomancerSetTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmDurationRowsTest;
+
+	const TCHAR* Bonus = TEXT("Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de");
+	const TCHAR* Drawback = TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_25_les");
+
+	for (const int32 Pieces : {1, 2})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		const TCHAR* Bases[] = {TEXT("Head_Helm"), TEXT("Chest_Cuirass")};
+		for (int32 Index = 0; Index < Pieces; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer.Equipment->Equip(Carrying(Bases[Index], Bonus, Drawback), Removed, AlsoRemoved, Slot);
+		}
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		UCataclysmSelfBuffSkill* Skill = BuffOn(Wearer.AbilitySystem, Wearer.Actor,
+												ECataclysmAbilitySlot::Support, TEXT("Slot.Support"));
+		if (!TestNotNull(TEXT("a buff"), Skill))
+		{
+			return false;
+		}
+		const bool bWhole = Pieces >= 2;
+		TestEqual(FString::Printf(TEXT("%d piece(s): debuffs"), Pieces),
+				  UCataclysmSkillEffects::DebuffDurationMultiplierOf(Wearer.AbilitySystem),
+				  bWhole ? 1.5f : 1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%d piece(s): a buff"), Pieces),
+				  Skill->OwnDurationMultiplier(true), bWhole ? 0.75f : 1.0f, 0.001f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

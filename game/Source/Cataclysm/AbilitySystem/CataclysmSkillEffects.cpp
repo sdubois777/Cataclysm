@@ -288,6 +288,18 @@ namespace
 // engine by the stat-name map in `CataclysmPlayerClassStats.cpp`.
 const TCHAR* UCataclysmSkillEffects::StaggerDurationStat =
 	TEXT("stagger_duration");
+
+const TCHAR* UCataclysmSkillEffects::DebuffDurationStat = TEXT("debuff_duration");
+
+float UCataclysmSkillEffects::DebuffDurationMultiplierOf(const UAbilitySystemComponent* Source)
+{
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	return Mine
+		? FMath::Max(0.0f, 1.0f + Mine->IncreasesForStat(FName(DebuffDurationStat),
+														 FGameplayTagContainer()))
+		: 1.0f;
+}
 const TCHAR* UCataclysmSkillEffects::StaggerHealthCeilingStat =
 	TEXT("stagger_health_ceiling_reduction");
 const TCHAR* UCataclysmSkillEffects::KnockdownSecondsStat =
@@ -1598,9 +1610,14 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 	Numbers.DamagePerTick = DamagePerTick * AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute(),
 		FName(TEXT("dot_damage")), Tags);
-	Numbers.DurationSeconds = DurationSeconds * AsMultiplierForSkill(
+	// AND `debuff_duration`'s INCREASES IN THE SAME BUCKET. Issue #1833, ruled
+	// 2026-09-30: a damage over time effect is a debuff the character applies.
+	// `dot_duration` carries only increased rows, so its multiplier is one
+	// plus its increases and adding these beside them is one bucket.
+	Numbers.DurationSeconds = DurationSeconds * FMath::Max(0.0f, AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
-		FName(TEXT("dot_duration")), Tags);
+		FName(TEXT("dot_duration")), Tags)
+		+ DebuffDurationMultiplierOf(Source) - 1.0f);
 
 	// FREQUENCY DIVIDES THE GAP BETWEEN TICKS. More of it is a shorter gap and
 	// so more ticks in the same time, which is what "More ticks in the same
@@ -3209,8 +3226,17 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 	// ONE OF THE TWO PATHS THAT APPLY A LASTING EFFECT, and the other is
 	// `ApplyDamageOverTime`. Honouring one and not the other would lengthen a
 	// stun and not a burn, or the reverse, with nothing reporting it.
+	//
+	// AND THE INSTIGATOR'S LENGTHENING BEFORE IT. Issue #1833,
+	// `debuff_duration`. ONLY ON AN ENEMY: a tag a character puts on itself or
+	// on an ally is a buff or a state, and "debuffs you apply to enemies" is
+	// the sentence. Ruled 2026-09-30. `IsHostileTo` answers no for the
+	// instigator itself, so no separate "not the target" test is needed.
+	const float Lengthened = UCataclysmTargeting::IsHostileTo(Target, Instigator)
+		? DurationSeconds * DebuffDurationMultiplierOf(Source)
+		: DurationSeconds;
 	const float OnTarget =
-		UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
+		UCataclysmDebuffs::DurationOn(Defender, Lengthened);
 	if (OnTarget <= 0.0f)
 	{
 		// A DURATION THE TARGET'S STAT TOOK TO NOTHING APPLIES NOTHING, rather
