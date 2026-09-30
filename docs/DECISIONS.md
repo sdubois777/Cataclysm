@@ -81,9 +81,12 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `Pa
   reward, the Boss rung, three waves of four at 6 m.
 - `PandorasBoxThreeStandAwayFromTheEntranceOfferingOpen`.
 - `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves`: roll pinned at 75: the box goes, it gave drops, the drops lie
-  in the world, and no creature comes, then or on the beat. **The drops are drawn on the floor's seeded stream**, so the
-  count is the same on every run of this floor; a floor whose draw were nought would fail here every time, not now and
-  then.
+  in the world, and no creature comes, then or on the beat. **The drop count is fixed, not drawn per run**: the counts
+  are drawn only from the stream the reward is given (`UCataclysmDropRoll::RollDropCount(..., Stream)` in
+  `SpawnDropsFor`); that stream is seeded from the floor plan's seed and the box; the plan's seed is
+  `FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, FloorNumber)`; and `ChooseSeed` answers the game mode's
+  `DungeonSeed` of 1 while `Cataclysm.DungeonSeed` is 0, its default. The test pins `Cataclysm.DungeonSeed` to 1 as
+  well. So a floor whose draw were nought would fail here every time, not now and then.
 - `PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother`: roll pinned at 25: no reward; four "Chaos Spawn", raised
   and paying; no second wave while the first stands; each wave killed brings the next, the panel counting; no fourth.
   Each creature is brought to one health before it is killed, since its rung is drawn.
