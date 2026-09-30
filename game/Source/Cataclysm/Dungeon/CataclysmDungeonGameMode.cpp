@@ -15566,6 +15566,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		RelicBulwarkApplied = 0.0f;
 		BattlefieldRelicsPanelKey = -1;
 
+		// AND INFERNAL BEACONS FORGETS WHAT MAGIC FIND IS STANDING ON THE PLAYER, BECAUSE THE CALL ABOVE HAS ALREADY
+		// TAKEN IT OFF, for March of Progress's reason below: the stacks last the dungeon, so the next beat must put it
+		// back. Without this a floor with no beacon activated left the player none. Issues #1820 and #41.
+		InfernalBeaconStacksApplied = 0;
+
 		// AND LEECH SPORES FORGETS ITS CLOUDS, which are already destroyed -- see the
 		// top of this function. Nothing else to clear: a cloud's drain is done the
 		// moment it is touched.
