@@ -257,9 +257,23 @@ void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
 {
 	const float Left = PlayerBarMarginPx;
 
+	// A RESERVED SECTION TAKES THE RIGHT END OF THE BAR. Issue #1160. `Maximum`
+	// is what can be spent, so the whole bar is that plus what is held back,
+	// and the fill is measured against the whole.
+	const float Whole = Maximum + FMath::Max(0.0f, Reserved);
 	DrawBar(Left, Top, PlayerBarWidthPx, PlayerBarHeightPx,
-			UCataclysmCombatOverlay::BarFractionFor(Current, Maximum),
+			UCataclysmCombatOverlay::BarFractionFor(Current, Whole),
 			UCataclysmCombatOverlay::ColourFromHex(FillHex), 1.0f);
+	if (Reserved > 0.0f && Whole > 0.0f)
+	{
+		const float Held = PlayerBarWidthPx * FMath::Clamp(Reserved / Whole, 0.0f, 1.0f);
+		DrawRect(UCataclysmCombatOverlay::ColourFromHex(
+					 UCataclysmCombatOverlay::ReservedFervourHex),
+				 Left + PlayerBarWidthPx - Held, Top, Held, PlayerBarHeightPx);
+		DrawTextCentred(UCataclysmCombatOverlay::ReservedTextFor(Reserved),
+						FLinearColor::White, Left + PlayerBarWidthPx - Held * 0.5f,
+						Top + 2.0f, 1.0f);
+	}
 
 	// THE RESERVED PART, AT THE END THE FILL CAN NEVER REACH. Issue #1833. Its
 	// share of the bar is the same fraction the fill uses, so a character with
@@ -605,7 +619,8 @@ void ACataclysmHUD::DrawPlayerVitals()
 	{
 		Top -= PlayerBarHeightPx + PlayerBarGapPx;
 		DrawPlayerPool(Top, Fervour, MaxFervour,
-					   UCataclysmCombatOverlay::FervourFillHex);
+					   UCataclysmCombatOverlay::FervourFillHex,
+					   UCataclysmCombatOverlay::ReservedFervourOf(Pawn));
 	}
 
 	// AND WHAT IS HOLDING THE PLAYER, above the bars. Fear: a feared player is

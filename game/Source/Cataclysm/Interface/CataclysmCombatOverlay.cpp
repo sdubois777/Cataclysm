@@ -4,6 +4,7 @@
 #include "Interface/CataclysmHUD.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For asking whether this character can move Fervour at all. Issue #954.
 #include "AbilitySystem/CataclysmFear.h"
@@ -46,6 +47,7 @@ const TCHAR* UCataclysmCombatOverlay::HealthReservedHex = TEXT("4A1712");
 const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
 const TCHAR* UCataclysmCombatOverlay::FervourFillHex = TEXT("C7398D");
+const TCHAR* UCataclysmCombatOverlay::ReservedFervourHex = TEXT("5E1C43");
 const TCHAR* UCataclysmCombatOverlay::ReachedHealthHex = TEXT("F5F0EA");
 const TCHAR* UCataclysmCombatOverlay::AbsorbedHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::NothingThroughHex = TEXT("8C9196");
@@ -724,6 +726,18 @@ bool UCataclysmCombatOverlay::ManaOf(const AActor* Actor, float& OutMana,
 	OutMana = Vitals->GetMana();
 	OutMaxMana = Vitals->GetMaxMana();
 	return true;
+}
+
+float UCataclysmCombatOverlay::ReservedFervourOf(const AActor* Actor)
+{
+	return FMath::Max(0.0f, UCataclysmCommand::ReservedFervourOf(Actor));
+}
+
+FString UCataclysmCombatOverlay::ReservedTextFor(float Reserved)
+{
+	return Reserved > 0.0f
+		? FString::Printf(TEXT("%d reserved"), FMath::CeilToInt(Reserved))
+		: FString();
 }
 
 bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,

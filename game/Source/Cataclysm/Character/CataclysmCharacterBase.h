@@ -506,6 +506,21 @@ public:
 	 */
 	FVector FearSource = FVector::ZeroVector;
 
+	/**
+	 * The Fervour this character holds back from its commander's pool while it
+	 * is commanded, or zero. Issues #1160 and #1934.
+	 *
+	 * FIXED WHEN IT IS MADE OR TAKEN, by the skill that made it: Summon Imp's
+	 * `FervourReserve` for an imp, Subjugate's for a thrall, each after Crowned.
+	 * A Second Self's chosen one counts twice when the reserve is totalled, in
+	 * `UCataclysmCommand::ReservedFervourOf`, and not here.
+	 *
+	 * ZERO FOR EVERYTHING NOT MADE THAT WAY: a risen imp, a minion spawned
+	 * directly, and a gadget, which the owner's no-War mandate leaves out of
+	 * this change (ruled 2026-09-30).
+	 */
+	float ReservedFervour = 0.0f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

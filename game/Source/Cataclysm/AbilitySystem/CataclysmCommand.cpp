@@ -605,17 +605,74 @@ bool UCataclysmCommand::HasRoomForAnotherThrall(const AActor* Commander,
 		return false;
 	}
 
-	// THE MAXIMUM, NOT WHAT IS IN THE POOL RIGHT NOW. A reservation is a standing
-	// claim rather than a payment, so spending Fervour does not cost a thrall.
-	const float Pool = AbilitySystem->GetNumericAttribute(
-		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute());
+	// THE NEW THRALL'S SHARE, TWICE WHEN IT WOULD BE THE ONE CHOSEN. A Second
+	// Self chooses among what is held; while it is held and nothing is chosen
+	// yet, the thrall being taken is the one it would choose. A chosen follower
+	// already held is counted twice by `ReservedFervourOf` itself. Issue #1515.
+	const bool bWouldBeChosen = UCataclysmSecondSelf::ExtraThrallShares(Commander) > 0
+		&& !UCataclysmSecondSelf::Chosen(Commander);
+	return HasRoomToReserve(Commander, PerThrall * (bWouldBeChosen ? 2.0f : 1.0f));
+}
 
-	// A SECOND SELF THAT IS A THRALL CLAIMS TWO SHARES: "reserves twice the
-	// Fervour it would". Issue #1515.
-	const float WouldBeClaimed =
-		(ThrallCountOf(Commander) + 1 + UCataclysmSecondSelf::ExtraThrallShares(Commander))
-		* PerThrall;
-	return WouldBeClaimed <= Pool;
+float UCataclysmCommand::ReservedFervourOf(const AActor* Commander)
+{
+	float Reserved = 0.0f;
+	for (const AActor* Follower : ThingsCommandedBy(Commander))
+	{
+		if (const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower))
+		{
+			Reserved += Body->ReservedFervour;
+		}
+	}
+
+	// A SECOND SELF'S CHOSEN ONE, ONCE MORE: "reserves twice the Fervour it
+	// would". Asked of the function that decides who is chosen, so the total
+	// and the choice cannot disagree.
+	if (const ACataclysmCharacterBase* Chosen =
+			Cast<ACataclysmCharacterBase>(UCataclysmSecondSelf::Chosen(Commander)))
+	{
+		Reserved += Chosen->ReservedFervour;
+	}
+	return Reserved;
+}
+
+bool UCataclysmCommand::HasRoomToReserve(const AActor* Commander, float NewReserve,
+										  float Freed)
+{
+	if (NewReserve <= 0.0f)
+	{
+		return true;
+	}
+
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Cataclysm)
+	{
+		return false;
+	}
+
+	// AGAINST THE WHOLE MAXIMUM, NOT WHAT IS IN THE POOL RIGHT NOW. A reservation
+	// is a standing claim rather than a payment, so spending Fervour does not
+	// cost a thrall or an imp.
+	return ReservedFervourOf(Commander) - Freed + NewReserve
+		<= Cataclysm->MaximumClassResource();
+}
+
+void UCataclysmCommand::ClampFervourToSpendable(const AActor* Commander)
+{
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Commander);
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem ? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+	if (!Resource)
+	{
+		return;
+	}
+	const float Spendable = Resource->MaximumClassResourceAsked();
+	if (Resource->GetClassResource() > Spendable)
+	{
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Spendable);
+	}
 }
 
 bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)

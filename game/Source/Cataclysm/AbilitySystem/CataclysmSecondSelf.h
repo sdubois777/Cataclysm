@@ -77,4 +77,12 @@ public:
 	 * would be chosen; 0 otherwise, and 0 without the option.
 	 */
 	static int32 ExtraThrallShares(const AActor* Commander);
+
+	/**
+	 * The follower A Second Self has chosen, or null when the commander does not
+	 * hold the keystone or has nothing to choose. Issue #1934: the chosen one
+	 * "reserves twice the Fervour it would", and
+	 * `UCataclysmCommand::ReservedFervourOf` counts its reserve a second time.
+	 */
+	static AActor* Chosen(const AActor* Commander);
 };
