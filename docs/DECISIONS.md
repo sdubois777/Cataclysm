@@ -39,15 +39,20 @@ written onto the minion, was never read. **The first half had gone stale**: sinc
   summoner's recorded stat lines, a different list from the minion's runtime buffs.
 - **`ModifiedDamage` does nothing else to a blow**: with an empty runtime list it returns the damage
   unchanged, and otherwise it applies only that list. So a minion with no buff hits exactly as before.
-- **Not changed:** a minion's explosion and the Shared Ruin death blast, which also go straight to
-  `ApplyDirectDamage`. They are not "the minion's blow" the ruling named; the same call would extend to
-  them if wanted.
+- **The explosion and the Shared Ruin blast read them too**, ruled the same day: they are hits the
+  minion deals. The explosion passes through the same call with the minion's type tags; the Shared Ruin
+  blast passes through it with the dying creature's own ability system, and with a minion's type tags or,
+  for a thrall, none.
 
-### TEST
+### TESTS
 
-`Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem`: an imp's blow with 50% increased
-written on its own ability system is half again as large; the same buff scoped to fire leaves it as it
-was.
+- `Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem`: an imp's blow with 50% increased
+  written on its own ability system is half again as large; the same buff scoped to fire leaves it as it
+  was.
+- `Cataclysm.MinionDeath.AMinionsExplosionAndSharedRuinReadTheBuffsOnItsOwnAbilitySystem`: an imp with
+  50% increased explodes for half again as much as a plain one, and its Shared Ruin blast is half again
+  as large too. It is in the command tests rather than beside the first, because an area blast finds
+  its targets by collision and that file's creatures have it.
 
 ---
 

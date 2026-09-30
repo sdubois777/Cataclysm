@@ -1052,11 +1052,18 @@ void ACataclysmMinion::Explode()
 			// swing gives above: an explosion is the minion's, not its
 			// summoner's, and the summoner's own numbers must not be what the
 			// blow is resolved against.
+			//
+			// AND THE MINION'S OWN BUFFS, as its swing reads them. Issue #1771,
+			// ruled 2026-09-30: an explosion is a hit the minion deals.
+			const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+				UCataclysmTargeting::AbilitySystemOf(this), Scaled, TypeTags,
+				/*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+				/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 			float Dealt = 0.0f;
 			UCataclysmSkillEffects::ApplyDirectDamage(
-				this, Target, Scaled,
+				this, Target, Landed,
 				MinionDelivery(this, /*bIsArea=*/true));
-			Dealt = Scaled;
+			Dealt = Landed;
 			// Designed, for the reason the melee attack above records.
 			//
 			// AND NOT TESTED FOR EVASION, DELIBERATELY. An explosion is area
@@ -1124,9 +1131,19 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 	FCataclysmHitDelivery Delivery = MinionDelivery(Lost, /*bIsArea=*/true);
 	Delivery.bCannotBeRetaliatedAgainst = true;
 
+	// AND THE DYING CREATURE'S OWN BUFFS. Issue #1771, ruled 2026-09-30: the
+	// blast is a hit it deals. A minion's type tags stand for the blow's; a
+	// thrall has none, so only its unscoped buffs apply.
+	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Lost);
+	const FGameplayTagContainer LostTags =
+		AsMinion ? AsMinion->TypeTags : FGameplayTagContainer();
 	for (AActor* Target : Caught)
 	{
-		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Damage, Delivery);
+		const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+			Its, Damage, LostTags, /*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
+			/*bTargetIsStaggered=*/false, Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Landed, Delivery);
 	}
 	return Caught.Num();
 }

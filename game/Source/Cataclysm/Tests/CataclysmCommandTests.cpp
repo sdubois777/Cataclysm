@@ -2300,6 +2300,86 @@ bool FCataclysmDeadGadgetFreesItsPlaceTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionBlastsReadItsBuffsTest,
+	"Cataclysm.MinionDeath.AMinionsExplosionAndSharedRuinReadTheBuffsOnItsOwnAbilitySystem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1771, ruled 2026-09-30: a minion's explosion and its Shared Ruin
+ * blast are hits it deals, and a minion's hits are its own, so each reads the
+ * buffs on the minion's own ability system as its swing does.
+ *
+ * TWO IMPS FOR EACH, one plain and one carrying 50% increased, thirty metres
+ * apart so each reaches only its own target. The explosion destroys its imp,
+ * which is why the two cannot be one imp measured twice.
+ */
+bool FCataclysmMinionBlastsReadItsBuffsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	GiveStats(Summoner, {
+		{ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat, ECataclysmStatBucket::Flat, 20.0f},
+		{ACataclysmMinion::DeathBlastRadiusMetresStat, ECataclysmStatBucket::Flat, 4.0f}});
+
+	const auto Buff = [](ACataclysmMinion* Imp)
+	{
+		UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Imp));
+		FCataclysmStatModifier Increased;
+		Increased.Bucket = ECataclysmStatBucket::Increased;
+		Increased.Source = ECataclysmModifierSource::SkillBuff;
+		Increased.Value = 50.0f;
+		return Its && Its->AddStatModifier(Increased) != 0;
+	};
+
+	// Each measure: an imp at Along metres, a creature a metre from it, and
+	// what the creature lost to Blow.
+	const auto Measure = [&](float Along, bool bBuffed, TFunctionRef<void(ACataclysmMinion*)> Blow)
+	{
+		FScopedCreature Near(World, FVector(11 * M, Along * M, 0));
+		ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, Along * M, 0));
+		if (!Imp || (bBuffed && !Buff(Imp)))
+		{
+			return -1.0f;
+		}
+		const float Before = Near.Health();
+		Blow(Imp);
+		if (IsValid(Imp))
+		{
+			Imp->Destroy();
+		}
+		return Before - Near.Health();
+	};
+
+	const auto Explode = [](ACataclysmMinion* Imp) { Imp->Explode(); };
+	const float PlainBurst = Measure(0.0f, false, Explode);
+	const float BuffedBurst = Measure(30.0f, true, Explode);
+	if (TestTrue(FString::Printf(TEXT("a plain explosion lands: %.2f"), PlainBurst), PlainBurst > 0.0f))
+	{
+		TestEqual(TEXT("an explosion from an imp with 50% increased is half again as large"),
+				  BuffedBurst, PlainBurst * 1.5f, 0.01f);
+	}
+
+	const auto Ruin = [&](ACataclysmMinion* Imp) { ACataclysmMinion::DeathBlast(Imp, Summoner.Actor); };
+	const float PlainRuin = Measure(60.0f, false, Ruin);
+	const float BuffedRuin = Measure(90.0f, true, Ruin);
+	if (TestTrue(FString::Printf(TEXT("a plain Shared Ruin blast lands: %.2f"), PlainRuin), PlainRuin > 0.0f))
+	{
+		TestEqual(TEXT("and a Shared Ruin blast from it is half again as large too"),
+				  BuffedRuin, PlainRuin * 1.5f, 0.01f);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathWithoutTheStatTest,
 	"Cataclysm.MinionDeath.AMinionWhoseSummonerHasNotTakenItLeavesABodyAndHurtsNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
