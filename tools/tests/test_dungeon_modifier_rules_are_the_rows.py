@@ -4776,3 +4776,22 @@ def test_pact_of_temptation_row_still_names_the_offer_the_buff_and_the_curse():
         assert phrase in lower, (
             f"Demonic_Pact_of_Temptation no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "PactOfTemptationKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_blood_price_row_still_names_the_interactions_the_price_and_the_bleed():
+    """The phrases the rule's readings rest on.
+
+    "Interacting with chests, shrines, or levers costs a percentage of current HP. Gain a permanent, uncleansable stack
+    of bleed each time." INTERACTING WITH CHESTS, SHRINES, OR LEVERS is every choice at a floor object, the game having
+    no chest, shrine or lever of its own; A PERCENTAGE OF CURRENT HP is the tenth of current health; PERMANENT,
+    UNCLEANSABLE is a stack held to the dungeon's end that a cleanse leaves; STACK OF BLEED EACH TIME is one stack a
+    choice. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Demonic_Blood_Price"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("interacting with chests, shrines, or levers", "a percentage of current hp",
+                   "permanent, uncleansable", "stack of bleed each time"):
+        assert phrase in lower, (
+            f"Demonic_Blood_Price no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "BloodPriceKey in CataclysmDungeonModifierEffects.h. " + words)

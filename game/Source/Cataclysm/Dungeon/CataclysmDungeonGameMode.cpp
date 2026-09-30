@@ -8778,6 +8778,131 @@ void ACataclysmDungeonGameMode::StepPactOfTemptation(ACataclysmPlayerCharacter* 
 bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Object, FName ChoiceKey)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// BLOOD PRICE: WHETHER THIS CHOICE IS PRICED, AND THE HEALTH THE PLAYER HAS BEFORE IT ACTS, read first; the price
+	// is taken only once the choice has acted, so a refused choice costs nothing. Issues #1820 and #41.
+	const bool bPriced = IsValid(Object) && FloorBrief.Modifiers.Contains(FName(Effects::BloodPriceKey))
+		&& Effects::BloodPriceIsAsked(Object->RuleKey, ChoiceKey);
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	const float HealthBefore = AbilitySystem ? AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()) : 0.0f;
+
+	const bool bActed = ChooseAtFloorObjectForItsRule(Object, ChoiceKey);
+	if (bActed && bPriced && AbilitySystem)
+	{
+		PayTheBloodPrice(Player, AbilitySystem, HealthBefore);
+	}
+	return bActed;
+}
+
+void ACataclysmDungeonGameMode::PayTheBloodPrice(ACataclysmPlayerCharacter* Player,
+												 UCataclysmAbilitySystemComponent* AbilitySystem, float HealthBefore)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE SHARE OF THE HEALTH HELD BEFORE THE CHOICE, AND NEVER THE LAST POINT: what the player holds now leaves at
+	// least 1 too, in case the choice itself cost health. Straight off health, not a hit.
+	const float Now = AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	const float Cost = FMath::Min(Effects::BloodPriceCost(HealthBefore), FMath::Max(0.0f, Now - 1.0f));
+	if (Cost > 0.0f)
+	{
+		UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Cost);
+	}
+	BloodPriceStacks = FMath::Min(BloodPriceStacks + 1, Effects::BloodPriceMostStacks);
+	UE_LOG(LogCataclysm, Log, TEXT("Blood Price: %.0f health paid on floor %d; %d bleed stack(s)"), Cost, FloorNumber,
+		   BloodPriceStacks);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepBloodPrice(ACataclysmPlayerCharacter* Player,
+											   UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// EVERY PRICED BUTTON SAYS SO, on a floor carrying the row, whichever rule placed its object.
+	if (FloorBrief.Modifiers.Contains(FName(Effects::BloodPriceKey)))
+	{
+		const FString Suffix = FString::Printf(TEXT(" (costs %d%% health)"), FMath::RoundToInt(Effects::BloodPriceHealthPercent));
+		for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
+		{
+			for (FCataclysmFloorObjectChoice& Choice : It->Choices)
+			{
+				if (Effects::BloodPriceIsAsked(It->RuleKey, Choice.Key) && !Choice.Label.EndsWith(Suffix))
+				{
+					Choice.Label += Suffix;
+				}
+			}
+		}
+	}
+
+	// THE BLEED, ONCE A SECOND ON ANY FLOOR WHILE A STACK IS HELD: Raw Sewage's burn, a share of maximum health dealt as
+	// damage over time typed as the row, from the floor's hazard source.
+	if (BloodPriceStacks > 0)
+	{
+		BloodPriceSecondsSinceBleed += SecondsBetweenWaveChecks;
+		if (BloodPriceSecondsSinceBleed >= 1.0f)
+		{
+			BloodPriceSecondsSinceBleed = 0.0f;
+			ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(GetWorld());
+			const float Bleed = AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())
+				* Effects::BloodPricePercentPerSecond(BloodPriceStacks) / 100.0f;
+			if (Source && Bleed > 0.0f && !UCataclysmSkillEffects::IsDead(Player))
+			{
+				FCataclysmHitDelivery Delivery;
+				Delivery.bIsDamageOverTime = true;
+				Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::BloodPriceKey);
+				UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Bleed, Delivery);
+			}
+		}
+	}
+	else
+	{
+		BloodPriceSecondsSinceBleed = 0.0f;
+	}
+
+	// THE BLEED KEYWORD WHILE ANY STACK IS HELD, as ruled, so every reader of the player's debuffs sees a bleed. A LOOSE
+	// TAG, which a cleanse does not remove: it removes effects.
+	const bool bWantTag = BloodPriceStacks > 0;
+	if (bWantTag != bBloodPriceTagged)
+	{
+		const FGameplayTag Bleeding =
+			UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+		if (Bleeding.IsValid())
+		{
+			if (bWantTag)
+			{
+				AbilitySystem->AddLooseGameplayTag(Bleeding);
+			}
+			else
+			{
+				AbilitySystem->RemoveLooseGameplayTag(Bleeding);
+			}
+		}
+		bBloodPriceTagged = bWantTag;
+	}
+
+	if (BloodPriceStacks != BloodPricePanelStacks)
+	{
+		BloodPricePanelStacks = BloodPriceStacks;
+		RefreshFloorModifierPanel();
+	}
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtFloorObjectForItsRule(ACataclysmFloorObject* Object, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
 
 	if (!IsValid(Object))
 	{
@@ -10019,6 +10144,9 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	PactBuffApplied = INDEX_NONE;
 	PactCursesApplied = {0, 0, 0, 0, 0};
 	bPactWritten = false;
+	// AND BLOOD PRICE: the bleed lasts until the dungeon is left. The next beat takes the keyword off. #1820, #41.
+	BloodPriceStacks = 0;
+	BloodPriceSecondsSinceBleed = 0.0f;
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -10593,6 +10721,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bPactOfTemptation =
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::PactOfTemptationKey))
 		|| PactsTaken > 0 || PactBuffNow != INDEX_NONE || PactBuffApplied != INDEX_NONE;
+	// AND BLOOD PRICE, ON EVERY FLOOR CARRYING IT, AND WHILE A STACK OR ITS KEYWORD IS HELD. Issues #1820 and #41.
+	const bool bBloodPrice = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodPriceKey))
+		|| BloodPriceStacks > 0 || bBloodPriceTagged;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -10634,6 +10765,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bWarBanner
 		&& !bForcedTithes
 		&& !bPactOfTemptation
+		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies)
 	{
 		return;
@@ -11008,6 +11140,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPactOfTemptation)
 	{
 		StepPactOfTemptation(Player, AbilitySystem);
+	}
+
+	// AND BLOOD PRICE, WHICH PRICES THE BUTTONS AND BLEEDS THE PLAYER. Issues #1820 and #41.
+	if (bBloodPrice)
+	{
+		StepBloodPrice(Player, AbilitySystem);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -14141,6 +14279,21 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Line += TEXT("; curses: ") + FString::Join(Curses, TEXT(", "));
 		}
 		Counting.Add(Pacts, Line);
+	}
+
+	// AND BLOOD PRICE: the stacks, the bleed they deal, and the price, on a floor carrying the row or once a stack is
+	// held. Issues #1820 and #41.
+	const FName Price(Effects::BloodPriceKey);
+	if (FloorBrief.Modifiers.Contains(Price) || BloodPriceStacks > 0)
+	{
+		FString PerSecond = FString::Printf(TEXT("%.2f"), Effects::BloodPricePercentPerSecond(BloodPriceStacks));
+		PerSecond.RemoveFromEnd(TEXT("0"));
+		PerSecond.RemoveFromEnd(TEXT("0"));
+		PerSecond.RemoveFromEnd(TEXT("."));
+		Counting.Add(Price, FString::Printf(TEXT("blood price: %d bleed stack%s, %s%% health a second; each choice costs %d%% "
+												 "of current health"),
+											BloodPriceStacks, BloodPriceStacks == 1 ? TEXT("") : TEXT("s"), *PerSecond,
+											FMath::RoundToInt(Effects::BloodPriceHealthPercent)));
 	}
 
 	// AND INFERNAL BEACONS: how many this dungeon has activated and what they give, on a floor carrying the row or once
