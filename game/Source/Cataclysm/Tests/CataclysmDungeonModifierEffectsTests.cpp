@@ -36159,12 +36159,26 @@ bool FCataclysmShadowyFireTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	ACataclysmEnemyCharacter* Imp = AFloorImpAway(Mode, World, Player, 300.0f);
-	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp))
+	// AND A CONTROL THE RULE LEAVES ALONE, for the shroud test's reason: the player's slashing weapon adds its tenth to a
+	// hit on health, so a blow's worth is measured on the control rather than assumed.
+	ACataclysmEnemyCharacter* Control = AnImpAway(World, Player, -300.0f);
+	if (!TestNotNull(TEXT("an Imp 3 m away"), Imp) || !TestNotNull(TEXT("and a control Imp"), Control))
 	{
 		return false;
 	}
+	const auto Blow = [&Player](ACataclysmEnemyCharacter* Target)
+	{
+		const float Before = HealthOf(Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Target, 10.0f);
+		return Before - HealthOf(Target);
+	};
 	Beat(Mode, 1);
 	if (!TestTrue(TEXT("it is shrouded"), Imp->bShrouded))
+	{
+		return false;
+	}
+	const float Worth = Blow(Control);
+	if (!TestTrue(TEXT("a blow takes something off the control"), Worth > 0.0f))
 	{
 		return false;
 	}
@@ -36172,16 +36186,15 @@ bool FCataclysmShadowyFireTest::RunTest(const FString& Parameters)
 	AFireHit(Player, Imp, 10.0f);
 	TestEqual(TEXT("the fire hit itself takes nothing off"), HealthOf(Imp), 100.0f, 0.01f);
 	TestFalse(TEXT("and exposes it at once"), Imp->bShrouded);
-	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
-	TestEqual(TEXT("so the next blow takes 10 off"), HealthOf(Imp), 90.0f, 0.01f);
+	TestEqual(TEXT("so the next blow takes off it what it takes off the control"), Blow(Imp), Worth, 0.01f);
 
 	// FOUR SECONDS ARE SIXTEEN BEATS: EXPOSED THROUGH THE FIFTEENTH, SHROUDED ON THE SIXTEENTH.
 	Beat(Mode, 15);
 	TestFalse(TEXT("still exposed after 3.75 s"), Imp->bShrouded);
 	Beat(Mode, 1);
 	TestTrue(TEXT("shrouded again after 4 s"), Imp->bShrouded);
-	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Imp, 10.0f);
-	TestEqual(TEXT("and a blow takes nothing"), HealthOf(Imp), 90.0f, 0.01f);
+	TestEqual(TEXT("and a blow takes nothing"), Blow(Imp), 0.0f, 0.01f);
+	TestEqual(TEXT("so it keeps only the one blow's hurt"), HealthOf(Imp), 100.0f - Worth, 0.01f);
 	return true;
 }
 

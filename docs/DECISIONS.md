@@ -239,6 +239,10 @@ early return of `StepFloorRulesThatChange` was also joined by the `&& !bX` rule 
 
 **A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `AShroudedCreatureTakesNoDamageUntilALightReachesIt` expected a blow of 10 to take 10 off a lit Imp; it took 11 in both runs. A diagnostic run, never committed, logged the blow: the player's weapon is `Slashing`, and a slashing hit on health gains `UCataclysmDamageCalculation::SubtypeBonus`, 10%; armour, damage reduction, the shield, a critical strike, a block, an evasion and the nth-hit bonus were all nought. That is the game as designed, so the test now deals each blow to a control Imp the rule leaves alone as well, and compares the losses. **Proof Pa is recorded as not a proof and is not rerun**, since it reached the tests: Shadowy Enemies' shroud gate (`bool bLit = !bRow || ...`) is checked by this test but not proved by a break.
 
+**THE FIRE TEST, THE SAME FAULT, FOUND BY GUARD PROOF Pb.** `AFireHitExposesAShroudedCreatureForFourSeconds` expected blows of 10 to take 10; they took 11 for the reason above. It now measures each blow against the same kind of control Imp. A sweep of every line this change adds for a player's blow whose size a test asserts found no other: `AnEvadedFireHitExposesNothing` deals blows but asserts only the shroud and the evaded flag. **Proof Pb is recorded as not a proof and is not rerun.**
+
+**SO SHADOWY ENEMIES RESTS ON ONE PROOF, Pc.** Two of its three proofs, Pa and Pb, failed on test faults -- exact blow sizes that a slashing weapon's tenth breaks -- not on the rule. The shroud gate (`bool bLit = !bRow || ...`) and the fire exposure (the `NoteHitForShadowyEnemies` call) are checked by tests but are not proved by breaks.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
