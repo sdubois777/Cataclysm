@@ -2154,6 +2154,10 @@ public:
 	/** Carrion Feast, for the panel and tests: its purification altar standing, or null; and whether it was used. */
 	class ACataclysmFloorObject* PurificationAltarNow() const;
 	bool AltarIsConsecrated() const { return bAltarConsecrated; }
+
+	/** Infernal Beacons, for the panel and tests: the beacons standing, and the stacks this dungeon has activated. */
+	TArray<class ACataclysmFloorObject*> InfernalBeaconsNow() const;
+	int32 InfernalBeaconStacksNow() const { return InfernalBeaconStacks; }
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2843,6 +2847,18 @@ private:
 
 	/** Carrion Feast's purification altar: the one choice at it. */
 	bool ChooseAtPurificationAltar(class ACataclysmFloorObject* Altar, FName ChoiceKey);
+
+	/** Infernal Beacons: this arena's beacon placed, where a new arena is populated. Issues #1820 and #41. */
+	void PlaceTheInfernalBeacons();
+
+	/** Infernal Beacons: every beacon standing destroyed and forgotten; the dungeon's stacks are kept. */
+	void ForgetTheInfernalBeacons();
+
+	/** Infernal Beacons: the one choice at a beacon. */
+	bool ChooseAtInfernalBeacon(class ACataclysmFloorObject* Beacon, FName ChoiceKey);
+
+	/** Infernal Beacons, on the beat: every creature's damage at the dungeon's stacks, and the player's magic find. */
+	void StepInfernalBeacons(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Carrion Feast: the carcass at this index burned -- marked, and removed on the next beat -- by fire or an altar. */
 	void BurnTheCarcass(int32 Index);
@@ -4326,6 +4342,15 @@ private:
 	bool bAltarConsecrated = false;
 	FVector AltarAt = FVector::ZeroVector;
 	TWeakObjectPtr<class ACataclysmGroundZone> AltarZone;
+
+	/**
+	 * Infernal Beacons: the beacons standing, the stacks activated in this dungeon, what was last written on the player,
+	 * and what the panel last showed. Issues #1820 and #41. THE STACKS ARE THE DUNGEON'S, cleared on leaving it.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> InfernalBeacons;
+	int32 InfernalBeaconStacks = 0;
+	int32 InfernalBeaconStacksApplied = 0;
+	int32 InfernalBeaconsPanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

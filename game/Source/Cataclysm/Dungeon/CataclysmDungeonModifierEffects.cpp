@@ -264,6 +264,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::BattlefieldRelicsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PandorasBoxKey =
 	TEXT("Chaos_Pandora_s_Box");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalBeaconsKey =
+	TEXT("Demonic_Infernal_Beacons");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -640,6 +643,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(FamishedBeastsKey)
 		|| RowKey == FName(BattlefieldRelicsKey)
 		|| RowKey == FName(PandorasBoxKey)
+		|| RowKey == FName(InfernalBeaconsKey)
 		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
 		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -880,6 +884,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(FamishedBeastsKey),
 		FName(BattlefieldRelicsKey),
 		FName(PandorasBoxKey),
+		FName(InfernalBeaconsKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
@@ -1260,6 +1265,8 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	// AND THE MAGIC FIND THE RIFTS CLOSED IN TIME HAVE EARNED, FLAT: it is a figure added, as the row's "rewards
 	// increase" reads, and flat is what `DungeonModifierEffectsAddFlat` gives a stat. Issues #1820 and #41.
 	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.RiftMagicFindAdded);
+	// AND THE INFERNAL BEACONS ACTIVATED IN THIS DUNGEON, added flat as the rifts' is. Issues #1820 and #41.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.BeaconMagicFindAdded);
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
 	// #41. This is the first entry in this function to write a single resistance,
@@ -1739,6 +1746,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts closed in time"),
 									Effects.RiftMagicFindAdded));
+	}
+	if (Effects.BeaconMagicFindAdded > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from infernal beacons activated"),
+									Effects.BeaconMagicFindAdded));
 	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{

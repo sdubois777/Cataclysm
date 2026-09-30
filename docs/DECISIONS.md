@@ -2,6 +2,100 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Infernal Beacons: one beacon a floor; each activated makes every creature of the dungeon deal 10% more damage and gives the player 10 magic find, for the rest of the dungeon, capped at 100
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the player's magic-find field, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the
+beacons, the dungeon's stacks, the beat, the panel line); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+and `.cpp` (the row's own key of the damage map); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The fourth of Group 2's chain, on the purification altars.
+**Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have.**
+
+### The row
+
+`Demonic_Infernal_Beacons` in `game/Data/DungeonModifiers.csv`, weight 10: "Each floor contains an Infernal Beacon.
+Enemies in the dungeon gain a stacking power score buff per beacon activated while the player gains a stacking magic
+find buff." It states no figure. This log records the workbook rewording of its last clause from "stacking loot rarity
+find buff" to "stacking magic find buff".
+
+### What the design already said
+
+"Power Score" in the design document is the player's number, on the Enemy Score's scale; nothing says what raising an
+enemy's power score does. Pestilent Empowerment's ruling of 2026-09-25 read "power" as damage only, through its own key
+of the damage map, for every later floor, capped at 100%. The player's magic find is an added percentage on a baseline
+of nought, and Abyssal Rifts gives 10 a success.
+
+### What the rule does
+
+On a floor carrying the row, one "Infernal Beacon" stands where Eternal Chorus's picker puts things; one on a Horde
+arena. Its one choice, "Activate", adds a stack for the rest of the dungeon, and the beacon goes. A beacon left alone
+does nothing. Each stack gives every creature on the player's other side 10% more damage, added, up to 100%, through its
+own key of the damage map, written on the beat from the floor it was activated on; and gives the player 10 magic find,
+added, up to 100. Leaving the dungeon clears the stacks. The panel reads "infernal beacons: 2 activated; enemies +20%
+damage; +20 magic find", on a floor carrying the row and on every floor once one is activated.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "Infernal Beacon" with "Activate" and the leave button; one each floor, one on a Horde arena, placed by
+  Eternal Chorus's picker; it goes once activated; one left alone does nothing.**
+- **Each beacon activated adds one stack for the rest of the dungeon**; the count clears on leaving the dungeon.
+- **Damage only**, by the 2026-09-25 precedent that "power" is damage only: 10% a stack, added, through its own key of the
+  damage map, written on the beat, starting on the current floor, capped at 100%. **With Pestilent Empowerment active
+  too, the two keys stack as separate keys**: each is its own entry of the damage map, and every entry multiplies.
+- **+10 magic find a stack**, added, through a new floor-effects field, capped at 100.
+- **The labels and the panel line.**
+
+**On the owner's play-check list**, added by the coordinating session: activate beacons over several floors; enemies hit
+harder and loot improves, and the panel shows both figures.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The creatures written are Pestilent Empowerment's**: every creature on the player's other side but a floor source,
+  which does nothing. Written only when a creature's own key differs from the dungeon's figure.
+- **The rule's beat runs on every floor once a stack is held**, as a Grim Totems embrace's does while on the character,
+  so a creature of a later floor that does not carry the row still gets the dungeon's figure.
+- **The magic find is written when the stacks change**, and `ApplyChangingFloorEffects` reads what was last written, so
+  a new floor keeps it.
+
+### The research
+
+Fetched on 2026-09-30 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Last Epoch, corruption | [maxroll.gg's Empowered Monolith guide](https://maxroll.gg/last-epoch/monolith/empowered-guide) | "Corruption is the primary source of progressing both the difficulty and rewards in the Empowered Monolith, allowing players to increase the health and damage of enemies while also increasing XP and Item Rarity." |
+
+**What it settles:** a player-chosen, accumulating trade of stronger enemies for better loot. **What it does not:** the
+figures, or whether "power" is damage or damage and health; Last Epoch raises both, and this project's ruling reads
+power as damage only.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `InfernalBeacons`:
+
+- `InfernalBeaconsFiguresStacksAndCaps`: one, one; the multiplier at 0, 1, 3, 10 and 12 stacks (1, 1.1, 1.3, 2, 2); the
+  magic find at 1 and 12 (10, 100).
+- `InfernalBeaconsOneStandsOfferingActivate`: away from the entrance, named, placed by the row, one "Activate", the panel.
+- `InfernalBeaconsActivatingOneStrengthensCreaturesAndGivesMagicFind`: the beacon goes, one stack; an Imp of the floor
+  deals 10% more on the row's own key; the player has 10 magic find; the panel.
+- `InfernalBeaconsTheStacksLastTheDungeon`: a beacon on floor 2 and another on floor 3 make two stacks: 20% more on
+  floor 3's Imp and 20 magic find; leaving the dungeon clears the stacks and the magic find.
+
+Two Python checks: the row still says "each floor contains an infernal beacon", "stacking power score buff", "per beacon
+activated" and "stacking magic find buff"; and its setter writes its own key of the damage map.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
+window, after the seven-stack merges.
+
+---
+
 ## 2026-09-30 — Carrion Feast's purification altars: one altar a floor; consecrating it burns every carcass within 15 m, now and for the rest of the floor; Carrion Feast is built
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the altar's figures and
