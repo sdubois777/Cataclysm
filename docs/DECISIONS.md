@@ -874,6 +874,7 @@ c2eccb69. Every figure below is what `pytest`, `python tools/unreal_build.py` or
 | Proof (a): `CheckCost` never refuses a cast short of Fervour | PROVED: `AnUltimateIsRefusedBelowFiftyFervourAndTakesNothing` and `AnUltimateWhoseManaIsFreeStillCostsFifty` failed; restored 7 of 7 |
 | Proof (b): `ApplyCost` never takes the Fervour | PROVED: `AnUltimateWithEnoughFervourIsCastAndTakesFifty` and `AnUltimateWhoseManaIsFreeStillCostsFifty` failed; restored 7 of 7 |
 | Proof (c): the skill bar never finds a box short of Fervour | PROVED: `TheSkillBarGreysAnUltimateShortOfFervourAndNamesIt` failed; restored 7 of 7 |
+| Final Python, on `a554e84b`, started with no workflow in progress | `5546 passed, 8 skipped` (JUnit 5,554, no failures) |
 
 **This entry's place in the log.** It sits below Deployable Part 2's entry, whose first commit (5d5416b9, 13:49 on
 2026-09-27) is newer than this one's (1eebebb7, 13:36), and above the entries first written earlier. The five
