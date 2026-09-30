@@ -9663,4 +9663,249 @@ bool FCataclysmChronomancerSetTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmProjectileRangeRowsTest
+{
+	/** A skill of this template granted to the wearer, stating these params and tags. */
+	template <typename T>
+	T* SkillOn(UCataclysmAbilitySystemComponent* ASC, AActor* Avatar,
+			   const TCHAR* ParamText, const TCHAR* TagCell)
+	{
+		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
+			T::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Avatar);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+		T* Skill = Spec ? Cast<T>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		}
+		return Skill;
+	}
+
+	constexpr const TCHAR* Bolt = TEXT("Range=10; Radius=1; Speed=2000");
+	constexpr const TCHAR* RangedTags = TEXT("Type.Ranged, Type.Projectile");
+	constexpr const TCHAR* ThrownTags = TEXT("Type.Melee, Type.Projectile");
+
+	/** A Bolt Turret summoned by this actor, or null with an error if the row is missing. */
+	ACataclysmMinion* TurretFrom(FAutomationTestBase& Test, AActor* Summoner)
+	{
+		ACataclysmMinion* Turret = ACataclysmMinion::Spawn(
+			Summoner, FVector(300.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+			/*bBurns=*/false, TEXT("BoltTurret"));
+		if (Turret && Turret->TypeName != FString(TEXT("BoltTurret")))
+		{
+			Test.AddError(TEXT("DT_MinionTypes could not supply the BoltTurret row. Run "
+							   "tools/generate_datatable_assets.py"));
+			return nullptr;
+		}
+		return Turret;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileSpeedRowTest,
+	"Cataclysm.Enchantments.TheProjectileSpeedRowQuickensOnlyARangedSkillsShots",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Ranged skills have 30%-60% increased projectile speed", worn at the top,
+ * makes a ranged skill's twenty metres a second into thirty-two and leaves a
+ * melee skill's alone. Issue #1833, `projectile_speed` scoped to `Type.Ranged`.
+ */
+bool FCataclysmProjectileSpeedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Ranged_skills_have_30_60_increased_projectile"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	const UCataclysmProjectileSkill* Ranged =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, RangedTags);
+	const UCataclysmProjectileSkill* Thrown =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+	if (!TestNotNull(TEXT("a ranged skill"), Ranged) || !TestNotNull(TEXT("a melee skill"), Thrown))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a ranged skill's shot: 60% faster"), Ranged->ScaledProjectileSpeed(), 3200.0f, 0.01f);
+	TestEqual(TEXT("a melee skill's: unchanged"), Thrown->ScaledProjectileSpeed(), 2000.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSlowerProjectileRowsTest,
+	"Cataclysm.Enchantments.TheTwoSlowerProjectileRowsSlowTheShotsTheyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The two negatives, each worn at the top. "Ranged skills have 20%-35% reduced
+ * projectile speed" slows a ranged skill's shot to 0.65 and leaves a melee
+ * skill's alone; "Projectiles travel 30%-50% slower" slows any projectile
+ * skill's to 0.5. Issue #1833.
+ */
+bool FCataclysmSlowerProjectileRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	{
+		FWorn Worn(TEXT("Negative_Ranged_skills_have_20_35_reduced_projectile_sp"), false);
+		if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+		{
+			return false;
+		}
+		const UCataclysmProjectileSkill* Ranged =
+			SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, RangedTags);
+		const UCataclysmProjectileSkill* Thrown =
+			SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+		if (TestNotNull(TEXT("a ranged skill"), Ranged) && TestNotNull(TEXT("a melee skill"), Thrown))
+		{
+			TestEqual(TEXT("35% reduced: a ranged skill's shot at 0.65"),
+					  Ranged->ScaledProjectileSpeed(), 1300.0f, 0.01f);
+			TestEqual(TEXT("and a melee skill's unchanged"),
+					  Thrown->ScaledProjectileSpeed(), 2000.0f, 0.01f);
+		}
+	}
+	{
+		FWorn Worn(TEXT("Negative_Projectiles_travel_30_50_slower"), false);
+		if (!TestNotNull(TEXT("a second wearer"), Worn.ASC()))
+		{
+			return false;
+		}
+		const UCataclysmProjectileSkill* Thrown =
+			SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+		if (TestNotNull(TEXT("a projectile skill"), Thrown))
+		{
+			TestEqual(TEXT("50% slower: any projectile skill's shot at half speed"),
+					  Thrown->ScaledProjectileSpeed(), 1000.0f, 0.01f);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRangeRowTest,
+	"Cataclysm.Enchantments.TheRangeRowLengthensOnlyARangedSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your ranged skills have 20%-40% increased range", worn at the top, makes a
+ * ranged skill's ten metres fourteen and leaves a melee skill's alone. Issue
+ * #1833, `skill_range` scoped to `Type.Ranged`.
+ */
+bool FCataclysmRangeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_ranged_skills_have_20_40_increased_range"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	const UCataclysmProjectileSkill* Ranged =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, RangedTags);
+	const UCataclysmProjectileSkill* Thrown =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+	if (!TestNotNull(TEXT("a ranged skill"), Ranged) || !TestNotNull(TEXT("a melee skill"), Thrown))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a ranged skill's range: 40% longer"), Ranged->ScaledRangeCm(), 1400.0f, 0.01f);
+	TestEqual(TEXT("a melee skill's: unchanged"), Thrown->ScaledRangeCm(), 1000.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetRangeRowTest,
+	"Cataclysm.Enchantments.TheGadgetRangeRowLengthensAGadgetsReachAndNotice",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Gadgets have 20%-40% increased attack range", worn at the top: a Bolt Turret
+ * the wearer summons reaches and notices 40% further than one summoned by a
+ * character wearing nothing. Issue #1833, `minion_range` scoped to
+ * `Type.Deployable`.
+ */
+bool FCataclysmGadgetRangeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Gadgets_have_20_40_increased_attack_range"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	AActor* Bare = Worn.World->SpawnActor<AActor>();
+	ACataclysmMinion* Geared = TurretFrom(*this, Worn.Wearer->Actor);
+	ACataclysmMinion* Plain = TurretFrom(*this, Bare);
+	if (!TestNotNull(TEXT("the wearer's turret"), Geared) || !TestNotNull(TEXT("a plain turret"), Plain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's turret reaches 40% further"), Geared->ReachCm, Plain->ReachCm * 1.4f, 0.01f);
+	TestEqual(TEXT("and notices 40% further"), Geared->NoticeRadiusCm, Plain->NoticeRadiusCm * 1.4f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeReachRowTest,
+	"Cataclysm.Enchantments.TheMeleeReachRowAddsAMetreToAMeleeStrike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your melee skills have +0.5-1 metre reach", worn at the top, adds a metre to
+ * a melee strike's reach and nothing to a ranged one's. Issue #1833, on
+ * Overreach's `melee_reach_metres` (issue #1515) scoped to `Type.Melee`.
+ */
+bool FCataclysmMeleeReachRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	const UCataclysmStrikeSkill* Melee = SkillOn<UCataclysmStrikeSkill>(
+		Worn.ASC(), Worn.Wearer->Actor, TEXT("Radius=2; Angle=90"), TEXT("Type.Melee, Type.Strike"));
+	const UCataclysmStrikeSkill* Ranged = SkillOn<UCataclysmStrikeSkill>(
+		Worn.ASC(), Worn.Wearer->Actor, TEXT("Radius=2; Angle=90"), TEXT("Type.Ranged, Type.Strike"));
+	if (!TestNotNull(TEXT("a melee strike"), Melee) || !TestNotNull(TEXT("a ranged strike"), Ranged))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a melee strike reaches a metre further"), Melee->MeleeReachBonusCm(), 100.0f, 0.01f);
+	TestEqual(TEXT("a ranged one no further"), Ranged->MeleeReachBonusCm(), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDurationRowTest,
+	"Cataclysm.Enchantments.TheGadgetDurationRowLengthensAGadgetsLife",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Gadgets last 30%-60% longer", worn at the top: a Bolt Turret the wearer
+ * summons for twenty seconds lasts thirty-two. Issue #1833, rows only, on
+ * `minion_duration` scoped to `Type.Deployable`.
+ */
+bool FCataclysmGadgetDurationRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Gadgets_last_30_60_longer"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	ACataclysmMinion* Turret = TurretFrom(*this, Worn.Wearer->Actor);
+	if (!TestNotNull(TEXT("the wearer's turret"), Turret))
+	{
+		return false;
+	}
+	TestEqual(TEXT("twenty seconds stated: thirty-two"), Turret->GetLifeSpan(), 32.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

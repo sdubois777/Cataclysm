@@ -150,6 +150,47 @@ public:
 	float OwnDurationMultiplier(bool bIsBuff) const;
 
 	/**
+	 * The stats that lengthen a skill's range and quicken its projectiles.
+	 * Issue #1833, ruled 2026-09-30 under the owner's delegation.
+	 * `skill_range` is "Your ranged skills have 20%-40% increased range", asked
+	 * with the skill's tags so the row's `Type.Ranged` scope decides which
+	 * skills it reaches. `projectile_speed` is "Ranged skills have 30%-60%
+	 * increased projectile speed" and its two negatives. Neither has a gameplay
+	 * attribute; both are in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* SkillRangeStat;
+	static const TCHAR* ProjectileSpeedStat;
+
+	/**
+	 * The range this skill states, after the caster's increases to
+	 * `skill_range` asked with this skill's tags, floored at nought. EVERY READ
+	 * OF THE STATED RANGE GOES THROUGH THIS, so a ranged skill aims, searches,
+	 * glances and judges its reach at the same distance.
+	 *
+	 * NOT the on-death reach (`OnDeathRangeCm`): a judgement of the same
+	 * ruling, "range" is the skill's stated Range and not the reach of what
+	 * happens when its target dies.
+	 *
+	 * THE STATED RANGE WHEN THIS SKILL HAS NO OWNER YET -- a template a test
+	 * builds directly, or one not yet given to an ability system. It asks
+	 * `GetCurrentActorInfo` and not `GetAbilitySystemComponentFromActorInfo`,
+	 * which raises an ensure when there is no actor information.
+	 */
+	float ScaledRangeCm() const;
+
+	/**
+	 * The speed this skill states for its projectile, after the caster's
+	 * increases to `projectile_speed` asked with this skill's tags.
+	 *
+	 * FLOORED AT A TENTH OF THE STATED SPEED, a judgement of the same ruling: a
+	 * projectile's speed of nought means it arrives at once, like a beam, so a
+	 * floor of nought would make enough "slower" into instant. The worst
+	 * shipped combination, -50% and -35%, leaves 0.15, so no shipped roll meets
+	 * the floor. A stated speed of nought -- Compel, a beam -- stays nought.
+	 */
+	float ScaledProjectileSpeed() const;
+
+	/**
 	 * The radius of the ground this skill leaves, after area of effect.
 	 *
 	 * ALWAYS SCALED, unlike the radius above, because a zone's damage IS area

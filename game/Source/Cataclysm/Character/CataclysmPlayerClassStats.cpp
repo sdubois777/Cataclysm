@@ -395,6 +395,18 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// ApplyTagForDuration and DamageOverTimeNumbers. Issue #1833: "Debuff
 		// effects you apply last 30%-60% longer".
 		TEXT("debuff_duration"),
+		// Increases to the range a skill states, read by
+		// UCataclysmSkillTemplate::ScaledRangeCm with the skill's tags. Issue
+		// #1833: "Your ranged skills have 20%-40% increased range".
+		TEXT("skill_range"),
+		// Increases to a skill's projectile speed, read by
+		// UCataclysmSkillTemplate::ScaledProjectileSpeed with the skill's tags.
+		// Issue #1833: "Ranged skills have 30%-60% increased projectile speed".
+		TEXT("projectile_speed"),
+		// Increases, read by ACataclysmMinion::Spawn at the summoning, on the
+		// reach and notice radius the minion's type states. Issue #1833:
+		// "Gadgets have 20%-40% increased attack range".
+		TEXT("minion_range"),
 	};
 	return Stats;
 }

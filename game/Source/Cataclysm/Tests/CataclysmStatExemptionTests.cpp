@@ -3956,6 +3956,90 @@ namespace CataclysmStatExemptionTest
 					   1.5f, 0.001f);
 	}
 
+	/**
+	 * `skill_range` and `projectile_speed`. Issue #1833, projectiles and range.
+	 * Read by `UCataclysmSkillTemplate::ScaledRangeCm` and
+	 * `ScaledProjectileSpeed` on a skill given to the fighter, stating ten
+	 * metres and twenty metres a second. Each grants 50% increased.
+	 */
+	void ProbeSkillRange(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmSelfBuffSkill* Skill = SupportBuffOn(Fighter);
+		if (!Test.TestNotNull(TEXT("a skill"), Skill))
+		{
+			return;
+		}
+		Skill->Params.RangeCm = 1000.0f;
+		Test.TestEqual(TEXT("nothing granted: the stated 1000"), Skill->ScaledRangeCm(), 1000.0f, 0.01f);
+		GrantIncrease(Fighter, UCataclysmSkillTemplate::SkillRangeStat, 50.0f);
+		Test.TestEqual(TEXT("skill_range is read: 50% increased gives 1500"),
+					   Skill->ScaledRangeCm(), 1500.0f, 0.01f);
+	}
+
+	void ProbeProjectileSpeed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmSelfBuffSkill* Skill = SupportBuffOn(Fighter);
+		if (!Test.TestNotNull(TEXT("a skill"), Skill))
+		{
+			return;
+		}
+		Skill->Params.SpeedCmPerSecond = 2000.0f;
+		Test.TestEqual(TEXT("nothing granted: the stated 2000"),
+					   Skill->ScaledProjectileSpeed(), 2000.0f, 0.01f);
+		GrantIncrease(Fighter, UCataclysmSkillTemplate::ProjectileSpeedStat, 50.0f);
+		Test.TestEqual(TEXT("projectile_speed is read: 50% increased gives 3000"),
+					   Skill->ScaledProjectileSpeed(), 3000.0f, 0.01f);
+	}
+
+	/**
+	 * `minion_range`, read by `ACataclysmMinion::Spawn` at the summoning on the
+	 * reach and the notice radius the type row states. Issue #1833, "Gadgets
+	 * have 20%-40% increased attack range". Two imps, one from a summoner
+	 * granted 40% increased.
+	 */
+	void ProbeMinionRange(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Geared(World, /*AttackDamage=*/0.0f);
+		Grant(Geared.Actor, TEXT("minion_range"), IncreasePercent);
+
+		ACataclysmMinion* PlainImp = SummonImp(Test, World, Plain.Actor);
+		ACataclysmMinion* GearedImp = SummonImp(Test, World, Geared.Actor);
+		if (!PlainImp || !GearedImp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(PlainImp)) { PlainImp->Destroy(); } };
+		ON_SCOPE_EXIT { if (IsValid(GearedImp)) { GearedImp->Destroy(); } };
+
+		const float Multiplier = 1.0f + IncreasePercent / 100.0f;
+		Test.TestEqual(TEXT("minion_range is read: the reach is 40% longer"),
+					   GearedImp->ReachCm, PlainImp->ReachCm * Multiplier, 0.01f);
+		Test.TestEqual(TEXT("and the notice radius with it"),
+					   GearedImp->NoticeRadiusCm, PlainImp->NoticeRadiusCm * Multiplier, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4014,6 +4098,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_duration"), &ProbeSkillDuration},
 			{TEXT("buff_duration"), &ProbeBuffDuration},
 			{TEXT("debuff_duration"), &ProbeDebuffDuration},
+			{TEXT("skill_range"), &ProbeSkillRange},
+			{TEXT("projectile_speed"), &ProbeProjectileSpeed},
+			{TEXT("minion_range"), &ProbeMinionRange},
 		};
 		return Made;
 	}
