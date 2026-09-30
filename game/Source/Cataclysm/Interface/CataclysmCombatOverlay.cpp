@@ -663,6 +663,14 @@ FString UCataclysmCombatOverlay::ContagiousTouchTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->DropsEaten > 0
+		? FString::Printf(TEXT("Gorged %d"), Enemy->DropsEaten)
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)
 {
 	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
@@ -712,7 +720,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
 		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
-		  ContagiousTouchTextFor(Actor),
+		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),

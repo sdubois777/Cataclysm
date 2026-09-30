@@ -3042,7 +3042,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetCarrionFeastDamageMultiplier", "CarrionFeastDamageSource"),
                         ("SetGrimTotemsDamageMultiplier", "GrimTotemsDamageSource"),
                         ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource"),
-                        ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource")):
+                        ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource"),
+                        ("SetFamishedBeastsDamageMultiplier", "FamishedBeastsDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4741,3 +4742,21 @@ def test_contagious_touch_row_still_names_contact_a_stack_a_share_per_stack_and_
         assert phrase in lower, (
             f"Pestilence_Contagious_Touch no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "ContagiousTouchKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_famished_beasts_row_still_names_seeking_eating_denying_and_growing():
+    """The phrases the rule's readings rest on.
+
+    "Enemies actively seek out and consume dropped items, denying players their rewards and getting stronger with each
+    item eaten." SEEK OUT is the walk to the nearest drop; CONSUME DROPPED ITEMS is eating every drop but The Infested
+    Hoard's; DENYING PLAYERS THEIR REWARDS is the drop gone for good; STRONGER WITH EACH ITEM EATEN is a tenth more
+    damage and health a drop. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Famine_Famished_Beasts"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("actively seek out", "consume dropped items", "denying players their rewards",
+                   "stronger with each item eaten"):
+        assert phrase in lower, (
+            f"Famine_Famished_Beasts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "FamishedBeastsKey in CataclysmDungeonModifierEffects.h. " + words)

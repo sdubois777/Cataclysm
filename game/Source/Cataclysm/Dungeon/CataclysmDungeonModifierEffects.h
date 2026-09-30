@@ -2580,6 +2580,27 @@ public:
 	static const TCHAR* ContagiousTouchKey;
 
 	/**
+	 * The row where creatures walk to drops on the floor and eat them, growing stronger. Issues #1820 and #41.
+	 *
+	 * "Enemies actively seek out and consume dropped items, denying players their rewards and getting stronger with
+	 * each item eaten."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - EVERY DROP ON THE FLOOR IS EATEN, gear and material, EXCEPT The Infested Hoard's (`bInfested`): that drop
+	 *   exists so the player chooses whether to take it and its risk, and a creature eating it would remove the other
+	 *   rule's choice. `FamishedBeastsEats` is the one place that says so.
+	 * - A CREATURE OF THE FLOOR'S KINDS with a drop within `FamishedBeastsSeekWithinCm` walks to the nearest and eats
+	 *   it before chasing the player, unless the player is within its attack reach, where it fights.
+	 * - WITHIN `FamishedBeastsEatWithinCm`, the roam's acceptance radius, it eats the drop at once. GONE FOR GOOD: the
+	 *   row's own "denying players their rewards".
+	 * - EACH DROP EATEN makes it `FamishedBeastsStrongerPercentPerDrop` stronger in damage and maximum health, added,
+	 *   up to `FamishedBeastsMostStacks`: Carrion Feast's figures and shape, on its own key of the damage map. It pays
+	 *   as its rung does, and nothing extra.
+	 */
+	static const TCHAR* FamishedBeastsKey;
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5445,6 +5466,24 @@ public:
 		return FMath::Max(0.0f, StruckMaxHealth) * FMath::Clamp(Stacks, 0, ContagiousTouchMostStacks)
 			* ContagiousTouchPercentPerStack / 100.0f;
 	}
+
+	/** Famished Beasts' figures, every one a play-test value: Carrion Feast's 10% and 10. See the key. */
+	static constexpr float FamishedBeastsSeekWithinCm = 1000.0f;
+	static constexpr float FamishedBeastsEatWithinCm = 50.0f;
+	static constexpr float FamishedBeastsStrongerPercentPerDrop = CarrionFeastStrongerPercentPerCarcass;
+	static constexpr int32 FamishedBeastsMostStacks = CarrionFeastMostStacks;
+
+	/** Famished Beasts: what a creature's damage and maximum health are multiplied by after eating this many drops. */
+	static float FamishedBeastsMultiplier(int32 DropsEaten)
+	{
+		return 1.0f + FMath::Clamp(DropsEaten, 0, FamishedBeastsMostStacks) * FamishedBeastsStrongerPercentPerDrop / 100.0f;
+	}
+
+	/** Famished Beasts: whether a creature eats this drop. Every drop but The Infested Hoard's. */
+	static bool FamishedBeastsEats(const class ACataclysmDroppedItem* Drop);
+
+	/** Famished Beasts: the nearest drop a creature eats within this many centimetres of `From`, measured flat. */
+	static class ACataclysmDroppedItem* FamishedBeastsNearestDrop(const UWorld* World, const FVector& From, float WithinCm);
 
 	/**
 	 * Void Parasite's figures, every one a play-test value. See the key. The chance is Demon Prince's

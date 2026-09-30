@@ -1996,6 +1996,9 @@ public:
 	 */
 	static ACataclysmDungeonGameMode* InWorld(UWorld* World);
 
+	/** Famished Beasts, for the panel and tests: the drops eaten on this floor. Issues #1820 and #41. */
+	int32 FamishedBeastsDropsEatenNow() const { return FamishedBeastsFloor == FloorNumber ? FamishedBeastsDropsEaten : 0; }
+
 	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
 
@@ -2707,6 +2710,12 @@ private:
 	 * the floor's own population is spawned, all at once or as a wave. Issues #1820 and #41, for Morale Break.
 	 */
 	void NoteThePack(ACataclysmEnemyCharacter* Enemy, const FCataclysmEnemyPlacement& Placement) const;
+
+	/** Famished Beasts' beat: which creatures seek drops, and each one standing on a drop eats it. Issue #41. */
+	void StepFamishedBeasts();
+
+	/** Famished Beasts: an eater's damage and maximum health for the drops it has eaten. Issues #1820 and #41. */
+	void StrengthenTheEater(ACataclysmEnemyCharacter* Eater);
 
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
@@ -4070,6 +4079,14 @@ private:
 	TArray<FMoraleBreakGroup> MoraleBreakGroups;
 	int32 MoraleBreakFloor = -1;
 	int32 MoraleBreakPanelKey = -1;
+
+	/**
+	 * Famished Beasts: the drops eaten on the floor, the floor they belong to, and each eater's own maximum health,
+	 * recorded when it first ate, as Carrion Feast records its feeders'. THE FLOOR NUMBER STARTS THEM AGAIN. Issue #41.
+	 */
+	int32 FamishedBeastsDropsEaten = 0;
+	int32 FamishedBeastsFloor = -1;
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> FamishedBeastsOwnMaxHealth;
 
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein

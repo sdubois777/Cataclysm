@@ -12,6 +12,8 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Items/CataclysmItem.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "EngineUtils.h"
 
 const TCHAR* UCataclysmDungeonModifierEffects::StarvationKey = TEXT("Famine_Starvation");
 const TCHAR* UCataclysmDungeonModifierEffects::DehydrationKey = TEXT("Famine_Dehydration");
@@ -226,6 +228,35 @@ const TCHAR* UCataclysmDungeonModifierEffects::MoraleBreakKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::ContagiousTouchKey =
 	TEXT("Pestilence_Contagious_Touch");
+
+const TCHAR* UCataclysmDungeonModifierEffects::FamishedBeastsKey =
+	TEXT("Famine_Famished_Beasts");
+
+bool UCataclysmDungeonModifierEffects::FamishedBeastsEats(const ACataclysmDroppedItem* Drop)
+{
+	return IsValid(Drop) && !Drop->bInfested;
+}
+
+ACataclysmDroppedItem* UCataclysmDungeonModifierEffects::FamishedBeastsNearestDrop(
+	const UWorld* World, const FVector& From, float WithinCm)
+{
+	ACataclysmDroppedItem* Nearest = nullptr;
+	float NearestCm = WithinCm;
+	if (!World)
+	{
+		return Nearest;
+	}
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		const float Cm = FVector::Dist2D(From, It->GetActorLocation());
+		if (FamishedBeastsEats(*It) && Cm <= NearestCm)
+		{
+			Nearest = *It;
+			NearestCm = Cm;
+		}
+	}
+	return Nearest;
+}
 
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
@@ -600,6 +631,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PlaguebearerKey)
 		|| RowKey == FName(MoraleBreakKey)
 		|| RowKey == FName(ContagiousTouchKey)
+		|| RowKey == FName(FamishedBeastsKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
@@ -838,6 +870,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PlaguebearerKey),
 		FName(MoraleBreakKey),
 		FName(ContagiousTouchKey),
+		FName(FamishedBeastsKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),

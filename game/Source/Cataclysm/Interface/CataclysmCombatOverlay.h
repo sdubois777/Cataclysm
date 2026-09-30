@@ -599,6 +599,9 @@ public:
 	 */
 	static FString CarcassTextFor(const AActor* Actor);
 
+	/** "Gorged N" under the bar of a creature that has eaten N drops for Famished Beasts, or empty. Issues #1820, #41. */
+	static FString FamishedBeastsTextFor(const AActor* Actor);
+
 	/**
 	 * "Plaguebearer" under the bar of The Plaguebearer's creature, and "Diseased N" under the bar of a creature carrying
 	 * N of its stacks, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason.
