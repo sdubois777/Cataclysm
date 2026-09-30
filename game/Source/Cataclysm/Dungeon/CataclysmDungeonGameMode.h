@@ -2137,6 +2137,11 @@ public:
 
 	/** Grim Totems, for the panel and tests: the totems standing, and the Elite creatures embracing brought. */
 	TArray<class ACataclysmFloorObject*> GrimTotemsNow() const;
+
+	/** Battlefield Relics, for the panel and tests: the relics standing, a relic's kind, and the spirits standing. */
+	TArray<class ACataclysmFloorObject*> BattlefieldRelicsNow() const;
+	int32 BattlefieldRelicKindOf(const class ACataclysmFloorObject* Relic) const;
+	TArray<ACataclysmEnemyCharacter*> RelicSpiritsStanding() const;
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2772,8 +2777,39 @@ private:
 	/** Void Parasite: this arena's light zone chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheLight();
 
+	/**
+	 * Floor objects of one rule on this floor: up to `Count`, on Eternal Chorus's cells -- away from the entrance, so
+	 * the player walks to one -- each carrying the rule's key, the name and the prompt given. The caller gives each its
+	 * choices and keeps them. Issues #1820 and #41. Taken out of Grim Totems so every rule that places a floor object
+	 * places it the one way.
+	 */
+	TArray<class ACataclysmFloorObject*> PlaceFloorObjects(FName RuleKey, int32 Count, const FString& DisplayName,
+														   const FString& Prompt);
+
+	/**
+	 * Up to `Count` creatures of the floor's own kinds, on cells beside a point `AwayCm` from `At` at a random angle --
+	 * or around `At` when that point has no floor within reach -- at `FixedRung`, or a rung drawn as usual when it is
+	 * -1, noticing the player from `SightMultiplier` times the ordinary distance. Each is raised by a rule and is one of
+	 * the floor's creatures, paying as its rung does. Issues #1820 and #41. Taken out of Grim Totems' embrace so every
+	 * rule that brings creatures after the player brings them the one way.
+	 */
+	TArray<ACataclysmEnemyCharacter*> BringCreaturesNear(const FVector& At, float AwayCm, int32 Count, int32 FixedRung,
+														 float SightMultiplier);
+
 	/** Grim Totems: this arena's totems placed, where a new arena is populated. */
 	void PlaceTheTotems();
+
+	/** Battlefield Relics: this arena's relics placed, where a new arena is populated. Issues #1820 and #41. */
+	void PlaceTheRelics();
+
+	/** Battlefield Relics: every relic destroyed and forgotten, and the spirits forgotten. */
+	void ForgetTheRelics();
+
+	/** Battlefield Relics: the one choice at a relic. */
+	bool ChooseAtBattlefieldRelic(class ACataclysmFloorObject* Relic, FName ChoiceKey);
+
+	/** Battlefield Relics, on the beat: each kind's buff written when it changed and counted down. */
+	void StepBattlefieldRelics(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** Grim Totems: every totem and its zone destroyed and forgotten. */
 	void ForgetTheTotems();
@@ -4206,6 +4242,21 @@ private:
 	float GrimEmbraceLeft = 0.0f;
 	float GrimEmbraceApplied = 0.0f;
 	int32 GrimTotemsPanelKey = -1;
+
+	/**
+	 * Battlefield Relics: the relics standing and each one's kind, the spirits activating brought, each kind's seconds
+	 * left and what was last written on the player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> BattlefieldRelics;
+	TArray<int32> BattlefieldRelicKinds;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> RelicSpirits;
+	float RelicFuryLeft = 0.0f;
+	float RelicHasteLeft = 0.0f;
+	float RelicBulwarkLeft = 0.0f;
+	float RelicFuryApplied = 0.0f;
+	float RelicHasteApplied = 0.0f;
+	float RelicBulwarkApplied = 0.0f;
+	int32 BattlefieldRelicsPanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

@@ -38583,4 +38583,316 @@ bool FCataclysmThrallLosesTheTrialTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// War_Battlefield_Relics. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName RelicsRow(UCataclysmDungeonModifierEffects::BattlefieldRelicsKey);
+	const FName ActivateKey(UCataclysmDungeonModifierEffects::BattlefieldRelicsActivate);
+
+	/**
+	 * A dungeon carrying only Battlefield Relics, on floor 2 with its own creatures cleared and its relics placed. The
+	 * caller pins the kinds with `Cataclysm.BattlefieldRelicKinds` first.
+	 */
+	ACataclysmDungeonGameMode* ARelicFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {RelicsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("two relics"), Mode->BattlefieldRelicsNow().Num(),
+							   UCataclysmDungeonModifierEffects::BattlefieldRelicsPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** The first resistance stat, which the Bulwark adds to as it adds to every one. */
+	FString FirstResistanceStat()
+	{
+		return UCataclysmItemModifiers::ResistanceStatFor(UCataclysmItemModifiers::DamageTypeNames()[0]).ToString();
+	}
+}
+
+// THE FIGURES: TWO RELICS; THREE KINDS FOR 30 S; FIVE COMMON SPIRITS 8 M AWAY.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsFiguresKindsTimeAndSpirits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two relics a floor"), Effects::BattlefieldRelicsPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::BattlefieldRelicsPerHordeArena, 1);
+	TestEqual(TEXT("30 s each"), Effects::BattlefieldRelicsSeconds, 30.0f, 0.001f);
+	TestEqual(TEXT("Fury: 50% more damage"), Effects::BattlefieldRelicsFuryDamageMorePercent, 50.0f, 0.001f);
+	TestEqual(TEXT("Haste: 30% more attack speed"), Effects::BattlefieldRelicsHasteAttackSpeedMorePercent, 30.0f, 0.001f);
+	TestEqual(TEXT("and 30% more movement speed"), Effects::BattlefieldRelicsHasteSpeedMorePercent, 30.0f, 0.001f);
+	TestEqual(TEXT("the Bulwark: +30 to every resistance"), Effects::BattlefieldRelicsBulwarkResistance, 30.0f, 0.001f);
+	TestEqual(TEXT("five spirits"), Effects::BattlefieldRelicsSpiritCount, 5);
+	TestEqual(TEXT("8 m from the relic"), Effects::BattlefieldRelicsSpiritAwayCm, 800.0f, 0.001f);
+	TestEqual(TEXT("at Common"), Effects::BattlefieldRelicsSpiritRung, 0);
+	TestEqual(TEXT("three kinds"), Effects::BattlefieldRelicKinds, 3);
+	return true;
+}
+
+// TWO RELICS AWAY FROM THE ENTRANCE, EACH NAMED FOR ITS KIND AND OFFERING ONE CHOICE, WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsTwoStandAwayFromTheEntranceEachOfAKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0,1"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const ACataclysmFloorObject* Relic : Relics)
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Relic->GetActorLocation(), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		TestEqual(TEXT("placed by the row"), Relic->RuleKey, RelicsRow);
+		if (TestEqual(TEXT("one choice"), Relic->Choices.Num(), 1))
+		{
+			TestEqual(TEXT("to activate it"), Relic->Choices[0].Key, ActivateKey);
+			TestTrue(TEXT("which can be chosen"), Relic->Choices[0].bAvailable);
+		}
+	}
+	TestEqual(TEXT("the first is a relic of Fury"), Mode->BattlefieldRelicKindOf(Relics[0]), Effects::BattlefieldRelicFury);
+	TestEqual(TEXT("named so"), Relics[0]->DisplayName, FString(TEXT("Battlefield Relic of Fury")));
+	TestEqual(TEXT("the second a relic of Haste"), Mode->BattlefieldRelicKindOf(Relics[1]), Effects::BattlefieldRelicHaste);
+	TestEqual(TEXT("named so"), Relics[1]->DisplayName, FString(TEXT("Battlefield Relic of Haste")));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 2 standing")));
+	return true;
+}
+
+// A RELIC OF FURY: IT GOES, 50% MORE DAMAGE FOR 30 S, AND FIVE COMMON SPIRITS COME; A RELIC GONE REFUSES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsFuryTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsFuryGivesDamageForThirtySecondsAndFiveSpirits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsFuryTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Relic = Mode->BattlefieldRelicsNow()[0];
+	TestEqual(TEXT("nothing before"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	if (!TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Relic, ActivateKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the relic went"), Mode->BattlefieldRelicsNow().Num(), 1);
+
+	const TArray<ACataclysmEnemyCharacter*> Spirits = Mode->RelicSpiritsStanding();
+	TestEqual(TEXT("five spirits came"), Spirits.Num(), Effects::BattlefieldRelicsSpiritCount);
+	for (const ACataclysmEnemyCharacter* Spirit : Spirits)
+	{
+		TestEqual(TEXT("at Common"), Spirit->RarityStep, Effects::BattlefieldRelicsSpiritRung);
+		TestTrue(TEXT("\"Spirit\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Spirit).Contains(TEXT("Spirit")));
+		TestTrue(TEXT("raised by the rule"), Spirit->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Spirit->PaysForItsDeath());
+	}
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("50% more attack damage"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("50% more spell damage"), TotemRuleOn(Player, TEXT("spell_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 1 standing; Fury 30 s")));
+
+	Beat(Mode, BeatsFor(Effects::BattlefieldRelicsSeconds) - 2);
+	TestEqual(TEXT("still more at 29.75 s"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("gone by 30.25 s"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the spirits are still after the player"), Mode->RelicSpiritsStanding().Num(),
+			  Effects::BattlefieldRelicsSpiritCount);
+
+	TestFalse(TEXT("a relic gone offers nothing"), Mode->ChooseAtFloorObject(Relic, ActivateKey));
+	TestFalse(TEXT("and a choice no relic offers is refused"),
+			  Mode->ChooseAtFloorObject(Mode->BattlefieldRelicsNow()[0], FName(TEXT("Worship"))));
+	return true;
+}
+
+// A RELIC OF HASTE AND A RELIC OF THE BULWARK ADD TOGETHER: 30% MORE ATTACK AND MOVEMENT SPEED, AND +30 RESISTANCE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsKindsAddTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsHasteAndTheBulwarkAddTogether",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsKindsAddTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("1,2"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+	if (!TestTrue(TEXT("activating the relic of Haste acted"), Mode->ChooseAtFloorObject(Relics[0], ActivateKey))
+		|| !TestTrue(TEXT("and the relic of the Bulwark"), Mode->ChooseAtFloorObject(Relics[1], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const FString Resistance = FirstResistanceStat();
+	TestEqual(TEXT("30% more attack speed"), TotemRuleOn(Player, TEXT("attack_speed")), 30.0f, 0.001f);
+	TestEqual(TEXT("30% more movement speed"), TotemRuleOn(Player, TEXT("movement_speed")), 30.0f, 0.001f);
+	TestEqual(TEXT("+30 resistance"), TotemRuleOn(Player, *Resistance), 30.0f, 0.001f);
+	TestEqual(TEXT("and no damage, which only Fury gives"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 0 standing; Haste 30 s; Bulwark 30 s")));
+	return true;
+}
+
+// THE SAME KIND AGAIN REFRESHES ITS TIME AND DOES NOT ADD: 50% STILL, ENDING 30 S AFTER THE SECOND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsRefreshTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsTheSameKindAgainRefreshesItsTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsRefreshTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0,0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+	if (!TestTrue(TEXT("the first relic of Fury activated"), Mode->ChooseAtFloorObject(Relics[0], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(20.0f));
+	if (!TestTrue(TEXT("and 20 s later the second"), Mode->ChooseAtFloorObject(Relics[1], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("50% more, not 100%"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	Beat(Mode, BeatsFor(Effects::BattlefieldRelicsSeconds) - 2);
+	TestEqual(TEXT("still more 29.75 s after the second"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("gone 30.25 s after the second"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	return true;
+}
+
+// A NEW FLOOR BRINGS NEW RELICS AND ENDS THE BUFFS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsNewFloorTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsANewFloorBringsNewRelicsAndEndsTheBuffs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsNewFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->BattlefieldRelicsNow()[0], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: 50% more"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f)
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("two new relics"), Mode->BattlefieldRelicsNow().Num(),
+			  UCataclysmDungeonModifierEffects::BattlefieldRelicsPerFloor);
+	TestEqual(TEXT("the buff ended with the floor"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 2 standing")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
