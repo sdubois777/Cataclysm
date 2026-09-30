@@ -684,6 +684,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  /*Target=*/GetOwningActor(),
 								  EnemiesStruckTogether)
 							: Offence->GetArmorPenetration();
+
+						// AND THE SHARE A CRITICAL STRIKE IGNORES ON TOP, asked with the
+						// same facts and added in the damage calculation only if the
+						// blow critically strikes, which is not known yet. Issue #1833,
+						// ruled 2026-09-30: "Your critical strikes ignore 20%-40% of
+						// enemy armor". Nothing without an ability system of ours.
+						Hit.CriticalArmorPenetration = AskingToPenetrate
+							? AskingToPenetrate->StatForSkill(
+								  FName(UCataclysmDamageCalculation::CriticalArmorPenetrationStat),
+								  AssetTags, 0.0f,
+								  /*SkillHealthCostPercent=*/-1.0f,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  Hit.OpponentDistanceMetres,
+								  UCataclysmSkillEffects::IsStaggered(GetOwningActor()),
+								  /*Target=*/GetOwningActor(),
+								  EnemiesStruckTogether)
+							: 0.0f;
 					}
 
 					// AND THE CRITICAL STRIKE, read here for that same reason.

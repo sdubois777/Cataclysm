@@ -4040,6 +4040,72 @@ namespace CataclysmStatExemptionTest
 					   GearedImp->NoticeRadiusCm, PlainImp->NoticeRadiusCm * Multiplier, 0.01f);
 	}
 
+	/**
+	 * `critical_armor_penetration`, asked in `UCataclysmVitalAttributeSet` where
+	 * armour penetration is and added in `UCataclysmDamageCalculation::Resolve`
+	 * only once the blow has critically struck. Issue #1833, "Your critical
+	 * strikes ignore 20%-40% of enemy armor".
+	 *
+	 * TWO ATTACKERS strike an armoured defender with the roll pinned so every
+	 * blow critically strikes, at a multiplier of 100 so the crit changes no
+	 * damage; one carries 100 flat of the stat. Its blow loses nothing to armour.
+	 */
+	void ProbeCriticalArmorPenetration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		IConsoleVariable* Roll =
+			IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+		if (!Test.TestNotNull(TEXT("the critical strike roll can be pinned"), Roll))
+		{
+			return;
+		}
+		const float PreviousRoll = Roll->GetFloat();
+		Roll->Set(0.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(PreviousRoll, ECVF_SetByConsole); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Piercing(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		for (const FScopedFighter* Striker : {&Plain, &Piercing})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 100.0f);
+		}
+		Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 1000.0f);
+
+		FCataclysmStatModifier All;
+		All.Bucket = ECataclysmStatBucket::Flat;
+		All.Source = ECataclysmModifierSource::Enchantment;
+		All.Value = 100.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::CriticalArmorPenetrationStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {All};
+		Piercing.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		FCataclysmDamageResult Kept;
+		UCataclysmSkillEffects::ApplyHit(Plain.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Kept);
+		FCataclysmDamageResult Ignored;
+		UCataclysmSkillEffects::ApplyHit(Piercing.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Ignored);
+
+		if (!Test.TestTrue(TEXT("both blows landed and critically struck, and armour took a share of the plain one"),
+				Kept.bWasCritical && Ignored.bWasCritical && Kept.RemovedByArmour > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("critical_armor_penetration is read: the carrying attacker's critical blow loses nothing to armour"),
+			Ignored.RemovedByArmour, 0.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4101,6 +4167,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_range"), &ProbeSkillRange},
 			{TEXT("projectile_speed"), &ProbeProjectileSpeed},
 			{TEXT("minion_range"), &ProbeMinionRange},
+			{TEXT("critical_armor_penetration"), &ProbeCriticalArmorPenetration},
 		};
 		return Made;
 	}

@@ -1311,19 +1311,24 @@ bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
 			// OUT, and so is the blow or skill, which a speed read has neither
 			// of. Everything else can change with nothing written to health, the
 			// class resource or the speed attribute.
-			switch (UCataclysmStatPipeline::WhatConditionDependsOn(
-				Modifier.Condition))
+			// BOTH CONDITIONS, since issue #1833 gave a row a second one: either
+			// may change with nothing written here.
+			for (const ECataclysmStatCondition Asked : {Modifier.Condition, Modifier.Condition2})
 			{
-			case ECataclysmConditionDependsOn::Nothing:
-			case ECataclysmConditionDependsOn::Health:
-			case ECataclysmConditionDependsOn::ClassResource:
-			case ECataclysmConditionDependsOn::TheBlowOrSkill:
-				break;
-			case ECataclysmConditionDependsOn::OtherAttributes:
-			case ECataclysmConditionDependsOn::Time:
-			case ECataclysmConditionDependsOn::Motion:
-			case ECataclysmConditionDependsOn::Surroundings:
-				return true;
+				switch (UCataclysmStatPipeline::WhatConditionDependsOn(
+					Asked))
+				{
+				case ECataclysmConditionDependsOn::Nothing:
+				case ECataclysmConditionDependsOn::Health:
+				case ECataclysmConditionDependsOn::ClassResource:
+				case ECataclysmConditionDependsOn::TheBlowOrSkill:
+					break;
+				case ECataclysmConditionDependsOn::OtherAttributes:
+				case ECataclysmConditionDependsOn::Time:
+				case ECataclysmConditionDependsOn::Motion:
+				case ECataclysmConditionDependsOn::Surroundings:
+					return true;
+				}
 			}
 		}
 	}

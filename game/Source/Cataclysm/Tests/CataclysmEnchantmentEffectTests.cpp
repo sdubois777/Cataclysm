@@ -2312,9 +2312,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4287,9 +4287,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -4406,9 +4406,9 @@ bool FCataclysmStackSecondsRollTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g\n"),
+				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0\n"),
 				DrawbackWithNoEffect, DrawbackWithNoEffect, StackSecondsHigh));
 		if (!Effects)
 		{
@@ -9877,6 +9877,170 @@ bool FCataclysmMeleeReachRowTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("a melee strike reaches a metre further"), Melee->MeleeReachBonusCm(), 100.0f, 0.01f);
 	TestEqual(TEXT("a ranged one no further"), Ranged->MeleeReachBonusCm(), 0.0f, 0.01f);
+	return true;
+}
+
+namespace CataclysmConditionRowsTest
+{
+	/** The wearer's damage taken, asked with a blow of this kind. */
+	float DamageTakenFrom(UCataclysmAbilitySystemComponent* ASC, bool bMelee)
+	{
+		FCataclysmBlowContext Blow;
+		Blow.bIsMelee = bMelee;
+		Blow.bIsRanged = !bMelee;
+		return ASC->StatForSkill(FName(UCataclysmDamageCalculation::DamageTakenStat),
+								 FGameplayTagContainer(),
+								 UCataclysmDamageCalculation::NormalDamageTaken,
+								 /*SkillHealthCostPercent=*/-1.0f, Blow);
+	}
+
+	/** Maximum first, then current: the vital set clamps health to it. */
+	void SetHealth(UCataclysmAbilitySystemComponent* ASC, float Maximum, float Current)
+	{
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Maximum);
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Current);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalArmourRowTest,
+	"Cataclysm.Enchantments.TheCriticalArmourRowGivesItsShareToCriticalStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your critical strikes ignore 20%-40% of enemy armor", worn at the top, gives
+ * the wearer 40 `critical_armor_penetration`, the share
+ * `UCataclysmDamageCalculation::Resolve` adds once a blow critically strikes.
+ * Issue #1833, ruled 2026-09-30.
+ */
+bool FCataclysmCriticalArmourRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("critical strikes ignore 40% of armour"),
+			  Worn.ASC()->StatForSkill(FName(UCataclysmDamageCalculation::CriticalArmorPenetrationStat),
+									   FGameplayTagContainer(), 0.0f),
+			  40.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStationaryRangedRowTest,
+	"Cataclysm.Enchantments.TheStationaryRangedRowNeedsBothStandingStillAndARangedHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "While stationary you take 20%-35% increased damage from ranged attacks",
+ * worn at the top: a ranged hit on a wearer standing still is taken at 1.35. A
+ * melee hit, or a ranged hit while moving, is taken at 1. Issue #1833, the row's
+ * two conditions, ruled 2026-09-30 to mean both.
+ */
+bool FCataclysmStationaryRangedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmConditionRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_While_stationary_you_take_20_35_increased_dama"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+
+	// A CHARACTER THAT HAS NEVER MOVED IS NOT STATIONARY, so it moves once first.
+	ASC->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("moving, a ranged hit: 100"), DamageTakenFrom(ASC, false), 100.0f, 0.001f);
+
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(Worn.World, 3.0f);
+	TestEqual(TEXT("standing still, a ranged hit: 135"), DamageTakenFrom(ASC, false), 135.0f, 0.001f);
+	TestEqual(TEXT("standing still, a melee hit: 100"), DamageTakenFrom(ASC, true), 100.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeHighHealthRowTest,
+	"Cataclysm.Enchantments.TheMeleeHighHealthRowNeedsBothAMeleeHitAndHealthAboveThreeQuarters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You take 20%-35% increased damage from melee attacks while your HP is above
+ * 75%", worn at the top: a melee hit at 80% health is taken at 1.35; a ranged
+ * hit at 80%, or a melee hit at half health, at 1. Issue #1833.
+ */
+bool FCataclysmMeleeHighHealthRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmConditionRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_You_take_20_35_increased_damage_from_melee_att"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+
+	SetHealth(ASC, 1000.0f, 800.0f);
+	TestEqual(TEXT("80% health, a melee hit: 135"), DamageTakenFrom(ASC, true), 135.0f, 0.001f);
+	TestEqual(TEXT("80% health, a ranged hit: 100"), DamageTakenFrom(ASC, false), 100.0f, 0.001f);
+	SetHealth(ASC, 1000.0f, 500.0f);
+	TestEqual(TEXT("half health, a melee hit: 100"), DamageTakenFrom(ASC, true), 100.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFreeAboveRowTest,
+	"Cataclysm.Enchantments.TheFreeAbilitiesRowUsesTheThresholdItRolled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your abilities are free when above 80%-95% hp". At 90% health a skill is
+ * free for a piece rolled at the bottom, whose threshold is 80, and costs its
+ * mana for a piece rolled at the top, whose threshold is 95. Issue #1833: the
+ * threshold rolls with the value, and a higher roll is a harder threshold, a
+ * labelled judgement of 2026-09-30.
+ */
+bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmConditionRowsTest;
+
+	const auto CostAt = [](float Roll) -> float
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return -1.0f;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		FCataclysmItem Piece = Carrying(TEXT("Head_Helm"),
+										TEXT("Positive_Your_abilities_are_free_when_above_80_95_hp"),
+										DrawbackWithNoEffect);
+		Piece.Enchantments[0].PositiveRoll = Roll;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(Piece, Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		SetHealth(Wearer.AbilitySystem, 1000.0f, 900.0f);
+
+		const FGameplayAbilitySpecHandle Handle = Wearer.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1,
+			Wearer.Actor);
+		FGameplayAbilitySpec* Spec =
+			Handle.IsValid() ? Wearer.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		const UCataclysmStrikeSkill* Skill =
+			Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		return Skill ? Skill->ManaCostFor(Wearer.AbilitySystem) : -1.0f;
+	};
+
+	const float Bottom = CostAt(0.0f);
+	const float Top = CostAt(1.0f);
+	TestEqual(TEXT("rolled at the bottom, a threshold of 80: free at 90% health"), Bottom, 0.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("rolled at the top, a threshold of 95: it costs its mana at 90%%, %.2f"), Top),
+			 Top > 0.0f);
 	return true;
 }
 
