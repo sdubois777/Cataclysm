@@ -2379,6 +2379,13 @@ void ACataclysmDungeonGameMode::NoteHitForTheReaper(const FCataclysmHitNotice& N
 		   *Player->GetName());
 }
 
+// IN THE SOURCE AND NOT INLINE IN THE HEADER: the weak pointer the lookup builds needs the complete creature class, which
+// the header only declares, so a file that includes the header without the creature's own failed to compile on its own.
+bool ACataclysmDungeonGameMode::IsAnInvisibleStalker(const ACataclysmEnemyCharacter* Creature) const
+{
+	return InvisibleStalkers.Contains(const_cast<ACataclysmEnemyCharacter*>(Creature));
+}
+
 void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;

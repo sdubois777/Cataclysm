@@ -335,6 +335,13 @@ the fixed-string check above failed because this change added the factor and not
 was updated in the same branch, and the run after it printed "5517 passed, 8 skipped". The coordinating session read
 the change and accepted it on 2026-09-26.
 
+**A PROOF'S BUILD CAUGHT A FAULT, 2026-09-30, fixed in the window as the coordinating session ruled.**
+`ACataclysmDungeonGameMode::IsAnInvisibleStalker` had its body inline in `CataclysmDungeonGameMode.h`, where building
+the weak pointer for the lookup needs the complete `ACataclysmEnemyCharacter`, which that header only declares. The
+unity build hid it; Grim Totems' proof Pc edited `CataclysmChoicePanelWidget.cpp`, the adaptive build compiled that
+file on its own, and it stopped with C2338 ("TWeakObjectPtr can only be constructed with UObject types"). The body moved
+into `CataclysmDungeonGameMode.cpp`; the declaration stays in the header, and nothing else changed.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

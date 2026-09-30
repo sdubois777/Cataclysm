@@ -2308,10 +2308,7 @@ public:
 	float PlayerSightRadiusCm() const { return PlayerSightRadius; }
 
 	/** The Blackest Shadow, for tests: whether this creature carries the Invisible Stalker buff now. */
-	bool IsAnInvisibleStalker(const ACataclysmEnemyCharacter* Creature) const
-	{
-		return InvisibleStalkers.Contains(const_cast<ACataclysmEnemyCharacter*>(Creature));
-	}
+	bool IsAnInvisibleStalker(const ACataclysmEnemyCharacter* Creature) const;
 
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
