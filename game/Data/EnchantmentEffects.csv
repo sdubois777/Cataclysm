@@ -393,3 +393,5 @@ Positive_You_have_10_maximum_resists#1,Positive_You_have_10_maximum_resists,resi
 Positive_Bleed_stacks_you_apply_have_50_100_increased_d#1,Positive_Bleed_stacks_you_apply_have_50_100_increased_d,dot_duration,increased,50.0,100.0,Keyword.DoT.Bleed,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
 Negative_Killing_an_enemy_triggers_a_1_2_second_global_co#1,Negative_Killing_an_enemy_triggers_a_1_2_second_global_co,skill_locked,flat,1.0,1.0,,,0.0,own_stacks,1.0,,kill,,1,1.0,0.0,0.0,0,0.0,2.0
 Negative_Critical_strikes_trigger_a_0_5_1_second_global_c#1,Negative_Critical_strikes_trigger_a_0_5_1_second_global_c,skill_locked,flat,1.0,1.0,,,0.0,own_stacks,1.0,,critical_strike,,1,0.5,0.0,0.0,0,0.0,1.0
+Negative_Each_minion_reserves_100_500_hp#1,Negative_Each_minion_reserves_100_500_hp,health_reserved,flat,100.0,500.0,,,0.0,minions_held,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
+Negative_80_99_of_your_health_is_reserved#1,Negative_80_99_of_your_health_is_reserved,health_reserved_percent,flat,80.0,99.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0
