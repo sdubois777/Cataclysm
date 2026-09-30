@@ -2166,18 +2166,22 @@ bool FCataclysmMinionDeathQuietBodyTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathOnceTest,
-	"Cataclysm.MinionDeath.AMinionThatExplodedDoesNotExplodeAgainOnASecondDeath",
+	"Cataclysm.MinionDeath.ASecondDeathDoesNotRunTheDeathAgain",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * A second death does nothing. Issue #1528, found while changing
  * `ACataclysmMinion::HandleDeath` and fixed in the same change, ruled
  * 2026-09-30: the function ignored what `MarkDead` answered, so a second call
- * ran the explosion again and hurt the same enemy twice.
+ * ran the death again -- and an exploding minion exploded twice.
  *
- * THE SECOND CALL IS MADE DIRECTLY, on an actor the first explosion destroyed.
- * It is still in memory until garbage is collected, which is exactly the state
- * a second write at zero health in the same frame would find it in.
+ * WHY THE FLAG IS GIVEN BETWEEN THE TWO DEATHS rather than a flagged minion
+ * dying twice. A minion that exploded has been destroyed, and whether a
+ * destroyed actor's second blast lands depends on its ability system after
+ * destruction, which this test should not rest on. Here the first death is
+ * quiet and leaves the body; the summoner then holds the flag, so a second
+ * death that ran again would explode and destroy the body. The body still
+ * standing is the reading.
  */
 bool FCataclysmMinionDeathOnceTest::RunTest(const FString&)
 {
@@ -2193,27 +2197,30 @@ bool FCataclysmMinionDeathOnceTest::RunTest(const FString&)
 
 	FScopedCaster Summoner(World, FVector::ZeroVector);
 	SwingsFor(Summoner, 1000.0f);
-	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
-						  ECataclysmStatBucket::Flat, 1.0f}});
-
-	FScopedCreature Near(World, FVector(11 * M, 0, 0));
 	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
 	if (!TestNotNull(TEXT("an imp"), Imp))
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
 
-	const float Before = Near.Health();
 	Kill(Imp);
-	const float AfterOne = Near.Health();
-	if (!TestTrue(TEXT("the first death exploded and hurt the enemy a metre away"),
-				  AfterOne < Before))
+	if (!TestTrue(TEXT("the first death is quiet and leaves the body"), IsValid(Imp)))
+	{
+		return false;
+	}
+
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f}});
+	if (!TestTrue(TEXT("its summoner now holds the flag, so a death would explode it"),
+				  Imp->ExplodesOnDeath()))
 	{
 		return false;
 	}
 
 	Imp->HandleDeath();
-	TestEqual(TEXT("and a second death hurts it no more"), Near.Health(), AfterOne, 0.1f);
+	TestTrue(TEXT("a second death does not run again, so the body was not blown up"),
+			 IsValid(Imp));
 	return true;
 }
 

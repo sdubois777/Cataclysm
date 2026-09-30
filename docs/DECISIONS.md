@@ -45,8 +45,11 @@ first death. Ruled to be fixed here rather than filed.
 
 - **Two new tests in `Cataclysm.MinionDeath.`:** a quiet death leaves a body that is still valid but
   no longer collides, has lost its speed and cannot move, with at most half a second of life left (the
-  imp was summoned with 60); and a minion that exploded does not hurt the same enemy again on a second
-  death.
+  imp was summoned with 60); and a second death does not run the death again. That one kills an imp
+  quietly, then gives its summoner the explode-on-death flag and calls the death a second time: the
+  body must still stand. A test of an exploded minion exploding twice was written first and replaced,
+  because whether a destroyed actor's second blast lands depends on its ability system after
+  destruction, which could let that test pass without the fix.
 - **Five existing assertions keep their text and their result.** Each reads the body at the moment of
   death, when it is still valid for half a second; only their comments changed. They are
   `Cataclysm.Fervour.ARitualistCommandingNothingGainsNoFervour`,
