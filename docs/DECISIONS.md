@@ -32,9 +32,9 @@ On a floor carrying the row, one "War Banner" stands where Eternal Chorus's pick
 Its one choice, "Plant the banner", plants it where it stands: **the player chooses when to plant it, but not where**.
 A "plant here" key would need editor input assets, and is not built. Planted, a War-drawn zone 12 m across marks it for
 the rest of the floor; while the player stands inside, 20% more damage and +15 on every resistance. Standing inside is
-defending it: 60 s, counted only while the player is inside and never reset, with a wave of four creatures of the
-floor's kinds every 15 s of it, 15 m from the banner, noticing the player from anywhere on the floor, each saying
-"Assailant". Held, the waves stop and the aura inside becomes 40% and +30 for the rest of the floor. The banner cannot be
+defending it: 60 s, counted only while the player is inside and never reset. A wave of four creatures of the floor's
+kinds comes as it is planted and after every 15 s of it, at 0, 15, 30 and 45 s, and none as the hold completes; each
+comes 15 m from the banner, notices the player from anywhere on the floor and says "Assailant". Held, the waves stop and the aura inside becomes 40% and +30 for the rest of the floor. The banner cannot be
 harmed. The panel reads "war banner: planted, 37 s to hold; +20% damage, +15 resistances inside", then "war banner:
 held; +40% damage, +30 resistances inside".
 
@@ -50,6 +50,10 @@ held; +40% damage, +30 resistances inside".
 - **Defending means standing inside: 60 s, counted only while inside, without reset; a wave of four of the floor's
   kinds every 15 s, 1500 cm from the banner, seeing across the floor, labelled "Assailant"**, the floor's creatures,
   paying as their rung does.
+- **The first wave comes as the banner is planted, then one every 15 s held: at 0, 15, 30 and 45 s, four waves, all
+  inside the hold, and none as it completes.** Ruled on review of this change: the row says planting "attracts waves",
+  and a wave arriving as the hold completes, when the waves stop, would contradict the next ruling. This replaced this
+  change's first reading, a wave at 15, 30, 45 and 60 s.
 - **After 60 s held the waves stop and the aura becomes 40% more damage and +30 resistances inside, for the rest of the
   floor.**
 - **The banner cannot be harmed**: "defended" means holding the ground.
@@ -58,9 +62,8 @@ held; +40% damage, +30 resistances inside".
 **On the owner's play-check list**, added by the coordinating session: plant the banner, hold it through the waves, and
 the aura doubles.
 
-**Judgements of this change, under the same delegation, not ruled separately:**
+**Judgements of this change, under the same delegation, accepted on review:**
 
-- **The fourth wave comes at 60 s, as the hold completes**: a wave at every 15 s held, 15, 30, 45 and 60, then held.
 - **The aura ends with the floor**, as a relic's buff does, reset in `ApplyFloorRulesToPlayer`; the zone is drawn again
   on the next beat while the banner stands on that arena.
 - **The planted banner is not an object on the floor**: the floor object goes once planted, and the zone marks the place.
@@ -87,9 +90,10 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `Wa
   panel.
 - `WarBannerPlantedGivesItsAuraInsideAndNothingOutside`: planted, the banner to plant goes and the area is drawn; inside
   20% more attack and spell damage and +15 resistance, and the panel; outside, nothing.
-- `WarBannerHeldThroughTheWavesDoublesItsAura`: no wave at 14.75 s, four "Assailant" at 15 s, raised and paying; 20 s
-  outside leaves the hold at 15 s and brings no wave; back inside, held at 60 s with four waves in all; 40% and +30
-  inside and the panel; 20 s more brings no wave.
+- `WarBannerHeldThroughTheWavesDoublesItsAura`: four "Assailant" as it is planted, raised and paying; no second wave
+  at 14.75 s and four more at 15 s; 20 s outside leaves the hold at 15 s and brings no wave; back inside, four waves in
+  all and not held at 59.75 s, then held at 60 s with no wave; 40% and +30 inside and the panel; 20 s more brings no
+  wave.
 
 **The player is placed inside or outside by hand**: a world built for a test has no navigation, and nothing walks.
 

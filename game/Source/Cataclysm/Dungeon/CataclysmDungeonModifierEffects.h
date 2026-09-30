@@ -2640,7 +2640,8 @@ public:
 	 * - PLANTED, a zone `WarBannerRadiusCm` across, drawn as War, lasting the floor. While the player stands inside:
 	 *   `WarBannerDamageMorePercent` more damage and `WarBannerResistance` on every resistance.
 	 * - DEFENDING IS STANDING INSIDE. `WarBannerHoldSeconds`, counted only while the player is inside, never reset; a
-	 *   wave of `WarBannerWaveSize` creatures of the floor's kinds every `WarBannerWaveEverySeconds` of it,
+	 *   wave of `WarBannerWaveSize` creatures of the floor's kinds AS IT IS PLANTED and after every
+	 *   `WarBannerWaveEverySeconds` of it, and NONE AS THE HOLD COMPLETES: at 0, 15, 30 and 45 s, four in all.
 	 *   `WarBannerWaveAwayCm` from the banner, noticing the player from anywhere on the floor, each saying "Assailant".
 	 *   They are the floor's creatures, pay as their rung does and stay on their floor.
 	 * - HELD: the waves stop and the aura inside becomes `WarBannerHeldDamageMorePercent` and `WarBannerHeldResistance`
