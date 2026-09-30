@@ -32,6 +32,16 @@ and the Press-Ganged and Rekindled replacements record a reserve),
   same total, so an imp out leaves less room for a thrall.
 - **The bar shows the reserved part.** The Fervour bar's whole length is the maximum; the reserved
   section is drawn in a darker shade at the right end, labelled "N reserved".
+- **One drawing of a reserved section, shared with health.** Health reservation (issue #1833) added
+  the same `Reserved` parameter to `ACataclysmHUD::DrawPlayerPool` with its own band. Git merged the
+  two without a conflict and kept both bands, so every bar with a reserve would have drawn two. Ruled
+  2026-09-30: health's band is the one kept, with its convention (`Maximum` is the whole maximum and
+  the band is `Reserved / Maximum` at the right end). The Fervour call passes its full maximum, its
+  own shade and a label switch. Only the Fervour bar is labelled, because a Fervour reserve decides
+  whether the next summon is allowed; a health reserve is shown on the character sheet.
+- **A bug in this branch, fixed at the same move.** The Fervour bar was drawn only while the
+  spendable maximum was above zero, so with every point reserved it disappeared. It is now drawn
+  while the spendable maximum plus the reserve is above zero.
 
 ### THE RULINGS, 2026-09-30
 
