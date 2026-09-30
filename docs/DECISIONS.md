@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Forced Tithes: a Tithe Altar at every floor's exit but the last asks 20% of maximum health, a potion drink or 5 materials; refusing or leaving unpaid brings 8 angels
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its choices,
+its prices and figures, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the
+altar, the prices, the angels, the panel line, where an exit altar stands, and one floor object placed at a point);
+`game/Source/Cataclysm/Items/CataclysmInventoryComponent.h` and `.cpp` (taking a material out);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the "Angel" flag);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Angel"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmInventoryTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`.
+Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). The sixth of Group 2's chain and the first of its second
+window, on War Banner. **Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet; the
+figures are added at the end of this entry when they have.**
+
+### The row
+
+`Celestial_Forced_Tithes` in `game/Data/DungeonModifiers.csv`, weight 15: "At the end of each floor, players must pay a
+tithe (e.g., currency, consumables, health) to progress. Refusing or offering too little summons a horde of angels that
+attack with relentless zeal." It states no figure.
+
+### What the design already said
+
+Nothing: the design document and this log name no tithe. The game has no currency yet, so the row's first example
+cannot be built.
+
+### The owner's decision
+
+**THE OWNER DECIDED, 2026-09-30, asked by the coordinating session: the tithe is payable in HEALTH, A POTION DRINK and
+CRAFTING MATERIALS, all three built now; CURRENCY is added once gold exists.**
+
+### What the rule does
+
+On every floor carrying the row but the dungeon's last, a floor object named "Tithe Altar" stands on the exit cell,
+where the stairs are; on a Horde arena, one on each wave but the last. Its four choices:
+
+| Choice | What it takes |
+| :-- | :-- |
+| "Pay in health: 20% of maximum health" | 20% of maximum health, off current health, straight off health rather than as a hit |
+| "Pay with a potion drink: 10 charges from the fullest potion" | 10 charges, one drink, from the potion slot holding most |
+| "Pay in materials: 5 of the material you carry most of" | 5 of the crafting material carried in the largest stack |
+| "Refuse: 8 angels come at once" | nothing; 8 angels come beside the altar |
+
+A price the player cannot pay whole is shown and cannot be chosen: health that would leave less than 1, no potion slot
+holding 10 charges, no material carried 5 times. Which prices can be paid is asked again on every beat and again when one
+is chosen. Paying, or refusing, the altar goes. **Leaving the floor with the altar standing is refusing**: the 8 angels
+come on the next floor's first beat, at its entrance, where the player arrives.
+
+The angels are creatures of the floor's kinds at Common, 8 m from where they come, noticing the player from anywhere on
+the floor, each saying "Angel"; they are the floor's creatures and pay as their rung does. The panel reads "forced
+tithes: unpaid; the angels will come", then "forced tithes: paid" or "forced tithes: refused; the angels came".
+
+Taking a material out of the bag did not exist, since nothing in the game spent one. `RemoveMaterial` takes that many
+of a material or, when fewer are carried, none, and a stack taken to nothing empties its slot.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A "Tithe Altar" on the exit cell of every floor but the last; on a Horde arena, one between waves. Another altar at
+  the exit goes one cell apart, never on the same cell.** Blood Altar's ring stands on the exit cell, so with both rows
+  the Tithe Altar stands on a walkable cell beside it. `ExitAltarWorld` decides this for every exit altar, in a fixed
+  order, Blood Altar first; the Pact of Temptation's altar, next in Group 2's chain, joins that order.
+- **Leaving unpaid is refusing: the angels come at the next floor's entrance.** "Refuse" brings them at once beside
+  the altar.
+- **Fixed prices; a price the player cannot pay is shown and refused; no partial offer**: 20% of maximum health from
+  current, never below 1; 10 charges from the fullest potion slot; 5 of the most plentiful material.
+- **Build a function that takes a quantity of a material out of the inventory, with its own test.**
+- **8 Common angels of the floor's kinds, noticing the player from across the floor, the floor's creatures, paying.**
+  What an angel is, is the owner's content question for later; these stand in for one.
+- **The panel lines "forced tithes: paid" and "forced tithes: unpaid; the angels will come".**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The angels come 8 m from the altar or the entrance**, Battlefield Relics' spirits' distance.
+- **The panel after a refusal reads "forced tithes: refused; the angels came"**, since "unpaid; the angels will come"
+  would be untrue then. The last floor, with no altar, has no line.
+- **On a Horde arena, a tithe left unpaid brings the angels to the arena's entrance as the next wave arrives.** The
+  next wave is the next floor, and the arena's entrance is its entrance.
+- **Of equals, the first**: the fullest potion slot is the first of the fullest, and the material is the first stack in
+  bag order of the largest.
+- **A refused tithe owes nothing more**, and leaving the dungeon owes nothing.
+- **A potion can pay the tithe where the floor forbids drinking one**, under Famine's Hard Mode: the charges are the
+  player's, and the tithe takes them rather than drinking them.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Hades, Chaos Gate | [hades.wiki.fextralife.com/Chaos](https://hades.wiki.fextralife.com/Chaos) | "Sacrificing a portion of Zagreus' health is required to enter a Chaos Gate." |
+| Rogue Legacy, Charon | [roguelegacy.wiki.gg/wiki/Charon](https://roguelegacy.wiki.gg/wiki/Charon) | Charon "will demand all your gold for passage each time you attempt to enter the castle"; the Charon's Obol item is taken "instead of gold" |
+
+**What it settles:** a price in health to go on, taken from what the player has, is a shape a shipped game uses, and a
+toll that accepts something other than gold is one too. **What it does not:** the figures, and the angels, which are
+this row's own.
+
+### Tests
+
+Nine automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `ForcedTithes`:
+
+- `ForcedTithesFiguresPricesAndAngels`, the row built among them.
+- `ForcedTithesAltarStandsOnTheExitWithThreePricesAndRefuse`: one altar, on the exit cell, named, placed by the row,
+  its four choices in order, not paid, the panel.
+- `ForcedTithesPayingInHealthTakesAFifthOfMaximumAndOwesNothing`: a fifth of maximum health off current; paid, the
+  altar gone, the panel; the next floor owes nothing, brings no angel and asks its own tithe.
+- `ForcedTithesPayingWithAPotionOrMaterialsTakesFromTheFullest`: slots of 10, 30, 20 and 0 charges; the second gives
+  10 and the others are untouched. On the next floor 7 Corrupted Motes and 12 Whispering Ash; the Ash gives 5.
+- `ForcedTithesAPriceThePlayerCannotPayIsShownAndRefused`: at a fifth of maximum health, 5 charges a slot and no
+  material, each price is shown, cannot be chosen and is refused, nothing is taken and the altar stands; "Refuse" can
+  be chosen; healed, health can be chosen on the next beat.
+- `ForcedTithesRefusingBringsEightAngelsBesideTheAltarAtOnce`: eight at once, at Common, "Angel", raised and paying,
+  near the altar; refused, the altar gone, the panel; the next floor owes nothing.
+- `ForcedTithesLeavingUnpaidBringsTheAngelsToTheNextEntrance`: none on the floor left; eight on the next, near its
+  entrance, saying "Angel"; owed no longer, and four more beats bring no more.
+- `ForcedTithesAltarStandsOneCellFromABloodAltar`: with Blood Altar, not on the exit cell but on a walkable cell beside
+  it.
+- `ForcedTithesTheLastFloorHasNoAltar`: a bound dungeon of two floors; floor 1 has an altar, floor 2, the last, none
+  and no panel line.
+
+One in `Cataclysm.Inventory.`: `RemovingAMaterialTakesThatManyOrNone` -- 5 of 12 taken and a change counted; 5 of 3
+refused, all 3 left and no change counted; a material not carried, none and a negative number refused; all 7 taken
+empties the slot.
+
+One Python check: the row still says "at the end of each floor", "pay a tithe", "currency, consumables, health",
+"refusing or offering too little" and "a horde of angels".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
+window.
+
+---
+
 ## 2026-10-01 — Archon's Aegis saves a lethal blow and heals, the Demon King's Regalia rages below 25%, and every dungeon floor starts at 30%-50% health
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`

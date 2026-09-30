@@ -1311,6 +1311,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsABannerAssailant = false;
 
+	/** Whether Forced Tithes brought this creature for a tithe refused or unpaid; it says "Angel". Issues #1820, #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsATitheAngel = false;
+
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.

@@ -33,6 +33,7 @@
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -1701,6 +1702,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// `ApplyFloorRulesToPlayer` runs after it. A Horde wave's survivors stop being
 	// Harbingers; their trails go with the wave's other rule zones. Issues #1820 and #41.
 	ForgetThePlagueHarbingers();
+
+	// AND FORCED TITHES, ONCE A FLOOR OR WAVE, before the branch below: a Horde arena asks a tithe of each wave but the
+	// last, as the row asks one at "the end of each floor". Leaving the last altar unpaid owes the angels, brought at
+	// the next beat to this floor's entrance. Issues #1820 and #41.
+	PlaceTheTitheAltar();
 
 	if (!FloorBrief.bSameArenaAsLastFloor)
 	{
@@ -8466,22 +8472,37 @@ TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PlaceFloorObjects(FNam
 	{
 		return Placed;
 	}
-	FActorSpawnParameters Spawn;
-	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
 	{
-		ACataclysmFloorObject* Object = World->SpawnActor<ACataclysmFloorObject>(
-			ACataclysmFloorObject::StaticClass(), CurrentFloor->WorldOfCell(Cell), FRotator::ZeroRotator, Spawn);
-		if (!Object)
+		if (ACataclysmFloorObject* Object = PlaceFloorObjectAt(RuleKey, CurrentFloor->WorldOfCell(Cell), DisplayName,
+															   Prompt))
 		{
-			continue;
+			Placed.Add(Object);
 		}
-		Object->RuleKey = RuleKey;
-		Object->DisplayName = DisplayName;
-		Object->Prompt = Prompt;
-		Placed.Add(Object);
 	}
 	return Placed;
+}
+
+ACataclysmFloorObject* ACataclysmDungeonGameMode::PlaceFloorObjectAt(FName RuleKey, const FVector& Where,
+																	 const FString& DisplayName, const FString& Prompt)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmFloorObject* Object = World->SpawnActor<ACataclysmFloorObject>(
+		ACataclysmFloorObject::StaticClass(), Where, FRotator::ZeroRotator, Spawn);
+	if (!Object)
+	{
+		return nullptr;
+	}
+	Object->RuleKey = RuleKey;
+	Object->DisplayName = DisplayName;
+	Object->Prompt = Prompt;
+	return Object;
 }
 
 TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BringCreaturesNear(const FVector& At, float AwayCm,
@@ -9187,6 +9208,298 @@ void ACataclysmDungeonGameMode::PlaceTheTotems()
 	RefreshFloorModifierPanel();
 }
 
+ACataclysmFloorObject* ACataclysmDungeonGameMode::TitheAltarNow() const
+{
+	ACataclysmFloorObject* Altar = TitheAltar.Get();
+	return IsValid(Altar) ? Altar : nullptr;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::TitheAngelsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : TitheAngels)
+	{
+		ACataclysmEnemyCharacter* Angel = One.Get();
+		if (IsValid(Angel) && !UCataclysmSkillEffects::IsDead(Angel))
+		{
+			Standing.Add(Angel);
+		}
+	}
+	return Standing;
+}
+
+FVector ACataclysmDungeonGameMode::ExitAltarWorld(FName RuleKey) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return FVector::ZeroVector;
+	}
+	// THE ROWS THAT STAND AN ALTAR AT THE EXIT, IN THE ORDER THEY TAKE ITS CELLS. This rule's place is how many of the
+	// ones before it the floor carries.
+	const FName InOrder[] = {FName(Effects::BloodAltarKey), FName(Effects::ForcedTithesKey)};
+	int32 Place = 0;
+	for (const FName& Row : InOrder)
+	{
+		if (Row == RuleKey)
+		{
+			break;
+		}
+		Place += FloorBrief.Modifiers.Contains(Row) ? 1 : 0;
+	}
+	if (Place == 0)
+	{
+		return CurrentFloor->ExitWorld();
+	}
+
+	// AND EACH AFTER THE FIRST ON THE NEXT WALKABLE CELL BESIDE THE EXIT, in a fixed order, so the same floor puts them
+	// in the same places. An exit with no such cell keeps the exit, which a floor's plan does not produce.
+	const FCataclysmFloorPlan& Plan = CurrentFloor->GetPlan();
+	const FIntPoint Beside[] = {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1),
+								FIntPoint(1, 1), FIntPoint(-1, 1), FIntPoint(1, -1), FIntPoint(-1, -1)};
+	int32 Found = 0;
+	for (const FIntPoint& Step : Beside)
+	{
+		const FIntPoint Cell = Plan.Exit + Step;
+		if (Plan.IsFloor(Cell) && ++Found == Place)
+		{
+			return CurrentFloor->WorldOfCell(Cell);
+		}
+	}
+	return CurrentFloor->ExitWorld();
+}
+
+void ACataclysmDungeonGameMode::ForgetTheTitheAltar()
+{
+	if (ACataclysmFloorObject* Altar = TitheAltar.Get())
+	{
+		Altar->Destroy();
+	}
+	TitheAltar = nullptr;
+	bTitheAltarPlaced = false;
+	bTithePaid = false;
+	bTitheRefused = false;
+	TithePanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheTitheAltar()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// LEAVING UNPAID IS REFUSING: an altar placed and neither paid nor refused owes the angels, brought on the next
+	// beat to where this floor or wave begins.
+	if (bTitheAltarPlaced && !bTithePaid && !bTitheRefused)
+	{
+		bTitheAngelsDue = true;
+		UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: the last tithe was left unpaid; the angels come on floor %d"),
+			   FloorNumber);
+	}
+	ForgetTheTitheAltar();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::ForcedTithesKey))
+		|| IsOnTheLastFloor())
+	{
+		return;
+	}
+
+	ACataclysmFloorObject* Altar = PlaceFloorObjectAt(
+		FName(Effects::ForcedTithesKey), ExitAltarWorld(FName(Effects::ForcedTithesKey)), TEXT("Tithe Altar"),
+		TEXT("A tithe is owed to go on. Pay it, or the angels will come."));
+	if (!Altar)
+	{
+		return;
+	}
+	FCataclysmFloorObjectChoice Health;
+	Health.Key = FName(Effects::ForcedTithesPayHealth);
+	Health.Label = FString::Printf(TEXT("Pay in health: %d%% of maximum health"),
+								   FMath::RoundToInt(Effects::ForcedTithesHealthPercent));
+	FCataclysmFloorObjectChoice Potion;
+	Potion.Key = FName(Effects::ForcedTithesPayPotion);
+	Potion.Label = FString::Printf(TEXT("Pay with a potion drink: %d charges from the fullest potion"),
+								   FMath::RoundToInt(Effects::ForcedTithesPotionCharges));
+	FCataclysmFloorObjectChoice Materials;
+	Materials.Key = FName(Effects::ForcedTithesPayMaterials);
+	Materials.Label = FString::Printf(TEXT("Pay in materials: %d of the material you carry most of"),
+									  Effects::ForcedTithesMaterials);
+	FCataclysmFloorObjectChoice Refuse;
+	Refuse.Key = FName(Effects::ForcedTithesRefuse);
+	Refuse.Label = FString::Printf(TEXT("Refuse: %d angels come at once"), Effects::ForcedTithesAngelCount);
+	Altar->Choices = {Health, Potion, Materials, Refuse};
+	TitheAltar = Altar;
+	bTitheAltarPlaced = true;
+	UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: a tithe altar on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayerCharacter* Player,
+											   int32* OutPotionSlot, FName* OutMaterial) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		IsValid(Player) ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayHealth))
+	{
+		return Effects::ForcedTithesHealthIsAffordable(AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()),
+													   AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+	}
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayPotion))
+	{
+		// THE FULLEST SLOT, THE FIRST OF EQUALS.
+		int32 Fullest = INDEX_NONE;
+		for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+		{
+			if (Fullest == INDEX_NONE || AbilitySystem->GetPotionCharges(Slot) > AbilitySystem->GetPotionCharges(Fullest))
+			{
+				Fullest = Slot;
+			}
+		}
+		if (OutPotionSlot)
+		{
+			*OutPotionSlot = Fullest;
+		}
+		return Fullest != INDEX_NONE
+			&& AbilitySystem->GetPotionCharges(Fullest) >= Effects::ForcedTithesPotionCharges - KINDA_SMALL_NUMBER;
+	}
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayMaterials))
+	{
+		// THE MATERIAL CARRIED MOST OF, THE FIRST OF EQUALS IN SLOT ORDER.
+		const UCataclysmInventoryComponent* Inventory = Player->GetInventory();
+		if (!Inventory)
+		{
+			return false;
+		}
+		FName Most;
+		int32 MostCount = 0;
+		for (const FCataclysmCarriedSlot& Slot : Inventory->GetSlots())
+		{
+			if (!Slot.Material.IsNone() && Slot.Quantity > MostCount)
+			{
+				Most = Slot.Material;
+				MostCount = Slot.Quantity;
+			}
+		}
+		if (OutMaterial)
+		{
+			*OutMaterial = Most;
+		}
+		return MostCount >= Effects::ForcedTithesMaterials;
+	}
+	return false;
+}
+
+void ACataclysmDungeonGameMode::BringTheTitheAngels(const FVector& At)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	for (ACataclysmEnemyCharacter* Angel : BringCreaturesNear(At, Effects::ForcedTithesAngelsAwayCm,
+															  Effects::ForcedTithesAngelCount,
+															  Effects::ForcedTithesAngelRung,
+															  Effects::TheReaperSightMultiplier))
+	{
+		Angel->bIsATitheAngel = true;
+		TitheAngels.Add(Angel);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: the angels came on floor %d"), FloorNumber);
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtTitheAltar(ACataclysmFloorObject* Altar, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	if (!IsValid(Altar) || Altar != TitheAltar.Get())
+	{
+		return false;
+	}
+	const FVector At = Altar->GetActorLocation();
+
+	if (ChoiceKey == FName(Effects::ForcedTithesRefuse))
+	{
+		bTitheRefused = true;
+		Altar->Destroy();
+		TitheAltar = nullptr;
+		BringTheTitheAngels(At);
+		RefreshFloorModifierPanel();
+		return true;
+	}
+
+	// A PRICE, ASKED AGAIN NOW: what the panel showed may be a beat old.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	int32 PotionSlot = INDEX_NONE;
+	FName Material;
+	if (!CanPayTheTithe(ChoiceKey, Player, &PotionSlot, &Material))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent());
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayHealth))
+	{
+		// TAKEN STRAIGHT OFF HEALTH, NOT A HIT, as Forced March takes it: nothing the player wears changes a price.
+		UCataclysmSkillEffects::ReduceHealthDirectly(
+			Player, Player,
+			Effects::ForcedTithesHealthPrice(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())));
+	}
+	else if (ChoiceKey == FName(Effects::ForcedTithesPayPotion))
+	{
+		AbilitySystem->SetPotionCharges(PotionSlot,
+										AbilitySystem->GetPotionCharges(PotionSlot) - Effects::ForcedTithesPotionCharges);
+	}
+	else if (!Player->GetInventory() || !Player->GetInventory()->RemoveMaterial(Material, Effects::ForcedTithesMaterials))
+	{
+		return false;
+	}
+
+	bTithePaid = true;
+	UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: paid in %s on floor %d"), *ChoiceKey.ToString(), FloorNumber);
+	Altar->Destroy();
+	TitheAltar = nullptr;
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepForcedTithes(ACataclysmPlayerCharacter* Player)
+{
+	// THE ANGELS OWED FOR A TITHE LEFT UNPAID, at this floor's entrance, where the player arrives.
+	if (bTitheAngelsDue && CurrentFloor && CurrentFloor->IsBuilt())
+	{
+		bTitheAngelsDue = false;
+		BringTheTitheAngels(CurrentFloor->EntranceWorld());
+		RefreshFloorModifierPanel();
+	}
+
+	// EACH PRICE SHOWN AS PAYABLE OR NOT, AS IT IS NOW; a price that cannot be paid is shown and refused.
+	if (ACataclysmFloorObject* Altar = TitheAltarNow())
+	{
+		for (FCataclysmFloorObjectChoice& Choice : Altar->Choices)
+		{
+			if (Choice.Key != FName(UCataclysmDungeonModifierEffects::ForcedTithesRefuse))
+			{
+				Choice.bAvailable = CanPayTheTithe(Choice.Key, Player, nullptr, nullptr);
+			}
+		}
+	}
+
+	const int32 Key = (TitheAltarNow() ? 1 : 0) + (bTithePaid ? 10 : 0) + (bTitheRefused ? 100 : 0);
+	if (Key != TithePanelKey)
+	{
+		TithePanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Object, FName ChoiceKey)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -9225,6 +9538,10 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	if (Object->RuleKey == FName(Effects::WarBannerKey))
 	{
 		return ChooseAtWarBanner(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::ForcedTithesKey))
+	{
+		return ChooseAtTitheAltar(Object, ChoiceKey);
 	}
 	return false;
 }
@@ -10416,6 +10733,10 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	InfernalBeaconStacks = 0;
 	InfernalBeaconStacksApplied = 0;
 	ForgetTheWarBanner();
+	// AND FORCED TITHES: nothing is owed outside a dungeon. Issues #1820 and #41.
+	ForgetTheTitheAltar();
+	bTitheAngelsDue = false;
+	TitheAngels.Reset();
 
 	// THE RUN IS OVER, AND WHAT THE PLAYER COMMANDED ENDS WITH IT. Issue
 	// #1202, ruled 2026-09-30. Their Fervour reserves go with them, because
@@ -10997,6 +11318,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND WAR BANNER, ON EVERY FLOOR CARRYING IT, AND WHILE ITS AURA IS ON THE CHARACTER. Issues #1820 and #41.
 	const bool bWarBanner = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::WarBannerKey))
 		|| WarBannerDamageApplied > 0.0f || WarBannerResistanceApplied > 0.0f;
+	// AND FORCED TITHES, ON EVERY FLOOR CARRYING IT, AND WHILE ANGELS ARE OWED. Issues #1820 and #41.
+	const bool bForcedTithes =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::ForcedTithesKey)) || bTitheAngelsDue;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -11036,6 +11360,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPandorasBox
 		&& !bInfernalBeacons
 		&& !bWarBanner
+		&& !bForcedTithes
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts)
 	{
 		return;
@@ -11418,6 +11743,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bWarBanner)
 	{
 		StepWarBanner(Player, AbilitySystem);
+	}
+
+	// AND FORCED TITHES, WHICH BRINGS ANGELS OWED AND SHOWS WHICH PRICES CAN BE PAID. Issues #1820 and #41.
+	if (bForcedTithes)
+	{
+		StepForcedTithes(Player);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -14515,6 +14846,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  FMath::CeilToInt(Effects::WarBannerHoldSeconds - WarBannerHeldSeconds),
 							  FMath::RoundToInt(Effects::WarBannerDamageMorePercent),
 							  FMath::RoundToInt(Effects::WarBannerResistance)));
+	}
+
+	// AND FORCED TITHES: whether this floor's tithe is paid, refused or still owed. None on a floor with no altar, the
+	// dungeon's last. Issues #1820 and #41.
+	const FName Tithes(Effects::ForcedTithesKey);
+	if (FloorBrief.Modifiers.Contains(Tithes) && bTitheAltarPlaced)
+	{
+		Counting.Add(Tithes, bTithePaid ? FString(TEXT("forced tithes: paid"))
+			: bTitheRefused ? FString(TEXT("forced tithes: refused; the angels came"))
+			: FString(TEXT("forced tithes: unpaid; the angels will come")));
 	}
 
 	// AND INFERNAL BEACONS: how many this dungeon has activated and what they give, on a floor carrying the row or once
