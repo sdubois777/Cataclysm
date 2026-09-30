@@ -2530,6 +2530,32 @@ public:
 	static const TCHAR* PlaguebearerKey;
 
 	/**
+	 * The row where a group whose leader dies runs from the player, and comes back stronger if it gets away. Issues
+	 * #1820 and #41.
+	 *
+	 * "Certain enemies panic and flee when their leader dies, but if allowed to escape, they return later with
+	 * reinforcements."
+	 *
+	 * THE ROW STATES NO FIGURE. RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every
+	 * figure a play-test value, AND BUILT:
+	 * - A LEADER is the highest-rung creature of a group of two or more that the floor was populated with, when that
+	 *   rung is `MoraleBreakLeaderLowestRung` (Elite) or above; ties to the first placed. A group of Commons has none,
+	 *   which is what makes "certain enemies" true. It says "Leader" under its bar.
+	 * - ITS DEATH makes the living rest of ITS OWN group panic: they run from the player through `FleeFrom`, which is
+	 *   not fear, refreshed each beat, and say "Panicked".
+	 * - `MoraleBreakFleeSeconds` after the death, each panicked creature still alive and farther than
+	 *   `MoraleBreakEscapeBeyondCm` from the player has ESCAPED: it leaves the floor without dying, so no loot, no
+	 *   experience and no death rule. One nearer stops running and fights on.
+	 * - `MoraleBreakReturnSeconds` after escaping, the escaped come back at their group's middle cell, each at its own
+	 *   rung, with `MoraleBreakReinforcementsPerEscapee` more of its kind at `MoraleBreakReinforcementRung` (Common).
+	 *   Once only: what comes back belongs to no group. Every one pays as its rung does. Forgotten on leaving the floor.
+	 * - THE ESCAPED COUNT AS LIVING until they return, so the floor is not cleared while they are away.
+	 * - A LEADER CARRYING `Generic_Horde_Leader` RALLIES ITS GROUP INSTEAD: that modifier enrages its allies on its
+	 *   death, the creature's own rule is the more specific, and the two cannot both happen. Nobody panics.
+	 */
+	static const TCHAR* MoraleBreakKey;
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5346,6 +5372,36 @@ public:
 	static float PlaguebearerMultiplier(int32 Stacks)
 	{
 		return 1.0f + FMath::Clamp(Stacks, 0, PlaguebearerMostStacks) * PlaguebearerDamagePercentPerStack / 100.0f;
+	}
+
+	/** Morale Break's figures, every one a play-test value. See the key. */
+	static constexpr float MoraleBreakFleeSeconds = 8.0f;
+	static constexpr float MoraleBreakEscapeBeyondCm = 1500.0f;
+	static constexpr float MoraleBreakReturnSeconds = 30.0f;
+	static constexpr int32 MoraleBreakReinforcementsPerEscapee = 1;
+	static constexpr int32 MoraleBreakReinforcementRung = 0;
+	static constexpr int32 MoraleBreakLeaderLowestRung = RoyalGuardLowestRungThatSummons;
+	static constexpr int32 MoraleBreakFewestInAGroup = 2;
+
+	/** Morale Break: whether a creature at this rung leads a group of this many. */
+	static bool MoraleBreakLeads(int32 Rung, int32 InTheGroup)
+	{
+		return Rung >= MoraleBreakLeaderLowestRung && InTheGroup >= MoraleBreakFewestInAGroup;
+	}
+
+	/** Morale Break: whether the flight is over this long after the leader died. */
+	static bool MoraleBreakFlightIsOver(float SecondsSinceTheLeaderDied)
+	{
+		return SecondsSinceTheLeaderDied >= MoraleBreakFleeSeconds - KINDA_SMALL_NUMBER;
+	}
+
+	/** Morale Break: whether a panicked creature this far from the player when the flight ends has escaped. */
+	static bool MoraleBreakHasEscaped(float CmFromThePlayer) { return CmFromThePlayer > MoraleBreakEscapeBeyondCm; }
+
+	/** Morale Break: whether the escaped come back this long after escaping. */
+	static bool MoraleBreakReturnIsDue(float SecondsAway)
+	{
+		return SecondsAway >= MoraleBreakReturnSeconds - KINDA_SMALL_NUMBER;
 	}
 
 	/**

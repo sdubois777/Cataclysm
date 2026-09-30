@@ -606,6 +606,12 @@ public:
 	static FString PlaguebearerTextFor(const AActor* Actor);
 
 	/**
+	 * "Leader" under the bar of a Morale Break leader and "Panicked" under the bar of a creature fleeing because its
+	 * leader died, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason.
+	 */
+	static FString MoraleBreakTextFor(const AActor* Actor);
+
+	/**
 	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
 	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.
 	 */

@@ -4703,3 +4703,22 @@ def test_plaguebearer_row_still_names_an_elite_that_empowers_by_stacks_and_flees
         assert phrase in lower, (
             f"Pestilence_The_Plaguebearer no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "PlaguebearerKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_morale_break_row_still_names_a_leader_a_flight_an_escape_and_a_return():
+    """The phrases the rule's readings rest on.
+
+    "Certain enemies panic and flee when their leader dies, but if allowed to escape, they return later with
+    reinforcements." CERTAIN ENEMIES is read as a group with a leader at Elite or above; WHEN THEIR LEADER DIES is its
+    own group and no other; IF ALLOWED TO ESCAPE is alive and far from the player when the flight ends; RETURN LATER
+    WITH REINFORCEMENTS is back at the group's middle with one more of each kind. If any of them changes, the reading
+    must be revisited.
+    """
+    words = flat(rows()["War_Morale_Break"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("certain enemies", "panic and flee when their leader dies", "if allowed to escape",
+                   "return later with reinforcements"):
+        assert phrase in lower, (
+            f"War_Morale_Break no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "MoraleBreakKey in CataclysmDungeonModifierEffects.h. " + words)

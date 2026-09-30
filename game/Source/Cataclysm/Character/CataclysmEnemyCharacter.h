@@ -1234,6 +1234,34 @@ public:
 	bool bIsPlaguebearer = false;
 
 	/**
+	 * Which group of the floor this creature was placed in, unique across the dungeon's populations; `INDEX_NONE` for
+	 * one placed in no group -- a boss, and every creature a rule brings. Issues #1820 and #41, for Morale Break.
+	 *
+	 * ON THE CREATURE, SO NOTHING CAN DROP IT MID-FLOOR. No `Forget*` of the game mode touches a creature's own field,
+	 * and it lasts exactly as long as the creature. Written only by the floor's own population
+	 * (`ACataclysmDungeonGameMode::NoteThePack`), never inside `SpawnPlacedCreature`, because rules such as Necrotic
+	 * Bloom spawn copies of another population's placements, whose group numbers mean nothing on this floor.
+	 *
+	 * NOT SAVED. `FCataclysmSaveApply::FloorInto` restores creatures into a floor, and nothing outside the tests calls
+	 * it, so no floor is restored in play. If one is, this belongs in `FCataclysmSavedCreature` beside
+	 * `bRisenFromTheDead`.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 PackGroup = INDEX_NONE;
+
+	/** The cell at the middle of that group, where the population put its first creature. (-1, -1) with no group. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	FIntPoint PackMiddleCell = FIntPoint(-1, -1);
+
+	/** Whether this creature leads its group for Morale Break; it says "Leader" under its bar. Issues #1820 and #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsMoraleLeader = false;
+
+	/** Whether this creature is fleeing because its Morale Break leader died; it says "Panicked". Issues #1820, #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsPanicked = false;
+
+	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.
 	 *

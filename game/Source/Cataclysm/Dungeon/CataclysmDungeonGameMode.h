@@ -1964,6 +1964,20 @@ public:
 	/** Forget the Plaguebearer and its stacks. Public for the reason above. */
 	void ForgetThePlaguebearer();
 
+	/** Morale Break, for the panel and tests: the leaders still standing, the panicked, and the escaped away now. */
+	TArray<ACataclysmEnemyCharacter*> MoraleLeadersNow() const;
+	int32 MoraleBreakPanickedNow() const;
+	int32 MoraleBreakEscapedNow() const;
+
+	/**
+	 * Morale Break's leaders are chosen from this floor's or wave's own groups once they are placed. Public so a test can
+	 * choose again after changing the creatures' rungs. Issues #1820 and #41.
+	 */
+	void ChooseTheMoraleLeaders();
+
+	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
+	void ForgetMoraleBreak();
+
 	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
 
@@ -2666,6 +2680,15 @@ private:
 
 	/** The Plaguebearer's beat: its flight, the stacks, and every other floor creature's multiplier. Issue #41. */
 	void StepPlaguebearer(class ACataclysmPlayerCharacter* Player);
+
+	/** Morale Break's beat: a leader's death, the flight, the escape and the return. Issues #1820 and #41. */
+	void StepMoraleBreak(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * Writes the floor population's group onto a creature it placed: `PackGroup` and `PackMiddleCell`. Called only where
+	 * the floor's own population is spawned, all at once or as a wave. Issues #1820 and #41, for Morale Break.
+	 */
+	void NoteThePack(ACataclysmEnemyCharacter* Enemy, const FCataclysmEnemyPlacement& Placement) const;
 
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
@@ -3993,6 +4016,40 @@ private:
 	bool bPlaguebearerFallen = false;
 	int32 PlaguebearerPanelKey = -1;
 
+	/**
+	 * The groups the floor's populations were placed in, counted up and never reset, so a Horde arena's later wave never
+	 * reuses an earlier wave's number while that wave's creatures still stand. And the population now arriving: the first
+	 * number it was given and each of its groups' middle cells. Issues #1820 and #41, for Morale Break.
+	 */
+	int32 PackGroupsPlaced = 0;
+	int32 ArrivingPackGroupBase = 0;
+	TArray<FIntPoint> ArrivingPackSites;
+
+	/** Morale Break: one group with a leader, and what has happened to it. Issues #1820 and #41. */
+	struct FMoraleBreakGroup
+	{
+		int32 Group = INDEX_NONE;
+		FIntPoint Middle = FIntPoint(-1, -1);
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Leader;
+		bool bLeaderRallies = false;
+		bool bFallen = false;
+		float SecondsSinceFall = 0.0f;
+		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Panicked;
+		bool bFlightOver = false;
+		/** Each escaped creature's kind and rung. */
+		TArray<TPair<ECataclysmDungeonCreature, int32>> Escaped;
+		float SecondsAway = 0.0f;
+		bool bReturned = false;
+	};
+
+	/**
+	 * Morale Break's groups, and the floor they belong to. THE FLOOR NUMBER IS WHAT STARTS THEM AGAIN, so the reset does
+	 * not depend on which of the floor's resets runs first, and the escaped are forgotten on leaving the floor.
+	 */
+	TArray<FMoraleBreakGroup> MoraleBreakGroups;
+	int32 MoraleBreakFloor = -1;
+	int32 MoraleBreakPanelKey = -1;
+
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein
 	{
@@ -4242,9 +4299,10 @@ private:
 	 * ONE FUNCTION FOR BOTH WAYS A CREATURE ARRIVES -- all of an ordinary floor
 	 * at once, and a wave a few at a time -- so the two cannot drift apart.
 	 *
-	 * `FixedRung` PUTS IT ON A RUNG RATHER THAN DRAWING ONE, and nothing passes it but
-	 * Celestial Divine Resurgence, which brings each creature back at the rung it died
-	 * at. It is passed down to `ApplyDesignedStats` so the rung is set BEFORE the
+	 * `FixedRung` PUTS IT ON A RUNG RATHER THAN DRAWING ONE. Celestial Divine Resurgence
+	 * passes it to bring each creature back at the rung it died at, Necrotic Bloom to raise
+	 * Commons, and Morale Break to bring the escaped back at their own rungs with Common
+	 * reinforcements. It is passed down to `ApplyDesignedStats` so the rung is set BEFORE the
 	 * creature's modifiers are drawn: setting it afterwards would leave the modifiers
 	 * of whatever rung was drawn first, because drawing only ever adds. Issues #1820
 	 * and #41. Left at `RollTheRarity`, every other caller's behaviour is unchanged.

@@ -36736,4 +36736,433 @@ bool FCataclysmPlaguebearerDeathTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// War_Morale_Break. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName MoraleRow(UCataclysmDungeonModifierEffects::MoraleBreakKey);
+
+	/** A dungeon carrying only Morale Break, on floor 2 with its own creatures placed. */
+	ACataclysmDungeonGameMode* AMoraleFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {MoraleRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** The floor's groups of two or more living creatures, each in the order placed, the largest first. */
+	TArray<TArray<ACataclysmEnemyCharacter*>> MoraleGroups(ACataclysmDungeonGameMode* Mode)
+	{
+		TMap<int32, int32> Where;
+		TArray<TArray<ACataclysmEnemyCharacter*>> Groups;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || Enemy->PackGroup == INDEX_NONE)
+			{
+				continue;
+			}
+			if (!Where.Contains(Enemy->PackGroup))
+			{
+				Where.Add(Enemy->PackGroup, Groups.Num());
+				Groups.AddDefaulted();
+			}
+			Groups[Where[Enemy->PackGroup]].Add(Enemy.Get());
+		}
+		Groups.RemoveAll([](const TArray<ACataclysmEnemyCharacter*>& Group) { return Group.Num() < 2; });
+		Groups.StableSort([](const TArray<ACataclysmEnemyCharacter*>& A, const TArray<ACataclysmEnemyCharacter*>& B)
+		{
+			return A.Num() > B.Num();
+		});
+		return Groups;
+	}
+
+	/** Every grouped creature made Common. */
+	void EveryGroupCommon(ACataclysmDungeonGameMode* Mode)
+	{
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			if (IsValid(Enemy) && Enemy->PackGroup != INDEX_NONE)
+			{
+				Enemy->SetRarityStep(0);
+			}
+		}
+	}
+
+	/**
+	 * Every group made Common, then the first placed of the largest group an Elite carrying no Horde Leader, and the
+	 * leaders chosen again: it is the one leader. `Followers` is the rest of its group, `Others` the next group.
+	 */
+	ACataclysmEnemyCharacter* AMoraleLeader(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+											TArray<ACataclysmEnemyCharacter*>& Followers,
+											TArray<ACataclysmEnemyCharacter*>& Others)
+	{
+		const TArray<TArray<ACataclysmEnemyCharacter*>> Groups = MoraleGroups(Mode);
+		if (!Test.TestTrue(TEXT("set-up: two groups of two or more"), Groups.Num() >= 2))
+		{
+			return nullptr;
+		}
+		EveryGroupCommon(Mode);
+		ACataclysmEnemyCharacter* Leader = Groups[0][0];
+		Leader->SetRarityStep(UCataclysmDungeonModifierEffects::MoraleBreakLeaderLowestRung);
+		Leader->ModifierRows.Remove(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+		Followers = Groups[0];
+		Followers.RemoveAt(0);
+		Others = Groups[1];
+		Mode->ForgetMoraleBreak();
+		Mode->ChooseTheMoraleLeaders();
+		const TArray<ACataclysmEnemyCharacter*> Leaders = Mode->MoraleLeadersNow();
+		if (!Test.TestEqual(TEXT("set-up: one leader"), Leaders.Num(), 1)
+			|| !Test.TestTrue(TEXT("set-up: the Elite leads"), Leaders.Contains(Leader)))
+		{
+			return nullptr;
+		}
+		return Leader;
+	}
+
+	/** What a creature's brain answers now. */
+	int32 BrainSays(ACataclysmEnemyCharacter* Creature)
+	{
+		ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Creature->GetController());
+		return Brain ? static_cast<int32>(Brain->Think()) : -1;
+	}
+
+	/** Puts a creature this far from the player along X, measured flat, at its own height. */
+	void StandFromThePlayer(ACataclysmEnemyCharacter* Creature, const FPossessedPlayer& Player, float Cm)
+	{
+		const FVector At = Player.Character->GetActorLocation();
+		Creature->SetActorLocation(FVector(At.X + Cm, At.Y, Creature->GetActorLocation().Z));
+	}
+}
+
+// THE FIGURES: 8 S OF FLIGHT, BEYOND 15 M IS ESCAPED, BACK 30 S LATER WITH ONE COMMON EACH; AN ELITE LEADS TWO OR MORE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakFiguresTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakFiguresFlightEscapeAndReturn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("8 s of flight"), Effects::MoraleBreakFleeSeconds, 8.0f, 0.001f);
+	TestEqual(TEXT("beyond 15 m is escaped"), Effects::MoraleBreakEscapeBeyondCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("back 30 s later"), Effects::MoraleBreakReturnSeconds, 30.0f, 0.001f);
+	TestEqual(TEXT("one reinforcement for each escaped"), Effects::MoraleBreakReinforcementsPerEscapee, 1);
+	TestEqual(TEXT("at Common"), Effects::MoraleBreakReinforcementRung, 0);
+	TestEqual(TEXT("an Elite leads"), Effects::MoraleBreakLeaderLowestRung, 1);
+	TestTrue(TEXT("an Elite leads a group of two"), Effects::MoraleBreakLeads(1, 2));
+	TestFalse(TEXT("a Common leads nobody"), Effects::MoraleBreakLeads(0, 10));
+	TestFalse(TEXT("a group of one has no leader"), Effects::MoraleBreakLeads(4, 1));
+	TestFalse(TEXT("the flight is not over at 7.99 s"), Effects::MoraleBreakFlightIsOver(7.99f));
+	TestTrue(TEXT("and is at 8 s"), Effects::MoraleBreakFlightIsOver(8.0f));
+	TestFalse(TEXT("15 m is not escaped"), Effects::MoraleBreakHasEscaped(1500.0f));
+	TestTrue(TEXT("15.01 m is"), Effects::MoraleBreakHasEscaped(1501.0f));
+	TestFalse(TEXT("not back at 29.99 s"), Effects::MoraleBreakReturnIsDue(29.99f));
+	TestTrue(TEXT("back at 30 s"), Effects::MoraleBreakReturnIsDue(30.0f));
+	return true;
+}
+
+// A LEADER IS ITS GROUP'S HIGHEST RUNG, ELITE OR ABOVE, TIES TO THE FIRST PLACED; A GROUP OF COMMONS HAS NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakLeaderTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakLeaderIsItsGroupsHighestRungEliteOrAbove",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakLeaderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* First = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!First)
+	{
+		return false;
+	}
+	TestTrue(TEXT("\"Leader\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(First).Contains(TEXT("Leader")));
+	TestFalse(TEXT("a group of Commons has no leader"),
+			  Others.ContainsByPredicate([](const ACataclysmEnemyCharacter* One) { return One->bIsMoraleLeader; }));
+
+	// A HIGHER RUNG PLACED LATER LEADS.
+	ACataclysmEnemyCharacter* Second = Followers[0];
+	Second->SetRarityStep(2);
+	Mode->ForgetMoraleBreak();
+	Mode->ChooseTheMoraleLeaders();
+	TestTrue(TEXT("a Legendary placed second leads"), Mode->MoraleLeadersNow().Contains(Second));
+	TestFalse(TEXT("and the Elite does not"), First->bIsMoraleLeader);
+
+	// A TIE GOES TO THE FIRST PLACED.
+	Second->SetRarityStep(1);
+	Mode->ForgetMoraleBreak();
+	Mode->ChooseTheMoraleLeaders();
+	TestTrue(TEXT("two Elites: the first placed leads"), Mode->MoraleLeadersNow().Contains(First));
+	TestFalse(TEXT("and only it"), Second->bIsMoraleLeader);
+
+	// EVERY GROUP COMMON: NO LEADER ANYWHERE.
+	EveryGroupCommon(Mode);
+	Mode->ForgetMoraleBreak();
+	Mode->ChooseTheMoraleLeaders();
+	TestEqual(TEXT("groups of Commons have no leader"), Mode->MoraleLeadersNow().Num(), 0);
+	return true;
+}
+
+// A LEADER'S DEATH PANICS ITS OWN GROUP, WHICH FLEES AND SAYS SO, AND NO OTHER GROUP.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakPanicTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakALeadersDeathPanicsItsOwnGroupAndNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakPanicTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader)
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the panel before"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: no leader has fallen")));
+	if (!KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+
+	const int32 Fleeing = static_cast<int32>(ECataclysmBrainAction::Fleeing);
+	for (ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		TestTrue(TEXT("its group panics"), Follower->bIsPanicked);
+		TestEqual(TEXT("and flees"), BrainSays(Follower), Fleeing);
+		TestTrue(TEXT("\"Panicked\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Follower).Contains(TEXT("Panicked")));
+	}
+	for (ACataclysmEnemyCharacter* Other : Others)
+	{
+		TestFalse(TEXT("another group does not panic"), Other->bIsPanicked);
+		TestNotEqual(TEXT("or flee"), BrainSays(Other), Fleeing);
+	}
+	TestEqual(TEXT("the count"), Mode->MoraleBreakPanickedNow(), Followers.Num());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString::Printf(TEXT("morale break: %d panicked, 0 escaped"), Followers.Num()));
+	return true;
+}
+
+// AT 8 S ONE BEYOND 15 M HAS ESCAPED AND LEFT WITHOUT DYING; ONE WITHIN STOPS RUNNING AND FIGHTS ON. Placed there by
+// hand: a test world has no navigation, so nothing runs anywhere.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakEscapeTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakBeyondFifteenMetresEscapesAndWithinFightsOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakEscapeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader || !TestTrue(TEXT("set-up: two followers or more"), Followers.Num() >= 2)
+		|| !KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> Far = Followers[0];
+	ACataclysmEnemyCharacter* Near = Followers[1];
+	StandFromThePlayer(Followers[0], Player, 2000.0f);
+	for (int32 Index = 1; Index < Followers.Num(); ++Index)
+	{
+		StandFromThePlayer(Followers[Index], Player, 1000.0f);
+	}
+
+	Beat(Mode, BeatsFor(Effects::MoraleBreakFleeSeconds) - 1);
+	TestTrue(TEXT("at 7.75 s the far one still runs"), Far.IsValid() && Far->bIsPanicked);
+	Beat(Mode, 1);
+	TestFalse(TEXT("at 8 s beyond 15 m it has escaped and left"), Far.IsValid());
+	TestEqual(TEXT("one escaped"), Mode->MoraleBreakEscapedNow(), 1);
+	TestFalse(TEXT("the near one did not die"), UCataclysmSkillEffects::IsDead(Near));
+	TestFalse(TEXT("it stops panicking"), Near->bIsPanicked);
+	TestNotEqual(TEXT("and fights on"), BrainSays(Near), static_cast<int32>(ECataclysmBrainAction::Fleeing));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: 0 panicked, 1 escaped, back in 30s")));
+	return true;
+}
+
+// THE ESCAPED COUNT AS LIVING WHILE AWAY, AND 30 S LATER COME BACK AT THEIR OWN RUNGS WITH ONE COMMON EACH, IN NO GROUP.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakReturnTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakReturnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader)
+	{
+		return false;
+	}
+	const int32 Escaping = Followers.Num();
+	const UClass* Kind = Followers[0]->GetClass();
+	Followers[0]->SetRarityStep(1);
+	if (!KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	for (ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		StandFromThePlayer(Follower, Player, 2000.0f);
+	}
+	Beat(Mode, BeatsFor(Effects::MoraleBreakFleeSeconds));
+	if (!TestEqual(TEXT("set-up: the whole group escaped"), Mode->MoraleBreakEscapedNow(), Escaping))
+	{
+		return false;
+	}
+
+	// EVERY CREATURE STILL STANDING KILLED: THE FLOOR IS NOT CLEARED WHILE THE ESCAPED ARE AWAY.
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			Standing.Add(Enemy.Get());
+		}
+	}
+	for (ACataclysmEnemyCharacter* One : Standing)
+	{
+		if (!KillIt(*this, Player, One))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("the escaped count as living"), Mode->LivingFloorEnemies(), Escaping);
+	TestFalse(TEXT("so the floor is not cleared"), Mode->FloorIsCleared());
+
+	const int32 Before = Mode->FloorEnemies.Num();
+	Beat(Mode, BeatsFor(Effects::MoraleBreakReturnSeconds) - 1);
+	TestEqual(TEXT("not back at 29.75 s"), Mode->FloorEnemies.Num(), Before);
+	TestEqual(TEXT("the panel while away"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString::Printf(TEXT("morale break: 0 panicked, %d escaped, back in 1s"), Escaping));
+	Beat(Mode, 1);
+
+	int32 Back = 0;
+	int32 AtElite = 0;
+	int32 InAGroup = 0;
+	int32 OfTheirKind = 0;
+	for (int32 Index = Before; Index < Mode->FloorEnemies.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Returned = Mode->FloorEnemies[Index];
+		if (IsValid(Returned) && !UCataclysmSkillEffects::IsDead(Returned))
+		{
+			++Back;
+			AtElite += Returned->RarityStep == 1 ? 1 : 0;
+			InAGroup += Returned->PackGroup != INDEX_NONE ? 1 : 0;
+			OfTheirKind += Returned->GetClass() == Kind ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("at 30 s the escaped are back with one reinforcement each"), Back, 2 * Escaping);
+	TestEqual(TEXT("all of their kind"), OfTheirKind, 2 * Escaping);
+	TestEqual(TEXT("the Elite came back an Elite, and every other one a Common"), AtElite, 1);
+	TestEqual(TEXT("in no group, so they never panic again"), InAGroup, 0);
+	TestEqual(TEXT("none away now"), Mode->MoraleBreakEscapedNow(), 0);
+	TestEqual(TEXT("the living are the ones back"), Mode->LivingFloorEnemies(), 2 * Escaping);
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: 0 panicked, 0 escaped")));
+	return true;
+}
+
+// A LEADER CARRYING HORDE LEADER RALLIES ITS GROUP INSTEAD: NOBODY PANICS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakHordeLeaderTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakAHordeLeaderRalliesItsGroupInstead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakHordeLeaderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader)
+	{
+		return false;
+	}
+	Leader->ModifierRows.Add(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+	Beat(Mode, 1);
+	if (!KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	for (ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		TestFalse(TEXT("its group does not panic"), Follower->bIsPanicked);
+		TestNotEqual(TEXT("or flee"), BrainSays(Follower), static_cast<int32>(ECataclysmBrainAction::Fleeing));
+	}
+	TestEqual(TEXT("nobody panicked"), Mode->MoraleBreakPanickedNow(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: 0 panicked, 0 escaped")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

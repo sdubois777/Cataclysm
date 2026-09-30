@@ -643,6 +643,18 @@ FString UCataclysmCombatOverlay::QuarantineTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::MoraleBreakTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	if (!Enemy || UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return FString();
+	}
+	return Enemy->bIsMoraleLeader ? FString(TEXT("Leader"))
+		: Enemy->bIsPanicked ? FString(TEXT("Panicked"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)
 {
 	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
@@ -691,7 +703,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
-		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor),
+		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
