@@ -230,6 +230,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfernalBeaconsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::WarBannerKey =
 	TEXT("War_War_Banner");
 
+const TCHAR* UCataclysmDungeonModifierEffects::ForcedTithesKey =
+	TEXT("Celestial_Forced_Tithes");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -604,6 +607,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PandorasBoxKey)
 		|| RowKey == FName(InfernalBeaconsKey)
 		|| RowKey == FName(WarBannerKey)
+		|| RowKey == FName(ForcedTithesKey)
 		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
 		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -842,6 +846,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PandorasBoxKey),
 		FName(InfernalBeaconsKey),
 		FName(WarBannerKey),
+		FName(ForcedTithesKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
