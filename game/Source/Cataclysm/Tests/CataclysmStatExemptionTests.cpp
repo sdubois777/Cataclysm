@@ -3860,6 +3860,101 @@ namespace CataclysmStatExemptionTest
 					   UnreservedWith(Test, Stat, 0.0f), 1000.0f, 0.01f);
 	}
 
+	/**
+	 * `skill_duration`, `buff_duration` and `debuff_duration`. Issue #1833, the
+	 * durations. The first two are read by
+	 * `UCataclysmSkillTemplate::OwnDurationMultiplier` on a Support self-buff
+	 * skill, the third by `UCataclysmSkillEffects::DebuffDurationMultiplierOf`.
+	 * Each grants 50% increased and asserts the answer is 1.5 against 1.
+	 */
+	UCataclysmSelfBuffSkill* SupportBuffOn(FScopedFighter& Fighter)
+	{
+		const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support,
+			/*Level=*/1, Fighter.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid()
+			? Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSelfBuffSkill* Skill =
+			Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Slot.Support"));
+		}
+		return Skill;
+	}
+
+	void GrantIncrease(FScopedFighter& Fighter, const TCHAR* Stat, float Percent)
+	{
+		FCataclysmStatModifier Increase;
+		Increase.Bucket = ECataclysmStatBucket::Increased;
+		Increase.Source = ECataclysmModifierSource::Enchantment;
+		Increase.Value = Percent;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Increase};
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	void ProbeSkillDuration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmSelfBuffSkill* Skill = SupportBuffOn(Fighter);
+		if (!Test.TestNotNull(TEXT("a Support buff"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("nothing granted: 1"), Skill->OwnDurationMultiplier(false), 1.0f, 0.001f);
+		GrantIncrease(Fighter, UCataclysmSkillTemplate::SkillDurationStat, 50.0f);
+		Test.TestEqual(TEXT("skill_duration is read: 50% increased gives 1.5"),
+					   Skill->OwnDurationMultiplier(false), 1.5f, 0.001f);
+	}
+
+	void ProbeBuffDuration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmSelfBuffSkill* Skill = SupportBuffOn(Fighter);
+		if (!Test.TestNotNull(TEXT("a Support buff"), Skill))
+		{
+			return;
+		}
+		GrantIncrease(Fighter, UCataclysmSkillTemplate::BuffDurationStat, 50.0f);
+		Test.TestEqual(TEXT("buff_duration is read for a buff: 1.5"),
+					   Skill->OwnDurationMultiplier(true), 1.5f, 0.001f);
+		Test.TestEqual(TEXT("and not for the skill's other durations: 1"),
+					   Skill->OwnDurationMultiplier(false), 1.0f, 0.001f);
+	}
+
+	void ProbeDebuffDuration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Test.TestEqual(TEXT("nothing granted: 1"),
+					   UCataclysmSkillEffects::DebuffDurationMultiplierOf(Fighter.AbilitySystem),
+					   1.0f, 0.001f);
+		GrantIncrease(Fighter, UCataclysmSkillEffects::DebuffDurationStat, 50.0f);
+		Test.TestEqual(TEXT("debuff_duration is read: 50% increased gives 1.5"),
+					   UCataclysmSkillEffects::DebuffDurationMultiplierOf(Fighter.AbilitySystem),
+					   1.5f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -3915,6 +4010,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_first_sweep_damage"), &ProbeZoneFirstSweepDamage},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
+			{TEXT("skill_duration"), &ProbeSkillDuration},
+			{TEXT("buff_duration"), &ProbeBuffDuration},
+			{TEXT("debuff_duration"), &ProbeDebuffDuration},
 		};
 		return Made;
 	}

@@ -1816,7 +1816,13 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	// stands for one character's Butcher's Heat across every use of it: a tally
 	// left from the last use would start the next one already hot.
 	KillsCounted = 0;
-	TotalDuration = Params.Duration;
+	// LENGTHENED BY `skill_duration` AND `buff_duration`, in one bucket. Issue
+	// #1833: "Buff effects you apply last 30%-60% longer" and "Your support
+	// ability duration is increased by 50%-100%", ruled 2026-09-30. The same
+	// figure is the buff's tag, its timer and its total below, so the three
+	// cannot disagree.
+	const float Lasts = Params.Duration * OwnDurationMultiplier(/*bIsBuff=*/true);
+	TotalDuration = Lasts;
 
 	// RESET ON EVERY CAST, for the reason the kill tally above is: an ability is
 	// instanced per actor, so one instance stands for this character's Held Fast
@@ -1870,13 +1876,13 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	// this: it is a stat modifier on the caster, not a tag anything reads.
 	UCataclysmSkillEffects::ApplyTagForDuration(
 		Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
-		Params.Duration);
+		Lasts);
 
 	if (UWorld* World = Self->GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
 			FinishTimer, this, &UCataclysmSelfBuffSkill::Finish,
-			Params.Duration, /*bLoop=*/false);
+			Lasts, /*bLoop=*/false);
 
 		// AND A ROW THAT STATES AN `Interval` REPEATS WHILE IT RUNS. The Spear's
 		// Held Fast: "any pinned enemy within 12 meters is set alight again each
@@ -2534,11 +2540,14 @@ void UCataclysmMovementSkill::ActivateAbility(
 		if (!HasMark())
 		{
 			MarkedAt = Marker->GetActorLocation();
-			MarkExpiresAt = World->GetTimeSeconds() + Params.EffectDuration;
+			// LENGTHENED BY `skill_duration`, issue #1833, as every duration a
+			// skill sets is.
+			const float Window = Params.EffectDuration * OwnDurationMultiplier(/*bIsBuff=*/false);
+			MarkExpiresAt = World->GetTimeSeconds() + Window;
 
 			UE_LOG(LogCataclysm, Verbose,
 				TEXT("'%s' left a mark, good for %.1f seconds."),
-				*SkillName, Params.EffectDuration);
+				*SkillName, Window);
 
 			EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 			return;

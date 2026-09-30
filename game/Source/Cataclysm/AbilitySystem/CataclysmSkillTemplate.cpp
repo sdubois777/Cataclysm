@@ -1215,15 +1215,19 @@ TArray<FGameplayTag> UCataclysmSkillTemplate::NamedEffectTags() const
 float UCataclysmSkillTemplate::AppliedEffectSeconds(
 	const FGameplayTag& EffectTag) const
 {
+	// A SKILL'S OWN EFFECT TIME, lengthened by `skill_duration`. Issue #1833:
+	// "Your support ability duration is increased" reaches Hex of Cinders' and
+	// Quarry's effect, ruled 2026-09-30.
 	if (Params.EffectDuration > 0.0f)
 	{
-		return Params.EffectDuration;
+		return Params.EffectDuration * OwnDurationMultiplier(/*bIsBuff=*/false);
 	}
 
 	// THE SHEET'S OWN FIGURE AND NOT A NUMBER WRITTEN HERE. Foul Wake states
 	// `Effect=Shred` and no duration at all; the Status Effects sheet gives
 	// Shred six seconds, which is exactly what that row's sentence says.
-	return UCataclysmSkillEffects::NumbersForEffectTag(EffectTag).DurationSeconds;
+	return UCataclysmSkillEffects::NumbersForEffectTag(EffectTag).DurationSeconds
+		* OwnDurationMultiplier(/*bIsBuff=*/false);
 }
 
 FName UCataclysmSkillTemplate::DamageTypeName() const
@@ -2548,6 +2552,28 @@ float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
 const TCHAR* UCataclysmSkillTemplate::MeleeReachMetresStat =
 	TEXT("melee_reach_metres");
 
+const TCHAR* UCataclysmSkillTemplate::SkillDurationStat = TEXT("skill_duration");
+const TCHAR* UCataclysmSkillTemplate::BuffDurationStat = TEXT("buff_duration");
+
+float UCataclysmSkillTemplate::OwnDurationMultiplier(bool bIsBuff) const
+{
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+	if (!Mine)
+	{
+		return 1.0f;
+	}
+	// ONE BUCKET OF INCREASES, the project's rule for increases to one figure:
+	// a buff lengthened by both stats is lengthened by their sum, not by one
+	// multiplied into the other.
+	float Increases = Mine->IncreasesForStat(FName(SkillDurationStat), SkillTags);
+	if (bIsBuff)
+	{
+		Increases += Mine->IncreasesForStat(FName(BuffDurationStat), SkillTags);
+	}
+	return FMath::Max(0.0f, 1.0f + Increases);
+}
+
 float UCataclysmSkillTemplate::MeleeReachBonusCm() const
 {
 	if (Shape() != ECataclysmSkillShape::Strike)
@@ -2675,15 +2701,21 @@ ACataclysmTerrain* UCataclysmSkillTemplate::LeaveTerrainAlong(
 	// THE SAME SIX SECONDS EITHER WAY. Its row states "pinning everything caught
 	// for 6 seconds" and "anything that walks into them is pinned as well", and
 	// reading one number for both is what stops those two drifting apart.
+	//
+	// THE TERRAIN'S OWN LIFETIME IS LENGTHENED BY `skill_duration`, issue #1833:
+	// "Your support ability duration is increased" reaches Groundbreaker's
+	// terrain, ruled 2026-09-30. Only this skill's own stat: a buff or debuff
+	// duration row does not reach terrain time.
+	const float Lasts = Params.TerrainDuration * OwnDurationMultiplier(/*bIsBuff=*/false);
 	ACataclysmTerrain* Terrain = ACataclysmTerrain::Spawn(
-		Self, Kind, Start, End, SizeCm, Params.TerrainDuration,
+		Self, Kind, Start, End, SizeCm, Lasts,
 		Params.ForcedMovementDuration);
 
 	if (Terrain)
 	{
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' left %s terrain for %.1fs."),
-			*SkillName, *Params.Terrain, Params.TerrainDuration);
+			*SkillName, *Params.Terrain, Lasts);
 	}
 
 	return Terrain;

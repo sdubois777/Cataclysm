@@ -1877,6 +1877,20 @@ public:
 	static const TCHAR* StaggerDurationStat;
 
 	/**
+	 * How much longer every debuff THIS character places on an enemy lasts.
+	 * Issue #1833, ruled 2026-09-30 under the owner's delegation: "Debuff
+	 * effects you apply last 30%-60% longer" and Chronomancer's Time-Lock's
+	 * "All debuffs you apply to enemies now last 50% longer". Asked in
+	 * `ApplyTagForDuration` when the target is hostile to the instigator, and
+	 * summed with `dot_duration`'s increases in `DamageOverTimeNumbers`. No
+	 * gameplay attribute; it is in `StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* DebuffDurationStat;
+
+	/** One plus the source's increases to `debuff_duration`, floored at nought. */
+	static float DebuffDurationMultiplierOf(const UAbilitySystemComponent* Source);
+
+	/**
 	 * Percentage points off the health above which this character cannot
 	 * stagger. Issue #45. A REDUCTION, so zero refuses nothing.
 	 */
