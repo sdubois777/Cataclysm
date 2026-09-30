@@ -103,7 +103,8 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `minion_seconds_active` LEFT with its two rows, issue #1833.
 #: `deployables_active` JOINED the same day for deployable Part 3, and leaves
 #: with its row.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"deployables_active"}
+#: `deployables_active` LEFT with its row, issue #1833.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -136,7 +137,9 @@ KNOWN_USED = "debuffs_carried"
 #: AND 29 OF 29 WHEN `weapon_kills` AND `character_kills` GAINED THEIR ROWS, issue #1833.
 #:
 #: AND 30 OF 30 WHEN `minion_seconds_active` GAINED ITS TWO ROWS, issue #1833.
-EXPECTED_NAMED_BY_A_ROW = 30
+#:
+#: AND 31 OF 31 WHEN `deployables_active` GAINED ITS ROW, issue #1833.
+EXPECTED_NAMED_BY_A_ROW = 31
 
 
 def scales_named_by_a_row() -> set[str]:

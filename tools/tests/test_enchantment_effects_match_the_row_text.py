@@ -502,8 +502,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 383 over 306: three rows on two enchantments.
 #: AND 389 OVER 311 SINCE DEPLOYABLE PART 2,
 #: issue #1833, from 386 over 308: three rows on three enchantments.
-AUTHORED_ROWS = 389
-AUTHORED_ENCHANTMENTS = 311
+#: AND 390 OVER 312 SINCE DEPLOYABLE PART 3,
+#: issue #1833, from 389 over 311: one row on one enchantment.
+AUTHORED_ROWS = 390
+AUTHORED_ENCHANTMENTS = 312
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

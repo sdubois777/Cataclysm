@@ -388,3 +388,4 @@ Negative_You_lose_1_4_max_resistances_for_every_100_000#1,Negative_You_lose_1_4_
 Positive_Gadgets_apply_a_15_25_armor_reduction_to_enemi#1,Positive_Gadgets_apply_a_15_25_armor_reduction_to_enemi,,,15.0,25.0,Type.Deployable,,0.0,,0.0,enemy_armor_removed,deployable_hit,,1,3.0,0.0,0.0,0,0.0
 Positive_Gadgets_deal_5_10_increased_damage_for_each_se#1,Positive_Gadgets_deal_5_10_increased_damage_for_each_se,attack_damage,increased,5.0,10.0,Type.Deployable,,0.0,minion_seconds_active,1.0,,,,30,0.0,0.0,0.0,0,0.0
 Positive_Gadgets_that_survive_for_15_seconds_gain_a_perma#1,Positive_Gadgets_that_survive_for_15_seconds_gain_a_perma,attack_damage,increased,20.0,40.0,Type.Deployable,,0.0,minion_seconds_active,15.0,,,,1,0.0,0.0,0.0,0,0.0
+Positive_Each_active_gadget_increases_your_evasion_chance#1,Positive_Each_active_gadget_increases_your_evasion_chance,evasion,increased,5.0,10.0,,,0.0,deployables_active,1.0,,,,0,0.0,0.0,0.0,0,0.0
