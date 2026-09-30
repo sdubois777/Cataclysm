@@ -121,6 +121,17 @@ missing, as Void Parasite's light is, but no test runs a Horde arena with this r
 One Python check: the row still says "infested", "only be harmed when exposed to light", "abilities" and
 "environmental factors".
 
+### A merge rule first used at this change's move
+
+This change moved in a stack of seven on development c2eccb69. Its word "Shrouded" joins the combat overlay's status-line
+list, which on development spans several lines and had gained words of its own (Quarantine's among them). The conflict
+was resolved by a rule the coordinating session accepted on 2026-09-30, which refuses anything it cannot place: **items
+inserted into a list over several lines** (`resolve_list_items.py`), the accepted one-line rule widened to a list over
+lines. Each item the change added goes after the item it followed, and after development's own additions there; only a
+line past 120 characters is wrapped. Here, `QuarantineTextFor(Actor), ShroudedTextFor(Actor),`. At this step the
+early return of `StepFloorRulesThatChange` was also joined by the `&& !bX` rule recorded in Grim Totems' entry: the term
+`&& !bShadowyEnemies` went inside the closing parenthesis, on the line that holds the base's last term.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
