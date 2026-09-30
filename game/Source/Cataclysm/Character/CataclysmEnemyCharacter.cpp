@@ -1332,6 +1332,11 @@ void ACataclysmEnemyCharacter::SetInfernalBeaconsDamageMultiplier(float NewMulti
 	SetDamageMultiplierFrom(InfernalBeaconsDamageSource, NewMultiplier);
 }
 
+void ACataclysmEnemyCharacter::SetPactOfTemptationDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(PactOfTemptationDamageSource, NewMultiplier);
+}
+
 void ACataclysmEnemyCharacter::SetTrialOfEnduranceDamageMultiplier(float NewMultiplier)
 {
 	SetDamageMultiplierFrom(TrialOfEnduranceDamageSource, NewMultiplier);
