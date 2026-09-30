@@ -2,6 +2,122 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Skill, buff and debuff durations each have a stat a row can raise, and Chronomancer's Time-Lock works at two pieces
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp`
+(`SkillDurationStat`, `BuffDurationStat`, `OwnDurationMultiplier`, `AppliedEffectSeconds`, the
+terrain's lifetime), `CataclysmSkillTemplates.cpp` (`UCataclysmSelfBuffSkill`, the mark's window),
+`CataclysmSkillEffects.h` and `.cpp` (`DebuffDurationStat`, `DebuffDurationMultiplierOf`,
+`ApplyTagForDuration`, `DamageOverTimeNumbers`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(`StatsWithNoAttribute`), the new `game/Source/Cataclysm/Tests/CataclysmDurationTests.cpp` (three
+tests), `CataclysmEnchantmentEffectTests.cpp` (four row tests), `CataclysmStatExemptionTests.cpp`
+(three probes), `CataclysmDataTableTests.cpp`, `docs/All_Things_Cataclysm.xlsx`, `docs/README.md`,
+`game/Data/EnchantmentEffects.csv`, `game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated),
+`game/Data/datatable_asset_sources.json` and
+`tools/tests/test_enchantment_effects_match_the_row_text.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group C part 1.
+
+### WHAT WAS RULED, 2026-09-30, UNDER THE OWNER'S DELEGATION
+
+The six rows were accepted as proposed. Two readings were accepted as **judgements**, not derived:
+poedb has no page on skill effect duration, and its Duration page lists skills without the rule, so
+the research does not settle either.
+
+- **(a) "Buff effects" means the self-buff skills.** It does not mean enchantment stacks, or status
+  buffs such as Tactical Advantage. "Buff effects applied to you" is read as your own
+  `buff_duration`, because in a one-player game every buff on you is your own. **Co-op would change
+  this**: another player's buff on you would then be a buff applied to you that you did not cast.
+- **(b) "Debuff effects you apply" covers every debuff the character places on another creature,
+  damage over time included.** It sits in one increased bucket with the narrower stats
+  (`dot_duration`, and the stagger, cripple and weaken durations).
+
+**Row 1 is read literally**: "Your support ability duration is increased" reaches every duration a
+Support-slot skill sets. When the proposal was checked against the skills, 11 of the 79 Support rows
+had a built effect:
+
+- 9 self-buff skills, whose buff lasts `Duration` (Ashen Edge, Unbroken, Slipstream, Butcher's Heat
+  and five more);
+- Groundbreaker's `TerrainDuration`, the ground it leaves;
+- Hex of Cinders' and Quarry's `EffectDuration`, the debuffs they place.
+
+A `buff_duration` row would have reached only the first group. So the ruling added a third stat,
+`skill_duration`, for a skill's own durations, and moved row 1 onto it. Rows 2 and 3
+(`buff_duration`) and row 4 (`debuff_duration`) do not reach terrain time.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmSkillTemplate::OwnDurationMultiplier(bIsBuff)`** is max(0, 1 + the `skill_duration`
+  increases, plus the `buff_duration` increases for a buff), asked with the skill's own tags. Every
+  duration a skill sets reads it:
+  - the self-buff's single `Lasts`, which feeds its total duration, its buff tag and its finish
+    timer;
+  - both branches of `AppliedEffectSeconds`;
+  - the mark's window;
+  - the terrain's lifetime.
+
+  The forced-movement time, the pin, is not multiplied here, because it is a debuff and gets
+  `debuff_duration` in `ApplyTagForDuration`.
+- **`UCataclysmSkillEffects::DebuffDurationMultiplierOf(Source)`** is applied in two places:
+  - in `ApplyTagForDuration`, before the target's own `DurationOn`, and only when the target is
+    hostile to the instigator;
+  - in `DamageOverTimeNumbers`, added into `dot_duration`'s multiplier. That is exact as one bucket,
+    because every shipped `dot_duration` row is `increased`.
+- **The three names are in `StatsWithNoAttribute()`**, each with a probe in
+  `EveryStatWithNoAttributeIsActuallyRead`. A name that code asks for reaches a worn row only
+  through that list or an attribute. Health reservation's rows read 0 in play until it was
+  repaired this way on the same day.
+- **The six rows:**
+
+  | Sentence | Stat |
+  | :-- | :-- |
+  | Your support ability duration is increased by 50%-100% | `skill_duration` increased 50-100, Required Tags `Slot.Support` |
+  | Buff effects you apply last 30%-60% longer | `buff_duration` increased 30-60 |
+  | Buff effects applied to you last 30%-50% less time (negative) | `buff_duration` increased -30 to -50 |
+  | Debuff effects you apply last 30%-60% longer | `debuff_duration` increased 30-60 |
+  | Chronomancer's Time-Lock, 2-piece bonus: all debuffs you apply to enemies now last 50% longer | `debuff_duration` increased 50 |
+  | Its drawback: all buffs you apply to yourself now last 25% less time | `buff_duration` increased -25 |
+
+  Chronomancer's Time-Lock is written whole at its first threshold, and `SETS_THAT_WORK` gains 7.
+  Its 6-piece and 10-piece bonuses stay unwritten, as for the other sets. EnchantmentEffects goes
+  from 396 rows to 402.
+- **A labelled judgement in the text check:** the words that mark an increased row gain the phrase
+  "less time". Both buff drawbacks say "last … less time", and without it
+  `test_an_increased_row_is_worded_as_an_increase` failed on them. "less" alone would admit "less
+  damage" sentences, which belong to the more bucket.
+
+### TWO CORRECTIONS MADE BEFORE ANY PROOF
+
+- **A redundant check was removed.** The debuff condition was first written as
+  `Source != Defender && IsHostileTo(Target, Instigator)`. `UCataclysmTargeting::IsHostileTo`
+  already answers false for the instigator itself, so the first half could never change the result,
+  and a proof that removed only it could not have failed. The condition is `IsHostileTo` alone.
+  `UCataclysmTeams::AttitudeBetween` makes two actors with no team hostile to each other, so two bare
+  test fighters exercise the filter.
+- **The terrain lifetime is covered by reading, not by a test.** Terrain exists only after a full
+  cast, and `AppliedEffectSeconds` is protected. All four sites call `OwnDurationMultiplier`, so
+  proof A breaks that helper's `skill_duration` ask instead of one site.
+
+### THE RUN
+
+The engine commit `6875baf6` is on development `c3a00361`. The rows commit is `5460ae8c` and the
+asset commit `b105ec88`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `6875baf6` | "5559 passed, 8 skipped in 332.42s"; JUnit tests 5567, failures 0 |
+| Build | "Build: Succeeded - 31 actions, 28 files compiled" |
+| Python after the rows | "1 failed, 5558 passed, 8 skipped": the stale CSV hash, as predicted; JUnit 5567 |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp" |
+| Stale-asset step | "162 tests performed, 157 succeeded, 5 failed": the asset guard and the four row tests, as predicted |
+| Asset rebuild `b105ec88` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The seven new tests and the probe test | "8 tests performed, 8 succeeded, 0 failed" |
+| Whole suite, `b105ec88`, in its own command | "2809 tests performed, 2809 succeeded, 0 failed"; 2809 declared, gap 0 |
+| Proof A, `OwnDurationMultiplier` ignoring `skill_duration` | PROVED: 3 tests, 5 assertions. The probe's "50% increased gives 1.5" read 1; `SkillDurationLengthensTheSkillsItsTagsReach` and the Support row test each read 1 instead of 2 for the durations and for the buff. Restored 5 of 5 |
+| Proof B, `ApplyTagForDuration` ignoring `debuff_duration` | PROVED: `ADebuffOnAnEnemyLastsLongerAndATagOnYourselfDoesNot`, "the enemy's five seconds last ten" read 5. Restored 3 of 3 |
+| Proof C, the hostility condition replaced by `true` | PROVED: the same test, "on itself it lasts five" read 10. Restored 3 of 3 |
+
+---
+
 ## 2026-09-30 — A renamed enchantment row keeps its saved items: a name alias, and the 13 rewords the owner approved
 
 **Affects:** the new `game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.h` and `.cpp`
