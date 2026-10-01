@@ -2,6 +2,89 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Sanctioned Passage: a Divine Gate seals the way down until the player channels at it for 10 seconds, and every creature comes while the channel lasts
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, the channel's
+seconds and its choice), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the gate placed at each
+floor's start beside the exit, the choice, the beat that counts the channel and calls the creatures, the floor panel line,
+and the row added to `StairsSealedBy`), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the automation tests and the three guard proofs have NOT run yet; the figures are added
+at the end of this entry when they have.
+
+### The row
+
+`Celestial_Sanctioned_Passage` in `game/Data/DungeonModifiers.csv`: "Divine gates require a 10s channel to open; enemies
+surge toward the gate during the unlock."
+
+### What the rule does
+
+On every floor carrying the row but the dungeon's last, a floor object named "Divine Gate" stands at the exit, or beside
+it when another exit altar is there: `ExitAltarWorld` gives cells in the order Blood Altar, Forced Tithes, Pact of
+Temptation, then the gate, so no two share a cell. It offers one choice, "Channel". While the gate stands the stairs are
+sealed, through `StairsSealedBy()`, so they open only when every other sealing row has released as well.
+
+Choosing "Channel" begins the channel, once; the choice is then shown spent. From then, each beat the player stands
+within 5 m of the gate adds a beat's time, and at 10 seconds the gate goes and the stairs open. While the channel lasts
+every creature of the floor notices the player from `TheReaperSightMultiplier` times its own sight, as Plague
+Convergence's arrivals do; a creature that arrives during the channel is called on the next beat, and a player's thrall
+is not called. When the channel completes, each creature it called is given its own sight back. The floor panel says
+`sanctioned passage: channel 10 s at the Divine Gate` before the choice, `sanctioned passage: channelling N of 10 s`
+during it, and `sanctioned passage: open` after.
+
+**A choice at the gate costs Blood Price**, on a floor carrying that row as well, since Blood Price prices every choice
+at a floor object but a tithe paid (`BloodPriceIsAsked`). It costs once: the choice cannot be made a second time.
+
+**It does nothing on a Horde dungeon.** A Horde dungeon has no stairs (GoToFloor places none when bWaveWalksIn), so this
+row does nothing there: no gate is placed, and the panel says `sanctioned passage: no stairs on a Horde floor`.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01. These are judgements, not readings the row
+settles:**
+
+- **The channel counts only while the player is within 5 m of the gate**,
+  `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`, the 2026-09-11 "nearby" reach, and not a new constant.
+  **Stepping away pauses it and keeps its progress**, as War Banner's hold does. **Taking damage does not interrupt
+  it**: nothing in the channel listens for damage.
+- **"Enemies surge toward the gate" is every creature noticing the player while the channel lasts.** The player is at
+  the gate while it counts, so a creature that comes for the player comes to the gate.
+- **No gate, no seal.** The stairs are sealed only while a gate stands, so a floor that could not place one is open,
+  and nothing a creature does can hold the seal: the channel is the player's alone.
+- **The last floor is not sealed**, as Blood Gates rules: its way out leads out of the dungeon, and the row seals the
+  way to a next floor.
+
+**A judgement of this change, not a ruling:** the gate goes when its channel completes, as a Tithe Altar goes when its
+tithe is paid, so the panel and the absence of the gate both say the way is open.
+
+### Tests
+
+Six automation tests, all in `Cataclysm.DungeonModifierEffects.`. The registration named five; the sixth, the Horde
+test, follows the ruling that all three exit-lock rows do nothing on a Horde dungeon, as Infernal Seals' does:
+
+- `SanctionedPassageFiguresAndTheRowBuilt`: 10 seconds, the "Channel" key, the 5 m reach, and the row built.
+- `SanctionedPassageADivineGateStandsBesideTheExitOfferingChannel`: with Forced Tithes on the same floor, one gate, on a
+  walkable cell beside the exit and not on the altar's, offering "Channel"; the panel; the stairs refused.
+- `SanctionedPassageTheStairsOpenAfterTenSecondsChannelled`: standing at the gate without choosing counts nothing; the
+  choice cannot be made twice; sealed at 9.75 seconds, open at 10.
+- `SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt`: five seconds kept across five seconds just beyond
+  the reach; a creature's blow lands on the player and the channel goes on to open the gate.
+- `SanctionedPassageEveryCreatureComesWhileItChannels`: a creature 40 m off does not notice the player before the
+  channel and does during it; one arriving during it is called, a thrall is not; both have their own sight back after.
+- `SanctionedPassageDoesNothingOnAHordeArena`.
+
+One Python check, `test_sanctioned_passage_row_still_names_a_ten_second_channel_at_divine_gates`, pins the three phrases
+the rulings rest on.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the channel's time not counted; Pb, its
+progress reset when the player steps away; Pc, the creatures not called.
+
+---
+
 ## 2026-10-01 — Infernal Seals: the floor's four strongest creatures each bear a piece of the seal, and the stairs open with the last piece
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures

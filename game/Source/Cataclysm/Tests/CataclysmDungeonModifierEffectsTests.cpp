@@ -42327,4 +42327,355 @@ bool FCataclysmSealsHordeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Celestial_Sanctioned_Passage. Issues #1820 and #41. Ruled 2026-10-01: a Divine Gate beside the exit, whose "Channel"
+// counts ten seconds while the player is within 5 m, pausing away and not stopped by a hit; every creature notices the
+// player while it lasts; the stairs are sealed while the gate stands. A Horde dungeon has no stairs.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName PassageRow(UCataclysmDungeonModifierEffects::SanctionedPassageKey);
+	const FName ChannelKey(UCataclysmDungeonModifierEffects::SanctionedPassageChannel);
+
+	/** A dungeon carrying these rows, on floor 2 of several with its own creatures cleared, a beat taken, and its gate. */
+	ACataclysmDungeonGameMode* APassageFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+											 const TArray<FName>& Rows = {PassageRow})
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("it has stairs"), Mode->Stairs.Get())
+			|| !Test.TestNotNull(TEXT("and a divine gate"), Mode->DivineGateNow()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** What the floor panel says for Sanctioned Passage, or a plain answer when it says nothing. */
+	FString PassagePanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const FString* Line = Mode->LiveCountsForTheFloor().Find(PassageRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** Puts the player this far from the gate, along the floor's X axis. */
+	void ThePlayerStandsFromTheGate(const FPossessedPlayer& Player, ACataclysmDungeonGameMode* Mode, float AwayCm)
+	{
+		Player.Character->SetActorLocation(Mode->DivineGateNow()->GetActorLocation() + FVector(AwayCm, 0.0f, 0.0f));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassageFiguresTest,
+	"Cataclysm.DungeonModifierEffects.SanctionedPassageFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassageFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	TestEqual(TEXT("a 10 s channel"), Effects::SanctionedPassageChannelSeconds, 10.0f, 0.001f);
+	TestEqual(TEXT("chosen as \"Channel\""), ChannelKey, FName(TEXT("Channel")));
+	TestEqual(TEXT("within the 5 m \"nearby\" reach, D3's constant"),
+			  UCataclysmAbilitySystemComponent::NearbyActionRadiusCm, 500.0f, 0.001f);
+	TestTrue(TEXT("the row has a rule"), Effects::KeysWithARule().Contains(PassageRow));
+	TestEqual(TEXT("built"), static_cast<int32>(Effects::BuiltStateOf(PassageRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassageGateTest,
+	"Cataclysm.DungeonModifierEffects.SanctionedPassageADivineGateStandsBesideTheExitOfferingChannel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassageGateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// WITH FORCED TITHES, WHOSE ALTAR TAKES THE EXIT CELL, so the gate is shown to take a cell beside it.
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APassageFloor(*this, World, Player, {TithesRow, PassageRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Gate = Mode->DivineGateNow();
+	int32 Gates = 0;
+	for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
+	{
+		Gates += It->RuleKey == PassageRow ? 1 : 0;
+	}
+	TestEqual(TEXT("one gate on the floor"), Gates, 1);
+	TestEqual(TEXT("named"), Gate->DisplayName, FString(TEXT("Divine Gate")));
+	if (TestEqual(TEXT("one choice"), Gate->Choices.Num(), 1))
+	{
+		TestEqual(TEXT("\"Channel\""), Gate->Choices[0].Key, ChannelKey);
+		TestTrue(TEXT("which can be chosen"), Gate->Choices[0].bAvailable);
+	}
+
+	const ACataclysmDungeonFloor* Floor = Mode->CurrentFloor.Get();
+	const FVector At = Gate->GetActorLocation();
+	TestTrue(TEXT("not on the exit cell, the Tithe Altar's"), FVector::Dist2D(At, Floor->ExitWorld()) > 1.0f);
+	TestTrue(TEXT("nor on the altar"), FVector::Dist2D(At, Mode->TitheAltarNow()->GetActorLocation()) > 1.0f);
+	bool bOnACellBeside = false;
+	const FIntPoint Exit = Floor->GetPlan().Exit;
+	for (int32 X = -1; X <= 1; ++X)
+	{
+		for (int32 Y = -1; Y <= 1; ++Y)
+		{
+			const FIntPoint Cell = Exit + FIntPoint(X, Y);
+			bOnACellBeside |= (X != 0 || Y != 0) && Floor->GetPlan().IsFloor(Cell)
+				&& FVector::Dist2D(At, Floor->WorldOfCell(Cell)) < 1.0f;
+		}
+	}
+	TestTrue(TEXT("on a walkable cell beside the exit"), bOnACellBeside);
+
+	TestEqual(TEXT("the panel"), PassagePanelLine(Mode), FString(TEXT("sanctioned passage: channel 10 s at the Divine Gate")));
+	TestTrue(TEXT("the gate seals the stairs"), Mode->StairsSealedBy() == TArray<FName>({PassageRow}));
+	TestEqual(TEXT("which lead nowhere"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassageOpenTest,
+	"Cataclysm.DungeonModifierEffects.SanctionedPassageTheStairsOpenAfterTenSecondsChannelled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassageOpenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APassageFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ThePlayerStandsFromTheGate(Player, Mode, 100.0f);
+
+	// STANDING AT THE GATE IS NOT CHANNELLING: nothing is counted until "Channel" is chosen.
+	Beat(Mode, BeatsFor(Effects::SanctionedPassageChannelSeconds));
+	TestEqual(TEXT("no channel without the choice"), Mode->DivineGateSecondsChannelled(), 0.0f, 0.001f);
+	if (!TestTrue(TEXT("\"Channel\" acted"), Mode->ChooseAtFloorObject(Mode->DivineGateNow(), ChannelKey)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the channel began"), Mode->DivineGateChannelBegun());
+	TestFalse(TEXT("and cannot be begun again"), Mode->ChooseAtFloorObject(Mode->DivineGateNow(), ChannelKey));
+
+	// ONE BEAT SHORT OF TEN SECONDS: STILL SEALED.
+	Beat(Mode, BeatsFor(Effects::SanctionedPassageChannelSeconds) - 1);
+	TestEqual(TEXT("9.75 s channelled"), Mode->DivineGateSecondsChannelled(), 9.75f, 0.001f);
+	TestEqual(TEXT("the panel"), PassagePanelLine(Mode), FString(TEXT("sanctioned passage: channelling 9 of 10 s")));
+	TestNotNull(TEXT("the gate stands"), Mode->DivineGateNow());
+	TestEqual(TEXT("and the stairs lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	Beat(Mode, 1);
+	TestNull(TEXT("at ten seconds the gate goes"), Mode->DivineGateNow());
+	TestEqual(TEXT("the panel"), PassagePanelLine(Mode), FString(TEXT("sanctioned passage: open")));
+	TestTrue(TEXT("nothing seals the stairs"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("and they lead down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassagePauseTest,
+	"Cataclysm.DungeonModifierEffects.SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassagePauseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APassageFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ThePlayerStandsFromTheGate(Player, Mode, 100.0f);
+	if (!TestTrue(TEXT("\"Channel\" acted"), Mode->ChooseAtFloorObject(Mode->DivineGateNow(), ChannelKey)))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(5.0f));
+	TestEqual(TEXT("five seconds at the gate"), Mode->DivineGateSecondsChannelled(), 5.0f, 0.001f);
+
+	// AWAY, JUST BEYOND THE REACH: THE CHANNEL PAUSES AND KEEPS WHAT IT HAD.
+	ThePlayerStandsFromTheGate(Player, Mode, UCataclysmAbilitySystemComponent::NearbyActionRadiusCm + 100.0f);
+	Beat(Mode, BeatsFor(5.0f));
+	TestEqual(TEXT("still five away from the gate"), Mode->DivineGateSecondsChannelled(), 5.0f, 0.001f);
+	TestTrue(TEXT("the channel is not ended"), Mode->DivineGateChannelBegun());
+	TestEqual(TEXT("the stairs still lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	// BACK WITHIN REACH, AND HIT: A CREATURE'S BLOW LANDS ON THE PLAYER AND THE CHANNEL GOES ON.
+	ThePlayerStandsFromTheGate(Player, Mode, UCataclysmAbilitySystemComponent::NearbyActionRadiusCm - 100.0f);
+	ACataclysmEnemyCharacter* Striker = SpawnImpWithHealth(World, FVector(-3000.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to strike"), Striker)
+		|| !TestTrue(TEXT("it hits for something"), GiveCreatureAttackDamage(Striker, 20.0f) > 0.0f))
+	{
+		return false;
+	}
+	const float Before = HealthOf(Player);
+	if (!TestTrue(TEXT("the blow landed on the player"),
+				  UCataclysmSkillEffects::ApplyHit(Striker, Player.Character, 20.0f) > 0.0f)
+		|| !TestTrue(TEXT("and took health"), HealthOf(Player) < Before))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the hit did not stop it"), Mode->DivineGateSecondsChannelled(), 5.25f, 0.001f);
+	TestTrue(TEXT("nor end it"), Mode->DivineGateChannelBegun());
+	Beat(Mode, BeatsFor(5.0f) - 1);
+	TestNull(TEXT("ten seconds in all open the gate"), Mode->DivineGateNow());
+	TestEqual(TEXT("and the stairs lead down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassageCallTest,
+	"Cataclysm.DungeonModifierEffects.SanctionedPassageEveryCreatureComesWhileItChannels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassageCallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APassageFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ThePlayerStandsFromTheGate(Player, Mode, 100.0f);
+	const FVector PlayerAt = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Far = PlaceCreatureAtRung(World, Mode, PlayerAt + FVector(0.0f, 4000.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a creature far off"), Far))
+	{
+		return false;
+	}
+	const float Distance = FVector::Dist2D(Far->GetActorLocation(), PlayerAt);
+	const float OwnSight = Far->SightRadiusMultiplier;
+	TestTrue(FString::Printf(TEXT("before the channel it does not notice the player (%.0f of %.0f cm)"),
+							 Far->NoticesFromCm(), Distance),
+			 Far->NoticesFromCm() < Distance);
+
+	// THE CHANNEL BEGUN: ON THE NEXT BEAT IT NOTICES THE PLAYER FROM THERE.
+	if (!TestTrue(TEXT("\"Channel\" acted"), Mode->ChooseAtFloorObject(Mode->DivineGateNow(), ChannelKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("its sight is called out"), Far->SightRadiusMultiplier, Effects::TheReaperSightMultiplier, 0.001f);
+	TestTrue(FString::Printf(TEXT("and it notices the player (%.0f of %.0f cm)"), Far->NoticesFromCm(), Distance),
+			 Far->NoticesFromCm() > Distance);
+
+	// ONE THAT ARRIVES DURING THE CHANNEL IS CALLED TOO; A PLAYER'S THRALL IS NOT.
+	ACataclysmEnemyCharacter* Late = PlaceCreatureAtRung(World, Mode, PlayerAt + FVector(0.0f, -4000.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Taken = PlaceCreatureAtRung(World, Mode, PlayerAt + FVector(0.0f, 300.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a late creature"), Late) || !TestNotNull(TEXT("and one to take"), Taken)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the late one is called"), Late->SightRadiusMultiplier, Effects::TheReaperSightMultiplier, 0.001f);
+	TestTrue(TEXT("the thrall is not"), Taken->SightRadiusMultiplier < Effects::TheReaperSightMultiplier);
+
+	// THE CHANNEL DONE: EACH HAS ITS OWN SIGHT BACK.
+	Beat(Mode, BeatsFor(Effects::SanctionedPassageChannelSeconds));
+	if (!TestNull(TEXT("set-up: the gate opened"), Mode->DivineGateNow()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the far one's sight is its own again"), Far->SightRadiusMultiplier, OwnSight, 0.001f);
+	TestEqual(TEXT("and the late one's"), Late->SightRadiusMultiplier, OwnSight, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassageHordeTest,
+	"Cataclysm.DungeonModifierEffects.SanctionedPassageDoesNothingOnAHordeArena",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassageHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode) || !TestTrue(TEXT("a player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {PassageRow};
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	// A HORDE DUNGEON HAS NO STAIRS, so no gate is placed and nothing is sealed.
+	TestNull(TEXT("it has no stairs"), Mode->Stairs.Get());
+	TestNull(TEXT("no gate stands"), Mode->DivineGateNow());
+	TestTrue(TEXT("nothing seals"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("the panel says so"), PassagePanelLine(Mode),
+			  FString(TEXT("sanctioned passage: no stairs on a Horde floor")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

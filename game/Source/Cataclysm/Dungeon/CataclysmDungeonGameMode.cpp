@@ -1724,6 +1724,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// taken on the last becomes this one's buff. Issues #1820 and #41.
 	PlaceThePactAltar();
 
+	// AND SANCTIONED PASSAGE'S DIVINE GATE, FOR THE SAME REASON, though none stands on a Horde floor, which has no
+	// stairs. Issues #1820 and #41.
+	PlaceTheDivineGate();
+
 	if (!FloorBrief.bSameArenaAsLastFloor)
 	{
 		ClearFloorEnemies();
@@ -9345,7 +9349,7 @@ FVector ACataclysmDungeonGameMode::ExitAltarWorld(FName RuleKey) const
 	// THE ROWS THAT STAND AN ALTAR AT THE EXIT, IN THE ORDER THEY TAKE ITS CELLS. This rule's place is how many of the
 	// ones before it the floor carries.
 	const FName InOrder[] = {FName(Effects::BloodAltarKey), FName(Effects::ForcedTithesKey),
-							 FName(Effects::PactOfTemptationKey)};
+							 FName(Effects::PactOfTemptationKey), FName(Effects::SanctionedPassageKey)};
 	int32 Place = 0;
 	for (const FName& Row : InOrder)
 	{
@@ -9603,6 +9607,146 @@ void ACataclysmDungeonGameMode::StepForcedTithes(ACataclysmPlayerCharacter* Play
 	if (Key != TithePanelKey)
 	{
 		TithePanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
+ACataclysmFloorObject* ACataclysmDungeonGameMode::DivineGateNow() const
+{
+	ACataclysmFloorObject* Gate = DivineGate.Get();
+	return IsValid(Gate) ? Gate : nullptr;
+}
+
+bool ACataclysmDungeonGameMode::SanctionedPassageSealsTheStairs() const
+{
+	// SEALED WHILE A DIVINE GATE STANDS, AND ONLY THEN: no gate, no seal. The gate goes when its channel completes, and
+	// none is placed on a Horde floor or the dungeon's last, so neither is ever sealed.
+	return DivineGateNow() != nullptr
+		&& FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::SanctionedPassageKey));
+}
+
+void ACataclysmDungeonGameMode::SendBackTheCalled()
+{
+	for (const TPair<TWeakObjectPtr<ACataclysmEnemyCharacter>, float>& Called : DivineGateCalled)
+	{
+		if (ACataclysmEnemyCharacter* Creature = Called.Key.Get())
+		{
+			Creature->SightRadiusMultiplier = Called.Value;
+		}
+	}
+	DivineGateCalled.Reset();
+}
+
+void ACataclysmDungeonGameMode::ForgetTheDivineGate()
+{
+	if (ACataclysmFloorObject* Gate = DivineGate.Get())
+	{
+		Gate->Destroy();
+	}
+	DivineGate = nullptr;
+	bDivineGateChannelling = false;
+	DivineGateSeconds = 0.0f;
+	SendBackTheCalled();
+	DivineGatePanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheDivineGate()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheDivineGate();
+	// NONE ON A HORDE FLOOR, WHICH HAS NO STAIRS, AND NONE ON THE DUNGEON'S LAST, whose way out leads out.
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::SanctionedPassageKey)) || FloorBrief.bWaveWalksIn
+		|| IsOnTheLastFloor())
+	{
+		return;
+	}
+
+	const int32 ChannelSeconds = FMath::RoundToInt(Effects::SanctionedPassageChannelSeconds);
+	const int32 ReachMetres = FMath::RoundToInt(UCataclysmAbilitySystemComponent::NearbyActionRadiusCm / 100.0f);
+	ACataclysmFloorObject* Gate = PlaceFloorObjectAt(
+		FName(Effects::SanctionedPassageKey), ExitAltarWorld(FName(Effects::SanctionedPassageKey)), TEXT("Divine Gate"),
+		FString::Printf(TEXT("The way down is sealed. Channel here for %d seconds to open it; every creature will come."),
+						ChannelSeconds));
+	if (!Gate)
+	{
+		return;
+	}
+	FCataclysmFloorObjectChoice Channel;
+	Channel.Key = FName(Effects::SanctionedPassageChannel);
+	Channel.Label = FString::Printf(TEXT("Channel: %d seconds within %d m of the gate"), ChannelSeconds, ReachMetres);
+	Gate->Choices = {Channel};
+	DivineGate = Gate;
+	UE_LOG(LogCataclysm, Log, TEXT("Sanctioned Passage: a divine gate on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtDivineGate(ACataclysmFloorObject* Gate, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Gate) || Gate != DivineGate.Get() || ChoiceKey != FName(Effects::SanctionedPassageChannel)
+		|| bDivineGateChannelling)
+	{
+		return false;
+	}
+	bDivineGateChannelling = true;
+	// ONCE: the choice is shown spent, so it is not chosen, or priced by Blood Price, a second time.
+	for (FCataclysmFloorObjectChoice& Choice : Gate->Choices)
+	{
+		Choice.bAvailable = false;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Sanctioned Passage: the channel began on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepSanctionedPassage(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ACataclysmFloorObject* Gate = DivineGateNow();
+	if (Gate && bDivineGateChannelling)
+	{
+		// EVERY CREATURE OF THE FLOOR NOTICES THE PLAYER FROM AFAR WHILE THE CHANNEL LASTS, as Plague Convergence's
+		// arrivals do, the row's "enemies surge toward the gate": the sight each had is kept, to be given back when the
+		// channel ends. One that arrives during the channel is called on the next beat. Not a player's thrall.
+		for (ACataclysmEnemyCharacter* Creature : FloorEnemies)
+		{
+			const TWeakObjectPtr<ACataclysmEnemyCharacter> Weak(Creature);
+			if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
+				&& !DungeonGameModeIsAPlayersFollower(Creature) && !DivineGateCalled.Contains(Weak))
+			{
+				DivineGateCalled.Add(Weak, Creature->SightRadiusMultiplier);
+				Creature->SightRadiusMultiplier =
+					FMath::Max(Creature->SightRadiusMultiplier, Effects::TheReaperSightMultiplier);
+			}
+		}
+
+		// THE CHANNEL, COUNTED ONLY WHILE THE PLAYER IS WITHIN REACH OF THE GATE AND NEVER RESET: stepping away pauses
+		// it. Nothing here listens for damage, so a hit does not interrupt it.
+		if (IsValid(Player)
+			&& FVector::Dist2D(Player->GetActorLocation(), Gate->GetActorLocation())
+				<= UCataclysmAbilitySystemComponent::NearbyActionRadiusCm)
+		{
+			DivineGateSeconds += SecondsBetweenWaveChecks;
+		}
+		if (DivineGateSeconds >= Effects::SanctionedPassageChannelSeconds - KINDA_SMALL_NUMBER)
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("Sanctioned Passage: the gate opened on floor %d"), FloorNumber);
+			Gate->Destroy();
+			DivineGate = nullptr;
+			bDivineGateChannelling = false;
+			SendBackTheCalled();
+		}
+	}
+
+	const int32 Key = (DivineGateNow() ? 1 : 0) + (bDivineGateChannelling ? 10 : 0)
+		+ 100 * FMath::FloorToInt(DivineGateSeconds);
+	if (Key != DivineGatePanelKey)
+	{
+		DivineGatePanelKey = Key;
 		RefreshFloorModifierPanel();
 	}
 }
@@ -9933,6 +10077,10 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObjectForItsRule(ACataclysmFloorObj
 	if (Object->RuleKey == FName(Effects::PactOfTemptationKey))
 	{
 		return ChooseAtPactAltar(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::SanctionedPassageKey))
+	{
+		return ChooseAtDivineGate(Object, ChoiceKey);
 	}
 	return false;
 }
@@ -10908,6 +11056,10 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	{
 		Sealing.Add(FName(Effects::InfernalSealsKey));
 	}
+	if (SanctionedPassageSealsTheStairs())
+	{
+		Sealing.Add(FName(Effects::SanctionedPassageKey));
+	}
 	return Sealing;
 }
 
@@ -11266,6 +11418,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// AND PACT OF TEMPTATION: the curses last until the dungeon is left, and the buff with them. Issues #1820 and #41.
 	ForgetThePactAltar();
 	PactLastOffered.Reset();
+	// AND SANCTIONED PASSAGE'S GATE, and the sight of every creature it called. Issues #1820 and #41.
+	ForgetTheDivineGate();
 	PactBuffNow = INDEX_NONE;
 	PactBuffNext = INDEX_NONE;
 	PactCurseCounts = {0, 0, 0, 0, 0};
@@ -11740,6 +11894,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FName(UCataclysmDungeonModifierEffects::PlagueHarbingersKey));
 	// AND INFERNAL SEALS, WHILE IT HAS BEARERS. Issues #1820 and #41.
 	const bool bInfernalSeals = !InfernalSealBearers.IsEmpty();
+	// AND SANCTIONED PASSAGE, WHILE ITS GATE STANDS OR A CREATURE IT CALLED HAS NOT HAD ITS SIGHT BACK. #1820, #41.
+	const bool bSanctionedPassage = DivineGateNow() != nullptr || !DivineGateCalled.IsEmpty();
 	// AND WINGS OF THE HOST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
 	// and #41.
 	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
@@ -11912,7 +12068,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPactOfTemptation
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
-		&& !bInfernalSeals)
+		&& !bInfernalSeals && !bSanctionedPassage)
 	{
 		return;
 	}
@@ -12103,6 +12259,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bInfernalSeals)
 	{
 		StepInfernalSeals();
+	}
+
+	// AND SANCTIONED PASSAGE'S CHANNEL, WHICH CALLS THE FLOOR'S CREATURES. Issues #1820 and #41.
+	if (bSanctionedPassage)
+	{
+		StepSanctionedPassage(Player);
 	}
 
 	// AND WINGS OF THE HOST, WHICH PLACES ZONES. Issues #1820 and #41.
@@ -16010,6 +16172,22 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 								? FString::Printf(TEXT("infernal seals: %d of %d pieces"), InfernalSealPieces,
 												  InfernalSealPiecesNeeded())
 								: FString(TEXT("infernal seals: open")));
+	}
+
+	// AND HOW FAR THE CHANNEL AT SANCTIONED PASSAGE'S GATE HAS COME. Issues #1820 and #41.
+	const FName Passage(Effects::SanctionedPassageKey);
+	if (FloorBrief.Modifiers.Contains(Passage))
+	{
+		const int32 PassageSeconds = FMath::RoundToInt(Effects::SanctionedPassageChannelSeconds);
+		Counting.Add(Passage, FloorBrief.bWaveWalksIn
+								  ? FString(TEXT("sanctioned passage: no stairs on a Horde floor"))
+								  : !SanctionedPassageSealsTheStairs()
+								  ? FString(TEXT("sanctioned passage: open"))
+								  : bDivineGateChannelling
+								  ? FString::Printf(TEXT("sanctioned passage: channelling %d of %d s"),
+													FMath::FloorToInt(DivineGateSeconds), PassageSeconds)
+								  : FString::Printf(TEXT("sanctioned passage: channel %d s at the Divine Gate"),
+													PassageSeconds));
 	}
 
 	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.
