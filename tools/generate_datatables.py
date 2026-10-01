@@ -4337,6 +4337,16 @@ SCALES = {
     # `deployables_active`, the machines the character commands now. Issue
     # #1833, deployable Part 3.
     "deployables_active": (0.0, 20.0, "a number of deployable machines"),
+    # Issue #1833 group C part 3c. "for every 15 seconds spent on the same
+    # dungeon floor" is `seconds_on_floor` with a step of 15; "for every dungeon
+    # floor cleared this run" is `floors_cleared` with a step of 1; "for every
+    # 100 points of armor you have" is `armor` with a step of 100, the Armor
+    # attribute; "For every unique Cataclysm boss defeated" is
+    # `cataclysm_bosses_defeated` with a step of 1.
+    "seconds_on_floor": (0.0, 3600.0, "a number of seconds on one floor"),
+    "floors_cleared": (0.0, 1000.0, "a number of dungeon floors cleared"),
+    "armor": (0.0, 100_000.0, "an amount of armor"),
+    "cataclysm_bosses_defeated": (0.0, 100.0, "a number of unique Cataclysm bosses"),
 }
 
 

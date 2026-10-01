@@ -62,6 +62,7 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, CharacterLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, ExperienceIntoLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, RunKills);
+	DOREPLIFETIME(ACataclysmPlayerState, FloorsClearedThisRun);
 	DOREPLIFETIME(ACataclysmPlayerState, LifetimeKills);
 	DOREPLIFETIME(ACataclysmPlayerState, CreationChoice);
 	DOREPLIFETIME(ACataclysmPlayerState, PassiveAllocation);
@@ -214,6 +215,29 @@ void ACataclysmPlayerState::SetLevelAndExperience(int32 NewLevel,
 	const int64 Ceiling = UCataclysmExperience::CostOfLevel(CharacterLevel + 1);
 	const int64 Most = FMath::Max<int64>(0, Ceiling - 1);
 	ExperienceIntoLevel = FMath::Clamp<int64>(NewExperience, 0, Most);
+}
+
+void ACataclysmPlayerState::NoteFloorBegan(float WorldSeconds)
+{
+	FloorBeganAtSeconds = FMath::Max(0.0f, WorldSeconds);
+}
+
+float ACataclysmPlayerState::SecondsOnFloor(float WorldSeconds) const
+{
+	return FloorBeganAtSeconds < 0.0f ? -1.0f : FMath::Max(0.0f, WorldSeconds - FloorBeganAtSeconds);
+}
+
+void ACataclysmPlayerState::NoteFloorCleared()
+{
+	FloorsClearedThisRun = FloorsClearedThisRun < MAX_int32 ? FloorsClearedThisRun + 1 : FloorsClearedThisRun;
+
+	// FOR THE SHEET ONLY: the Armor attribute a row scaled by this count moves
+	// is written by a refresh, and a blow already reads the live figure.
+	const ACataclysmPlayerCharacter* Mine = GetPawn<ACataclysmPlayerCharacter>();
+	if (UCataclysmEquipmentComponent* Gear = Mine ? Mine->GetEquipment() : nullptr)
+	{
+		Gear->RefreshAttributes(GetCataclysmAbilitySystemComponent());
+	}
 }
 
 void ACataclysmPlayerState::NoteKill()

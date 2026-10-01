@@ -764,6 +764,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// replaces every field, so a reading taken first would be discarded.
 		State.MaximumHealth = Vitals->GetMaxHealth();
 
+		// AND THE ARMOR ATTRIBUTE, for "for every 100 points of armor you have".
+		// Issue #1833. The attribute, as the maximum above is, so no row can scale
+		// armour by armour.
+		if (const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>())
+		{
+			State.Armor = Combat->GetArmor();
+		}
+
 		// AND HOW MUCH ENERGY SHIELD IS IN HAND, WITH THE TOP OF THAT BAR.
 		// Issue #1515. Cold Reading asks for it: "+2% increased Spell Damage per
 		// point while your Energy Shield is full."
@@ -1116,6 +1124,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// AND THE KILLS, WHICH ONLY A PLAYER COUNTS. Issue #1833.
 		State.RunKills = Player->GetRunKills();
 		State.CharacterKills = Player->GetLifetimeKills();
+
+		// AND THE DUNGEON'S TWO RECORDS AND THE BOSSES BEATEN. Issue #1833 group
+		// C part 3c. The floor clock reads the world this character is in.
+		State.FloorsCleared = Player->GetFloorsClearedThisRun();
+		State.CataclysmBossesDefeated = Player->GetDefeatedCataclysmBosses().Num();
+		if (const UWorld* World = GetWorld())
+		{
+			State.SecondsOnFloor = Player->SecondsOnFloor(World->GetTimeSeconds());
+		}
 	}
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT

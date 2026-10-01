@@ -2148,6 +2148,43 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerDeployableActive
 		UMETA(DisplayName = "Per Deployable Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` seconds the character has spent on the
+	 * dungeon floor it stands on. Issue #1833: "Enemies deal 5%-8% increased
+	 * damage for every 15 seconds spent on the same dungeon floor" is a step of
+	 * 15. A new floor starts the count again; outside a dungeon it reads -1 and
+	 * grants nothing. See `ACataclysmPlayerState::NoteFloorBegan`.
+	 */
+	PerSecondOnThisFloor
+		UMETA(DisplayName = "Per Second On This Floor"),
+
+	/**
+	 * `Value` per whole `ScaleStep` dungeon floors cleared this run. Issue
+	 * #1833: "Your armor is increased by 1%-2% for every dungeon floor cleared
+	 * this run". See `ACataclysmPlayerState::NoteFloorCleared`.
+	 */
+	PerFloorClearedThisRun
+		UMETA(DisplayName = "Per Floor Cleared This Run"),
+
+	/**
+	 * `Value` per whole `ScaleStep` points of the character's Armor attribute.
+	 * Issue #1833: "Your retaliation damage is increased by 2%-4% for every 100
+	 * points of armor you have" is a step of 100. The ATTRIBUTE, as the maximum
+	 * health scale reads its attribute, so a row cannot scale armour by itself.
+	 */
+	PerPointOfArmor
+		UMETA(DisplayName = "Per Point Of Armor"),
+
+	/**
+	 * `Value` per whole `ScaleStep` unique Cataclysm bosses the character has
+	 * ever defeated. Issue #1833: "For every unique Cataclysm boss defeated,
+	 * gain 5%-10% more damage permanently". It reaches nothing in play until
+	 * a unique Cataclysm boss exists; see
+	 * `ACataclysmPlayerState::RecordCataclysmBossDefeat`.
+	 */
+	PerUniqueCataclysmBossDefeated
+		UMETA(DisplayName = "Per Unique Cataclysm Boss Defeated"),
 };
 
 /**
@@ -2658,6 +2695,18 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * See `PerDeployableActive`.
 	 */
 	int32 DeployablesActive = 0;
+
+	/** Seconds on the floor this character stands on, or -1. Issue #1833. */
+	float SecondsOnFloor = -1.0f;
+
+	/** Dungeon floors cleared this run, or -1 for a character with no player state. */
+	int32 FloorsCleared = -1;
+
+	/** The Armor attribute, or -1 when there is no combat set. Issue #1833. */
+	float Armor = -1.0f;
+
+	/** Unique Cataclysm bosses ever defeated, or -1 with no player state. */
+	int32 CataclysmBossesDefeated = -1;
 
 	/**
 	 * What the skill dealing this blow cost, as a percentage of the character's

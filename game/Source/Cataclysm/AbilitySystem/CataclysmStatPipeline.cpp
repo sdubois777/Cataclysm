@@ -174,6 +174,10 @@ namespace
 		{ TEXT("weapon_kills"),        ECataclysmStatScale::PerKillOfThisWeapon },
 		{ TEXT("minion_seconds_active"), ECataclysmStatScale::PerSecondTheMinionHasBeenActive },
 		{ TEXT("deployables_active"),  ECataclysmStatScale::PerDeployableActive },
+		{ TEXT("seconds_on_floor"),    ECataclysmStatScale::PerSecondOnThisFloor },
+		{ TEXT("floors_cleared"),      ECataclysmStatScale::PerFloorClearedThisRun },
+		{ TEXT("armor"),               ECataclysmStatScale::PerPointOfArmor },
+		{ TEXT("cataclysm_bosses_defeated"), ECataclysmStatScale::PerUniqueCataclysmBossDefeated },
 	};
 
 	/**
@@ -1566,6 +1570,23 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	// THE DEPLOYABLE MACHINES COMMANDED NOW. Issue #1833, deployable Part 3.
 	case ECataclysmStatScale::PerDeployableActive:
 		return StackedValue(Modifier, State.DeployablesActive);
+
+	// THE FOUR OF ISSUE #1833 GROUP C PART 3c. Whole steps, as every count is;
+	// an unknown reading (-1) is nothing, as for the kills.
+	case ECataclysmStatScale::PerSecondOnThisFloor:
+		return State.SecondsOnFloor < 0.0f
+			? 0.0f : StackedValue(Modifier, FMath::FloorToInt32(State.SecondsOnFloor));
+
+	case ECataclysmStatScale::PerFloorClearedThisRun:
+		return State.FloorsCleared < 0 ? 0.0f : StackedValue(Modifier, State.FloorsCleared);
+
+	case ECataclysmStatScale::PerPointOfArmor:
+		return State.Armor < 0.0f
+			? 0.0f : StackedValue(Modifier, FMath::FloorToInt32(State.Armor));
+
+	case ECataclysmStatScale::PerUniqueCataclysmBossDefeated:
+		return State.CataclysmBossesDefeated < 0
+			? 0.0f : StackedValue(Modifier, State.CataclysmBossesDefeated);
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
