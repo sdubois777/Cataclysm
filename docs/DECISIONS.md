@@ -38,7 +38,13 @@ left the allies for their own ruling. So every answer below is a judgement.
   `EndTheWarzoneAllies` removes them at the floor change in `GoToFloor`, before `PopulateFloor` and so before
   `BringFollowersTo` carries the player's followers to the new entrance, a Horde arena's next wave included; and with
   the hold, in `ForgetTheWarzoneHold`, which also runs on leaving the dungeon. A thrall the player took keeps going down
-  the stairs, as the 2026-09-30 entry rules.
+  the stairs, as the 2026-09-30 entry rules. **A Horde arena's next wave runs through `GoToFloor` too, so the allies
+  end with each wave**, as the held points' strength does.
+- **Nothing stale is left when an ally is destroyed**, read from the code: no list of a player's followers is kept.
+  `UCataclysmCommand::ThingsCommandedBy` asks the world each time and skips an actor that is not valid, and
+  `BringFollowersTo`, `ReservedFervourOf` and A Second Self's `Choose` all read it; A Second Self's mark
+  (`bIsSecondSelf`) is on the follower and goes with it. `WarzoneAlliesEndWithTheFloor` asserts the player's followers
+  after the floor change are the kept thrall alone.
 - **No cap, and no Fervour reserved.** The only limit on a player's thralls is the Fervour reserve
   (`HasRoomForAnotherThrall` and `ReservedFervourOf`), and `ReservedFervour` is set only by the skills that take or make a
   follower, so an ally reserves nothing and blocks no summon. **A Second Self may choose a Warzone ally**: it is a
@@ -67,7 +73,8 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.` and named `War
   the player, at Common, raised by the rule and within reach of the point; four with both points held.
 - `WarzoneAlliesHoldNothingAndReserveNoFervour`: an ally is not on the floor's list nor one of the floor's own; the floor
   is cleared with the allies and the waves standing; no Fervour is reserved.
-- `WarzoneAlliesEndWithTheFloor`: the allies do not come down the stairs; a thrall the player took does.
+- `WarzoneAlliesEndWithTheFloor`: the allies do not come down the stairs; a thrall the player took does, and is then the
+  player's only follower.
 
 One Python check, `test_warzone_row_still_names_allied_soldiers_and_shortcuts`, pins the three phrases the rulings rest
 on. The Warzone tests already in the file run as the regression check.
