@@ -41106,8 +41106,27 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/**
+	 * Whether the player's maximum health is still the hundred thousand `GiveThePlayerHealthForTypedDamage` wrote.
+	 *
+	 * ASKED WHEREVER A TEST READS HEALTH AGAINST IT. That maximum is written by hand, and any rule that refreshes the
+	 * player's attributes on a beat -- Pact of Temptation writing its buff and curses, a Battlefield Relic's buff --
+	 * puts the stat pipeline's own figure back, while health stays above it until the next write clamps it. Found by
+	 * Blood Price's first guard proof in Group 2's window B, 2026-10-01, which failed with the files restored: a
+	 * refresh on the set-up beat had made a tenth of 100000 come out as 510.
+	 */
+	bool MaximumIsStillTheTestsOwn(FAutomationTestBase& Test, const FPossessedPlayer& Player, const TCHAR* Where)
+	{
+		return Test.TestEqual(*FString::Printf(TEXT("%s: the player's maximum health is still a hundred thousand"), Where),
+							  Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), HealthForTypedDamage,
+							  0.01f);
+	}
+
+	/**
 	 * A dungeon carrying these rows, on floor 2 with its own creatures cleared, the player at a hundred thousand
 	 * maximum health and full, and a beat taken so the buttons are priced.
+	 *
+	 * A BEAT BEFORE THE HUNDRED THOUSAND IS WRITTEN, so each rule's first write, and the attribute refresh it makes,
+	 * lands first and cannot undo it; and a check after the pricing beat that it was not undone.
 	 */
 	ACataclysmDungeonGameMode* ABloodPriceFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
 												const TArray<FName>& Rows)
@@ -41124,12 +41143,13 @@ namespace CataclysmDungeonModifierEffectsTest
 			return nullptr;
 		}
 		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
 		if (!GiveThePlayerHealthForTypedDamage(Test, Player))
 		{
 			return nullptr;
 		}
 		Beat(Mode, 1);
-		return Mode;
+		return MaximumIsStillTheTestsOwn(Test, Player, TEXT("after the set-up")) ? Mode : nullptr;
 	}
 
 	/** The player's health now. */
@@ -41230,20 +41250,21 @@ bool FCataclysmBloodPriceBleedTest::RunTest(const FString& Parameters)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	// TWO RELICS OF FURY, WHICH CHANGE NO HEALTH OR RESISTANCE: TWO CHOICES, TWO STACKS.
-	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	// TWO OF PANDORA'S BOXES AT A REWARD ROLL: TWO CHOICES, TWO STACKS. A reward is drops and refreshes nothing on the
+	// player; a Battlefield Relic, used here until 2026-10-01, writes its buff on the next beat and so refreshes the
+	// attributes in the middle of the measurement, putting the hundred thousand maximum back to the player's own.
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("75"));
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = ABloodPriceFloor(
-		*this, World, Player, {BloodPriceRow, FName(Effects::BattlefieldRelicsKey)});
-	if (!Mode || !TestEqual(TEXT("two relics"), Mode->BattlefieldRelicsNow().Num(), 2))
+		*this, World, Player, {BloodPriceRow, FName(Effects::PandorasBoxKey)});
+	if (!Mode || !TestTrue(TEXT("two boxes"), Mode->PandorasBoxesNow().Num() >= 2))
 	{
 		return false;
 	}
-	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
-	for (ACataclysmFloorObject* Relic : Relics)
+	const TArray<ACataclysmFloorObject*> Boxes = Mode->PandorasBoxesNow();
+	for (int32 Index = 0; Index < 2; ++Index)
 	{
-		TestTrue(TEXT("a relic activated"),
-				 Mode->ChooseAtFloorObject(Relic, FName(Effects::BattlefieldRelicsActivate)));
+		TestTrue(TEXT("a box opened"), Mode->ChooseAtFloorObject(Boxes[Index], FName(Effects::PandorasBoxOpen)));
 	}
 	if (!TestEqual(TEXT("two stacks"), Mode->BloodPriceStacksHeld(), 2))
 	{
@@ -41251,9 +41272,14 @@ bool FCataclysmBloodPriceBleedTest::RunTest(const FString& Parameters)
 	}
 
 	const float PerSecond = HealthForTypedDamage * Effects::BloodPricePercentPerSecond(2) / 100.0f;
+	if (!MaximumIsStillTheTestsOwn(*this, Player, TEXT("before the bleed")))
+	{
+		return false;
+	}
 	float Before = BloodHealthOf(Player);
 	Beat(Mode, BeatsFor(2.0f));
 	float Lost = Before - BloodHealthOf(Player);
+	MaximumIsStillTheTestsOwn(*this, Player, TEXT("after the bleed"));
 	TestTrue(FString::Printf(TEXT("the stacks bleed (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
 	TestTrue(FString::Printf(TEXT("once a second, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
 			 Lost <= 2.0f * PerSecond + 0.5f);
@@ -41265,9 +41291,18 @@ bool FCataclysmBloodPriceBleedTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->ClearFloorEnemies();
+	// A FLOOR CHANGE APPLIES THE FLOOR'S RULES AGAIN, WHICH REFRESHES THE ATTRIBUTES: the hundred thousand is written
+	// again after a beat, as the set-up writes it.
+	Beat(Mode, 1);
+	if (!GiveThePlayerHealthForTypedDamage(*this, Player)
+		|| !MaximumIsStillTheTestsOwn(*this, Player, TEXT("before the bleed on floor 3")))
+	{
+		return false;
+	}
 	Before = BloodHealthOf(Player);
 	Beat(Mode, BeatsFor(2.0f));
 	Lost = Before - BloodHealthOf(Player);
+	MaximumIsStillTheTestsOwn(*this, Player, TEXT("after the bleed on floor 3"));
 	TestEqual(TEXT("the stacks are still two"), Mode->BloodPriceStacksHeld(), 2);
 	TestTrue(FString::Printf(TEXT("and still bleed (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
 	TestTrue(TEXT("and the bleed keyword is still held"), Player.AbilitySystem->HasMatchingGameplayTag(BleedingTag()));
@@ -41346,6 +41381,10 @@ bool FCataclysmBloodPriceAltarsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("refusing one is"), Refuse && Refuse->Label.EndsWith(PricedSuffix));
 
 	// OPENING THE BOX COSTS A TENTH.
+	if (!MaximumIsStillTheTestsOwn(*this, Player, TEXT("before the box")))
+	{
+		return false;
+	}
 	float Before = BloodHealthOf(Player);
 	if (!TestTrue(TEXT("the box opened"),
 				  Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], FName(Effects::PandorasBoxOpen))))
@@ -41356,6 +41395,7 @@ bool FCataclysmBloodPriceAltarsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("one stack"), Mode->BloodPriceStacksHeld(), 1);
 
 	// TAKING A PACT COSTS A TENTH.
+	MaximumIsStillTheTestsOwn(*this, Player, TEXT("before the pact"));
 	Before = BloodHealthOf(Player);
 	if (!TestTrue(TEXT("a pact was taken"), Mode->ChooseAtFloorObject(Mode->PactAltarNow(), WrathKey)))
 	{
@@ -41365,6 +41405,7 @@ bool FCataclysmBloodPriceAltarsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("two stacks"), Mode->BloodPriceStacksHeld(), 2);
 
 	// PAYING A TITHE IN HEALTH COSTS THE TITHE ONLY.
+	MaximumIsStillTheTestsOwn(*this, Player, TEXT("before the tithe"));
 	Before = BloodHealthOf(Player);
 	const float Maximum = Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
 	if (!TestTrue(TEXT("the tithe was paid in health"), Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), PayHealthKey)))

@@ -97,6 +97,30 @@ Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "interacting with chests, shrines, or levers", "a percentage of current hp",
 "permanent, uncleansable" and "stack of bleed each time".
 
+### Two test faults found by guard proof Pa, 2026-10-01
+
+**Proof Pa is NOT A PROOF, with its cause.** `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar` failed with the
+files restored as well: "Expected 'opening a box cost a tenth' to be 90000.000000, but it was 510.000000". The rule's own
+log in that run showed the price right ("Blood Price: 10000 health paid"). A diagnostic build, never committed, printed
+the player's health and maximum at each step and dumped the stack where the maximum fell:
+`GiveThePlayerHealthForTypedDamage` writes a maximum of a hundred thousand by hand, and on the set-up beat Pact of
+Temptation's first write of its buff and curses went through `ApplyChangingFloorEffects`, `RefreshAttributes` and
+`UCataclysmPlayerClassStats::ApplyTo`, which put the stat pipeline's own maximum, 510, back. Health stayed at 100000,
+above it, until the price's write was clamped to 510. `BloodPriceTheBleedTakesAQuarterPercentAStackEachSecond` failed
+the same way through a Battlefield Relic's buff. The test had never run before this window.
+
+**The finding, for any test using `GiveThePlayerHealthForTypedDamage`:** its hand-written maximum is undone by any
+rule's attribute refresh on a beat, and health is left above the new maximum until the next write. **The guard is
+`MaximumIsStillTheTestsOwn`**, asked wherever these tests read health against that maximum.
+
+**Fixed in the tests only, as the coordinating session ruled:** the set-up takes a beat before the maximum is written
+and checks it after the pricing beat; the altars test checks it before each priced choice; the bleed test takes its two
+stacks from two of Pandora's boxes at a reward roll, which refresh nothing, writes the maximum again after the floor
+change, and checks it before and after each measurement. Nothing in the game changed.
+
+**A fourth proof run, Pa2**, the same break against the fixed test, allowed by the coordinating session because Pa found
+a real gap in a test rather than failing a fair one.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
