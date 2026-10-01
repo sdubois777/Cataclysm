@@ -187,6 +187,33 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Kills")
 	int32 GetRunKills() const { return RunKills; }
 
+	/**
+	 * The world time the floor this character stands on began, recorded by the
+	 * dungeon game mode each time it places one. Issue #1833: "Enemies deal
+	 * 5%-8% increased damage for every 15 seconds spent on the same dungeon
+	 * floor" counts from here, and a new floor starts it again.
+	 */
+	void NoteFloorBegan(float WorldSeconds);
+
+	/** Seconds since `NoteFloorBegan` at this world time, or -1 if no floor began. */
+	float SecondsOnFloor(float WorldSeconds) const;
+
+	/**
+	 * One more dungeon floor cleared this run, recorded by the dungeon game
+	 * mode the first time it sees a floor's enemies all dead. Issue #1833:
+	 * "Your armor is increased by 1%-2% for every dungeon floor cleared this
+	 * run". "This run" is since the session began, as for the kills.
+	 *
+	 * AND IT REFRESHES THE CHARACTER'S ATTRIBUTES, FOR THE CHARACTER SHEET
+	 * ONLY. A blow asks for armour through the stat pipeline each time, so a
+	 * row scaled by this count reaches play at once; the sheet reads the Armor
+	 * attribute, which is written only by a refresh. Ruled 2026-09-30.
+	 */
+	void NoteFloorCleared();
+
+	/** Floors cleared this run. Issue #1833. */
+	int32 GetFloorsClearedThisRun() const { return FloorsClearedThisRun; }
+
 	/** Kills across every run this character has played. Issue #1833. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Kills")
 	int32 GetLifetimeKills() const { return LifetimeKills; }
@@ -449,6 +476,13 @@ protected:
 	/** See `NoteKill`. Replicated so a client's character sheet can show them. */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Kills")
 	int32 RunKills = 0;
+
+	/** See `NoteFloorCleared`. Replicated so a client's sheet can show it. */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Dungeon")
+	int32 FloorsClearedThisRun = 0;
+
+	/** See `NoteFloorBegan`. -1 until a floor begins. */
+	float FloorBeganAtSeconds = -1.0f;
 
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Kills")
 	int32 LifetimeKills = 0;

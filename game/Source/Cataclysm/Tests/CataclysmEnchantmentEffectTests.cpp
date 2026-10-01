@@ -10219,4 +10219,223 @@ bool FCataclysmMovementManaRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmFloorRowsTest
+{
+	/** A possessed player wearing one helm carrying these two enchantments, refreshed. */
+	struct FWearingPlayer
+	{
+		FWearingPlayer(UWorld* World, const TCHAR* Positive, const TCHAR* Negative)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			Player = CataclysmKillCounterTest::SpawnPossessedPlayer(World);
+			State = Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+			ASC = State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+			UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+			if (!ASC || !Equipment)
+			{
+				ASC = nullptr;
+				return;
+			}
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Equipment->Equip(Carrying(TEXT("Head_Helm"), Positive, Negative), Removed, AlsoRemoved, Slot);
+			Equipment->RefreshAttributes(ASC);
+		}
+
+		ACataclysmPlayerCharacter* Player = nullptr;
+		ACataclysmPlayerState* State = nullptr;
+		UCataclysmAbilitySystemComponent* ASC = nullptr;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorTimeRowTest,
+	"Cataclysm.Enchantments.TheFloorTimeRowRaisesDamageTakenEveryFifteenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies deal 5%-8% increased damage for every 15 seconds spent on the same
+ * dungeon floor", worn at the top: before any floor begins the wearer takes
+ * normal damage, and 31 seconds into a floor, two whole steps, it takes 1.16.
+ * Issue #1833, `damage_taken` scaled by `seconds_on_floor`. No cap, a labelled
+ * judgement of 2026-09-30 on the owner's play-check list.
+ */
+bool FCataclysmFloorTimeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, BenefitWithNoEffect,
+						   TEXT("Negative_Enemies_deal_5_8_increased_damage_for_every_15"));
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	const FName Stat(UCataclysmDamageCalculation::DamageTakenStat);
+	const float Normal = UCataclysmDamageCalculation::NormalDamageTaken;
+
+	TestEqual(TEXT("before any floor began: normal damage"),
+			  Wearing.ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal), 100.0f, 0.001f);
+	Wearing.State->NoteFloorBegan(Scope.World->GetTimeSeconds());
+	CataclysmTestWorld::RunClock(Scope.World, 31.0f);
+	TestEqual(TEXT("31 seconds into the floor, two steps of 8%: 116"),
+			  Wearing.ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal), 116.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorsClearedRowTest,
+	"Cataclysm.Enchantments.TheFloorsClearedRowRaisesTheArmorTheSheetShows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your armor is increased by 1%-2% for every dungeon floor cleared this run",
+ * worn at the top on a helm granting 200 armour: two clears raise the Armor
+ * ATTRIBUTE, which the character sheet reads, to what a blow asks for. Issue
+ * #1833: a blow reads armour live, and the refresh a clear makes is for the
+ * sheet alone, ruled 2026-09-30.
+ */
+bool FCataclysmFloorsClearedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_Your_armor_is_increased_by_1_2_for_every_dunge"),
+						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	const FGameplayAttribute Armor = UCataclysmCombatAttributeSet::GetArmorAttribute();
+	const float Before = Wearing.ASC->GetNumericAttribute(Armor);
+
+	Wearing.State->NoteFloorCleared();
+	Wearing.State->NoteFloorCleared();
+
+	const float After = Wearing.ASC->GetNumericAttribute(Armor);
+	const float Live = Wearing.ASC->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(), After);
+	TestTrue(*FString::Printf(TEXT("the sheet's armour rose with two clears: %.2f to %.2f"), Before, After),
+			 After > Before + 1.0f);
+	TestEqual(TEXT("and it is what a blow reads"), After, Live, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRetaliationPerArmorRowTest,
+	"Cataclysm.Enchantments.TheRetaliationPerArmorRowCountsWholeHundreds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your retaliation damage is increased by 2%-4% for every 100 points of armor
+ * you have", worn at the top: 250 armour is two whole hundreds, 8% increased
+ * retaliation. Issue #1833, `retaliation` scaled by the Armor attribute.
+ */
+bool FCataclysmRetaliationPerArmorRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_retaliation_damage_is_increased_by_2_4_fo"), true);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 250.0f);
+	TestEqual(TEXT("250 armour: 8% increased retaliation"),
+			  ASC->IncreasesForStat(FName(TEXT("retaliation")), FGameplayTagContainer()), 0.08f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossesRowTest,
+	"Cataclysm.Enchantments.TheBossRowGivesMoreDamagePerUniqueBossDefeated",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "For every unique Cataclysm boss defeated, gain 5%-10% more damage
+ * permanently", worn at the top: two unique bosses, one of them beaten twice,
+ * are 20% more attack damage. Issue #1833, `cataclysm_bosses_defeated`. Through
+ * the record alone: it reaches nothing in play until a unique boss exists.
+ */
+bool FCataclysmBossesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_For_every_unique_Cataclysm_boss_defeated_gain_5"),
+						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	Wearing.State->RecordCataclysmBossDefeat(FName(TEXT("Test_Boss_A")));
+	Wearing.State->RecordCataclysmBossDefeat(FName(TEXT("Test_Boss_B")));
+	Wearing.State->RecordCataclysmBossDefeat(FName(TEXT("Test_Boss_A")));
+
+	FCataclysmStatBreakdown Breakdown;
+	if (!TestTrue(TEXT("attack damage has a stat line"),
+				  Wearing.ASC->StatBreakdownForSkill(FName(TEXT("attack_damage")), FGameplayTagContainer(), Breakdown)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two unique bosses: 20% more"), Breakdown.MoreMultiplier, 1.2f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaxHealthPerKillAttributeTest,
+	"Cataclysm.KillCounter.TheMaxHealthPerKillRowReachesTheHealthBarAtTheNextRegenerationStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your maximum HP is increased by 0.01%-0.05% permanently for every 1000
+ * enemies killed this run", worn at the top: 100,000 kills move the MaxHealth
+ * ATTRIBUTE, the health bar's figure, at the next regeneration step, to what
+ * the stat line answers. Issue #1833 group C part 3c: the row's own test reads
+ * `IncreasesForStat` and could not see the bar. The step is what keeps it live
+ * (`UCataclysmRegeneration::ApplyStep` and `RefreshLiveMaximumHealth`, issue
+ * #1815); a kill refreshes nothing itself.
+ */
+bool FCataclysmMaxHealthPerKillAttributeTest::RunTest(const FString&)
+{
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm"),
+						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Before = Wearing.ASC->GetNumericAttribute(MaxHealth);
+	for (int32 Kill = 0; Kill < 100000; ++Kill)
+	{
+		Wearing.State->NoteKill();
+	}
+	TestEqual(TEXT("kills alone write nothing to the bar"),
+			  Wearing.ASC->GetNumericAttribute(MaxHealth), Before, 0.01f);
+
+	UCataclysmRegeneration::ApplyStep(Wearing.Player, 1.0f, 100.0f);
+	const float After = Wearing.ASC->GetNumericAttribute(MaxHealth);
+	TestTrue(*FString::Printf(TEXT("after a regeneration step the bar rose: %.2f to %.2f"), Before, After),
+			 After > Before + 1.0f);
+	TestEqual(TEXT("to what the stat line answers"),
+			  After, Wearing.ASC->StatForSkill(FName(TEXT("max_health")), FGameplayTagContainer(), After), 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -104,7 +104,11 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `deployables_active` JOINED the same day for deployable Part 3, and leaves
 #: with its row.
 #: `deployables_active` LEFT with its row, issue #1833.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: FOUR JOINED ON 2026-09-30 for issue #1833 group C part 3c, built ahead of
+#: their rows while the design workbook is with another session, and leave with
+#: them.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"seconds_on_floor", "floors_cleared",
+                                       "armor", "cataclysm_bosses_defeated"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
