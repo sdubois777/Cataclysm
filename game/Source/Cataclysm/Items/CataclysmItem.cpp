@@ -1342,6 +1342,26 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.Ailment = FGameplayTag::RequestGameplayTag(
 							FName(Kind->TagName), /*ErrorIfNotFound=*/false);
 					}
+					// AND WHETHER IT APPLIES A STATUS TO THE OTHER CHARACTER, and
+					// which. Issue #1833 group E part 1. The value is the chance,
+					// or the seconds for `apply_status_seconds`; the status is the
+					// row's Ailment cell, an ailment or one of the two names
+					// `UCataclysmAbilitySystemComponent` holds.
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::ApplyStatusAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.ApplyStatus = ECataclysmApplyStatus::Chance;
+					}
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::ApplyStatusSecondsAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.ApplyStatus = ECataclysmApplyStatus::Seconds;
+					}
+					if (Action.ApplyStatus != ECataclysmApplyStatus::None)
+					{
+						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
+					}
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

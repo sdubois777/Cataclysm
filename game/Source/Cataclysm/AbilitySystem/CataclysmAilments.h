@@ -289,6 +289,32 @@ public:
 																  AActor* Target);
 
 	/**
+	 * The debuffs an enchantment row's random debuff chooses among, equally
+	 * likely: Madness, Cripple, Weaken, Shred and Stun. Issue #1833 group E part
+	 * 1, ruled 2026-10-01, reading the judgement of 2026-09-11 ("Every buff and
+	 * debuff in `game/Data/StatusEffects.csv` that the game can apply") as the
+	 * Debuff rows a character can apply to an enemy with a duration of their own.
+	 * `docs/DECISIONS.md` lists the rows left out and why.
+	 */
+	static TArray<const FCataclysmAilmentKind*> RandomDebuffPool();
+
+	/**
+	 * Apply one debuff from `RandomDebuffPool` at its normal magnitude: Stun
+	 * through `UCataclysmSkillEffects::ApplyStun` for its row's seconds, so its
+	 * immunity window, a boss's immunity and its own rule of a tenth apply, and
+	 * the others through `Apply`. The console variable
+	 * `Cataclysm.RandomDebuffPick` pins which, by its place in the pool, for
+	 * tests; below nought, each is equally likely.
+	 *
+	 * @param DealtToHealth  what the blow took from the target's health, which
+	 *                       the stun's own rule reads
+	 * @return the debuff applied, or null when none was
+	 */
+	static const FCataclysmAilmentKind* ApplyRandomDebuff(AActor* Instigator,
+														  AActor* Target,
+														  float DealtToHealth);
+
+	/**
 	 * Apply one ailment at a magnitude, as its row of
 	 * `game/Data/StatusEffects.csv` says. Stun applies nothing here, because
 	 * `RollOnLandedBlow`'s pool applies it.
@@ -303,10 +329,14 @@ public:
 	 *                   passes its row's, because its instigator is the floor's
 	 *                   shared hazard source. The other shapes do not read it.
 	 *                   Issue #1924
+	 * @param Seconds    Cripple's duration in place of its row's, or 0 for the
+	 *                   row's. The applier's increases to its duration still
+	 *                   apply. Issue #1833 group E part 1: "a 2-4 second slow".
+	 *                   The other shapes do not read it
 	 * @return whether anything was applied
 	 */
 	static bool Apply(AActor* Instigator, AActor* Target,
 					  const FCataclysmAilmentKind& Kind, float Magnitude,
 					  const UGameplayAbility* Skill = nullptr,
-					  FName DamageType = NAME_None);
+					  FName DamageType = NAME_None, float Seconds = 0.0f);
 };

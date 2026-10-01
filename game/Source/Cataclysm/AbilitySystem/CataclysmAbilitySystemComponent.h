@@ -740,6 +740,23 @@ public:
 	static const TCHAR* RemainingDamageTargetAction;
 
 	/**
+	 * The two actions that apply a status to the other character of their event.
+	 * Issue #1833 group E part 1, ruled 2026-10-01. `tools/generate_datatables.py`
+	 * holds the same names in `APPLY_STATUS_ACTIONS`. See `ECataclysmApplyStatus`.
+	 */
+	static const TCHAR* ApplyStatusAction;
+	static const TCHAR* ApplyStatusSecondsAction;
+
+	/**
+	 * The two statuses a status action may name that are not ailments: a
+	 * stagger, through `UCataclysmSkillEffects::ApplyStagger`, and one debuff
+	 * from `UCataclysmAilments::RandomDebuffPool`. `tools/generate_datatables.py`
+	 * holds the same names in `APPLY_STATUSES`.
+	 */
+	static const TCHAR* StaggerStatus;
+	static const TCHAR* RandomDebuffStatus;
+
+	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
 	 * of 2026-09-11 under the owner's delegation, recorded in
 	 * `docs/DECISIONS.md`: "nearby" or "close range" with no number is 5 m. Ruled
@@ -2286,8 +2303,14 @@ public:
 	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
 	 * beside the Boss clock, where a blow has got through, on
 	 * `UCataclysmCombatEvents::AttackerOf`.
+	 *
+	 * @return whether this was the first blow of `Striker`'s to get through to
+	 *         this character, which the hit's announcement carries as
+	 *         `FCataclysmHitNotice::bFirstFromAttacker`. Issue #1833 group E
+	 *         part 1: the record is written before the blow is announced, so
+	 *         by `hit_dealt` it already holds this blow.
 	 */
-	void NoteStruckBy(const UAbilitySystemComponent* Striker, bool bCritical);
+	bool NoteStruckBy(const UAbilitySystemComponent* Striker, bool bCritical);
 
 	/** Whether a blow of `Striker`'s has got through to this character. */
 	bool WasStruckBy(const UAbilitySystemComponent* Striker) const;
@@ -2827,6 +2850,16 @@ protected:
 	 * Issue #1833 group D part 3. See `ECataclysmNearbyAction`.
 	 */
 	void ActOnNearby(const FCataclysmPoolAction& Action);
+
+	/**
+	 * Apply a status action's status to `Other`, the other character of its
+	 * event, by `Applier`. Issue #1833 group E part 1. `EventAmount` is what
+	 * reached `Other`'s health, which an ailment's rule of #917 reads.
+	 *
+	 * @return whether the status was applied
+	 */
+	static bool ApplyStatusOf(const FCataclysmPoolAction& Action, AActor* Applier,
+							  AActor* Other, float EventAmount);
 
 	/** Move one pool, by the rules the project owner's delegate ruled on 2026-09-14. */
 	void ApplyPoolAction(const FCataclysmPoolAction& Action,

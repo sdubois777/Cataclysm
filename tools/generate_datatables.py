@@ -4835,6 +4835,9 @@ HIT_FIRED_EVENTS = (
     # A BLOW BREAKING THE ENERGY SHIELD. Issue #1833 group D part 3, ruled
     # 2026-10-01: a hit causes it, so it takes the default.
     "energy_shield_broken",
+    # THE WEARER'S FIRST BLOW TO GET THROUGH TO AN ENEMY. Issue #1833 group E
+    # part 1, ruled 2026-10-01: a hit dealt, so it takes the default.
+    "first_hit_dealt",
 )
 
 #: The seconds a trigger waits when its row states none. See `HIT_FIRED_EVENTS`.
@@ -4912,6 +4915,61 @@ AILMENTS = (
     "Burn",
 )
 
+#: The actions that APPLY A STATUS to the other character of their event, named
+#: in the row's Ailment cell. Issue #1833 group E part 1, ruled 2026-10-01.
+#: `apply_status`'s value is the chance, above 0 and up to 100, at the status's
+#: own duration; `apply_status_seconds`'s is the seconds, up to
+#: `MAX_STATUS_SECONDS`, and it always applies.
+#: `UCataclysmAbilitySystemComponent::ApplyStatusAction` and
+#: `ApplyStatusSecondsAction` hold the same names.
+APPLY_STATUS_ACTIONS = (
+    "apply_status",
+    "apply_status_seconds",
+)
+
+#: The events a status action may hang on: the ones naming the character the
+#: wearer struck, or the attacker it paid retaliation to. Issue #1833 group E
+#: part 1.
+APPLY_STATUS_EVENTS = (
+    "hit_dealt",
+    "first_hit_dealt",
+    "critical_strike",
+    "retaliation_dealt",
+    "deployable_hit",
+)
+
+#: The statuses `apply_status` may name: every ailment
+#: `UCataclysmAilments::Apply` applies, a stagger, and one debuff from
+#: `UCataclysmAilments::RandomDebuffPool`. Stun is not here, because `Apply`
+#: leaves it to a landed blow's pool; the random debuff reaches it.
+#: `UCataclysmAbilitySystemComponent::StaggerStatus` and `RandomDebuffStatus`
+#: hold the last two names. Issue #1833 group E part 1.
+APPLY_STATUSES = (
+    "Bleed",
+    "Poison",
+    "Disease",
+    "Void Splinter",
+    "Necrosis",
+    "Burn",
+    "Madness",
+    "Cripple",
+    "Weaken",
+    "Shred",
+    "Stagger",
+    "Random Debuff",
+)
+
+#: The statuses `apply_status_seconds` may name: the two whose duration a row
+#: may state in place of their own. Cripple keeps its row's strength for the
+#: stated seconds. Issue #1833 group E part 1.
+APPLY_STATUSES_FOR_SECONDS = (
+    "Stagger",
+    "Cripple",
+)
+
+#: The longest a stated status may last. A sanity bound, as the clocks' is.
+MAX_STATUS_SECONDS = 10.0
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -4921,7 +4979,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
     return (action in POOL_ACTIONS or action in COOLDOWN_RESET_ACTIONS
             or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION
             or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS
-            or action in REMAINING_DAMAGE_ACTIONS)
+            or action in REMAINING_DAMAGE_ACTIONS or action in APPLY_STATUS_ACTIONS)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -5020,6 +5078,13 @@ ACTION_ONLY_EVENTS = (
     # 2026-10-01. Mana is not a resource here, and the Fervour mechanics' own
     # spends raise nothing.
     "resource_consumed",
+    # THE WEARER'S FIRST BLOW TO GET THROUGH TO AN ENEMY, raised by the player
+    # character beside `hit_dealt` with the same tags, the target and what
+    # reached its health. Issue #1833 group E part 1, ruled 2026-10-01: "Your
+    # first hit against each enemy". Not `hit_dealt` with
+    # `target_not_yet_struck_by_you`, because the target records the blow
+    # before it is announced, so that condition is false on every hit by then.
+    "first_hit_dealt",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -5107,6 +5172,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_remaining_damage_action(index, who, action, event, fraction_of,
                                        kind, raw, headers)
         return
+    if action in APPLY_STATUS_ACTIONS:
+        _check_apply_status_action(index, who, action, event, fraction_of,
+                                   kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -5119,7 +5188,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}; or {RANDOM_DOT_ACTION}; "
             f"or {HEALTH_CAP_ACTION}; or a nearby action, "
             f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
-            f"{', '.join(REMAINING_DAMAGE_ACTIONS)}.")
+            f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
+            f"{', '.join(APPLY_STATUS_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -5289,6 +5359,30 @@ def _check_remaining_damage_action(index: int, who: str, action: str, event: str
                 f"Enchantment Effects row {index}: {who} deals remaining damage "
                 f"and states {column} {written!r}. Its value is a share and "
                 f"nothing else, so the column must be empty.")
+
+
+def _check_apply_status_action(index: int, who: str, action: str, event: str,
+                               fraction_of: str, kind: str, raw,
+                               headers: dict[str, int]) -> None:
+    """Everything a status row must say, and everything it must not. Issue
+    #1833 group E part 1. The event must name the other character, because that
+    is who the status is applied to; the value and the Ailment are checked where
+    they are read. A fraction, a value kind and a scale each mean nothing here,
+    so each is refused rather than dropped.
+    """
+    if event not in APPLY_STATUS_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} applies a status on the "
+            f"event {event or '(none)'!r}. Only an event naming the character "
+            f"it is applied to can: {', '.join(APPLY_STATUS_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} applies a status and "
+                f"states {column} {written!r}. Its value is a chance or seconds "
+                f"and nothing else, so the column must be empty.")
 
 
 def _check_nth_action(index: int, who: str, action: str, event: str,
@@ -5552,7 +5646,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action != RANDOM_DOT_ACTION \
                     and action != HEALTH_CAP_ACTION \
                     and action not in NEARBY_ACTIONS \
-                    and action not in REMAINING_DAMAGE_ACTIONS:
+                    and action not in REMAINING_DAMAGE_ACTIONS \
+                    and action not in APPLY_STATUS_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5691,6 +5786,23 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} acts on the "
                     f"characters nearby at {low:g} to {high:g} per cent. "
                     f"{action} takes above 0 and up to {bound:g}.")
+
+        # A STATUS ACTION'S VALUE IS A CHANCE, above 0 and up to 100, or SECONDS,
+        # above 0 and up to the bound. Issue #1833 group E part 1. Neither has
+        # stacks.
+        if action == "apply_status":
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} applies a status "
+                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                    f"and up to 100, and 100 is always.")
+        if action == "apply_status_seconds":
+            if not (0 < low <= MAX_STATUS_SECONDS
+                    and 0 < high <= MAX_STATUS_SECONDS):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} applies a status "
+                    f"for {low:g} to {high:g} seconds. It lasts above 0 and up to "
+                    f"{MAX_STATUS_SECONDS:g}.")
 
         # A REMAINING DAMAGE ACTION'S VALUE IS A SHARE OF THAT DAMAGE, above 0 and
         # up to 100. Issue #1833 group D part 4.
@@ -6079,13 +6191,23 @@ def enchantment_effects(book) -> list[dict]:
         # part 4, ruled 2026-10-01: required on `dot_remaining_target`, allowed on
         # `dot_remaining_nearby`, and refused everywhere else, as Event Value is.
         ailment = clean(_cell(raw, headers, "Ailment"))
-        if ailment:
+        # AND THE STATUS A STATUS ACTION APPLIES, in the same cell. Issue #1833
+        # group E part 1, ruled 2026-10-01: required on both status actions.
+        if action in APPLY_STATUS_ACTIONS:
+            known = (APPLY_STATUSES_FOR_SECONDS if action == "apply_status_seconds"
+                     else APPLY_STATUSES)
+            if ailment not in known:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} applies the status "
+                    f"{ailment or '(none)'!r}, which {action} cannot. Known: "
+                    f"{', '.join(known)}.")
+        elif ailment:
             if action not in REMAINING_DAMAGE_ACTIONS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} names the ailment "
                     f"{ailment!r} on {action or stat!r}. Only "
-                    f"{', '.join(REMAINING_DAMAGE_ACTIONS)} read one, so it would "
-                    f"be dropped.")
+                    f"{', '.join(REMAINING_DAMAGE_ACTIONS + APPLY_STATUS_ACTIONS)} "
+                    f"read one, so it would be dropped.")
             if ailment not in AILMENTS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} names the ailment "

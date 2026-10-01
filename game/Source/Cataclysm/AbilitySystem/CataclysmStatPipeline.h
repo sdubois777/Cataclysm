@@ -3426,6 +3426,31 @@ enum class ECataclysmRemainingDamage : uint8
 };
 
 /**
+ * How an action applies a status to the other character of its event. Issue
+ * #1833 group E part 1, ruled 2026-10-01. `APPLY_STATUS_ACTIONS` in
+ * `tools/generate_datatables.py` holds the two action names, one per value below
+ * but None. The status is the row's `Ailment` cell.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmApplyStatus : uint8
+{
+	/** Not a status row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * The value is the chance, where 100 is always, at the status's own
+	 * duration: "Retaliation damage has a 20%-40% chance to stagger the attacker".
+	 */
+	Chance UMETA(DisplayName = "A chance, at the status's own duration"),
+
+	/**
+	 * The value is the seconds, and it always applies: "Retaliation damage
+	 * applies a 2-4 second slow to the attacker".
+	 */
+	Seconds UMETA(DisplayName = "Always, for the value in seconds"),
+};
+
+/**
  * Which skill cooldowns a reset action clears. Issue #1833, the cooldown reset
  * action. `COOLDOWN_RESET_ACTIONS` in `tools/generate_datatables.py` holds the
  * six action names, one per value below but None.
@@ -3810,6 +3835,22 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FGameplayTag Ailment;
+
+	/**
+	 * Set, this action applies the status `StatusName` to the other character of
+	 * its event instead of moving a pool. Issue #1833 group E part 1. See
+	 * `ECataclysmApplyStatus` and `UCataclysmAbilitySystemComponent::ApplyStatusOf`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmApplyStatus ApplyStatus = ECataclysmApplyStatus::None;
+
+	/**
+	 * The status a status action applies, from the row's `Ailment`: an ailment
+	 * `UCataclysmAilments::KindNamed` reads ("Bleed", "Cripple"), or
+	 * `UCataclysmAbilitySystemComponent::StaggerStatus` or `RandomDebuffStatus`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FString StatusName;
 };
 
 /**
