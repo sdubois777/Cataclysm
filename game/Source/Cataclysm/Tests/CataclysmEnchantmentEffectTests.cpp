@@ -10695,12 +10695,22 @@ bool FCataclysmArchonsAegisRowTest::RunTest(const FString&)
 		FWearer Attacker(World);
 		Attacker.AbilitySystem->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 5000.0f);
+		// THE LOWEST HEALTH REACHED, heard as it changes: the end value alone
+		// cannot show a save, because a heal on the fall refills health either way.
+		float Lowest = TNumericLimits<float>::Max();
+		const FDelegateHandle Watching = Wearer.AbilitySystem->GetGameplayAttributeValueChangeDelegate(
+			UCataclysmVitalAttributeSet::GetHealthAttribute()).AddLambda(
+			[&Lowest](const FOnAttributeChangeData& Change) { Lowest = FMath::Min(Lowest, Change.NewValue); });
 		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Wearer.Actor, /*DamagePercent=*/100.0f);
+		Wearer.AbilitySystem->GetGameplayAttributeValueChangeDelegate(
+			UCataclysmVitalAttributeSet::GetHealthAttribute()).Remove(Watching);
 		if (Pieces < 10)
 		{
+			TestEqual(TEXT("nine pieces: the blow reaches nought"), Lowest, 0.0f, 0.01f);
 			TestEqual(TEXT("nine pieces: the blow kills"), HealthOf(Wearer.AbilitySystem), 0.0f, 0.01f);
 			continue;
 		}
+		TestEqual(TEXT("ten pieces: the blow never takes the wearer below one point"), Lowest, 1.0f, 0.01f);
 		TestEqual(TEXT("ten pieces: the blow is saved and healed to full"),
 			HealthOf(Wearer.AbilitySystem), 1000.0f, 0.01f);
 		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Wearer.Actor, /*DamagePercent=*/100.0f);

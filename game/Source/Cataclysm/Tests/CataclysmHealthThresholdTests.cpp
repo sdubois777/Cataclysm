@@ -87,6 +87,35 @@ namespace CataclysmHealthThresholdTest
 		TObjectPtr<UCataclysmVitalAttributeSet> Vitals = nullptr;
 	};
 
+	/**
+	 * The lowest health a character reaches while this is alive, heard on the
+	 * component's own value-change delegate, so a value later overwritten is
+	 * still seen. A lethal blow saved leaves one point; one not saved reaches
+	 * nought, even when a heal on the fall then refills it, which is why the end
+	 * value alone cannot show a save.
+	 */
+	struct FLowestHealth
+	{
+		explicit FLowestHealth(UAbilitySystemComponent* InSystem)
+			: System(InSystem)
+		{
+			Handle = System->GetGameplayAttributeValueChangeDelegate(
+				UCataclysmVitalAttributeSet::GetHealthAttribute()).AddLambda(
+				[this](const FOnAttributeChangeData& Change)
+				{
+					Lowest = FMath::Min(Lowest, Change.NewValue);
+				});
+		}
+		~FLowestHealth()
+		{
+			System->GetGameplayAttributeValueChangeDelegate(
+				UCataclysmVitalAttributeSet::GetHealthAttribute()).Remove(Handle);
+		}
+		float Lowest = TNumericLimits<float>::Max();
+		UAbilitySystemComponent* System = nullptr;
+		FDelegateHandle Handle;
+	};
+
 	/** "When health falls below `Threshold`%, restore `Percent`% of the maximum." */
 	FCataclysmPoolAction HealBelow(float Threshold, float Percent, float CooldownSeconds = 0.0f)
 	{
@@ -164,14 +193,33 @@ CATACLYSM_TEST(FCataclysmHealthLethalSaveTest,
 		return false;
 	}
 	{
+		// THE RECORDER SEES A VALUE THAT IS LATER OVERWRITTEN, the control without
+		// which every lowest below would only be the end value again.
+		{
+			const FFighter Control(World);
+			const FLowestHealth Watching(Control.AbilitySystem);
+			Control.SetHealth(1000.0f, 0.0f);
+			Control.SetHealth(1000.0f, 500.0f);
+			TestEqual(TEXT("the recorder saw the 0 that was overwritten"), Watching.Lowest, 0.0f, 0.01f);
+			TestEqual(TEXT("and the end value is the 500"), Control.Health(), 500.0f, 0.01f);
+		}
+
 		const FFighter Wearer(World);
 		Wearer.AbilitySystem->SetPoolActions({HealBelow(10.0f, 100.0f, 600.0f)});
 
-		Strike(World, Wearer, 5000.0f);
-		TestEqual(TEXT("a blow of 5000 against 1000 is saved and healed to full"),
-			Wearer.Health(), 1000.0f, 0.01f);
-		Strike(World, Wearer, 5000.0f);
-		TestEqual(TEXT("a second inside the ten minutes kills"), Wearer.Health(), 0.0f, 0.01f);
+		{
+			const FLowestHealth Watching(Wearer.AbilitySystem);
+			Strike(World, Wearer, 5000.0f);
+			TestEqual(TEXT("a blow of 5000 against 1000 never takes the wearer below one point"),
+				Watching.Lowest, 1.0f, 0.01f);
+			TestEqual(TEXT("and it is saved and healed to full"), Wearer.Health(), 1000.0f, 0.01f);
+		}
+		{
+			const FLowestHealth Watching(Wearer.AbilitySystem);
+			Strike(World, Wearer, 5000.0f);
+			TestEqual(TEXT("a second inside the ten minutes reaches nought"), Watching.Lowest, 0.0f, 0.01f);
+			TestEqual(TEXT("and kills"), Wearer.Health(), 0.0f, 0.01f);
+		}
 
 		// ONLY A ROW THAT HEALS SAVES: a row on the same fall that grants a
 		// stack, as the Demon King's Regalia does, does not cheat death.
