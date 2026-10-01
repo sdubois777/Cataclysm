@@ -1840,7 +1840,7 @@ class TestScaleStepHigh:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High", "Trigger Cooldown"]
+              "Condition Value High", "Trigger Cooldown", "Event Value"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -2143,7 +2143,7 @@ class TestHealthThresholdAndFloorStart:
         [TestTriggerCooldownAndRandomDot.BLOCK_WORDS, "Generic", 4, "Stat.Defense.Block", None,
          FLOOR_WORDS, "Generic", 3, "Stat.Defense.Life"],
     ]
-    HEADER = TestTriggerCooldownAndRandomDot.HEADER + ["Event Value"]
+    HEADER = TestTriggerCooldownAndRandomDot.HEADER
 
     def book(self, tmp_path, values):
         row = [values.get(column) for column in self.HEADER]

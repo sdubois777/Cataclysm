@@ -530,8 +530,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 416 over 338: five rows on four enchantments.
 #: AND 423 OVER 344 SINCE THE RANDOM DAMAGE OVER TIME,
 #: issue #1833 group D, from 421 over 342: two rows on two enchantments.
-AUTHORED_ROWS = 423
-AUTHORED_ENCHANTMENTS = 344
+#: AND 428 OVER 347 SINCE THE HEALTH THRESHOLDS,
+#: issue #1833 group D part 2, from 423 over 344: five rows on three enchantments.
+AUTHORED_ROWS = 428
+AUTHORED_ENCHANTMENTS = 347
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

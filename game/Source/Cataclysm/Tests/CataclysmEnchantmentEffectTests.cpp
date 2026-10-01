@@ -27,6 +27,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -10623,6 +10624,220 @@ bool FCataclysmRetaliationRandomDotRowTest::RunTest(const FString&)
 		Paid >= 100.0f);
 	TestTrue(TEXT("and the attacker carries the pinned Necrosis"),
 		Carries(Attacker.AbilitySystem, *Pool[3]));
+	return true;
+}
+
+
+namespace CataclysmHealthThresholdRowTest
+{
+	/** Ten bases in ten different slots, so a whole set can be worn. */
+	const TCHAR* const TenBases[] = {
+		TEXT("Head_Helm"), TEXT("Chest_Cuirass"), TEXT("Shoulders_Pauldrons"),
+		TEXT("Gloves_Gauntlets"), TEXT("Pants_Greaves"), TEXT("Boots_Sabatons"),
+		TEXT("Belt_Girdle"), TEXT("Necklace_Amulet"), TEXT("Relic_Idol"), TEXT("Ring_Band")};
+
+	/** Wear `Pieces` items of the set whose first bonus is `SetBonus`, then refresh. */
+	void WearSet(CataclysmEnchantmentEffectTest::FWearer& Wearer, const TCHAR* SetBonus, int32 Pieces)
+	{
+		for (int32 Index = 0; Index < Pieces; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer.Equipment->Equip(CataclysmEnchantmentEffectTest::Carrying(
+				TenBases[Index], SetBonus, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect),
+				Removed, AlsoRemoved, Slot);
+		}
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+	}
+
+	/** Maximum first, then current: the vital set clamps health to it. */
+	void SetHealth(UAbilitySystemComponent* Character, float Maximum, float Current)
+	{
+		Character->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Maximum);
+		Character->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Current);
+	}
+
+	float HealthOf(const UAbilitySystemComponent* Character)
+	{
+		return Character->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArchonsAegisRowTest,
+	"Cataclysm.Enchantments.ArchonsAegisTenPiecesSaveALethalBlowAndHealToFullOnceInTenMinutes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Archon's Aegis (10-Piece Bonus): When your health falls below 10%, you are
+ * instantly healed to 100% of your maximum health. (10 minute cd)". Issue #1833
+ * group D part 2, ruled 2026-09-30: it saves a lethal blow too, and the heal is
+ * an ordinary heal (`TopUp`). Nine pieces do not save.
+ */
+bool FCataclysmArchonsAegisRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Aegis = TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
+
+	for (const int32 Pieces : {9, 10})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, Aegis, Pieces);
+		SetHealth(Wearer.AbilitySystem, 1000.0f, 1000.0f);
+
+		FWearer Attacker(World);
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 5000.0f);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Wearer.Actor, /*DamagePercent=*/100.0f);
+		if (Pieces < 10)
+		{
+			TestEqual(TEXT("nine pieces: the blow kills"), HealthOf(Wearer.AbilitySystem), 0.0f, 0.01f);
+			continue;
+		}
+		TestEqual(TEXT("ten pieces: the blow is saved and healed to full"),
+			HealthOf(Wearer.AbilitySystem), 1000.0f, 0.01f);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Wearer.Actor, /*DamagePercent=*/100.0f);
+		TestEqual(TEXT("a second inside ten minutes kills"), HealthOf(Wearer.AbilitySystem), 0.0f, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonKingsRegaliaRowTest,
+	"Cataclysm.Enchantments.DemonKingsRegaliaSixPiecesGrantTenSecondsOfImmunityOnceInFiveMinutes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Demon King's Regalia (6-Piece Bonus): When your health falls below 25%, you
+ * enter a 'Demonic Rage' becoming immune to all crowd control and dealing 100%
+ * more damage for 10 seconds. (5 minute cd)". Issue #1833 group D part 2: three
+ * own-stack rows on `health_falls_below` at 25, each lasting 10 seconds with a
+ * stated 300 second cooldown. Read through the immunity row.
+ */
+bool FCataclysmDemonKingsRegaliaRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Regalia = TEXT("Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	WearSet(Wearer, Regalia, 6);
+	SetHealth(Wearer.AbilitySystem, 1000.0f, 1000.0f);
+	const auto Immunity = [&Wearer]()
+	{
+		return Wearer.AbilitySystem->StatForSkill(
+			FName(TEXT("crowd_control_resistance")), FGameplayTagContainer(), 0.0f);
+	};
+
+	TestEqual(TEXT("at full health: no immunity"), Immunity(), 0.0f, 0.01f);
+	SetHealth(Wearer.AbilitySystem, 1000.0f, 200.0f);
+	TestEqual(TEXT("falling below 25%: immune"), Immunity(), 100.0f, 0.01f);
+	World->TimeSeconds += 11.0f;
+	TestEqual(TEXT("eleven seconds later: lapsed"), Immunity(), 0.0f, 0.01f);
+	SetHealth(Wearer.AbilitySystem, 1000.0f, 800.0f);
+	SetHealth(Wearer.AbilitySystem, 1000.0f, 200.0f);
+	TestEqual(TEXT("a second fall inside five minutes: none"), Immunity(), 0.0f, 0.01f);
+	World->TimeSeconds += 300.0f;
+	SetHealth(Wearer.AbilitySystem, 1000.0f, 800.0f);
+	SetHealth(Wearer.AbilitySystem, 1000.0f, 200.0f);
+	TestEqual(TEXT("after five minutes: immune again"), Immunity(), 100.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorStartRowTest,
+	"Cataclysm.Enchantments.TheFloorStartRowLowersHealthToItsRolledShareThroughARealFloorChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You start every dungeon floor at 30%-50% of your maximum HP". Issue #1833
+ * group D part 2: `health_capped_at` 30 to 50 on `floor_start`.
+ *
+ * THE PLAY PATH, MEASURED: the row is WORN by a possessed player and the floor
+ * is entered through the real `GoToFloor`. The floor's rules refresh the
+ * player's equipment, which rebuilds the action list from what is worn, before
+ * `floor_start` is raised, so this is the test that the worn row survives that
+ * refresh and caps. Read against the roll the item gave the row.
+ */
+bool FCataclysmFloorStartRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("the dungeon game mode"), Mode)
+		|| !TestNotNull(TEXT("a player state"), PlayerState)
+		|| !TestNotNull(TEXT("a controller"), Controller)
+		|| !TestNotNull(TEXT("a player character"), Character))
+	{
+		return false;
+	}
+	Controller->SetPlayerState(PlayerState);
+	Controller->Possess(Character);
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Character->GetAbilitySystemComponent());
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	if (!TestNotNull(TEXT("the player's ability system"), AbilitySystem)
+		|| !TestNotNull(TEXT("the player's equipment"), Equipment))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+		TEXT("Negative_You_start_every_dungeon_floor_at_30_50_of_your")),
+		Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(AbilitySystem);
+	float Share = -1.0f;
+	for (const FCataclysmPoolAction& Action : AbilitySystem->GetPoolActions())
+	{
+		if (Action.bHealthCap)
+		{
+			Share = Action.Percent;
+		}
+	}
+	if (!TestTrue(*FString::Printf(TEXT("the worn row gave a cap between 30 and 50: %.2f"), Share),
+			Share >= 30.0f && Share <= 50.0f))
+	{
+		return false;
+	}
+
+	// FULL, AT THE MAXIMUM AS IT STANDS.
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	AbilitySystem->SetNumericAttributeBase(Health, AbilitySystem->GetNumericAttribute(MaxHealth));
+
+	Mode->EnemyScale = 0.1f;
+	if (!TestTrue(TEXT("the floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	TestTrue(TEXT("the player has a maximum"), Maximum > 0.0f);
+	TestEqual(TEXT("a full player wearing the row starts the floor at its share"),
+		AbilitySystem->GetNumericAttribute(Health), Maximum * Share / 100.0f, 0.01f);
 	return true;
 }
 
