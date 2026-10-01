@@ -3795,6 +3795,37 @@ def test_warzone_row_still_names_allied_soldiers_and_shortcuts():
             "WarzoneControlPointsKey in CataclysmDungeonModifierEffects.h. " + words)
 
 
+def test_singularity_wells_row_still_says_pulling_orbs_pull_players_and_projectiles():
+    """The phrases Singularity Wells' readings rest on.
+
+    "Pulsing void orbs pull players and projectiles toward them, dealing void damage and slowing movement by 40%."
+    PULSING is why the pull is a beat's worth each beat; PULL PLAYERS AND PROJECTILES is why both are pulled and
+    creatures are not; SLOWING MOVEMENT BY 40% is what the pull's figure is half of. See SingularityWellsKey in
+    CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Void_Singularity_Wells"]["Description"])
+    lower = words.lower()
+    for phrase in ("pulsing void orbs", "pull players and projectiles toward them", "slowing movement by 40%"):
+        assert phrase in lower, (
+            f"Void_Singularity_Wells no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "SingularityWellsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_infernal_rain_row_still_says_fireballs_rain_leaving_burning_ground():
+    """The phrases Infernal Rain's readings rest on.
+
+    "Fireballs rain in combat zones, leaving patches of burning ground ..." FIREBALLS RAIN is the falling fireball;
+    LEAVING PATCHES OF BURNING GROUND is why the patch is placed where the fireball lands. See InfernalRainKey in
+    CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Demonic_Infernal_Rain"]["Description"])
+    lower = words.lower()
+    for phrase in ("fireballs rain", "leaving patches of burning ground"):
+        assert phrase in lower, (
+            f"Demonic_Infernal_Rain no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "InfernalRainKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
 def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
     """The row's own figure and scope, and the half that grants nothing today.
 

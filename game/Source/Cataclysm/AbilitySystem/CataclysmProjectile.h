@@ -163,6 +163,12 @@ public:
 	 */
 	const FGameplayTagContainer& FiringSkillTags() const { return SkillTags; }
 
+	/** Unit vector along its travel on the ground plane, for tests and for a rule that re-aims it. */
+	const FVector& TravelDirection() const { return Direction; }
+
+	/** The percent of its firer's weapon damage one hit deals; zero for a shot that only shows. */
+	float DamagePercentOfAHit() const { return DamagePercent; }
+
 	/**
 	 * Move forward by one step and hit whatever that step passed through.
 	 *
@@ -175,6 +181,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Projectile")
 	bool Step(float DeltaSeconds);
+
+	/**
+	 * Turn toward the centre of the nearest registered pulling zone that covers this point, by at most its figure
+	 * times these seconds. Singularity Wells, issue #1605. See `ACataclysmGroundZone::SetProjectilePull`.
+	 */
+	void TurnTowardAPull(const FVector& At, float Seconds);
 
 	/** Broadcast once, when it stops. The firing skill listens so it can leave ground. */
 	FCataclysmProjectileFinished OnFinished;
