@@ -86,8 +86,58 @@ and block set to zero, and the player has no critical strike chance.
 The existing tests `SacrificialBondDividesAHitAmongTheAlliesPresent` and
 `AnUnholySigilProtectsAlliesStandingInIt` call the two functions directly, and are kept.
 
-**Not built or run when this was written.** The build machine was held by another session; the run table
-follows when the window runs.
+### THE WINDOW'S RUN, FOR THIS ENTRY AND THE ONE BELOW
+
+This change was built and tested in one window with the Living Pyre change below it (issues #1607 and #1608),
+stacked on `development` 37660116: the Pyre branch's three commits, this one, and one fix. Run 2026-09-30 in
+the jovial-bouman worktree. **The Pyre entry carries no run table of its own; this one is its run as well.**
+
+**The first whole suite failed, and the window was stopped.** At 5dd870c5 it printed one failure,
+`Cataclysm.DungeonModifierEffects.AFloorClearedInTimeEndsItsTrialOfEndurance`: "Expected 'the beacon was
+destroyed' to be true". That test strikes every creature the game populated the floor with, once each, and
+expects each to die. Those creatures draw modifiers at random, and two on that floor had drawn Sacrificial
+Bond. **That the Bond was the cause is inferred, not shown: the log does not say which creature survived
+the blow.** It is the only change in the window that touches that path.
+
+The fix is in the tests, as the coordinating session ruled: the game now does what this entry describes.
+`MakeAOneBlowKillReliable`, in `CataclysmDungeonModifierEffectsTests.cpp`, removes only the Sacrificial Bond
+row from a creature a test means to kill with one blow, and asserts that no Unholy Sigil holds it.
+- The kill helpers `KillIt`, `BreakOrKill` and `DestroyTheBeacon` call it, and so do the Plague Harbinger
+  and Luxury Hoard kills.
+- Every other row stays, so the Horde Leader test keeps the row it is about.
+- A sigil is named rather than removed. No killing test runs a creature's own clock the twenty seconds a
+  sigil takes to be laid.
+- A sweep of all 186 test files found the tests those helpers serve. Ten call sites in nine tests reach those
+  helpers with a victim that can draw the Bond, and two kills are written out directly: the Harbinger and
+  the Hoard.
+
+**The second whole suite ran with the random draws as they came, not seeded**, which is the evidence the fix
+holds rather than a single lucky draw.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 5dd870c5 | Build: Succeeded - 31 actions, 28 files compiled |
+| First whole suite | 5dd870c5 | 2928 tests performed, 2927 succeeded, 1 failed: AFloorClearedInTimeEndsItsTrialOfEndurance |
+| Python of record | 5dd870c5 | 5593 passed, 8 skipped in 405.36s; JUnit tests=5601 failures=0 errors=0 skipped=8 |
+| Rebuild after the test fix | c3915feb | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.25.cpp |
+| Group rerun | c3915feb | DungeonModifierEffects: 480 tests performed, 480 succeeded, 0 failed |
+| Python, test fix only | c3915feb | tools/tests: 3776 passed, 8 skipped in 42.90s; JUnit tests=3784 failures=0 errors=0 skipped=8 |
+| Second whole suite | c3915feb | 2928 tests performed, 2928 succeeded, 0 failed; declared 2928, gap 0 (registered 2922 + 6) |
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| A: Living Pyre writes its health straight back instead of through `TopUp` | c3915feb | PROVED: with the break in: 268 tests performed, 265 succeeded, 3 failed: ACurseCutsTheLivingPyresReturnWithoutCoolingThePyre, TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes, TheLivingPyreStopsAtTheHealingCeiling \| restored: 268 tests performed, 268 succeeded, 0 failed |
+| B: Wrung Out compares with maximum health, not the ceiling | c3915feb | PROVED: with the break in: 139 tests performed, 138 succeeded, 1 failed: WrungOutSpendsNothingAtTheHealingCeiling \| restored: 139 tests performed, 139 succeeded, 0 failed |
+| P1: the bonded creature keeps the whole blow | c3915feb | PROVED: with the break in: 38 tests performed, 36 succeeded, 2 failed: ABondedCreatureSharesALandedBlowEvenlyWithItsAlly, ABondsShareDoesNotKillAnAllyInAnUnholySigil \| restored: 38 tests performed, 38 succeeded, 0 failed |
+| P2: the sigil clamp never holds | c3915feb | PROVED: with the break in: 38 tests performed, 36 succeeded, 2 failed: ABondsShareDoesNotKillAnAllyInAnUnholySigil, ALethalBlowLeavesACreatureInAnUnholySigilAtOneHealth \| restored: 38 tests performed, 38 succeeded, 0 failed |
+| P3: a floor-rule object counts as an ally | c3915feb | PROVED: with the break in: 38 tests performed, 37 succeeded, 1 failed: ABondedCreatureWithNoCreatureToShareWithKeepsTheWholeBlow \| restored: 38 tests performed, 38 succeeded, 0 failed |
+
+**Five proved, all at the top commit.** Kill credit, the copied record of the blow, is checked by the first
+Bond test's last two assertions and is not proved by a break.
+
+**A scan did not reach the new tests.** `stale_creature_scan` cannot read `CataclysmEnemyModifierTests.cpp`,
+which defines its tests with its own macro. The four tests added there never change floor, which is what
+that scan looks for.
 
 ---
 
@@ -175,8 +225,8 @@ history and stays as written.** Its table's Living Pyre row, "no, #1607", is the
 **On the owner's play-check list**, added by the coordinating session: Living Pyre on a Masochist, and
 whether its Fervour loss feels right.
 
-**Not built or run when this was written.** The build machine was held by another session; the run table
-follows when the window runs.
+**Its run is in the entry above**, on Sacrificial Bond and Unholy Sigils, which was built and tested in the
+same window on top of this change.
 
 ---
 
