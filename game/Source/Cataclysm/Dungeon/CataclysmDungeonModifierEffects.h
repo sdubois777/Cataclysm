@@ -1779,8 +1779,9 @@ public:
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
 	 * - "ALL ENEMIES" IS EVERY CREATURE THE FLOOR PLACED: one in the floor's creatures that was not raised by a rule,
 	 *   can be hurt, and is not the player's follower. So the Reaper, a Blood Bond's elite, and every rule's arrivals
-	 *   never hold the stairs, and nothing can lock the player in. NOT `FloorIsCleared`, which never counts a floor with
-	 *   the Reaper or a Blood Bond elite as cleared: issue #2194.
+	 *   never hold the stairs, and nothing can lock the player in. The count is
+	 *   `ACataclysmDungeonGameMode::IsOneOfTheFloorsOwnStanding`, which `FloorIsCleared` reads too since issue #2194;
+	 *   before that, `FloorIsCleared` never counted a floor with the Reaper or a Blood Bond elite as cleared.
 	 * - THE LAST FLOOR IS NOT SEALED, as Blood Gates rules: its way out leads out.
 	 *
 	 * A HORDE DUNGEON HAS NO STAIRS (`GoToFloor` places none when `bWaveWalksIn`), so this row does nothing there.

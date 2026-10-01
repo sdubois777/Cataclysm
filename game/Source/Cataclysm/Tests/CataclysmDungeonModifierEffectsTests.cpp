@@ -42932,7 +42932,8 @@ bool FCataclysmWallsUnheldTest::RunTest(const FString& Parameters)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	// WITH THE REAPER, WHICH CANNOT BE HURT AND IS RAISED BY A RULE, and which `FloorIsCleared` counts (issue #2194).
+	// WITH THE REAPER, WHICH CANNOT BE HURT AND IS RAISED BY A RULE, and which kept `FloorIsCleared` false until issue
+	// #2194.
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = AWallsFloor(*this, World, Player, {WallsRow, TheReaperRow});
 	if (!Mode)
@@ -42945,7 +42946,9 @@ bool FCataclysmWallsUnheldTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestFalse(TEXT("the floor is never cleared with the Reaper on it"), Mode->FloorIsCleared());
+	// REVERSED ON PURPOSE BY ISSUE #2194, ruled 2026-10-01: a floor emptied of its own creatures is cleared with the
+	// Reaper on it. Until then `FloorIsCleared` never was, which is why this row did not read it.
+	TestTrue(TEXT("the floor counts as cleared with only the Reaper on it"), Mode->FloorIsCleared());
 	TestEqual(TEXT("but the Reaper does not hold the walls"), Mode->LightforgedWallsStanding(), 0);
 	TestEqual(TEXT("open"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: open")));
 
@@ -43020,6 +43023,233 @@ bool FCataclysmWallsHordeTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("but nothing seals"), Mode->LightforgedWallsSealTheStairs());
 	TestTrue(TEXT("by any row"), Mode->StairsSealedBy().IsEmpty());
 	TestEqual(TEXT("the panel says so"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: no stairs on a Horde floor")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #2194, ruled 2026-10-01: a floor is cleared when its own population is dead. A creature a rule raised, by either
+// mark, or one that cannot be hurt is not the floor's own; Morale Break's escaped still hold the floor.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** A dungeon carrying these rows, on floor 2 of several, with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AClearingFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+											  const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClearedWithReaperTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithTheReaperIsClearedOnceItsOwnCreaturesDie",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClearedWithReaperTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+
+	ACataclysmDungeonGameMode* Mode = AClearingFloor(*this, World, Player, {TheReaperRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Own = PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->ExitWorld(), 0);
+	if (!TestNotNull(TEXT("set-up: one of the floor's own creatures"), Own))
+	{
+		return false;
+	}
+	const int32 ClearedBefore = Player.PlayerState->GetFloorsClearedThisRun();
+	Beat(Mode, BeatsFor(Effects::TheReaperDelaySeconds));
+	ACataclysmEnemyCharacter* Reaper = Mode->TheReaperOnTheFloor();
+	if (!TestNotNull(TEXT("set-up: the Reaper came"), Reaper))
+	{
+		return false;
+	}
+	TestFalse(TEXT("not cleared while the floor's own creature stands"), Mode->FloorIsCleared());
+	TestEqual(TEXT("so no clear time is noted"), Mode->FloorClearedAfterSeconds(), -1.0f, 0.0001f);
+
+	if (!ExitLockPlayerKills(*this, Player, Own))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("the Reaper still stands"), IsValid(Reaper) && !UCataclysmSkillEffects::IsDead(Reaper));
+	TestEqual(TEXT("and it is not counted as living"), Mode->LivingFloorEnemies(), 0);
+	TestTrue(TEXT("so the floor is cleared"), Mode->FloorIsCleared());
+	TestTrue(TEXT("its clear time is noted"), Mode->FloorClearedAfterSeconds() >= 0.0f);
+	TestEqual(TEXT("and the player's floors cleared this run rose by one"),
+			  Player.PlayerState->GetFloorsClearedThisRun(), ClearedBefore + 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClearedWithBondTest,
+	"Cataclysm.DungeonModifierEffects.ABloodBondEliteDoesNotHoldAFloorUncleared",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClearedWithBondTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+
+	ACataclysmDungeonGameMode* Mode = ABloodBondFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	// AN ELITE WITHIN ITS NOTICE OF THE PLAYER, WHICH THE BOND TAKES, AND A COMMON ONE FAR OFF, WHICH IT DOES NOT.
+	ACataclysmEnemyCharacter* Elite = ACreatureNoticingAt(World, Mode, Player, 1, 0.5f);
+	ACataclysmEnemyCharacter* Common = ACreatureNoticingAt(World, Mode, Player, 0, 3.0f);
+	if (!TestNotNull(TEXT("set-up: an Elite"), Elite) || !TestNotNull(TEXT("and a Common"), Common))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("set-up: the Elite is bound"), Mode->BloodBondedOnTheFloor() == Elite))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and cannot be hurt"), Elite->bCannotBeHurt);
+	TestEqual(TEXT("only the Common counts as living"), Mode->LivingFloorEnemies(), 1);
+	TestFalse(TEXT("so the floor is not cleared"), Mode->FloorIsCleared());
+
+	if (!ExitLockPlayerKills(*this, Player, Common))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("the bound Elite still stands"), IsValid(Elite) && !UCataclysmSkillEffects::IsDead(Elite));
+	TestTrue(TEXT("and the floor is cleared"), Mode->FloorIsCleared());
+	TestTrue(TEXT("with its clear time noted"), Mode->FloorClearedAfterSeconds() >= 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClearedWithRaisedTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureARuleBroughtOrThatCannotBeHurtDoesNotHoldAFloorUncleared",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClearedWithRaisedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+
+	// A DUNGEON WITH NO RULE THAT TOUCHES CREATURES, as the floor-clear note's own test has it, so each mark is shown
+	// alone on a creature placed by the test.
+	ACataclysmDungeonGameMode* Mode = AClearingFloor(*this, World, Player, {});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Raised = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Unhurt = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Own = PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: one a rule brought"), Raised) || !TestNotNull(TEXT("one that cannot be hurt"), Unhurt)
+		|| !TestNotNull(TEXT("and one of the floor's own"), Own))
+	{
+		return false;
+	}
+	Raised->bRaisedByARule = true;
+	Unhurt->bCannotBeHurt = true;
+	Beat(Mode, 1);
+	TestEqual(TEXT("only the floor's own counts as living"), Mode->LivingFloorEnemies(), 1);
+	TestFalse(TEXT("so the floor is not cleared"), Mode->FloorIsCleared());
+
+	if (!ExitLockPlayerKills(*this, Player, Own))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("none of the floor's own is living"), Mode->LivingFloorEnemies(), 0);
+	TestTrue(TEXT("so the floor is cleared with the other two standing"), Mode->FloorIsCleared());
+	TestTrue(TEXT("and its clear time is noted"), Mode->FloorClearedAfterSeconds() >= 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrialWithReaperTest,
+	"Cataclysm.DungeonModifierEffects.TrialOfEnduranceIsClearedInTimeWithTheReaperOnTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTrialWithReaperTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+
+	ACataclysmDungeonGameMode* Mode = AClearingFloor(*this, World, Player, {TrialRow, TheReaperRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Own = PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->ExitWorld(), 0);
+	if (!TestNotNull(TEXT("set-up: one of the floor's own creatures"), Own))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::TheReaperDelaySeconds));
+	if (!TestNotNull(TEXT("set-up: the Reaper came"), Mode->TheReaperOnTheFloor()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("not cleared in time while the floor's own creature stands"), Mode->TrialOfEnduranceClearedInTime());
+	TestTrue(TEXT("the panel counts the floor's own creature only"),
+			 Mode->LiveCountsForTheFloor().FindRef(TrialRow).EndsWith(TEXT("; 1 creatures left")));
+
+	if (!ExitLockPlayerKills(*this, Player, Own))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("cleared in time with the Reaper still on the floor"), Mode->TrialOfEnduranceClearedInTime());
+	TestFalse(TEXT("and it did not run out"), Mode->TrialOfEnduranceRanOut());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TrialRow),
+			  FString(TEXT("trial of endurance: cleared in time")));
 	return true;
 }
 

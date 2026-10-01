@@ -2,6 +2,124 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — A floor is cleared when its own creatures are dead: the Reaper, a Blood Bond's elite and every rule's arrivals no longer hold it uncleared
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`IsOneOfTheFloorsOwnStanding`, new,
+and `LivingFloorEnemies` and `LightforgedWallsStanding` reading it), the comment on `LightforgedWallsKey` in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`, and the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
+[#2194](https://github.com/sdubois777/Cataclysm/issues/2194). **Applied.** The Unreal compile, the automation tests and
+the two guard proofs were run in the window of 2026-10-01; the figures are at the end of this entry.
+
+### What was wrong
+
+`FloorIsCleared()` was `LivingFloorEnemies() == 0`, and that counted every valid, living creature in `FloorEnemies` but a
+player's follower, plus Morale Break's escaped. Two rules put a creature there that can never die: `RaiseTheReaper` adds
+the Reaper, which cannot be hurt, and `StepBloodBond` makes an Elite of the floor unable to be hurt while the player
+lives. On such a floor `FloorIsCleared()` could never be true. Plague Convergence made it false in practice, by sending
+three more creatures every ten seconds after two minutes with no limit on the total. Found while checking whether
+Lightforged Walls could lock the player in.
+
+### Who reads it
+
+Two readers, both in `CataclysmDungeonGameMode.cpp`, and no others; `FloorClearedAfterSeconds()` is read only by tests:
+
+- `NoteTheFloorsClearTime`, which notes the floor's clear time and calls `ACataclysmPlayerState::NoteFloorCleared`. That
+  count is what the enchantment stat `PerFloorClearedThisRun` reads: "Your armor is increased by 1%-2% for every dungeon
+  floor cleared this run". A floor with the Reaper never added to it.
+- `StepTrialOfEndurance`, whose "cleared in time" asks it, and whose panel line "N creatures left" reads
+  `LivingFloorEnemies`. On a floor with the Reaper or a Blood Bond the trial could never be cleared in time.
+
+### The ruling
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01, option (A):** "cleared" means the floor's own
+population is dead. A creature raised by a rule, by either of its two marks (`bRaisedByARule` or a place in
+`CreaturesRaisedByARule`), and a creature that cannot be hurt are not the floor's own. A player's thrall is not either,
+as issue #1202 ruled. **Morale Break's escaped still hold the floor**, as already ruled. One predicate,
+`IsOneOfTheFloorsOwnStanding`, is shared by `LivingFloorEnemies` and Lightforged Walls' `LightforgedWallsStanding`, so
+"cleared" and "every creature the floor placed" cannot drift apart; Lightforged Walls' behaviour does not change.
+`AFloorIsClearedWithAPortalsCreaturesStanding` had already ruled the same for one rule's creatures.
+
+**A judgement, labelled as one: Trial of Endurance's "clear the floor" now means the floor's own population.** A rule's
+arrivals, Plague Convergence's among them, no longer stop a floor being cleared in time, so a rule with no limit on its
+arrivals cannot make the trial impossible.
+
+Twenty-four functions mark a creature raised by a rule, and under this ruling none of their creatures holds a floor
+uncleared: `RaiseTheReaper`; `StepBloodBond`, by the set alone; `StepPlagueConvergence`; `SendWarzoneWave`;
+`BringCreaturesNear`, whose callers bring War Banner's waves, the tithe angels, a Battlefield Relic's and a Grim Totem's
+creatures and Pandora's Box's waves; `StepEchoesOfThePast`; `RaiseTheTrickOrTreatPair`;
+`RaiseTheUnstablePortalsWarden`; Carrion Feast's two; `SpawnAVeinOn`; `InfectionBloomSend`; `PlaceTheQuarantine`;
+`StepMindShatteringIllusions`; `NoteDeathForVoidParasite`; `StepPortalUnleashing`; and the floor-object creatures of
+`PlaceTheChoruses`, `PlaceTheBlooms`, `PlaceTheBloom`, `PlaceTheSpires`, `PlaceTheSarcophagi`, `PlaceTheBeacons`,
+`PlaceThePortals`, `PlaceTheRift` and `PlaceTheGuide`. **A Horde wave's creatures are not marked**: they arrive through
+`ContinueTheWaveArriving` and `SpawnPlacedCreature`, which set neither mark, so a Horde floor is not cleared while its
+wave stands.
+
+### Can a floor now be cleared too early?
+
+**At its start, no.** An ordinary floor's creatures are all placed inside `GoToFloor`, before the first beat's clear
+check. A placed creature gains a mark during play only through Blood Bond, which binds an Elite that notices the player,
+so a floor is cleared early only if that Elite is the last of its own creatures standing, which is the meaning ruled. A
+floor whose population places nothing was already cleared at its first beat, and still is.
+
+**A Horde wave still arriving** is not noted cleared in ordinary play, and that is `Tick`'s order rather than a guard:
+`ContinueTheWaveArriving` puts up to four more of the wave down every frame, before the beat whose last step is the clear
+check, so every check while any of the wave is still to arrive follows a frame that placed at least one living creature.
+Two cases remain and are not fixed, because no test can drive either honestly: **(a)** every spawn in one frame fails,
+since a failed spawn is dropped rather than tried again, and **(b)** a rule's own step kills a whole frame's arrivals
+within the beat, between the arrival and the clear check. A guard no test can fail was ruled not worth adding.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `AFloorWithTheReaperIsClearedOnceItsOwnCreaturesDie`: not cleared while the floor's own creature stands; once it
+  dies, cleared with the Reaper standing, its clear time noted, and the player's floors cleared this run up by one.
+- `ABloodBondEliteDoesNotHoldAFloorUncleared`: the bound Elite cannot be hurt and is not counted; the floor is cleared
+  once the Common one dies.
+- `ACreatureARuleBroughtOrThatCannotBeHurtDoesNotHoldAFloorUncleared`: one creature with only `bRaisedByARule` and one
+  with only `bCannotBeHurt`, each counted as not the floor's own; cleared with both standing.
+- `TrialOfEnduranceIsClearedInTimeWithTheReaperOnTheFloor`: the panel counts the floor's own creature only, and the
+  trial is cleared in time with the Reaper on the floor.
+
+**One assertion of another row reversed on purpose:** `LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt`
+asserted "the floor is never cleared with the Reaper on it", which was #2194 itself; it now asserts the floor counts as
+cleared with only the Reaper on it.
+
+Regressions that must pass unchanged, every test that reads the cleared state:
+`EveryFloorNotesWhenItIsClearedWhateverItsRules`, `AFloorClearedInTimeEndsItsTrialOfEndurance`,
+`TheTrialOfEndurancesClockRunsAndNothingChangesBeforeItRunsOut`, `AFloorIsClearedWithAPortalsCreaturesStanding`,
+`AThrallTakenOnAFloorDoesNotStopItCountingAsCleared`, `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor`
+(the escaped still hold it), the four `LightforgedWalls` tests, and `Cataclysm.Scales.TheFloorClockStartsAgainOnANewFloorAndEachClearIsCounted`.
+And the Horde tests that run the wave arrival: `Cataclysm.DungeonMode.AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne`,
+`AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena`, `AHordeDungeonsLastWaveIsClearedRatherThanThinnedToATenth`,
+`ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`, `AThrallTakenFromAWaveIsNotCountedAsStillStanding`, and
+`Cataclysm.DungeonModifierEffects.AHordeFloorHasNoTrialOfEndurance`.
+
+### The window of 2026-10-01
+
+Run on `fix/floor-cleared-counts-the-floors-own-2` at `e4580478`, on development `629b263d`. The commit above it that
+writes these figures changes this file only.
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `e4580478` | "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `e4580478` | "Tests: 3041 tests performed, 3041 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3041 tests in the tree at e4580478; 3041 performed, gap 0; every declared test was reported by the run." |
+| Python, `e4580478`, started with no CI run in progress | "5646 passed, 8 skipped in 420.55s (0:07:00)"; JUnit: 5654 tests, 0 failures, 0 errors, 8 skipped |
+
+The four new tests, the fourteen regressions named above and the four `LightforgedWalls` tests each have one
+`Result={Success}` line in the whole-suite log, which has 3041 such lines and no `Result={Fail}` line.
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after, on the one-test
+prefix `ACreatureARuleBroughtOrThatCannotBeHurtDoesNotHoldAFloorUncleared`:
+
+- **Pb PROVED**, the can-be-hurt term removed: "with the break in: 1 tests performed, 0 succeeded, 1 failed:
+  ACreatureARuleBroughtOrThatCannotBeHurtDoesNotHoldAFloorUncleared | restored: 1 tests performed, 1 succeeded, 0
+  failed".
+- **Pc PROVED**, the raised-by-a-rule terms removed: the same printed line.
+
+---
+
 ## 2026-10-01 — A gadget killed and a resource consumed are events: the remaining gadgets gain 30%-50% damage, and a resource consumed grants 5%-10% damage and restores 1%-3% of maximum health
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`NoteGadgetDestroyed`,
@@ -137,6 +255,8 @@ settles:**
   the player in.
 - **Not `FloorIsCleared`.** It never counts a floor with the Reaper or a Blood Bond's elite as cleared, which is issue
   [#2194](https://github.com/sdubois777/Cataclysm/issues/2194). Built on it, this row would seal such a floor for good.
+  **Since #2194 was fixed (its entry of 2026-10-01, "A floor is cleared when its own creatures are dead"), `FloorIsCleared` reads this row's own count,
+  `IsOneOfTheFloorsOwnStanding`, so the two cannot drift apart.**
 - **The last floor is not sealed**, as Blood Gates rules: its way out leads out of the dungeon.
 
 ### Tests
@@ -146,8 +266,9 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 - `LightforgedWallsFiguresAndTheRowPartly`: the row has a rule and is `Partly` built.
 - `LightforgedWallsSealedWhileAPlacedCreatureStands`: open with none; a thrall does not hold the stairs; refused with two
   and with one standing; the last, killed by another creature, opens them.
-- `LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt`: with the Reaper on the floor, which `FloorIsCleared` never
-  counts as cleared, the walls are open; a creature that cannot be hurt and one raised by a rule, each by its one mark,
+- `LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt`: with the Reaper on the floor, which `FloorIsCleared` then
+  never counted as cleared (the test asserted it until #2194 reversed it on purpose; see the #2194 entry), the walls are
+  open; a creature that cannot be hurt and one raised by a rule, each by its one mark,
   hold nothing; an ordinary creature holds them, and its death opens them with the Reaper still there.
 - `LightforgedWallsDoesNothingOnAHordeArena`.
 

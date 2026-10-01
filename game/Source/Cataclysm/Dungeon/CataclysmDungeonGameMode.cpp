@@ -4162,16 +4162,25 @@ void ACataclysmDungeonGameMode::StepGoldenSpires(ACataclysmPlayerCharacter* Play
 	}
 }
 
+bool ACataclysmDungeonGameMode::IsOneOfTheFloorsOwnStanding(ACataclysmEnemyCharacter* Creature) const
+{
+	// THE FLOOR'S OWN POPULATION, STILL STANDING. Issue #2194, ruled 2026-10-01 under the owner's delegation: a creature a
+	// rule raised, by either mark, or one that cannot be hurt is not the floor's own, so the Reaper, a Blood Bond's elite
+	// and every rule's arrivals never hold a floor uncleared, and a floor the player has emptied of its own creatures is
+	// cleared. NOT A PLAYER'S THRALL either, which is no enemy of the floor however it came to be one (issue #1202).
+	return IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
+		&& !Creature->bRaisedByARule && !CreaturesRaisedByARule.Contains(Creature)
+		&& !Creature->bCannotBeHurt
+		&& !DungeonGameModeIsAPlayersFollower(Creature);
+}
+
 int32 ACataclysmDungeonGameMode::LivingFloorEnemies() const
 {
 	int32 Living = 0;
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : FloorEnemies)
 	{
-		// NOT A PLAYER'S THRALL, which is no enemy of the floor however it came to
-		// be one. Issue #1202, ruled 2026-09-30: holding a thrall must not stop a
-		// floor counting as cleared.
-		Living += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
-				   && !DungeonGameModeIsAPlayersFollower(Creature)) ? 1 : 0;
+		// THE FLOOR'S OWN ONLY. Issue #2194; see `IsOneOfTheFloorsOwnStanding`.
+		Living += IsOneOfTheFloorsOwnStanding(Creature.Get()) ? 1 : 0;
 	}
 	// AND MORALE BREAK'S ESCAPED, WHO ARE AWAY AND NOT DEAD, as ruled: the floor is not cleared while they are gone.
 	// Issues #1820 and #41.
@@ -11037,18 +11046,13 @@ int32 ACataclysmDungeonGameMode::InfernalSealPiecesNeeded() const
 
 int32 ACataclysmDungeonGameMode::LightforgedWallsStanding() const
 {
-	// EVERY CREATURE THE FLOOR PLACED THAT STILL STANDS: not one raised by a rule, by either mark, nor one that cannot be
-	// hurt, nor the player's follower, so no creature the player can never kill holds the stairs. Not
-	// `FloorIsCleared`, which the Reaper and a Blood Bond's elite hold false for good (issue #2194).
+	// EVERY CREATURE THE FLOOR PLACED THAT STILL STANDS, by the predicate `FloorIsCleared` reads too since issue #2194:
+	// no creature the player can never kill holds the stairs. Unlike `LivingFloorEnemies`, Morale Break's escaped are
+	// not counted: they are away, and cannot be slain until they return.
 	int32 Standing = 0;
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 	{
-		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !Enemy->bRaisedByARule
-			&& !CreaturesRaisedByARule.Contains(Enemy.Get()) && !Enemy->bCannotBeHurt
-			&& !DungeonGameModeIsAPlayersFollower(Enemy))
-		{
-			++Standing;
-		}
+		Standing += IsOneOfTheFloorsOwnStanding(Enemy.Get()) ? 1 : 0;
 	}
 	return Standing;
 }

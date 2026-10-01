@@ -2443,12 +2443,24 @@ public:
 	float PlagueBeaconHealth() const { return ImpHealth; }
 
 	/**
-	 * How many of the floor's creatures are alive: `FloorEnemies` entries still valid and not dead. The
-	 * floor sources are not in that list, so they are never counted. Issues #1820 and #41.
+	 * Whether this creature is one of the floor's own and still stands: valid, not dead, not raised by a rule by either
+	 * of the two marks a rule leaves, able to be hurt, and not a player's follower. Issue #2194, ruled 2026-10-01: the
+	 * Reaper, a Blood Bond's elite and every rule's arrivals are not the floor's own. Shared by `LivingFloorEnemies` and
+	 * `LightforgedWallsStanding`, so "cleared" and "every creature the floor placed" cannot drift apart.
+	 */
+	bool IsOneOfTheFloorsOwnStanding(ACataclysmEnemyCharacter* Creature) const;
+
+	/**
+	 * How many of the floor's own creatures still stand, by `IsOneOfTheFloorsOwnStanding`, plus Morale Break's escaped,
+	 * who hold the floor while they are away. The floor sources are not in `FloorEnemies`, so they are never counted.
+	 * Issues #1820, #41 and #2194.
 	 */
 	int32 LivingFloorEnemies() const;
 
-	/** Whether the floor is cleared: none of its creatures alive. Trial of Endurance's reading of "cleared". */
+	/**
+	 * Whether the floor is cleared: none of its own creatures standing and none escaped. What the floors-cleared count
+	 * and Trial of Endurance read. Issue #2194.
+	 */
 	bool FloorIsCleared() const { return LivingFloorEnemies() == 0; }
 
 	/** Seconds since this floor or wave was placed, on the beat. */
