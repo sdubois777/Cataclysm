@@ -572,8 +572,10 @@ bool FCataclysmMinionOwnBuffsTest::RunTest(const FString&)
 
 	// THE CONTROL: THE SAME BUFF SCOPED TO FIRE, as Conflagration writes it.
 	Its->RemoveStatModifier(Handle);
-	const FGameplayTag Fire = UCataclysmDamageCalculation::ElementTagFor(FName(TEXT("Fire")));
-	if (!TestTrue(TEXT("the fire element tag exists"), Fire.IsValid()))
+	// THE AURA'S OWN SCOPE: Conflagration's row is Element.Demonic -- its
+	// "hellfire" is the Demonic element; there is no Element.Fire.
+	const FGameplayTag Fire = UCataclysmDamageCalculation::ElementTagFor(FName(TEXT("Demonic")));
+	if (!TestTrue(TEXT("the Demonic element tag exists"), Fire.IsValid()))
 	{
 		return false;
 	}
@@ -584,7 +586,7 @@ bool FCataclysmMinionOwnBuffsTest::RunTest(const FString&)
 	const float BeforeFire = Target.Health();
 	Imp->AttackTarget(Target.Actor);
 	const float WithFireBuff = BeforeFire - Target.Health();
-	TestEqual(TEXT("and a fire-only buff leaves an imp's blow, which is not fire, as it was"),
+	TestEqual(TEXT("and a Demonic-only buff leaves an imp's blow, which carries no element, as it was"),
 			  WithFireBuff, Plain, 0.01f);
 	return true;
 }

@@ -3063,8 +3063,12 @@ bool FCataclysmDungeonModeThrallLeavesTheWaveTest::RunTest(const FString& Parame
 		return false;
 	}
 	const int32 FirstWave = Mode->WaveSpawned;
+	// ALWAYS SPAWNED: the arena's middle is occupied, and the test needs only a
+	// commander, not a place to stand.
+	FActorSpawnParameters Always;
+	Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	ACataclysmPlayerCharacter* Player = World->SpawnActor<ACataclysmPlayerCharacter>(
-		FVector::ZeroVector, FRotator::ZeroRotator);
+		FVector::ZeroVector, FRotator::ZeroRotator, Always);
 	if (!TestTrue(FString::Printf(TEXT("set-up: a wave of %d"), FirstWave), FirstWave > 0)
 		|| !TestNotNull(TEXT("a player character"), Player)
 		|| !TestEqual(TEXT("set-up: the whole wave stands"), Mode->WaveStillAlive(), FirstWave))

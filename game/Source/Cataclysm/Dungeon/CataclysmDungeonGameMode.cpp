@@ -1105,6 +1105,14 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 	// wave must keep the behaviour the comment above defends. Issue #1613.
 	StepFloorRulesThatChange();
 
+	// AND, ON EVERY BEAT, A PLAYER'S THRALLS ARE PUT BACK FROM EVERY FLOOR RULE.
+	// Issue #1202, ruled 2026-09-30. HERE, AFTER THE RULES AND OUTSIDE THEM: it
+	// first sat at the end of `StepFloorRulesThatChange`, which returns early
+	// on a floor carrying none of the rules it lists, so on such a floor -- one
+	// with only Contagious Touch, or none -- it never ran. The window's whole
+	// suite found it.
+	StepPlayersFollowers();
+
 	// AND THE FLOOR'S CLEAR TIME, WHATEVER THE RULES, so Trial of Endurance's time can be tuned from play
 	// rather than from a guess. Issues #1820 and #41.
 	NoteTheFloorsClearTime();
@@ -10453,10 +10461,6 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		StepFamishedBeasts();
 	}
 
-	// AND, ON EVERY BEAT, A PLAYER'S THRALLS ARE PUT BACK FROM EVERY RULE ABOVE.
-	// Issue #1202, ruled 2026-09-30. Unconditional, because a thrall carried to
-	// a floor without these rules is in no list they walk.
-	StepPlayersFollowers();
 
 	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
 	if (bTrialOfEndurance)

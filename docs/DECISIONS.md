@@ -72,15 +72,17 @@ written onto the minion, was never read. **The first half had gone stale**: sinc
    `ApplyDirectDamage` and never through it, so any buff on a minion's own ability system was ignored.
    A thrall's attack goes through `ApplyHit`, which does call it.
 2. **The element.** Conflagration's ally bonus is "increased fire damage", written with the aura's element
-   as a required tag. No minion type deals fire damage: `game/Data/MinionTypes.csv` gives the Imp and the
-   machines no element tag.
+   as a required tag, and that element is `Element.Demonic`: the aura's "hellfire" is the Demonic element,
+   and no `Element.Fire` exists. No minion type carries any element tag -- none of the Imp, Mote, Bolt
+   Turret, Ballista and Spike Trap rows in `game/Data/MinionTypes.csv` names one -- so none deals Demonic
+   damage.
 
 ### WHAT CHANGED, RULED 2026-09-30
 
 - **(1) is fixed.** A minion's blow now passes through `ModifiedDamage` with the minion's own ability
   system and its type tags, after the summoner's multiplier, as a minion's hits are its own.
 - **(2) is left as worded.** Conflagration's bonus still gives a minion nothing, because no minion's blow
-  is fire. It will reach a minion that deals fire damage, if one is ever added.
+  carries `Element.Demonic`. It will reach a minion that deals Demonic damage, if one is ever added.
 
 ### WHAT ELSE THIS COULD REACH, CHECKED
 
@@ -101,7 +103,8 @@ written onto the minion, was never read. **The first half had gone stale**: sinc
 
 - `Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem`: an imp's blow with 50% increased
   written on its own ability system is half again as large; the same buff scoped to fire leaves it as it
-  was.
+  was. The buff is scoped to `Element.Demonic`, the aura's own; the test first asked for an
+  `Element.Fire` tag, which does not exist, and the window's whole suite found it.
 - `Cataclysm.MinionDeath.AMinionsExplosionAndSharedRuinReadTheBuffsOnItsOwnAbilitySystem`: an imp with
   50% increased explodes for half again as much as a plain one, and its Shared Ruin blast is half again
   as large too. It is in the command tests rather than beside the first, because an area blast finds
@@ -209,6 +212,12 @@ it out of the panicked lists, stops it seeking drops, sets the contagion stacks 
 carry them, and walk only the floor's list, so a thrall carried to another floor would never be reached. The
 fog, The Blackest Shadow and Shadowy Enemies keep their own sets and are put back inside `StepVision` and
 `StepShadowyEnemies`.
+
+**It first ran in the wrong place, and the window's whole suite found it.** It was written at the end of
+`StepFloorRulesThatChange`, which returns early on a floor carrying none of the rules it lists. Contagious
+Touch is not among them, so on a floor with only that rule, or with none, the reset never ran, and a carried
+thrall kept its contagion stacks. The Grim Totem and Plaguebearer tests passed only because their rules were
+in that function's set. It is now called from the beat itself, straight after that function.
 
 ### TESTS
 
