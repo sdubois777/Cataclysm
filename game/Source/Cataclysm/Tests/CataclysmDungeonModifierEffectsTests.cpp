@@ -38150,6 +38150,293 @@ bool FCataclysmThrallNotCleansedTest::RunTest(const FString& Parameters)
 			  Stranger->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 0.75f, 0.001f);
 	TestEqual(TEXT("and the player's thrall as near is untouched"),
 			  Taken->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 1.0f, 0.001f);
+
+	// AND ONE CLEANSED WHILE HOSTILE AND TAKEN AFTERWARDS IS PUT BACK on the next
+	// beat, by StepPlayersFollowers.
+	if (!TestTrue(TEXT("the player takes the weakened one"), UCataclysmCommand::Subjugate(Player.Character, Stranger)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("and a beat later it deals its own damage again"),
+			  Stranger->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallLosesThePlagueTest,
+	"Cataclysm.DungeonModifierEffects.APlayersThrallLosesThePlaguebearersBonus",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. A creature carrying the Plaguebearer's bonus and then taken deals its own damage a beat later, while the bearer's stacks go on for the creatures nobody took.
+ */
+bool FCataclysmThrallLosesThePlagueTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Other = Mode ? APlaguebearersNeighbour(Mode) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("another creature on the floor"), Other))
+	{
+		return false;
+	}
+	StandFromTheBearer(Mode, Player, 5000.0f);
+	Beat(Mode, BeatsFor(3.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	if (!TestEqual(TEXT("set-up: 15% more damage at three stacks"), PlagueMultiplierOn(Other), 1.15f, 0.0001f)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Other)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the thrall deals its own damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	TestTrue(TEXT("while the bearer, untaken, keeps its stacks"), Mode->PlaguebearerStacksNow() >= 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTakenBearerFallsTest,
+	"Cataclysm.DungeonModifierEffects.ATakenPlaguebearerCountsAsFallen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. Taking the Plaguebearer clears its stacks as its death would, and it stops fleeing the player.
+ */
+bool FCataclysmTakenBearerFallsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Other = Mode ? APlaguebearersNeighbour(Mode) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("another creature on the floor"), Other))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+	StandFromTheBearer(Mode, Player, 5000.0f);
+	Beat(Mode, BeatsFor(3.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	StandFromTheBearer(Mode, Player, 500.0f);
+	Beat(Mode, 1);
+	FVector From;
+	if (!TestEqual(TEXT("set-up: three stacks"), Mode->PlaguebearerStacksNow(), 3)
+		|| !TestTrue(TEXT("set-up: it flees the player 5 m away"), Bearer->FleeSourceNow(From))
+		|| !TestTrue(TEXT("the player takes the Plaguebearer"), UCataclysmCommand::Subjugate(Player.Character, Bearer)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("its stacks are cleared"), Mode->PlaguebearerStacksNow(), 0);
+	TestEqual(TEXT("so the others deal their own damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	TestFalse(TEXT("and it no longer flees the player"), Bearer->FleeSourceNow(From));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallStopsPanickingTest,
+	"Cataclysm.DungeonModifierEffects.APlayersThrallStopsPanicking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. A creature that panicked when its leader died and is then taken stops panicking and fleeing a beat later, and leaves the count of the panicked.
+ */
+bool FCataclysmThrallStopsPanickingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader || !TestTrue(TEXT("set-up: the leader has a follower"), Followers.Num() >= 1))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmEnemyCharacter* Taken = Followers[0];
+	const int32 Fleeing = static_cast<int32>(ECataclysmBrainAction::Fleeing);
+	if (!TestTrue(TEXT("set-up: it panics"), Taken->bIsPanicked)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("the thrall no longer panics"), Taken->bIsPanicked);
+	TestNotEqual(TEXT("or flees"), BrainSays(Taken), Fleeing);
+	TestEqual(TEXT("and the count of the panicked leaves it out"), Mode->MoraleBreakPanickedNow(), Followers.Num() - 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallEatsNothingTest,
+	"Cataclysm.DungeonModifierEffects.APlayersThrallDoesNotEatDrops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. A creature that ate a drop and is then taken leaves the next drop alone and keeps the strength it had gained; keeping it is a judgement recorded in the decisions log.
+ */
+bool FCataclysmThrallEatsNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	ACataclysmEnemyCharacter* Imp = Mode
+		? SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: it ate one drop"), Imp->DropsEaten, 1)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Imp)))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmDroppedItem> Next = ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	TestTrue(TEXT("the drop under the thrall is left alone"), Next.IsValid());
+	TestEqual(TEXT("it ate no more"), Imp->DropsEaten, 1);
+	TestFalse(TEXT("and does not seek drops"), Imp->bSeeksDropsForTheFloorRule);
+	TestEqual(TEXT("but keeps the strength it gained"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallSpreadsNoContagionTest,
+	"Cataclysm.DungeonModifierEffects.APlayersThrallAddsNoContagionAndItsStacksEnd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. A creature that touched the player and is then taken gives up the stacks it applied, a beat later, and adds none by touching again.
+ */
+bool FCataclysmThrallSpreadsNoContagionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher))
+	{
+		return false;
+	}
+	Touch(Toucher, Player, 2);
+	if (!TestEqual(TEXT("set-up: two stacks"), Mode->ContagionStacksNow(), 2)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Toucher)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the thrall's stacks end"), Toucher->ContagionStacksApplied, 0);
+	TestEqual(TEXT("so the player carries none"), Mode->ContagionStacksNow(), 0);
+	Touch(Toucher, Player, 1);
+	TestEqual(TEXT("and a touch from it adds none"), Mode->ContagionStacksNow(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBringsNoRetaliationTest,
+	"Cataclysm.DungeonModifierEffects.AHitOnAPlayersThrallBringsNoContagiousRetaliation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. The player's blow on their own thrall costs the player nothing, where the same blow on a creature nobody took costs a share of its health.
+ */
+bool FCataclysmThrallBringsNoRetaliationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Stranger = Mode
+		? SpawnCreatureWithHealth(World, Player.Character->GetActorLocation() + FVector(0.0f, 200.0f, 0.0f), 50000.0f)
+		: nullptr;
+	ACataclysmEnemyCharacter* Taken = Mode
+		? SpawnCreatureWithHealth(World, Player.Character->GetActorLocation() + FVector(0.0f, -200.0f, 0.0f), 50000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher) || !TestNotNull(TEXT("one nobody takes"), Stranger)
+		|| !TestNotNull(TEXT("and one the player takes"), Taken))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Struck : {Stranger, Taken})
+	{
+		Struck->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	}
+	Touch(Toucher, Player, 3);
+	if (!TestEqual(TEXT("set-up: three stacks"), Mode->ContagionStacksNow(), 3)
+		|| !TestTrue(TEXT("the player takes one"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Full = Player.Read(Health);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Stranger, 100.0f);
+	if (!TestTrue(TEXT("control: a hit on a creature nobody took costs the player"), Player.Read(Health) < Full))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Full);
+	const float TakenBefore = HealthOf(Taken);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Taken, 100.0f);
+	TestTrue(TEXT("the hit on the thrall landed"), HealthOf(Taken) < TakenBefore);
+	TestEqual(TEXT("and cost the player nothing"), Player.Read(Health), Full, 0.01f);
 	return true;
 }
 

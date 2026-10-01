@@ -72,8 +72,36 @@ not an enemy class and was never touched. **Now a creature a player commands is 
 one taken while it carried the hide, the stalker or the shroud is put back. The player's own cleanse, the
 locust sight and Reality Twister put nothing on creatures and needed nothing.
 
+### AND TO THE FOUR RULES THAT CAME AFTER, RULED THE SAME DAY
+
+Read on `development` 32982485, after #2182 merged:
+
+- **The Plaguebearer** gave its growing damage bonus to every creature in the floor's list, a thrall included,
+  and nothing took it off one carried past the stairs. A thrall is now skipped. **A taken Plaguebearer counts as
+  fallen**: its stacks clear as at its death, and it stops fleeing the player.
+- **Morale Break** panicked every creature of a fallen leader's pack, so a thrall could flee, escape and come
+  back hostile with reinforcements. A thrall is now skipped.
+- **Famished Beasts** sent every creature, a thrall included, to eat the player's drops. A thrall is now skipped.
+  **What a creature gained by eating before it was taken, it keeps: a judgement**, because it now fights for
+  the player and nothing exists that undoes the strengthening.
+- **Contagious Touch**: a thrall adds no stacks if it touches the player, and the player's blow on their own
+  thrall brings no retaliation.
+
+**One step on every beat puts a thrall back from all of them**, `StepPlayersFollowers`: for every creature a
+player commands it sets the Grim Totem and Plaguebearer multipliers to 1, ends any panic and flight and takes
+it out of the panicked lists, stops it seeking drops, and sets the contagion stacks it applied while hostile to
+0. **Why one unconditional step rather than a part of each rule:** the rules' own steps run only on floors that
+carry them, and walk only the floor's list, so a thrall carried to another floor would never be reached. The
+fog, The Blackest Shadow and Shadowy Enemies keep their own sets and are put back inside `StepVision` and
+`StepShadowyEnemies`.
+
 ### TESTS
 
+- Six more in `Cataclysm.DungeonModifierEffects.`, one per rule: a taken creature loses the Plaguebearer's
+  bonus; a taken Plaguebearer counts as fallen; a taken creature stops panicking; a taken creature eats no more
+  drops and keeps what it gained; a taken toucher's stacks end and it adds none; and a blow on a thrall brings
+  no retaliation. The Grim Totem test also checks that a creature cleansed while hostile and taken afterwards is
+  put back a beat later.
 - Two in `Cataclysm.DungeonModifierEffects.`: an imp beyond the light, hidden, a stalker and shrouded,
   loses all three once the player takes it, while one nobody took keeps them; and a cleansed totem weakens
   a creature nobody took and not a player's thrall standing as near.

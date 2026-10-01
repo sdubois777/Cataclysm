@@ -4944,7 +4944,10 @@ void ACataclysmDungeonGameMode::StepPlaguebearer(ACataclysmPlayerCharacter* Play
 	UWorld* World = GetWorld();
 	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::PlaguebearerKey)) && PlaguebearerFloor == FloorNumber;
 	ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get();
-	const bool bAlive = bRow && IsValid(Bearer) && !UCataclysmSkillEffects::IsDead(Bearer);
+	// A TAKEN BEARER COUNTS AS FALLEN, ruled 2026-09-30 (issue #1202): its stacks
+	// clear as at its death, and it stops fleeing the player it now follows.
+	const bool bAlive = bRow && IsValid(Bearer) && !UCataclysmSkillEffects::IsDead(Bearer)
+		&& !DungeonGameModeIsAPlayersFollower(Bearer);
 
 	if (!bRow)
 	{
@@ -4956,6 +4959,10 @@ void ACataclysmDungeonGameMode::StepPlaguebearer(ACataclysmPlayerCharacter* Play
 		// ITS DEATH CLEARS EVERY STACK AT ONCE, and no more come this floor.
 		bPlaguebearerFallen = true;
 		PlaguebearerStacks = 0;
+		if (IsValid(Bearer))
+		{
+			Bearer->StopFleeing();
+		}
 		UE_LOG(LogCataclysm, Log, TEXT("The Plaguebearer: dead on floor %d, every stack cleared"), FloorNumber);
 	}
 	else if (bAlive)
@@ -4981,7 +4988,7 @@ void ACataclysmDungeonGameMode::StepPlaguebearer(ACataclysmPlayerCharacter* Play
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 	{
 		ACataclysmEnemyCharacter* Creature = Enemy.Get();
-		if (IsValid(Creature) && Creature != Bearer
+		if (IsValid(Creature) && Creature != Bearer && !DungeonGameModeIsAPlayersFollower(Creature)
 			&& !FMath::IsNearlyEqual(Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource),
 									 Multiplier))
 		{
@@ -5178,6 +5185,7 @@ void ACataclysmDungeonGameMode::StepMoraleBreak(ACataclysmPlayerCharacter* Playe
 			{
 				ACataclysmEnemyCharacter* Creature = Enemy.Get();
 				if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature) && Creature != Leader
+					&& !DungeonGameModeIsAPlayersFollower(Creature)
 					&& Creature->PackGroup == Group.Group)
 				{
 					Creature->bIsPanicked = true;
@@ -7619,6 +7627,59 @@ void ACataclysmDungeonGameMode::PutTheHealthSharesBack(ACataclysmEnemyCharacter*
 	}
 }
 
+void ACataclysmDungeonGameMode::StepPlayersFollowers()
+{
+	// EVERY VALUE A FLOOR RULE PUTS ON A CREATURE, PUT BACK ON EACH THRALL A PLAYER
+	// COMMANDS. Issue #1202, ruled 2026-09-30. The rules skip a follower already;
+	// this undoes what a creature carried from before it was taken, wherever it
+	// is now -- after the stairs a thrall is in no floor's list, which is why
+	// this is one unconditional step and not a part of each rule. Values already
+	// at their defaults are not written. The fog, The Blackest Shadow and
+	// Shadowy Enemies keep their own sets and are put back by `StepVision` and
+	// `StepShadowyEnemies`. What a thrall gained by eating drops before it was
+	// taken is kept: a judgement, recorded in docs/DECISIONS.md.
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	for (TActorIterator<ACataclysmPlayerCharacter> It(World); It; ++It)
+	{
+		for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(*It))
+		{
+			ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Follower);
+			if (!IsValid(Thrall))
+			{
+				continue;
+			}
+			if (!FMath::IsNearlyEqual(
+					Thrall->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 1.0f))
+			{
+				Thrall->SetGrimTotemsDamageMultiplier(1.0f);
+			}
+			if (!FMath::IsNearlyEqual(
+					Thrall->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource), 1.0f))
+			{
+				Thrall->SetPlaguebearerDamageMultiplier(1.0f);
+			}
+			if (Thrall->bIsPanicked)
+			{
+				Thrall->bIsPanicked = false;
+				Thrall->StopFleeing();
+			}
+			for (FMoraleBreakGroup& Group : MoraleBreakGroups)
+			{
+				Group.Panicked.Remove(TWeakObjectPtr<ACataclysmEnemyCharacter>(Thrall));
+			}
+			Thrall->bSeeksDropsForTheFloorRule = false;
+			// THE PLAYER'S CONTAGION STACKS FROM ITS HOSTILE TOUCHES END TOO: the
+			// row means the enemy that applied them, and the only other way to
+			// clear them would be to kill the player's own thrall.
+			Thrall->ContagionStacksApplied = 0;
+		}
+	}
+}
+
 void ACataclysmDungeonGameMode::StepFamishedBeasts()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -7644,7 +7705,8 @@ void ACataclysmDungeonGameMode::StepFamishedBeasts()
 		// A CREATURE OF THE FLOOR'S KINDS THAT FIGHTS: not a carcass, a vein or another thing a rule stands on the
 		// floor, and not a guide or a medic, which take no hostile action.
 		const bool bEats = bRow && IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
-			&& DungeonGameModeKindOf(Creature) != ECataclysmDungeonCreature::Count && !Creature->TakesNoHostileAction();
+			&& DungeonGameModeKindOf(Creature) != ECataclysmDungeonCreature::Count && !Creature->TakesNoHostileAction()
+			&& !DungeonGameModeIsAPlayersFollower(Creature);
 		if (IsValid(Creature))
 		{
 			Creature->bSeeksDropsForTheFloorRule = bEats;
@@ -10373,6 +10435,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	{
 		StepFamishedBeasts();
 	}
+
+	// AND, ON EVERY BEAT, A PLAYER'S THRALLS ARE PUT BACK FROM EVERY RULE ABOVE.
+	// Issue #1202, ruled 2026-09-30. Unconditional, because a thrall carried to
+	// a floor without these rules is in no list they walk.
+	StepPlayersFollowers();
 
 	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
 	if (bTrialOfEndurance)
@@ -14101,7 +14168,9 @@ void ACataclysmDungeonGameMode::NoteContagiousTouch(ACataclysmEnemyCharacter* To
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	if (!IsValid(Toucher) || !ContagiousTouchIsOn())
+	// NOT FROM A PLAYER'S THRALL, ruled 2026-09-30 (issue #1202): the row means
+	// the enemy touching the player.
+	if (!IsValid(Toucher) || !ContagiousTouchIsOn() || DungeonGameModeIsAPlayersFollower(Toucher))
 	{
 		return;
 	}
@@ -14133,7 +14202,8 @@ void ACataclysmDungeonGameMode::NoteHitForContagiousTouch(const FCataclysmHitNot
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
 	const ACataclysmEnemyCharacter* Struck = Cast<ACataclysmEnemyCharacter>(Notice.Target);
-	if (!Player || Notice.Attacker != Player || !Struck)
+	// AND NOT FOR A BLOW ON THE PLAYER'S OWN THRALL. Issue #1202, ruled 2026-09-30.
+	if (!Player || Notice.Attacker != Player || !Struck || DungeonGameModeIsAPlayersFollower(Struck))
 	{
 		return;
 	}

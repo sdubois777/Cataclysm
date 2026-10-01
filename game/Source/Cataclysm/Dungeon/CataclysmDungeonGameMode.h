@@ -2729,6 +2729,9 @@ private:
 	/** Famished Beasts' beat: which creatures seek drops, and each one standing on a drop eats it. Issue #41. */
 	void StepFamishedBeasts();
 
+	/** Puts back, on every thrall a player commands, each value a floor rule set on it. Issue #1202. */
+	void StepPlayersFollowers();
+
 	/**
 	 * Famished Beasts: an eater's damage and maximum health for the drops it has eaten. Issues #1820 and #41.
 	 * `bFreshBlock` after a rung change has written its whole stat block over, as Soul Harvest's is: nothing this rule
