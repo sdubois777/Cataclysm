@@ -407,3 +407,7 @@ Negative_Projectiles_travel_30_50_slower#1,Negative_Projectiles_travel_30_50_slo
 Positive_Your_ranged_skills_have_20_40_increased_range#1,Positive_Your_ranged_skills_have_20_40_increased_range,skill_range,increased,20.0,40.0,Type.Ranged,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
 Positive_Gadgets_have_20_40_increased_attack_range#1,Positive_Gadgets_have_20_40_increased_attack_range,minion_range,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
 Positive_Your_melee_skills_have_0_5_1_metre_reach#1,Positive_Your_melee_skills_have_0_5_1_metre_reach,melee_reach_metres,flat,0.5,1.0,Type.Melee,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar#1,Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar,critical_armor_penetration,flat,20.0,40.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Negative_While_stationary_you_take_20_35_increased_dama#1,Negative_While_stationary_you_take_20_35_increased_dama,damage_taken,increased,20.0,35.0,,while_stationary,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,hit_is_ranged_attack,0.0,0.0
+Negative_You_take_20_35_increased_damage_from_melee_att#1,Negative_You_take_20_35_increased_damage_from_melee_att,damage_taken,increased,20.0,35.0,,hit_is_melee_attack,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,health_above,75.0,0.0
+Positive_Your_abilities_are_free_when_above_80_95_hp#1,Positive_Your_abilities_are_free_when_above_80_95_hp,mana_cost,removed,1.0,1.0,,health_above,80.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,95.0

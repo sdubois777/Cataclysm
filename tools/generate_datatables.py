@@ -1626,14 +1626,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: empty again.
 #: CONDITION 2, CONDITION VALUE 2 AND CONDITION VALUE HIGH JOINED ON
 #: 2026-09-30 for issue #1833 group C part 3a, built ahead of their rows
-#: while the design workbook is with another session, and leave with them.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Condition 2": "#1833",
-        "Condition Value 2": "#1833",
-        "Condition Value High": "#1833",
-    },
-}
+#: while the design workbook is with another session.
+#: THEY LEFT with the four condition rows, and the table is empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):
