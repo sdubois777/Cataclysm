@@ -47,6 +47,9 @@ CONSTANTS = {
     "ApplyRandomDotAction": "apply_random_dot",
     # AND THE HEALTH CAP, since issue #1833 group D part 2.
     "HealthCappedAtAction": "health_capped_at",
+    # AND THE TWO NEARBY ACTIONS, since issue #1833 group D part 3.
+    "SmiteNearbyAction": "smite_nearby",
+    "HealNearbyEnemiesAction": "heal_nearby_enemies",
 }
 
 
@@ -105,6 +108,13 @@ def test_the_generator_accepts_exactly_the_cooldown_reset_names_the_engine_has()
 def test_the_generator_accepts_exactly_the_health_cap_name_the_engine_has() -> None:
     """Issue #1833 group D part 2."""
     assert gen.HEALTH_CAP_ACTION == engine_names()["HealthCappedAtAction"]
+
+
+def test_the_generator_accepts_exactly_the_nearby_names_the_engine_has() -> None:
+    """Issue #1833 group D part 3."""
+    names = engine_names()
+    assert set(gen.NEARBY_ACTIONS) == {names["SmiteNearbyAction"],
+                                       names["HealNearbyEnemiesAction"]}
 
 
 def test_the_generator_accepts_exactly_the_random_dot_name_the_engine_has() -> None:

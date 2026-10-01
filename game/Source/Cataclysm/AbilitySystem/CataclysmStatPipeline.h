@@ -3373,6 +3373,32 @@ struct CATACLYSM_API FCataclysmStatInputs
  * would carry an unstated invariant that both must not be true at once.
  */
 /**
+ * What an action does to the characters near its wearer. Issue #1833 group D
+ * part 3, ruled 2026-10-01. `NEARBY_ACTIONS` in `tools/generate_datatables.py`
+ * holds the two action names, one per value below but None. "Nearby" is
+ * `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmNearbyAction : uint8
+{
+	/** Not a nearby action row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * A hit of `Percent` of the wearer's weapon damage on every enemy nearby:
+	 * "When your energy shield is broken, you smite all nearby enemies".
+	 */
+	Smite UMETA(DisplayName = "Smite nearby enemies"),
+
+	/**
+	 * Each enemy nearby healed by `Percent` of its own maximum health, and never
+	 * a character on the wearer's side: "On death all nearby enemies are healed
+	 * for 10%-20% of their maximum HP".
+	 */
+	HealEnemies UMETA(DisplayName = "Heal nearby enemies"),
+};
+
+/**
  * Which skill cooldowns a reset action clears. Issue #1833, the cooldown reset
  * action. `COOLDOWN_RESET_ACTIONS` in `tools/generate_datatables.py` holds the
  * six action names, one per value below but None.
@@ -3734,6 +3760,13 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bHealthCap = false;
+
+	/**
+	 * Set, this action acts on the characters near its wearer instead of
+	 * moving a pool. Issue #1833 group D part 3. See `ECataclysmNearbyAction`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmNearbyAction Nearby = ECataclysmNearbyAction::None;
 };
 
 /**

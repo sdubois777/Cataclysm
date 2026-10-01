@@ -4829,6 +4829,9 @@ HIT_FIRED_EVENTS = (
     "dodge",
     "deployable_hit",
     "retaliation_dealt",
+    # A BLOW BREAKING THE ENERGY SHIELD. Issue #1833 group D part 3, ruled
+    # 2026-10-01: a hit causes it, so it takes the default.
+    "energy_shield_broken",
 )
 
 #: The seconds a trigger waits when its row states none. See `HIT_FIRED_EVENTS`.
@@ -4851,6 +4854,26 @@ HEALTH_CAP_ACTION = "health_capped_at"
 #: Issue #1833 group D part 2, ruled 2026-09-30.
 THRESHOLD_EVENT = "health_falls_below"
 
+#: The actions on the characters NEAR THE WEARER, within five metres, the
+#: judgement of 2026-09-11 for "nearby" with no number. Issue #1833 group D part
+#: 3, ruled 2026-10-01. `smite_nearby` is a hit of the value's share of weapon
+#: damage on every enemy nearby, "Smite ... a nova at 100% of weapon damage";
+#: `heal_nearby_enemies` heals each enemy nearby by the value's share of its own
+#: maximum health, and never a character on the wearer's side.
+#: `UCataclysmAbilitySystemComponent::SmiteNearbyAction` and
+#: `HealNearbyEnemiesAction` hold the same names.
+NEARBY_ACTIONS = (
+    "smite_nearby",
+    "heal_nearby_enemies",
+)
+
+#: The largest share a nearby action may state: a smite of ten times weapon
+#: damage, or a heal of a whole maximum. A sanity bound, as the clocks' is.
+MAX_NEARBY_PERCENT = {
+    "smite_nearby": 1000.0,
+    "heal_nearby_enemies": 100.0,
+}
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -4859,7 +4882,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
     charge, states a count per event and never waits."""
     return (action in POOL_ACTIONS or action in COOLDOWN_RESET_ACTIONS
             or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION
-            or action == HEALTH_CAP_ACTION)
+            or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -4937,6 +4960,17 @@ ACTION_ONLY_EVENTS = (
     # `GoToFloor` after the floor's rules reach it. Issue #1833 group D part 2:
     # "You start every dungeon floor at 30%-50% of your maximum HP".
     "floor_start",
+    # A BLOW TAKING THE ENERGY SHIELD FROM SOMETHING TO NOTHING, raised by
+    # `UCataclysmAbilitySystemComponent::NoteEnergyShieldBroken` from the
+    # damage branch of `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+    # Issue #1833 group D part 3: "When your energy shield is broken, you smite
+    # all nearby enemies". A drain or a reservation that empties it is no break.
+    "energy_shield_broken",
+    # THE PLAYER DYING, raised once per death in
+    # `ACataclysmPlayerCharacter::HandleDeath` after the death is marked. Issue
+    # #1833 group D part 3: "On death all nearby enemies are healed for 10%-20%
+    # of their maximum HP".
+    "player_death",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -5016,6 +5050,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_health_cap_action(index, who, action, event, fraction_of, kind,
                                  raw, headers)
         return
+    if action in NEARBY_ACTIONS:
+        _check_nearby_action(index, who, action, event, fraction_of, kind,
+                             raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -5026,7 +5064,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(NTH_ACTIONS)}; or a cooldown reset, "
             f"{', '.join(COOLDOWN_RESET_ACTIONS)}; or a cooldown reduction, "
             f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}; or {RANDOM_DOT_ACTION}; "
-            f"or {HEALTH_CAP_ACTION}.")
+            f"or {HEALTH_CAP_ACTION}; or a nearby action, "
+            f"{', '.join(NEARBY_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -5145,6 +5184,31 @@ def _check_health_cap_action(index: int, who: str, action: str, event: str,
                 f"share of its maximum and states {column} {written!r}. Its "
                 f"value is that share and nothing else, so the column must be "
                 f"empty.")
+
+
+def _check_nearby_action(index: int, who: str, action: str, event: str,
+                         fraction_of: str, kind: str, raw,
+                         headers: dict[str, int]) -> None:
+    """Everything a nearby action row must say, and everything it must not.
+    Issue #1833 group D part 3. An event is required, because the smite or the
+    heal happens AT something; the share is checked where the value is read. A
+    fraction, a value kind and a scale each mean nothing here, so each is
+    refused rather than dropped.
+    """
+    known = action_events()
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} acts on the characters "
+            f"nearby on the event {event or '(none)'!r}, which the game does "
+            f"not fire. Known: {', '.join(sorted(known))}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} acts on the characters "
+                f"nearby and states {column} {written!r}. Its value is a share "
+                f"and nothing else, so the column must be empty.")
 
 
 def _check_nth_action(index: int, who: str, action: str, event: str,
@@ -5406,7 +5470,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in COOLDOWN_RESET_ACTIONS \
                     and action not in COOLDOWN_REDUCE_ACTIONS \
                     and action != RANDOM_DOT_ACTION \
-                    and action != HEALTH_CAP_ACTION:
+                    and action != HEALTH_CAP_ACTION \
+                    and action not in NEARBY_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5534,6 +5599,17 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} lowers health and "
                     f"states Scale Max Steps. It has no stacks, so it would be "
                     f"dropped.")
+
+        # A NEARBY ACTION'S VALUE IS A SHARE, above 0 and up to its bound: of
+        # weapon damage for a smite, of each one's maximum health for a heal.
+        # Issue #1833 group D part 3.
+        if action in NEARBY_ACTIONS:
+            bound = MAX_NEARBY_PERCENT[action]
+            if not (0 < low <= bound and 0 < high <= bound):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts on the "
+                    f"characters nearby at {low:g} to {high:g} per cent. "
+                    f"{action} takes above 0 and up to {bound:g}.")
 
         # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
         # Issue #1833, the cooldown reduction action.

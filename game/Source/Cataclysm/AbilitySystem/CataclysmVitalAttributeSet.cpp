@@ -1441,6 +1441,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Outcome.DealtToHealth);
 			}
 
+			// A BLOW THAT BREAKS THE ENERGY SHIELD, defined as the Sacrificial
+			// Ward above defines "would break": the blow's shield share reaches
+			// what the shield holds, while it holds something. Issue #1833 group D
+			// part 3, ruled 2026-10-01: "When your energy shield is broken, you
+			// smite all nearby enemies". Only a blow breaks it; a drain or a
+			// reservation that empties the shield does not. Read before the write
+			// below and raised further down, once the blow is wholly resolved.
+			const float ShieldBeforeBlow = GetEnergyShield();
+			const bool bBrokeShield = ShieldBeforeBlow > 0.0f
+				&& Outcome.AbsorbedByShield >= ShieldBeforeBlow;
+
 			if (Outcome.AbsorbedByShield > 0.0f)
 			{
 				SetEnergyShield(FMath::Clamp(
@@ -1660,6 +1671,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							GetOwningAbilitySystemComponent()))
 				{
 					Cataclysm->NoteBlocked();
+				}
+			}
+
+			// AND A BROKEN SHIELD IS ANNOUNCED, read at the shield's write above.
+			// Issue #1833 group D part 3.
+			if (bBrokeShield)
+			{
+				if (UCataclysmAbilitySystemComponent* Cataclysm =
+						Cast<UCataclysmAbilitySystemComponent>(
+							GetOwningAbilitySystemComponent()))
+				{
+					Cataclysm->NoteEnergyShieldBroken();
 				}
 			}
 

@@ -723,6 +723,38 @@ public:
 	static const TCHAR* HealthCappedAtAction;
 
 	/**
+	 * The two actions on the characters near the wearer. Issue #1833 group D
+	 * part 3, ruled 2026-10-01. `tools/generate_datatables.py` holds the same
+	 * names in `NEARBY_ACTIONS`. See `ECataclysmNearbyAction`.
+	 */
+	static const TCHAR* SmiteNearbyAction;
+	static const TCHAR* HealNearbyEnemiesAction;
+
+	/**
+	 * How far "nearby" reaches for those two actions, five metres. A judgement
+	 * of 2026-09-11 under the owner's delegation, recorded in
+	 * `docs/DECISIONS.md`: "nearby" or "close range" with no number is 5 m. Ruled
+	 * again for these two on 2026-10-01: one radius, shared by both kinds.
+	 */
+	static constexpr float NearbyActionRadiusCm = 500.0f;
+
+	/**
+	 * Raise `energy_shield_broken`: a blow has just taken the energy shield from
+	 * something to nothing. Issue #1833 group D part 3. Called from the damage
+	 * branch of `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` and
+	 * nowhere else, so only a blow breaks a shield; a drain or a reservation
+	 * that empties it does not.
+	 */
+	void NoteEnergyShieldBroken();
+
+	/**
+	 * Raise `player_death`. Issue #1833 group D part 3. Called once per death
+	 * from `ACataclysmPlayerCharacter::HandleDeath`, after the death is marked
+	 * and before the respawn clears what death ends.
+	 */
+	void NotePlayerDeath();
+
+	/**
 	 * Note this character's health now, and raise `health_falls_below` when it
 	 * has dropped, carrying the share of maximum health it held before, in
 	 * percent. A row on that event fires only when that share was at or above
@@ -2759,6 +2791,12 @@ protected:
 	 * class is a rule nothing states. This states it.
 	 */
 	int32 PoolActionDepth = 0;
+
+	/**
+	 * Smite or heal every enemy within `NearbyActionRadiusCm` of the avatar.
+	 * Issue #1833 group D part 3. See `ECataclysmNearbyAction`.
+	 */
+	void ActOnNearby(const FCataclysmPoolAction& Action);
 
 	/** Move one pool, by the rules the project owner's delegate ruled on 2026-09-14. */
 	void ApplyPoolAction(const FCataclysmPoolAction& Action,
