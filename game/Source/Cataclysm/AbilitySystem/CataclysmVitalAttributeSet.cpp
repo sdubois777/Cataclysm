@@ -1860,13 +1860,23 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// one of them would make the node several times stronger than it
 			// reads and nothing at run time would report it.
 			//
+			// AND THE RULE FOR EVERY AILMENT THAT IS NOT THE SKILL'S OWN. Issue
+			// #1565, ruled 2026-10-01. The owner's rule of 2026-09-02 (#917): such
+			// an ailment needs the blow to have taken a tenth of the target's
+			// maximum health, and a blow that killed applies nothing. A passive
+			// node is not the skill's own row. Until #1565 this asked only that the
+			// blow reached health, so a scratch could bleed and so could a corpse.
+			// `UCataclysmAilments::BlowCanCarryAnAilment` holds both halves, and
+			// the gear roll above and the random damage over time enchantment ask
+			// it too, so the three cannot hold different rules.
+			//
 			// READ OFF THE ATTRIBUTE RATHER THAN ASKED FOR, which is safe only
 			// because the node's one row carries no condition and no scale, so
 			// it IS folded into the attribute. A later node conditioning this
 			// stat would need a `StatForSkill` call here or its row would be
 			// dropped in silence. Issue #1022.
 			if (Hit.bIsMelee && Outcome.bWasCritical
-				&& Outcome.DealtToHealth > 0.0f)
+				&& UCataclysmAilments::BlowCanCarryAnAilment(GetOwningActor(), Outcome.DealtToHealth))
 			{
 				const UAbilitySystemComponent* Attacker =
 					Data.EffectSpec.GetContext()
