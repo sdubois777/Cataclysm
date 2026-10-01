@@ -698,8 +698,10 @@ FString UCataclysmCombatOverlay::BannerAssailantTextFor(const AActor* Actor)
 FString UCataclysmCombatOverlay::TitheAngelTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
-	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsATitheAngel ? FString(TEXT("Angel"))
-																					  : FString();
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsATitheAngel && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Angel"))
+		: FString();
 }
 
 FString UCataclysmCombatOverlay::ChaosSpawnTextFor(const AActor* Actor)
