@@ -39450,7 +39450,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName LightKey(UCataclysmDungeonModifierEffects::InfernalBeaconsActivate);
 
 	/** A dungeon carrying only Infernal Beacons, on floor 2 with its own creatures cleared and its beacon placed. */
-	ACataclysmDungeonGameMode* ABeaconFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	// NAMED APART FROM PESTILENT EMPOWERMENT'S `ABeaconFloor` above, which takes the same arguments in this namespace:
+	// the first build of this row, on 2026-10-01, stopped on the two definitions (C2084).
+	ACataclysmDungeonGameMode* AnInfernalBeaconFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
 	{
 		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
 		if (!Mode)
@@ -39522,7 +39524,7 @@ bool FCataclysmInfernalPlacedTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
 	if (!Mode)
 	{
 		return false;
@@ -39559,7 +39561,7 @@ bool FCataclysmInfernalActivateTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
 	ACataclysmEnemyCharacter* Imp = Mode ? ABeaconsImp(World, Mode, Player) : nullptr;
 	if (!TestNotNull(TEXT("an Imp"), Imp))
 	{
@@ -39600,7 +39602,7 @@ bool FCataclysmInfernalDungeonTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
 	if (!Mode || !TestTrue(TEXT("the first activated"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey))
 		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
 	{
@@ -39653,7 +39655,7 @@ bool FCataclysmInfernalTakenTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
 	ACataclysmEnemyCharacter* Imp = Mode ? ABeaconsImp(World, Mode, Player) : nullptr;
 	if (!TestNotNull(TEXT("an Imp"), Imp)
 		|| !TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))

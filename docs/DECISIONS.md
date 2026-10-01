@@ -225,6 +225,15 @@ creature taken after a beacon was lit kept 10% more damage a stack for as long a
 no longer reaches it. `StepPlayersFollowers` now sets `InfernalBeaconsDamageSource` back to 1 on each thrall, as it does
 Grim Totems', the Plaguebearer's and the Trial of Endurance's.
 
+### A compile fault the first build caught, 2026-10-01
+
+The first build of this row, in Group 2's window A, stopped: "error C2084: function ... `ABeaconFloor(FAutomationTestBase
+&,UWorld *,const FPossessedPlayer &)` already has a body". Pestilent Empowerment has defined a test helper of that name
+and those arguments in the same namespace since 2026-09-25, and this row's tests defined a second. The row had never been
+compiled before the window, and the checks run before it read each added line, not the namespace's names. This row's
+helper is now `AnInfernalBeaconFloor`, at its definition and its four callers, as the coordinating session ruled; nothing
+in the game changed. The checks run before a window now look for a function defined twice in one namespace.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
