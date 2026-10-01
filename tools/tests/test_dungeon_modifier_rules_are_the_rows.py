@@ -3043,7 +3043,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetGrimTotemsDamageMultiplier", "GrimTotemsDamageSource"),
                         ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource"),
                         ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource"),
-                        ("SetFamishedBeastsDamageMultiplier", "FamishedBeastsDamageSource")):
+                        ("SetFamishedBeastsDamageMultiplier", "FamishedBeastsDamageSource"),
+                        ("SetInfernalBeaconsDamageMultiplier", "InfernalBeaconsDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4760,3 +4761,76 @@ def test_famished_beasts_row_still_names_seeking_eating_denying_and_growing():
         assert phrase in lower, (
             f"Famine_Famished_Beasts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "FamishedBeastsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_battlefield_relics_row_still_names_activating_a_temporary_buff_and_pursuing_spirits():
+    """The phrases the rule's readings rest on.
+
+    "Scattered throughout the dungeon are ancient relics of war that can be activated to give powerful but temporary
+    buffs. However, activating a relic also summons the spirits of fallen warriors who will relentlessly pursue the
+    players until they are defeated." CAN BE ACTIVATED is the floor object's one choice; TEMPORARY BUFFS are the three
+    kinds for thirty seconds; SUMMONS THE SPIRITS is the creatures activating brings; RELENTLESSLY PURSUE is their
+    noticing the player from anywhere on the floor. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["War_Battlefield_Relics"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("relics of war", "can be activated", "powerful but temporary buffs",
+                   "summons the spirits of fallen warriors", "relentlessly pursue"):
+        assert phrase in lower, (
+            f"War_Battlefield_Relics no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "BattlefieldRelicsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_pandoras_box_row_still_names_chests_and_one_outcome_or_the_other():
+    """The phrases the rule's readings rest on.
+
+    "Random chests appear throughout the dungeon. Opening them can either grant powerful rewards or unleash waves of
+    chaos-spawned enemies, forcing players to gamble on their luck." EITHER ... OR is one roll and one outcome, as
+    Trick or Treat's " or " is read; POWERFUL REWARDS is a Boss's kill's drops; WAVES OF CHAOS-SPAWNED ENEMIES is the
+    waves. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Chaos_Pandora_s_Box"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("random chests", " either ", " or ", "powerful rewards", "unleash waves", "chaos-spawned enemies"):
+        assert phrase in lower, (
+            f"Chaos_Pandora_s_Box no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "PandorasBoxKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_infernal_beacons_row_still_names_activating_power_for_enemies_and_magic_find():
+    """The phrases the rule's readings rest on.
+
+    "Each floor contains an Infernal Beacon. Enemies in the dungeon gain a stacking power score buff per beacon
+    activated while the player gains a stacking magic find buff." EACH FLOOR CONTAINS is one a floor; PER BEACON
+    ACTIVATED is a stack for each; POWER SCORE is read as damage, by Pestilent Empowerment's ruling; STACKING MAGIC FIND
+    is the player's side. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Demonic_Infernal_Beacons"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("each floor contains an infernal beacon", "stacking power score buff", "per beacon activated",
+                   "stacking magic find buff"):
+        assert phrase in lower, (
+            f"Demonic_Infernal_Beacons no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "InfernalBeaconsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_war_banner_row_still_names_planting_an_aura_waves_and_a_defended_period():
+    """The phrases the rule's readings rest on.
+
+    "Players can plant a "War Banner" that grants significant buffs in a radius but also attracts waves of enemies. The
+    banner must be defended for a certain period to gain its full benefits." CAN PLANT is the floor object's choice;
+    BUFFS IN A RADIUS is the aura inside its zone; ATTRACTS WAVES OF ENEMIES is a wave every fifteen seconds held;
+    DEFENDED FOR A CERTAIN PERIOD is sixty seconds standing inside; FULL BENEFITS is the doubled aura. If any of them
+    changes, the reading must be revisited.
+    """
+    words = flat(rows()["War_War_Banner"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("can plant", "buffs in a radius", "attracts waves of enemies", "defended for a certain period",
+                   "full benefits"):
+        assert phrase in lower, (
+            f"War_War_Banner no longer says {phrase.upper()!r}. A reading of the rule rests on it; see WarBannerKey "
+            "in CataclysmDungeonModifierEffects.h. " + words)

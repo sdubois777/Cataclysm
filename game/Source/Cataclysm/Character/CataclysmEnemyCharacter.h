@@ -629,6 +629,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetInfectionBloomDamageMultiplier(float NewMultiplier);
 
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetInfernalBeaconsDamageMultiplier(float NewMultiplier);
+
 	/**
 	 * Multiplies the attack damage of a creature standing near a Grim Totem the player cleansed.
 	 * `Death_Grim_Totems`. Issues #1820 and #41.
@@ -669,6 +672,7 @@ public:
 	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
 	static constexpr const TCHAR* CarrionFeastDamageSource = TEXT("CarrionFeast");
 	static constexpr const TCHAR* InfectionBloomDamageSource = TEXT("InfectionBloom");
+	static constexpr const TCHAR* InfernalBeaconsDamageSource = TEXT("InfernalBeacons");
 	static constexpr const TCHAR* GrimTotemsDamageSource = TEXT("GrimTotems");
 	static constexpr const TCHAR* BlackestShadowDamageSource = TEXT("BlackestShadow");
 	static constexpr const TCHAR* PlaguebearerDamageSource = TEXT("Plaguebearer");
@@ -1293,6 +1297,21 @@ public:
 	int32 DropsEaten = 0;
 
 	/**
+	 * Whether activating a Battlefield Relic brought this creature: a spirit of a fallen warrior, which says "Spirit"
+	 * under its bar. Issues #1820 and #41. A stand-in of the floor's own kinds until the owner says what a spirit is.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsARelicSpirit = false;
+
+	/** Whether opening a Pandora's Box brought this creature in one of its waves; it says "Chaos Spawn". #1820, #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsAChaosSpawn = false;
+
+	/** Whether a planted War Banner's waves brought this creature; it says "Assailant". Issues #1820 and #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsABannerAssailant = false;
+
+	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.
 	 *
@@ -1888,7 +1907,8 @@ protected:
 	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
 	 * (Ravenous Hoard), `FamishedBeastsDamageSource` (Famished Beasts), `FloorDepthDamageSource`
 	 * (March of Progress), `SpireDamageSource`
-	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
+	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment), `InfernalBeaconsDamageSource` (Infernal
+	 * Beacons) and
 	 * `TrialOfEnduranceDamageSource` (Trial of Endurance), `ObsidianSarcophagiDamageSource` (Obsidian
 	 * Sarcophagi), `InfectionBloomDamageSource` (Infection Bloom), `CarrionFeastDamageSource`
 	 * (Carrion Feast) and `PlaguebearerDamageSource` (The Plaguebearer). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies

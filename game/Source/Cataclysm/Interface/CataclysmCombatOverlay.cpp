@@ -28,10 +28,24 @@
 #include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+
+namespace
+{
+	/**
+	 * Whether a player commands this creature: a thrall. A rule's label names what that rule made the creature, and a
+	 * thrall the player took has left the rule. Issue #1202, ruled 2026-09-30; the question
+	 * `DungeonGameModeIsAPlayersFollower` asks in the game mode.
+	 */
+	bool OverlayIsAPlayersFollower(const AActor* Actor)
+	{
+		return Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Actor)) != nullptr;
+	}
+}
 
 // ---------------------------------------------------------------------------
 // The colours, as six-digit sRGB hex so they can be read straight against
@@ -672,6 +686,33 @@ FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::BannerAssailantTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsABannerAssailant && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Assailant"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::ChaosSpawnTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsAChaosSpawn && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Chaos Spawn"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::RelicSpiritTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsARelicSpirit && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Spirit"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)
 {
 	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
@@ -721,7 +762,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
 		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
-		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor),
+		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
+		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),

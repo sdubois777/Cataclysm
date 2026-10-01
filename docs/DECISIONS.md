@@ -2,6 +2,635 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — War Banner: one banner a floor, planted where it stands; inside its 12 m area 20% more damage and +15 resistance, and held 60 s through a wave of four every 15 s it doubles
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the two aura fields, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the banner,
+the hold, the waves, the aura, the panel line); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the
+"Assailant" flag); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Assailant"); the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The fifth of Group 2's chain and the last of its first
+window, on Infernal Beacons. **Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`War_War_Banner` in `game/Data/DungeonModifiers.csv`, weight 10: "Players can plant a "War Banner" that grants
+significant buffs in a radius but also attracts waves of enemies. The banner must be defended for a certain period to
+gain its full benefits." It states no figure.
+
+### What the design already said
+
+Nothing: the design document and this log name no planted banner. The player's inputs are Enhanced Input actions held in
+an editor data asset, `UCataclysmInputConfig`, so a new key is editor work; a click on a floor object's name needs
+nothing new, since the controller already walks to and opens a floor object.
+
+### What the rule does
+
+On a floor carrying the row, one "War Banner" stands where Eternal Chorus's picker puts things; one on a Horde arena.
+Its one choice, "Plant the banner", plants it where it stands: **the player chooses when to plant it, but not where**.
+A "plant here" key would need editor input assets, and is not built. Planted, a War-drawn zone 12 m across marks it for
+the rest of the floor; while the player stands inside, 20% more damage and +15 on every resistance. Standing inside is
+defending it: 60 s, counted only while the player is inside and never reset. A wave of four creatures of the floor's
+kinds comes as it is planted and after every 15 s of it, at 0, 15, 30 and 45 s, and none as the hold completes; each
+comes 15 m from the banner, notices the player from anywhere on the floor and says "Assailant". Held, the waves stop and the aura inside becomes 40% and +30 for the rest of the floor. The banner cannot be
+harmed. The panel reads "war banner: planted, 37 s to hold; +20% damage, +15 resistances inside", then "war banner:
+held; +40% damage, +30 resistances inside".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "War Banner" with "Plant the banner"; one a floor, one on a Horde arena, placed by Eternal Chorus's
+  picker; it plants where it stands and needs no new input.** This entry says that the player chooses when to plant but
+  not where, and that a "plant here" key would need editor input assets and is not built now.
+- **A zone 1200 cm in radius, drawn as War, lasting the floor: 20% more damage and +15 to all resistances while the
+  player stands inside.**
+- **Defending means standing inside: 60 s, counted only while inside, without reset; a wave of four of the floor's
+  kinds every 15 s, 1500 cm from the banner, seeing across the floor, labelled "Assailant"**, the floor's creatures,
+  paying as their rung does.
+- **The first wave comes as the banner is planted, then one every 15 s held: at 0, 15, 30 and 45 s, four waves, all
+  inside the hold, and none as it completes.** Ruled on review of this change: the row says planting "attracts waves",
+  and a wave arriving as the hold completes, when the waves stop, would contradict the next ruling. This replaced this
+  change's first reading, a wave at 15, 30, 45 and 60 s.
+- **After 60 s held the waves stop and the aura becomes 40% more damage and +30 resistances inside, for the rest of the
+  floor.**
+- **The banner cannot be harmed**: "defended" means holding the ground.
+- **The labels and the panel line.**
+
+**On the owner's play-check list**, added by the coordinating session: plant the banner, hold it through the waves, and
+the aura doubles.
+
+**Judgements of this change, under the same delegation, accepted on review:**
+
+- **The aura ends with the floor**, as a relic's buff does, reset in `ApplyFloorRulesToPlayer`; the zone is drawn again
+  on the next beat while the banner stands on that arena.
+- **The planted banner is not an object on the floor**: the floor object goes once planted, and the zone marks the place.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, War Banner | [poedb.tw/us/War_Banner](https://poedb.tw/us/War_Banner) | "place a banner with an aura. The aura will be larger and more powerful the more Valour was consumed."; it "will end early if you leave the aura" |
+| Diablo IV, cursed shrines | [maxroll.gg/d4/resources/shrines](https://maxroll.gg/d4/resources/shrines) | "60 seconds to slay up to 3 waves on monsters", then the reward |
+
+**What it settles:** a placed banner's aura helps only those inside it, and holding a place against waves for a set
+time earns the reward. **What it does not:** the figures, and what "defended" means where creatures attack only the
+player; here it is standing inside.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `WarBanner`:
+
+- `WarBannerFiguresAuraHoldAndWaves`.
+- `WarBannerStandsToBePlanted`: away from the entrance, named, placed by the row, one "Plant" choice, not planted, the
+  panel.
+- `WarBannerPlantedGivesItsAuraInsideAndNothingOutside`: planted, the banner to plant goes and the area is drawn; inside
+  20% more attack and spell damage and +15 resistance, and the panel; outside, nothing.
+- `WarBannerHeldThroughTheWavesDoublesItsAura`: four "Assailant" as it is planted, raised and paying; no second wave
+  at 14.75 s and four more at 15 s; 20 s outside leaves the hold at 15 s and brings no wave; back inside, four waves in
+  all and not held at 59.75 s, then held at 60 s with no wave; 40% and +30 inside and the panel; 20 s more brings no
+  wave.
+- `WarBannerAnAssailantThePlayerTakesIsNoLongerOne`: the first wave; one taken loses "Assailant" and three stand,
+  without it.
+
+**The player is placed inside or outside by hand**: a world built for a test has no navigation, and nothing walks.
+
+One Python check: the row still says "can plant", "buffs in a radius", "attracts waves of enemies", "defended for a
+certain period" and "full benefits".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **An assailant the player takes is no longer an assailant**: "Assailant" leaves its bar and
+`BannerAssailantsStanding()` leaves it out, through the two questions Battlefield Relics' entry names. The waves come on
+their clock and do not read that count, so nothing else changes.
+
+### Group 2's window A, 2026-10-01
+
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `8f050ce8`: `WarBannerHeldThroughTheWavesDoublesItsAura` failed with the break in; passed restored.
+- **Pb PROVED** at `8f050ce8`: `WarBannerHeldThroughTheWavesDoublesItsAura` failed with the break in; passed restored.
+- **Pc PROVED** at `8f050ce8`: `WarBannerPlantedGivesItsAuraInsideAndNothingOutside` failed with the break in; passed restored.
+
+Run at `war-banner-6`, this row's head with the rename on top, for the same reason.
+
+---
+
+## 2026-09-30 — Infernal Beacons: one beacon a floor; each activated makes every creature of the dungeon deal 10% more damage and gives the player 10 magic find, for the rest of the dungeon, capped at 100
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the player's magic-find field, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the
+beacons, the dungeon's stacks, the beat, the panel line); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+and `.cpp` (the row's own key of the damage map); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The fourth of Group 2's chain, on the purification altars.
+**Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`Demonic_Infernal_Beacons` in `game/Data/DungeonModifiers.csv`, weight 10: "Each floor contains an Infernal Beacon.
+Enemies in the dungeon gain a stacking power score buff per beacon activated while the player gains a stacking magic
+find buff." It states no figure. This log records the workbook rewording of its last clause from "stacking loot rarity
+find buff" to "stacking magic find buff".
+
+### What the design already said
+
+"Power Score" in the design document is the player's number, on the Enemy Score's scale; nothing says what raising an
+enemy's power score does. Pestilent Empowerment's ruling of 2026-09-25 read "power" as damage only, through its own key
+of the damage map, for every later floor, capped at 100%. The player's magic find is an added percentage on a baseline
+of nought, and Abyssal Rifts gives 10 a success.
+
+### What the rule does
+
+On a floor carrying the row, one "Infernal Beacon" stands where Eternal Chorus's picker puts things; one on a Horde
+arena. Its one choice, "Activate", adds a stack for the rest of the dungeon, and the beacon goes. A beacon left alone
+does nothing. Each stack gives every creature on the player's other side 10% more damage, added, up to 100%, through its
+own key of the damage map, written on the beat from the floor it was activated on; and gives the player 10 magic find,
+added, up to 100. Leaving the dungeon clears the stacks. The panel reads "infernal beacons: 2 activated; enemies +20%
+damage; +20 magic find", on a floor carrying the row and on every floor once one is activated.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "Infernal Beacon" with "Activate" and the leave button; one each floor, one on a Horde arena, placed by
+  Eternal Chorus's picker; it goes once activated; one left alone does nothing.**
+- **Each beacon activated adds one stack for the rest of the dungeon**; the count clears on leaving the dungeon.
+- **Damage only**, by the 2026-09-25 precedent that "power" is damage only: 10% a stack, added, through its own key of the
+  damage map, written on the beat, starting on the current floor, capped at 100%. **With Pestilent Empowerment active
+  too, the two keys stack as separate keys**: each is its own entry of the damage map, and every entry multiplies.
+- **+10 magic find a stack**, added, through a new floor-effects field, capped at 100.
+- **The labels and the panel line.**
+
+**On the owner's play-check list**, added by the coordinating session: activate beacons over several floors; enemies hit
+harder and loot improves, and the panel shows both figures.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The creatures written are Pestilent Empowerment's**: every creature on the player's other side but a floor source,
+  which does nothing. Written only when a creature's own key differs from the dungeon's figure.
+- **The rule's beat runs on every floor once a stack is held**, as a Grim Totems embrace's does while on the character,
+  so a creature of a later floor that does not carry the row still gets the dungeon's figure.
+- **The magic find is written when the stacks change**, and `ApplyChangingFloorEffects` reads what was last written, so
+  a new floor keeps it.
+
+### The research
+
+Fetched on 2026-09-30 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Last Epoch, corruption | [maxroll.gg's Empowered Monolith guide](https://maxroll.gg/last-epoch/monolith/empowered-guide) | "Corruption is the primary source of progressing both the difficulty and rewards in the Empowered Monolith, allowing players to increase the health and damage of enemies while also increasing XP and Item Rarity." |
+
+**What it settles:** a player-chosen, accumulating trade of stronger enemies for better loot. **What it does not:** the
+figures, or whether "power" is damage or damage and health; Last Epoch raises both, and this project's ruling reads
+power as damage only.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `InfernalBeacons`:
+
+- `InfernalBeaconsFiguresStacksAndCaps`: one, one; the multiplier at 0, 1, 3, 10 and 12 stacks (1, 1.1, 1.3, 2, 2); the
+  magic find at 1 and 12 (10, 100).
+- `InfernalBeaconsOneStandsOfferingActivate`: away from the entrance, named, placed by the row, one "Activate", the panel.
+- `InfernalBeaconsActivatingOneStrengthensCreaturesAndGivesMagicFind`: the beacon goes, one stack; an Imp of the floor
+  deals 10% more on the row's own key; the player has 10 magic find; the panel.
+- `InfernalBeaconsTheStacksLastTheDungeon`: a beacon on floor 2; floor 3, before its own is activated, keeps 10 magic
+  find; the second makes two stacks: 20% more on floor 3's Imp and 20 magic find; leaving the dungeon clears the stacks
+  and the magic find.
+- `InfernalBeaconsACreatureThePlayerTakesLosesTheStacks`: a beacon lit, the Imp at 10% more; taken, it deals its own
+  damage a beat later, and the beat after.
+
+**A FAULT FOUND BY READING, BEFORE ANY WINDOW, AND FIXED ON THIS BRANCH** as the coordinating session ruled. A floor
+change replaces the player's floor modifiers wholesale in `ApplyFloorRulesToPlayer`, and the beat wrote the magic find
+again only when the stacks moved, so a floor on which no beacon was activated left the player none for the rest of the
+dungeon. `InfernalBeaconStacksApplied` is now reset there, as March of Progress resets its armour, and the test above
+checks floor 3 before its beacon. The test as first written could not see it: it activated a second beacon on floor 3,
+which moved the stacks.
+
+Two Python checks: the row still says "each floor contains an infernal beacon", "stacking power score buff", "per beacon
+activated" and "stacking magic find buff"; and its setter writes its own key of the damage map.
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **The sweep already leaves a thrall out**: it acts only on a creature that
+`UCataclysmTargeting::IsHostileTo` the player, and `UCataclysmCommand::Subjugate` gives a taken creature the player as
+its owner and the player's team, so it is no longer hostile. No skip was added to the sweep, as ruled.
+
+**What a creature carried from before it was taken is put back**, as the coordinating session ruled the same day: a
+creature taken after a beacon was lit kept 10% more damage a stack for as long as it lived, since the sweep that wrote it
+no longer reaches it. `StepPlayersFollowers` now sets `InfernalBeaconsDamageSource` back to 1 on each thrall, as it does
+Grim Totems', the Plaguebearer's and the Trial of Endurance's.
+
+### A compile fault the first build caught, 2026-10-01
+
+The first build of this row, in Group 2's window A, stopped: "error C2084: function ... `ABeaconFloor(FAutomationTestBase
+&,UWorld *,const FPossessedPlayer &)` already has a body". Pestilent Empowerment has defined a test helper of that name
+and those arguments in the same namespace since 2026-09-25, and this row's tests defined a second. The row had never been
+compiled before the window, and the checks run before it read each added line, not the namespace's names. This row's
+helper is now `AnInfernalBeaconFloor`, at its definition and its four callers, as the coordinating session ruled; nothing
+in the game changed. The checks run before a window now look for a function defined twice in one namespace.
+
+### Group 2's window A, 2026-10-01
+
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `8f050ce8`: `InfernalBeaconsActivatingOneStrengthensCreaturesAndGivesMagicFind` failed with the break in; passed restored.
+- **Pb PROVED** at `8f050ce8`: `InfernalBeaconsTheStacksLastTheDungeon` failed with the break in; passed restored.
+- **Pc PROVED** at `8f050ce8`: `InfernalBeaconsFiguresStacksAndCaps` failed with the break in; passed restored.
+
+Run at the top, `war-banner-6`, as the coordinating session ruled: its own head, `infernal-beacons-4`, did not build, and the rename sits above it.
+
+---
+
+## 2026-09-30 — Carrion Feast's purification altars: one altar a floor; consecrating it burns every carcass within 15 m, now and for the rest of the floor; Carrion Feast is built
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the altar's figures and
+choice, the row's note, and Carrion Feast moved from partly built to built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the altar, the burn taken out of the hit so the altar reuses it, the consecrated area on the beat, the panel
+line); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, one of Carrion
+Feast's own among them. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). The third of Group 2's chain, on Pandora's Box. **Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`Pestilence_Carrion_Feast`, weight 10: "Rotting carcasses attract swarms of carrion feeders that consume the bodies,
+growing stronger and more numerous with each corpse. Players can prevent this by burning bodies with fire-based
+abilities or finding "purification altars" to consecrate the area." The carcasses, the feeders and the burning were
+built on 2026-09-26 (the entry of that date); the altars waited on the choice screen, and the row was partly built.
+
+### What the rule does now
+
+On a floor carrying the row, one "Purification Altar" stands where Eternal Chorus's picker puts things; one on a Horde
+arena, kept across its waves. Its one choice, "Consecrate", draws a Celestial zone 15 m across the altar for the rest of
+the floor: every carcass lying inside burns at once, and every carcass that falls inside later burns on the next beat,
+exactly as a Demonic hit burns one -- it goes and no feeder comes. Feeders already standing are not touched. The altar
+goes. Carrion Feast's panel line gains "; an altar stands" or "; the altar is used". **Carrion Feast is now built**:
+`BuiltStateOf` answers Built, and the row is no longer in the partly-built list.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "Purification Altar" with "Consecrate" and the leave button; one on a floor carrying Carrion Feast,
+  one on a Horde arena kept across its waves, placed by Eternal Chorus's picker; it goes once used.**
+- **A consecrated zone 1500 cm in radius around the altar, drawn as Celestial, lasting the floor**: every carcass inside
+  burns at once, and every one that falls inside later burns on the next beat, exactly as a Demonic hit burns one.
+  Feeders already standing are not touched. **The burn path the Demonic hit uses is reused, not copied.**
+- **No second choice.**
+- **The labels and the panel line.**
+- **When built, Carrion Feast moves from partly built to built; this entry and the partly-built list both say so.**
+
+**On the owner's play-check list**, added by the coordinating session: consecrate the altar; carcasses inside the zone
+burn and no feeder rises there.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The burn is one function now.** `NoteHitForCarrionFeast` marked a carcass burned in three lines; those lines are
+  `BurnTheCarcass(Index)`, which the hit and the altar both call. It refuses a carcass already marked.
+- **The altar belongs to Carrion Feast's row**, so its floor object carries `CarrionFeastKey` and the choice goes to
+  `ChooseAtPurificationAltar` by that key. No new row key.
+- **The zone is drawn on the beat and drawn again wherever it is missing**, as Grim Totems' zones are, so it lasts the
+  floor although the rules' zones are cleared between a Horde arena's waves.
+- **One of Carrion Feast's tests reads its panel line twice**, `ASlainCreatureLeavesACarcassThatBecomesAFeederAfterTenSeconds`,
+  at "the panel" and "the panel after"; an altar now stands on its floor untouched, so both expected lines end "; an
+  altar stands". That is the line changing, not the test weakened.
+
+### The research
+
+Fetched on 2026-09-30 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, consecrated ground | [poedb.tw/us/Consecrated_Ground](https://poedb.tw/us/Consecrated_Ground) | "The character and their allies affected by it regenerate an additional 6% of their maximum life per second"; created by skills, items and "Map and area modifiers that add 'patches of Consecrated Ground'" |
+
+**What it settles:** little: consecrated ground in the genre is a holy area that helps whoever stands in it. **What it
+does not:** no shipped rule found has consecrating ground stop corpses being used; burning the carcasses is this game's
+reading of the row's "prevent this".
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `PurificationAltar`:
+
+- `PurificationAltarFiguresAndCarrionFeastIsBuilt`: one, one, 15 m, and `BuiltStateOf` answering Built.
+- `PurificationAltarStandsOnACarrionFeastFloor`: away from the entrance, named, placed by Carrion Feast, one
+  "Consecrate", and the panel.
+- `PurificationAltarBurnsTheCarcassesInsideNowAndLater`: the altar moved onto one carcass and another carcass moved 30 m
+  away; consecrating burns the first at once and not the second; the area is drawn; the panel; a carcass that falls
+  inside later burns on the next beat; the one outside is still eaten and one feeder stands.
+
+No new Python check: Carrion Feast's own already pins "purification altars".
+
+### Group 2's window A, 2026-10-01
+
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `4a28f351`: `PurificationAltarBurnsTheCarcassesInsideNowAndLater` failed with the break in; passed restored.
+- **Pb PROVED** at `4a28f351`: `PurificationAltarBurnsTheCarcassesInsideNowAndLater` failed with the break in; passed restored.
+- **Pc PROVED** at `4a28f351`: `PurificationAltarBurnsTheCarcassesInsideNowAndLater` failed with the break in; passed restored.
+
+---
+
+## 2026-09-30 — Pandora's Box: three boxes a floor; opening one is even odds of a Boss's kill's drops or three waves of four creatures, each wave once the last is dead
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the roll, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the boxes, the roll
+pinned for tests, the reward, the waves, the beat, the panel line); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+(the "Chaos Spawn" flag); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Chaos Spawn"); the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The second of Group 2's chain, on Battlefield Relics, whose
+`PlaceFloorObjects` and `BringCreaturesNear` it uses. **Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`Chaos_Pandora_s_Box` in `game/Data/DungeonModifiers.csv`, weight 10: "Random chests appear throughout the dungeon.
+Opening them can either grant powerful rewards or unleash waves of chaos-spawned enemies, forcing players to gamble on
+their luck." It states no figure.
+
+### What the design already said
+
+The design document names chests among the floor objects a player clicks for a choice. Trick or Treat is the nearest
+built rule: a clicked pickup rolls 0 to 100 at even odds, pinned for tests, between creatures and a buff, and a Python
+check pins its " or " as one outcome. Luxury Hoarders gives a pile of drop rolls on a stream seeded from the floor.
+
+### What the rule does
+
+On a floor carrying the row, three boxes stand where Eternal Chorus's picker puts things; one on a Horde arena, kept
+across its waves. Each is a floor object named "Pandora's Box" offering "Open". Opening one rolls 0 to 100 once. Below
+50 it lets out three waves of four creatures of the floor's kinds, their rung drawn as usual, 6 m from the box, noticing
+the player from anywhere on the floor, each saying "Chaos Spawn"; the first comes at once and each next one once the
+last is all dead. From 50 it gives the drops of a Boss-rung kill at the box, with the player's own magic find and loot
+quantity. The box goes either way. The panel reads "pandora's box: 2 unopened; wave 2 of 3".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object "Pandora's Box" with "Open" and the leave button; three a floor, one on a Horde arena, placed by
+  Eternal Chorus's picker; it goes once opened.**
+- **Even odds, one roll from 0 to 100, pinned by `Cataclysm.PandorasBoxRoll`.** The row says "either ... or", so it is
+  one outcome, not both, and the row-phrase check pins " either " and " or " as Trick or Treat's does.
+- **The reward: the drops of a Boss-rung kill** through `UCataclysmDropSpawner::SpawnDropsFor` with the player's magic
+  find and loot quantity. No new rarity floor.
+- **The waves: three of four of the floor's kinds, rarity drawn as usual, 600 cm from the box, the next once the last is
+  all dead**; seeing across the floor, labelled "Chaos Spawn", the floor's creatures, paying, staying on their floor.
+- **The labels and the panel line.**
+- **Blood Price makes opening a box cost health**; whichever of the two is built second carries a test with both on one
+  floor. Blood Price is last in this chain, so it carries that test.
+
+**On the owner's play-check list**, added by the coordinating session: whether a Boss kill's drops from half of three
+boxes a floor is too generous.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Each box's reward is on a stream seeded from the floor and the box**, as Luxury Hoarders' pile is, so the same box
+  of the same floor gives the same loot.
+- **Waves from different boxes run separately**, each on its own count; the panel shows the first under way.
+- **A new arena forgets the waves under way** with the last arena's creatures.
+
+### The research
+
+Fetched on 2026-09-30 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, strongboxes | [poedb.tw/us/Strongbox](https://poedb.tw/us/Strongbox) | "When opened, a strongbox will release groups of Monsters to surround and attack the character. Only once all of the ambushing monsters are slain will a strongbox relinquish its loot." |
+
+A search summary says Diablo III's cursed chests run five waves before a reward chest; that page was not fetched, so it
+is not quoted. **What it settles:** opening a container as a risk, with monsters in waves and loot. **What it does not:**
+both games give monsters and loot together, where this row says "either ... or"; one outcome is this game's reading.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `PandorasBox`:
+
+- `PandorasBoxFiguresBoxesOddsRewardAndWaves`: three, one, even odds with 49.9 letting out the waves and 50 giving the
+  reward, the Boss rung, three waves of four at 6 m.
+- `PandorasBoxThreeStandAwayFromTheEntranceOfferingOpen`.
+- `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves`: roll pinned at 75: the box goes, it gave drops, the drops lie
+  in the world, and no creature comes, then or on the beat. **The drop count is fixed, not drawn per run**: the counts
+  are drawn only from the stream the reward is given (`UCataclysmDropRoll::RollDropCount(..., Stream)` in
+  `SpawnDropsFor`); that stream is seeded from the floor plan's seed and the box; the plan's seed is
+  `FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, FloorNumber)`; and `ChooseSeed` answers the game mode's
+  `DungeonSeed` of 1 while `Cataclysm.DungeonSeed` is 0, its default. The test pins `Cataclysm.DungeonSeed` to 1 as
+  well. So a floor whose draw were nought would fail here every time, not now and then.
+- `PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother`: roll pinned at 25: no reward; four "Chaos Spawn", raised
+  and paying; no second wave while the first stands; each wave killed brings the next, the panel counting; no fourth.
+  Each creature is brought to one health before it is killed, since its rung is drawn.
+- `PandorasBoxASpawnThePlayerTakesLeavesItsWave`: the waves rolled; one taken loses "Chaos Spawn" and three stand,
+  without it; when the three die the second wave comes, with the thrall alive.
+
+One Python check: the row still says "random chests", " either ", " or ", "powerful rewards", "unleash waves" and
+"chaos-spawned enemies".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **A creature of a wave the player takes is no longer a Chaos Spawn**: "Chaos Spawn" leaves
+its bar and `ChaosSpawnStanding()` leaves it out, through the two questions Battlefield Relics' entry names.
+
+**Judgement of this change, under the owner's delegation:** the next wave comes when the wave's other creatures are dead,
+without waiting for the one the player took. The ruling named the label and the count; the wave step reads its own list,
+so without this a thrall kept alive would hold the box's next wave back for as long as it lived. It follows the ruling
+for a Horde wave in the same change, that a thrall "does not stop ... a Horde wave from finishing".
+
+### Group 2's window A, 2026-10-01
+
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `0dcc4d97`: `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves` failed with the break in; passed restored.
+- **Pb PROVED** at `0dcc4d97`: `PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother` failed with the break in; passed restored.
+- **Pc PROVED** at `0dcc4d97`: `PandorasBoxFiguresBoxesOddsRewardAndWaves` failed with the break in; passed restored.
+
+---
+
+## 2026-09-30 — Battlefield Relics: two relics a floor, each of Fury, Haste or the Bulwark for 30 seconds, and activating one brings five spirits after the player; the floor-object and creature-bringing code taken out of Grim Totems
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the four player fields, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the two
+helpers, Grim Totems through them, the relics, their beat, the panel line, a console variable pinning the kinds);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the "Spirit" flag);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Spirit"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The first of Group 2's chain, built on the seven-stack.
+**Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`War_Battlefield_Relics` in `game/Data/DungeonModifiers.csv`, weight 10: "Scattered throughout the dungeon are ancient
+relics of war that can be activated to give powerful but temporary buffs. However, activating a relic also summons the
+spirits of fallen warriors who will relentlessly pursue the players until they are defeated." It states no figure.
+
+### What the design already said
+
+The design document's section on taking drops names relics among the floor objects a player clicks for a choice: "a
+totem to embrace or cleanse, and in time altars, chests and relics." Nothing else does. "Relic" is also the name of an
+equipment slot ("Jewelry: 8 Rings, Necklace, Relic"), which is why the floor object is named "Battlefield Relic". Grim
+Totems is the rule nearest this one: embracing a totem gives 25% more damage for 30 s and brings three Elites.
+
+### What the rule does
+
+On a floor carrying the row, two relics stand where Eternal Chorus's picker puts things, away from the entrance; one on
+a Horde arena, kept across its waves. Each is a floor object of one of three kinds, drawn when it is placed and named for
+it: "Battlefield Relic of Fury", "of Haste" or "of the Bulwark". Its one choice, "Activate", gives the player its buff
+for 30 s -- Fury 50% more damage; Haste 30% more attack speed and 30% more movement speed; the Bulwark +30 to every
+resistance -- and brings five Common creatures of the floor's kinds 8 m from the relic, noticing the player from anywhere
+on the floor, each saying "Spirit". The relic goes. The same kind again refreshes its 30 s; different kinds add. The
+buffs end with the floor. The panel reads "battlefield relics: 1 standing; Fury 23 s".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A floor object named "Battlefield Relic", with "Activate" and the panel's leave button; two a floor, one on a Horde
+  arena, placed by Eternal Chorus's picker; it goes once activated.**
+- **Three kinds, drawn at placement and shown on its tag and the panel, each for 30 s**: Fury 50% more damage; Haste 30%
+  more attack speed and 30% more movement speed; Bulwark +30 to all resistances. The same kind refreshes its time;
+  different kinds add together.
+- **Five Common spirits of the floor's kinds, 800 cm from the relic, seeing across the floor, labelled "Spirit"**; the
+  floor's creatures, paying as their rung does, staying on their floor. Common rather than Elite to keep this row apart
+  from Grim Totems' three Elites: two relics of three Elites would be six Elites on a floor.
+- **The buff and the spirits are independent**; killing the spirits changes nothing about the buff.
+- **The labels and the panel line.**
+
+**An owner content question, recorded for later and not asked:** what a "spirit of a fallen warrior" is as a creature.
+Until the owner says, it is a stand-in of the floor's own kinds, as the Vampire Lord is.
+
+**On the owner's play-check list**, added by the coordinating session: activate a relic; the buff shows with its time
+left, and five spirits come after the player.
+
+**The build order**, ruled by the coordinating session: Group 2 is built as a chain, each row on the one before, and
+this row is first because it takes out the code every later row shares.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Two helpers taken out of Grim Totems, with nothing about Grim Totems changed.** `PlaceFloorObjects(RuleKey, Count,
+  DisplayName, Prompt)` places floor objects on Eternal Chorus's cells, as Grim Totems placed its totems.
+  `BringCreaturesNear(At, AwayCm, Count, FixedRung, SightMultiplier)` brings creatures of the floor's kinds beside a
+  point at a random angle, falling back to the cells around `At`, raised by a rule and paying, as the embrace brought
+  its Elites; it draws its random numbers in the order the embrace did. Grim Totems now calls both. Its six tests are
+  the check that nothing moved: `GrimTotemsFiguresTotemsEmbraceAndCleanse`,
+  `TwoGrimTotemsStandAwayFromTheEntranceOfferingTwoChoices`, `EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites`,
+  `CleansingAGrimTotemWeakensTheCreaturesNearIt`, `CleansingAGrimTotemCleansesThePlayer` and
+  `ANewFloorBringsNewGrimTotemsAndEndsTheEmbrace`.
+- **The kinds can be pinned for a test**, in order, by `Cataclysm.BattlefieldRelicKinds`: "0,1" makes the first relic
+  Fury and the second Haste. A single pinned kind, as the other rows' pinned rolls do it, could not put two kinds on one
+  floor, and "different kinds add together" needs two.
+- **No zone is drawn under a relic.** Grim Totems draws one under each totem; the ruling asks for none here, and a relic
+  shows its name as every floor object does.
+- **The buffs end with the floor**, as an embraced totem's does: `ApplyFloorRulesToPlayer` takes them off with the rest.
+- **Each kind has its own field on the player**: `RelicDamageMorePercent`, `RelicAttackSpeedMorePercent`,
+  `RelicSpeedMorePercent` and `RelicResistancePercent`, the resistance a Flat on each of the eight as Warzone's is.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, shrines | [poedb.tw/us/Shrine](https://poedb.tw/us/Shrine) | one large buff each, mostly for 45 s: Acceleration "50% increased Action Speed", Brutal "50% increased Damage", Resistance "+50% to all Elemental Resistances" |
+| Diablo IV, shrines | [maxroll.gg/d4/resources/shrines](https://maxroll.gg/d4/resources/shrines) | most last 30 seconds; a Cursed Shrine gives "60 seconds to slay up to 3 waves on monsters" before its reward |
+
+**What it settles:** a floor object that gives one strong buff for tens of seconds, and using it bringing monsters.
+**What it does not:** how many relics, which buffs, and what the spirits are.
+
+### Tests
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `BattlefieldRelics`:
+
+- `BattlefieldRelicsFiguresKindsTimeAndSpirits`: two, one, 30 s, 50%, 30% and 30%, +30, five spirits at 8 m at Common,
+  three kinds.
+- `BattlefieldRelicsTwoStandAwayFromTheEntranceEachOfAKind`: kinds pinned "0,1": far from the entrance, placed by the
+  row, one "Activate" choice, the first Fury and the second Haste by kind and by name, and the panel.
+- `BattlefieldRelicsFuryGivesDamageForThirtySecondsAndFiveSpirits`: the relic goes; five spirits at Common, "Spirit",
+  raised by the rule and paying; 50% more attack and spell damage; the panel; still on at 29.75 s, gone by 30.25 s,
+  the spirits still standing; a relic gone and a choice no relic offers are refused.
+- `BattlefieldRelicsHasteAndTheBulwarkAddTogether`: 30% more attack and movement speed and +30 resistance together,
+  no damage, and the panel.
+- `BattlefieldRelicsTheSameKindAgainRefreshesItsTime`: two relics of Fury 20 s apart give 50%, not 100%, ending 30 s
+  after the second.
+- `BattlefieldRelicsANewFloorBringsNewRelicsAndEndsTheBuffs`.
+- `BattlefieldRelicsASpiritThePlayerTakesIsNoLongerOne`: five spirits; one the player takes loses "Spirit", and
+  four stand, without it.
+
+One Python check: the row still says "relics of war", "can be activated", "powerful but temporary buffs", "summons the
+spirits of fallen warriors" and "relentlessly pursue".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **A spirit the player takes is no longer a spirit**: "Spirit" leaves its bar, and
+`RelicSpiritsStanding()` leaves it out. Both ask whether a player commands the creature, the game mode through
+`DungeonGameModeIsAPlayersFollower` and the bar labels through `OverlayIsAPlayersFollower`, a file-local copy of the same
+question in `CataclysmCombatOverlay.cpp`. The buff is not touched. The rules after this one in Group 2 that bring
+creatures use the same two questions.
+
+### A correction to seven earlier entries
+
+The seven entries of 2026-09-26 merged in pull request [#2180](https://github.com/sdubois777/Cataclysm/pull/2180) --
+Reality Twister; Shadowy Enemies; The Blackest Shadow; Swarm of Locusts obscures vision; The vision system; The choice
+screen; and The player cleanse -- each introduce their guard proofs as "each with its registered prefix, as printed".
+**None of those lists gives a prefix.** Each gives the verdict and the tests the run named, as printed. The entries are
+left as merged, and this sentence is the correction, as the coordinating session ruled on 2026-09-30.
+
+### Group 2's window A, 2026-10-01
+
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `1cf8fcee`: `BattlefieldRelicsFuryGivesDamageForThirtySecondsAndFiveSpirits` failed with the break in; passed restored.
+- **Pb PROVED** at `1cf8fcee`: `BattlefieldRelicsTheSameKindAgainRefreshesItsTime` failed with the break in; passed restored.
+- **Pc PROVED** at `1cf8fcee`: `BattlefieldRelicsHasteAndTheBulwarkAddTogether` failed with the break in; passed restored.
+
+---
+
 ## 2026-09-30 — Sacrificial Bond now divides a blow among the creature's allies, and Unholy Sigils now keeps a creature standing in one from dying
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the health clamp in

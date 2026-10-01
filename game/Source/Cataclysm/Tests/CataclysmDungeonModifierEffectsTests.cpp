@@ -34762,7 +34762,7 @@ bool FCataclysmCarrionCarcassTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("it cannot be hurt"), Carcass->bCannotBeHurt);
 	TestTrue(TEXT("labelled"), UCataclysmCombatOverlay::StatusLineFor(Carcass).Contains(TEXT("Carcass")));
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
-			  FString(TEXT("carrion feast: 1 carcasses lying, 0 feeders standing, feeders +0%")));
+			  FString(TEXT("carrion feast: 1 carcasses lying, 0 feeders standing, feeders +0%; an altar stands")));
 
 	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds) - 1);
 	TestEqual(TEXT("still a carcass at 9.75 s"), Mode->CarrionCarcassesNow().Num(), 1);
@@ -34785,7 +34785,7 @@ bool FCataclysmCarrionCarcassTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("10% more damage"),
 			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::CarrionFeastDamageSource), 1.1f, 0.001f);
 	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
-			  FString(TEXT("carrion feast: 0 carcasses lying, 1 feeders standing, feeders +10%")));
+			  FString(TEXT("carrion feast: 0 carcasses lying, 1 feeders standing, feeders +10%; an altar stands")));
 	return true;
 }
 
@@ -38630,6 +38630,1312 @@ bool FCataclysmThrallLosesTheTrialTest::RunTest(const FString& Parameters)
 			  One->DamageMultiplierFrom(ACataclysmEnemyCharacter::TrialOfEnduranceDamageSource), 1.0f, 0.0001f);
 	TestEqual(TEXT("and so is its resistance"), Its->GetNumericAttributeBase(Resist::GetAllResistanceAttribute()),
 			  OwnResistance, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// War_Battlefield_Relics. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName RelicsRow(UCataclysmDungeonModifierEffects::BattlefieldRelicsKey);
+	const FName ActivateKey(UCataclysmDungeonModifierEffects::BattlefieldRelicsActivate);
+
+	/**
+	 * A dungeon carrying only Battlefield Relics, on floor 2 with its own creatures cleared and its relics placed. The
+	 * caller pins the kinds with `Cataclysm.BattlefieldRelicKinds` first.
+	 */
+	ACataclysmDungeonGameMode* ARelicFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {RelicsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("two relics"), Mode->BattlefieldRelicsNow().Num(),
+							   UCataclysmDungeonModifierEffects::BattlefieldRelicsPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** The first resistance stat, which the Bulwark adds to as it adds to every one. */
+	FString FirstResistanceStat()
+	{
+		return UCataclysmItemModifiers::ResistanceStatFor(UCataclysmItemModifiers::DamageTypeNames()[0]).ToString();
+	}
+}
+
+// THE FIGURES: TWO RELICS; THREE KINDS FOR 30 S; FIVE COMMON SPIRITS 8 M AWAY.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsFiguresKindsTimeAndSpirits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two relics a floor"), Effects::BattlefieldRelicsPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::BattlefieldRelicsPerHordeArena, 1);
+	TestEqual(TEXT("30 s each"), Effects::BattlefieldRelicsSeconds, 30.0f, 0.001f);
+	TestEqual(TEXT("Fury: 50% more damage"), Effects::BattlefieldRelicsFuryDamageMorePercent, 50.0f, 0.001f);
+	TestEqual(TEXT("Haste: 30% more attack speed"), Effects::BattlefieldRelicsHasteAttackSpeedMorePercent, 30.0f, 0.001f);
+	TestEqual(TEXT("and 30% more movement speed"), Effects::BattlefieldRelicsHasteSpeedMorePercent, 30.0f, 0.001f);
+	TestEqual(TEXT("the Bulwark: +30 to every resistance"), Effects::BattlefieldRelicsBulwarkResistance, 30.0f, 0.001f);
+	TestEqual(TEXT("five spirits"), Effects::BattlefieldRelicsSpiritCount, 5);
+	TestEqual(TEXT("8 m from the relic"), Effects::BattlefieldRelicsSpiritAwayCm, 800.0f, 0.001f);
+	TestEqual(TEXT("at Common"), Effects::BattlefieldRelicsSpiritRung, 0);
+	TestEqual(TEXT("three kinds"), Effects::BattlefieldRelicKinds, 3);
+	return true;
+}
+
+// TWO RELICS AWAY FROM THE ENTRANCE, EACH NAMED FOR ITS KIND AND OFFERING ONE CHOICE, WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsTwoStandAwayFromTheEntranceEachOfAKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0,1"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const ACataclysmFloorObject* Relic : Relics)
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Relic->GetActorLocation(), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		TestEqual(TEXT("placed by the row"), Relic->RuleKey, RelicsRow);
+		if (TestEqual(TEXT("one choice"), Relic->Choices.Num(), 1))
+		{
+			TestEqual(TEXT("to activate it"), Relic->Choices[0].Key, ActivateKey);
+			TestTrue(TEXT("which can be chosen"), Relic->Choices[0].bAvailable);
+		}
+	}
+	TestEqual(TEXT("the first is a relic of Fury"), Mode->BattlefieldRelicKindOf(Relics[0]), Effects::BattlefieldRelicFury);
+	TestEqual(TEXT("named so"), Relics[0]->DisplayName, FString(TEXT("Battlefield Relic of Fury")));
+	TestEqual(TEXT("the second a relic of Haste"), Mode->BattlefieldRelicKindOf(Relics[1]), Effects::BattlefieldRelicHaste);
+	TestEqual(TEXT("named so"), Relics[1]->DisplayName, FString(TEXT("Battlefield Relic of Haste")));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 2 standing")));
+	return true;
+}
+
+// A RELIC OF FURY: IT GOES, 50% MORE DAMAGE FOR 30 S, AND FIVE COMMON SPIRITS COME; A RELIC GONE REFUSES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsFuryTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsFuryGivesDamageForThirtySecondsAndFiveSpirits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsFuryTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Relic = Mode->BattlefieldRelicsNow()[0];
+	TestEqual(TEXT("nothing before"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	if (!TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Relic, ActivateKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the relic went"), Mode->BattlefieldRelicsNow().Num(), 1);
+
+	const TArray<ACataclysmEnemyCharacter*> Spirits = Mode->RelicSpiritsStanding();
+	TestEqual(TEXT("five spirits came"), Spirits.Num(), Effects::BattlefieldRelicsSpiritCount);
+	for (const ACataclysmEnemyCharacter* Spirit : Spirits)
+	{
+		TestEqual(TEXT("at Common"), Spirit->RarityStep, Effects::BattlefieldRelicsSpiritRung);
+		TestTrue(TEXT("\"Spirit\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Spirit).Contains(TEXT("Spirit")));
+		TestTrue(TEXT("raised by the rule"), Spirit->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Spirit->PaysForItsDeath());
+	}
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("50% more attack damage"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("50% more spell damage"), TotemRuleOn(Player, TEXT("spell_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 1 standing; Fury 30 s")));
+
+	Beat(Mode, BeatsFor(Effects::BattlefieldRelicsSeconds) - 2);
+	TestEqual(TEXT("still more at 29.75 s"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("gone by 30.25 s"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the spirits are still after the player"), Mode->RelicSpiritsStanding().Num(),
+			  Effects::BattlefieldRelicsSpiritCount);
+
+	TestFalse(TEXT("a relic gone offers nothing"), Mode->ChooseAtFloorObject(Relic, ActivateKey));
+	TestFalse(TEXT("and a choice no relic offers is refused"),
+			  Mode->ChooseAtFloorObject(Mode->BattlefieldRelicsNow()[0], FName(TEXT("Worship"))));
+	return true;
+}
+
+// A RELIC OF HASTE AND A RELIC OF THE BULWARK ADD TOGETHER: 30% MORE ATTACK AND MOVEMENT SPEED, AND +30 RESISTANCE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsKindsAddTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsHasteAndTheBulwarkAddTogether",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsKindsAddTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("1,2"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+	if (!TestTrue(TEXT("activating the relic of Haste acted"), Mode->ChooseAtFloorObject(Relics[0], ActivateKey))
+		|| !TestTrue(TEXT("and the relic of the Bulwark"), Mode->ChooseAtFloorObject(Relics[1], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const FString Resistance = FirstResistanceStat();
+	TestEqual(TEXT("30% more attack speed"), TotemRuleOn(Player, TEXT("attack_speed")), 30.0f, 0.001f);
+	TestEqual(TEXT("30% more movement speed"), TotemRuleOn(Player, TEXT("movement_speed")), 30.0f, 0.001f);
+	TestEqual(TEXT("+30 resistance"), TotemRuleOn(Player, *Resistance), 30.0f, 0.001f);
+	TestEqual(TEXT("and no damage, which only Fury gives"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 0 standing; Haste 30 s; Bulwark 30 s")));
+	return true;
+}
+
+// THE SAME KIND AGAIN REFRESHES ITS TIME AND DOES NOT ADD: 50% STILL, ENDING 30 S AFTER THE SECOND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsRefreshTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsTheSameKindAgainRefreshesItsTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsRefreshTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0,0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+	if (!TestTrue(TEXT("the first relic of Fury activated"), Mode->ChooseAtFloorObject(Relics[0], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(20.0f));
+	if (!TestTrue(TEXT("and 20 s later the second"), Mode->ChooseAtFloorObject(Relics[1], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("50% more, not 100%"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	Beat(Mode, BeatsFor(Effects::BattlefieldRelicsSeconds) - 2);
+	TestEqual(TEXT("still more 29.75 s after the second"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	Beat(Mode, 2);
+	TestEqual(TEXT("gone 30.25 s after the second"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	return true;
+}
+
+// A NEW FLOOR BRINGS NEW RELICS AND ENDS THE BUFFS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsNewFloorTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsANewFloorBringsNewRelicsAndEndsTheBuffs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsNewFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->BattlefieldRelicsNow()[0], ActivateKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: 50% more"), TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f)
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("two new relics"), Mode->BattlefieldRelicsNow().Num(),
+			  UCataclysmDungeonModifierEffects::BattlefieldRelicsPerFloor);
+	TestEqual(TEXT("the buff ended with the floor"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RelicsRow),
+			  FString(TEXT("battlefield relics: 2 standing")));
+	return true;
+}
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The first of these a player can take: not a boss, and not one that cannot be hurt. Null if none. */
+	ACataclysmEnemyCharacter* OneThePlayerCanTake(const TArray<ACataclysmEnemyCharacter*>& From)
+	{
+		for (ACataclysmEnemyCharacter* One : From)
+		{
+			if (IsValid(One) && !One->IsBoss() && !One->bCannotBeHurt)
+			{
+				return One;
+			}
+		}
+		return nullptr;
+	}
+}
+
+// A SPIRIT THE PLAYER TAKES IS NO LONGER A SPIRIT: "Spirit" GOES AND FOUR STAND. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsTakenSpiritTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsASpiritThePlayerTakesIsNoLongerOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsTakenSpiritTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->BattlefieldRelicsNow()[0], ActivateKey)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Before = Mode->RelicSpiritsStanding();
+	ACataclysmEnemyCharacter* Taken = OneThePlayerCanTake(Before);
+	if (!TestEqual(TEXT("set-up: all came"), Before.Num(), Effects::BattlefieldRelicsSpiritCount)
+		|| !TestNotNull(TEXT("set-up: one the player can take"), Taken)
+		|| !TestTrue(TEXT("set-up: \"Spirit\" under its bar"),
+					 UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Spirit")))
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no \"Spirit\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Spirit")));
+	TestEqual(TEXT("one fewer standing"), Mode->RelicSpiritsStanding().Num(), Effects::BattlefieldRelicsSpiritCount - 1);
+	TestFalse(TEXT("and it is not among them"), Mode->RelicSpiritsStanding().Contains(Taken));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Pandora_s_Box. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BoxesRow(UCataclysmDungeonModifierEffects::PandorasBoxKey);
+	const FName OpenKey(UCataclysmDungeonModifierEffects::PandorasBoxOpen);
+
+	/** A dungeon carrying only Pandora's Box, on floor 2 with its own creatures cleared and its boxes placed. */
+	ACataclysmDungeonGameMode* ABoxFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {BoxesRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("three boxes"), Mode->PandorasBoxesNow().Num(),
+							   UCataclysmDungeonModifierEffects::PandorasBoxPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** How many drops lie in the world. */
+	int32 DropsInTheWorld(UWorld* World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** Every creature the boxes' waves brought, killed; each brought to one health first, whatever its rung gave it. */
+	bool KillTheChaosSpawn(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmDungeonGameMode* Mode)
+	{
+		for (ACataclysmEnemyCharacter* Spawn : Mode->ChaosSpawnStanding())
+		{
+			Spawn->GetAbilitySystemComponent()->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+			if (!KillIt(Test, Player, Spawn))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
+// THE FIGURES: THREE BOXES; EVEN ODDS, BELOW 50 THE WAVES; A BOSS'S KILL; THREE WAVES OF FOUR AT 6 M.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxFiguresBoxesOddsRewardAndWaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three boxes a floor"), Effects::PandorasBoxPerFloor, 3);
+	TestEqual(TEXT("one on a Horde arena"), Effects::PandorasBoxPerHordeArena, 1);
+	TestEqual(TEXT("even odds"), Effects::PandorasBoxUnleashBelow, 50.0f, 0.001f);
+	TestTrue(TEXT("49.9 lets out the waves"), Effects::PandorasBoxUnleashes(49.9f));
+	TestFalse(TEXT("50 gives the reward"), Effects::PandorasBoxUnleashes(50.0f));
+	TestEqual(TEXT("the reward is a Boss's kill"), Effects::PandorasBoxRewardRung, 4);
+	TestEqual(TEXT("three waves"), Effects::PandorasBoxWaveCount, 3);
+	TestEqual(TEXT("of four"), Effects::PandorasBoxWaveSize, 4);
+	TestEqual(TEXT("6 m from the box"), Effects::PandorasBoxWaveAwayCm, 600.0f, 0.001f);
+	return true;
+}
+
+// THREE BOXES AWAY FROM THE ENTRANCE, EACH OFFERING "OPEN", WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesPlacedTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxThreeStandAwayFromTheEntranceOfferingOpen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (const ACataclysmFloorObject* Box : Mode->PandorasBoxesNow())
+	{
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Box->GetActorLocation(), Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		TestEqual(TEXT("named"), Box->DisplayName, FString(TEXT("Pandora's Box")));
+		TestEqual(TEXT("placed by the row"), Box->RuleKey, BoxesRow);
+		if (TestEqual(TEXT("one choice"), Box->Choices.Num(), 1))
+		{
+			TestEqual(TEXT("to open it"), Box->Choices[0].Key, OpenKey);
+		}
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 3 unopened")));
+	return true;
+}
+
+// FROM 50: THE BOX GOES AND GIVES A BOSS'S KILL'S DROPS, AND NO WAVES COME.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesRewardTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesRewardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("75"));
+	// AND THE DUNGEON PINNED, SO THE FLOOR'S SEED -- AND THE BOX'S REWARD STREAM SEEDED FROM IT -- IS THE SAME ON EVERY
+	// RUN. It already is by default: `ChooseSeed` answers the game mode's `DungeonSeed` of 1 while this variable is 0.
+	// Pinned here so a machine that set the variable cannot make the drop count vary.
+	FScopedConsoleString Seed(TEXT("Cataclysm.DungeonSeed"), TEXT("1"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable)
+		|| !TestNotNull(TEXT("and the dungeon"), Seed.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const int32 Before = DropsInTheWorld(World);
+	if (!TestTrue(TEXT("opening acted"), Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], OpenKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the box went"), Mode->PandorasBoxesNow().Num(), 2);
+	// A BOSS'S KILL GIVES FIVE ITEMS ON AVERAGE, DRAWN, ON A STREAM SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
+	TestTrue(FString::Printf(TEXT("it gave drops: %d"), Mode->PandorasBoxLastRewardDrops()),
+			 Mode->PandorasBoxLastRewardDrops() > 0);
+	TestEqual(TEXT("and they lie in the world"), DropsInTheWorld(World) - Before, Mode->PandorasBoxLastRewardDrops());
+	TestEqual(TEXT("no creature came"), Mode->ChaosSpawnStanding().Num(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("nor on the beat"), Mode->ChaosSpawnStanding().Num(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 2 unopened")));
+	return true;
+}
+
+// BELOW 50: NO REWARD; A WAVE OF FOUR "CHAOS SPAWN" AT ONCE, THE NEXT ONLY ONCE THE LAST IS ALL DEAD, THREE IN ALL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesWavesTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("25"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const int32 Before = DropsInTheWorld(World);
+	if (!TestTrue(TEXT("opening acted"), Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], OpenKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no reward"), DropsInTheWorld(World), Before);
+
+	const TArray<ACataclysmEnemyCharacter*> First = Mode->ChaosSpawnStanding();
+	TestEqual(TEXT("the first wave: four"), First.Num(), Effects::PandorasBoxWaveSize);
+	for (const ACataclysmEnemyCharacter* Spawn : First)
+	{
+		TestTrue(TEXT("\"Chaos Spawn\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Spawn).Contains(TEXT("Chaos Spawn")));
+		TestTrue(TEXT("raised by the rule"), Spawn->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Spawn->PaysForItsDeath());
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("no second wave while the first stands"), Mode->ChaosSpawnStanding().Num(), Effects::PandorasBoxWaveSize);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 2 unopened; wave 1 of 3")));
+
+	for (int32 Wave = 2; Wave <= Effects::PandorasBoxWaveCount; ++Wave)
+	{
+		if (!KillTheChaosSpawn(*this, Player, Mode))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("wave %d: four"), Wave), Mode->ChaosSpawnStanding().Num(),
+				  Effects::PandorasBoxWaveSize);
+		TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+				  FString::Printf(TEXT("pandora's box: 2 unopened; wave %d of 3"), Wave));
+	}
+	if (!KillTheChaosSpawn(*this, Player, Mode))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("no fourth wave"), Mode->ChaosSpawnStanding().Num(), 0);
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(BoxesRow),
+			  FString(TEXT("pandora's box: 2 unopened")));
+	return true;
+}
+
+// A SPAWN THE PLAYER TAKES LEAVES ITS WAVE: "Chaos Spawn" GOES, THREE STAND, AND WHEN THEY DIE THE NEXT WAVE COMES. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesTakenSpawnTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxASpawnThePlayerTakesLeavesItsWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesTakenSpawnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("25"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("opening acted"), Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], OpenKey)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Before = Mode->ChaosSpawnStanding();
+	ACataclysmEnemyCharacter* Taken = OneThePlayerCanTake(Before);
+	if (!TestEqual(TEXT("set-up: all came"), Before.Num(), Effects::PandorasBoxWaveSize)
+		|| !TestNotNull(TEXT("set-up: one the player can take"), Taken)
+		|| !TestTrue(TEXT("set-up: \"Chaos Spawn\" under its bar"),
+					 UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Chaos Spawn")))
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no \"Chaos Spawn\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Chaos Spawn")));
+	TestEqual(TEXT("one fewer standing"), Mode->ChaosSpawnStanding().Num(), Effects::PandorasBoxWaveSize - 1);
+	TestFalse(TEXT("and it is not among them"), Mode->ChaosSpawnStanding().Contains(Taken));
+
+	// THE NEXT WAVE DOES NOT WAIT ON THE PLAYER'S THRALL: a judgement of this change.
+	if (!KillTheChaosSpawn(*this, Player, Mode))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the second wave came with the thrall alive"), Mode->ChaosSpawnStanding().Num(),
+			  Effects::PandorasBoxWaveSize);
+	TestFalse(TEXT("the thrall is alive"), UCataclysmSkillEffects::IsDead(Taken));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Carrion_Feast's purification altars. Issues #1820 and #41. The click itself is not tested, for the reason
+// Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ConsecrateKey(UCataclysmDungeonModifierEffects::CarrionFeastConsecrate);
+}
+
+// THE FIGURES: ONE ALTAR, ONE ON A HORDE ARENA, 15 M; AND CARRION FEAST IS BUILT NOW ITS ALTARS ARE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAltarFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PurificationAltarFiguresAndCarrionFeastIsBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAltarFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one altar a floor"), Effects::CarrionFeastAltarsPerFloor, 1);
+	TestEqual(TEXT("one on a Horde arena"), Effects::CarrionFeastAltarsPerHordeArena, 1);
+	TestEqual(TEXT("15 m"), Effects::CarrionFeastAltarRadiusCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("Carrion Feast is built"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(Effects::CarrionFeastKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+// ONE ALTAR ON A CARRION FEAST FLOOR, AWAY FROM THE ENTRANCE, OFFERING "CONSECRATE", WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAltarPlacedTest,
+	"Cataclysm.DungeonModifierEffects.PurificationAltarStandsOnACarrionFeastFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAltarPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	const ACataclysmFloorObject* Altar = Mode ? Mode->PurificationAltarNow() : nullptr;
+	if (!TestNotNull(TEXT("an altar stands"), Altar))
+	{
+		return false;
+	}
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Altar->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+	TestEqual(TEXT("named"), Altar->DisplayName, FString(TEXT("Purification Altar")));
+	TestEqual(TEXT("placed by Carrion Feast"), Altar->RuleKey, CarrionRow);
+	if (TestEqual(TEXT("one choice"), Altar->Choices.Num(), 1))
+	{
+		TestEqual(TEXT("to consecrate it"), Altar->Choices[0].Key, ConsecrateKey);
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
+			  FString(TEXT("carrion feast: 0 carcasses lying, 0 feeders standing, feeders +0%; an altar stands")));
+	return true;
+}
+
+// CONSECRATING: THE ALTAR GOES AND ITS AREA IS DRAWN; A CARCASS INSIDE BURNS AT ONCE AND ONE OUTSIDE DOES NOT; ONE THAT
+// FALLS INSIDE LATER BURNS ON THE NEXT BEAT; THE ONE OUTSIDE IS STILL EATEN AND BECOMES A FEEDER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAltarConsecrateTest,
+	"Cataclysm.DungeonModifierEffects.PurificationAltarBurnsTheCarcassesInsideNowAndLater",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAltarConsecrateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACarrionFloor(*this, World, Player);
+	ACataclysmFloorObject* Altar = Mode ? Mode->PurificationAltarNow() : nullptr;
+	FVector DiedAt;
+	if (!TestNotNull(TEXT("an altar stands"), Altar) || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt)
+		|| !SlayForACarcass(*this, World, Mode, Player, true, DiedAt))
+	{
+		return false;
+	}
+	TArray<ACataclysmEnemyCharacter*> Lying = Mode->CarrionCarcassesNow();
+	if (!TestEqual(TEXT("set-up: two carcasses"), Lying.Num(), 2))
+	{
+		return false;
+	}
+
+	// THE FIRST CARCASS INSIDE: THE ALTAR STANDS ON IT. THE SECOND OUTSIDE: 30 M FROM IT.
+	ACataclysmEnemyCharacter* Inside = Lying[0];
+	ACataclysmEnemyCharacter* Outside = Lying[1];
+	const FVector Here = Inside->GetActorLocation();
+	Altar->SetActorLocation(Here);
+	Outside->SetActorLocation(Here + FVector(3000.0f, 0.0f, 0.0f));
+	const int32 ZonesBefore = ZonesOnTheFloor(World);
+
+	if (!TestTrue(TEXT("consecrating acted"), Mode->ChooseAtFloorObject(Altar, ConsecrateKey)))
+	{
+		return false;
+	}
+	TestNull(TEXT("the altar went"), Mode->PurificationAltarNow());
+	Lying = Mode->CarrionCarcassesNow();
+	TestEqual(TEXT("the carcass inside burned at once"), Lying.Num(), 1);
+	TestTrue(TEXT("and the one outside did not"), Lying.Contains(Outside));
+	Beat(Mode, 1);
+	TestEqual(TEXT("the area is drawn"), ZonesOnTheFloor(World), ZonesBefore + 1);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CarrionRow),
+			  FString(TEXT("carrion feast: 1 carcasses lying, 0 feeders standing, feeders +0%; the altar is used")));
+
+	// A CARCASS THAT FALLS INSIDE LATER BURNS ON THE NEXT BEAT.
+	if (!SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the later carcass fell inside"),
+				  FVector::Dist2D(DiedAt, Here) <= Effects::CarrionFeastAltarRadiusCm))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: it lies, until the beat"), Mode->CarrionCarcassesNow().Num(), 2);
+	Beat(Mode, 1);
+	TestEqual(TEXT("it burned on the next beat"), Mode->CarrionCarcassesNow().Num(), 1);
+
+	// THE ONE OUTSIDE IS STILL EATEN: ONE FEEDER, AND NONE FROM THE TWO BURNED.
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	TestEqual(TEXT("the carcass outside was eaten"), Mode->CarrionCarcassesNow().Num(), 0);
+	TestEqual(TEXT("and one feeder stands"), Mode->CarrionFeedersNow().Num(), 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Infernal_Beacons. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName InfernalRow(UCataclysmDungeonModifierEffects::InfernalBeaconsKey);
+	const FName LightKey(UCataclysmDungeonModifierEffects::InfernalBeaconsActivate);
+
+	/** A dungeon carrying only Infernal Beacons, on floor 2 with its own creatures cleared and its beacon placed. */
+	// NAMED APART FROM PESTILENT EMPOWERMENT'S `ABeaconFloor` above, which takes the same arguments in this namespace:
+	// the first build of this row, on 2026-10-01, stopped on the two definitions (C2084).
+	ACataclysmDungeonGameMode* AnInfernalBeaconFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {InfernalRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestEqual(TEXT("one beacon"), Mode->InfernalBeaconsNow().Num(),
+							   UCataclysmDungeonModifierEffects::InfernalBeaconsPerFloor))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** An Imp of 1000 health beside the player, one of the floor's creatures. */
+	ACataclysmEnemyCharacter* ABeaconsImp(UWorld* World, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		ACataclysmEnemyCharacter* Imp =
+			SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(600.0f, 0.0f, 0.0f), 1000.0f);
+		if (Imp)
+		{
+			Mode->FloorEnemies.Add(Imp);
+		}
+		return Imp;
+	}
+}
+
+// THE FIGURES: ONE A FLOOR; 10% DAMAGE AND 10 MAGIC FIND A STACK, ADDED, CAPPED AT 100% AND 100.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsFiguresStacksAndCaps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one a floor"), Effects::InfernalBeaconsPerFloor, 1);
+	TestEqual(TEXT("one on a Horde arena"), Effects::InfernalBeaconsPerHordeArena, 1);
+	TestEqual(TEXT("no stack, no more damage"), Effects::InfernalBeaconsDamageMultiplier(0), 1.0f, 0.0001f);
+	TestEqual(TEXT("one, 10% more"), Effects::InfernalBeaconsDamageMultiplier(1), 1.1f, 0.0001f);
+	TestEqual(TEXT("three, 30%, added"), Effects::InfernalBeaconsDamageMultiplier(3), 1.3f, 0.0001f);
+	TestEqual(TEXT("ten, 100%"), Effects::InfernalBeaconsDamageMultiplier(10), 2.0f, 0.0001f);
+	TestEqual(TEXT("capped at 100%"), Effects::InfernalBeaconsDamageMultiplier(12), 2.0f, 0.0001f);
+	TestEqual(TEXT("one, 10 magic find"), Effects::InfernalBeaconsMagicFind(1), 10.0f, 0.0001f);
+	TestEqual(TEXT("capped at 100"), Effects::InfernalBeaconsMagicFind(12), 100.0f, 0.0001f);
+	return true;
+}
+
+// ONE BEACON AWAY FROM THE ENTRANCE, OFFERING "ACTIVATE", WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalPlacedTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsOneStandsOfferingActivate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmFloorObject* Beacon = Mode->InfernalBeaconsNow()[0];
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Beacon->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+	TestEqual(TEXT("named"), Beacon->DisplayName, FString(TEXT("Infernal Beacon")));
+	TestEqual(TEXT("placed by the row"), Beacon->RuleKey, InfernalRow);
+	if (TestEqual(TEXT("one choice"), Beacon->Choices.Num(), 1))
+	{
+		TestEqual(TEXT("to activate it"), Beacon->Choices[0].Key, LightKey);
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(InfernalRow),
+			  FString(TEXT("infernal beacons: 0 activated; enemies +0% damage; +0 magic find")));
+	return true;
+}
+
+// ACTIVATING: THE BEACON GOES; EVERY CREATURE DEALS 10% MORE ON ITS OWN KEY, AND THE PLAYER GAINS 10 MAGIC FIND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalActivateTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsActivatingOneStrengthensCreaturesAndGivesMagicFind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalActivateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Imp = Mode ? ABeaconsImp(World, Mode, Player) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("nothing before"), Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource),
+			  1.0f, 0.0001f);
+	if (!TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the beacon went"), Mode->InfernalBeaconsNow().Num(), 0);
+	TestEqual(TEXT("one stack"), Mode->InfernalBeaconStacksNow(), 1);
+	Beat(Mode, 1);
+	TestEqual(TEXT("10% more damage, on its own key"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("10 magic find"), TotemRuleOn(Player, TEXT("magic_find")), 10.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(InfernalRow),
+			  FString(TEXT("infernal beacons: 1 activated; enemies +10% damage; +10 magic find")));
+	return true;
+}
+
+// THE STACKS LAST THE DUNGEON: A SECOND BEACON ON THE NEXT FLOOR MAKES TWO, ON THAT FLOOR'S CREATURES; LEAVING CLEARS THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalDungeonTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsTheStacksLastTheDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("the first activated"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey))
+		|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// THE FIRST STACK'S MAGIC FIND IS KEPT ON A FLOOR WHERE NONE HAS BEEN ACTIVATED YET: the floor change replaced the
+	// player's floor modifiers wholesale, and the beat puts it back.
+	Beat(Mode, 1);
+	TestEqual(TEXT("floor 3 keeps 10 magic find"), TotemRuleOn(Player, TEXT("magic_find")), 10.0f, 0.001f);
+
+	if (!TestEqual(TEXT("a new beacon on floor 3"), Mode->InfernalBeaconsNow().Num(), 1)
+		|| !TestTrue(TEXT("the second activated"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = ABeaconsImp(World, Mode, Player);
+	if (!TestNotNull(TEXT("an Imp of floor 3"), Imp))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("two stacks, kept across the floors"), Mode->InfernalBeaconStacksNow(), 2);
+	TestEqual(TEXT("20% more damage on floor 3's creature"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.2f, 0.0001f);
+	TestEqual(TEXT("20 magic find"), TotemRuleOn(Player, TEXT("magic_find")), 20.0f, 0.001f);
+
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving the dungeon clears the stacks"), Mode->InfernalBeaconStacksNow(), 0);
+	TestEqual(TEXT("and the magic find"), TotemRuleOn(Player, TEXT("magic_find")), 0.0f, 0.001f);
+	return true;
+}
+
+// A CREATURE THE PLAYER TAKES AFTER A BEACON IS LIT DEALS ITS OWN DAMAGE A BEAT LATER. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalTakenTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsACreatureThePlayerTakesLosesTheStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnInfernalBeaconFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Imp = Mode ? ABeaconsImp(World, Mode, Player) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp)
+		|| !TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: 10% more from the beacon"),
+				   Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.1f, 0.0001f)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Imp)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("a beat later it deals its own damage"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.0f, 0.0001f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and the sweep does not write it again"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.0f, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// War_War_Banner. Issues #1820 and #41. The click itself is not tested, for the reason Grim Totems gives above.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BannerRow(UCataclysmDungeonModifierEffects::WarBannerKey);
+	const FName PlantKey(UCataclysmDungeonModifierEffects::WarBannerPlant);
+
+	/** A dungeon carrying only War Banner, on floor 2 with its own creatures cleared and its banner placed. */
+	ACataclysmDungeonGameMode* ABannerFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {BannerRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get())
+			|| !Test.TestNotNull(TEXT("a banner stands"), Mode->WarBannerNow()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** Puts the player at this point, measured flat, at the player's own height. */
+	void StandAt(const FPossessedPlayer& Player, const FVector& Where)
+	{
+		Player.Character->SetActorLocation(FVector(Where.X, Where.Y, Player.Character->GetActorLocation().Z));
+	}
+}
+
+// THE FIGURES: ONE A FLOOR; 12 M; +20%/+15 INSIDE, +40%/+30 ONCE HELD; 60 S HELD; FOUR EVERY 15 S AT 15 M.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerFiguresTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerFiguresAuraHoldAndWaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one a floor"), Effects::WarBannerPerFloor, 1);
+	TestEqual(TEXT("one on a Horde arena"), Effects::WarBannerPerHordeArena, 1);
+	TestEqual(TEXT("12 m across"), Effects::WarBannerRadiusCm, 1200.0f, 0.001f);
+	TestEqual(TEXT("20% more damage inside"), Effects::WarBannerDamageMorePercent, 20.0f, 0.001f);
+	TestEqual(TEXT("+15 resistance inside"), Effects::WarBannerResistance, 15.0f, 0.001f);
+	TestEqual(TEXT("40% once held"), Effects::WarBannerHeldDamageMorePercent, 40.0f, 0.001f);
+	TestEqual(TEXT("+30 once held"), Effects::WarBannerHeldResistance, 30.0f, 0.001f);
+	TestEqual(TEXT("held after 60 s"), Effects::WarBannerHoldSeconds, 60.0f, 0.001f);
+	TestEqual(TEXT("a wave every 15 s"), Effects::WarBannerWaveEverySeconds, 15.0f, 0.001f);
+	TestEqual(TEXT("of four"), Effects::WarBannerWaveSize, 4);
+	TestEqual(TEXT("15 m from the banner"), Effects::WarBannerWaveAwayCm, 1500.0f, 0.001f);
+	return true;
+}
+
+// ONE BANNER, AWAY FROM THE ENTRANCE, OFFERING TO BE PLANTED, WITH THE PANEL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerStandsTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerStandsToBePlanted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerStandsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmFloorObject* Banner = Mode->WarBannerNow();
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Banner->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+	TestEqual(TEXT("named"), Banner->DisplayName, FString(TEXT("War Banner")));
+	TestEqual(TEXT("placed by the row"), Banner->RuleKey, BannerRow);
+	if (TestEqual(TEXT("one choice"), Banner->Choices.Num(), 1))
+	{
+		TestEqual(TEXT("to plant it"), Banner->Choices[0].Key, PlantKey);
+	}
+	TestFalse(TEXT("not planted yet"), Mode->WarBannerIsPlanted());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BannerRow), FString(TEXT("war banner: not planted")));
+	return true;
+}
+
+// PLANTED WHERE IT STANDS: ITS AREA IS DRAWN; INSIDE, 20% MORE DAMAGE AND +15 RESISTANCE; OUTSIDE, NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerAuraTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerPlantedGivesItsAuraInsideAndNothingOutside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerAuraTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->WarBannerNow()->GetActorLocation();
+	const int32 ZonesBefore = ZonesOnTheFloor(World);
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("planted"), Mode->WarBannerIsPlanted());
+	TestNull(TEXT("the banner to plant went"), Mode->WarBannerNow());
+
+	StandAt(Player, At);
+	Beat(Mode, 1);
+	const FString Resistance = FirstResistanceStat();
+	TestEqual(TEXT("its area is drawn"), ZonesOnTheFloor(World), ZonesBefore + 1);
+	TestEqual(TEXT("inside: 20% more attack damage"), TotemRuleOn(Player, TEXT("attack_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("and spell damage"), TotemRuleOn(Player, TEXT("spell_damage")), 20.0f, 0.001f);
+	TestEqual(TEXT("and +15 resistance"), TotemRuleOn(Player, *Resistance), 15.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BannerRow),
+			  FString(TEXT("war banner: planted, 60 s to hold; +20% damage, +15 resistances inside")));
+
+	StandAt(Player, At + FVector(2000.0f, 0.0f, 0.0f));
+	Beat(Mode, 1);
+	TestEqual(TEXT("outside: no more damage"), TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("and no resistance"), TotemRuleOn(Player, *Resistance), 0.0f, 0.001f);
+	return true;
+}
+
+// HELD: A WAVE OF FOUR AS IT IS PLANTED AND EVERY 15 S INSIDE; OUTSIDE THE HOLD PAUSES AND NO WAVE COMES; AT 60 S NO
+// WAVE, THE WAVES STOP AND THE AURA DOUBLES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerHeldTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerHeldThroughTheWavesDoublesItsAura",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerHeldTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->WarBannerNow()->GetActorLocation();
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	StandAt(Player, At);
+
+	const TArray<ACataclysmEnemyCharacter*> First = Mode->BannerAssailantsStanding();
+	TestEqual(TEXT("four as it is planted"), First.Num(), Effects::WarBannerWaveSize);
+	Beat(Mode, BeatsFor(Effects::WarBannerWaveEverySeconds) - 1);
+	TestEqual(TEXT("no second wave at 14.75 s"), Mode->BannerAssailantsStanding().Num(), Effects::WarBannerWaveSize);
+	Beat(Mode, 1);
+	TestEqual(TEXT("four more at 15 s"), Mode->BannerAssailantsStanding().Num(), 2 * Effects::WarBannerWaveSize);
+	for (const ACataclysmEnemyCharacter* Assailant : First)
+	{
+		TestTrue(TEXT("\"Assailant\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Assailant).Contains(TEXT("Assailant")));
+		TestTrue(TEXT("raised by the rule"), Assailant->bRaisedByARule);
+		TestTrue(TEXT("and it pays"), Assailant->PaysForItsDeath());
+	}
+
+	// OUTSIDE FOR 20 S: THE HOLD PAUSES, NOT RESET, AND NO WAVE COMES.
+	StandAt(Player, At + FVector(2000.0f, 0.0f, 0.0f));
+	Beat(Mode, BeatsFor(20.0f));
+	TestEqual(TEXT("outside, the hold pauses"), Mode->WarBannerSecondsHeld(), 15.0f, 0.01f);
+	TestEqual(TEXT("and no wave comes"), Mode->BannerAssailantsStanding().Num(), 2 * Effects::WarBannerWaveSize);
+
+	// INSIDE AGAIN FOR THE REST OF THE 60 S: TWO MORE WAVES, AT 30 AND 45 S, THEN HELD WITH NO WAVE AT 60 S.
+	StandAt(Player, At);
+	Beat(Mode, BeatsFor(Effects::WarBannerHoldSeconds - Effects::WarBannerWaveEverySeconds) - 1);
+	TestFalse(TEXT("not held at 59.75 s"), Mode->WarBannerIsHeld());
+	TestEqual(TEXT("four waves in all by 45 s"), Mode->BannerAssailantsStanding().Num(), 4 * Effects::WarBannerWaveSize);
+	Beat(Mode, 1);
+	TestTrue(TEXT("held at 60 s"), Mode->WarBannerIsHeld());
+	TestEqual(TEXT("and no wave as the hold completes"), Mode->BannerAssailantsStanding().Num(),
+			  4 * Effects::WarBannerWaveSize);
+	Beat(Mode, 1);
+	TestEqual(TEXT("40% more damage inside"), TotemRuleOn(Player, TEXT("attack_damage")), 40.0f, 0.001f);
+	TestEqual(TEXT("+30 resistance inside"), TotemRuleOn(Player, *FirstResistanceStat()), 30.0f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(BannerRow),
+			  FString(TEXT("war banner: held; +40% damage, +30 resistances inside")));
+
+	Beat(Mode, BeatsFor(20.0f));
+	TestEqual(TEXT("the waves have stopped"), Mode->BannerAssailantsStanding().Num(), 4 * Effects::WarBannerWaveSize);
+	return true;
+}
+
+// AN ASSAILANT THE PLAYER TAKES IS NO LONGER ONE: "Assailant" GOES AND THREE STAND. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerTakenTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerAnAssailantThePlayerTakesIsNoLongerOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->WarBannerNow()->GetActorLocation();
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	StandAt(Player, At);
+	const TArray<ACataclysmEnemyCharacter*> Before = Mode->BannerAssailantsStanding();
+	ACataclysmEnemyCharacter* Taken = OneThePlayerCanTake(Before);
+	if (!TestEqual(TEXT("set-up: all came"), Before.Num(), Effects::WarBannerWaveSize)
+		|| !TestNotNull(TEXT("set-up: one the player can take"), Taken)
+		|| !TestTrue(TEXT("set-up: \"Assailant\" under its bar"),
+					 UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Assailant")))
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no \"Assailant\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Assailant")));
+	TestEqual(TEXT("one fewer standing"), Mode->BannerAssailantsStanding().Num(), Effects::WarBannerWaveSize - 1);
+	TestFalse(TEXT("and it is not among them"), Mode->BannerAssailantsStanding().Contains(Taken));
 	return true;
 }
 

@@ -707,6 +707,26 @@ static TAutoConsoleVariable<float> CVarVolatileEvolutionRoll(
 	ECVF_Cheat);
 
 /**
+ * Pins the kinds Battlefield Relics are placed as, in order, so a test can have two kinds on one floor. Issues #1820
+ * and #41. A list of 0 (Fury), 1 (Haste) and 2 (the Bulwark), separated by commas, used from the first relic of each
+ * placing and repeated; empty draws each kind.
+ */
+/** Pins the roll a Pandora's Box is opened on, 0 to 100: below 50 its waves, from 50 its reward. Issues #1820, #41. */
+static TAutoConsoleVariable<float> CVarPandorasBoxRoll(
+	TEXT("Cataclysm.PandorasBoxRoll"),
+	-1.0f,
+	TEXT("Pin the roll a Pandora's Box is opened on, 0 to 100: below 50 lets out its waves, from 50 gives its reward. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
+static TAutoConsoleVariable<FString> CVarBattlefieldRelicKinds(
+	TEXT("Cataclysm.BattlefieldRelicKinds"),
+	TEXT(""),
+	TEXT("Pin the kinds Battlefield Relics are placed as, in order: 0 Fury, 1 Haste, 2 the Bulwark, comma separated. ")
+	TEXT("Empty draws each."),
+	ECVF_Cheat);
+
+/**
  * Pins the roll a badly hurt creature calls its guards on, so a test can assert what a
  * beat did. Issues #1820 and #41. Its own variable, for the reason
  * `Cataclysm.GraspingTentaclesRoll` gives.
@@ -936,6 +956,12 @@ namespace
 	float DungeonGameModeStarvationCurseRoll()
 	{
 		const float Pinned = CVarStarvationCurseRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModePandorasBoxRoll()
+	{
+		const float Pinned = CVarPandorasBoxRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -1739,6 +1765,25 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// AND GRIM TOTEMS, FOR THE SAME REASON: a new arena's totems; a Horde arena's waves keep them. Issues #1820
 		// and #41.
 		PlaceTheTotems();
+
+		// AND BATTLEFIELD RELICS, FOR THE SAME REASON. Issues #1820 and #41.
+		PlaceTheRelics();
+
+		// AND PANDORA'S BOX, FOR THE SAME REASON: a new arena's boxes, and any waves under way forgotten with the last
+		// arena's creatures. Issues #1820 and #41.
+		PlaceTheBoxes();
+
+		// AND CARRION FEAST'S PURIFICATION ALTAR, FOR THE SAME REASON: a new arena's altar, and the last arena's
+		// consecration forgotten. Issues #1820 and #41.
+		PlaceTheAltar();
+
+		// AND INFERNAL BEACONS, FOR THE SAME REASON: a new arena's beacon. The dungeon's stacks are kept. Issues #1820
+		// and #41.
+		PlaceTheInfernalBeacons();
+
+		// AND WAR BANNER, FOR THE SAME REASON: a new arena's banner, and the last one's hold forgotten. Issues #1820 and
+		// #41.
+		PlaceTheWarBanner();
 
 		// AND SHADOWY ENEMIES, FOR THE SAME REASON: a new arena's light zones are chosen again, and a Horde arena's
 		// waves keep them. Issues #1820 and #41.
@@ -7407,11 +7452,112 @@ void ACataclysmDungeonGameMode::NoteHitForCarrionFeast(const FCataclysmHitNotice
 	{
 		return;
 	}
-	// MARKED, AND REMOVED ON THE NEXT BEAT rather than destroyed inside the blow that is still resolving on it.
+	BurnTheCarcass(Index);
+}
+
+void ACataclysmDungeonGameMode::BurnTheCarcass(int32 Index)
+{
+	if (!CarrionCarcassSeconds.IsValidIndex(Index) || CarrionCarcassSeconds[Index] < 0.0f)
+	{
+		return;
+	}
+	// MARKED, AND REMOVED ON THE NEXT BEAT rather than destroyed inside the blow that is still resolving on it. THE ONE
+	// BURN, whether fire or a consecrated altar did it, as ruled: the altar reuses this rather than a copy.
 	CarrionCarcassSeconds[Index] = -1.0f;
 	UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: a carcass burned on floor %d"), FloorNumber);
 	RefreshFloorModifierPanel();
 }
+
+bool ACataclysmDungeonGameMode::AltarConsecrates(const FVector& Where) const
+{
+	return bAltarConsecrated
+		&& FVector::Dist2D(AltarAt, Where) <= UCataclysmDungeonModifierEffects::CarrionFeastAltarRadiusCm;
+}
+
+int32 ACataclysmDungeonGameMode::BurnTheConsecratedCarcasses()
+{
+	int32 Burned = 0;
+	for (int32 Index = 0; Index < CarrionCarcasses.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Carcass = CarrionCarcasses[Index].Get();
+		if (IsValid(Carcass) && CarrionCarcassSeconds.IsValidIndex(Index) && CarrionCarcassSeconds[Index] >= 0.0f
+			&& AltarConsecrates(Carcass->GetActorLocation()))
+		{
+			BurnTheCarcass(Index);
+			++Burned;
+		}
+	}
+	return Burned;
+}
+
+ACataclysmFloorObject* ACataclysmDungeonGameMode::PurificationAltarNow() const
+{
+	ACataclysmFloorObject* Altar = PurificationAltar.Get();
+	return IsValid(Altar) ? Altar : nullptr;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheAltar()
+{
+	if (ACataclysmFloorObject* Altar = PurificationAltar.Get())
+	{
+		Altar->Destroy();
+	}
+	if (ACataclysmGroundZone* Zone = AltarZone.Get())
+	{
+		Zone->Destroy();
+	}
+	PurificationAltar = nullptr;
+	AltarZone = nullptr;
+	bAltarConsecrated = false;
+	AltarAt = FVector::ZeroVector;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheAltar()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheAltar();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::CarrionFeastKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::CarrionFeastAltarsPerHordeArena : Effects::CarrionFeastAltarsPerFloor;
+	for (ACataclysmFloorObject* Altar : PlaceFloorObjects(FName(Effects::CarrionFeastKey), Count, TEXT("Purification Altar"),
+														  TEXT("An altar of cleansing light. Consecrating it burns the dead around it.")))
+	{
+		FCataclysmFloorObjectChoice Consecrate;
+		Consecrate.Key = FName(Effects::CarrionFeastConsecrate);
+		Consecrate.Label = FString::Printf(TEXT("Consecrate: every carcass within %d m burns, now and for the rest of the floor"),
+										   FMath::RoundToInt(Effects::CarrionFeastAltarRadiusCm / 100.0f));
+		Altar->Choices = {Consecrate};
+		PurificationAltar = Altar;
+	}
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtPurificationAltar(ACataclysmFloorObject* Altar, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Altar) || Altar != PurificationAltar.Get() || ChoiceKey != FName(Effects::CarrionFeastConsecrate))
+	{
+		return false;
+	}
+	AltarAt = Altar->GetActorLocation();
+	bAltarConsecrated = true;
+
+	// EVERY CARCASS LYING INSIDE BURNS AT ONCE; the zone is drawn on the next beat and kept drawn for the floor.
+	const int32 BurnedNow = BurnTheConsecratedCarcasses();
+	UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: the purification altar consecrated on floor %d, %d carcass(es) burned"),
+		   FloorNumber, BurnedNow);
+
+	// THE ALTAR GOES.
+	Altar->Destroy();
+	PurificationAltar = nullptr;
+	RefreshFloorModifierPanel();
+	return true;
+}
+
 
 void ACataclysmDungeonGameMode::StepCarrionFeast()
 {
@@ -7420,6 +7566,20 @@ void ACataclysmDungeonGameMode::StepCarrionFeast()
 	if (!CurrentFloor || !CurrentFloor->IsBuilt())
 	{
 		return;
+	}
+
+	// A CONSECRATED AREA: ITS ZONE DRAWN WHEREVER IT IS MISSING, and a carcass that fell inside burned on this beat.
+	if (bAltarConsecrated)
+	{
+		// THE FLOOR'S HAZARD SOURCE, which answers null for no world, as every rule's zone is owned.
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(GetWorld());
+		if (Source && !AltarZone.Get())
+		{
+			AltarZone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, AltarAt, AltarAt, UCataclysmDungeonModifierEffects::CarrionFeastAltarRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/FName(TEXT("Celestial")));
+		}
+		BurnTheConsecratedCarcasses();
 	}
 
 	bool bChanged = false;
@@ -7696,6 +7856,13 @@ void ACataclysmDungeonGameMode::StepPlayersFollowers()
 			if (RuleResistances.Find(Thrall))
 			{
 				SetRuleResistance(Thrall, TrialOfEnduranceResistanceSource, 0.0f, 1.0f);
+			}
+			// INFERNAL BEACONS' STACKS, given while it was hostile. The beacons' sweep acts
+			// only on creatures hostile to the player, so it never puts this back itself.
+			if (!FMath::IsNearlyEqual(
+					Thrall->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.0f))
+			{
+				Thrall->SetInfernalBeaconsDamageMultiplier(1.0f);
 			}
 			// THE PLAYER'S CONTAGION STACKS FROM ITS HOSTILE TOUCHES END TOO: the
 			// row means the enemy that applied them, and the only other way to
@@ -8267,6 +8434,700 @@ void ACataclysmDungeonGameMode::ForgetTheTotems()
 	GrimTotemsPanelKey = -1;
 }
 
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PlaceFloorObjects(FName RuleKey, int32 Count,
+																		   const FString& DisplayName,
+																		   const FString& Prompt)
+{
+	TArray<ACataclysmFloorObject*> Placed;
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return Placed;
+	}
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		ACataclysmFloorObject* Object = World->SpawnActor<ACataclysmFloorObject>(
+			ACataclysmFloorObject::StaticClass(), CurrentFloor->WorldOfCell(Cell), FRotator::ZeroRotator, Spawn);
+		if (!Object)
+		{
+			continue;
+		}
+		Object->RuleKey = RuleKey;
+		Object->DisplayName = DisplayName;
+		Object->Prompt = Prompt;
+		Placed.Add(Object);
+	}
+	return Placed;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BringCreaturesNear(const FVector& At, float AwayCm,
+																			  int32 Count, int32 FixedRung,
+																			  float SightMultiplier)
+{
+	TArray<ACataclysmEnemyCharacter*> Brought;
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return Brought;
+	}
+	// CELLS BESIDE A POINT THAT FAR AWAY AT A RANDOM ANGLE. A POINT OFF THE FLOOR, WITH NO FLOOR WITHIN REACH OF IT,
+	// FALLS BACK TO THE CELLS AROUND `At`, which stands on the floor: the rules that call this act on a single press,
+	// with no later beat to try again on, so the creatures come either way.
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const FVector Where(At.X + AwayCm * FMath::Cos(Angle), At.Y + AwayCm * FMath::Sin(Angle), At.Z);
+	const FCataclysmFloorPopulation Population =
+		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+	if (Cells.IsEmpty())
+	{
+		Cells = NecroticBloomWaveCells(*CurrentFloor, At);
+	}
+	for (int32 Which = 0; Which < Count && !Population.Enemies.IsEmpty() && !Cells.IsEmpty(); ++Which)
+	{
+		FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+		if (ACataclysmEnemyCharacter* Creature = SpawnPlacedCreature(Placement, SightMultiplier, FixedRung))
+		{
+			Creature->bRaisedByARule = true;
+			CreaturesRaisedByARule.Add(Creature);
+			FloorEnemies.Add(Creature);
+			Brought.Add(Creature);
+		}
+	}
+	return Brought;
+}
+
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::BattlefieldRelicsNow() const
+{
+	TArray<ACataclysmFloorObject*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : BattlefieldRelics)
+	{
+		if (ACataclysmFloorObject* Relic = One.Get(); IsValid(Relic))
+		{
+			Standing.Add(Relic);
+		}
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::BattlefieldRelicKindOf(const ACataclysmFloorObject* Relic) const
+{
+	const int32 Index = BattlefieldRelics.IndexOfByPredicate(
+		[Relic](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Relic; });
+	return BattlefieldRelicKinds.IsValidIndex(Index) ? BattlefieldRelicKinds[Index] : INDEX_NONE;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::RelicSpiritsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : RelicSpirits)
+	{
+		ACataclysmEnemyCharacter* Spirit = One.Get();
+		// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+		if (IsValid(Spirit) && !UCataclysmSkillEffects::IsDead(Spirit) && !DungeonGameModeIsAPlayersFollower(Spirit))
+		{
+			Standing.Add(Spirit);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRelics()
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : BattlefieldRelics)
+	{
+		if (ACataclysmFloorObject* Relic = One.Get())
+		{
+			Relic->Destroy();
+		}
+	}
+	BattlefieldRelics.Reset();
+	BattlefieldRelicKinds.Reset();
+	RelicSpirits.Reset();
+	BattlefieldRelicsPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheRelics()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheRelics();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::BattlefieldRelicsKey)))
+	{
+		return;
+	}
+
+	// THE KINDS PINNED FOR A TEST, IN ORDER AND REPEATED, OR EACH DRAWN.
+	TArray<int32> Pinned;
+	TArray<FString> Parts;
+	CVarBattlefieldRelicKinds.GetValueOnGameThread().ParseIntoArray(Parts, TEXT(","));
+	for (const FString& Part : Parts)
+	{
+		Pinned.Add(FMath::Clamp(FCString::Atoi(*Part.TrimStartAndEnd()), 0, Effects::BattlefieldRelicKinds - 1));
+	}
+
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::BattlefieldRelicsPerHordeArena : Effects::BattlefieldRelicsPerFloor;
+	for (ACataclysmFloorObject* Relic : PlaceFloorObjects(FName(Effects::BattlefieldRelicsKey), Count,
+														  TEXT("Battlefield Relic"),
+														  TEXT("An ancient relic of war. Activating it wakes the fallen.")))
+	{
+		const int32 Kind = Pinned.IsEmpty() ? FMath::RandRange(0, Effects::BattlefieldRelicKinds - 1)
+											: Pinned[BattlefieldRelics.Num() % Pinned.Num()];
+		Relic->DisplayName = FString::Printf(TEXT("Battlefield Relic of %s"), Effects::BattlefieldRelicKindName(Kind));
+		const FString Gives = Kind == Effects::BattlefieldRelicHaste
+			? FString::Printf(TEXT("%d%% more attack speed and %d%% more movement speed"),
+							  FMath::RoundToInt(Effects::BattlefieldRelicsHasteAttackSpeedMorePercent),
+							  FMath::RoundToInt(Effects::BattlefieldRelicsHasteSpeedMorePercent))
+			: Kind == Effects::BattlefieldRelicBulwark
+			? FString::Printf(TEXT("+%d to every resistance"), FMath::RoundToInt(Effects::BattlefieldRelicsBulwarkResistance))
+			: FString::Printf(TEXT("%d%% more damage"), FMath::RoundToInt(Effects::BattlefieldRelicsFuryDamageMorePercent));
+		FCataclysmFloorObjectChoice Activate;
+		Activate.Key = FName(Effects::BattlefieldRelicsActivate);
+		Activate.Label = FString::Printf(TEXT("Activate: %s for %d s, and %d spirits come after you"), *Gives,
+										 FMath::RoundToInt(Effects::BattlefieldRelicsSeconds),
+										 Effects::BattlefieldRelicsSpiritCount);
+		Relic->Choices = {Activate};
+		BattlefieldRelics.Add(Relic);
+		BattlefieldRelicKinds.Add(Kind);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Battlefield Relics: %d relic(s) on floor %d"), BattlefieldRelics.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtBattlefieldRelic(ACataclysmFloorObject* Relic, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Index = BattlefieldRelics.IndexOfByPredicate(
+		[Relic](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Relic; });
+	if (Index == INDEX_NONE || ChoiceKey != FName(Effects::BattlefieldRelicsActivate) || !CurrentFloor
+		|| !CurrentFloor->IsBuilt())
+	{
+		return false;
+	}
+	const FVector At = Relic->GetActorLocation();
+	const int32 Kind = BattlefieldRelicKinds.IsValidIndex(Index) ? BattlefieldRelicKinds[Index] : Effects::BattlefieldRelicFury;
+
+	// THE KIND'S BUFF, WRITTEN ON THE NEXT BEAT: THE SAME KIND AGAIN REFRESHES ITS TIME, AND KINDS ADD TOGETHER.
+	float& Left = Kind == Effects::BattlefieldRelicHaste ? RelicHasteLeft
+		: Kind == Effects::BattlefieldRelicBulwark ? RelicBulwarkLeft
+		: RelicFuryLeft;
+	Left = Effects::BattlefieldRelicsSeconds;
+
+	// AND THE SPIRITS AT ONCE, independent of the buff: the floor's kinds at Common, noticing the player from anywhere on
+	// the floor, the "relentlessly pursue" of the row.
+	for (ACataclysmEnemyCharacter* Spirit : BringCreaturesNear(At, Effects::BattlefieldRelicsSpiritAwayCm,
+															   Effects::BattlefieldRelicsSpiritCount,
+															   Effects::BattlefieldRelicsSpiritRung,
+															   Effects::TheReaperSightMultiplier))
+	{
+		Spirit->bIsARelicSpirit = true;
+		RelicSpirits.Add(Spirit);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Battlefield Relics: a relic of %s activated on floor %d, %d spirit(s) came"),
+		   Effects::BattlefieldRelicKindName(Kind), FloorNumber, RelicSpiritsStanding().Num());
+
+	// THE RELIC GOES.
+	Relic->Destroy();
+	BattlefieldRelics.RemoveAt(Index);
+	if (BattlefieldRelicKinds.IsValidIndex(Index))
+	{
+		BattlefieldRelicKinds.RemoveAt(Index);
+	}
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepBattlefieldRelics(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// EACH KIND'S BUFF, WRITTEN WHEN IT CHANGED AND COUNTED DOWN ON THE BEAT.
+	const float Fury = RelicFuryLeft > 0.0f ? Effects::BattlefieldRelicsFuryDamageMorePercent : 0.0f;
+	const float Haste = RelicHasteLeft > 0.0f ? Effects::BattlefieldRelicsHasteAttackSpeedMorePercent : 0.0f;
+	const float Bulwark = RelicBulwarkLeft > 0.0f ? Effects::BattlefieldRelicsBulwarkResistance : 0.0f;
+	if (!FMath::IsNearlyEqual(Fury, RelicFuryApplied) || !FMath::IsNearlyEqual(Haste, RelicHasteApplied)
+		|| !FMath::IsNearlyEqual(Bulwark, RelicBulwarkApplied))
+	{
+		RelicFuryApplied = Fury;
+		RelicHasteApplied = Haste;
+		RelicBulwarkApplied = Bulwark;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+	RelicFuryLeft = FMath::Max(0.0f, RelicFuryLeft - SecondsBetweenWaveChecks);
+	RelicHasteLeft = FMath::Max(0.0f, RelicHasteLeft - SecondsBetweenWaveChecks);
+	RelicBulwarkLeft = FMath::Max(0.0f, RelicBulwarkLeft - SecondsBetweenWaveChecks);
+
+	const int32 Key = BattlefieldRelicsNow().Num() * 1000000 + FMath::CeilToInt(RelicFuryLeft) * 10000
+		+ FMath::CeilToInt(RelicHasteLeft) * 100 + FMath::CeilToInt(RelicBulwarkLeft);
+	if (Key != BattlefieldRelicsPanelKey)
+	{
+		BattlefieldRelicsPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PandorasBoxesNow() const
+{
+	TArray<ACataclysmFloorObject*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : PandorasBoxes)
+	{
+		if (ACataclysmFloorObject* Box = One.Get(); IsValid(Box))
+		{
+			Standing.Add(Box);
+		}
+	}
+	return Standing;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::ChaosSpawnStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FPandorasBoxWaves& Waves : PandorasBoxWaves)
+	{
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Waves.Standing)
+		{
+			ACataclysmEnemyCharacter* Spawn = One.Get();
+			// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+			if (IsValid(Spawn) && !UCataclysmSkillEffects::IsDead(Spawn) && !DungeonGameModeIsAPlayersFollower(Spawn))
+			{
+				Standing.Add(Spawn);
+			}
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheBoxes()
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : PandorasBoxes)
+	{
+		if (ACataclysmFloorObject* Box = One.Get())
+		{
+			Box->Destroy();
+		}
+	}
+	PandorasBoxes.Reset();
+	PandorasBoxSeeds.Reset();
+	PandorasBoxWaves.Reset();
+	PandorasBoxPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheBoxes()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheBoxes();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::PandorasBoxKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::PandorasBoxPerHordeArena : Effects::PandorasBoxPerFloor;
+	for (ACataclysmFloorObject* Box : PlaceFloorObjects(FName(Effects::PandorasBoxKey), Count, TEXT("Pandora's Box"),
+														TEXT("A chest sealed with chaos. It holds treasure, or something else.")))
+	{
+		FCataclysmFloorObjectChoice Open;
+		Open.Key = FName(Effects::PandorasBoxOpen);
+		Open.Label = FString::Printf(TEXT("Open: even odds of a boss's loot, or %d waves of %d creatures"),
+									 Effects::PandorasBoxWaveCount, Effects::PandorasBoxWaveSize);
+		Box->Choices = {Open};
+		// EACH BOX'S REWARD ON A STREAM SEEDED FROM THE FLOOR, as Luxury Hoarders' pile is, so the same box gives the
+		// same loot.
+		PandorasBoxSeeds.Add(CurrentFloor->GetPlan().Seed ^ (0x9A7D + PandorasBoxes.Num()));
+		PandorasBoxes.Add(Box);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: %d box(es) on floor %d"), PandorasBoxes.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtPandorasBox(ACataclysmFloorObject* Box, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Index = PandorasBoxes.IndexOfByPredicate(
+		[Box](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Box; });
+	UWorld* World = GetWorld();
+	if (Index == INDEX_NONE || ChoiceKey != FName(Effects::PandorasBoxOpen) || !World || !CurrentFloor
+		|| !CurrentFloor->IsBuilt())
+	{
+		return false;
+	}
+	const FVector At = Box->GetActorLocation();
+
+	// ONE ROLL, ONE OUTCOME.
+	if (Effects::PandorasBoxUnleashes(DungeonGameModePandorasBoxRoll()))
+	{
+		// THE FIRST WAVE AT ONCE; THE REST ON THE BEAT, EACH ONCE THE LAST IS ALL DEAD.
+		FPandorasBoxWaves& Waves = PandorasBoxWaves.AddDefaulted_GetRef();
+		Waves.At = At;
+		for (ACataclysmEnemyCharacter* Spawn : BringCreaturesNear(At, Effects::PandorasBoxWaveAwayCm,
+																  Effects::PandorasBoxWaveSize, /*FixedRung=*/-1,
+																  Effects::TheReaperSightMultiplier))
+		{
+			Spawn->bIsAChaosSpawn = true;
+			Waves.Standing.Add(Spawn);
+		}
+		Waves.Came = 1;
+		UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: a box let out its waves on floor %d, the first of %d"),
+			   FloorNumber, Effects::PandorasBoxWaveCount);
+	}
+	else
+	{
+		// A BOSS'S KILL'S DROPS AT THE BOX, WITH THE PLAYER'S OWN MAGIC FIND AND LOOT QUANTITY.
+		float MagicFind = 0.0f;
+		float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+		UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+		FRandomStream Stream(PandorasBoxSeeds.IsValidIndex(Index) ? PandorasBoxSeeds[Index] : 0);
+		PandorasBoxRewardDrops = UCataclysmDropSpawner::SpawnDropsFor(
+			World, Effects::PandorasBoxRewardRung, MagicFind, LootQuantity, At, Stream);
+		UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: a box gave its reward on floor %d, %d drop(s)"), FloorNumber,
+			   PandorasBoxRewardDrops);
+	}
+
+	// THE BOX GOES.
+	Box->Destroy();
+	PandorasBoxes.RemoveAt(Index);
+	if (PandorasBoxSeeds.IsValidIndex(Index))
+	{
+		PandorasBoxSeeds.RemoveAt(Index);
+	}
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepPandorasBox()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	for (int32 Index = PandorasBoxWaves.Num() - 1; Index >= 0; --Index)
+	{
+		FPandorasBoxWaves& Waves = PandorasBoxWaves[Index];
+		const bool bAllDead = !Waves.Standing.ContainsByPredicate(
+			[](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One)
+			{
+				// A SPAWN THE PLAYER TOOK IS NOT STANDING IN ITS WAVE, or the next wave would wait on the player's own
+				// thrall: a judgement of this change, as the Horde wave's ruling of 2026-09-30 has it (issue #1202).
+				return IsValid(One.Get()) && !UCataclysmSkillEffects::IsDead(One.Get())
+					&& !DungeonGameModeIsAPlayersFollower(One.Get());
+			});
+		if (!bAllDead)
+		{
+			continue;
+		}
+		if (Waves.Came >= Effects::PandorasBoxWaveCount)
+		{
+			PandorasBoxWaves.RemoveAt(Index);
+			continue;
+		}
+		Waves.Standing.Reset();
+		for (ACataclysmEnemyCharacter* Spawn : BringCreaturesNear(Waves.At, Effects::PandorasBoxWaveAwayCm,
+																  Effects::PandorasBoxWaveSize, /*FixedRung=*/-1,
+																  Effects::TheReaperSightMultiplier))
+		{
+			Spawn->bIsAChaosSpawn = true;
+			Waves.Standing.Add(Spawn);
+		}
+		++Waves.Came;
+		UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: wave %d of %d came on floor %d"), Waves.Came,
+			   Effects::PandorasBoxWaveCount, FloorNumber);
+	}
+
+	const int32 Wave = PandorasBoxWaves.IsEmpty() ? 0 : PandorasBoxWaves[0].Came;
+	const int32 Key = PandorasBoxesNow().Num() * 100 + Wave;
+	if (Key != PandorasBoxPanelKey)
+	{
+		PandorasBoxPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
+TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::InfernalBeaconsNow() const
+{
+	TArray<ACataclysmFloorObject*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : InfernalBeacons)
+	{
+		if (ACataclysmFloorObject* Beacon = One.Get(); IsValid(Beacon))
+		{
+			Standing.Add(Beacon);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheInfernalBeacons()
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObject>& One : InfernalBeacons)
+	{
+		if (ACataclysmFloorObject* Beacon = One.Get())
+		{
+			Beacon->Destroy();
+		}
+	}
+	InfernalBeacons.Reset();
+	InfernalBeaconsPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheInfernalBeacons()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheInfernalBeacons();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::InfernalBeaconsKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::InfernalBeaconsPerHordeArena : Effects::InfernalBeaconsPerFloor;
+	for (ACataclysmFloorObject* Beacon : PlaceFloorObjects(FName(Effects::InfernalBeaconsKey), Count, TEXT("Infernal Beacon"),
+														   TEXT("A beacon of hellfire. Lighting it draws power to the dungeon and fortune to you.")))
+	{
+		FCataclysmFloorObjectChoice Activate;
+		Activate.Key = FName(Effects::InfernalBeaconsActivate);
+		Activate.Label = FString::Printf(TEXT("Activate: for the rest of the dungeon, enemies deal %d%% more damage and "
+											  "you gain %d magic find"),
+										 FMath::RoundToInt(Effects::InfernalBeaconsDamagePercentPerStack),
+										 FMath::RoundToInt(Effects::InfernalBeaconsMagicFindPerStack));
+		Beacon->Choices = {Activate};
+		InfernalBeacons.Add(Beacon);
+	}
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtInfernalBeacon(ACataclysmFloorObject* Beacon, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Index = InfernalBeacons.IndexOfByPredicate(
+		[Beacon](const TWeakObjectPtr<ACataclysmFloorObject>& One) { return One.Get() == Beacon; });
+	if (Index == INDEX_NONE || ChoiceKey != FName(Effects::InfernalBeaconsActivate))
+	{
+		return false;
+	}
+
+	// ONE STACK MORE FOR THE REST OF THE DUNGEON, written on the next beat; THE BEACON GOES.
+	++InfernalBeaconStacks;
+	UE_LOG(LogCataclysm, Log, TEXT("Infernal Beacons: a beacon activated on floor %d, %d stack(s) in this dungeon"),
+		   FloorNumber, InfernalBeaconStacks);
+	Beacon->Destroy();
+	InfernalBeacons.RemoveAt(Index);
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepInfernalBeacons(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE, the sweep Pestilent Empowerment makes, at the dungeon's stacks; the
+	// floor sources are left alone, since they do nothing. Written only when it changed.
+	const float Multiplier = Effects::InfernalBeaconsDamageMultiplier(InfernalBeaconStacks);
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| !UCataclysmTargeting::IsHostileTo(Creature, Player)
+			|| FMath::IsNearlyEqual(Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource),
+									Multiplier))
+		{
+			continue;
+		}
+		Creature->SetInfernalBeaconsDamageMultiplier(Multiplier);
+	}
+
+	// AND THE PLAYER'S MAGIC FIND, written when the stacks changed.
+	if (InfernalBeaconStacks != InfernalBeaconStacksApplied)
+	{
+		InfernalBeaconStacksApplied = InfernalBeaconStacks;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	const int32 Key = InfernalBeaconsNow().Num() * 1000 + InfernalBeaconStacks;
+	if (Key != InfernalBeaconsPanelKey)
+	{
+		InfernalBeaconsPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
+ACataclysmFloorObject* ACataclysmDungeonGameMode::WarBannerNow() const
+{
+	ACataclysmFloorObject* Banner = WarBanner.Get();
+	return IsValid(Banner) ? Banner : nullptr;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BannerAssailantsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : BannerAssailants)
+	{
+		ACataclysmEnemyCharacter* Assailant = One.Get();
+		// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+		if (IsValid(Assailant) && !UCataclysmSkillEffects::IsDead(Assailant) && !DungeonGameModeIsAPlayersFollower(Assailant))
+		{
+			Standing.Add(Assailant);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheWarBanner()
+{
+	if (ACataclysmFloorObject* Banner = WarBanner.Get())
+	{
+		Banner->Destroy();
+	}
+	if (ACataclysmGroundZone* Zone = WarBannerZone.Get())
+	{
+		Zone->Destroy();
+	}
+	WarBanner = nullptr;
+	WarBannerZone = nullptr;
+	bWarBannerPlanted = false;
+	WarBannerAt = FVector::ZeroVector;
+	WarBannerHeldSeconds = 0.0f;
+	WarBannerSecondsSinceWave = 0.0f;
+	bWarBannerHeld = false;
+	BannerAssailants.Reset();
+	WarBannerPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheWarBanner()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	ForgetTheWarBanner();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::WarBannerKey)))
+	{
+		return;
+	}
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::WarBannerPerHordeArena : Effects::WarBannerPerFloor;
+	for (ACataclysmFloorObject* Banner : PlaceFloorObjects(FName(Effects::WarBannerKey), Count, TEXT("War Banner"),
+														   TEXT("A war banner, furled. Plant it here and hold the ground around it.")))
+	{
+		FCataclysmFloorObjectChoice Plant;
+		Plant.Key = FName(Effects::WarBannerPlant);
+		Plant.Label = FString::Printf(TEXT("Plant the banner: +%d%% damage and +%d resistance within %d m; hold it %d s "
+										   "through the waves to double it"),
+									  FMath::RoundToInt(Effects::WarBannerDamageMorePercent),
+									  FMath::RoundToInt(Effects::WarBannerResistance),
+									  FMath::RoundToInt(Effects::WarBannerRadiusCm / 100.0f),
+									  FMath::RoundToInt(Effects::WarBannerHoldSeconds));
+		Banner->Choices = {Plant};
+		WarBanner = Banner;
+	}
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtWarBanner(ACataclysmFloorObject* Banner, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Banner) || Banner != WarBanner.Get() || ChoiceKey != FName(Effects::WarBannerPlant))
+	{
+		return false;
+	}
+	// PLANTED WHERE IT STANDS, AND PLANTING BRINGS THE FIRST WAVE; the zone is drawn and the hold counted on the beat.
+	// The floor object goes: it has nothing more to offer.
+	WarBannerAt = Banner->GetActorLocation();
+	bWarBannerPlanted = true;
+	UE_LOG(LogCataclysm, Log, TEXT("War Banner: planted on floor %d"), FloorNumber);
+	Banner->Destroy();
+	WarBanner = nullptr;
+	BringABannerWave();
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::BringABannerWave()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	WarBannerSecondsSinceWave = 0.0f;
+	for (ACataclysmEnemyCharacter* Assailant : BringCreaturesNear(WarBannerAt, Effects::WarBannerWaveAwayCm,
+																  Effects::WarBannerWaveSize, /*FixedRung=*/-1,
+																  Effects::TheReaperSightMultiplier))
+	{
+		Assailant->bIsABannerAssailant = true;
+		BannerAssailants.Add(Assailant);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("War Banner: a wave came on floor %d, %.0f s held"), FloorNumber,
+		   WarBannerHeldSeconds);
+}
+
+void ACataclysmDungeonGameMode::StepWarBanner(ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	bool bInside = false;
+	if (bWarBannerPlanted)
+	{
+		// THE ZONE, DRAWN WHEREVER IT IS MISSING, as Grim Totems' are.
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(GetWorld());
+		if (Source && !WarBannerZone.Get())
+		{
+			WarBannerZone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, WarBannerAt, WarBannerAt, Effects::WarBannerRadiusCm, 0.0f, /*bAffectsEveryone=*/false,
+				/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::WarBannerKey));
+		}
+		bInside = FVector::Dist2D(Player->GetActorLocation(), WarBannerAt) <= Effects::WarBannerRadiusCm;
+
+		// THE HOLD, COUNTED ONLY WHILE THE PLAYER IS INSIDE AND NEVER RESET. Planting brought the first wave; another
+		// after every stretch of it. HELD IS ASKED FIRST, so no wave comes as the hold completes: the waves stop there.
+		if (bInside && !bWarBannerHeld)
+		{
+			WarBannerHeldSeconds += SecondsBetweenWaveChecks;
+			WarBannerSecondsSinceWave += SecondsBetweenWaveChecks;
+			if (WarBannerHeldSeconds >= Effects::WarBannerHoldSeconds - KINDA_SMALL_NUMBER)
+			{
+				bWarBannerHeld = true;
+				UE_LOG(LogCataclysm, Log, TEXT("War Banner: held on floor %d; the waves stop"), FloorNumber);
+			}
+			else if (WarBannerSecondsSinceWave >= Effects::WarBannerWaveEverySeconds - KINDA_SMALL_NUMBER)
+			{
+				BringABannerWave();
+			}
+		}
+	}
+
+	// THE AURA, INSIDE ONLY, DOUBLED ONCE HELD; written when it changed.
+	const float Damage = !bInside ? 0.0f
+		: bWarBannerHeld ? Effects::WarBannerHeldDamageMorePercent : Effects::WarBannerDamageMorePercent;
+	const float Resistance = !bInside ? 0.0f
+		: bWarBannerHeld ? Effects::WarBannerHeldResistance : Effects::WarBannerResistance;
+	if (!FMath::IsNearlyEqual(Damage, WarBannerDamageApplied) || !FMath::IsNearlyEqual(Resistance, WarBannerResistanceApplied))
+	{
+		WarBannerDamageApplied = Damage;
+		WarBannerResistanceApplied = Resistance;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	const int32 Key = (WarBannerNow() ? 1 : 0) + (bWarBannerPlanted ? 10 : 0) + (bWarBannerHeld ? 100 : 0)
+		+ FMath::CeilToInt(WarBannerHeldSeconds) * 1000;
+	if (Key != WarBannerPanelKey)
+	{
+		WarBannerPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::PlaceTheTotems()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -8279,22 +9140,12 @@ void ACataclysmDungeonGameMode::PlaceTheTotems()
 		return;
 	}
 
-	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, where Eternal Chorus's picker puts its sources: away from the
-	// entrance, so the player walks to one. Each is a floor object the player clicks, offering its two choices.
+	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, placed the one way floor objects are. Each is a floor object the
+	// player clicks, offering its two choices.
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::GrimTotemsPerHordeArena : Effects::GrimTotemsPerFloor;
-	FActorSpawnParameters Spawn;
-	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (ACataclysmFloorObject* Totem : PlaceFloorObjects(FName(Effects::GrimTotemsKey), Count, TEXT("Grim Totem"),
+														  TEXT("Dark energy pours from it. Embrace its power, or cleanse it.")))
 	{
-		ACataclysmFloorObject* Totem = World->SpawnActor<ACataclysmFloorObject>(
-			ACataclysmFloorObject::StaticClass(), CurrentFloor->WorldOfCell(Cell), FRotator::ZeroRotator, Spawn);
-		if (!Totem)
-		{
-			continue;
-		}
-		Totem->RuleKey = FName(Effects::GrimTotemsKey);
-		Totem->DisplayName = TEXT("Grim Totem");
-		Totem->Prompt = TEXT("Dark energy pours from it. Embrace its power, or cleanse it.");
 		FCataclysmFloorObjectChoice Embrace;
 		Embrace.Key = FName(Effects::GrimTotemsEmbrace);
 		Embrace.Label = FString::Printf(TEXT("Embrace: %d%% more damage for %d s, and %d Elite creatures come"),
@@ -8333,6 +9184,26 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	{
 		return ChooseAtGrimTotem(Object, ChoiceKey);
 	}
+	if (Object->RuleKey == FName(Effects::BattlefieldRelicsKey))
+	{
+		return ChooseAtBattlefieldRelic(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::PandorasBoxKey))
+	{
+		return ChooseAtPandorasBox(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::CarrionFeastKey))
+	{
+		return ChooseAtPurificationAltar(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::InfernalBeaconsKey))
+	{
+		return ChooseAtInfernalBeacon(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::WarBannerKey))
+	{
+		return ChooseAtWarBanner(Object, ChoiceKey);
+	}
 	return false;
 }
 
@@ -8354,31 +9225,12 @@ bool ACataclysmDungeonGameMode::ChooseAtGrimTotem(ACataclysmFloorObject* Totem, 
 		// cells beside a point that far from the totem at a random angle, noticing the player from anywhere on the
 		// floor as Plague Convergence's arrivals do. They are the floor's creatures and pay as the Elite rung does.
 		GrimEmbraceLeft = Effects::GrimTotemsEmbraceSeconds;
-		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
-		const FVector Where(At.X + Effects::GrimTotemsEliteAwayCm * FMath::Cos(Angle),
-							At.Y + Effects::GrimTotemsEliteAwayCm * FMath::Sin(Angle), At.Z);
-		const FCataclysmFloorPopulation Population =
-			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
-		// A POINT OFF THE FLOOR, WITH NO FLOOR WITHIN REACH OF IT, FALLS BACK TO THE CELLS AROUND THE TOTEM, which stands on
-		// the floor: an embrace is a single press, with no later beat to try again on, so the Elites come either way.
-		TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
-		if (Cells.IsEmpty())
+		for (ACataclysmEnemyCharacter* Elite : BringCreaturesNear(At, Effects::GrimTotemsEliteAwayCm,
+																  Effects::GrimTotemsEliteCount,
+																  Effects::GrimTotemsEliteRung,
+																  Effects::TheReaperSightMultiplier))
 		{
-			Cells = NecroticBloomWaveCells(*CurrentFloor, At);
-		}
-		for (int32 Which = 0; Which < Effects::GrimTotemsEliteCount && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
-			 ++Which)
-		{
-			FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
-			Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
-			if (ACataclysmEnemyCharacter* Elite =
-					SpawnPlacedCreature(Placement, Effects::TheReaperSightMultiplier, Effects::GrimTotemsEliteRung))
-			{
-				Elite->bRaisedByARule = true;
-				CreaturesRaisedByARule.Add(Elite);
-				FloorEnemies.Add(Elite);
-				GrimTotemElites.Add(Elite);
-			}
+			GrimTotemElites.Add(Elite);
 		}
 		UE_LOG(LogCataclysm, Log, TEXT("Grim Totems: a totem embraced on floor %d, %d Elite creature(s) came"),
 			   FloorNumber, GrimTotemElitesStanding().Num());
@@ -9534,6 +10386,14 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheShadowLights();
 	ForgetTheSarcophagi();
 	ForgetTheTotems();
+	ForgetTheRelics();
+	ForgetTheBoxes();
+	ForgetTheAltar();
+	// AND INFERNAL BEACONS' STACKS END WITH THE DUNGEON. Issues #1820 and #41.
+	ForgetTheInfernalBeacons();
+	InfernalBeaconStacks = 0;
+	InfernalBeaconStacksApplied = 0;
+	ForgetTheWarBanner();
 
 	// THE RUN IS OVER, AND WHAT THE PLAYER COMMANDED ENDS WITH IT. Issue
 	// #1202, ruled 2026-09-30. Their Fervour reserves go with them, because
@@ -10098,6 +10958,23 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND GRIM TOTEMS, ON EVERY FLOOR CARRYING IT, AND WHILE AN EMBRACE IS ON THE CHARACTER. Issues #1820 and #41.
 	const bool bGrimTotems = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::GrimTotemsKey))
 		|| GrimEmbraceApplied > 0.0f || GrimEmbraceLeft > 0.0f;
+	// AND BATTLEFIELD RELICS, ON EVERY FLOOR CARRYING IT, AND WHILE A RELIC'S BUFF IS ON THE CHARACTER. Issues #1820
+	// and #41.
+	const bool bBattlefieldRelics =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BattlefieldRelicsKey))
+		|| RelicFuryLeft > 0.0f || RelicHasteLeft > 0.0f || RelicBulwarkLeft > 0.0f || RelicFuryApplied > 0.0f
+		|| RelicHasteApplied > 0.0f || RelicBulwarkApplied > 0.0f;
+	// AND PANDORA'S BOX, ON EVERY FLOOR CARRYING IT, AND WHILE A BOX'S WAVES ARE UNDER WAY. Issues #1820 and #41.
+	const bool bPandorasBox = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::PandorasBoxKey))
+		|| !PandorasBoxWaves.IsEmpty();
+	// AND INFERNAL BEACONS, ON EVERY FLOOR CARRYING IT, AND ON EVERY FLOOR OF A DUNGEON WHOSE BEACONS HAVE STACKS.
+	// Issues #1820 and #41.
+	const bool bInfernalBeacons =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::InfernalBeaconsKey))
+		|| InfernalBeaconStacks > 0 || InfernalBeaconStacksApplied > 0;
+	// AND WAR BANNER, ON EVERY FLOOR CARRYING IT, AND WHILE ITS AURA IS ON THE CHARACTER. Issues #1820 and #41.
+	const bool bWarBanner = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::WarBannerKey))
+		|| WarBannerDamageApplied > 0.0f || WarBannerResistanceApplied > 0.0f;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -10133,6 +11010,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
 		&& !bVision
 		&& !bGrimTotems
+		&& !bBattlefieldRelics
+		&& !bPandorasBox
+		&& !bInfernalBeacons
+		&& !bWarBanner
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts)
 	{
 		return;
@@ -10491,6 +11372,30 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bGrimTotems)
 	{
 		StepGrimTotems(Player, AbilitySystem);
+	}
+
+	// AND BATTLEFIELD RELICS, WHICH TIMES EACH KIND'S BUFF. Issues #1820 and #41.
+	if (bBattlefieldRelics)
+	{
+		StepBattlefieldRelics(Player, AbilitySystem);
+	}
+
+	// AND PANDORA'S BOX, WHICH BRINGS EACH OPENED BOX'S NEXT WAVE. Issues #1820 and #41.
+	if (bPandorasBox)
+	{
+		StepPandorasBox();
+	}
+
+	// AND INFERNAL BEACONS, WHICH WRITES THE DUNGEON'S STACKS ON THE CREATURES AND THE PLAYER. Issues #1820 and #41.
+	if (bInfernalBeacons)
+	{
+		StepInfernalBeacons(Player, AbilitySystem);
+	}
+
+	// AND WAR BANNER, WHICH COUNTS THE HOLD, BRINGS THE WAVES AND WRITES THE AURA. Issues #1820 and #41.
+	if (bWarBanner)
+	{
+		StepWarBanner(Player, AbilitySystem);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -11481,6 +12386,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	Effects.RiftMagicFindAdded =
 		UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(AbyssalRiftSuccessesApplied);
 
+	// AND THE INFERNAL BEACONS ACTIVATED IN THIS DUNGEON. Issues #1820 and #41.
+	Effects.BeaconMagicFindAdded = UCataclysmDungeonModifierEffects::InfernalBeaconsMagicFind(InfernalBeaconStacksApplied);
+
 	// AND WHAT THE ATTACHED VOIDLINGS TAKE, on its own field. Issues #1820 and #41. Read unconditionally like
 	// the rest: a player carrying none is owed nothing.
 	Effects.ParasiteLessPercent =
@@ -11505,6 +12413,15 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 
 	// AND AN EMBRACED GRIM TOTEM'S STRENGTH AS LAST WRITTEN. Issues #1820 and #41. Read unconditionally like the rest.
 	Effects.GrimEmbraceDamageMorePercent = GrimEmbraceApplied;
+	// AND THE ACTIVATED BATTLEFIELD RELICS, each kind its own field. Issues #1820 and #41.
+	Effects.RelicDamageMorePercent = RelicFuryApplied;
+	Effects.RelicAttackSpeedMorePercent = RelicHasteApplied;
+	Effects.RelicSpeedMorePercent = RelicHasteApplied > 0.0f ? UCataclysmDungeonModifierEffects::BattlefieldRelicsHasteSpeedMorePercent
+															 : 0.0f;
+	Effects.RelicResistancePercent = RelicBulwarkApplied;
+	// AND A PLANTED WAR BANNER'S AURA, while the player stands inside. Issues #1820 and #41.
+	Effects.BannerDamageMorePercent = WarBannerDamageApplied;
+	Effects.BannerResistancePercent = WarBannerResistanceApplied;
 	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
 
 	// AND WHAT JUDGMENT IS TAKING OFF ONE RESISTANCE. Issues #1820 and #41. Read
@@ -13561,6 +14478,64 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Totems, Line);
 	}
 
+	// AND WAR BANNER: whether it is planted, how long is left to hold, and what the aura gives inside. Issues #1820 and
+	// #41.
+	const FName Banner(Effects::WarBannerKey);
+	if (FloorBrief.Modifiers.Contains(Banner))
+	{
+		Counting.Add(Banner, !bWarBannerPlanted
+			? FString(TEXT("war banner: not planted"))
+			: bWarBannerHeld
+			? FString::Printf(TEXT("war banner: held; +%d%% damage, +%d resistances inside"),
+							  FMath::RoundToInt(Effects::WarBannerHeldDamageMorePercent),
+							  FMath::RoundToInt(Effects::WarBannerHeldResistance))
+			: FString::Printf(TEXT("war banner: planted, %d s to hold; +%d%% damage, +%d resistances inside"),
+							  FMath::CeilToInt(Effects::WarBannerHoldSeconds - WarBannerHeldSeconds),
+							  FMath::RoundToInt(Effects::WarBannerDamageMorePercent),
+							  FMath::RoundToInt(Effects::WarBannerResistance)));
+	}
+
+	// AND INFERNAL BEACONS: how many this dungeon has activated and what they give, on a floor carrying the row or once
+	// any is activated. Issues #1820 and #41.
+	// NAMED `Infernal`, NOT `Beacons`: Pestilent Empowerment's line below already declares that in this function.
+	const FName Infernal(Effects::InfernalBeaconsKey);
+	if (FloorBrief.Modifiers.Contains(Infernal) || InfernalBeaconStacks > 0)
+	{
+		Counting.Add(Infernal, FString::Printf(TEXT("infernal beacons: %d activated; enemies +%d%% damage; +%d magic find"),
+											  InfernalBeaconStacks,
+											  FMath::RoundToInt((Effects::InfernalBeaconsDamageMultiplier(InfernalBeaconStacks) - 1.0f) * 100.0f),
+											  FMath::RoundToInt(Effects::InfernalBeaconsMagicFind(InfernalBeaconStacks))));
+	}
+
+	// AND PANDORA'S BOX: how many are unopened, and the wave under way. Issues #1820 and #41.
+	const FName Boxes(Effects::PandorasBoxKey);
+	if (FloorBrief.Modifiers.Contains(Boxes))
+	{
+		FString Line = FString::Printf(TEXT("pandora's box: %d unopened"), PandorasBoxesNow().Num());
+		if (!PandorasBoxWaves.IsEmpty())
+		{
+			Line += FString::Printf(TEXT("; wave %d of %d"), PandorasBoxWaves[0].Came, Effects::PandorasBoxWaveCount);
+		}
+		Counting.Add(Boxes, Line);
+	}
+
+	// AND BATTLEFIELD RELICS: how many stand, and each kind's buff under way. Issues #1820 and #41.
+	const FName Relics(Effects::BattlefieldRelicsKey);
+	if (FloorBrief.Modifiers.Contains(Relics))
+	{
+		FString Line = FString::Printf(TEXT("battlefield relics: %d standing"), BattlefieldRelicsNow().Num());
+		const float Lefts[] = {RelicFuryLeft, RelicHasteLeft, RelicBulwarkLeft};
+		const TCHAR* Names[] = {TEXT("Fury"), TEXT("Haste"), TEXT("Bulwark")};
+		for (int32 Kind = 0; Kind < Effects::BattlefieldRelicKinds; ++Kind)
+		{
+			if (Lefts[Kind] > 0.0f)
+			{
+				Line += FString::Printf(TEXT("; %s %d s"), Names[Kind], FMath::CeilToInt(Lefts[Kind]));
+			}
+		}
+		Counting.Add(Relics, Line);
+	}
+
 	const FName Veins(Effects::InfestedVeinsKey);
 	if (FloorBrief.Modifiers.Contains(Veins))
 	{
@@ -13577,9 +14552,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	const FName Carrion(Effects::CarrionFeastKey);
 	if (FloorBrief.Modifiers.Contains(Carrion))
 	{
-		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%"),
+		// AND THE PURIFICATION ALTAR, SINCE 2026-09-30: whether one stands or was used.
+		const FString Altar = PurificationAltarNow() ? FString(TEXT("; an altar stands"))
+			: bAltarConsecrated ? FString(TEXT("; the altar is used"))
+			: FString();
+		Counting.Add(Carrion, FString::Printf(TEXT("carrion feast: %d carcasses lying, %d feeders standing, feeders +%d%%%s"),
 											  CarrionCarcassesNow().Num(), CarrionFeedersNow().Num(),
-											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
+											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f),
+											  *Altar));
 	}
 
 	// AND THE PLAGUEBEARER: the stacks every other creature carries and what they add, whether it is running, or that it
@@ -15862,6 +16842,28 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		GrimEmbraceApplied = 0.0f;
 		GrimTotemZones.Reset();
 		GrimTotemsPanelKey = -1;
+
+		// AND BATTLEFIELD RELICS: every kind's buff ends with the floor, the call above having taken it off the
+		// character. The relics are kept; a new arena replaces them. Issues #1820 and #41.
+		RelicFuryLeft = 0.0f;
+		RelicHasteLeft = 0.0f;
+		RelicBulwarkLeft = 0.0f;
+		RelicFuryApplied = 0.0f;
+		RelicHasteApplied = 0.0f;
+		RelicBulwarkApplied = 0.0f;
+		BattlefieldRelicsPanelKey = -1;
+
+		// AND INFERNAL BEACONS FORGETS WHAT MAGIC FIND IS STANDING ON THE PLAYER, BECAUSE THE CALL ABOVE HAS ALREADY
+		// TAKEN IT OFF, for March of Progress's reason below: the stacks last the dungeon, so the next beat must put it
+		// back. Without this a floor with no beacon activated left the player none. Issues #1820 and #41.
+		InfernalBeaconStacksApplied = 0;
+
+		// AND A WAR BANNER'S AURA ENDS WITH THE FLOOR; its zone went with the rules' others and is drawn again on the
+		// next beat while the banner stands on this arena. Issues #1820 and #41.
+		WarBannerDamageApplied = 0.0f;
+		WarBannerResistanceApplied = 0.0f;
+		WarBannerZone = nullptr;
+		WarBannerPanelKey = -1;
 
 		// AND LEECH SPORES FORGETS ITS CLOUDS, which are already destroyed -- see the
 		// top of this function. Nothing else to clear: a cloud's drain is done the

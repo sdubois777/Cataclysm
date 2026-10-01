@@ -343,6 +343,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float RiftMagicFindAdded = 0.0f;
 
+	/** The magic find the Infernal Beacons activated in this dungeon give the player, added flat. Issues #1820, #41. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BeaconMagicFindAdded = 0.0f;
+
 	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
@@ -461,6 +465,29 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float GrimEmbraceDamageMorePercent = 0.0f;
 
 	/**
+	 * What activated Battlefield Relics give the player, for a time, each kind its own field: a Relic of Fury's damage,
+	 * more; a Relic of Haste's attack and movement speed, more; a Relic of the Bulwark's points on each resistance.
+	 * Issues #1820 and #41.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicDamageMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicAttackSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RelicResistancePercent = 0.0f;
+
+	/**
+	 * What a planted War Banner's aura gives the player while standing inside it: damage, more, and points on each
+	 * resistance. Issues #1820 and #41.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BannerDamageMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float BannerResistancePercent = 0.0f;
+
+	/**
 	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
 	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
 	 * long. Issues #1820 and #41.
@@ -527,6 +554,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& BloodDebtDamageMorePercent <= 0.0f
 			&& BloodDebtDamageLessPercent <= 0.0f
 			&& RiftMagicFindAdded <= 0.0f
+			&& BeaconMagicFindAdded <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -534,6 +562,9 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SpellsLockedValue <= 0.0f
 			&& ManaCostAsCurrentHealthPercent <= 0.0f
 			&& GrimEmbraceDamageMorePercent <= 0.0f
+			&& RelicDamageMorePercent <= 0.0f && RelicAttackSpeedMorePercent <= 0.0f
+			&& RelicSpeedMorePercent <= 0.0f && RelicResistancePercent <= 0.0f
+			&& BannerDamageMorePercent <= 0.0f && BannerResistancePercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
@@ -2493,8 +2524,8 @@ public:
 	 * with each corpse. Players can prevent this by burning bodies with fire-based abilities or finding "purification
 	 * altars" to consecrate the area."
 	 *
-	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25 AND 2026-09-26, AND PARTLY BUILT.
-	 * The row states no figure; every figure here is a play-test value:
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, 2026-09-26 AND 2026-09-30, AND
+	 * BUILT. The row states no figure; every figure here is a play-test value:
 	 * - A FLOOR CREATURE SLAIN LEAVES A CARCASS where it died: a floor source labelled "Carcass" that cannot be hurt.
 	 *   A creature a rule raised, a floor source and a feeder leave none.
 	 * - A CARCASS NOT BURNED WITHIN `CarrionFeastEatenAfterSeconds` IS EATEN: it goes, and a feeder of the floor's
@@ -2502,9 +2533,17 @@ public:
 	 * - EACH CARCASS EATEN MAKES EVERY FEEDER `CarrionFeastStrongerPercentPerCarcass` STRONGER in damage and health,
 	 *   up to `CarrionFeastMostStacks` carcasses. Feeders pay as the floor's creatures do.
 	 * - A HIT CARRYING `Element.Demonic`, THIS PROJECT'S FIRE, BURNS A CARCASS: it goes and no feeder comes.
-	 * - NOT BUILT: the "purification altars", which wait on the interaction screen.
+	 * - THE "PURIFICATION ALTARS", SINCE 2026-09-30: `CarrionFeastAltarsPerFloor` a floor, `CarrionFeastAltarsPerHordeArena`
+	 *   on a Horde arena kept across its waves, placed by Eternal Chorus's picker: a floor object named "Purification
+	 *   Altar" offering "Consecrate", which goes once used. Consecrating draws a Celestial zone
+	 *   `CarrionFeastAltarRadiusCm` across the altar, lasting the floor: every carcass lying inside burns at once, and
+	 *   every one that falls inside later burns on the next beat, through the burn a Demonic hit makes. Feeders already
+	 *   standing are not touched.
 	 */
 	static const TCHAR* CarrionFeastKey;
+
+	/** A Purification Altar's one choice. */
+	static constexpr const TCHAR* CarrionFeastConsecrate = TEXT("Consecrate");
 
 	/**
 	 * The row whose Plaguebearer strengthens every other creature of the floor and runs from the player. Issues #1820
@@ -2599,6 +2638,114 @@ public:
 	 *   as its rung does, and nothing extra.
 	 */
 	static const TCHAR* FamishedBeastsKey;
+
+	/**
+	 * The row whose relics the player activates for a short buff that brings spirits after them. Issues #1820 and
+	 * #41.
+	 *
+	 * "Scattered throughout the dungeon are ancient relics of war that can be activated to give powerful but temporary
+	 * buffs. However, activating a relic also summons the spirits of fallen warriors who will relentlessly pursue the
+	 * players until they are defeated."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `BattlefieldRelicsPerFloor` RELICS A FLOOR, `BattlefieldRelicsPerHordeArena` ON A HORDE ARENA, kept across its
+	 *   waves, placed by Eternal Chorus's picker. Each is a floor object named for its kind -- "Battlefield Relic of
+	 *   Fury" -- not "Relic", which is the name of an equipment slot. It offers "Activate", and goes once activated.
+	 * - EACH IS ONE OF THREE KINDS, drawn when it is placed, each lasting `BattlefieldRelicsSeconds`: FURY,
+	 *   `BattlefieldRelicsFuryDamageMorePercent` more damage; HASTE, `BattlefieldRelicsHasteAttackSpeedMorePercent`
+	 *   more attack speed and `BattlefieldRelicsHasteSpeedMorePercent` more movement speed; BULWARK,
+	 *   `BattlefieldRelicsBulwarkResistance` on every resistance. The same kind again refreshes its time; different
+	 *   kinds add together. The buffs end with the floor.
+	 * - ACTIVATING BRINGS `BattlefieldRelicsSpiritCount` SPIRITS: creatures of the floor's kinds at Common,
+	 *   `BattlefieldRelicsSpiritAwayCm` from the relic, noticing the player from anywhere on the floor. They say
+	 *   "Spirit", are the floor's creatures, pay as their rung does and stay on their floor. The buff and the spirits
+	 *   are independent: killing the spirits changes nothing about the buff.
+	 * - WHAT A "SPIRIT OF A FALLEN WARRIOR" IS AS A CREATURE is a question for the owner; until then it is a stand-in of
+	 *   the floor's own kinds, as the Vampire Lord is.
+	 */
+	static const TCHAR* BattlefieldRelicsKey;
+
+	/** A Battlefield Relic's one choice. */
+	static constexpr const TCHAR* BattlefieldRelicsActivate = TEXT("Activate");
+
+	/**
+	 * The row whose chests either give a boss's loot or let out waves of creatures. Issues #1820 and #41.
+	 *
+	 * "Random chests appear throughout the dungeon. Opening them can either grant powerful rewards or unleash waves of
+	 * chaos-spawned enemies, forcing players to gamble on their luck."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `PandorasBoxPerFloor` BOXES A FLOOR, `PandorasBoxPerHordeArena` ON A HORDE ARENA, kept across its waves, placed
+	 *   by Eternal Chorus's picker: floor objects named "Pandora's Box" offering "Open". A box goes once opened.
+	 * - ONE OUTCOME, NOT BOTH: the row says "either ... or". One roll from 0 to 100, pinned for tests by
+	 *   `Cataclysm.PandorasBoxRoll`: below `PandorasBoxUnleashBelow` it lets out the waves; otherwise it gives the
+	 *   reward.
+	 * - THE REWARD is the drops of a kill at `PandorasBoxRewardRung` (the Boss rung) at the box, with the player's own
+	 *   magic find and loot quantity, through `UCataclysmDropSpawner::SpawnDropsFor`: no new rarity floor.
+	 * - THE WAVES: `PandorasBoxWaveCount` waves of `PandorasBoxWaveSize` creatures of the floor's kinds, their rung drawn
+	 *   as usual, `PandorasBoxWaveAwayCm` from the box, noticing the player from anywhere on the floor, each saying
+	 *   "Chaos Spawn". The next wave comes once the last is all dead. They are the floor's creatures, pay as their rung
+	 *   does and stay on their floor.
+	 */
+	static const TCHAR* PandorasBoxKey;
+
+	/** A Pandora's Box's one choice. */
+	static constexpr const TCHAR* PandorasBoxOpen = TEXT("Open");
+
+	/**
+	 * The row whose beacons the player activates, each making every creature of the dungeon hit harder and the player
+	 * find better loot, for the rest of the dungeon. Issues #1820 and #41.
+	 *
+	 * "Each floor contains an Infernal Beacon. Enemies in the dungeon gain a stacking power score buff per beacon
+	 * activated while the player gains a stacking magic find buff."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `InfernalBeaconsPerFloor` A FLOOR, `InfernalBeaconsPerHordeArena` ON A HORDE ARENA, placed by Eternal Chorus's
+	 *   picker: a floor object named "Infernal Beacon" offering "Activate", which goes once activated. One left alone
+	 *   does nothing.
+	 * - EACH ACTIVATED ADDS ONE STACK FOR THE REST OF THE DUNGEON; leaving the dungeon clears the count.
+	 * - "POWER" IS DAMAGE ONLY, by Pestilent Empowerment's ruling of 2026-09-25: each stack gives every creature
+	 *   `InfernalBeaconsDamagePercentPerStack` more damage, added, capped at `InfernalBeaconsMostDamagePercent`, through
+	 *   its own key of the damage map, written on the beat from the floor it was activated on. With Pestilent
+	 *   Empowerment the two keys stack as separate keys.
+	 * - THE PLAYER GAINS `InfernalBeaconsMagicFindPerStack` MAGIC FIND A STACK, added, capped at
+	 *   `InfernalBeaconsMostMagicFind`.
+	 */
+	static const TCHAR* InfernalBeaconsKey;
+
+	/** An Infernal Beacon's one choice. */
+	static constexpr const TCHAR* InfernalBeaconsActivate = TEXT("Activate");
+
+	/**
+	 * The row whose banner the player plants: an aura for standing inside it, doubled once it has been held through the
+	 * waves it draws. Issues #1820 and #41.
+	 *
+	 * "Players can plant a "War Banner" that grants significant buffs in a radius but also attracts waves of enemies.
+	 * The banner must be defended for a certain period to gain its full benefits."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - `WarBannerPerFloor` A FLOOR, `WarBannerPerHordeArena` ON A HORDE ARENA, placed by Eternal Chorus's picker: a
+	 *   floor object named "War Banner" offering "Plant the banner". IT PLANTS WHERE IT STANDS: THE PLAYER CHOOSES WHEN
+	 *   TO PLANT IT BUT NOT WHERE. A "plant here" key would need editor input assets, and is not built.
+	 * - PLANTED, a zone `WarBannerRadiusCm` across, drawn as War, lasting the floor. While the player stands inside:
+	 *   `WarBannerDamageMorePercent` more damage and `WarBannerResistance` on every resistance.
+	 * - DEFENDING IS STANDING INSIDE. `WarBannerHoldSeconds`, counted only while the player is inside, never reset; a
+	 *   wave of `WarBannerWaveSize` creatures of the floor's kinds AS IT IS PLANTED and after every
+	 *   `WarBannerWaveEverySeconds` of it, and NONE AS THE HOLD COMPLETES: at 0, 15, 30 and 45 s, four in all.
+	 *   `WarBannerWaveAwayCm` from the banner, noticing the player from anywhere on the floor, each saying "Assailant".
+	 *   They are the floor's creatures, pay as their rung does and stay on their floor.
+	 * - HELD: the waves stop and the aura inside becomes `WarBannerHeldDamageMorePercent` and `WarBannerHeldResistance`
+	 *   for the rest of the floor.
+	 * - THE BANNER CANNOT BE HARMED: "defended" is holding the ground, since no creature attacks an object.
+	 */
+	static const TCHAR* WarBannerKey;
+
+	/** A War Banner's one choice. */
+	static constexpr const TCHAR* WarBannerPlant = TEXT("Plant");
 
 	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
@@ -5375,6 +5522,11 @@ public:
 		return FMath::Clamp(Stacks + 1, 0, CarrionFeastMostStacks);
 	}
 
+	/** Carrion Feast's purification altars, every figure a play-test value. See the key. */
+	static constexpr int32 CarrionFeastAltarsPerFloor = 1;
+	static constexpr int32 CarrionFeastAltarsPerHordeArena = 1;
+	static constexpr float CarrionFeastAltarRadiusCm = 1500.0f;
+
 	/** Carrion Feast: whether a carcass eaten brings a feeder while this many stand. */
 	static bool CarrionFeastFeederComes(int32 Standing) { return Standing < CarrionFeastMostFeeders; }
 
@@ -5382,6 +5534,78 @@ public:
 	static float CarrionFeastMultiplier(int32 Stacks)
 	{
 		return 1.0f + FMath::Clamp(Stacks, 0, CarrionFeastMostStacks) * CarrionFeastStrongerPercentPerCarcass / 100.0f;
+	}
+
+	/** Battlefield Relics' figures, every one a play-test value. See the key. */
+	static constexpr int32 BattlefieldRelicsPerFloor = 2;
+	static constexpr int32 BattlefieldRelicsPerHordeArena = 1;
+	static constexpr float BattlefieldRelicsSeconds = 30.0f;
+	static constexpr float BattlefieldRelicsFuryDamageMorePercent = 50.0f;
+	static constexpr float BattlefieldRelicsHasteAttackSpeedMorePercent = 30.0f;
+	static constexpr float BattlefieldRelicsHasteSpeedMorePercent = 30.0f;
+	static constexpr float BattlefieldRelicsBulwarkResistance = 30.0f;
+	static constexpr int32 BattlefieldRelicsSpiritCount = 5;
+	static constexpr float BattlefieldRelicsSpiritAwayCm = 800.0f;
+	static constexpr int32 BattlefieldRelicsSpiritRung = 0;
+
+	/** Pandora's Box's figures, every one a play-test value. See the key. */
+	static constexpr int32 PandorasBoxPerFloor = 3;
+	static constexpr int32 PandorasBoxPerHordeArena = 1;
+	static constexpr float PandorasBoxUnleashBelow = 50.0f;
+	static constexpr int32 PandorasBoxRewardRung = 4;
+	static constexpr int32 PandorasBoxWaveCount = 3;
+	static constexpr int32 PandorasBoxWaveSize = 4;
+	static constexpr float PandorasBoxWaveAwayCm = 600.0f;
+
+	/** War Banner's figures, every one a play-test value. See the key. */
+	static constexpr int32 WarBannerPerFloor = 1;
+	static constexpr int32 WarBannerPerHordeArena = 1;
+	static constexpr float WarBannerRadiusCm = 1200.0f;
+	static constexpr float WarBannerDamageMorePercent = 20.0f;
+	static constexpr float WarBannerResistance = 15.0f;
+	static constexpr float WarBannerHeldDamageMorePercent = 40.0f;
+	static constexpr float WarBannerHeldResistance = 30.0f;
+	static constexpr float WarBannerHoldSeconds = 60.0f;
+	static constexpr float WarBannerWaveEverySeconds = 15.0f;
+	static constexpr int32 WarBannerWaveSize = 4;
+	static constexpr float WarBannerWaveAwayCm = 1500.0f;
+
+	/** Infernal Beacons' figures, every one a play-test value. See the key. */
+	static constexpr int32 InfernalBeaconsPerFloor = 1;
+	static constexpr int32 InfernalBeaconsPerHordeArena = 1;
+	static constexpr float InfernalBeaconsDamagePercentPerStack = 10.0f;
+	static constexpr float InfernalBeaconsMostDamagePercent = 100.0f;
+	static constexpr float InfernalBeaconsMagicFindPerStack = 10.0f;
+	static constexpr float InfernalBeaconsMostMagicFind = 100.0f;
+
+	/** Infernal Beacons: what every creature's damage is multiplied by at this many stacks, added and capped. */
+	static float InfernalBeaconsDamageMultiplier(int32 Stacks)
+	{
+		return 1.0f + FMath::Min(FMath::Max(Stacks, 0) * InfernalBeaconsDamagePercentPerStack,
+								 InfernalBeaconsMostDamagePercent) / 100.0f;
+	}
+
+	/** Infernal Beacons: the magic find the player gains at this many stacks, added and capped. */
+	static float InfernalBeaconsMagicFind(int32 Stacks)
+	{
+		return FMath::Min(FMath::Max(Stacks, 0) * InfernalBeaconsMagicFindPerStack, InfernalBeaconsMostMagicFind);
+	}
+
+	/** Pandora's Box: whether a box opened on this roll lets out its waves rather than giving its reward. */
+	static bool PandorasBoxUnleashes(float Roll) { return Roll < PandorasBoxUnleashBelow; }
+
+	/** Battlefield Relics' three kinds, in the order a pinned list names them. */
+	static constexpr int32 BattlefieldRelicFury = 0;
+	static constexpr int32 BattlefieldRelicHaste = 1;
+	static constexpr int32 BattlefieldRelicBulwark = 2;
+	static constexpr int32 BattlefieldRelicKinds = 3;
+
+	/** A Battlefield Relic kind's name, as its tag and the panel say it: "Fury", "Haste", "the Bulwark". */
+	static const TCHAR* BattlefieldRelicKindName(int32 Kind)
+	{
+		return Kind == BattlefieldRelicHaste ? TEXT("Haste")
+			: Kind == BattlefieldRelicBulwark ? TEXT("the Bulwark")
+			: TEXT("Fury");
 	}
 
 	/** Grim Totems' figures, every one a play-test value. See the key. The Elite rung is Royal Guard's. */

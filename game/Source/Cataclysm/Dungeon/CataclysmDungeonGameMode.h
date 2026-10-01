@@ -2137,6 +2137,37 @@ public:
 
 	/** Grim Totems, for the panel and tests: the totems standing, and the Elite creatures embracing brought. */
 	TArray<class ACataclysmFloorObject*> GrimTotemsNow() const;
+
+	/** Battlefield Relics, for the panel and tests: the relics standing, a relic's kind, and the spirits standing. */
+	TArray<class ACataclysmFloorObject*> BattlefieldRelicsNow() const;
+	int32 BattlefieldRelicKindOf(const class ACataclysmFloorObject* Relic) const;
+	TArray<ACataclysmEnemyCharacter*> RelicSpiritsStanding() const;
+
+	/**
+	 * Pandora's Box, for the panel and tests: the boxes standing, the creatures its waves brought still standing, and the
+	 * drops the last box opened for a reward gave.
+	 */
+	TArray<class ACataclysmFloorObject*> PandorasBoxesNow() const;
+	TArray<ACataclysmEnemyCharacter*> ChaosSpawnStanding() const;
+	int32 PandorasBoxLastRewardDrops() const { return PandorasBoxRewardDrops; }
+
+	/** Carrion Feast, for the panel and tests: its purification altar standing, or null; and whether it was used. */
+	class ACataclysmFloorObject* PurificationAltarNow() const;
+	bool AltarIsConsecrated() const { return bAltarConsecrated; }
+
+	/** Infernal Beacons, for the panel and tests: the beacons standing, and the stacks this dungeon has activated. */
+	TArray<class ACataclysmFloorObject*> InfernalBeaconsNow() const;
+	int32 InfernalBeaconStacksNow() const { return InfernalBeaconStacks; }
+
+	/**
+	 * War Banner, for the panel and tests: the banner standing to be planted, or null; whether it is planted and held,
+	 * the seconds held, and the creatures its waves brought still standing.
+	 */
+	class ACataclysmFloorObject* WarBannerNow() const;
+	bool WarBannerIsPlanted() const { return bWarBannerPlanted; }
+	bool WarBannerIsHeld() const { return bWarBannerHeld; }
+	float WarBannerSecondsHeld() const { return WarBannerHeldSeconds; }
+	TArray<ACataclysmEnemyCharacter*> BannerAssailantsStanding() const;
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2772,8 +2803,96 @@ private:
 	/** Void Parasite: this arena's light zone chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheLight();
 
+	/**
+	 * Floor objects of one rule on this floor: up to `Count`, on Eternal Chorus's cells -- away from the entrance, so
+	 * the player walks to one -- each carrying the rule's key, the name and the prompt given. The caller gives each its
+	 * choices and keeps them. Issues #1820 and #41. Taken out of Grim Totems so every rule that places a floor object
+	 * places it the one way.
+	 */
+	TArray<class ACataclysmFloorObject*> PlaceFloorObjects(FName RuleKey, int32 Count, const FString& DisplayName,
+														   const FString& Prompt);
+
+	/**
+	 * Up to `Count` creatures of the floor's own kinds, on cells beside a point `AwayCm` from `At` at a random angle --
+	 * or around `At` when that point has no floor within reach -- at `FixedRung`, or a rung drawn as usual when it is
+	 * -1, noticing the player from `SightMultiplier` times the ordinary distance. Each is raised by a rule and is one of
+	 * the floor's creatures, paying as its rung does. Issues #1820 and #41. Taken out of Grim Totems' embrace so every
+	 * rule that brings creatures after the player brings them the one way.
+	 */
+	TArray<ACataclysmEnemyCharacter*> BringCreaturesNear(const FVector& At, float AwayCm, int32 Count, int32 FixedRung,
+														 float SightMultiplier);
+
 	/** Grim Totems: this arena's totems placed, where a new arena is populated. */
 	void PlaceTheTotems();
+
+	/** Battlefield Relics: this arena's relics placed, where a new arena is populated. Issues #1820 and #41. */
+	void PlaceTheRelics();
+
+	/** Battlefield Relics: every relic destroyed and forgotten, and the spirits forgotten. */
+	void ForgetTheRelics();
+
+	/** Battlefield Relics: the one choice at a relic. */
+	bool ChooseAtBattlefieldRelic(class ACataclysmFloorObject* Relic, FName ChoiceKey);
+
+	/** Battlefield Relics, on the beat: each kind's buff written when it changed and counted down. */
+	void StepBattlefieldRelics(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Pandora's Box: this arena's boxes placed, where a new arena is populated. Issues #1820 and #41. */
+	void PlaceTheBoxes();
+
+	/** Pandora's Box: every box destroyed and forgotten, and every wave under way forgotten. */
+	void ForgetTheBoxes();
+
+	/** Pandora's Box: the one choice at a box. */
+	bool ChooseAtPandorasBox(class ACataclysmFloorObject* Box, FName ChoiceKey);
+
+	/** Pandora's Box, on the beat: each box's next wave, once the last is all dead. */
+	void StepPandorasBox();
+
+	/** Carrion Feast's purification altar: this arena's altar placed, where a new arena is populated. #1820, #41. */
+	void PlaceTheAltar();
+
+	/** Carrion Feast's purification altar: the altar and its zone destroyed, and the consecration forgotten. */
+	void ForgetTheAltar();
+
+	/** Carrion Feast's purification altar: the one choice at it. */
+	bool ChooseAtPurificationAltar(class ACataclysmFloorObject* Altar, FName ChoiceKey);
+
+	/** Infernal Beacons: this arena's beacon placed, where a new arena is populated. Issues #1820 and #41. */
+	void PlaceTheInfernalBeacons();
+
+	/** Infernal Beacons: every beacon standing destroyed and forgotten; the dungeon's stacks are kept. */
+	void ForgetTheInfernalBeacons();
+
+	/** Infernal Beacons: the one choice at a beacon. */
+	bool ChooseAtInfernalBeacon(class ACataclysmFloorObject* Beacon, FName ChoiceKey);
+
+	/** War Banner: this arena's banner placed, where a new arena is populated, and the last one's forgotten. #1820, #41. */
+	void PlaceTheWarBanner();
+
+	/** War Banner: the banner, its zone and its hold forgotten. */
+	void ForgetTheWarBanner();
+
+	/** War Banner: the one choice at the banner, which plants it where it stands and brings the first wave. */
+	bool ChooseAtWarBanner(class ACataclysmFloorObject* Banner, FName ChoiceKey);
+
+	/** War Banner: one wave of assailants brought near the planted banner. */
+	void BringABannerWave();
+
+	/** War Banner, on the beat: the zone drawn, the hold counted, the waves brought and the aura written. */
+	void StepWarBanner(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Infernal Beacons, on the beat: every creature's damage at the dungeon's stacks, and the player's magic find. */
+	void StepInfernalBeacons(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Carrion Feast: the carcass at this index burned -- marked, and removed on the next beat -- by fire or an altar. */
+	void BurnTheCarcass(int32 Index);
+
+	/** Carrion Feast: whether a consecrated altar's area covers this point, measured flat. */
+	bool AltarConsecrates(const FVector& Where) const;
+
+	/** Carrion Feast: every carcass lying inside the consecrated area burned; how many. */
+	int32 BurnTheConsecratedCarcasses();
 
 	/** Grim Totems: every totem and its zone destroyed and forgotten. */
 	void ForgetTheTotems();
@@ -4206,6 +4325,74 @@ private:
 	float GrimEmbraceLeft = 0.0f;
 	float GrimEmbraceApplied = 0.0f;
 	int32 GrimTotemsPanelKey = -1;
+
+	/**
+	 * Battlefield Relics: the relics standing and each one's kind, the spirits activating brought, each kind's seconds
+	 * left and what was last written on the player, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> BattlefieldRelics;
+	TArray<int32> BattlefieldRelicKinds;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> RelicSpirits;
+	float RelicFuryLeft = 0.0f;
+	float RelicHasteLeft = 0.0f;
+	float RelicBulwarkLeft = 0.0f;
+	float RelicFuryApplied = 0.0f;
+	float RelicHasteApplied = 0.0f;
+	float RelicBulwarkApplied = 0.0f;
+	int32 BattlefieldRelicsPanelKey = -1;
+
+	/** Pandora's Box: one opened box's waves, where they come from, how many have come, and the wave standing. */
+	struct FPandorasBoxWaves
+	{
+		FVector At = FVector::ZeroVector;
+		int32 Came = 0;
+		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Standing;
+	};
+
+	/**
+	 * Pandora's Box: the boxes standing, each box's seed for its reward, the waves under way, the drops the last reward
+	 * gave, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> PandorasBoxes;
+	TArray<int32> PandorasBoxSeeds;
+	TArray<FPandorasBoxWaves> PandorasBoxWaves;
+	int32 PandorasBoxRewardDrops = 0;
+	int32 PandorasBoxPanelKey = -1;
+
+	/**
+	 * Carrion Feast's purification altar: the altar standing, whether it was consecrated and where, and the zone drawn
+	 * there. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> PurificationAltar;
+	bool bAltarConsecrated = false;
+	FVector AltarAt = FVector::ZeroVector;
+	TWeakObjectPtr<class ACataclysmGroundZone> AltarZone;
+
+	/**
+	 * Infernal Beacons: the beacons standing, the stacks activated in this dungeon, what was last written on the player,
+	 * and what the panel last showed. Issues #1820 and #41. THE STACKS ARE THE DUNGEON'S, cleared on leaving it.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmFloorObject>> InfernalBeacons;
+	int32 InfernalBeaconStacks = 0;
+	int32 InfernalBeaconStacksApplied = 0;
+	int32 InfernalBeaconsPanelKey = -1;
+
+	/**
+	 * War Banner: the banner to be planted, whether it is planted and where, the seconds held and since the last wave,
+	 * whether it is held, the zone, the creatures its waves brought, what was last written on the player, and what the
+	 * panel last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> WarBanner;
+	bool bWarBannerPlanted = false;
+	FVector WarBannerAt = FVector::ZeroVector;
+	float WarBannerHeldSeconds = 0.0f;
+	float WarBannerSecondsSinceWave = 0.0f;
+	bool bWarBannerHeld = false;
+	TWeakObjectPtr<class ACataclysmGroundZone> WarBannerZone;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> BannerAssailants;
+	float WarBannerDamageApplied = 0.0f;
+	float WarBannerResistanceApplied = 0.0f;
+	int32 WarBannerPanelKey = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

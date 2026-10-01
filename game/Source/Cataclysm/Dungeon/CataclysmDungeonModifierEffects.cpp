@@ -258,6 +258,18 @@ ACataclysmDroppedItem* UCataclysmDungeonModifierEffects::FamishedBeastsNearestDr
 	return Nearest;
 }
 
+const TCHAR* UCataclysmDungeonModifierEffects::BattlefieldRelicsKey =
+	TEXT("War_Battlefield_Relics");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PandorasBoxKey =
+	TEXT("Chaos_Pandora_s_Box");
+
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalBeaconsKey =
+	TEXT("Demonic_Infernal_Beacons");
+
+const TCHAR* UCataclysmDungeonModifierEffects::WarBannerKey =
+	TEXT("War_War_Banner");
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -632,6 +644,12 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(MoraleBreakKey)
 		|| RowKey == FName(ContagiousTouchKey)
 		|| RowKey == FName(FamishedBeastsKey)
+		|| RowKey == FName(BattlefieldRelicsKey)
+		|| RowKey == FName(PandorasBoxKey)
+		|| RowKey == FName(InfernalBeaconsKey)
+		|| RowKey == FName(WarBannerKey)
+		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
+		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
 		|| RowKey == FName(FogOfWarKey)
@@ -672,9 +690,6 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
 		|| RowKey == FName(InfernalRainKey)
-		// CARRION FEAST. Carcasses become feeders unless burned, and the feeders grow stronger; the "purification
-		// altars" do nothing, because they wait on the interaction screen. Issues #1820 and #41.
-		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(SingularityWellsKey)
 		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
@@ -871,6 +886,10 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(MoraleBreakKey),
 		FName(ContagiousTouchKey),
 		FName(FamishedBeastsKey),
+		FName(BattlefieldRelicsKey),
+		FName(PandorasBoxKey),
+		FName(InfernalBeaconsKey),
+		FName(WarBannerKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
@@ -1251,6 +1270,8 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	// AND THE MAGIC FIND THE RIFTS CLOSED IN TIME HAVE EARNED, FLAT: it is a figure added, as the row's "rewards
 	// increase" reads, and flat is what `DungeonModifierEffectsAddFlat` gives a stat. Issues #1820 and #41.
 	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.RiftMagicFindAdded);
+	// AND THE INFERNAL BEACONS ACTIVATED IN THIS DUNGEON, added flat as the rifts' is. Issues #1820 and #41.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.BeaconMagicFindAdded);
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
 	// #41. This is the first entry in this function to write a single resistance,
@@ -1355,6 +1376,34 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 										Effects.GrimEmbraceDamageMorePercent);
 	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
 										Effects.GrimEmbraceDamageMorePercent);
+
+	// AND THE ACTIVATED BATTLEFIELD RELICS: Fury a More on attack and spell damage, Haste a More on attack and movement
+	// speed, the Bulwark points on each of the eight resistances, a Flat as Warzone's are. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.RelicDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.RelicDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackSpeedStat),
+										Effects.RelicAttackSpeedMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.RelicSpeedMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.RelicResistancePercent);
+	}
+
+	// AND A PLANTED WAR BANNER'S AURA, while the player stands inside: a More on attack and spell damage, and points on
+	// each resistance, a Flat as Warzone's are. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.BannerDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.BannerDamageMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.BannerResistancePercent);
+	}
 
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
@@ -1715,6 +1764,11 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts closed in time"),
 									Effects.RiftMagicFindAdded));
 	}
+	if (Effects.BeaconMagicFindAdded > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from infernal beacons activated"),
+									Effects.BeaconMagicFindAdded));
+	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(
@@ -1781,6 +1835,25 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from an embraced grim totem"),
 									Effects.GrimEmbraceDamageMorePercent));
+	}
+	if (Effects.RelicDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from a relic of fury"), Effects.RelicDamageMorePercent));
+	}
+	if (Effects.RelicAttackSpeedMorePercent > 0.0f || Effects.RelicSpeedMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("attack speed %.0f%% and movement speed %.0f%% more from a relic of haste"),
+									Effects.RelicAttackSpeedMorePercent, Effects.RelicSpeedMorePercent));
+	}
+	if (Effects.RelicResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("%.0f more to every resistance from a relic of the bulwark"),
+									Effects.RelicResistancePercent));
+	}
+	if (Effects.BannerDamageMorePercent > 0.0f || Effects.BannerResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and %.0f more to every resistance inside a war banner's aura"),
+									Effects.BannerDamageMorePercent, Effects.BannerResistancePercent));
 	}
 	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
 	{
