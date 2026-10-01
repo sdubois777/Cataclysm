@@ -764,6 +764,27 @@ public:
 	void NotePlayerDeath();
 
 	/**
+	 * Raise `gadget_destroyed` on this, the summoner's, component, naming the
+	 * gadget and carrying its type tags. Issue #1833 group D part 5, ruled
+	 * 2026-10-01: "destroyed" means killed. Called from
+	 * `ACataclysmMinion::HandleDeath` for a minion that `IsDeployable`, traps
+	 * included; a gadget whose lifespan runs out, or one the summon cap removes to
+	 * make room, never reaches that function and raises nothing.
+	 */
+	void NoteGadgetDestroyed(const AActor* Gadget, const FGameplayTagContainer& GadgetTags);
+
+	/**
+	 * Raise `resource_consumed` `Times` times. Issue #1833 group D part 5, ruled
+	 * 2026-10-01: a class-resource cost paid, once per payment, or a next-use
+	 * charge spent, once per charge. MANA IS NOT A RESOURCE HERE, and the Fervour
+	 * mechanics' own spends, `RemoveForHealing` among them, never call this: the
+	 * row that heals on this event removes a Masochist's Fervour through `TopUp`,
+	 * and if that removal raised it the heal would raise it again.
+	 */
+	void NoteResourceConsumed(float Amount, const FGameplayTagContainer* Tags = nullptr,
+							  int32 Times = 1);
+
+	/**
 	 * Note this character's health now, and raise `health_falls_below` when it
 	 * has dropped, carrying the share of maximum health it held before, in
 	 * percent. A row on that event fires only when that share was at or above
