@@ -285,6 +285,8 @@ Seven automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `C
 One Python check: the row still says "no longer deal damage on contact", "stacking", "when you hit an enemy",
 "percentage of their total health", "for every stack" and "kill the enemy that applied it".
 
+**A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `ContagiousTouchAnEvadedTouchAddsNoStack` set the player's evasion attribute to 1000, and three touches still added three stacks. A diagnostic run, never committed, printed `base=1000.000 current=1000.000 asked_melee=0.000 asked_plain=0.000 melee_suppressed=0.000 inputs=1 base_input=0.000 mods=1 plain_hit_evaded=0`: the evasion step asks `StatForSkill("evasion")`, a player holds stat inputs for evasion, so the answer is worked out from those and the attribute is not read; a creature holds none and falls back to its attribute. That is the pipeline as designed. The test's `SetPlayerEvasion` now also sets the base of the player's evasion inputs. Every other test that writes a player's evasion attribute writes 0, which the inputs already give, so none of them is affected. **Proof Pa is recorded as not a proof and is not rerun**; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

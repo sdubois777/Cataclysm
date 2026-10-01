@@ -37188,6 +37188,15 @@ namespace CataclysmDungeonModifierEffectsTest
 	void SetPlayerEvasion(const FPossessedPlayer& Player, float Evasion)
 	{
 		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), Evasion);
+
+		// AND THE BASE OF THE PLAYER'S OWN EVASION INPUTS, WHICH IS WHAT A HIT ASKS. The evasion step reads
+		// `StatForSkill("evasion")`, and a player holds stat inputs for evasion, so it is worked out from those and the
+		// attribute is not read; a creature holds none and falls back to its attribute. A diagnostic run on 2026-09-30
+		// printed the attribute at 1000 and the asked evasion at 0. Written in place so every other input is kept.
+		if (const FCataclysmStatInputs* Inputs = Player.AbilitySystem->GetStatInputs(FName(TEXT("evasion"))))
+		{
+			const_cast<FCataclysmStatInputs*>(Inputs)->Base = Evasion;
+		}
 	}
 
 	/**
