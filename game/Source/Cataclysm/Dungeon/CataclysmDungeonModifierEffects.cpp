@@ -112,6 +112,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::SufferingAuraKey =
 const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 	TEXT("Demonic_Blood_Gates");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_Infernal_Seals");
+
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
 
@@ -723,6 +725,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DeadRisingKey)
 		|| RowKey == FName(SufferingAuraKey)
 		|| RowKey == FName(BloodGatesKey)
+		|| RowKey == FName(InfernalSealsKey)
 		|| RowKey == FName(DirgeResonanceKey)
 		|| RowKey == FName(ScarcityKey)
 		|| RowKey == FName(ChaoticLootKey)
@@ -967,6 +970,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DeadRisingKey),
 		FName(SufferingAuraKey),
 		FName(BloodGatesKey),
+		FName(InfernalSealsKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
@@ -2774,6 +2778,12 @@ int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
 	}
 	return static_cast<int32>(
 		(static_cast<int64>(Placed) * BloodGatesSlainPercent + 99) / 100);
+}
+
+int32 UCataclysmDungeonModifierEffects::InfernalSealsPiecesNeeded(int32 BearersChosen)
+{
+	// NEVER MORE PIECES THAN BEARERS, as ruled: asking for more than exist would leave stairs that never open.
+	return FMath::Clamp(BearersChosen, 0, InfernalSealsPieces);
 }
 
 bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)

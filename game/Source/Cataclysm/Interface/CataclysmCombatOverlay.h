@@ -535,6 +535,9 @@ public:
 	 */
 	static FString HarbingerTextFor(const AActor* Actor);
 
+	/** "Seal Bearer" under a creature holding a piece of Infernal Seals' seal. Issues #1820 and #41. */
+	static FString SealBearerTextFor(const AActor* Actor);
+
 	/**
 	 * "Risen" over an imp that rose from a cursed enemy's death, for the two
 	 * seconds after it rose, or empty. Issue #1479, the Ritualist's starting node.

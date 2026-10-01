@@ -3729,6 +3729,24 @@ def test_blood_gates_row_still_seals_the_next_level_for_the_players_kills():
         "gave none; use the row's figure. " + words)
 
 
+def test_infernal_seals_row_still_names_four_pieces_held_by_powerful_enemies():
+    """The phrases Infernal Seals' readings rest on.
+
+    "The door on each floor is locked by a particular seal. The seals are held by powerful enemies on each floor and
+    the player must collect all 4 pieces of the seal in order to unlock the door to the next floor." LOCKED is the
+    rule; POWERFUL ENEMIES is why the bearers are the highest rungs raised to Elite; ALL 4 PIECES is the count; and THE
+    DOOR TO THE NEXT FLOOR is why the last floor's way out is not sealed. If any changes, the reading built on it must
+    be revisited; see InfernalSealsKey in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Demonic_Infernal_Seals"]["Description"])
+    lower = words.lower()
+    for phrase in ("locked by a particular seal", "held by powerful enemies", "all 4 pieces",
+                   "the door to the next floor"):
+        assert phrase in lower, (
+            f"Demonic_Infernal_Seals no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "InfernalSealsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
 def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
     """The row's own figure and scope, and the half that grants nothing today.
 

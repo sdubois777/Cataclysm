@@ -1684,6 +1684,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	MarchOfProgressCommander = nullptr;
 	bMarchOfProgressCommanderSlain = false;
 
+	// AND INFERNAL SEALS' BEARERS AND PIECES: each floor's stairs are sealed afresh. Issues #1820 and #41.
+	InfernalSealBearers.Reset();
+	InfernalSealBearerGave.Reset();
+	InfernalSealPieces = 0;
+
 	// AND EVERY FLOOR OR WAVE STARTS ITS CLEAR CLOCK AND TRIAL OF ENDURANCE AGAIN, here for the
 	// Commander's reason: once a floor or wave, before the branch below. The last floor's creatures are
 	// gone, so what the trial wrote on them goes with them. Issues #1820 and #41.
@@ -1922,6 +1927,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 		// AND MORALE BREAK'S LEADERS, for the same reason. Issues #1820 and #41.
 		ChooseTheMoraleLeaders();
+
+		// AND INFERNAL SEALS' BEARERS, for the same reason. Issues #1820 and #41.
+		ChooseTheSealBearers();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -2440,7 +2448,8 @@ void ACataclysmDungeonGameMode::HandleStairsTaken()
 	// once the gate had opened. A player standing on them goes down on the first look
 	// after it opens. THE STAIRS THEMSELVES SHOW NOTHING: no system in the interface
 	// shows the player a message, so the floor panel's line is this rule's interface.
-	if (BloodGatesSealTheStairs())
+	// AND EVERY OTHER ROW THAT SEALS THEM: the stairs open only when every one releases. Issues #1820 and #41.
+	if (!StairsSealedBy().IsEmpty())
 	{
 		if (Stairs)
 		{
@@ -10767,6 +10776,141 @@ int32 ACataclysmDungeonGameMode::BloodGatesPlacedCount() const
 	return BloodGatesSlain + Standing;
 }
 
+void ACataclysmDungeonGameMode::ChooseTheSealBearers()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A CHOICE STARTS AFRESH: any bearer chosen before is no longer one. `PopulateFloor` has forgotten them already;
+	// this is for a test that places its own creatures and chooses again.
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Earlier : InfernalSealBearers)
+	{
+		if (ACataclysmEnemyCharacter* Was = Earlier.Get())
+		{
+			Was->bIsASealBearer = false;
+		}
+	}
+	InfernalSealBearers.Reset();
+	InfernalSealBearerGave.Reset();
+	InfernalSealPieces = 0;
+
+	// NOT ON A HORDE DUNGEON, WHICH HAS NO STAIRS, AND NOT ON THE LAST FLOOR, WHOSE WAY OUT IS NOT SEALED.
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::InfernalSealsKey)) || FloorBrief.bWaveWalksIn
+		|| IsOnTheLastFloor())
+	{
+		return;
+	}
+
+	// THE FLOOR'S OWN CREATURES THE PLAYER CAN KILL: Blood Gates' reading of "the floor's" -- paying for its death and
+	// not raised by a rule -- and able to be hurt, so no bearer is chosen that could never give its piece.
+	TArray<ACataclysmEnemyCharacter*> Candidates;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->PaysForItsDeath()
+			&& !Enemy->bRaisedByARule && !CreaturesRaisedByARule.Contains(Enemy.Get()) && !Enemy->bCannotBeHurt
+			&& !DungeonGameModeIsAPlayersFollower(Enemy) && !Enemy->bIsASealBearer)
+		{
+			Candidates.Add(Enemy.Get());
+		}
+	}
+
+	// THE HIGHEST RUNGS FIRST, TIES KEEPING THE EARLIER, as March of Progress chooses its Commander.
+	Candidates.StableSort([](const ACataclysmEnemyCharacter& A, const ACataclysmEnemyCharacter& B)
+	{
+		return A.RarityStep > B.RarityStep;
+	});
+	const int32 Chosen = FMath::Min(Candidates.Num(), Effects::InfernalSealsPieces);
+	for (int32 Index = 0; Index < Chosen; ++Index)
+	{
+		ACataclysmEnemyCharacter* Bearer = Candidates[Index];
+		// RAISED TO ELITE WHEN BELOW IT; ONE ABOVE, A BOSS, KEEPS ITS RUNG.
+		if (Bearer->RarityStep < Effects::InfernalSealsBearerRung)
+		{
+			Bearer->SetRarityStep(Effects::InfernalSealsBearerRung);
+		}
+		Bearer->bIsASealBearer = true;
+		InfernalSealBearers.Add(Bearer);
+		InfernalSealBearerGave.Add(false);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Infernal Seals: %d bearer(s) chosen on floor %d"), Chosen, FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepInfernalSeals()
+{
+	// A BEARER THE PLAYER CAN NO LONGER KILL GIVES ITS PIECE, as ruled, so the stairs can always be opened: dead,
+	// whoever killed it; taken as a thrall; gone from the world without its death heard; or made unable to be hurt.
+	bool bChanged = false;
+	for (int32 Index = 0; Index < InfernalSealBearers.Num(); ++Index)
+	{
+		if (!InfernalSealBearerGave.IsValidIndex(Index) || InfernalSealBearerGave[Index])
+		{
+			continue;
+		}
+		ACataclysmEnemyCharacter* Bearer = InfernalSealBearers[Index].Get();
+		if (IsValid(Bearer) && !UCataclysmSkillEffects::IsDead(Bearer) && !DungeonGameModeIsAPlayersFollower(Bearer)
+			&& !Bearer->bCannotBeHurt)
+		{
+			continue;
+		}
+		InfernalSealBearerGave[Index] = true;
+		++InfernalSealPieces;
+		bChanged = true;
+		if (IsValid(Bearer))
+		{
+			Bearer->bIsASealBearer = false;
+		}
+		UE_LOG(LogCataclysm, Log, TEXT("Infernal Seals: a piece given on floor %d, %d of %d"), FloorNumber,
+			   InfernalSealPieces, InfernalSealPiecesNeeded());
+	}
+	if (bChanged)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::InfernalSealBearersNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Bearers;
+	for (int32 Index = 0; Index < InfernalSealBearers.Num(); ++Index)
+	{
+		ACataclysmEnemyCharacter* Bearer = InfernalSealBearers[Index].Get();
+		if (IsValid(Bearer) && InfernalSealBearerGave.IsValidIndex(Index) && !InfernalSealBearerGave[Index])
+		{
+			Bearers.Add(Bearer);
+		}
+	}
+	return Bearers;
+}
+
+int32 ACataclysmDungeonGameMode::InfernalSealPiecesNeeded() const
+{
+	return UCataclysmDungeonModifierEffects::InfernalSealsPiecesNeeded(InfernalSealBearers.Num());
+}
+
+bool ACataclysmDungeonGameMode::InfernalSealsSealTheStairs() const
+{
+	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::InfernalSealsKey))
+		&& !FloorBrief.bWaveWalksIn && !IsOnTheLastFloor() && InfernalSealPieces < InfernalSealPiecesNeeded();
+}
+
+TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// EVERY ROW THAT SEALS THE STAIRS, IN THE ORDER THE PANEL LISTS THEM. A row added later that seals them is added
+	// here, and nowhere else: `HandleStairsTaken` asks only this.
+	TArray<FName> Sealing;
+	if (BloodGatesSealTheStairs())
+	{
+		Sealing.Add(FName(Effects::BloodGatesKey));
+	}
+	if (InfernalSealsSealTheStairs())
+	{
+		Sealing.Add(FName(Effects::InfernalSealsKey));
+	}
+	return Sealing;
+}
+
 bool ACataclysmDungeonGameMode::BloodGatesSealTheStairs() const
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -11594,6 +11738,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// and #41.
 	const bool bPlagueHarbingers = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PlagueHarbingersKey));
+	// AND INFERNAL SEALS, WHILE IT HAS BEARERS. Issues #1820 and #41.
+	const bool bInfernalSeals = !InfernalSealBearers.IsEmpty();
 	// AND WINGS OF THE HOST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
 	// and #41.
 	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
@@ -11765,7 +11911,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bForcedTithes
 		&& !bPactOfTemptation
 		&& !bBloodPrice
-		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts)
+		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
+		&& !bInfernalSeals)
 	{
 		return;
 	}
@@ -11950,6 +12097,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPlagueHarbingers)
 	{
 		StepPlagueHarbingers(Player, AbilitySystem);
+	}
+
+	// AND INFERNAL SEALS' BEARERS GIVING THEIR PIECES. Issues #1820 and #41.
+	if (bInfernalSeals)
+	{
+		StepInfernalSeals();
 	}
 
 	// AND WINGS OF THE HOST, WHICH PLACES ZONES. Issues #1820 and #41.
@@ -15845,6 +15998,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   BloodGatesSlain, Placed,
 										   Effects::BloodGatesOpenAt(Placed))
 						 : FString(TEXT("blood gates: open")));
+	}
+
+	// AND HOW MANY OF INFERNAL SEALS' PIECES THE PLAYER HOLDS. Issues #1820 and #41.
+	const FName Seals(Effects::InfernalSealsKey);
+	if (FloorBrief.Modifiers.Contains(Seals))
+	{
+		Counting.Add(Seals, FloorBrief.bWaveWalksIn
+								? FString(TEXT("infernal seals: no stairs on a Horde floor"))
+								: InfernalSealsSealTheStairs()
+								? FString::Printf(TEXT("infernal seals: %d of %d pieces"), InfernalSealPieces,
+												  InfernalSealPiecesNeeded())
+								: FString(TEXT("infernal seals: open")));
 	}
 
 	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.

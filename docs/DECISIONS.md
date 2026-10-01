@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Infernal Seals: the floor's four strongest creatures each bear a piece of the seal, and the stairs open with the last piece
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures
+and the pieces needed), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the bearers chosen at
+each floor's population, the step that gives the pieces, the floor panel line, and `StairsSealedBy`, which the stairs
+handler now asks), `game/Source/Cataclysm/Enemies/CataclysmEnemyCharacter.h` (`bIsASealBearer`),
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Seal Bearer" under a bearer's bar), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the automation tests and the three guard proofs have NOT run yet; the figures are added
+at the end of this entry when they have.
+
+### The row
+
+`Demonic_Infernal_Seals` in `game/Data/DungeonModifiers.csv`: "The door on each floor is locked by a particular seal.
+The seals are held by powerful enemies on each floor and the player must collect all 4 pieces of the seal in order to
+unlock the door to the next floor."
+
+### What the rule does
+
+When a floor carrying the row is populated, its four creatures of the highest rarity rung bear the seal: they are
+chosen after every other population rule, ties going to the creature placed first, and one below the Elite rung is
+raised to Elite. "Seal Bearer" is shown under each bearer's bar. A bearer gives its piece when it dies, whoever kills
+it, when the player takes it as a thrall, when it is gone from the world without its death being heard, and when it can
+no longer be hurt. The stairs refuse the player until every piece is given, and watch for the player again after a
+refusal, as Blood Gates' do. The floor panel says `infernal seals: N of M pieces` while sealed and `infernal seals:
+open` after.
+
+**The stairs now ask one question, `StairsSealedBy()`,** which names every row sealing them: Blood Gates while its
+count is short, Infernal Seals while a piece is missing. The stairs open only when it is empty, so two sealing rules on
+one floor each have to release. Celestial_Sanctioned_Passage and Celestial_Lightforged_Walls are added to it in the two
+changes that follow this one.
+
+**It does nothing on a Horde dungeon.** A Horde dungeon has no stairs (GoToFloor places none when bWaveWalksIn), so this
+row does nothing there: no bearer is chosen, and the panel says `infernal seals: no stairs on a Horde floor`.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01. These are judgements, not readings the row
+settles:**
+
+- **"Powerful enemies" is the highest rungs, raised to Elite when below it.** The row does not say which creatures, nor
+  that they must be of a rung; the floor's strongest is the plainest reading, and raising the weaker to Elite makes a
+  bearer visibly one of the powerful. A Boss or a Legendary keeps its own rung.
+- **The piece is given on the bearer's death,** not when the player picks something up. The row says "collect", and no
+  item is dropped; the panel count is the collection.
+- **Never more pieces than bearers.** A floor with three creatures that can bear needs three pieces, and a floor with
+  none is open. "All 4" is the most a floor asks.
+- **Every way a bearer leaves the fight gives its piece,** so the floor cannot be left with no way down: a bearer taken
+  as a thrall (issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202)), one gone without its death being
+  heard, and one made unable to be hurt would otherwise hold the stairs shut for good.
+- **A creature cannot bear if it dies unpaid, was raised by a rule, cannot be hurt or is the player's follower,** for
+  the same reason: the player could never take its piece.
+- **The last floor is not sealed.** Its stairs lead out of the dungeon, and the row locks "the door to the next floor".
+
+### Tests
+
+Seven automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `InfernalSealsFiguresAndTheRowBuilt`: four pieces, the Elite rung, the pieces needed clamped to the bearers, and the
+  row in the list of rows with a rule.
+- `InfernalSealsTheFourHighestCreaturesBearTheSealAtTheEliteRung`: of six creatures, a Boss and a Legendary bear at
+  their own rungs and the first two Commons bear raised to Elite; the label shows on a bearer only.
+- `InfernalSealsTheStairsOpenWithTheLastPiece`: refused at none and at three; the fourth, killed by another creature,
+  opens them.
+- `InfernalSealsAFloorWithFewerCreaturesNeedsFewerPieces`: an empty floor is open; two creatures need two pieces.
+- `InfernalSealsABearerTakenGoneOrMadeUnhurtGivesItsPiece`: one taken as a thrall, one destroyed and one made unable to
+  be hurt each give a piece.
+- `TwoRulesSealTheStairsAndOpenOnlyWhenBothRelease`: with Blood Gates on the same floor, Blood Gates opens at two
+  slain while the seal holds the stairs, and both released open them.
+- `InfernalSealsDoesNothingOnAHordeArena`.
+
+One Python check, `test_infernal_seals_row_still_names_four_pieces_held_by_powerful_enemies`, pins the four phrases the
+rulings rest on.
+
+**Blood Gates is the regression check for the shared question**, since its refusal moved into `StairsSealedBy()`. Its
+seven tests must pass unchanged: `TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor`,
+`ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`, `OnceNoUnmarkedCreatureStandsTheStairsAreOpen`,
+`AMarkedCreatureIsNeitherPlacedNorSlainForTheGate`, `TheLastFloorsWayOutIsNotSealed`,
+`APortalWardenDoesNotSealOpenBloodGatesAgain` and `ATrickOrTreatPairDoesNotResealOpenBloodGates`.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the piece not given; Pb,
+`StairsSealedBy()` keeping only the first rule; Pc, the release of a bearer gone without its death removed.
+
+---
+
 ## 2026-10-01 — The floor-start health cap reads the maximum after every dungeon-long rule that changes it, and a lowered maximum lowers the health above it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`ApplyFloorRulesKeepingHealth`,
@@ -112,9 +201,22 @@ group rather than the whole suite.
 `AnEchoRepeatsTheAbilityItsCreatureLastUsed`, `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`,
 `AWingsOfTheHostFeatherIsCelestial`, `ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter`,
 `ItLeavesWastingSicknessAndVoidParasite`, `ContagiousTouchASwingDealsNothingAndAddsAStack` and
-`ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`. All nine **pass with the clamp; reading pending**: whether each
-measures a stated amount, has only a lower bound a clamp-sized loss would also meet, or measures nothing against the
-maximum is to be read after this window.
+`ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`. All nine **pass with the clamp**, and none has Raw Sewage's shape. Read after
+the window, read-only, at `b9dadb76`, and recorded by the coordinating session on
+[#2193](https://github.com/sdubois777/Cataclysm/issues/2193):
+
+- **(a) measures a stated amount against a maximum the test checks:** `ADivineWrathBeamBurnsAFifthOfMaximumHealthAsCelestial`;
+  `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`, measured before its floor change, with an upper bound;
+  `ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter`, bounded both ways; and
+  `ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`, measured before its floor change, with an upper bound per pulse.
+- **(b) has only a lower bound a clamp-sized loss would also meet:** none.
+- **(c) measures nothing against the maximum** (comparisons with values read after the change, equalities, or stack
+  counts): `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`, `AnEchoRepeatsTheAbilityItsCreatureLastUsed`,
+  `AWingsOfTheHostFeatherIsCelestial`, `ItLeavesWastingSicknessAndVoidParasite`, and
+  `ContagiousTouchASwingDealsNothingAndAddsAStack`, which gives the health again after the floor change.
+
+So no test needs tightening. The sweep that found the nine over-reported floor changes: it matched `GoToFloor` in helper
+code that follows some test bodies.
 
 **The six-curse case, measured in Pa's two runs:** with the code as it stands, six Pacts of Wrath took the maximum from
 510 to 204 and the 50% cap left health at 102, half the cursed maximum; with the write-back removed, the cap read 510 and

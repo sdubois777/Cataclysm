@@ -1993,6 +1993,28 @@ public:
 	 */
 	void ChooseTheMoraleLeaders();
 
+	/**
+	 * Infernal Seals' bearers, chosen from this floor's own creatures once they are placed: the four highest rungs,
+	 * each below Elite raised to it. Public so a test can choose after placing its own creatures. Issues #1820, #41.
+	 */
+	void ChooseTheSealBearers();
+
+	/** Infernal Seals' beat: a bearer dead, taken, gone or made unable to be hurt gives its piece. */
+	void StepInfernalSeals();
+
+	/** Infernal Seals' state, for the floor panel and tests. */
+	TArray<ACataclysmEnemyCharacter*> InfernalSealBearersNow() const;
+	int32 InfernalSealPiecesHeld() const { return InfernalSealPieces; }
+	int32 InfernalSealPiecesNeeded() const;
+	bool InfernalSealsSealTheStairs() const;
+
+	/**
+	 * EVERY ROW SEALING THE STAIRS NOW, by its key; empty when they are open. `HandleStairsTaken` refuses while any
+	 * seals, so with two rows the stairs open only when both release. The one question every sealing row answers.
+	 * Issues #1820 and #41.
+	 */
+	TArray<FName> StairsSealedBy() const;
+
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
 
@@ -3934,6 +3956,11 @@ private:
 
 	/** How many unmarked creatures the player has slain on this floor. Goes at the stairs. */
 	int32 BloodGatesSlain = 0;
+
+	/** Infernal Seals: this floor's bearers, whether each has given its piece, and the pieces given. */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> InfernalSealBearers;
+	TArray<bool> InfernalSealBearerGave;
+	int32 InfernalSealPieces = 0;
 
 	/**
 	 * Unstable Portal: its rolls on this floor and the last outcome. Both go at the stairs.

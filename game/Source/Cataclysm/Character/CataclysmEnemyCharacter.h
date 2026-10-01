@@ -1432,6 +1432,13 @@ public:
 	bool bPlagueHarbinger = false;
 
 	/**
+	 * Whether this creature holds a piece of Infernal Seals' seal. Issues #1820 and #41. WRITTEN BY
+	 * `ACataclysmDungeonGameMode` AND READ UNDER THE HEALTH BAR, where `UCataclysmCombatOverlay::StatusLineFor` says
+	 * "Seal Bearer". Cleared when its piece is given.
+	 */
+	bool bIsASealBearer = false;
+
+	/**
 	 * Whether this creature's death pays the player loot and experience. False for a
 	 * creature `bRisenFromTheDead` marks, and for one `bDiesUnpaid` marks. Asked by
 	 * `HandleDeath`, and nothing else
