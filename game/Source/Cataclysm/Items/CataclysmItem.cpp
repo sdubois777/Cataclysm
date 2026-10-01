@@ -1320,6 +1320,28 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Nearby = ECataclysmNearbyAction::HealEnemies;
 					}
+					// AND WHETHER IT DEALS THE REMAINING DAMAGE OF THE WEARER'S OWN
+					// DAMAGE OVER TIME, and of which ailment. Issue #1833 group D
+					// part 4. The value is a percentage of that remaining damage.
+					if (Effect->Action.Equals(
+							UCataclysmAbilitySystemComponent::RemainingDamageNearbyAction,
+							ESearchCase::IgnoreCase))
+					{
+						Action.RemainingDamage = ECataclysmRemainingDamage::Nearby;
+					}
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::RemainingDamageTargetAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.RemainingDamage = ECataclysmRemainingDamage::Target;
+					}
+					if (const FCataclysmAilmentKind* Kind = Effect->Ailment.IsEmpty()
+							? nullptr
+							: UCataclysmAilments::KindNamed(Effect->Ailment))
+					{
+						Action.Ailment = FGameplayTag::RequestGameplayTag(
+							FName(Kind->TagName), /*ErrorIfNotFound=*/false);
+					}
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

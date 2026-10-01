@@ -2370,4 +2370,14 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float EventValue = 0.0f;
+
+	/**
+	 * The ailment a remaining damage action is limited to, or empty. Issue #1833
+	 * group D part 4, ruled 2026-10-01: one of Bleed, Poison, Disease, Necrosis
+	 * and Burn, required on `dot_remaining_target` and refused on every other
+	 * action. "Necrosis effects deal 20%-40% of their remaining damage" is
+	 * Necrosis.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString Ailment;
 };

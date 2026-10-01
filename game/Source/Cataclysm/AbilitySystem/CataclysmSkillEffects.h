@@ -12,6 +12,7 @@ class UDataTable;
 class UGameplayAbility;
 class UGameplayEffect;
 struct FGameplayEffectContextHandle;
+struct FActiveGameplayEffectHandle;
 
 // What a blow resolved to on its target, reported back by `ApplyDirectDamage`
 // and `ApplyHit`. Issue #1156. Declared rather than included, because both take
@@ -1387,6 +1388,68 @@ public:
 
 	/** The share of its maximum health a boss is held at. Issue #915. */
 	static constexpr float BossFloorShareOfMaxHealth = 0.5f;
+
+	/**
+	 * How many ticks a running damage over time effect has left. Issue #1833
+	 * group D part 4.
+	 *
+	 * THE ENGINE'S OWN RULE, read in UE 5.8's GameplayEffect.cpp: the period
+	 * timer repeats every `SecondsPerTick`, and when the duration runs out
+	 * `CheckDuration` runs one last tick only if the period timer is due at that
+	 * moment (`PeriodTimeRemaining <= KINDA_SMALL_NUMBER`). So the ticks left are
+	 * the one due in `FirstTickInSeconds` and each `SecondsPerTick` after it, up to
+	 * and including the end, within that same tolerance.
+	 *
+	 * @param FirstTickInSeconds  what the period timer has left, or below 0 for none
+	 * @param SecondsLeft         what the effect has left, or below 0 for no end
+	 * @return 0 for an effect that does not tick or never ends
+	 */
+	static int32 DamageOverTimeTicksLeft(float FirstTickInSeconds, float SecondsPerTick,
+										 float SecondsLeft);
+
+	/**
+	 * What `Ticks` ticks of a share of current health would take if nothing else
+	 * struck: Health x (1 - (1 - Share)^Ticks), within `ShareOfHealthRoomLeft`, so a
+	 * boss is held at its line as its ticks hold it. Ruled 2026-10-01 for the
+	 * remaining damage of a Void Splinter. Issue #1833 group D part 4.
+	 *
+	 * @param Share  a fraction of current health a tick, so 0.01 is 1%
+	 */
+	static float ShareOfHealthOverTicks(float Share, float Health, float MaxHealth,
+										bool bIsBoss, int32 Ticks);
+
+	/**
+	 * What a running damage over time effect on `Defender` would still deal,
+	 * before the defender's defences: its per-tick damage times the ticks left,
+	 * or for a share of current health, `ShareOfHealthOverTicks`. 0 for an effect
+	 * that is not a damage over time, is inhibited, or has no tick left. Issue
+	 * #1833 group D part 4.
+	 */
+	static float RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
+										 const FActiveGameplayEffectHandle& Handle);
+
+	/**
+	 * Deal `Percent` of the remaining damage of every damage over time effect
+	 * `Owner` placed on `Target`, each as ONE damage instance delivered as its
+	 * ticks are: the effect's own context, so its instigator and causer, and its
+	 * tags, so the same element, the damage over time flag and a bleed's flag.
+	 * The share-of-current-health magnitude is not carried; the instance states
+	 * its amount. Issue #1833 group D part 4, ruled 2026-10-01.
+	 *
+	 * OWN MEANS THE CONTEXT'S INSTIGATOR IS `Owner`. A minion's burn is the
+	 * minion's (ruled 2026-09-17), so it is never the summoner's here.
+	 *
+	 * THROUGH THE SAME DAMAGE CALCULATION AS A TICK, block included, with no
+	 * handling of its own, so a ruling about how damage over time meets a
+	 * defence covers this instance and the ticks at once.
+	 *
+	 * @param OnlyGranting  only effects granting this tag, e.g. a Necrosis; an
+	 *                      invalid tag takes every one
+	 * @param bEndEach      remove each effect once its share is dealt
+	 * @return how many effects were dealt
+	 */
+	static int32 DealRemainingDamageOverTime(const AActor* Owner, AActor* Target, float Percent,
+											 const FGameplayTag& OnlyGranting, bool bEndEach);
 
 	/**
 	 * Grant a tag for a duration and nothing else.
