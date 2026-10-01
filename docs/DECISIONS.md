@@ -9,7 +9,7 @@ and `LivingFloorEnemies` and `LightforgedWallsStanding` reading it), the comment
 `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`, and the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
 [#2194](https://github.com/sdubois777/Cataclysm/issues/2194). **Applied.** The Unreal compile, the automation tests and
-the two guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+the two guard proofs were run in the window of 2026-10-01; the figures are at the end of this entry.
 
 ### What was wrong
 
@@ -96,12 +96,27 @@ And the Horde tests that run the wave arrival: `Cataclysm.DungeonMode.AHordeWave
 `ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`, `AThrallTakenFromAWaveIsNotCountedAsStillStanding`, and
 `Cataclysm.DungeonModifierEffects.AHordeFloorHasNoTrialOfEndurance`.
 
-### Not yet run
+### The window of 2026-10-01
 
-The compile, the whole Unreal suite, the Python suite and the two guard proofs: Pb, the can-be-hurt term removed from
-`IsOneOfTheFloorsOwnStanding`; Pc, the raised-by-a-rule terms removed. Removing either alone does not fail the Reaper
-and Blood Bond tests, because both creatures carry both marks; the creatures each carrying one mark are what the two
-proofs read.
+Run on `fix/floor-cleared-counts-the-floors-own-2` at `e4580478`, on development `629b263d`. The commit above it that
+writes these figures changes this file only.
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `e4580478` | "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `e4580478` | "Tests: 3041 tests performed, 3041 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3041 tests in the tree at e4580478; 3041 performed, gap 0; every declared test was reported by the run." |
+| Python, `e4580478`, started with no CI run in progress | "5646 passed, 8 skipped in 420.55s (0:07:00)"; JUnit: 5654 tests, 0 failures, 0 errors, 8 skipped |
+
+The four new tests, the fourteen regressions named above and the four `LightforgedWalls` tests each have one
+`Result={Success}` line in the whole-suite log, which has 3041 such lines and no `Result={Fail}` line.
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after, on the one-test
+prefix `ACreatureARuleBroughtOrThatCannotBeHurtDoesNotHoldAFloorUncleared`:
+
+- **Pb PROVED**, the can-be-hurt term removed: "with the break in: 1 tests performed, 0 succeeded, 1 failed:
+  ACreatureARuleBroughtOrThatCannotBeHurtDoesNotHoldAFloorUncleared | restored: 1 tests performed, 1 succeeded, 0
+  failed".
+- **Pc PROVED**, the raised-by-a-rule terms removed: the same printed line.
 
 ---
 
