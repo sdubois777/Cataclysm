@@ -531,6 +531,15 @@ FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
 }
 
+FString UCataclysmCombatOverlay::SealBearerTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->bIsASealBearer && !UCataclysmSkillEffects::IsDead(Creature)
+			&& !OverlayIsAPlayersFollower(Creature)
+		? FString(TEXT("Seal Bearer"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::HarbingerTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -766,7 +775,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
+		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),

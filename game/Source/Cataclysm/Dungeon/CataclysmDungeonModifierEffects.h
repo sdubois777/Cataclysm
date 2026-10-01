@@ -1723,6 +1723,28 @@ public:
 	static const TCHAR* BloodGatesKey;
 
 	/**
+	 * The row where the stairs are locked by a seal whose pieces the floor's strongest creatures hold. Issues #1820
+	 * and #41.
+	 *
+	 * "The door on each floor is locked by a particular seal. The seals are held by powerful enemies on each floor and
+	 * the player must collect all 4 pieces of the seal in order to unlock the door to the next floor."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
+	 * - THE BEARERS ARE THE FLOOR'S FOUR HIGHEST-RUNG CREATURES, chosen from its own population as March of Progress
+	 *   chooses its Commander (ties keep the earlier), each below the Elite rung raised to it; one above Elite, a Boss,
+	 *   keeps its rung. "Powerful" names no rung this game has.
+	 * - A PIECE IS GIVEN ON THE BEARER'S DEATH, whoever kills it; "collect" is read as that, not as a pickup.
+	 * - NEVER MORE PIECES THAN BEARERS: a floor with fewer than four creatures the rule can choose needs that many.
+	 * - NO SOFT LOCK: a bearer the player can no longer kill gives its piece too -- one taken as a thrall (issue #1202),
+	 *   one gone from the world without its death heard (a Morale Break escapee is destroyed when it flees), and one
+	 *   made unable to be hurt (a Blood Bond can fall on a bearer). Checked on the beat.
+	 * - THE LAST FLOOR IS NOT SEALED, as Blood Gates rules: its way out leads out, not to a next floor.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS (`GoToFloor` places none when `bWaveWalksIn`), so this row does nothing there.
+	 */
+	static const TCHAR* InfernalSealsKey;
+
+	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
 	 * Issues #1820 and #41.
 	 *
@@ -5204,6 +5226,12 @@ public:
 	 */
 	static constexpr int32 BloodGatesSlainPercent = 50;
 
+	/** Infernal Seals' pieces, and so its bearers. STATED BY THE ROW: "all 4 pieces". */
+	static constexpr int32 InfernalSealsPieces = 4;
+
+	/** The rung a bearer is raised to when it is below it: Elite. A judgement; see `InfernalSealsKey`. */
+	static constexpr int32 InfernalSealsBearerRung = 1;
+
 	static_assert(
 		BloodGatesSlainPercent > 0 && BloodGatesSlainPercent < 100,
 		"Stairs that open with nothing slain are not sealed, and stairs that need every "
@@ -6849,6 +6877,9 @@ public:
 
 	/** Whether the stairs are open: `Slain` has reached `BloodGatesOpenAt(Placed)`. */
 	static bool BloodGatesAreOpen(int32 Slain, int32 Placed);
+
+	/** How many of Infernal Seals' pieces open the stairs: all four, or every bearer when fewer could be chosen. */
+	static int32 InfernalSealsPiecesNeeded(int32 BearersChosen);
 
 	/**
 	 * Whether a crescendo is due: `DirgeResonanceEverySeconds` of the floor's beat have

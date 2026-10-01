@@ -41921,4 +41921,410 @@ bool FCataclysmTouchedKeepsFullTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Demonic_Infernal_Seals. Issues #1820 and #41. Ruled 2026-10-01: the floor's four highest-rung creatures bear the
+// seal, raised to Elite when below it; a piece is given when a bearer dies, is taken, is gone or can no longer be hurt;
+// the stairs open with the last piece; every row sealing them must release. A Horde dungeon has no stairs.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName SealsRow(UCataclysmDungeonModifierEffects::InfernalSealsKey);
+
+	/**
+	 * A dungeon on floor 1 carrying these rows, with its stairs, every Imp a Common, and its own creatures cleared so a
+	 * test places the creatures it means and chooses the bearers from them. Blood Gates' floor, for these rows.
+	 */
+	ACataclysmDungeonGameMode* ASealsFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+										   const TArray<FName>& Rows = {SealsRow})
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+		{
+			return nullptr;
+		}
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"), UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1))
+			|| !Test.TestNotNull(TEXT("and it has stairs"), Mode->Stairs.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for Infernal Seals, or a plain answer when it says nothing. */
+	FString SealsPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const FString* Line = Mode->LiveCountsForTheFloor().Find(SealsRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** Places `Count` Common creatures in a row and chooses the bearers from them. */
+	TArray<ACataclysmEnemyCharacter*> PlaceAndChooseBearers(FAutomationTestBase& Test, UWorld* World,
+															ACataclysmDungeonGameMode* Mode, int32 Count)
+	{
+		TArray<ACataclysmEnemyCharacter*> Placed;
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			ACataclysmEnemyCharacter* One = PlaceCreatureAtRung(World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0);
+			if (!Test.TestNotNull(TEXT("set-up: a creature was placed"), One))
+			{
+				return {};
+			}
+			Placed.Add(One);
+		}
+		Mode->ChooseTheSealBearers();
+		return Placed;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSealsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InfernalSealsFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSealsFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	TestEqual(TEXT("all 4 pieces"), Effects::InfernalSealsPieces, 4);
+	TestEqual(TEXT("bearers raised to Elite, the rung above Common"), Effects::InfernalSealsBearerRung, 1);
+	TestEqual(TEXT("no bearers, no pieces"), Effects::InfernalSealsPiecesNeeded(0), 0);
+	TestEqual(TEXT("three bearers, three pieces"), Effects::InfernalSealsPiecesNeeded(3), 3);
+	TestEqual(TEXT("four bearers, four"), Effects::InfernalSealsPiecesNeeded(4), 4);
+	TestEqual(TEXT("never more than four"), Effects::InfernalSealsPiecesNeeded(9), 4);
+	TestTrue(TEXT("the row has a rule"), Effects::KeysWithARule().Contains(SealsRow));
+	TestEqual(TEXT("built"), static_cast<int32>(Effects::BuiltStateOf(SealsRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSealsBearersTest,
+	"Cataclysm.DungeonModifierEffects.InfernalSealsTheFourHighestCreaturesBearTheSealAtTheEliteRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSealsBearersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASealsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// SIX CREATURES: COMMONS, A LEGENDARY AND A BOSS. The Boss and the Legendary bear, keeping their rungs, and the
+	// two earliest Commons bear, raised to Elite; the later Commons do not.
+	const TArray<int32> Rungs = {0, 0, 2, 0, 4, 0};
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < Rungs.Num(); ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), Rungs[Index]));
+		if (!TestNotNull(TEXT("set-up: a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+	Mode->ChooseTheSealBearers();
+	TestEqual(TEXT("four bearers"), Mode->InfernalSealBearersNow().Num(), 4);
+	TestTrue(TEXT("the Boss bears"), Placed[4]->bIsASealBearer);
+	TestEqual(TEXT("and keeps its rung"), Placed[4]->RarityStep, 4);
+	TestTrue(TEXT("the Legendary bears"), Placed[2]->bIsASealBearer);
+	TestEqual(TEXT("and keeps its rung"), Placed[2]->RarityStep, 2);
+	TestTrue(TEXT("the first Common bears"), Placed[0]->bIsASealBearer && Placed[1]->bIsASealBearer);
+	TestEqual(TEXT("raised to Elite"), Placed[0]->RarityStep, Effects::InfernalSealsBearerRung);
+	TestEqual(TEXT("both of them"), Placed[1]->RarityStep, Effects::InfernalSealsBearerRung);
+	TestFalse(TEXT("a later Common does not"), Placed[3]->bIsASealBearer || Placed[5]->bIsASealBearer);
+	TestEqual(TEXT("and stays Common"), Placed[3]->RarityStep, 0);
+	TestTrue(TEXT("\"Seal Bearer\" under a bearer's bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Placed[4]).Contains(TEXT("Seal Bearer")));
+	TestFalse(TEXT("and not under another's"),
+			  UCataclysmCombatOverlay::StatusLineFor(Placed[3]).Contains(TEXT("Seal Bearer")));
+	TestEqual(TEXT("the panel"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 0 of 4 pieces")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSealsOpenTest,
+	"Cataclysm.DungeonModifierEffects.InfernalSealsTheStairsOpenWithTheLastPiece",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSealsOpenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASealsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Placed = PlaceAndChooseBearers(*this, World, Mode, 4);
+	if (!TestEqual(TEXT("set-up: four bearers"), Mode->InfernalSealBearersNow().Num(), 4))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with no piece the stairs lead nowhere"), TakeTheStairs(*this, Mode), 1);
+	TestTrue(TEXT("and they watch for the player again"), Mode->Stairs->IsWatching());
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		if (!ThePlayerKills(*this, Player, Placed[Index]))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+	}
+	TestEqual(TEXT("three pieces"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 3 of 4 pieces")));
+	TestEqual(TEXT("three are not enough"), TakeTheStairs(*this, Mode), 1);
+
+	// THE LAST BY ANOTHER CREATURE'S BLOW: the piece is given whoever kills the bearer.
+	if (!ACreatureKills(*this, World, Placed[3]))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the fourth opens them"), SealsPanelLine(Mode), FString(TEXT("infernal seals: open")));
+	TestTrue(TEXT("nothing seals them"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("and the stairs lead down"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSealsFewerTest,
+	"Cataclysm.DungeonModifierEffects.InfernalSealsAFloorWithFewerCreaturesNeedsFewerPieces",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSealsFewerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASealsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// NO CREATURE AT ALL: no bearer, no piece needed, and the stairs are open.
+	Mode->ChooseTheSealBearers();
+	TestEqual(TEXT("an empty floor has no bearer"), Mode->InfernalSealBearersNow().Num(), 0);
+	TestEqual(TEXT("and is open"), SealsPanelLine(Mode), FString(TEXT("infernal seals: open")));
+	TestFalse(TEXT("nothing seals it"), Mode->InfernalSealsSealTheStairs());
+
+	// TWO CREATURES: two bearers and two pieces, never four.
+	const TArray<ACataclysmEnemyCharacter*> Placed = PlaceAndChooseBearers(*this, World, Mode, 2);
+	if (!TestEqual(TEXT("two bearers"), Mode->InfernalSealBearersNow().Num(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two pieces needed"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 0 of 2 pieces")));
+	for (ACataclysmEnemyCharacter* One : Placed)
+	{
+		if (!ThePlayerKills(*this, Player, One))
+		{
+			return false;
+		}
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("both pieces open them"), SealsPanelLine(Mode), FString(TEXT("infernal seals: open")));
+	TestEqual(TEXT("and the stairs lead down"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSealsReleasedTest,
+	"Cataclysm.DungeonModifierEffects.InfernalSealsABearerTakenGoneOrMadeUnhurtGivesItsPiece",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSealsReleasedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASealsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Placed = PlaceAndChooseBearers(*this, World, Mode, 4);
+	if (!TestEqual(TEXT("set-up: four bearers"), Mode->InfernalSealBearersNow().Num(), 4))
+	{
+		return false;
+	}
+
+	// TAKEN AS A THRALL (issue #1202): counted as fallen, and no longer labelled.
+	if (!TestTrue(TEXT("the player takes one"), UCataclysmCommand::Subjugate(Player.Character, Placed[0])))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("a bearer taken gives its piece"), Mode->InfernalSealPiecesHeld(), 1);
+	TestFalse(TEXT("and is no longer a bearer"), Placed[0]->bIsASealBearer);
+
+	// GONE FROM THE WORLD WITHOUT ITS DEATH HEARD, as a Morale Break escapee is.
+	Placed[1]->Destroy();
+	Beat(Mode, 1);
+	TestEqual(TEXT("a bearer gone gives its piece"), Mode->InfernalSealPiecesHeld(), 2);
+
+	// MADE UNABLE TO BE HURT, as a Blood Bond would make it.
+	Placed[2]->bCannotBeHurt = true;
+	Beat(Mode, 1);
+	TestEqual(TEXT("a bearer that cannot be hurt gives its piece"), Mode->InfernalSealPiecesHeld(), 3);
+	TestEqual(TEXT("the panel"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 3 of 4 pieces")));
+	TestEqual(TEXT("still sealed"), TakeTheStairs(*this, Mode), 1);
+
+	if (!ThePlayerKills(*this, Player, Placed[3]))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the last, slain, opens them"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoSealsTest,
+	"Cataclysm.DungeonModifierEffects.TwoRulesSealTheStairsAndOpenOnlyWhenBothRelease",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoSealsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASealsFloor(*this, World, Player, {BloodGates, SealsRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Placed = PlaceAndChooseBearers(*this, World, Mode, 4);
+	if (!TestEqual(TEXT("set-up: four bearers"), Mode->InfernalSealBearersNow().Num(), 4))
+	{
+		return false;
+	}
+	TestTrue(TEXT("both rows seal the stairs, Blood Gates first"),
+			 Mode->StairsSealedBy() == TArray<FName>({FName(Effects::BloodGatesKey), SealsRow}));
+	TestEqual(TEXT("the panel names Blood Gates"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 4 slain, open at 2")));
+	TestEqual(TEXT("and Infernal Seals"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 0 of 4 pieces")));
+
+	// TWO SLAIN BY THE PLAYER OPEN BLOOD GATES, BUT TWO PIECES DO NOT OPEN THE SEAL.
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		if (!ThePlayerKills(*this, Player, Placed[Index]))
+		{
+			return false;
+		}
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("Blood Gates is open"), GatesPanelLine(Mode), FString(TEXT("blood gates: open")));
+	TestEqual(TEXT("the seal still holds"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 2 of 4 pieces")));
+	TestTrue(TEXT("so only the seal seals them"), Mode->StairsSealedBy() == TArray<FName>({SealsRow}));
+	TestEqual(TEXT("and the stairs still lead nowhere"), TakeTheStairs(*this, Mode), 1);
+
+	for (int32 Index = 2; Index < 4; ++Index)
+	{
+		if (!ThePlayerKills(*this, Player, Placed[Index]))
+		{
+			return false;
+		}
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("with both released nothing seals them"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("and the stairs lead down"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSealsHordeTest,
+	"Cataclysm.DungeonModifierEffects.InfernalSealsDoesNothingOnAHordeArena",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSealsHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode) || !TestTrue(TEXT("a player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {SealsRow};
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	// A HORDE DUNGEON HAS NO STAIRS, so nothing is chosen and nothing is sealed.
+	TestNull(TEXT("it has no stairs"), Mode->Stairs.Get());
+	TestEqual(TEXT("no bearer is chosen"), Mode->InfernalSealBearersNow().Num(), 0);
+	TestTrue(TEXT("nothing seals"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("the panel says so"), SealsPanelLine(Mode),
+			  FString(TEXT("infernal seals: no stairs on a Horde floor")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
