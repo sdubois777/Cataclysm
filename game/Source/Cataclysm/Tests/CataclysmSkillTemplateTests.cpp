@@ -12108,6 +12108,12 @@ bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
 
 	TestTrue(TEXT("it activates"), Activate(Caster, Pyre));
 
+	// AND THE MASOCHIST'S "FERVOUR LOST TO HEALING" RATE, after activating,
+	// because activating spent the fifty Fervour the Ultimate costs. Issue #1608:
+	// the returned health is healing, and healing removes Fervour.
+	Caster.Set(UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(), 1.0f);
+	Caster.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 40.0f);
+
 	const float Wounded = Caster.Health();
 	const float Given = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
 
@@ -12115,6 +12121,9 @@ bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
 	TestEqual(TEXT("a blow dealing 400 returns 100"), Given, 100.0f, 0.01f);
 	TestEqual(TEXT("and the holder's health rose by exactly that"),
 		Caster.Health() - Wounded, 100.0f, 0.01f);
+	// ONE FERVOUR PER 1% OF MAXIMUM HEALTH RESTORED: 100 of 100,000 is 0.1%.
+	TestEqual(TEXT("and the health returned removed 0.1 Fervour"),
+		Caster.Fervour(), 39.9f, 0.001f);
 	TestEqual(TEXT("and the pyre reports what it has given"),
 		Pyre->HealthReturned, 100.0f, 0.01f);
 

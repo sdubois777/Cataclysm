@@ -79,10 +79,10 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// plainly: "you cannot be healed" says nothing comes back while the swing is
 	// up. A held Ultimate lasts three seconds.
 	//
-	// THE FIST'S LIVING PYRE RETURNS HEALTH BY ANOTHER ROUTE AND IS NOT REACHED
-	// BY THIS, which costs nothing: The Whole Weight is a Greatsword Ultimate and
-	// Living Pyre is a Fist Ultimate, and a character holds one weapon, so the
-	// two can never be up at once.
+	// THE FIST'S LIVING PYRE COMES THROUGH HERE TOO, since issue #1608, and this
+	// never refuses it: The Whole Weight is a Greatsword Ultimate and Living Pyre
+	// is a Fist Ultimate, and a character holds one weapon, so the two can never
+	// be up at once.
 	if (UCataclysmStrikeSkill::AHeldSwingForbids(AbilitySystem.GetOwnerActor(),
 												 TEXT("Healing")))
 	{
@@ -163,8 +163,8 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// HERE RATHER THAN AT EACH CALLER, because this is the one place health
 	// regeneration and life leech both restore health, and the node says
 	// "cannot be healed" rather than naming one of them.
-	// The answer itself is `HealthHealingCeiling`, which Living Pyre asks as
-	// well: issue #1607, the one heal of health that does not come through here.
+	// The answer itself is `HealthHealingCeiling`, which Wrung Out also asks
+	// before it charges for a heal. Issue #1607.
 	//
 	// HEALTH ONLY. The node says health, and mana and the energy shield come
 	// through this same function.
