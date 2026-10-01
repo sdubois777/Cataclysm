@@ -3762,14 +3762,14 @@ private:
 		FVector Where = FVector::ZeroVector;
 		float SecondsLeft = 0.0f;
 		float DamagePerSecond = 0.0f;
-		FName Type;
+		FName PatchType;
 		TWeakObjectPtr<class ACataclysmProjectile> Ball;
 	};
 	TArray<FInfernalRainFall> InfernalRainFalls;
 
 	/** Infernal Rain: a patch at this point, typed and burning once a second with the others; null if none came. */
 	class ACataclysmGroundZone* PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where, float DamagePerSecond,
-														 FName Type);
+														 FName PatchType);
 
 	/**
 	 * Singularity Wells' clock, the wells on this floor, and the slow in force.

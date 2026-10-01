@@ -11549,7 +11549,7 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 		{
 			Ball->Destroy();
 		}
-		ACataclysmGroundZone* Landed = PlaceAnInfernalRainPatch(World, Fall.Where, Fall.DamagePerSecond, Fall.Type);
+		ACataclysmGroundZone* Landed = PlaceAnInfernalRainPatch(World, Fall.Where, Fall.DamagePerSecond, Fall.PatchType);
 		InfernalRainFalls.RemoveAt(Index);
 		if (Landed)
 		{
@@ -11657,20 +11657,20 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	const FVector Beyond = (Where - Centre).GetSafeNormal2D();
 	const FVector From = Where + Beyond * Effects::InfernalRainFireballFromSideCm
 		+ FVector(0.0f, 0.0f, Effects::InfernalRainFireballFromHeightCm);
-	FGameplayTagContainer Tags;
+	FGameplayTagContainer ElementTags;
 	const FGameplayTag Element = FGameplayTag::RequestGameplayTag(
 		FName(*(FString(TEXT("Element.")) + Row->CataclysmType)), /*ErrorIfNotFound=*/false);
 	if (Element.IsValid())
 	{
-		Tags.AddTag(Element);
+		ElementTags.AddTag(Element);
 	}
 	FInfernalRainFall Fall;
 	Fall.Where = Where;
 	Fall.SecondsLeft = Effects::InfernalRainFireballFallSeconds;
 	Fall.DamagePerSecond = PerSecond;
-	Fall.Type = FName(*Row->CataclysmType);
+	Fall.PatchType = FName(*Row->CataclysmType);
 	Fall.Ball = ACataclysmProjectile::Fire(Source, From, Where, Effects::InfernalRainFireballRadiusCm, /*InSpeed=*/0.0f,
-										   /*InPierce=*/1000, /*bInReturns=*/false, /*InDamagePercent=*/0.0f, Tags,
+										   /*InPierce=*/1000, /*bInReturns=*/false, /*InDamagePercent=*/0.0f, ElementTags,
 										   /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
 										   Effects::InfernalRainFireballFallSeconds);
 	InfernalRainFalls.Add(Fall);
@@ -11719,7 +11719,7 @@ ACataclysmGroundZone* ACataclysmDungeonGameMode::PlaceASingularityWellAt(const F
 }
 
 ACataclysmGroundZone* ACataclysmDungeonGameMode::PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where,
-																		  float DamagePerSecond, FName Type)
+																		  float DamagePerSecond, FName PatchType)
 {
 	if (!World)
 	{
@@ -11733,7 +11733,7 @@ ACataclysmGroundZone* ACataclysmDungeonGameMode::PlaceAnInfernalRainPatch(UWorld
 	// TYPED BY ITS ROW, ON THE PATCH ITSELF. Issue #1924.
 	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
 		Source, Where, UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
-		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, DamagePerSecond, Type);
+		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, DamagePerSecond, PatchType);
 	if (Patch)
 	{
 		// PATCHES THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM. Issue #2074.
