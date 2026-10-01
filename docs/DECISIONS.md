@@ -105,7 +105,7 @@ Fetched on 2026-09-30 before they were quoted.
 
 ### Tests
 
-Ten automation tests in `Cataclysm.DungeonModifierEffects.`:
+Eleven automation tests in `Cataclysm.DungeonModifierEffects.`:
 
 - `PactOfTemptationFiguresTheFivePacts`: the figures, Greed's multiplier at two, a button, the row built.
 - `PactOfTemptationAltarStandsOnTheExitOfferingThreePacts`: on the exit cell, named, placed by the row, Wrath, Haste and
@@ -126,10 +126,23 @@ Ten automation tests in `Cataclysm.DungeonModifierEffects.`:
 - `PactOfTemptationAltarStandsApartFromTheOtherExitAltars`: with Blood Altar and Forced Tithes, on a walkable cell
   beside the exit, on neither the exit cell nor the Tithe Altar's.
 - `PactOfTemptationTheLastFloorHasNoAltar`: a bound dungeon of two floors; floor 1 has one, floor 2 none.
+- `PactOfGreedACreatureThePlayerTakesLosesTheCurse`: Greed taken, floor 2's Imp at 10% more; taken, it deals its own
+  damage a beat later, and the beat after.
 
 Python: the row still says "offered pacts", "at the end of each floor", "a powerful buff for the floor" and "a curse for
 the rest of the dungeon"; Greed's setter writes its own key of the damage map, in the check every such setter is in; and
 `PactMagicFindAdded` is recorded as a flat figure, as the other magic find fields are.
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **The Pact of Greed's sweep already leaves a thrall out**, as Infernal Beacons' does: it acts
+only on a creature that `UCataclysmTargeting::IsHostileTo` the player, and a taken creature has the player as its owner
+and the player's team. No skip was added to the sweep, as ruled.
+
+**What a creature carried from before it was taken is put back**, as ruled the same day: `StepPlayersFollowers` now sets
+`PactOfTemptationDamageSource` back to 1 on each thrall, so a creature taken after a Pact of Greed no longer keeps the
+curse's 10% more damage on the player's side.
 
 ### Not yet run
 
