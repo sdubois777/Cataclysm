@@ -2,6 +2,145 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — A death deals the remaining damage of the player's own damage over time on the enemies within 5 m, and a critical strike deals 20%-40% of a target's Necrosis; an Ailment column
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`DamageOverTimeTicksLeft`,
+`ShareOfHealthOverTicks`, `RemainingDamageOverTime`, `DealRemainingDamageOverTime`),
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`RemainingDamageNearbyAction`, `RemainingDamageTargetAction`, the
+remaining damage branch in `ActOnEvent`), `CataclysmStatPipeline.h` (`ECataclysmRemainingDamage`,
+`FCataclysmPoolAction::RemainingDamage` and `Ailment`), `game/Source/Cataclysm/Data/CataclysmDataRows.h`
+(`Ailment`), `game/Source/Cataclysm/Items/CataclysmItem.cpp`, `tools/generate_datatables.py`
+(`REMAINING_DAMAGE_ACTIONS`, `REMAINING_DAMAGE_TARGET_EVENTS`, `AILMENTS`, the Ailment column), the new
+`game/Source/Cataclysm/Tests/CataclysmRemainingDamageTests.cpp` (seven tests), two row tests in
+`CataclysmEnchantmentEffectTests.cpp`, the three hand-written effect CSVs in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmEnchantmentRollTests.cpp` and `CataclysmEnchantmentSetTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`, `docs/README.md`,
+`game/Data/EnchantmentEffects.csv` and its asset. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833),
+group D part 4.
+
+### WHAT WAS RULED, 2026-10-01, UNDER THE OWNER'S DELEGATION
+
+1. **Scope: two rows and a new optional column.** "When you die, all active DoTs on nearby enemies instantly deal
+   their remaining damage" and "Necrosis effects deal 20%-40% of their remaining damage instantly when you land a
+   critical strike". The new **Ailment** column names one of Bleed, Poison, Disease, Necrosis and Burn. It is
+   required on `dot_remaining_target`, allowed on `dot_remaining_nearby`, and refused on every other row, as Event
+   Value is. Necrosis is a damage over time in code (`CataclysmAilments.cpp`, `EShape::DamageOverTime`), so a share of
+   its remaining damage applies to it.
+2. **The death row's sentence is written as it reads**, by the ruling made for D3's "On death all nearby enemies are
+   healed": it has a real effect in co-operative play and in Quest dungeons and Dungeon Cities, which do not resolve on
+   a death, and in a Basic dungeon until issue [#41](https://github.com/sdubois777/Cataclysm/issues/41) resolves the
+   dungeon on death.
+3. **LABELLED JUDGEMENT: the death row ENDS each effect** once its remaining damage is dealt; the Necrosis row
+   NEITHER ENDS NOR REDUCES the Necrosis. The shape of a share of what remains dealt at once is Diablo IV's
+   Skullbreaker's Aspect, "Incapacitating a Bleeding enemy deals [40 - 60]% of their total Bleeding amount as Physical
+   damage" (diablo4.wiki.fextralife.com/Skullbreaker's+Aspect, read 2026-10-01), which does not say the Bleeding ends.
+   Whether a whole remaining amount ends its effect is not settled by that page; the death row ends it because once all
+   of it is dealt, nothing remains to deal.
+4. **A share of current health counts** (Void Splinter): Health x (1 - (1 - s)^n), what its n remaining ticks would
+   take if nothing else struck, held within `ShareOfHealthRoomLeft` as its ticks are, so a boss keeps half its maximum.
+5. **Own means the effect's instigator is the wearer's avatar.** A minion's burn is the minion's, by the ruling of
+   2026-09-17, so neither row reaches it.
+6. **One instance, never n.** No flat per-instance reduction exists on a damage over time instance: every step of
+   `UCataclysmDamageCalculation` a tick meets multiplies by a percentage that does not depend on the amount (step 5,
+   headed "Flat damage reduction", is a percentage too). **LABELLED CONSEQUENCE: block rolls once for a burst where its
+   n ticks would each have rolled; the expected damage is the same, and a burst is blocked all or nothing.** The burst
+   goes through the same damage calculation as a tick, flagged as damage over time, with no block handling of its own,
+   **so a later ruling exempting damage over time from block covers the burst and the ticks at once.** Whether block
+   should stop damage over time at all is with the owner.
+
+**Necrosis's healing denial is not built** ("denies the affected target all healing ... dealing the denied amount as
+damage" is the design text, and no code implements it): issue [#920](https://github.com/sdubois777/Cataclysm/issues/920).
+So D3's death heal is not changed by a Necrosis on an enemy today.
+
+**Held for the owner, not built:** "Your burn effects have a 20%-40% chance to explode for double their remaining damage
+when they expire" (at expiry nothing remains) and "Your first hit against each enemy applies all your active DoTs
+instantly" (two readings). Void Splinter stacks detonating and the Plague Doctor 10-piece bonus wait for mechanisms of
+their own.
+
+### WHAT WAS BUILT
+
+- **The ticks left, by the engine's own rule** (UE 5.8 `GameplayEffect.cpp`): the period timer repeats, and at the end
+  `CheckDuration` runs one last tick only when the period timer is due at that moment (`PeriodTimeRemaining <=
+  KINDA_SMALL_NUMBER`). So the ticks left are the one the period timer has due and each period after it, up to and
+  including the end. A refreshed duration is counted, because the time remaining already holds it.
+- **The burst**: one instant Damage effect per running effect, carrying the running effect's own context (its
+  instigator and causer) and tags (its element, the damage over time flag as an asset tag, and what it granted, which is
+  how the damage branch knows a bleed). The share-of-current-health magnitude is not carried; the burst states its
+  amount.
+- **Two actions**: `dot_remaining_nearby` searches as D3's smite does (`FindEnemiesInSphere`, 5 m), and its cooldown
+  starts whether or not anything stood in reach; `dot_remaining_target` needs an event naming the character struck
+  (`hit_dealt`, `critical_strike`, `retaliation_dealt`) and takes the 0.25 s default on `critical_strike`.
+- **Depth one**: the burst runs inside the event, so it fires none of the wearer's own rows.
+- **The rows** (EnchantmentEffects 430 to 432, over 349 to 351):
+
+  | Sentence | Row |
+  | :-- | :-- |
+  | When you die, all active DoTs on nearby enemies instantly deal their remaining damage | `dot_remaining_nearby` 100 on `player_death`; "remaining" states the 100 (`STATED_BY_WORD`) |
+  | Necrosis effects deal 20%-40% of their remaining damage instantly when you land a critical strike | `dot_remaining_target` 20 to 40 on `critical_strike`, Ailment Necrosis, Trigger Cooldown 0.25 by default |
+
+### FOUND IN THE WINDOW: TWO CLOCKS, AND THE FIRST MEASURED WHOLE DURATION
+
+- **The first run of the six mechanism tests failed five, every remaining figure exactly one tick short** (70 for 80, 2
+  Void Splinter ticks for 3). Registered as 6 of 6, so the window stopped, and temporary readouts in one test, never
+  committed, were approved and run. They read, at 2.5 s into a 10 s effect of a 1 s period: the world clock 2.500000,
+  the effect's time remaining by the world clock 7.500000, its period timer 0.550000 and its duration timer 7.550000.
+  **The timer manager's clock ran 0.05 s, one `RunClock` step, behind the world clock**, and the function took the
+  time left from the world and the next tick from the timer manager, so it counted 7 where the engine delivers 8.
+  **Both now come from the timer manager**, the clock the engine ticks and expires effects on; the world clock is used
+  only for an effect with no duration timer.
+- **The engine does deliver the last tick at expiry.** The same readouts ran a 10 s effect of 10 a tick to its end at
+  `RunClock` steps of 0.025, 0.05 and 0.1, and it dealt 100, ten ticks, at each. The rule (GameplayEffect.cpp,
+  `CheckDuration`): when the duration ends, the last tick runs if the period timer's remaining time on the timer
+  manager's clock is at most `KINDA_SMALL_NUMBER`. It is a float comparison, made on one clock, and it held at every
+  step measured. **A permanent test now measures it**, `ATenSecondEffectOfTenATickDealsAHundredOverItsWholeDuration`,
+  the first test to measure a whole duration. The previous caution was `CataclysmDebuffTests.cpp`, which asks for "at
+  least 30" of four due ticks so that "a tick falling on the edge of the last step cannot decide the result".
+- **A rule broken in the window**: the readout build was given a command timeout, which an Unreal build must never
+  have. It finished well inside it and nothing was killed.
+
+### HOW THE TESTS REACH PLAY
+
+- **The death is real**: a blow empties the player's health and `HandleDeath` raises `player_death`, as in D3.
+- **The Necrosis row's critical strike is real**, a condition the coordinating session set on 2026-10-01 because a
+  hand-raised event hides the play path: a player character wearing the row lands a blow through the damage path with
+  the roll pinned at the console's priority (`CataclysmTestWorld::FScopedCritRoll`), so `critical_strike` is raised by
+  `ACataclysmPlayerCharacter` with the creature struck. Mechanism test 6 raises the event by hand, as a test of the
+  action alone.
+- **A control creature isolates the burst from the blow.** The critical blow deals damage of its own, so the same blow
+  lands on a second creature carrying no Necrosis, and what the Necrosis creature loses beyond it is the burst. **The two
+  are one class at one rarity step with the same armour, and the test asserts it**: a bare `SpawnActor` draws no rarity
+  (only the dungeon game mode calls `DrawModifiersForRarity`), so both read step 0 and the class's starting armour and
+  resistances.
+- **`stale_creature_scan` cannot read these tests**, which register through a local `CATACLYSM_TEST` macro; the check
+  used instead is a direct search, and no D4 test changes floor.
+
+### THE RUN
+
+D4 is commits `bfcda13b` (engine), `d17a8fd9` (the whole-row generator test), `b3d7e02d` (the clock fix and the
+whole-duration test), `1261fc44` (rows) and `82672b91` (asset), on development `49324596`, pushed as
+`feat/dot-remaining-damage-2`. It was written on `b1ac2a92` and moved after #2193 merged, with no conflict.
+
+| Step | Result |
+| :-- | :-- |
+| Rehearsals on `git archive` copies | engine "13 failed": the 11 tests that need a git directory, the stale asset hash, and `test_a_row_becomes_one_csv_row`, which compares a whole row and needed the Ailment field (missed, fixed in `d17a8fd9`); rows "12 failed, 5619 passed, 13 skipped", JUnit 5644, on `b1ac2a92` |
+| Build 1, `d17a8fd9` | "Succeeded - 32 actions, 29 files compiled" |
+| `Cataclysm.RemainingDamage.`, first run | "6 tests performed, 1 succeeded, 5 failed", 11 failed assertions, every remaining figure one tick short; stopped (above) |
+| Readouts, never committed, approved | the two clocks (0.05 s apart) and ten ticks delivered at three steps (above); the file restored with its hash confirmed |
+| The clock fix and the whole-duration test, `b3d7e02d` | build "30 actions, 27 files compiled"; the group "7 tests performed, 7 succeeded, 0 failed" |
+| Proof A, the burst deals nothing | PROVED: tests 2, 4, 5 and 6, the 5 assertions predicted; restored 7 of 7 |
+| Proof B, the own filter removed | PROVED: test 3, the 3 assertions predicted; restored 7 of 7 |
+| Proof C, the effect not removed | PROVED: tests 2, 3 and 5, the 4 assertions predicted; restored 7 of 7 |
+| Python of record, `b3d7e02d` | "1 failed, 5637 passed, 8 skipped in 320.50s": the stale asset hash, as registered; JUnit 5646 (5632 + 14) |
+| Python after the rows, `1261fc44` | "1 failed, 5637 passed, 8 skipped in 337.90s": the stale hash; JUnit 5646 |
+| Build 2 and the asset rebuild, `82672b91` | "5 actions, 2 files compiled"; only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` (430 to 432 rows) |
+| Row tests | the death row 1 of 1; the Necrosis row, through a real critical strike, 1 of 1; 0 "was ignored", 0 failed assertions |
+| Whole suite, `82672b91`, in its own command | "3012 tests performed, 3012 succeeded, 0 failed"; 3012 declared, gap 0, as registered (3003 + 9: six mechanism tests, the whole-duration test and two row tests); no "was ignored" line, no failed assertion |
+
+Every broken file's hash was the same after its proof.
+
+---
+
 ## 2026-10-01 — The floor-start health cap reads the maximum after every dungeon-long rule that changes it, and a lowered maximum lowers the health above it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`ApplyFloorRulesKeepingHealth`,
