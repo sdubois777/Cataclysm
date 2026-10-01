@@ -185,9 +185,9 @@ void UCataclysmVitalAttributeSet::PostAttributeChange(
 	// mana away is a different case and stands.
 	if (Attribute == GetMaxHealthAttribute() && NewValue < OldValue && GetHealth() > NewValue)
 	{
-		if (UAbilitySystemComponent* Owner = GetOwningAbilitySystemComponent())
+		if (UAbilitySystemComponent* OwningAbilities = GetOwningAbilitySystemComponent())
 		{
-			Owner->SetNumericAttributeBase(GetHealthAttribute(), NewValue);
+			OwningAbilities->SetNumericAttributeBase(GetHealthAttribute(), NewValue);
 		}
 	}
 }
