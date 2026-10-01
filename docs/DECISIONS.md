@@ -2,6 +2,69 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Living Pyre's health return stops at the healing ceiling, because every heal of health now asks one function where it must stop
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (the new
+`UCataclysmRegeneration::HealthHealingCeiling`, which `TopUp` now asks),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmAuraSkill::NoteBlowTaken` asks it
+too) and `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (one test). Issue
+[#1607](https://github.com/sdubois777/Cataclysm/issues/1607), ruled by the coordinating session on 2026-09-30.
+
+### WHAT CHANGES IN PLAY
+
+**A character who cannot be healed above part of its maximum health now cannot be healed above it by Living
+Pyre either.** Point of No Return reads "You cannot be healed above 50% of your maximum health", and the
+enchantment rows that say "cannot be healed above" 60% or 75% write the same stat. Until this change the Fist
+Ultimate Living Pyre, which "returns health equal to 25% of the damage that hit dealt", healed past that
+ceiling, up to the maximum less what is reserved. A holder already above the ceiling gains nothing from a blow
+and is not pulled down to it.
+
+### THE RULING
+
+"One function answers 'the most health this character may be healed to' (the healing ceiling, then
+reservation), used by both TopUp and Living Pyre's NoteBlowTaken." That function is `HealthHealingCeiling`:
+maximum health, times the share a caller allows (1 for every heal of health today), less the healing ceiling's
+reduction, and never above `UnreservedMaximumHealth`. `TopUp`'s health branch computed exactly this inline and
+now calls it, so no heal that already went through `TopUp` changes by a single number.
+
+**Issue [#1608](https://github.com/sdubois777/Cataclysm/issues/1608) is the two-route problem this closes for
+the ceiling.** It recorded that health was restored by two routes, `TopUp` and Living Pyre, and that each
+rule about healing had to be written into both. The ceiling is now written once. **Two rules are still written
+at both sites, and this change does not move them:** the received-healing reduction
+(`HealingReceivedReduction`, which `NoteBlowTaken` applies itself) and the held-swing forbid, which only `TopUp`
+applies. Living Pyre also does not empty Fervour for its healing, because it does not go through `TopUp`.
+Neither of the last two was ruled onto this skill.
+
+### THE SWEEP FOR EVERY OTHER HEAL, 2026-09-30, AT `development` fce1ab9b
+
+The ruling asked for every other heal that stops at the unreserved maximum without the ceiling. **There was
+none besides Living Pyre.** Every other heal of a player's health goes through `TopUp` and so already read
+the ceiling: health regeneration, life leech, potions, the pool actions, Wrung Out's restoration on a kill,
+Long Hold, and the Medic's pulse.
+
+| Writes health directly | Reads the ceiling? | Why |
+| :-- | :-- | :-- |
+| `ACataclysmPlayerCharacter::Revive` | no | a respawn is a new life, not healing; the older entry headed "A respawn is not healing and is not capped" says so |
+| possession's fill to maximum | no | the same: a full pool on taking a new body, not a heal |
+| a saved game loading | no | restores a stored value |
+| Sacrifice | no | an enemy devouring an ally; no enemy carries the ceiling. Issue [#1611](https://github.com/sdubois777/Cataclysm/issues/1611) is its own question |
+
+**The sentence "Health is restored in THREE places" in the entry on healing reduction, further down, is
+history and stays as written.** Its table's Living Pyre row, "no, #1607", is the row this change answers.
+
+### HOW IT IS CHECKED
+
+`Cataclysm.Skills.TheLivingPyreStopsAtTheHealingCeiling`: a holder with the ceiling reduced by 50, at 49,990
+of 100,000 health, takes a blow dealing 400; the Pyre returns 10, not 100, and health stops at 50,000. At
+60,000 a second blow returns nothing and leaves health at 60,000. The existing
+`Cataclysm.Skills.TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes` is the control: with no ceiling, the
+same blow still returns 100 and stops at the full 100,000.
+
+**Not built or run when this was written.** The build machine was held by another session; the run table
+follows when the window runs.
+
+---
+
 ## 2026-09-30 — A critical strike or retaliation can apply a random damage over time, and a triggered action row waits a quarter second after it fires
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`

@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
@@ -4152,16 +4153,14 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 	// says "returns health", with no duration, against the design's leech
 	// section which states one.
 	//
-	// CAPPED AT MAXIMUM HEALTH, which `SetHealth` would not do on its own, LESS
-	// WHAT IS RESERVED: issue #1833, ruled 2026-09-30, every heal stops there.
-	// This one does not pass through `UCataclysmRegeneration::TopUp`, so it
-	// asks here.
+	// CAPPED WHERE EVERY HEAL STOPS: the healing ceiling, then what is reserved.
+	// Issue #1607, ruled 2026-09-30. Until then this capped at the unreserved
+	// maximum only, so Point of No Return ("You cannot be healed above 50% of
+	// your maximum health") did not hold while the Pyre burned. It asks the
+	// same function `UCataclysmRegeneration::TopUp` asks, so the two routes
+	// cannot answer differently again (issue #1608).
 	using Vitals = UCataclysmVitalAttributeSet;
-	const UCataclysmAbilitySystemComponent* Reserving =
-		Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
-	const float Maximum = Reserving
-		? Reserving->UnreservedMaximumHealth()
-		: AbilitySystem->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
+	const float Maximum = UCataclysmRegeneration::HealthHealingCeiling(*AbilitySystem);
 	const float Current =
 		AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
 	const float Offered = DealtToHealth * Params.HealthFromHitTaken / 100.0f;
@@ -4171,12 +4170,9 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 	// owner ruled on 2026-09-12 that this counts: the stat covers every route
 	// that restores health, and returning health from a blow taken is one.
 	//
-	// HERE AND NOT IN A HELPER SHARED WITH `UCataclysmRegeneration::TopUp`, AND
-	// THAT IS THE POINT. A helper would carry the healing ceiling as well, and
-	// this skill escaping the ceiling is a separate open question -- issue #1607,
-	// with issue #1608 for there being nowhere to put either. So the reduction
-	// lands here on its own and the ceiling stays off, rather than this change
-	// deciding #1607 in passing.
+	// HERE AND NOT THROUGH `UCataclysmRegeneration::TopUp`, because `TopUp` also
+	// takes Fervour away for healing and refuses under a held swing, and neither
+	// was ruled onto this skill. The ceiling, which was, is shared above.
 	//
 	// OFF THE ABILITY SYSTEM, SO IT WORKS FOR WHOEVER HOLDS THE AURA rather than
 	// for a player alone. Nothing grants the stat to a creature today; the
