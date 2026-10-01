@@ -8372,7 +8372,8 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::RelicSpiritsStandin
 	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : RelicSpirits)
 	{
 		ACataclysmEnemyCharacter* Spirit = One.Get();
-		if (IsValid(Spirit) && !UCataclysmSkillEffects::IsDead(Spirit))
+		// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+		if (IsValid(Spirit) && !UCataclysmSkillEffects::IsDead(Spirit) && !DungeonGameModeIsAPlayersFollower(Spirit))
 		{
 			Standing.Add(Spirit);
 		}

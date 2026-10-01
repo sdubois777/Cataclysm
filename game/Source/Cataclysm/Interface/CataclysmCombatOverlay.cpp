@@ -28,10 +28,24 @@
 #include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+
+namespace
+{
+	/**
+	 * Whether a player commands this creature: a thrall. A rule's label names what that rule made the creature, and a
+	 * thrall the player took has left the rule. Issue #1202, ruled 2026-09-30; the question
+	 * `DungeonGameModeIsAPlayersFollower` asks in the game mode.
+	 */
+	bool OverlayIsAPlayersFollower(const AActor* Actor)
+	{
+		return Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Actor)) != nullptr;
+	}
+}
 
 // ---------------------------------------------------------------------------
 // The colours, as six-digit sRGB hex so they can be read straight against
@@ -675,8 +689,10 @@ FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
 FString UCataclysmCombatOverlay::RelicSpiritTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
-	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsARelicSpirit ? FString(TEXT("Spirit"))
-																					   : FString();
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsARelicSpirit && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Spirit"))
+		: FString();
 }
 
 FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)

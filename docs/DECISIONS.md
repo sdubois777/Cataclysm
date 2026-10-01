@@ -96,7 +96,7 @@ Fetched on 2026-09-30 before they were quoted.
 
 ### Tests
 
-Six automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `BattlefieldRelics`:
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `BattlefieldRelics`:
 
 - `BattlefieldRelicsFiguresKindsTimeAndSpirits`: two, one, 30 s, 50%, 30% and 30%, +30, five spirits at 8 m at Common,
   three kinds.
@@ -110,9 +110,28 @@ Six automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `Bat
 - `BattlefieldRelicsTheSameKindAgainRefreshesItsTime`: two relics of Fury 20 s apart give 50%, not 100%, ending 30 s
   after the second.
 - `BattlefieldRelicsANewFloorBringsNewRelicsAndEndsTheBuffs`.
+- `BattlefieldRelicsASpiritThePlayerTakesIsNoLongerOne`: five spirits; one the player takes loses "Spirit", and
+  four stand, without it.
 
 One Python check: the row still says "relics of war", "can be activated", "powerful but temporary buffs", "summons the
 spirits of fallen warriors" and "relentlessly pursue".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **A spirit the player takes is no longer a spirit**: "Spirit" leaves its bar, and
+`RelicSpiritsStanding()` leaves it out. Both ask whether a player commands the creature, the game mode through
+`DungeonGameModeIsAPlayersFollower` and the bar labels through `OverlayIsAPlayersFollower`, a file-local copy of the same
+question in `CataclysmCombatOverlay.cpp`. The buff is not touched. The rules after this one in Group 2 that bring
+creatures use the same two questions.
+
+### A correction to seven earlier entries
+
+The seven entries of 2026-09-26 merged in pull request [#2180](https://github.com/sdubois777/Cataclysm/pull/2180) --
+Reality Twister; Shadowy Enemies; The Blackest Shadow; Swarm of Locusts obscures vision; The vision system; The choice
+screen; and The player cleanse -- each introduce their guard proofs as "each with its registered prefix, as printed".
+**None of those lists gives a prefix.** Each gives the verdict and the tests the run named, as printed. The entries are
+left as merged, and this sentence is the correction, as the coordinating session ruled on 2026-09-30.
 
 ### Not yet run
 
