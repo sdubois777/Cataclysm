@@ -13569,8 +13569,12 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		const ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get();
 		FVector Ignored;
 		const bool bFleeing = !bPlaguebearerFallen && IsValid(Bearer) && Bearer->FleeSourceNow(Ignored);
+		// A TAKEN BEARER IS NOT DEAD: it fights for the player. Issue #1202, ruled
+		// 2026-09-30. It counts as fallen for the stacks, and the panel says which.
+		const bool bTaken = IsValid(Bearer) && !UCataclysmSkillEffects::IsDead(Bearer)
+			&& DungeonGameModeIsAPlayersFollower(Bearer);
 		Counting.Add(BearerRow, bPlaguebearerFallen
-			? FString(TEXT("the plaguebearer is dead"))
+			? FString(bTaken ? TEXT("the plaguebearer is taken") : TEXT("the plaguebearer is dead"))
 			: FString::Printf(TEXT("the plaguebearer: %d stacks, +%d%% damage%s"), PlaguebearerStacks,
 							  FMath::RoundToInt((Effects::PlaguebearerMultiplier(PlaguebearerStacks) - 1.0f) * 100.0f),
 							  bFleeing ? TEXT("; it flees") : TEXT("")));

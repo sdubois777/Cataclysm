@@ -185,7 +185,8 @@ Read on `development` 32982485, after #2182 merged:
 
 - **The Plaguebearer** gave its growing damage bonus to every creature in the floor's list, a thrall included,
   and nothing took it off one carried past the stairs. A thrall is now skipped. **A taken Plaguebearer counts as
-  fallen**: its stacks clear as at its death, and it stops fleeing the player.
+  fallen**: its stacks clear as at its death, and it stops fleeing the player. The floor panel says "the
+  plaguebearer is taken" rather than "is dead", because it is alive and fighting for the player.
 - **Morale Break** panicked every creature of a fallen leader's pack, so a thrall could flee, escape and come
   back hostile with reinforcements. A thrall is now skipped.
 - **Famished Beasts** sent every creature, a thrall included, to eat the player's drops. A thrall is now skipped.

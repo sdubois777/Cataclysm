@@ -38244,6 +38244,8 @@ bool FCataclysmTakenBearerFallsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("its stacks are cleared"), Mode->PlaguebearerStacksNow(), 0);
 	TestEqual(TEXT("so the others deal their own damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
 	TestFalse(TEXT("and it no longer flees the player"), Bearer->FleeSourceNow(From));
+	TestEqual(TEXT("and the panel says it is taken, not dead"), Mode->LiveCountsForTheFloor().FindRef(PlaguebearerRow),
+			  FString(TEXT("the plaguebearer is taken")));
 	return true;
 }
 
