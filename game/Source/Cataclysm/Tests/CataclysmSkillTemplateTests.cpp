@@ -11977,12 +11977,11 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 	using namespace CataclysmSkillTest;
 	using Vital = UCataclysmVitalAttributeSet;
 
-	// LIVING PYRE RETURNS HEALTH BY ITS OWN ROUTE, REACHED BY NEITHER
-	// `UCataclysmRegeneration::TopUp` NOR THE HEALING CEILING. Issue #41, slice
-	// 5. That is why the healing-received reduction is read here as well: a
-	// curse claiming to reduce healing would otherwise leave this skill healing
-	// at full strength, silently and in the player's favour. The ceiling still
-	// misses it, which is issue #1607 and deliberately not fixed here.
+	// A CURSE ON HEALING REACHES LIVING PYRE. Issue #41, slice 5: a curse
+	// claiming to reduce healing must not leave this skill healing at full
+	// strength, silently and in the player's favour. Since issue #1608 the
+	// Pyre heals through `UCataclysmRegeneration::TopUp`, which reads the
+	// reduction; until then the skill read it itself.
 	UWorld* World = MakeWorld();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
@@ -12044,12 +12043,12 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 
 	// AND A VALUE PAST A HUNDRED RETURNS NOTHING RATHER THAN TAKING HEALTH.
 	//
-	// THE ATTRIBUTE SET'S CLAMP IS WHAT HOLDS THIS, NOT THIS SKILL'S, and this
+	// THE ATTRIBUTE SET'S CLAMP IS WHAT HOLDS THIS, NOT `TopUp`'S, and this
 	// comment claimed the opposite until a guard proof disproved it. Issue #41,
 	// slice 5. A write to the base value DOES reach `PreAttributeChange` on its
 	// way to the current value, and `GetNumericAttribute` reads the current
-	// value, so the skill is handed 100 here and never 150. Breaking this
-	// skill's own clamp changes nothing a test can see; it is kept against a
+	// value, so `TopUp` is handed 100 here and never 150. Breaking `TopUp`'s
+	// own clamp changes nothing a test can see; it is kept against a
 	// replicated value, which does not pass through `PreAttributeChange`.
 	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), 150.0f);
 	const float PastFull = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
@@ -12108,6 +12107,12 @@ bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
 
 	TestTrue(TEXT("it activates"), Activate(Caster, Pyre));
 
+	// AND THE MASOCHIST'S "FERVOUR LOST TO HEALING" RATE, after activating,
+	// because activating spent the fifty Fervour the Ultimate costs. Issue #1608:
+	// the returned health is healing, and healing removes Fervour.
+	Caster.Set(UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(), 1.0f);
+	Caster.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 40.0f);
+
 	const float Wounded = Caster.Health();
 	const float Given = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
 
@@ -12115,6 +12120,9 @@ bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
 	TestEqual(TEXT("a blow dealing 400 returns 100"), Given, 100.0f, 0.01f);
 	TestEqual(TEXT("and the holder's health rose by exactly that"),
 		Caster.Health() - Wounded, 100.0f, 0.01f);
+	// ONE FERVOUR PER 1% OF MAXIMUM HEALTH RESTORED: 100 of 100,000 is 0.1%.
+	TestEqual(TEXT("and the health returned removed 0.1 Fervour"),
+		Caster.Fervour(), 39.9f, 0.001f);
 	TestEqual(TEXT("and the pyre reports what it has given"),
 		Pyre->HealthReturned, 100.0f, 0.01f);
 
@@ -12167,6 +12175,50 @@ bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
 
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPyreStopsAtTheCeilingTest,
+	"Cataclysm.Skills.TheLivingPyreStopsAtTheHealingCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1607, ruled 2026-09-30. A holder whose healing ceiling is half its
+ * maximum -- Point of No Return's "You cannot be healed above 50% of your
+ * maximum health" -- gets back only what fits under half, and nothing once at
+ * or above it. Until then the Pyre capped at the maximum.
+ */
+bool FCataclysmPyreStopsAtTheCeilingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	Caster.GiveFervourForUltimates(1);
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre || !TestTrue(TEXT("it activates"), Activate(Caster, Pyre)))
+	{
+		return false;
+	}
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute(), 50.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 49990.0f);
+	TestEqual(TEXT("a blow dealing 400 below the ceiling returns only the 10 that fit"),
+			  Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f), 10.0f, 0.01f);
+	TestEqual(TEXT("and the holder stops at half its maximum"), Caster.Health(), 50000.0f, 0.01f);
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 60000.0f);
+	TestEqual(TEXT("above the ceiling a blow returns nothing"),
+			  Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and does not pull it down either"), Caster.Health(), 60000.0f, 0.01f);
+	return true;
+}
+
 
 
 /**

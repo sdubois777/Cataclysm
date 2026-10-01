@@ -13,6 +13,7 @@
 #include "EngineUtils.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmFloorSourceCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -677,8 +678,13 @@ bool UCataclysmEnemyModifiers::CharmWhoeverStruck(AActor* Struck,
 	return true;
 }
 
-float UCataclysmEnemyModifiers::ShareOfDamageKept(AActor* Character)
+float UCataclysmEnemyModifiers::ShareOfDamageKept(AActor* Character, TArray<AActor*>* OutSharing)
 {
+	if (OutSharing)
+	{
+		OutSharing->Reset();
+	}
+
 	const ACataclysmEnemyCharacter* Enemy =
 		Cast<ACataclysmEnemyCharacter>(Character);
 	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, SacrificialBondRow))
@@ -692,8 +698,24 @@ float UCataclysmEnemyModifiers::ShareOfDamageKept(AActor* Character)
 		return 1.0f;
 	}
 
-	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+	TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
 		World, Enemy, Enemy->GetActorLocation(), SacrificialBondReach);
+
+	// ONLY A CREATURE THAT CAN LOSE HEALTH SHARES. Issue #1559, ruled 2026-09-30.
+	// A floor-rule object is not an ally in the row's sense, and a bonded
+	// creature must not push damage onto an objective the player is breaking. A
+	// creature that cannot be hurt, or is shrouded, would take its share and
+	// lose nothing, which would halve the hit for free. A player's thrall or
+	// minion is never here: it is on the player's team, and the search asks for
+	// this creature's.
+	Allies.RemoveAll([](const AActor* Ally)
+	{
+		const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Ally);
+		return Creature == nullptr
+			|| Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| Creature->bCannotBeHurt
+			|| Creature->bShrouded;
+	});
 
 	// NOBODY TO SHARE WITH MEANS IT KEEPS ALL OF IT, which is what makes the
 	// modifier answerable: pull the creature away from its pack, or kill the
@@ -705,6 +727,10 @@ float UCataclysmEnemyModifiers::ShareOfDamageKept(AActor* Character)
 
 	// DIVIDED EVENLY BETWEEN THE CREATURE AND ITS ALLIES, reading the row as
 	// written: one ally halves what it takes, three leave it a quarter.
+	if (OutSharing)
+	{
+		*OutSharing = Allies;
+	}
 	return 1.0f / static_cast<float>(Allies.Num() + 1);
 }
 

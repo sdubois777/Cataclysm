@@ -196,6 +196,23 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		else
 		{
 			NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
+
+			// AND A CREATURE IN A FRIENDLY UNHOLY SIGIL CANNOT BE KILLED. Issue
+			// #1559, ruled 2026-09-30: "Allies in this sigil cannot be killed."
+			// HERE, so every way health is lowered is held -- a blow, a direct
+			// reduction, a write to the base -- the way the two holds above are.
+			//
+			// AT ONE HEALTH, A JUDGEMENT: the row gives no figure, and one is the
+			// least that is still alive. Never raised: a creature already below
+			// one keeps what it has.
+			//
+			// ASKED ONLY OF A WRITE THAT WOULD KILL, so an ordinary hit costs no
+			// search for a sigil.
+			if (Unhurt && NewValue <= 0.0f && GetHealth() > 0.0f
+				&& UCataclysmEnemyModifiers::IsProtectedBySigil(Unhurt))
+			{
+				NewValue = FMath::Min(1.0f, GetHealth());
+			}
 		}
 	}
 	else if (Attribute == GetManaAttribute())
@@ -1441,7 +1458,29 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// decides how much of that record reaches health, not a correction
 			// to it. The Fervour line further down deliberately still counts
 			// what reached health, which is what this leaves behind.
-			const float ToHealth = Outcome.DealtToHealth - TurnedIntoBleeding;
+			const float Arriving = Outcome.DealtToHealth - TurnedIntoBleeding;
+
+			// SACRIFICIAL BOND: "All damage taken is redirected and divided among
+			// nearby allies." Issue #1559, ruled 2026-09-30. The creature keeps
+			// its share and the rest goes to the allies below, after its own
+			// health is written. HERE ONLY, in the damage branch: the allies'
+			// shares arrive as direct reductions, which never come back through
+			// this branch, so an ally that is bonded too cannot pass it on again.
+			//
+			// `Outcome` IS NOT CHANGED, so whoever struck leeches and is told of
+			// the whole blow; the blow happened in full, and the bond decides only
+			// whose health pays for it.
+			TArray<AActor*> Sharing;
+			const float ToHealth = Arriving > 0.0f
+				? Arriving * UCataclysmEnemyModifiers::ShareOfDamageKept(GetOwningActor(), &Sharing)
+				: Arriving;
+
+			// A BLOW THAT WOULD KILL A CREATURE IN AN UNHOLY SIGIL DOES NOT.
+			// Issue #1559. `PreAttributeChange` holds it at one health; this is
+			// what tells the announcement below and the base write further down.
+			const bool bWouldKill = ToHealth > 0.0f && ToHealth >= GetHealth();
+			const bool bHeldBySigil = bWouldKill
+				&& UCataclysmEnemyModifiers::IsProtectedBySigil(GetOwningActor());
 
 			// ANNOUNCED HERE, WHERE THE BLOW'S WHOLE OUTCOME IS KNOWN, AND BEFORE
 			// HEALTH IS WRITTEN. Issue #41, slice 4. Every resolved blow reaches
@@ -1450,12 +1489,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// first. `NoteBlow` builds nothing when nothing listens.
 			UCataclysmCombatEvents::NoteBlow(
 				Data, Hit, Outcome, AssetTags,
-				/*bLethal=*/ToHealth > 0.0f && ToHealth >= GetHealth());
+				/*bLethal=*/bWouldKill && !bHeldBySigil);
 
 			if (ToHealth > 0.0f)
 			{
 				SetHealth(FMath::Clamp(GetHealth() - ToHealth,
 									   0.0f, GetMaxHealth()));
+
+				// AND THE BASE IS PUT BACK WHERE THE SIGIL HELD THE CURRENT VALUE.
+				// `PreAttributeChange` clamps only the current value; the base is
+				// stored as written, which here is zero, and the next gain would add
+				// to that. The same write-back the health branch below makes.
+				if (bHeldBySigil)
+				{
+					SetHealth(GetHealth());
+				}
 				NotifyIfHealthReachedZero();
 				NotifyHealthChanged();
 
@@ -1497,6 +1545,40 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// a time, as the Bleeding takes health through this same path.
 				UCataclysmFervour::GainFromDamage(
 					GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
+			}
+
+			// THE BONDED CREATURE'S ALLIES PAY THE REST, EVENLY. Issue #1559.
+			//
+			// EACH IS TOLD WHO STRUCK FIRST, so a death this causes credits
+			// whoever landed the blow: on-kill effects read the victim's last
+			// blow, and a direct reduction records none. Copied from the record
+			// `NoteBlow` just left on this creature, with the killing tags added
+			// when the share is enough to kill. So Follow Through counts a
+			// redirected melee kill as the player's own, a judgement the
+			// coordinating session ruled: the player's melee blow caused it.
+			//
+			// AS A DIRECT REDUCTION, which the ally's armour and resistances do
+			// not meet again: the blow was already resolved against this
+			// creature's. Dealt by this creature, which always has an ability
+			// system to send it from; who struck is carried by the record.
+			if (!Sharing.IsEmpty() && Arriving > ToHealth)
+			{
+				const float EachShare = (Arriving - ToHealth) / static_cast<float>(Sharing.Num());
+				const UCataclysmAbilitySystemComponent* Bonded =
+					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+				for (AActor* Ally : Sharing)
+				{
+					if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+							UCataclysmTargeting::AbilitySystemOf(Ally)))
+					{
+						FCataclysmLastBlow Blow = Bonded ? Bonded->GetLastBlow() : FCataclysmLastBlow();
+						Blow.KillingTags = EachShare >= Theirs->GetNumericAttribute(GetHealthAttribute())
+							? AssetTags
+							: FGameplayTagContainer();
+						Theirs->RecordLastBlow(MoveTemp(Blow));
+					}
+					UCataclysmSkillEffects::ReduceHealthDirectly(GetOwningActor(), Ally, EachShare);
+				}
 			}
 
 			// AND A HIT OF A CATACLYSM TYPE THIS CHARACTER DOES NOT SHARE

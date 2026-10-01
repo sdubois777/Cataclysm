@@ -227,6 +227,21 @@ public:
 	static void SharedBloodStep(AActor* Character, float SecondsInStep, bool bFill);
 
 	/**
+	 * The most health healing may bring this character to. Issue #1607: maximum
+	 * health times `CeilingShare`, less the healing ceiling's reduction (Point of
+	 * No Return, and the enchantments that say "cannot be healed above"), and
+	 * never above what reservation leaves (issue #1833).
+	 *
+	 * `TopUp` ASKS IT FOR EVERY HEAL OF HEALTH, and every heal of a player's
+	 * health goes through `TopUp`; Living Pyre's was the last that did not, until
+	 * issue #1608. A caller that must know whether healing could do anything
+	 * before paying for it asks it too: Wrung Out, issue #1607. A full refill on
+	 * a new life is not healing and does not ask it.
+	 */
+	static float HealthHealingCeiling(const UAbilitySystemComponent& AbilitySystem,
+									  float CeilingShare = 1.0f);
+
+	/**
 	 * Adds to one pool, stopping at its maximum.
 	 *
 	 * ASKED AND ANSWERED IN ONE PLACE because all three pools behave the same

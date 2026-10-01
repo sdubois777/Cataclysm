@@ -18,6 +18,8 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
+#include "Character/CataclysmSpireCharacter.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
@@ -1447,6 +1449,284 @@ CATACLYSM_MODIFIER_TEST(FCataclysmUnholySigilTest,
 	TestFalse(TEXT("and stepping out of it ends the protection at once"),
 			  UCataclysmEnemyModifiers::IsProtectedBySigil(Ally));
 
+	return true;
+}
+
+namespace CataclysmBondAndSigilTest
+{
+	/**
+	 * A Monsters-team creature at a place, with this much health, that cannot
+	 * evade or block, so every blow here lands whole and the same way twice.
+	 */
+	ACataclysmEnemyCharacter* Creature(UWorld* World, const FVector& Where, float Health)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (!Made)
+		{
+			return nullptr;
+		}
+		Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Made->SetHealth(Health);
+		if (UAbilitySystemComponent* Own = Made->GetAbilitySystemComponent())
+		{
+			Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		}
+		return Made;
+	}
+
+	/** A player well away from every creature, whose blows never land critically. */
+	ACataclysmPlayerCharacter* Striker(UWorld* World)
+	{
+		ACataclysmPlayerCharacter* Player =
+			CataclysmEnemyModifierTest::SpawnPlayerWithState(World);
+		if (Player)
+		{
+			Player->SetActorLocation(FVector(0.0f, 5000.0f, 0.0f));
+			if (UAbilitySystemComponent* Own = Player->GetAbilitySystemComponent())
+			{
+				Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 0.0f);
+			}
+		}
+		return Player;
+	}
+
+	float HealthOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* Own =
+			Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return Own ? Own->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
+	float BaseHealthOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* Own =
+			Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return Own ? Own->GetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
+	/** Lay the caster's sigil: twenty seconds of quarter-second steps. */
+	void LaySigil(ACataclysmEnemyCharacter* Caster)
+	{
+		Caster->ModifierRows.Add(FName(UCataclysmEnemyModifiers::UnholySigilsRow));
+		for (int32 Step = 0; Step < 80; ++Step)
+		{
+			UCataclysmEnemyModifiers::TimedStep(Caster, 0.25f);
+		}
+	}
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondSharesABlowTest,
+	"Cataclysm.EnemyModifiers.ABondedCreatureSharesALandedBlowEvenlyWithItsAlly")
+{
+	// ISSUE #1559. Until it, `ShareOfDamageKept` answered and nothing asked, so
+	// the test above passed while a bonded creature took every hit in full. So
+	// this one lands a real blow through the damage pipeline.
+	using namespace CataclysmBondAndSigilTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Ally = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a bonded creature"), Bonded)
+		|| !TestNotNull(TEXT("an ally"), Ally) || !TestNotNull(TEXT("a control"), Control))
+	{
+		return false;
+	}
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+
+	// THE WHOLE BLOW, MEASURED ON A CREATURE WITH NO BOND, so the shares below are
+	// compared with what the same blow does rather than with a number typed here.
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Control, 1000.0f, FCataclysmHitDelivery());
+	const float Whole = 100000.0f - HealthOf(Control);
+	if (!TestTrue(TEXT("the blow takes health from a creature with no bond"), Whole > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+	TestEqual(TEXT("the bonded creature loses half the blow"),
+			  100000.0f - HealthOf(Bonded), Whole * 0.5f, 0.01f);
+	TestEqual(TEXT("and its ally loses the other half"),
+			  100000.0f - HealthOf(Ally), Whole * 0.5f, 0.01f);
+
+	// AND AN ALLY THE SHARE KILLS IS THE PLAYER'S KILL. Ruled 2026-09-30: a death
+	// notice names its killer from the victim's last blow, so on-kill effects
+	// such as Wrung Out fire for a death the player's blow caused.
+	Ally->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the world's combat announcer"), Events))
+	{
+		return false;
+	}
+	int32 AllyDeaths = 0;
+	bool bNamedThePlayer = false;
+	const FDelegateHandle Heard = Events->OnDeath.AddLambda(
+		[&AllyDeaths, &bNamedThePlayer, Ally, Player](const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == Ally)
+			{
+				++AllyDeaths;
+				bNamedThePlayer |= Notice.Killer == Player;
+			}
+		});
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+	Events->OnDeath.Remove(Heard);
+
+	TestEqual(TEXT("the ally's share killed it, once"), AllyDeaths, 1);
+	TestTrue(TEXT("and its death names the player as the killer"), bNamedThePlayer);
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondKeepsAllWithNoAllyTest,
+	"Cataclysm.EnemyModifiers.ABondedCreatureWithNoCreatureToShareWithKeepsTheWholeBlow")
+{
+	// NOBODY IN REACH, AND NOTHING THAT IS NOT AN ALLY IN THE ROW'S SENSE. Issue
+	// #1559, ruled 2026-09-30: a floor-rule object, a creature that cannot be
+	// hurt and a shrouded creature are all beside it, and it still keeps the
+	// whole blow.
+	using namespace CataclysmBondAndSigilTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Unhurt = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Shrouded = Creature(World, FVector(0.0f, 200.0f, 0.0f), 100000.0f);
+	ACataclysmSpireCharacter* Spire = World->SpawnActor<ACataclysmSpireCharacter>(
+		FVector(-200.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a bonded creature"), Bonded)
+		|| !TestNotNull(TEXT("a control"), Control) || !TestNotNull(TEXT("an unhurt creature"), Unhurt)
+		|| !TestNotNull(TEXT("a shrouded creature"), Shrouded) || !TestNotNull(TEXT("a spire"), Spire))
+	{
+		return false;
+	}
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	Unhurt->bCannotBeHurt = true;
+	Shrouded->bShrouded = true;
+	Spire->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Spire->SetHealth(100000.0f);
+
+	// THE THREE ARE FOUND BY THE ALLY SEARCH, which is what makes the rest of
+	// this test about the bond refusing them rather than about the search
+	// missing them.
+	const TArray<AActor*> Found = UCataclysmTargeting::FindAlliesInSphere(
+		World, Bonded, Bonded->GetActorLocation(), 600.0f);
+	TestTrue(TEXT("the ally search finds the spire"), Found.Contains(Spire));
+	TestTrue(TEXT("and the creature that cannot be hurt"), Found.Contains(Unhurt));
+	TestTrue(TEXT("and the shrouded creature"), Found.Contains(Shrouded));
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Control, 1000.0f, FCataclysmHitDelivery());
+	const float Whole = 100000.0f - HealthOf(Control);
+	if (!TestTrue(TEXT("the blow takes health from a creature with no bond"), Whole > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+	TestEqual(TEXT("the bonded creature keeps the whole blow"),
+			  100000.0f - HealthOf(Bonded), Whole, 0.01f);
+	TestEqual(TEXT("and the spire loses nothing"), HealthOf(Spire), 100000.0f, 0.01f);
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmSigilHoldsALethalBlowTest,
+	"Cataclysm.EnemyModifiers.ALethalBlowLeavesACreatureInAnUnholySigilAtOneHealth")
+{
+	// "ALLIES IN THIS SIGIL CANNOT BE KILLED." Issue #1559. Until it, a creature
+	// in a sigil died like any other while the log said a sigil was down.
+	using namespace CataclysmBondAndSigilTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Caster = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Inside = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Outside = Creature(World, FVector(3000.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a caster"), Caster)
+		|| !TestNotNull(TEXT("a creature inside"), Inside)
+		|| !TestNotNull(TEXT("a creature outside"), Outside))
+	{
+		return false;
+	}
+	LaySigil(Caster);
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Inside, 100000.0f, FCataclysmHitDelivery());
+	TestFalse(TEXT("a lethal blow does not kill a creature inside the sigil"),
+			  UCataclysmSkillEffects::IsDead(Inside));
+	TestEqual(TEXT("it is left at one health"), HealthOf(Inside), 1.0f, 0.001f);
+	TestEqual(TEXT("and its stored base agrees, so a later gain starts from one"),
+			  BaseHealthOf(Inside), 1.0f, 0.001f);
+
+	// THE CONTROL: THE SAME BLOW OUTSIDE THE SIGIL KILLS.
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Outside, 100000.0f, FCataclysmHitDelivery());
+	TestTrue(TEXT("the same blow outside the sigil kills"),
+			 !IsValid(Outside) || UCataclysmSkillEffects::IsDead(Outside));
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmSigilHoldsABondShareTest,
+	"Cataclysm.EnemyModifiers.ABondsShareDoesNotKillAnAllyInAnUnholySigil")
+{
+	// THE TWO MODIFIERS TOGETHER. Issue #1559, ruled 2026-09-30: the bond's
+	// shares arrive as direct reductions, and the sigil holds every way health is
+	// lowered, so an ally in a sigil survives a share that would kill it.
+	using namespace CataclysmBondAndSigilTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE CASTER STANDS OUT OF THE BOND'S SIX METRES, SO THE SHARE IS A HALF. The
+	// sigil reaches twelve metres from the caster, so the ally ten metres from the
+	// caster is inside it.
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Caster = Creature(World, FVector(1200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Ally = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a caster"), Caster)
+		|| !TestNotNull(TEXT("a bonded creature"), Bonded) || !TestNotNull(TEXT("an ally"), Ally))
+	{
+		return false;
+	}
+	LaySigil(Caster);
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	if (!TestTrue(TEXT("the ally stands in the sigil"),
+				  UCataclysmEnemyModifiers::IsProtectedBySigil(Ally))
+		|| !TestEqual(TEXT("and the bond shares with the ally alone"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.5f, 0.001f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 100000.0f, FCataclysmHitDelivery());
+	TestTrue(TEXT("the bonded creature took its half"), HealthOf(Bonded) < 100000.0f);
+	TestFalse(TEXT("a share that would kill the ally in the sigil does not"),
+			  UCataclysmSkillEffects::IsDead(Ally));
+	TestEqual(TEXT("it is left at one health"), HealthOf(Ally), 1.0f, 0.001f);
 	return true;
 }
 

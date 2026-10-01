@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
@@ -4152,54 +4153,39 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 	// says "returns health", with no duration, against the design's leech
 	// section which states one.
 	//
-	// CAPPED AT MAXIMUM HEALTH, which `SetHealth` would not do on its own, LESS
-	// WHAT IS RESERVED: issue #1833, ruled 2026-09-30, every heal stops there.
-	// This one does not pass through `UCataclysmRegeneration::TopUp`, so it
-	// asks here.
-	using Vitals = UCataclysmVitalAttributeSet;
-	const UCataclysmAbilitySystemComponent* Reserving =
-		Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
-	const float Maximum = Reserving
-		? Reserving->UnreservedMaximumHealth()
-		: AbilitySystem->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
-	const float Current =
-		AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
-	const float Offered = DealtToHealth * Params.HealthFromHitTaken / 100.0f;
-
-	// AND A CURSE MAY CUT HOW MUCH OF IT ARRIVES. Issue #41, slice 5. The
-	// dungeon modifier Death's Embrace reduces healing received, and the project
-	// owner ruled on 2026-09-12 that this counts: the stat covers every route
-	// that restores health, and returning health from a blow taken is one.
+	// THROUGH `UCataclysmRegeneration::TopUp`, LIKE EVERY OTHER HEAL OF HEALTH.
+	// Issues #1607 and #1608, ruled 2026-09-30. So this heal obeys:
+	// - the healing ceiling, then what is reserved: Point of No Return's "You
+	//   cannot be healed above 50% of your maximum health" did not hold here
+	//   until then;
+	// - the received-healing reduction, which the dungeon modifier Death's
+	//   Embrace writes, and which the project owner ruled on 2026-09-12 covers
+	//   this route;
+	// - and the design's "Healing removes Fervour at the same rate", which names
+	//   no source. Until this change the health returned here removed no Fervour.
+	// The held-swing forbid comes with it and never refuses this: only the
+	// Greatsword's The Whole Weight sets it, and a character holds one weapon.
 	//
-	// HERE AND NOT IN A HELPER SHARED WITH `UCataclysmRegeneration::TopUp`, AND
-	// THAT IS THE POINT. A helper would carry the healing ceiling as well, and
-	// this skill escaping the ceiling is a separate open question -- issue #1607,
-	// with issue #1608 for there being nowhere to put either. So the reduction
-	// lands here on its own and the ceiling stays off, rather than this change
-	// deciding #1607 in passing.
+	// NO HEALING TAGS, as leech passes none, so no passive node is scoped to
+	// this heal.
 	//
-	// OFF THE ABILITY SYSTEM, SO IT WORKS FOR WHOEVER HOLDS THE AURA rather than
-	// for a player alone. Nothing grants the stat to a creature today; the
-	// enchantment row "Disease effects reduce enemy healing by 50%-100%" is what
-	// will.
+	// WHAT ARRIVED IS READ OFF HEALTH, because `TopUp` does not return it.
 	//
-	// THE PYRE STILL GETS HOTTER. `BlowsTaken` is counted above this, and the
+	// THE PYRE'S DAMAGE STILL RISES. `BlowsTaken` is counted above this, and the
 	// row ties its 8% per hit to the hits taken rather than to the health
-	// returned, so a curse that cuts the healing does not cool the fire.
-	const float AmountReduction = FMath::Clamp(
-		AbilitySystem->GetNumericAttribute(
-			Vitals::GetHealingReceivedReductionAttribute()),
-		0.0f, 100.0f);
-	const float Wanted = Offered * (100.0f - AmountReduction) / 100.0f;
-	const float Given = FMath::Clamp(Wanted, 0.0f, FMath::Max(0.0f, Maximum - Current));
+	// returned, so a reduction that cuts the healing does not cut the damage.
+	using Vitals = UCataclysmVitalAttributeSet;
+	const float Before = AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Vitals::GetHealthAttribute(),
+								  Vitals::GetMaxHealthAttribute(),
+								  DealtToHealth * Params.HealthFromHitTaken / 100.0f);
+	const float Given = AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute()) - Before;
 
 	if (Given <= 0.0f)
 	{
 		return 0.0f;
 	}
 
-	AbilitySystem->ApplyModToAttribute(Vitals::GetHealthAttribute(),
-									   EGameplayModOp::Additive, Given);
 	HealthReturned += Given;
 
 	UE_LOG(LogCataclysm, Verbose,

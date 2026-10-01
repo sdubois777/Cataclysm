@@ -681,10 +681,16 @@ float UCataclysmFervour::RestoreHealthOnKill(UAbilitySystemComponent* AbilitySys
 	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
 	const float Before = AbilitySystem->GetNumericAttribute(Health);
 
-	// NOTHING TO RESTORE IS NOTHING TO BUY. A character already at full health
-	// keeps its Fervour: paying for a restoration that restores nothing is a
-	// cost with no effect, and no sentence describes one.
-	if (Maximum <= 0.0f || Before >= Maximum)
+	// NOTHING TO RESTORE IS NOTHING TO BUY. A character already as high as
+	// healing may bring it keeps its Fervour: paying for a restoration that
+	// restores nothing is a cost with no effect, and no sentence describes one.
+	//
+	// "AS HIGH AS HEALING MAY BRING IT", NOT "AT FULL HEALTH". Issue #1607,
+	// ruled 2026-09-30: until then this compared with maximum health, so a player
+	// at the healing ceiling or with health reserved paid five Fervour and
+	// `TopUp` below restored nothing.
+	if (Maximum <= 0.0f
+		|| Before >= UCataclysmRegeneration::HealthHealingCeiling(*AbilitySystem))
 	{
 		return 0.0f;
 	}

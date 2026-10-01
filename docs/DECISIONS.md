@@ -2,6 +2,234 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Sacrificial Bond now divides a blow among the creature's allies, and Unholy Sigils now keeps a creature standing in one from dying
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the health clamp in
+`PreAttributeChange`, and the damage branch of `PostGameplayEffectExecute`),
+`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (`ShareOfDamageKept` now also says
+who shares) and `game/Source/Cataclysm/Tests/CataclysmEnemyModifierTests.cpp` (four tests). Issue
+[#1559](https://github.com/sdubois777/Cataclysm/issues/1559), ruled by the coordinating session on 2026-09-30
+under the owner's delegation.
+
+### WHAT CHANGES IN PLAY
+
+Until this change both Demonic creature modifiers worked out their effect and nothing used it. The entry of
+2026-09-05, "The remaining six Demonic enemy modifiers, and a debuff that stacks", described both as built.
+
+- **Sacrificial Bond**, "All damage taken is redirected and divided among nearby allies". A blow that reaches
+  a bonded creature's health is now divided evenly between it and each ally within six metres. One ally
+  halves what the creature loses, and three leave it a quarter. The allies lose the rest at once.
+- **Unholy Sigils**, "Allies in this sigil cannot be killed". A creature inside a friendly caster's live
+  sigil is now left at one health by anything that would kill it. That covers a blow, a direct reduction of
+  health, and a write to its health. A creature that walks out of the sigil can be killed by the next blow.
+
+### HOW EACH IS BUILT
+
+- **The sigil is a clamp in `PreAttributeChange`**, next to the existing holds for a creature that cannot be
+  hurt and for a shrouded one. That function runs for every way health is lowered.
+  - The search for a sigil runs only for a write that would kill.
+  - That function clamps only the current value, so the damage branch writes the stored base back to match.
+    This is the same write-back the health branch already makes for The Reaper.
+  - The blow's announcement no longer calls it lethal.
+- **The bond's split happens in the damage branch only.** The allies' shares are direct reductions of
+  health (`UCataclysmSkillEffects::ReduceHealthDirectly`).
+  - Those never return to the damage branch, so an ally that is bonded too cannot pass its share on again.
+  - The shares are not met again by the allies' armour and resistances. The blow was already resolved
+    against the bonded creature's armour and resistances, and the row says "redirected".
+  - The record of the blow (`Outcome`) is not changed, so whoever struck still leeches and is told of the
+    whole blow.
+
+### THE RULINGS AND JUDGEMENTS
+
+- **One health is the sigil's floor. This is a judgement:** the row gives no figure, and one is the least
+  that is still alive. A creature already below one keeps what it has.
+- **An ally the bond can share with is a creature that can lose health.** Excluded:
+  - every floor-rule object: spires, beacons, carcasses, portals and the rest, all of which derive from
+    `ACataclysmFloorSourceCharacter`;
+  - a creature that cannot be hurt;
+  - a shrouded creature.
+  The coordinating session ruled that floor-rule objects are not allies in the row's sense, and that a
+  bonded creature must not push damage onto an objective. The other two would take a share and lose
+  nothing, which would halve the blow at no cost.
+  A creature standing in a sigil still counts, so a sigil protects an ally from its share as well.
+- **A player's thrall or minion is never an ally of a bonded creature.** The ally search
+  (`UCataclysmTeams::AttitudeBetween`) calls a creature friendly only when it shares an owner chain or a
+  team. Taking a thrall gives it the commander's team (`CataclysmCommand.cpp`, `SetGenericTeamId`), and a
+  minion gets its summoner's (`CataclysmMinion.cpp`).
+- **A death the bond causes is the striker's kill.** Before each ally's share, the ally is given a copy of
+  the blow's record, with the killing tags added when the share is enough to kill. On-kill effects such as
+  Wrung Out read the victim's last blow, and a direct reduction leaves none. Loot and experience already
+  came to the player for every creature death.
+  - **A judgement, ruled:** Follow Through counts a redirected melee kill as the player's own, because the
+    player's melee blow caused it.
+  - Damage-over-time effects carry granted tags as well, and those are not copied into the ally's killing
+    tags. Only the blow's own tags are.
+
+### HOW IT IS CHECKED
+
+Four tests, each landing a real blow from a player through the damage pipeline. Every creature has evasion
+and block set to zero, and the player has no critical strike chance.
+
+- `ABondedCreatureSharesALandedBlowEvenlyWithItsAlly`:
+  - The same blow is measured on a creature with no bond.
+  - With one ally beside it, the bonded creature and the ally each lose half of that.
+  - An ally at one health dies from its share, and its death names the player as the killer.
+- `ABondedCreatureWithNoCreatureToShareWithKeepsTheWholeBlow`:
+  - The ally search does find a spire, a creature that cannot be hurt and a shrouded creature beside it.
+  - The bonded creature still keeps the whole blow, and the spire loses nothing.
+- `ALethalBlowLeavesACreatureInAnUnholySigilAtOneHealth`:
+  - Inside the sigil, a lethal blow leaves the creature at one health, and its stored base is one as well.
+  - The same blow outside the sigil kills.
+- `ABondsShareDoesNotKillAnAllyInAnUnholySigil`:
+  - A share that would kill an ally standing in a sigil leaves it at one health.
+
+The existing tests `SacrificialBondDividesAHitAmongTheAlliesPresent` and
+`AnUnholySigilProtectsAlliesStandingInIt` call the two functions directly, and are kept.
+
+### THE WINDOW'S RUN, FOR THIS ENTRY AND THE ONE BELOW
+
+This change was built and tested in one window with the Living Pyre change below it (issues #1607 and #1608),
+stacked on `development` 37660116: the Pyre branch's three commits, this one, and one fix. Run 2026-09-30 in
+the jovial-bouman worktree. **The Pyre entry carries no run table of its own; this one is its run as well.**
+
+**The first whole suite failed, and the window was stopped.** At 5dd870c5 it printed one failure,
+`Cataclysm.DungeonModifierEffects.AFloorClearedInTimeEndsItsTrialOfEndurance`: "Expected 'the beacon was
+destroyed' to be true". That test strikes every creature the game populated the floor with, once each, and
+expects each to die. Those creatures draw modifiers at random, and two on that floor had drawn Sacrificial
+Bond. **That the Bond was the cause is inferred, not shown: the log does not say which creature survived
+the blow.** It is the only change in the window that touches that path.
+
+The fix is in the tests, as the coordinating session ruled: the game now does what this entry describes.
+`MakeAOneBlowKillReliable`, in `CataclysmDungeonModifierEffectsTests.cpp`, removes only the Sacrificial Bond
+row from a creature a test means to kill with one blow, and asserts that no Unholy Sigil holds it.
+- The kill helpers `KillIt`, `BreakOrKill` and `DestroyTheBeacon` call it, and so do the Plague Harbinger
+  and Luxury Hoard kills.
+- Every other row stays, so the Horde Leader test keeps the row it is about.
+- A sigil is named rather than removed. No killing test runs a creature's own clock the twenty seconds a
+  sigil takes to be laid.
+- A sweep of all 186 test files found the tests those helpers serve. Ten call sites in nine tests reach those
+  helpers with a victim that can draw the Bond, and two kills are written out directly: the Harbinger and
+  the Hoard.
+
+**The second whole suite ran with the random draws as they came, not seeded**, which is the evidence the fix
+holds rather than a single lucky draw.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 5dd870c5 | Build: Succeeded - 31 actions, 28 files compiled |
+| First whole suite | 5dd870c5 | 2928 tests performed, 2927 succeeded, 1 failed: AFloorClearedInTimeEndsItsTrialOfEndurance |
+| Python of record | 5dd870c5 | 5593 passed, 8 skipped in 405.36s; JUnit tests=5601 failures=0 errors=0 skipped=8 |
+| Rebuild after the test fix | c3915feb | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.25.cpp |
+| Group rerun | c3915feb | DungeonModifierEffects: 480 tests performed, 480 succeeded, 0 failed |
+| Python, test fix only | c3915feb | tools/tests: 3776 passed, 8 skipped in 42.90s; JUnit tests=3784 failures=0 errors=0 skipped=8 |
+| Second whole suite | c3915feb | 2928 tests performed, 2928 succeeded, 0 failed; declared 2928, gap 0 (registered 2922 + 6) |
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| A: Living Pyre writes its health straight back instead of through `TopUp` | c3915feb | PROVED: with the break in: 268 tests performed, 265 succeeded, 3 failed: ACurseCutsTheLivingPyresReturnWithoutCoolingThePyre, TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes, TheLivingPyreStopsAtTheHealingCeiling \| restored: 268 tests performed, 268 succeeded, 0 failed |
+| B: Wrung Out compares with maximum health, not the ceiling | c3915feb | PROVED: with the break in: 139 tests performed, 138 succeeded, 1 failed: WrungOutSpendsNothingAtTheHealingCeiling \| restored: 139 tests performed, 139 succeeded, 0 failed |
+| P1: the bonded creature keeps the whole blow | c3915feb | PROVED: with the break in: 38 tests performed, 36 succeeded, 2 failed: ABondedCreatureSharesALandedBlowEvenlyWithItsAlly, ABondsShareDoesNotKillAnAllyInAnUnholySigil \| restored: 38 tests performed, 38 succeeded, 0 failed |
+| P2: the sigil clamp never holds | c3915feb | PROVED: with the break in: 38 tests performed, 36 succeeded, 2 failed: ABondsShareDoesNotKillAnAllyInAnUnholySigil, ALethalBlowLeavesACreatureInAnUnholySigilAtOneHealth \| restored: 38 tests performed, 38 succeeded, 0 failed |
+| P3: a floor-rule object counts as an ally | c3915feb | PROVED: with the break in: 38 tests performed, 37 succeeded, 1 failed: ABondedCreatureWithNoCreatureToShareWithKeepsTheWholeBlow \| restored: 38 tests performed, 38 succeeded, 0 failed |
+
+**Five proved, all at the top commit.** Kill credit, the copied record of the blow, is checked by the first
+Bond test's last two assertions and is not proved by a break.
+
+**A scan did not reach the new tests.** `stale_creature_scan` cannot read `CataclysmEnemyModifierTests.cpp`,
+which defines its tests with its own macro. The four tests added there never change floor, which is what
+that scan looks for.
+
+---
+
+## 2026-09-30 — Living Pyre heals through the same function as every other heal, so the healing ceiling holds on it and its returned health removes Fervour; Wrung Out no longer charges at the ceiling
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (the new
+`UCataclysmRegeneration::HealthHealingCeiling`, which `TopUp` asks),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmAuraSkill::NoteBlowTaken` now
+heals through `TopUp`), `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp` (Wrung Out's check before
+it charges), `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (one test and one assertion) and
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (one test). Issues
+[#1607](https://github.com/sdubois777/Cataclysm/issues/1607) and
+[#1608](https://github.com/sdubois777/Cataclysm/issues/1608), ruled by the coordinating session on 2026-09-30.
+
+### WHAT CHANGES IN PLAY
+
+Three things change.
+
+1. **The healing ceiling now holds on Living Pyre.** Point of No Return reads "You cannot be healed above 50%
+   of your maximum health", and the enchantment rows that say "cannot be healed above" 60% or 75% write the
+   same stat. Until this change the Fist Ultimate Living Pyre, which "returns health equal to 25% of the
+   damage that hit dealt", healed past that ceiling, up to the maximum less what is reserved. A holder
+   already above the ceiling gains nothing from a blow and is not pulled down to it.
+2. **Health returned by Living Pyre now removes Fervour**, at the class's "Fervour lost to healing" rate,
+   like every other heal. For the Masochist that is one Fervour per 1% of maximum health returned. The
+   design's rule, "Healing removes Fervour at the same rate", names no source. Until this change the Pyre's
+   heal removed none, because it did not go through `TopUp`, which is where healing removes Fervour (issue
+   #954).
+3. **Wrung Out no longer charges for a heal that cannot happen.** "Killing an enemy spends 5 Fervour to
+   restore 1% of your maximum health per point" refused to charge only at full health. A player at the
+   healing ceiling, or with health reserved and at the unreserved maximum, paid five Fervour and was healed
+   by nothing. It now refuses when health is already as high as healing may bring it. The code's own comment
+   already said a restoration that restores nothing should cost nothing.
+
+### THE RULINGS
+
+- "One function answers 'the most health this character may be healed to' (the healing ceiling, then
+  reservation)." That function is `HealthHealingCeiling`: maximum health, times the share a caller allows (1
+  for every heal of health today), less the healing ceiling's reduction, and never above
+  `UnreservedMaximumHealth`. `TopUp`'s health branch computed exactly this inline and now calls it, so no
+  heal that already went through `TopUp` changes by a single number.
+- On issue #1608: route Living Pyre's heal through `TopUp` itself, "so the healing-received reduction and the
+  held-swing forbid come with it". Then the ruling on the one part of `TopUp` that changes play, its Fervour
+  removal: "YES. The Pyre's returned health removes Fervour like every other heal ... a per-caller skip
+  switch would recreate the two-route problem #1608 describes."
+- On Wrung Out: "FOLD IT IN. It is the same 'most health this character may be healed to' question."
+
+**This closes issue #1608, the two-route problem.** It recorded that health was restored by two routes,
+`TopUp` and Living Pyre, so each rule about healing had to be written into both. Living Pyre now calls
+`TopUp`. Its own copy of the received-healing reduction is deleted, and every rule `TopUp` applies reaches
+it. Of those rules, the held-swing forbid comes with the route but never refuses the Pyre: only the
+Greatsword's The Whole Weight sets it, and a character holds one weapon. The Pyre passes no healing tags,
+as leech passes none, so no passive node is scoped to its heal.
+
+### THE SWEEP FOR EVERY OTHER HEAL, 2026-09-30, AT `development` fce1ab9b
+
+The ruling asked for every other heal that stops at the unreserved maximum without the ceiling. **There was
+none besides Living Pyre.** Every other heal of a player's health already went through `TopUp` and so read
+the ceiling: health regeneration, life leech, potions, the pool actions, Wrung Out's restoration on a kill,
+Long Hold, and the Medic's pulse. Long Hold has the same full-health check as Wrung Out had, but it charges
+nothing, so at the ceiling it does nothing and costs nothing. It is left as it is.
+
+| Writes health directly | Reads the ceiling? | Why |
+| :-- | :-- | :-- |
+| `ACataclysmPlayerCharacter::Revive` | no | a respawn is a new life, not healing; the older entry headed "A respawn is not healing and is not capped" says so |
+| possession's fill to maximum | no | the same: a full pool on taking a new body, not a heal |
+| a saved game loading | no | restores a stored value |
+| Sacrifice | no | an enemy devouring an ally; no enemy carries the ceiling. Issue [#1611](https://github.com/sdubois777/Cataclysm/issues/1611) is its own question |
+
+**The sentence "Health is restored in THREE places" in the entry on healing reduction, further down, is
+history and stays as written.** Its table's Living Pyre row, "no, #1607", is the row this change answers.
+
+### HOW IT IS CHECKED
+
+- `Cataclysm.Skills.TheLivingPyreStopsAtTheHealingCeiling`, new. A holder with the ceiling reduced by 50 is
+  at 49,990 of 100,000 health and takes a blow dealing 400. The Pyre returns 10, not 100, and health stops
+  at 50,000. At 60,000, a second blow returns nothing and leaves health at 60,000.
+- `Cataclysm.Skills.TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes`, one assertion added. With no
+  ceiling, the same blow still returns 100. With the Masochist's rate of one Fervour per 1% of maximum health
+  restored, the 100 returned (0.1% of 100,000) takes Fervour from 40 to 39.9.
+- `Cataclysm.Passives.WrungOutSpendsNothingAtTheHealingCeiling`, new. A real Ravager holding Wrung Out, at
+  half health with the ceiling at half, kills an enemy. It keeps all 50 Fervour, and its health does not
+  change.
+
+**On the owner's play-check list**, added by the coordinating session: Living Pyre on a Masochist, and
+whether its Fervour loss feels right.
+
+**Its run is in the entry above**, on Sacrificial Bond and Unholy Sigils, which was built and tested in the
+same window on top of this change.
+
+---
+
 ## 2026-09-30 — A critical strike or retaliation can apply a random damage over time, and a triggered action row waits a quarter second after it fires
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`

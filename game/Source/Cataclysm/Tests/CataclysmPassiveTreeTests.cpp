@@ -12330,6 +12330,60 @@ bool FCataclysmWrungOutFullHealthTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrungOutCeilingTest,
+	"Cataclysm.Passives.WrungOutSpendsNothingAtTheHealingCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A player as high as healing may bring it pays nothing for a kill. Issue #1607,
+ * ruled 2026-09-30.
+ *
+ * HALF HEALTH WITH THE CEILING AT HALF. Point of No Return's reduction of 50
+ * means healing can bring this player no higher than it already is, so the
+ * restoration would restore nothing. Until the ruling Wrung Out compared with
+ * maximum health, took five Fervour here, and restored nothing.
+ */
+bool FCataclysmWrungOutCeilingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Victim = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy to kill"), Victim))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(WrungOut), WrungOutPoints}});
+	Player.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute(), 50.0f);
+	HalfHealth(Player);
+	GiveFervour(Player, 50.0f);
+
+	const float HealthBefore = HealthOf(Player);
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, Victim);
+
+	TestEqual(TEXT("at the healing ceiling a kill spends no Fervour"),
+			  FervourOf(Player), 50.0f, 0.001f);
+	TestEqual(TEXT("and restores no health"), HealthOf(Player), HealthBefore, 0.01f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrungOutControlTest,
 	"Cataclysm.Passives.AKillWithoutWrungOutRestoresNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
