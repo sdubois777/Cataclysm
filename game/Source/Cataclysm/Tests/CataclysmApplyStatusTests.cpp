@@ -178,8 +178,9 @@ namespace CataclysmApplyStatusTest
 
 	/**
 	 * A creature of the monsters' side with a thousand health, so a tenth is 100,
-	 * AND NO EVASION: a blow that should land must not be dodged. Asserted by the
-	 * tests, which read its health after each blow.
+	 * AND NO EVASION, ARMOUR OR BLOCK: a blow that should land must not be dodged,
+	 * and its size must not hang on a roll. Asserted by the tests, which read its
+	 * health after each blow.
 	 */
 	ACataclysmEnemyCharacter* SpawnEnemy(UWorld* World, const FVector& Where)
 	{
@@ -189,9 +190,12 @@ namespace CataclysmApplyStatusTest
 		{
 			Actor->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
 			Actor->SetHealth(1000.0f);
+			Actor->SetArmour(0.0f);
 			if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor))
 			{
+				System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
 				System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+				System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
 			}
 		}
 		return Actor;

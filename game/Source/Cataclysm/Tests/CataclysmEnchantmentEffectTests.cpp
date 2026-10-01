@@ -11453,4 +11453,447 @@ bool FCataclysmResourceConsumedRowsTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmApplyStatusRowTest
+{
+	/**
+	 * Pins one console variable for the life of this object, at the console's
+	 * own priority, restoring the previous value the same way, as
+	 * `CataclysmTestWorld::FScopedCritRoll` does.
+	 */
+	struct FPinned
+	{
+		FPinned(const TCHAR* Name, float Value)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		~FPinned()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	FGameplayTag TagNamed(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	bool Carries(const AActor* Actor, const FGameplayTag& Granted)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System && Granted.IsValid() && System->HasMatchingGameplayTag(Granted);
+	}
+
+	/** The longest time left on anything granting `Granted` on `Actor`, or zero. */
+	float SecondsLeftOn(const AActor* Actor, const FGameplayTag& Granted)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		float Longest = 0.0f;
+		if (System && Granted.IsValid())
+		{
+			for (const float Seconds : System->GetActiveEffectsTimeRemaining(
+					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Granted))))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+		}
+		return Longest;
+	}
+
+	/** A blow of the striker's character on `Target`: critical or not, and a Strike skill's or not. */
+	float Blow(CataclysmConsecutiveRowTest::FStriker& Striker, ACataclysmEnemyCharacter* Target,
+		bool bCritical, bool bStrike)
+	{
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		UAbilitySystemComponent* Its = Target->GetAbilitySystemComponent();
+		const float Before = Its->GetNumericAttribute(Health);
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = bCritical ? 100.0f : 0.0f;
+		if (bStrike)
+		{
+			Delivery.Skill = Striker.Swing;
+		}
+		const CataclysmTestWorld::FScopedCritRoll Roll(0.0f);
+		UCataclysmSkillEffects::ApplyHit(Striker.Character, Target, /*DamagePercent=*/100.0f,
+			bStrike ? Striker.Swing->SkillTags : FGameplayTagContainer(), Delivery);
+		return Before - Its->GetNumericAttribute(Health);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalBleedRowTest,
+	"Cataclysm.Enchantments.TheCriticalBleedRowBleedsWhatARealCriticalStrikeHits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your critical strikes always cause bleeding". Issue #1833 group E part 1: a
+ * status action on `critical_strike`, Bleed, 100. WORN by a real player, whose
+ * real critical strike on a creature bleeds it, and whose ordinary blow on
+ * another bleeds nothing. Each blow takes over a tenth of the creature's ten
+ * thousand, so the owner's rule of #917 is met and is not what decides it.
+ */
+bool FCataclysmCriticalBleedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Your_critical_strikes_always_cause_bleeding"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	const FGameplayTag Bleed = TagNamed(TEXT("Keyword.DoT.Bleed"));
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready())
+		|| !TestTrue(TEXT("the bleed tag exists"), Bleed.IsValid()))
+	{
+		return false;
+	}
+	Striker.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 3000.0f);
+
+	const float Plain = Blow(Striker, Striker.Second, /*bCritical=*/false, /*bStrike=*/false);
+	if (!TestTrue(*FString::Printf(TEXT("an ordinary blow took over a tenth: %.1f"), Plain), Plain >= 1000.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("an ordinary blow bleeds nothing"), Carries(Striker.Second, Bleed));
+
+	const float Critical = Blow(Striker, Striker.First, /*bCritical=*/true, /*bStrike=*/false);
+	if (!TestTrue(*FString::Printf(TEXT("a critical blow landed, larger: %.1f"), Critical), Critical > Plain))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a critical strike bleeds what it hits. If not, DT_EnchantmentEffects may be older "
+				  "than the rows: run tools/generate_datatable_assets.py"),
+		Carries(Striker.First, Bleed));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRetaliationStatusRowsTest,
+	"Cataclysm.Enchantments.TheThreeRetaliationStatusRowsReachTheAttackerOfARealBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your retaliation damage also applies a bleed stack to the attacker",
+ * "Retaliation damage has a 20%-40% chance to stagger the attacker" and
+ * "Retaliation damage applies a 2-4 second slow to the attacker". Issue #1833
+ * group E part 1: status actions on `retaliation_dealt`. WORN together, worn
+ * rolls at the top of their ranges, and a creature's real blow on the wearer
+ * pays retaliation through the attribute set, which raises the event. The stagger
+ * roll is pinned at 0, under its chance; the slow is the Cripple row's own 30%
+ * for the top roll's 4 seconds.
+ */
+bool FCataclysmRetaliationStatusRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Bleed = TagNamed(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Cripple = UCataclysmSkillShapes::StatusTagFor(TEXT("Cripple"));
+	const FGameplayTag Staggered = UCataclysmSkillEffects::StaggeredTag();
+	if (!TestTrue(TEXT("the three tags exist"), Bleed.IsValid() && Cripple.IsValid() && Staggered.IsValid()))
+	{
+		return false;
+	}
+
+	FWearer Wearer(World);
+	const TPair<const TCHAR*, const TCHAR*> Worn[] = {
+		{TEXT("Head_Helm"), TEXT("Positive_Your_retaliation_damage_also_applies_a_bleed_sta")},
+		{TEXT("Chest_Cuirass"), TEXT("Positive_Retaliation_damage_has_a_20_40_chance_to_stagg")},
+		{TEXT("Shoulders_Pauldrons"), TEXT("Positive_Retaliation_damage_applies_a_2_4_second_slow_to")}};
+	for (const TPair<const TCHAR*, const TCHAR*>& Piece : Worn)
+	{
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(Carrying(Piece.Key, Piece.Value, DrawbackWithNoEffect),
+			Removed, AlsoRemoved, Slot);
+	}
+	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+	int32 Statuses = 0;
+	for (const FCataclysmPoolAction& Action : Wearer.AbilitySystem->GetPoolActions())
+	{
+		Statuses += Action.ApplyStatus != ECataclysmApplyStatus::None ? 1 : 0;
+	}
+	if (!TestEqual(TEXT("the three worn rows are three status actions"), Statuses, 3))
+	{
+		return false;
+	}
+	// RETALIATION OF 300 PER CENT, as a stat line and an attribute, written after
+	// the refresh. The rows are actions, kept apart from the stat lines.
+	TMap<FName, FCataclysmStatInputs> Lines;
+	Lines.FindOrAdd(FName(UCataclysmRetaliation::AmountStat)).Base = 300.0f;
+	Wearer.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 300.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(200.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("an attacker"), Attacker))
+	{
+		return false;
+	}
+	Attacker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Attacker->SetHealth(10000.0f);
+	Attacker->SetAttackDamage(500.0f);
+	Attacker->SetArmour(0.0f);
+	UAbilitySystemComponent* Its = Attacker->GetAbilitySystemComponent();
+	Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+	Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+
+	const FPinned Roll(TEXT("Cataclysm.StatusRoll"), 0.0f);
+	const float WearerBefore = Wearer.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float AttackerBefore = Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	UCataclysmSkillEffects::ApplyHit(Attacker, Wearer.Actor, /*DamagePercent=*/100.0f);
+	const float Taken = WearerBefore - Wearer.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float Paid = AttackerBefore - Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	if (!TestTrue(*FString::Printf(TEXT("the creature's blow landed: %.1f"), Taken), Taken > 0.0f)
+		|| !TestTrue(*FString::Printf(TEXT("and retaliation paid over a tenth of its ten thousand back: %.1f"), Paid),
+			Paid >= 1000.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the attacker bleeds"), Carries(Attacker, Bleed));
+	TestTrue(TEXT("the attacker is staggered"), Carries(Attacker, Staggered));
+	TestTrue(TEXT("the attacker is crippled"), Carries(Attacker, Cripple));
+	TestEqual(TEXT("for the top roll's 4 seconds"), SecondsLeftOn(Attacker, Cripple), 4.0f, 0.01f);
+	TestEqual(TEXT("at the Cripple row's own slow of 30"),
+		UCataclysmSkillEffects::StatedStrengthOn(Attacker, Cripple), 30.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeRandomDebuffRowTest,
+	"Cataclysm.Enchantments.TheStrikeRandomDebuffRowReachesAStrikeSkillsHitAndNotAPlainBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Strike skills have a 15%-30% chance to apply a random debuff on hit". Issue
+ * #1833 group E part 1: a status action on `hit_dealt`, Required Tags
+ * `Type.Strike`. WORN by a real player: a blow carrying a Strike skill puts the
+ * pinned debuff, Cripple, on the creature it hits; a plain blow puts nothing. The
+ * roll is pinned at 0, under the chance.
+ */
+bool FCataclysmStrikeRandomDebuffRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Strike_skills_have_a_15_30_chance_to_apply_a_r"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	const FGameplayTag Cripple = UCataclysmSkillShapes::StatusTagFor(TEXT("Cripple"));
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready())
+		|| !TestTrue(TEXT("the Cripple tag exists"), Cripple.IsValid()))
+	{
+		return false;
+	}
+	Striker.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 3000.0f);
+	const FPinned Roll(TEXT("Cataclysm.StatusRoll"), 0.0f);
+	const FPinned Pick(TEXT("Cataclysm.RandomDebuffPick"), 1.0f);
+
+	const float Plain = Blow(Striker, Striker.Second, /*bCritical=*/false, /*bStrike=*/false);
+	if (!TestTrue(*FString::Printf(TEXT("a plain blow took over a tenth: %.1f"), Plain), Plain >= 1000.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a plain blow applies no debuff"), Carries(Striker.Second, Cripple));
+
+	const float Struck = Blow(Striker, Striker.First, /*bCritical=*/false, /*bStrike=*/true);
+	if (!TestTrue(*FString::Printf(TEXT("a Strike skill's blow took over a tenth: %.1f"), Struck),
+			Struck >= 1000.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a Strike skill's blow puts the pinned Cripple on what it hits. If not, "
+				  "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		Carries(Striker.First, Cripple));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstHitStaggerRowTest,
+	"Cataclysm.Enchantments.TheFirstHitStaggerRowStaggersOnEachEnemysFirstBlowOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your first hit against each enemy has a 50%-100% chance to stagger them".
+ * Issue #1833 group E part 1: a status action on `first_hit_dealt`. WORN by a
+ * real player at the top of its roll, 100: its first blow on a creature staggers
+ * it; its second, once the stagger and the quarter second have passed, does not;
+ * and its first on another creature does.
+ */
+bool FCataclysmFirstHitStaggerRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Your_first_hit_against_each_enemy_has_a_50_100"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	const FGameplayTag Staggered = UCataclysmSkillEffects::StaggeredTag();
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the first blow on a creature lands"),
+			Blow(Striker, Striker.First, false, false) > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and staggers it. If not, DT_EnchantmentEffects may be older than the rows: "
+				  "run tools/generate_datatable_assets.py"),
+		Carries(Striker.First, Staggered));
+
+	CataclysmTestWorld::RunClock(Striker.World, 1.5f);
+	if (!TestFalse(TEXT("set-up: 1.5 seconds on the stagger has ended"), Carries(Striker.First, Staggered))
+		|| !TestTrue(TEXT("the second blow on it lands"), Blow(Striker, Striker.First, false, false) > 0.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and staggers nothing"), Carries(Striker.First, Staggered));
+
+	if (!TestTrue(TEXT("the first blow on another creature lands"),
+			Blow(Striker, Striker.Second, false, false) > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and staggers it"), Carries(Striker.Second, Staggered));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetStaggerRowTest,
+	"Cataclysm.Enchantments.TheGadgetStaggerRowStaggersWhatABallistaHitsOnceEveryFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Gadgets apply a 1-2 second stagger to enemies they hit, once every 5
+ * seconds". Issue #1833 group E part 1: a seconds status action on
+ * `deployable_hit`, Trigger Cooldown 5. WORN at the top of its roll, 2 seconds: a
+ * ballista's evaded blow staggers nothing and starts no cooldown; its landed blow
+ * staggers for 2 seconds; its next, at once, staggers nothing; and one 5.5
+ * seconds later staggers again.
+ */
+bool FCataclysmGadgetStaggerRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	using namespace CataclysmDeployablePart2Test;
+	using namespace CataclysmApplyStatusRowTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FSummoner Summoner(Scope.World, TEXT("Positive_Gadgets_apply_a_1_2_second_stagger_to_enemies_th"));
+	ACataclysmMinion* Ballista = Summoner.Make(TEXT("Ballista"));
+	ACataclysmEnemyCharacter* Evading = Victim(Summoner, /*Evasion=*/100.0f);
+	ACataclysmEnemyCharacter* First = Victim(Summoner);
+	ACataclysmEnemyCharacter* Next = Victim(Summoner);
+	ACataclysmEnemyCharacter* Later = Victim(Summoner);
+	const FGameplayTag Staggered = UCataclysmSkillEffects::StaggeredTag();
+	if (!TestNotNull(TEXT("a ballista"), Ballista) || !TestNotNull(TEXT("an evading creature"), Evading)
+		|| !TestNotNull(TEXT("three creatures"), First) || !TestNotNull(TEXT("three creatures"), Next)
+		|| !TestNotNull(TEXT("three creatures"), Later))
+	{
+		return false;
+	}
+	Ballista->AttackTarget(Evading);
+	TestFalse(TEXT("an evaded blow staggers nothing"), Carries(Evading, Staggered));
+
+	Ballista->AttackTarget(First);
+	TestTrue(TEXT("a landed blow staggers. If not, DT_EnchantmentEffects may be older than the rows: "
+				  "run tools/generate_datatable_assets.py"),
+		Carries(First, Staggered));
+	TestEqual(TEXT("for the top roll's 2 seconds"), SecondsLeftOn(First, Staggered), 2.0f, 0.01f);
+
+	Ballista->AttackTarget(Next);
+	TestFalse(TEXT("the next blow at once staggers nothing: five seconds run"), Carries(Next, Staggered));
+
+	Scope.World->TimeSeconds += 5.5f;
+	Ballista->AttackTarget(Later);
+	TestTrue(TEXT("5.5 seconds later a blow staggers again"), Carries(Later, Staggered));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotMoreRowTest,
+	"Cataclysm.Enchantments.TheDotMoreRowDoublesATickAtTheTopOfItsRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your damage over time effects deal 50%-100% more damage". Issue #1833 group E
+ * part 1: `dot_damage` more, 50 to 100. WORN at the top of its roll, 100: one
+ * tick of a damage over time the wearer applies takes twice what a wearer of a
+ * benefit with no effect row takes from a creature of its own.
+ */
+bool FCataclysmDotMoreRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const FGameplayTag Poison = Keyword(TEXT("Keyword.DoT.Poison"));
+	float Worn = -1.0f;
+	float Plain = -1.0f;
+	{
+		FWorn Wearing(TEXT("Positive_Your_damage_over_time_effects_deal_50_100_more"), true);
+		if (!TestNotNull(TEXT("a wearer"), Wearing.ASC()))
+		{
+			return false;
+		}
+		Worn = OneTick(Wearing, Poison, 300.0f);
+	}
+	{
+		FWorn Control(CataclysmEnchantmentEffectTest::BenefitWithNoEffect, true);
+		if (!TestNotNull(TEXT("a control wearer"), Control.ASC()))
+		{
+			return false;
+		}
+		Plain = OneTick(Control, Poison, 300.0f);
+	}
+	if (!TestTrue(*FString::Printf(TEXT("a plain tick took %.2f"), Plain), Plain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's tick is twice the plain one"), Worn, 2.0f * Plain, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidSplinterTargetRowTest,
+	"Cataclysm.Enchantments.TheVoidSplinterRowAddsItsMoreDamageOnlyToACreatureCarryingOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You deal 3%-5% more damage to an enemy carrying a void splinter". Issue #1833
+ * group E part 1: `attack_damage` and `spell_damage` more, 3 to 5, under
+ * `target_carries_void_splinter`. WORN by a real player at the top of its roll, 5:
+ * its blow on a creature carrying a void splinter is 1.05 times its blow on one
+ * carrying none.
+ */
+bool FCataclysmVoidSplinterTargetRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_You_deal_3_5_more_damage_to_an_enemy_carrying"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	const FCataclysmAilmentKind* Splinter = UCataclysmAilments::KindNamed(TEXT("Void Splinter"));
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready())
+		|| !TestNotNull(TEXT("the void splinter ailment"), Splinter)
+		|| !TestTrue(TEXT("the first creature carries a void splinter"),
+			UCataclysmAilments::Apply(Striker.Character, Striker.First, *Splinter, /*Magnitude=*/1.0f)))
+	{
+		return false;
+	}
+	const float Carrying = Blow(Striker, Striker.First, false, false);
+	const float NotCarrying = Blow(Striker, Striker.Second, false, false);
+	if (!TestTrue(*FString::Printf(TEXT("a blow on the creature carrying none took %.2f"), NotCarrying),
+			NotCarrying > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the blow on the creature carrying one is 1.05 times it. If not, DT_EnchantmentEffects "
+				   "may be older than the rows: run tools/generate_datatable_assets.py"),
+		Carrying, 1.05f * NotCarrying, 0.05f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
