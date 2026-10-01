@@ -98,6 +98,25 @@ nine tests Pa selected passed restored. Fixed in the test only, as the coordinat
 PROOF with this cause, and Pa2, the same break against the fixed test, is a fourth proof run,** allowed because Pa found
 a fault in its own test rather than failing a fair one.
 
+**A test the clamp exposed, found by the whole suite of the window, 2026-10-01.** At `616eda14` the suite printed
+"3003 tests performed, 3002 succeeded, 1 failed: RawSewageBurnsEachSecondAndOnTheNextFloor", "Expected 'and still burn
+(8.8 lost)' to be true". That test writes a maximum of a hundred thousand by hand, and its floor change refreshes the
+attributes back to the player's own 510. Until the clamp, health sat above that maximum and the first burn's write
+clamped it down, a loss of tens of thousands that passed the test's lower bound by accident; it passed only because health
+sat above its maximum, the fault this entry removes. Fixed in the test only, as the coordinating session ruled: the
+hundred thousand is written again after the floor change and checked after the burn, and the loss has an upper bound as
+well as a lower one, so a loss of that size fails. By the project's rule a test-only fix after the whole suite reruns its
+group rather than the whole suite.
+
+**Tests that set the hundred thousand by hand and then change floor, found by a sweep:** besides Raw Sewage's,
+`ADivineWrathBeamBurnsAFifthOfMaximumHealthAsCelestial`, `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`,
+`AnEchoRepeatsTheAbilityItsCreatureLastUsed`, `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`,
+`AWingsOfTheHostFeatherIsCelestial`, `ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter`,
+`ItLeavesWastingSicknessAndVoidParasite`, `ContagiousTouchASwingDealsNothingAndAddsAStack` and
+`ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`. All nine **pass with the clamp; reading pending**: whether each
+measures a stated amount, has only a lower bound a clamp-sized loss would also meet, or measures nothing against the
+maximum is to be read after this window.
+
 **The six-curse case, measured in Pa's two runs:** with the code as it stands, six Pacts of Wrath took the maximum from
 510 to 204 and the 50% cap left health at 102, half the cursed maximum; with the write-back removed, the cap read 510 and
 left 204.

@@ -30899,11 +30899,24 @@ bool FCataclysmSewageBurnTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// THE FLOOR CHANGE REFRESHES THE ATTRIBUTES, which puts the hand-written hundred thousand back to the player's own
+	// maximum, so it is written again after a beat, as the set-up wrote it. Issue #2190: until the clamp, health sat
+	// above the refreshed maximum and the first burn's write clamped it down, a loss of tens of thousands that passed
+	// the lower bound below by accident. The upper bound is what makes a loss of that size fail.
+	Beat(Mode, 1);
+	if (!GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
 	Before = HealthOf(Player.Character);
 	Beat(Mode, BeatsFor(2.0f));
 	Lost = Before - HealthOf(Player.Character);
+	TestEqual(TEXT("the maximum is still the test's hundred thousand after the burn"),
+			  Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), HealthForTypedDamage, 0.01f);
 	TestEqual(TEXT("the stacks are still two"), Mode->RawSewageStacksHeld(), 2);
 	TestTrue(FString::Printf(TEXT("and still burn (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(FString::Printf(TEXT("once a second there too, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
+			 Lost <= 2.0f * PerSecond + 0.5f);
 	TestTrue(TEXT("and the disease keyword is still held"),
 			 Player.AbilitySystem->HasMatchingGameplayTag(SewageDiseaseTag()));
 	return true;
