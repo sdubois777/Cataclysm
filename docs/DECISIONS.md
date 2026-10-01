@@ -194,7 +194,7 @@ Run in the window of 2026-09-30, with the group moved onto development `230f5079
 
 The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa NOT A PROOF**: at `6b6c702b`: `FamishedBeastsARungChangeKeepsTheDropsShare` failed with the files restored as well; the fault and the test above, not rerun.
 - **Pb PROVED**: its first run, at `ba775b3b`, had its build fail and no test run -- the missing include above; rerun with the same break at `ee05d557`, `FamishedBeastsAnInfestedDropIsNeverEaten` failed with the break in and passed restored.
@@ -340,7 +340,7 @@ Run in the window of 2026-09-30, with the group moved onto development `230f5079
 
 The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa NOT A PROOF**: at `1c04d207`: `ContagiousTouchAnEvadedTouchAddsNoStack` failed with the files restored as well; the test fault above, not rerun.
 - **Pb PROVED**: at `6b6c702b`, the head carrying the test's fix: `ContagiousTouchAnEvadedTouchAddsNoStack` failed with the break in; passed restored.
@@ -471,7 +471,7 @@ Run in the window of 2026-09-30, with the group moved onto development `230f5079
 
 The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa NOT A PROOF**: at `1e894092`: `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` failed with the files restored as well; the test fault above, not rerun.
 - **Pb PROVED**: at `6b6c702b`, the head carrying the test's fix: `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` failed with the break in; passed restored.
@@ -591,7 +591,7 @@ Run in the window of 2026-09-30, with the group moved onto development `230f5079
 
 The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa PROVED**: at `8f5bb4b2`: `EveryOtherCreatureGainsAStackEveryThreeSecondsToTen` failed with the break in; passed restored.
 - **Pb PROVED**: at `8f5bb4b2`: `ThePlaguebearersDeathClearsEveryStack` failed with the break in; passed restored.
@@ -702,7 +702,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa PROVED**: `RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor` failed with the break in; passed restored.
 - **Pb PROVED**: the same test failed with the break in; passed restored.
@@ -860,7 +860,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa NOT A PROOF**: `AShroudedCreatureTakesNoDamageUntilALightReachesIt` failed with the files restored as well; the exact blow size above, not rerun.
 - **Pb NOT A PROOF**: `AFireHitExposesAShroudedCreatureForFourSeconds` failed with the files restored as well; the same cause, not rerun.
@@ -980,7 +980,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa PROVED**: `OutsideTheLightACreatureIsHiddenAndAnInvisibleStalker` failed with the break in; passed restored.
 - **Pb PROVED**: the same test failed with the break in; passed restored.
@@ -1049,7 +1049,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa PROVED**: `ASwarmOfLocustsCoveringThePlayerCutsTheirSightToFourMetres` failed with the break in; passed restored.
 - **Pb PROVED**: the same test failed with the break in; passed restored.
@@ -1172,7 +1172,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa PROVED**: `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked` failed with the break in; passed restored.
 - **Pb PROVED**: `InFogACreatureBeyondTenMetresIsHiddenAndCannotBeClicked` failed with the break in; passed restored.
@@ -1350,7 +1350,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa PROVED**: `EmbracingAGrimTotemGivesDamageForThirtySecondsAndBringsElites` failed with the break in; passed restored.
 - **Pb PROVED**: `CleansingAGrimTotemCleansesThePlayer` failed with the break in; passed restored.
@@ -1494,7 +1494,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, each with its registered prefix, as printed:
+This change's guard proofs, with the commit each ran at and the tests the run named:
 
 - **Pa PROVED**: `ItKeepsABuffAndABleedThePlayerPutOnItself` failed with the break in; passed restored.
 - **Pb PROVED**: `ItClearsChaosTouchedsDebuffsAndKeepsItsBuffs`, `ItClearsRawSewageAndTheNextBeatTakesTheDiseaseOff` and `ItClearsTheStarvationCurse` failed with the break in; all three passed restored.
