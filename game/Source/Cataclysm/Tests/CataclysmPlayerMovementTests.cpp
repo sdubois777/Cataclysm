@@ -2016,21 +2016,23 @@ bool FCataclysmACriticalStrikeNamesWhoItStruck::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	IConsoleVariable* CritRoll =
-		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+	// EVERY ROLL IS PINNED AT THE CONSOLE'S OWN PRIORITY AND RESTORED THE SAME
+	// WAY. A write from code is discarded once the variable has been set at
+	// console priority, and the first runs of this test met exactly that: the
+	// log said "Setting the console variable 'Cataclysm.CritRoll' with
+	// 'SetByCode' was ignored ... Value remains '100'", and no blow could
+	// critically strike. The critical strike roll uses the shared
+	// `CataclysmTestWorld::FScopedCritRoll` below; the pick has no shared
+	// helper, so it is pinned here the same way.
 	IConsoleVariable* Pick =
 		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RandomDotPick"));
-	if (!TestNotNull(TEXT("the critical strike roll can be pinned"), CritRoll)
-		|| !TestNotNull(TEXT("and so can the pick"), Pick))
+	if (!TestNotNull(TEXT("the pick can be pinned"), Pick))
 	{
 		return false;
 	}
-	ON_SCOPE_EXIT
-	{
-		CritRoll->Set(-1.0f, ECVF_SetByCode);
-		Pick->Set(-1, ECVF_SetByCode);
-	};
-	Pick->Set(0, ECVF_SetByCode);
+	const int32 PreviousPick = Pick->GetInt();
+	ON_SCOPE_EXIT { Pick->Set(PreviousPick, ECVF_SetByConsole); };
+	Pick->Set(0, ECVF_SetByConsole);
 
 	UCataclysmCombatEvents::In(World);
 	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
@@ -2056,6 +2058,20 @@ bool FCataclysmACriticalStrikeNamesWhoItStruck::RunTest(const FString&)
 	}
 	Character->SetPlayerState(PlayerState);
 	Character->OnRep_PlayerState();
+
+	// THE STAT LINES A BLOW READS, written after the player is joined to its
+	// state, because joining runs the equipment refresh and that leaves a
+	// crit_chance line of base 0 (no class supplies one), which a blow asks
+	// before the attribute: the trap issue #1833's ceiling row tests met. Attack
+	// damage is written too, since these lines replace the others; this player
+	// wears nothing.
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(TEXT("crit_chance"))).Base = 50.0f;
+		Lines.FindOrAdd(FName(TEXT("crit_multiplier"))).Base = 150.0f;
+		Lines.FindOrAdd(FName(TEXT("attack_damage"))).Base = 300.0f;
+		AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	}
 
 	FCataclysmPoolAction OnCrit;
 	OnCrit.Event = FName(TEXT("critical_strike"));
@@ -2095,8 +2111,10 @@ bool FCataclysmACriticalStrikeNamesWhoItStruck::RunTest(const FString&)
 	{
 		return false;
 	}
-	CritRoll->Set(100.0f, ECVF_SetByCode);
-	UCataclysmSkillEffects::ApplyHit(Character, Plain->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	{
+		const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+		UCataclysmSkillEffects::ApplyHit(Character, Plain->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	}
 	const float PlainTaken = 1000.0f - Plain->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetHealthAttribute());
 	TestTrue(*FString::Printf(TEXT("the plain blow took a tenth or more: %.1f"), PlainTaken),
@@ -2110,8 +2128,10 @@ bool FCataclysmACriticalStrikeNamesWhoItStruck::RunTest(const FString&)
 	{
 		return false;
 	}
-	CritRoll->Set(0.0f, ECVF_SetByCode);
-	UCataclysmSkillEffects::ApplyHit(Character, Struck->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	{
+		const CataclysmTestWorld::FScopedCritRoll AlwaysCritical(0.0f);
+		UCataclysmSkillEffects::ApplyHit(Character, Struck->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	}
 	TestTrue(TEXT("the critical strike put the pinned Bleed on the creature it struck"),
 		Struck->HasMatchingGameplayTag(BleedTag));
 	return true;
