@@ -689,8 +689,10 @@ FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
 FString UCataclysmCombatOverlay::BannerAssailantTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
-	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsABannerAssailant ? FString(TEXT("Assailant"))
-																						   : FString();
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsABannerAssailant && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Assailant"))
+		: FString();
 }
 
 FString UCataclysmCombatOverlay::ChaosSpawnTextFor(const AActor* Actor)

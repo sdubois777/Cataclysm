@@ -39842,4 +39842,49 @@ bool FCataclysmBannerHeldTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// AN ASSAILANT THE PLAYER TAKES IS NO LONGER ONE: "Assailant" GOES AND THREE STAND. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBannerTakenTest,
+	"Cataclysm.DungeonModifierEffects.WarBannerAnAssailantThePlayerTakesIsNoLongerOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBannerTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABannerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector At = Mode->WarBannerNow()->GetActorLocation();
+	if (!TestTrue(TEXT("planting acted"), Mode->ChooseAtFloorObject(Mode->WarBannerNow(), PlantKey)))
+	{
+		return false;
+	}
+	StandAt(Player, At);
+	const TArray<ACataclysmEnemyCharacter*> Before = Mode->BannerAssailantsStanding();
+	ACataclysmEnemyCharacter* Taken = OneThePlayerCanTake(Before);
+	if (!TestEqual(TEXT("set-up: all came"), Before.Num(), Effects::WarBannerWaveSize)
+		|| !TestNotNull(TEXT("set-up: one the player can take"), Taken)
+		|| !TestTrue(TEXT("set-up: \"Assailant\" under its bar"),
+					 UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Assailant")))
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no \"Assailant\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Assailant")));
+	TestEqual(TEXT("one fewer standing"), Mode->BannerAssailantsStanding().Num(), Effects::WarBannerWaveSize - 1);
+	TestFalse(TEXT("and it is not among them"), Mode->BannerAssailantsStanding().Contains(Taken));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

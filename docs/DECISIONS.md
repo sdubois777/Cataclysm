@@ -83,7 +83,7 @@ player; here it is standing inside.
 
 ### Tests
 
-Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `WarBanner`:
+Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `WarBanner`:
 
 - `WarBannerFiguresAuraHoldAndWaves`.
 - `WarBannerStandsToBePlanted`: away from the entrance, named, placed by the row, one "Plant" choice, not planted, the
@@ -94,11 +94,20 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `Wa
   at 14.75 s and four more at 15 s; 20 s outside leaves the hold at 15 s and brings no wave; back inside, four waves in
   all and not held at 59.75 s, then held at 60 s with no wave; 40% and +30 inside and the panel; 20 s more brings no
   wave.
+- `WarBannerAnAssailantThePlayerTakesIsNoLongerOne`: the first wave; one taken loses "Assailant" and three stand,
+  without it.
 
 **The player is placed inside or outside by hand**: a world built for a test has no navigation, and nothing walks.
 
 One Python check: the row still says "can plant", "buffs in a radius", "attracts waves of enemies", "defended for a
 certain period" and "full benefits".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **An assailant the player takes is no longer an assailant**: "Assailant" leaves its bar and
+`BannerAssailantsStanding()` leaves it out, through the two questions Battlefield Relics' entry names. The waves come on
+their clock and do not read that count, so nothing else changes.
 
 ### Not yet run
 
