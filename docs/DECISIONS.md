@@ -11,8 +11,7 @@ the hold, the waves, the aura, the panel line); `game/Source/Cataclysm/Character
 tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
 and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The fifth of Group 2's chain and the last of its first
-window, on Infernal Beacons. **Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet;
-the figures are added at the end of this entry when they have.**
+window, on Infernal Beacons. **Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -109,10 +108,23 @@ floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)).
 `BannerAssailantsStanding()` leaves it out, through the two questions Battlefield Relics' entry names. The waves come on
 their clock and do not read that count, so nothing else changes.
 
-### Not yet run
+### Group 2's window A, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
-window, after the seven-stack merges.
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `8f050ce8`: `WarBannerHeldThroughTheWavesDoublesItsAura` failed with the break in; passed restored.
+- **Pb PROVED** at `8f050ce8`: `WarBannerHeldThroughTheWavesDoublesItsAura` failed with the break in; passed restored.
+- **Pc PROVED** at `8f050ce8`: `WarBannerPlantedGivesItsAuraInsideAndNothingOutside` failed with the break in; passed restored.
+
+Run at `war-banner-6`, this row's head with the rename on top, for the same reason.
 
 ---
 
@@ -125,8 +137,7 @@ and `.cpp` (the row's own key of the damage map); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
 and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The fourth of Group 2's chain, on the purification altars.
-**Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.**
+**Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -234,10 +245,23 @@ compiled before the window, and the checks run before it read each added line, n
 helper is now `AnInfernalBeaconFloor`, at its definition and its four callers, as the coordinating session ruled; nothing
 in the game changed. The checks run before a window now look for a function defined twice in one namespace.
 
-### Not yet run
+### Group 2's window A, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
-window, after the seven-stack merges.
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `8f050ce8`: `InfernalBeaconsActivatingOneStrengthensCreaturesAndGivesMagicFind` failed with the break in; passed restored.
+- **Pb PROVED** at `8f050ce8`: `InfernalBeaconsTheStacksLastTheDungeon` failed with the break in; passed restored.
+- **Pc PROVED** at `8f050ce8`: `InfernalBeaconsFiguresStacksAndCaps` failed with the break in; passed restored.
+
+Run at the top, `war-banner-6`, as the coordinating session ruled: its own head, `infernal-beacons-4`, did not build, and the rename sits above it.
 
 ---
 
@@ -248,9 +272,7 @@ choice, the row's note, and Carrion Feast moved from partly built to built); `ga
 and `.cpp` (the altar, the burn taken out of the hit so the altar reuses it, the consecrated area on the beat, the panel
 line); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, one of Carrion
 Feast's own among them. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). The third of Group 2's chain, on Pandora's Box. **Applied. The
-Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the end of this
-entry when they have.**
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). The third of Group 2's chain, on Pandora's Box. **Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -321,10 +343,21 @@ Three automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `P
 
 No new Python check: Carrion Feast's own already pins "purification altars".
 
-### Not yet run
+### Group 2's window A, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
-window, after the seven-stack merges.
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `4a28f351`: `PurificationAltarBurnsTheCarcassesInsideNowAndLater` failed with the break in; passed restored.
+- **Pb PROVED** at `4a28f351`: `PurificationAltarBurnsTheCarcassesInsideNowAndLater` failed with the break in; passed restored.
+- **Pc PROVED** at `4a28f351`: `PurificationAltarBurnsTheCarcassesInsideNowAndLater` failed with the break in; passed restored.
 
 ---
 
@@ -337,8 +370,7 @@ pinned for tests, the reward, the waves, the beat, the panel line); `game/Source
 automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
 and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The second of Group 2's chain, on Battlefield Relics, whose
-`PlaceFloorObjects` and `BringCreaturesNear` it uses. **Applied. The Unreal compile, the automation tests and the guard
-proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+`PlaceFloorObjects` and `BringCreaturesNear` it uses. **Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -433,10 +465,21 @@ without waiting for the one the player took. The ruling named the label and the 
 so without this a thrall kept alive would hold the box's next wave back for as long as it lived. It follows the ruling
 for a Horde wave in the same change, that a thrall "does not stop ... a Horde wave from finishing".
 
-### Not yet run
+### Group 2's window A, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
-window, after the seven-stack merges.
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `0dcc4d97`: `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves` failed with the break in; passed restored.
+- **Pb PROVED** at `0dcc4d97`: `PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother` failed with the break in; passed restored.
+- **Pc PROVED** at `0dcc4d97`: `PandorasBoxFiguresBoxesOddsRewardAndWaves` failed with the break in; passed restored.
 
 ---
 
@@ -450,8 +493,7 @@ helpers, Grim Totems through them, the relics, their beat, the panel line, a con
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
 and [#41](https://github.com/sdubois777/Cataclysm/issues/41). The first of Group 2's chain, built on the seven-stack.
-**Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.**
+**Applied. They were done in Group 2's window A on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -571,10 +613,21 @@ screen; and The player cleanse -- each introduce their guard proofs as "each wit
 **None of those lists gives a prefix.** Each gives the verdict and the tests the run named, as printed. The entries are
 left as merged, and this sentence is the correction, as the coordinating session ruled on 2026-09-30.
 
-### Not yet run
+### Group 2's window A, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's first
-window, after the seven-stack merges.
+Run in Group 2's window A on 2026-10-01, with the chain moved onto development `b6900aaa` as `feat/battlefield-relics-4`, `feat/pandoras-box-4`, `feat/purification-altar-4`, `feat/infernal-beacons-4` and `feat/war-banner-5`, and one commit on top, `feat/war-banner-6` `8f050ce8`, which renames Infernal Beacons' test helper (that entry says why). The pull request comes from `feat/war-banner-6`, which carries all five rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `battlefield-relics-4` "Build: Succeeded - 63 actions, 53 files compiled"; `pandoras-box-4` "32 actions, 29 files compiled"; `purification-altar-4` "17 actions, 14 files compiled"; `infernal-beacons-4` "Build: Failed - 32 actions, 29 files compiled" (C2084, the helper defined twice); `war-banner-6` "Build: Succeeded - 32 actions, 29 files compiled" |
+| Unreal, whole suite, `8f050ce8` | "Tests: 2953 tests performed, 2953 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2953 tests in the tree at 8f050ce8; 2953 performed, gap 0" |
+| Python, `8f050ce8` | "5597 passed, 8 skipped in 343.72s"; JUnit: 5605 tests, 0 failures, 0 errors, 8 skipped |
+
+Every guard proof was PROVED: a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's three, with the commit each ran at:
+
+- **Pa PROVED** at `1cf8fcee`: `BattlefieldRelicsFuryGivesDamageForThirtySecondsAndFiveSpirits` failed with the break in; passed restored.
+- **Pb PROVED** at `1cf8fcee`: `BattlefieldRelicsTheSameKindAgainRefreshesItsTime` failed with the break in; passed restored.
+- **Pc PROVED** at `1cf8fcee`: `BattlefieldRelicsHasteAndTheBulwarkAddTogether` failed with the break in; passed restored.
 
 ---
 
