@@ -10100,9 +10100,29 @@ bool FCataclysmCritCeilingRowTest::RunTest(const FString&)
 	}
 	// AFTER THE REFRESH, which writes nothing a wearer holding no weapon strikes with.
 	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
-	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
-	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
+
+	// THE STAT LINES A BLOW READS, NOT THE ATTRIBUTES. After the refresh the wearer
+	// carries a crit_chance line of base 0 (the attribute effect's), and a blow asks
+	// the line: the first run of this test wrote the attribute and read a chance of
+	// 0. So the line is written here, with the worn row's own ceiling line kept.
+	const FCataclysmStatInputs* Ceiling =
+		ASC->GetStatInputs(FName(UCataclysmCombatAttributeSet::MaxCritChanceStat));
+	if (!TestNotNull(TEXT("the worn row's ceiling line"), Ceiling))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Lines;
+	Lines.Add(FName(UCataclysmCombatAttributeSet::MaxCritChanceStat), *Ceiling);
+	Lines.FindOrAdd(FName(TEXT("crit_chance"))).Base = 100.0f;
+	Lines.FindOrAdd(FName(TEXT("crit_multiplier"))).Base = 200.0f;
+	ASC->SetStatInputs(MoveTemp(Lines));
+
+	// A TARGET THE FIRST BLOW CANNOT KILL, so the second is a real blow. The first
+	// run's target died to the first and the "no critical strike" check passed
+	// against a corpse.
 	CataclysmEnchantmentEffectTest::FWearer Target(Worn.World);
+	Target.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	Target.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
 
 	const auto CriticalOn = [&](float Roll)
 	{
@@ -10138,7 +10158,21 @@ bool FCataclysmShieldCeilingRowTest::RunTest(const FString&)
 	}
 	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 1000.0f);
 	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 400.0f);
-	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(), 1000.0f);
+
+	// THE REGENERATION RATE THROUGH ITS STAT LINE, NOT THE ATTRIBUTE: after the
+	// refresh the wearer carries an energy_shield_regen line of base 0, and the step
+	// asks the line. The first run wrote the attribute and regenerated nothing. The
+	// worn row's own reduction line is kept.
+	const FCataclysmStatInputs* Reduction =
+		ASC->GetStatInputs(FName(UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat));
+	if (!TestNotNull(TEXT("the worn row's reduction line"), Reduction))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Lines;
+	Lines.Add(FName(UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat), *Reduction);
+	Lines.FindOrAdd(FName(UCataclysmRegeneration::EnergyShieldRegenStat)).Base = 1000.0f;
+	ASC->SetStatInputs(MoveTemp(Lines));
 	UCataclysmRegeneration::ApplyStep(Worn.Wearer->Actor, 1.0f, 100.0f);
 	TestEqual(TEXT("a second of regeneration stops at half the maximum, 500"),
 			  ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()),
