@@ -2196,7 +2196,9 @@ int32 ACataclysmDungeonGameMode::WaveStillAlive() const
 		// left. Counting only the first would hold the next wave back for the
 		// length of a death animation, and the wave's last few would each add
 		// their own wait.
-		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+		// NOR, IN A HORDE ARENA, IS IT STILL STANDING IN ITS WAVE, or the next
+		// wave would never come. Issue #1202, ruled 2026-09-30.
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !DungeonGameModeIsAPlayersFollower(Enemy))
 		{
 			++Alive;
 		}
@@ -4060,7 +4062,11 @@ int32 ACataclysmDungeonGameMode::LivingFloorEnemies() const
 	int32 Living = 0;
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : FloorEnemies)
 	{
-		Living += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
+		// NOT A PLAYER'S THRALL, which is no enemy of the floor however it came to
+		// be one. Issue #1202, ruled 2026-09-30: holding a thrall must not stop a
+		// floor counting as cleared.
+		Living += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
+				   && !DungeonGameModeIsAPlayersFollower(Creature)) ? 1 : 0;
 	}
 	// AND MORALE BREAK'S ESCAPED, WHO ARE AWAY AND NOT DEAD, as ruled: the floor is not cleared while they are gone.
 	// Issues #1820 and #41.
@@ -7672,6 +7678,17 @@ void ACataclysmDungeonGameMode::StepPlayersFollowers()
 				Group.Panicked.Remove(TWeakObjectPtr<ACataclysmEnemyCharacter>(Thrall));
 			}
 			Thrall->bSeeksDropsForTheFloorRule = false;
+			// THE TRIAL OF ENDURANCE'S RUN-OUT DOUBLING, given while it was hostile.
+			// The trial itself acts only on creatures hostile to the player.
+			if (!FMath::IsNearlyEqual(
+					Thrall->DamageMultiplierFrom(ACataclysmEnemyCharacter::TrialOfEnduranceDamageSource), 1.0f))
+			{
+				Thrall->SetTrialOfEnduranceDamageMultiplier(1.0f);
+			}
+			if (RuleResistances.Find(Thrall))
+			{
+				SetRuleResistance(Thrall, TrialOfEnduranceResistanceSource, 0.0f, 1.0f);
+			}
 			// THE PLAYER'S CONTAGION STACKS FROM ITS HOSTILE TOUCHES END TOO: the
 			// row means the enemy that applied them, and the only other way to
 			// clear them would be to kill the player's own thrall.

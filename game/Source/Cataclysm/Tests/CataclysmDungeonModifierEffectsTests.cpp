@@ -38184,8 +38184,21 @@ bool FCataclysmThrallLosesThePlagueTest::RunTest(const FString& Parameters)
 
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
-	ACataclysmEnemyCharacter* Other = Mode ? APlaguebearersNeighbour(Mode) : nullptr;
-	if (!Mode || !TestNotNull(TEXT("another creature on the floor"), Other))
+	if (!Mode)
+	{
+		return false;
+	}
+	// ONE THE PLAYER CAN TAKE: no boss, nothing that cannot be hurt, not the bearer.
+	ACataclysmEnemyCharacter* Other = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && Enemy != Mode->PlaguebearerOnTheFloor() && !Enemy->IsBoss() && !Enemy->bCannotBeHurt)
+		{
+			Other = Enemy.Get();
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("another creature on the floor the player can take"), Other))
 	{
 		return false;
 	}
@@ -38439,6 +38452,134 @@ bool FCataclysmThrallBringsNoRetaliationTest::RunTest(const FString& Parameters)
 	UCataclysmSkillEffects::ApplyHit(Player.Character, Taken, 100.0f);
 	TestTrue(TEXT("the hit on the thrall landed"), HealthOf(Taken) < TakenBefore);
 	TestEqual(TEXT("and cost the player nothing"), Player.Read(Health), Full, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallDoesNotHoldTheFloorTest,
+	"Cataclysm.DungeonModifierEffects.AThrallTakenOnAFloorDoesNotStopItCountingAsCleared",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. A creature the player took on this floor is
+ * still in the floor's list until the stairs; it is no enemy of the floor, so
+ * a floor whose every other creature is dead counts as cleared. The Trial of
+ * Endurance's "cleared in time" is the observable.
+ */
+bool FCataclysmThrallDoesNotHoldTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrialFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	TArray<ACataclysmEnemyCharacter*> Living;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			Living.Add(Enemy.Get());
+		}
+	}
+	// THE ONE TO TAKE MUST BE TAKEABLE: no boss, nothing that cannot be hurt.
+	const int32 Which = Living.IndexOfByPredicate(
+		[](const ACataclysmEnemyCharacter* Enemy) { return !Enemy->IsBoss() && !Enemy->bCannotBeHurt; });
+	if (!TestTrue(TEXT("set-up: the floor has a creature the player can take"), Which != INDEX_NONE))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Taken = Living[Which];
+	Living.RemoveAt(Which);
+	for (ACataclysmEnemyCharacter* Enemy : Living)
+	{
+		if (!KillIt(*this, Player, Enemy))
+		{
+			return false;
+		}
+	}
+	Beat(Mode, 1);
+	if (!TestFalse(TEXT("set-up: with one creature left the floor is not cleared"), Mode->FloorIsCleared()))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the player takes the last one"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("no living enemy is left"), Mode->LivingFloorEnemies(), 0);
+	TestTrue(TEXT("so the floor counts as cleared"), Mode->FloorIsCleared());
+	TestTrue(TEXT("and the Trial of Endurance was cleared in time"), Mode->TrialOfEnduranceClearedInTime());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallLosesTheTrialTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureTheTrialDoubledIsPutBackOnceTaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. When the Trial of Endurance runs out it
+ * doubles every hostile creature's damage and resistance. One the player takes
+ * afterwards is put back a beat later, by StepPlayersFollowers.
+ */
+bool FCataclysmThrallLosesTheTrialTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmAllResistanceAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrialFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* One = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && !Enemy->IsBoss() && !Enemy->bCannotBeHurt)
+		{
+			One = Enemy.Get();
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: a creature the player can take"), One))
+	{
+		return false;
+	}
+	UAbilitySystemComponent* Its = One->GetAbilitySystemComponent();
+	const float OwnResistance = Its->GetNumericAttributeBase(Resist::GetAllResistanceAttribute());
+
+	Beat(Mode, BeatsFor(Effects::TrialOfEnduranceSeconds));
+	if (!TestTrue(TEXT("set-up: the trial ran out"), Mode->TrialOfEnduranceRanOut())
+		|| !TestEqual(TEXT("set-up: its damage is doubled"),
+					  One->DamageMultiplierFrom(ACataclysmEnemyCharacter::TrialOfEnduranceDamageSource), 2.0f, 0.0001f)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, One)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("its damage is its own again"),
+			  One->DamageMultiplierFrom(ACataclysmEnemyCharacter::TrialOfEnduranceDamageSource), 1.0f, 0.0001f);
+	TestEqual(TEXT("and so is its resistance"), Its->GetNumericAttributeBase(Resist::GetAllResistanceAttribute()),
+			  OwnResistance, 0.01f);
 	return true;
 }
 

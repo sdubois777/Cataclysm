@@ -195,16 +195,26 @@ Read on `development` 32982485, after #2182 merged:
 - **Contagious Touch**: a thrall adds no stacks if it touches the player, and the player's blow on their own
   thrall brings no retaliation.
 
+**Holding a thrall no longer stops a floor counting as cleared**, ruled the same day. A thrall taken on a
+floor stays in that floor's list until the stairs, and `LivingFloorEnemies` counted it, so `FloorIsCleared`
+never held while the player kept it: no clear time was recorded and the Trial of Endurance could not be
+passed. The same held for a Horde arena's wave, whose next wave comes when `WaveStillAlive` falls to its
+threshold. Both counts now skip a creature a player commands. The Trial's own doubling when it runs out
+already acts only on creatures hostile to the player; one doubled before it was taken is put back below.
+
 **One step on every beat puts a thrall back from all of them**, `StepPlayersFollowers`: for every creature a
 player commands it sets the Grim Totem and Plaguebearer multipliers to 1, ends any panic and flight and takes
-it out of the panicked lists, stops it seeking drops, and sets the contagion stacks it applied while hostile to
-0. **Why one unconditional step rather than a part of each rule:** the rules' own steps run only on floors that
+it out of the panicked lists, stops it seeking drops, sets the contagion stacks it applied while hostile to
+0, and takes off the Trial of Endurance's damage doubling and rule resistance. **Why one unconditional step rather than a part of each rule:** the rules' own steps run only on floors that
 carry them, and walk only the floor's list, so a thrall carried to another floor would never be reached. The
 fog, The Blackest Shadow and Shadowy Enemies keep their own sets and are put back inside `StepVision` and
 `StepShadowyEnemies`.
 
 ### TESTS
 
+- Three for the cleared counts: a floor whose last creature is taken counts as cleared and passes the Trial of
+  Endurance; a creature the Trial doubled is put back once taken; and, in `Cataclysm.DungeonMode.`, a creature
+  taken from a Horde wave is not counted as still standing in it.
 - Six more in `Cataclysm.DungeonModifierEffects.`, one per rule: a taken creature loses the Plaguebearer's
   bonus; a taken Plaguebearer counts as fallen; a taken creature stops panicking; a taken creature eats no more
   drops and keeps what it gained; a taken toucher's stacks end and it adds none; and a blow on a thrall brings
