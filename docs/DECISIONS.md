@@ -11,7 +11,7 @@ tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
 **Partly applied, by design: "sections" are not built.** The Unreal compile, the automation tests and the three guard
-proofs have NOT run yet; the figures are added at the end of this entry when they have.
+proofs were run in the exit-lock windows of 2026-10-01; the figures are at the end of this entry.
 
 ### The row
 
@@ -61,10 +61,28 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 One Python check, `test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names_sections`, pins the
 three phrases the rulings rest on, "seal sections" among them.
 
-### Not yet run
+### The windows of 2026-10-01
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the seal never applied; Pb, the
-can-be-hurt filter removed; Pc, the not-raised-by-a-rule filter removed.
+Run on `feat/lightforged-walls-2`, the top of the exit-lock chain, on development `b3eea92a`. The third window is the run of record:
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `167f0a8e` | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `167f0a8e` | "Tests: 3029 tests performed, 3029 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3029 tests in the tree at 167f0a8e; 3029 performed, gap 0; every declared test was reported by the run." |
+| Python, `167f0a8e`, started with no CI run in progress | "5641 passed, 8 skipped in 322.66s (0:05:22)"; JUnit: 5649 tests, 0 failures, 0 errors, 8 skipped |
+
+The commit above `167f0a8e` that writes these figures changes this file only.
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after:
+
+- **Pa PROVED**, the seal never applied: "with the break in: 4 tests performed, 2 succeeded, 2 failed:
+  LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt, LightforgedWallsSealedWhileAPlacedCreatureStands | restored:
+  4 tests performed, 4 succeeded, 0 failed".
+- **Pb PROVED**, the can-be-hurt filter removed: "with the break in: 4 tests performed, 3 succeeded, 1 failed:
+  LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt | restored: 4 tests performed, 4 succeeded, 0 failed".
+- **Pc PROVED**, both raised-by-a-rule marks removed from the count: "with the break in: 4 tests performed, 3 succeeded, 1
+  failed: LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt | restored: 4 tests performed, 4 succeeded, 0
+  failed".
 
 ---
 
@@ -77,8 +95,7 @@ and the row added to `StairsSealedBy`), the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-**Applied.** The Unreal compile, the automation tests and the three guard proofs have NOT run yet; the figures are added
-at the end of this entry when they have.
+**Applied.** The Unreal compile, the automation tests and the three guard proofs were run in the exit-lock windows of 2026-10-01; the figures are at the end of this entry.
 
 ### The row
 
@@ -150,10 +167,29 @@ test, follows the ruling that all three exit-lock rows do nothing on a Horde dun
 One Python check, `test_sanctioned_passage_row_still_names_a_ten_second_channel_at_divine_gates`, pins the three phrases
 the rulings rest on.
 
-### Not yet run
+### The windows of 2026-10-01
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the channel's time not counted; Pb, its
-progress reset when the player steps away; Pc, the creatures not called.
+Run on `feat/lightforged-walls-2`, the top of the exit-lock chain, on development `b3eea92a`. The third window is the run of record:
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `167f0a8e` | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `167f0a8e` | "Tests: 3029 tests performed, 3029 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3029 tests in the tree at 167f0a8e; 3029 performed, gap 0; every declared test was reported by the run." |
+| Python, `167f0a8e`, started with no CI run in progress | "5641 passed, 8 skipped in 322.66s (0:05:22)"; JUnit: 5649 tests, 0 failures, 0 errors, 8 skipped |
+
+The commit above `167f0a8e` that writes these figures changes this file only.
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after:
+
+- **Pa PROVED**, the channel's time not counted: "with the break in: 6 tests performed, 3 succeeded, 3 failed:
+  SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt, SanctionedPassageEveryCreatureComesWhileItChannels,
+  SanctionedPassageTheStairsOpenAfterTenSecondsChannelled | restored: 6 tests performed, 6 succeeded, 0 failed".
+- **Pb PROVED**, the progress reset when the player steps away: "with the break in: 6 tests performed, 5 succeeded, 1
+  failed: SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt | restored: 6 tests performed, 6 succeeded, 0
+  failed".
+- **Pc PROVED**, the creatures not called: "with the break in: 6 tests performed, 4 succeeded, 2 failed:
+  SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt, SanctionedPassageEveryCreatureComesWhileItChannels |
+  restored: 6 tests performed, 6 succeeded, 0 failed". The first of the two is the paused-sight assertion, as ruled.
 
 ---
 
@@ -167,8 +203,7 @@ handler now asks), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (
 automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-**Applied.** The Unreal compile, the automation tests and the three guard proofs have NOT run yet; the figures are added
-at the end of this entry when they have.
+**Applied.** The Unreal compile, the automation tests and the three guard proofs were run in the exit-lock windows of 2026-10-01; the figures are at the end of this entry.
 
 ### The row
 
@@ -239,10 +274,28 @@ seven tests must pass unchanged: `TheStairsStaySealedUntilThePlayerHasSlainHalfT
 `AMarkedCreatureIsNeitherPlacedNorSlainForTheGate`, `TheLastFloorsWayOutIsNotSealed`,
 `APortalWardenDoesNotSealOpenBloodGatesAgain` and `ATrickOrTreatPairDoesNotResealOpenBloodGates`.
 
-### Not yet run
+### The windows of 2026-10-01
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the piece not given; Pb,
-`StairsSealedBy()` keeping only the first rule; Pc, the release of a bearer gone without its death removed.
+Run on `feat/lightforged-walls-2`, the top of the exit-lock chain, on development `b3eea92a`. The third window is the run of record:
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `167f0a8e` | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `167f0a8e` | "Tests: 3029 tests performed, 3029 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3029 tests in the tree at 167f0a8e; 3029 performed, gap 0; every declared test was reported by the run." |
+| Python, `167f0a8e`, started with no CI run in progress | "5641 passed, 8 skipped in 322.66s (0:05:22)"; JUnit: 5649 tests, 0 failures, 0 errors, 8 skipped |
+
+The commit above `167f0a8e` that writes these figures changes this file only.
+
+Two earlier windows built the chain and stopped at this row's first proof, Pa, as the next paragraphs record: the first
+at `5798502b` ("Build: Succeeded - 32 actions, 29 files compiled") and the second at `6d27d288` ("Build: Succeeded - 4
+actions, 1 file compiled: Module.Cataclysm.26.cpp"). Nothing after Pa ran in either.
+
+**Blood Gates' seven tests, the regression check for `StairsSealedBy()`**, each have one `Result={Success}` line in the
+third window's whole-suite log, which has 3029 such lines and no `Result={Fail}` line:
+`TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor`, `ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`,
+`OnceNoUnmarkedCreatureStandsTheStairsAreOpen`, `AMarkedCreatureIsNeitherPlacedNorSlainForTheGate`,
+`TheLastFloorsWayOutIsNotSealed`, `APortalWardenDoesNotSealOpenBloodGatesAgain` and
+`ATrickOrTreatPairDoesNotResealOpenBloodGates`.
 
 **Guard proof Pa, run in the first window on 2026-10-01 at `5798502b`, was NOT A PROOF**: five of this row's tests failed
 with the file restored, from two faults in the tests and not in the rule. Every panel helper of the three exit-lock
@@ -265,6 +318,17 @@ play the raised bearer keeps its designed evasion, which is correct. In Pa2's ha
 predicted tests failed at their predicted assertions; the third, `InfernalSealsTheStairsOpenWithTheLastPiece`, failed
 earlier, on a dodged kill. **Pa2 stays NOT A PROOF with that cause, and Pa3, the same break, is a fifth run of this
 row's proofs, the last the coordinating session allows.**
+
+**Pa3 PROVED**, the piece not given, in the third window: "with the break in: 6 tests performed, 3 succeeded, 3 failed:
+InfernalSealsABearerTakenGoneOrMadeUnhurtGivesItsPiece, InfernalSealsAFloorWithFewerCreaturesNeedsFewerPieces,
+InfernalSealsTheStairsOpenWithTheLastPiece | restored: 6 tests performed, 6 succeeded, 0 failed", its anchor matched once
+and the source hash the same before and after. The other two, run once each in the third window, the same:
+
+- **Pb PROVED**, `StairsSealedBy()` keeping only the first rule: "with the break in: 1 tests performed, 0 succeeded, 1
+  failed: TwoRulesSealTheStairsAndOpenOnlyWhenBothRelease | restored: 1 tests performed, 1 succeeded, 0 failed".
+- **Pc PROVED**, the release of a bearer gone without its death removed: "with the break in: 6 tests performed, 5
+  succeeded, 1 failed: InfernalSealsABearerTakenGoneOrMadeUnhurtGivesItsPiece | restored: 6 tests performed, 6
+  succeeded, 0 failed".
 
 ---
 
