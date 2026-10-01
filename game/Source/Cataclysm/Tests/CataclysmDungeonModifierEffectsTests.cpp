@@ -43564,6 +43564,16 @@ bool FCataclysmWellsProjectileTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("a shot outside every well does not turn"), Straight->TravelDirection().Y, 0.0, 0.0001);
 	}
 
+	// A LOBBED SHOT INSIDE THE WELL IS NOT TURNED: it must land where it was aimed, as Infernal Rain's fireball does.
+	ACataclysmProjectile* Lob = ACataclysmProjectile::Fire(Player.Character, From, From + FVector(800.0f, 0.0f, 0.0f), 20.0f,
+														   0.0f, 0, false, 0.0f, FGameplayTagContainer(), false,
+														   /*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.75f);
+	if (TestNotNull(TEXT("set-up: a lobbed shot"), Lob))
+	{
+		Lob->Step(0.1f);
+		TestEqual(TEXT("a lobbed shot inside a well keeps its heading"), Lob->TravelDirection().Y, 0.0, 0.0001);
+	}
+
 	// THE WELL GONE, IT LEAVES THE REGISTER.
 	Well->Destroy();
 	TestFalse(TEXT("a well destroyed leaves the register"),

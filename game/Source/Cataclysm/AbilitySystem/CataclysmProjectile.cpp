@@ -736,6 +736,14 @@ void ACataclysmProjectile::GlancesOnward(int32 InBounces, float InReachCm,
 
 void ACataclysmProjectile::TurnTowardAPull(const FVector& At, float Seconds)
 {
+	// A LOBBED SHOT IS NOT TURNED: it is aimed at a point and must land there. Infernal Rain's fireball makes its patch
+	// where it was aimed, and a Brute's rock lands on its marker; bent by a well, either would land somewhere else.
+	// Ruled by the coordinating session, 2026-10-01.
+	if (FlightSeconds > 0.0f)
+	{
+		return;
+	}
+
 	// THE REGISTER, NOT THE WORLD: three zones at most are read, whatever else is on the floor.
 	const UWorld* World = GetWorld();
 	const ACataclysmGroundZone* Nearest = nullptr;
