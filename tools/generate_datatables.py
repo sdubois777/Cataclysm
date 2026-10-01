@@ -6378,6 +6378,12 @@ def stats_with_no_attribute() -> set[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-09-30 FOR THE DEMON KING'S REGALIA'S 6-PIECE, issue #1833 group D
+    # part 2: "becoming immune to all crowd control ... for 10 seconds", a row
+    # scaled by its own stacks. `HeldSecondsAfterCrowdControlResistance` in
+    # CataclysmSkillEffects.cpp asks it through `StatForSkill` on every crowd
+    # control; `ProbeScaledCrowdControlResistance` measures that.
+    "crowd_control_resistance",
     # ADDED 2026-09-25 FOR "Each active gadget increases your evasion chance by
     # 5%-10%", issue #1833, deployable Part 3. `DefenderStat` in
     # CataclysmDamageCalculation.cpp asks it through `StatForSkill` on every
