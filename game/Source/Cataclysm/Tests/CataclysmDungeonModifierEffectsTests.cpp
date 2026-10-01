@@ -633,6 +633,36 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/**
+	 * Make a test's one-blow kill of `Victim` independent of the modifiers it drew. Issue #1559.
+	 *
+	 * A CREATURE THE GAME SPAWNED AT A RUNG ABOVE COMMON DRAWS MODIFIERS AT RANDOM, and since #1559
+	 * two of them change whether one blow kills: Sacrificial Bond keeps only a share of the blow
+	 * when allies stand near, and an Unholy Sigil holds a creature in it at one health. A whole-suite
+	 * run on 2026-09-30 failed `AFloorClearedInTimeEndsItsTrialOfEndurance` once, on a floor where two
+	 * creatures had drawn the Bond. That the Bond was the cause is INFERRED: the log does not say
+	 * which creature survived the blow.
+	 *
+	 * ONLY THE BOND ROW IS REMOVED, so a test that is about another row the victim carries -- the
+	 * Horde Leader's rally on death -- keeps it.
+	 *
+	 * THE SIGIL IS NAMED RATHER THAN REMOVED. It belongs to another creature, and no killing test
+	 * runs a creature's own clock the twenty seconds a sigil takes to be laid; a test that ever does
+	 * fails here with this message instead of at random.
+	 *
+	 * @return false when a sigil holds the victim
+	 */
+	bool MakeAOneBlowKillReliable(FAutomationTestBase& Test, ACataclysmEnemyCharacter* Victim)
+	{
+		if (!Victim)
+		{
+			return false;
+		}
+		Victim->ModifierRows.Remove(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+		return Test.TestFalse(TEXT("no Unholy Sigil holds the creature a test means to kill"),
+							  UCataclysmEnemyModifiers::IsProtectedBySigil(Victim));
+	}
+
+	/**
 	 * A creature with a DESIGNED maximum health and energy shield, wounded to the two
 	 * figures given. Issues #1820 and #41.
 	 *
@@ -27067,6 +27097,10 @@ bool FCataclysmHarbingerDiesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	if (!MakeAOneBlowKillReliable(*this, Harbinger))
+	{
+		return false;
+	}
 	WoundCreatureTo(Harbinger, 100.0f, 0.0f);
 	Harbinger->GetAbilitySystemComponent()->SetNumericAttributeBase(
 		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
@@ -28386,6 +28420,10 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** A beacon destroyed by the player's blow. */
 	bool DestroyTheBeacon(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Beacon)
 	{
+		if (!MakeAOneBlowKillReliable(Test, Beacon))
+		{
+			return false;
+		}
 		WoundCreatureTo(Beacon, 100.0f, 0.0f);
 		Beacon->GetAbilitySystemComponent()->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
@@ -29916,6 +29954,10 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** The player kills `Victim`, which cannot dodge. */
 	bool KillIt(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Victim)
 	{
+		if (!MakeAOneBlowKillReliable(Test, Victim))
+		{
+			return false;
+		}
 		Victim->GetAbilitySystemComponent()->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
@@ -32459,6 +32501,10 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** The player's blow kills `Victim`, which cannot dodge. */
 	bool BreakOrKill(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Victim)
 	{
+		if (!MakeAOneBlowKillReliable(Test, Victim))
+		{
+			return false;
+		}
 		Victim->GetAbilitySystemComponent()->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
@@ -33646,6 +33692,10 @@ bool FCataclysmHoardersTakenTest::RunTest(const FString& Parameters)
 	const TArray<ACataclysmDroppedItem*> Pile = DropsAtTheHoard(World, Mode->LuxuryHoardsNow()[0]);
 	for (ACataclysmEnemyCharacter* Guard : Mode->LuxuryHoardGuardsStanding())
 	{
+		if (!MakeAOneBlowKillReliable(*this, Guard))
+		{
+			return false;
+		}
 		Guard->GetAbilitySystemComponent()->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Guard, 1000000.0f);
