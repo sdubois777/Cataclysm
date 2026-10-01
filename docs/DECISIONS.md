@@ -244,6 +244,15 @@ seven tests must pass unchanged: `TheStairsStaySealedUntilThePlayerHasSlainHalfT
 The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the piece not given; Pb,
 `StairsSealedBy()` keeping only the first rule; Pc, the release of a bearer gone without its death removed.
 
+**Guard proof Pa, run in the first window on 2026-10-01 at `5798502b`, was NOT A PROOF**: five of this row's tests failed
+with the file restored, from two faults in the tests and not in the rule. Every panel helper of the three exit-lock
+rows took a pointer into the map `LiveCountsForTheFloor` returns, which is gone by the next line, so each panel
+assertion read freed memory; and a one-blow kill failed at random, in a different test in each half. The helpers now
+keep the map in a local, and every kill in the three rows' tests goes through `MakeAOneBlowKillReliable` and says, when
+the blow does not kill, the victim's rung, health, armour, the blow, and whether a sigil or a rule holds it.
+**Pa stays NOT A PROOF with those causes. Pa2, the same break at the new top, is a fourth run of this row's proofs**,
+allowed by the coordinating session because Pa failed on test faults rather than on a fair test.
+
 ---
 
 ## 2026-10-01 — A death deals the remaining damage of the player's own damage over time on the enemies within 5 m, and a critical strike deals 20%-40% of a target's Necrosis; an Ailment column

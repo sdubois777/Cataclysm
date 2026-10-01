@@ -41963,8 +41963,91 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** What the floor panel says for Infernal Seals, or a plain answer when it says nothing. */
 	FString SealsPanelLine(ACataclysmDungeonGameMode* Mode)
 	{
-		const FString* Line = Mode->LiveCountsForTheFloor().Find(SealsRow);
+		// THE MAP IN A LOCAL, as `GatesPanelLine` keeps it: a pointer into the returned map itself would outlive it.
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(SealsRow);
 		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * Why a creature a test meant to kill still stands, said only when it does. The exit-lock window of 2026-10-01
+	 * saw `ThePlayerKills` fail at random on a seal bearer, a different test each run, with nothing in the log to say
+	 * why; these are the readings that would.
+	 */
+	void SayWhyItStillStands(FAutomationTestBase& Test, ACataclysmEnemyCharacter* Victim, int32 RungBefore,
+							 float HealthBefore, float ArmorBefore, float Blow)
+	{
+		UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Victim);
+		const float Health = System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+		const float Maximum =
+			System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : -1.0f;
+		const float Armor = System ? System->GetNumericAttribute(UCataclysmCombatAttributeSet::GetArmorAttribute()) : -1.0f;
+		FString Rows;
+		for (const FName& Row : Victim->ModifierRows)
+		{
+			Rows += (Rows.IsEmpty() ? TEXT("") : TEXT(", ")) + Row.ToString();
+		}
+		Test.AddError(FString::Printf(
+			TEXT("still standing: rung %d (%d before the blow); health %.1f of %.1f (%.1f before); armour %.1f (%.1f "
+				 "before); the blow dealt %.1f; cannot be hurt %d; in a sigil %d; a seal bearer %d; modifiers [%s]"),
+			Victim->RarityStep, RungBefore, Health, Maximum, HealthBefore, Armor, ArmorBefore, Blow,
+			Victim->bCannotBeHurt ? 1 : 0, UCataclysmEnemyModifiers::IsProtectedBySigil(Victim) ? 1 : 0,
+			Victim->bIsASealBearer ? 1 : 0, *Rows));
+	}
+
+	/** The readings `SayWhyItStillStands` compares with, taken before a blow. */
+	void ReadBeforeTheBlow(ACataclysmEnemyCharacter* Victim, int32& Rung, float& Health, float& Armor)
+	{
+		UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Victim);
+		Rung = Victim->RarityStep;
+		Health = System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+		Armor = System ? System->GetNumericAttribute(UCataclysmCombatAttributeSet::GetArmorAttribute()) : -1.0f;
+	}
+
+	/** `ThePlayerKills`, made reliable as issue #1559's helper makes it, and saying why when the blow does not kill. */
+	bool ExitLockPlayerKills(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Victim)
+	{
+		if (!Test.TestNotNull(TEXT("a creature to kill"), Victim) || !MakeAOneBlowKillReliable(Test, Victim))
+		{
+			return false;
+		}
+		int32 Rung = 0;
+		float Health = 0.0f;
+		float Armor = 0.0f;
+		ReadBeforeTheBlow(Victim, Rung, Health, Armor);
+		const float Blow = UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		if (UCataclysmSkillEffects::IsDead(Victim))
+		{
+			return true;
+		}
+		SayWhyItStillStands(Test, Victim, Rung, Health, Armor, Blow);
+		return Test.TestTrue(TEXT("the player's blow killed it"), false);
+	}
+
+	/** `ACreatureKills`, made reliable the same way, and saying why when the blow does not kill. */
+	bool ExitLockCreatureKills(FAutomationTestBase& Test, UWorld* World, ACataclysmEnemyCharacter* Victim)
+	{
+		if (!Test.TestNotNull(TEXT("a creature to kill"), Victim) || !MakeAOneBlowKillReliable(Test, Victim))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Slayer = SpawnImpWithHealth(World, FVector(-600.0f, 0.0f, 0.0f), 100.0f);
+		if (!Test.TestNotNull(TEXT("a creature to do the killing"), Slayer)
+			|| !Test.TestTrue(TEXT("the killer hits for something"), GiveCreatureAttackDamage(Slayer, 100.0f) > 0.0f))
+		{
+			return false;
+		}
+		int32 Rung = 0;
+		float Health = 0.0f;
+		float Armor = 0.0f;
+		ReadBeforeTheBlow(Victim, Rung, Health, Armor);
+		const float Blow = UCataclysmSkillEffects::ApplyHit(Slayer, Victim, 100000.0f);
+		if (UCataclysmSkillEffects::IsDead(Victim))
+		{
+			return true;
+		}
+		SayWhyItStillStands(Test, Victim, Rung, Health, Armor, Blow);
+		return Test.TestTrue(TEXT("a creature's blow killed it"), false);
 	}
 
 	/** Places `Count` Common creatures in a row and chooses the bearers from them. */
@@ -42100,7 +42183,7 @@ bool FCataclysmSealsOpenTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and they watch for the player again"), Mode->Stairs->IsWatching());
 	for (int32 Index = 0; Index < 3; ++Index)
 	{
-		if (!ThePlayerKills(*this, Player, Placed[Index]))
+		if (!ExitLockPlayerKills(*this, Player, Placed[Index]))
 		{
 			return false;
 		}
@@ -42110,7 +42193,7 @@ bool FCataclysmSealsOpenTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("three are not enough"), TakeTheStairs(*this, Mode), 1);
 
 	// THE LAST BY ANOTHER CREATURE'S BLOW: the piece is given whoever kills the bearer.
-	if (!ACreatureKills(*this, World, Placed[3]))
+	if (!ExitLockCreatureKills(*this, World, Placed[3]))
 	{
 		return false;
 	}
@@ -42159,7 +42242,7 @@ bool FCataclysmSealsFewerTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("two pieces needed"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 0 of 2 pieces")));
 	for (ACataclysmEnemyCharacter* One : Placed)
 	{
-		if (!ThePlayerKills(*this, Player, One))
+		if (!ExitLockPlayerKills(*this, Player, One))
 		{
 			return false;
 		}
@@ -42220,7 +42303,7 @@ bool FCataclysmSealsReleasedTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the panel"), SealsPanelLine(Mode), FString(TEXT("infernal seals: 3 of 4 pieces")));
 	TestEqual(TEXT("still sealed"), TakeTheStairs(*this, Mode), 1);
 
-	if (!ThePlayerKills(*this, Player, Placed[3]))
+	if (!ExitLockPlayerKills(*this, Player, Placed[3]))
 	{
 		return false;
 	}
@@ -42265,7 +42348,7 @@ bool FCataclysmTwoSealsTest::RunTest(const FString& Parameters)
 	// TWO SLAIN BY THE PLAYER OPEN BLOOD GATES, BUT TWO PIECES DO NOT OPEN THE SEAL.
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
-		if (!ThePlayerKills(*this, Player, Placed[Index]))
+		if (!ExitLockPlayerKills(*this, Player, Placed[Index]))
 		{
 			return false;
 		}
@@ -42278,7 +42361,7 @@ bool FCataclysmTwoSealsTest::RunTest(const FString& Parameters)
 
 	for (int32 Index = 2; Index < 4; ++Index)
 	{
-		if (!ThePlayerKills(*this, Player, Placed[Index]))
+		if (!ExitLockPlayerKills(*this, Player, Placed[Index]))
 		{
 			return false;
 		}
@@ -42362,7 +42445,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** What the floor panel says for Sanctioned Passage, or a plain answer when it says nothing. */
 	FString PassagePanelLine(ACataclysmDungeonGameMode* Mode)
 	{
-		const FString* Line = Mode->LiveCountsForTheFloor().Find(PassageRow);
+		// THE MAP IN A LOCAL, as `GatesPanelLine` keeps it: a pointer into the returned map itself would outlive it.
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(PassageRow);
 		return Line ? *Line : FString(TEXT("no line"));
 	}
 
@@ -42716,7 +42801,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** What the floor panel says for Lightforged Walls, or a plain answer when it says nothing. */
 	FString WallsPanelLine(ACataclysmDungeonGameMode* Mode)
 	{
-		const FString* Line = Mode->LiveCountsForTheFloor().Find(WallsRow);
+		// THE MAP IN A LOCAL, as `GatesPanelLine` keeps it: a pointer into the returned map itself would outlive it.
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(WallsRow);
 		return Line ? *Line : FString(TEXT("no line"));
 	}
 }
@@ -42787,7 +42874,7 @@ bool FCataclysmWallsSealedTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and watch for the player again"), Mode->Stairs->IsWatching());
 
 	// ONE SLAIN BY THE PLAYER: STILL SEALED.
-	if (!ThePlayerKills(*this, Player, A))
+	if (!ExitLockPlayerKills(*this, Player, A))
 	{
 		return false;
 	}
@@ -42796,7 +42883,7 @@ bool FCataclysmWallsSealedTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("one is enough to seal"), TakeTheStairs(*this, Mode), 2);
 
 	// THE LAST BY ANOTHER CREATURE'S BLOW: "slain" is any death, so none stands and the stairs open.
-	if (!ACreatureKills(*this, World, B))
+	if (!ExitLockCreatureKills(*this, World, B))
 	{
 		return false;
 	}
@@ -42863,7 +42950,7 @@ bool FCataclysmWallsUnheldTest::RunTest(const FString& Parameters)
 	Beat(Mode, 1);
 	TestEqual(TEXT("it holds them"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: 1 still standing")));
 	TestEqual(TEXT("so the stairs lead nowhere"), TakeTheStairs(*this, Mode), 2);
-	if (!ThePlayerKills(*this, Player, Placed))
+	if (!ExitLockPlayerKills(*this, Player, Placed))
 	{
 		return false;
 	}
