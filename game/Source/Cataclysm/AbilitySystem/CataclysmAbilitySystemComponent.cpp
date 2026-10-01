@@ -4025,8 +4025,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				// rolled, because `FRandRange` can return 100 itself.
 				const bool bComesUp = Action.Percent >= 100.0f
 					|| FMath::FRandRange(0.0f, 100.0f) < Action.Percent;
+				// APPLIED BY THE AVATAR, the actor a blow of this character is
+				// credited to, which for the player is the character and not
+				// the player state that owns this component.
+				AActor* Applier = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
 				if (bComesUp
-					&& UCataclysmAilments::ApplyRandomDamageOverTime(GetOwnerActor(), Other))
+					&& UCataclysmAilments::ApplyRandomDamageOverTime(Applier, Other))
 				{
 					NoteTriggerFired(Action);
 				}
