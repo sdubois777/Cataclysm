@@ -65,6 +65,8 @@ judgements.
   `SingularityWellsProjectileTurnDegreesPerSecond`, **every projectile**, the player's and the creatures': the row says
   "projectiles". No shipped figure exists; Diablo IV's Black Hole with its Event Horizon absorbs projectiles instead,
   a stronger effect than a bend.
+- **A lobbed shot is never turned**, because it is aimed at a point and must land there: Infernal Rain's fireball makes
+  its patch where it was aimed, and a Brute's thrown rock lands on its marker. Ruled by the coordinating session.
 - **The turn happens inside `ACataclysmProjectile::Step`, every sub-step, and reads a register, not the world.** A well
   is registered by `ACataclysmGroundZone::SetProjectilePull` when it is placed and leaves the register in `EndPlay`;
   `ProjectilePullZones` is what a projectile reads. **The cost** of a projectile's step is therefore one pass over the
@@ -75,7 +77,11 @@ judgements.
   landing point from `InfernalRainFireballFromSideCm` beyond it, on the far side from the player, and
   `InfernalRainFireballFromHeightCm` above, **and the patch is placed where it lands**, when its fall ends, so the
   fireball visibly makes the patch. **It deals nothing**; the patch does. It passes through what it meets, so the patch
-  lands where it was aimed. A fireball still falling counts against the cap of three as the patch it will be.
+  lands where it was aimed, **and passing through raises nothing**, read from the code: `HitAlongStep` calls `HitOne`
+  on each character it crosses, `HitOne` calls `ApplyHit` at 0%, which returns before any evasion, block or hit
+  notice, and every reaction in `HitOne` (hit counts, burn, Fervour, blow notices, Chorus) is inside `Dealt > 0`. A
+  piercing shot does not detonate in `Finish`, and nothing listens to the fireball's `OnFinished`; only a skill
+  template subscribes to its own projectiles. So it is given no special collision. A fireball still falling counts against the cap of three as the patch it will be.
 - **The fireball's colour is the row's own type, through an `Element.` tag** read from the row as the patch's type is:
   Demonic today. **There is no Fire element**: the colour table, `game/Data/ElementVisuals.csv`, has the eight Cataclysm
   types and nothing else, and the floor's hazard source carries no damage type of its own (issue #1924), so with no tag
@@ -95,7 +101,7 @@ Seven new automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 - `SingularityWellsPullDoesNotCarryThePlayerThroughAWall`: a well whose centre is in the rock beyond a wall; after
   twenty beats the player has been drawn toward the wall but not past its face, and still stands on the floor cell.
 - `SingularityWellsTurnAProjectileTowardTheirCentre`: a shot inside a well turns 12 degrees in a tenth of a second, one
-  outside does not turn, and a destroyed well leaves the register.
+  outside does not turn, a lobbed shot inside one does not turn, and a destroyed well leaves the register.
 - `InfernalRainFireballFiguresAndTheRowBuilt`
 - `InfernalRainAFireballFallsAndItsPatchIsPlacedWhereItLands`: a fireball on the cadence and no patch; it deals nothing
   and is Demonic; no patch a beat before it lands; then one, where it was aimed, of the fireball's damage type, and the

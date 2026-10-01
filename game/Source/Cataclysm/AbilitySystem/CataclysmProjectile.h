@@ -184,7 +184,8 @@ public:
 
 	/**
 	 * Turn toward the centre of the nearest registered pulling zone that covers this point, by at most its figure
-	 * times these seconds. Singularity Wells, issue #1605. See `ACataclysmGroundZone::SetProjectilePull`.
+	 * times these seconds. Singularity Wells, issue #1605. See `ACataclysmGroundZone::SetProjectilePull`. A lobbed shot
+	 * (`FlightSeconds` above zero) is never turned: it must land where it was aimed.
 	 */
 	void TurnTowardAPull(const FVector& At, float Seconds);
 
