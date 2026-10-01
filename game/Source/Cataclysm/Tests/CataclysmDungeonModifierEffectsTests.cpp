@@ -43196,6 +43196,9 @@ bool FCataclysmWarzoneAlliesFloorTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("none stands"), Mode->WarzoneAlliesStanding().Num(), 0);
 	TestTrue(TEXT("the thrall did"), IsValid(Thrall) && UCataclysmCommand::CommanderOf(Thrall) == Player.Character);
+	// AND NOTHING STALE IS LEFT: the player's followers, as every reader of them asks the world, are the thrall alone.
+	TestEqual(TEXT("the player's followers are the kept thrall alone"),
+			  UCataclysmCommand::ThingsCommandedBy(Player.Character).Num(), 1);
 	return true;
 }
 
