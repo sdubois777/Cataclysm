@@ -2016,6 +2016,18 @@ public:
 	TArray<FName> StairsSealedBy() const;
 
 	/**
+	 * Singularity Wells: a well at this point dealing this much a second, as the rule places one -- typed by its row,
+	 * burning once a second with the others, turning projectiles -- and counted toward the cap. Public so a test can
+	 * place one where it means to. Null when the row will not load or nothing could be spawned. Issues #1605, #41.
+	 */
+	class ACataclysmGroundZone* PlaceASingularityWellAt(const FVector& Where, float DamagePerSecond);
+
+	/** Infernal Rain, for tests: the fireballs still falling, and the points their patches will be placed at. */
+	TArray<class ACataclysmProjectile*> InfernalRainFireballsFalling() const;
+	TArray<FVector> InfernalRainLandingPoints() const;
+	TArray<class ACataclysmGroundZone*> InfernalRainPatchesNow() const;
+
+	/**
 	 * Sanctioned Passage, for the panel and tests: the Divine Gate standing, or null; whether its channel has begun; the
 	 * seconds channelled; and whether it seals the stairs. Issues #1820 and #41.
 	 */
@@ -3740,6 +3752,24 @@ private:
 	 */
 	float InfernalRainSecondsSinceLastPatch = 0.0f;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> InfernalRainPatches;
+
+	/**
+	 * Infernal Rain: a fireball falling, where its patch will be placed, when, at what damage and type. The patch is
+	 * placed when the fall ends, whether or not the ball is still there to see. Issue #1699.
+	 */
+	struct FInfernalRainFall
+	{
+		FVector Where = FVector::ZeroVector;
+		float SecondsLeft = 0.0f;
+		float DamagePerSecond = 0.0f;
+		FName Type;
+		TWeakObjectPtr<class ACataclysmProjectile> Ball;
+	};
+	TArray<FInfernalRainFall> InfernalRainFalls;
+
+	/** Infernal Rain: a patch at this point, typed and burning once a second with the others; null if none came. */
+	class ACataclysmGroundZone* PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where, float DamagePerSecond,
+														 FName Type);
 
 	/**
 	 * Singularity Wells' clock, the wells on this floor, and the slow in force.

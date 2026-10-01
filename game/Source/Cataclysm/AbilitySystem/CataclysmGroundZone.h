@@ -430,6 +430,23 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ground Zone")
 	bool Covers(const FVector& Point) const;
 
+	/**
+	 * Turn every projectile inside this zone toward its centre, up to this many degrees a second; zero turns none.
+	 * Singularity Wells' "pull ... projectiles toward them". Issues #1605 and #41.
+	 *
+	 * A ZONE WITH A PULL IS REGISTERED, AND A PROJECTILE READS ONLY THE REGISTER. `ACataclysmProjectile::Step` asks
+	 * `ProjectilePullZones` every sub-step rather than searching the world, so the cost of a flight is the number of
+	 * pulling zones -- three at most, Singularity Wells' cap -- and not the number of actors on the floor. A zone
+	 * leaves the register when its pull is set to zero or when it ends play.
+	 */
+	void SetProjectilePull(float DegreesPerSecond);
+
+	/** This zone's turn on projectiles, in degrees a second. */
+	float ProjectilePullDegreesPerSecond() const { return ProjectilePullDegrees; }
+
+	/** Every zone, in any world, that turns projectiles. A reader skips those of another world and those gone. */
+	static const TArray<TWeakObjectPtr<ACataclysmGroundZone>>& ProjectilePullZones() { return PullZones; }
+
 	/** Burn everything standing in it now. Called on a timer, and by tests. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Ground Zone")
 	void Sweep();
@@ -528,6 +545,12 @@ protected:
 	TObjectPtr<USceneComponent> Anchor;
 
 private:
+	/** See `SetProjectilePull`. */
+	float ProjectilePullDegrees = 0.0f;
+
+	/** The register `ProjectilePullZones` answers. */
+	static TArray<TWeakObjectPtr<ACataclysmGroundZone>> PullZones;
+
 	/**
 	 * Ask to be drawn again, so a floor-lasting patch does not go invisible.
 	 *

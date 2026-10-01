@@ -717,12 +717,11 @@ public:
 	/**
 	 * The row that rains fireballs and leaves burning ground. Issues #1605, #41.
 	 *
-	 * `Partly`, AND THE MISSING HALF IS THE FIREBALL. The burning ground is
-	 * built: a patch falls near the player on a cadence, carries the row's own
-	 * Cataclysm type so one of the player's eight resistances meets it, and burns
-	 * for the ten seconds the row states. Nothing draws a fireball falling into
-	 * it, and the row says fireballs rain, so `BuiltStateOf` answers `Partly`
-	 * and the floor panel tells the player so. Issue #1699.
+	 * BUILT SINCE 2026-10-01, WHEN THE FIREBALL WAS ADDED. A fireball is lobbed onto a point near the player on a
+	 * cadence and the patch is placed where it lands, `InfernalRainFireballFallSeconds` later. The patch carries the
+	 * row's own Cataclysm type so one of the player's eight resistances meets it, and burns for the ten seconds the
+	 * row states. The fireball deals nothing and is coloured by the row's type through an `Element.` tag: there is no
+	 * Fire element among the eight. Issue #1699.
 	 *
 	 * "IN COMBAT ZONES" IS READ AS "NEAR THE PLAYER", because the game has no
 	 * combat-zone concept to bind to. `ECataclysmFloorLayout::Arena` is a floor's
@@ -3142,19 +3141,17 @@ public:
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
-	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
-	 * deal void damage read off the row's own type, and standing in one slows the
-	 * player by the 40% the row states. **Nothing pulls.** The row names the pull
-	 * first, so `BuiltStateOf` answers `Partly` and the floor panel says so.
+	 * BUILT SINCE 2026-10-01, WHEN THE PULL WAS ADDED. The orbs are placed, they deal void damage read off the row's
+	 * own type, and standing in one slows the player by the 40% the row states.
 	 *
-	 * THE PULL IS TWO SEPARATE PIECES OF WORK AND NEITHER IS HERE. Pulling the
-	 * player cannot go through `UCataclysmSkillEffects::ApplyPull` on a repeating
-	 * beat: the diminishing-returns rule halves every displacement inside a five
-	 * second window, so a pulsing pull would fade to nothing within about a
-	 * second. `ACataclysmTether::Check` documents the way round it and writes a
-	 * swept `SetActorLocation` four times a second instead. Pulling a projectile
-	 * needs a new mid-flight re-aim; `ACataclysmProjectile::GlanceOnwardFrom` is
-	 * the pattern and `Direction` is private today.
+	 * THE PLAYER IS PULLED `SingularityWellsPullCmPerSecond` TOWARD THE CENTRE OF THE NEAREST WELL COVERING THEM, a
+	 * beat's worth each beat, by a swept `SetActorLocation` as `ACataclysmTether::Check` moves its ends, and never
+	 * past the centre. NOT `UCataclysmSkillEffects::ApplyPull`: its diminishing-returns rule halves every displacement
+	 * inside a five second window, so a pulsing pull would fade to nothing within about a second.
+	 *
+	 * A PROJECTILE INSIDE A WELL TURNS TOWARD ITS CENTRE, up to `SingularityWellsProjectileTurnDegreesPerSecond`, in
+	 * its own `ACataclysmProjectile::Step` through the register of pulling zones; see
+	 * `ACataclysmGroundZone::SetProjectilePull`. Every projectile: the row says "projectiles".
 	 */
 	static const TCHAR* SingularityWellsKey;
 
@@ -3299,6 +3296,16 @@ public:
 	 * nearest distance is that it does not.
 	 */
 	static constexpr float InfernalRainPatchSeconds = 10.0f;
+
+	/**
+	 * Infernal Rain's fireball: how long it falls, lobbed onto the patch from this far to one side and this high, and
+	 * how wide it is drawn. It deals nothing; the patch it lands as does. Judgements, 2026-10-01: three beats, so the
+	 * patch appears on the beat the ball lands. Issue #1699.
+	 */
+	static constexpr float InfernalRainFireballFallSeconds = 0.75f;
+	static constexpr float InfernalRainFireballFromSideCm = 600.0f;
+	static constexpr float InfernalRainFireballFromHeightCm = 1500.0f;
+	static constexpr float InfernalRainFireballRadiusCm = 40.0f;
 	static constexpr float InfernalRainRadiusCm = 300.0f;
 	static constexpr float InfernalRainPercentPerSecond = 2.0f;
 	static constexpr float InfernalRainSecondsBetweenPatches = 5.0f;
@@ -3385,6 +3392,16 @@ public:
 	static constexpr int32 SingularityWellsMostWells = 3;
 	static constexpr float SingularityWellsPercentPerSecond = 1.0f;
 	static constexpr float SingularityWellsSecondsBetweenWells = 8.0f;
+
+	/**
+	 * Singularity Wells' pull on the player, toward the centre of the nearest well covering them, and its turn on a
+	 * projectile inside one. Judgements under the owner's delegation, 2026-10-01; no shipped game publishes a pull
+	 * speed. 120 cm/s is half the player's walk inside a well (400 cm/s slowed by 40% is 240), so a player walking
+	 * straight out leaves at 120 cm/s net, and one standing still is drawn from the edge to the centre in 2.5 s, near
+	 * Last Epoch's Black Hole drawing over its radius in its 2.75 s. See docs/DECISIONS.md, 2026-10-01.
+	 */
+	static constexpr float SingularityWellsPullCmPerSecond = 120.0f;
+	static constexpr float SingularityWellsProjectileTurnDegreesPerSecond = 120.0f;
 
 	static_assert(
 		SingularityWellsSlowPercent > 0.0f && SingularityWellsSlowPercent < 100.0f,

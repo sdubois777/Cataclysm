@@ -15,6 +15,8 @@
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmProjectileEffect.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
@@ -2841,15 +2843,12 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 				  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
-	// INFERNAL RAIN IS THE SECOND, AND THIS LINE IS WRITTEN TO BE REVISITED the
-	// way the Field Medic's was. Its burning ground is built, typed and timed;
-	// nothing draws a fireball falling into it, which is the half the row names
-	// first. Issue #1699 is that half. When it lands this becomes `Built` and
-	// Unstable Dimensions is the only `Partly` control left.
-	TestEqual(TEXT("Infernal Rain is partly built: no fireball is drawn"),
+	// INFERNAL RAIN WAS THE SECOND, AND THIS LINE WAS REVISITED AS IT SAID IT WOULD BE: since 2026-10-01 a fireball
+	// falls and its patch is placed where it lands, so the row is `Built`. Issue #1699.
+	TestEqual(TEXT("Infernal Rain is built: a fireball falls"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
 				  FName(UCataclysmDungeonModifierEffects::InfernalRainKey))),
-			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 
 	// SWARM OF LOCUSTS IS BUILT since its swarm obscures vision through the vision system; until then it was partly
 	// built, and #2129 had listed it as built by mistake. Issues #1820 and #41.
@@ -2879,14 +2878,12 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 				  FName(TEXT("Chaos_Echo_Chamber")))),
 			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
 
-	// AND SINGULARITY WELLS IS THE THIRD PARTLY BUILT ROW, written to be revisited
-	// the way the other two were. Its orbs are placed, typed and damaging, and
-	// standing in one slows the player by the 40% its row states. Nothing pulls,
-	// and the row names the pull first.
-	TestEqual(TEXT("Singularity Wells is partly built: nothing pulls"),
+	// AND SINGULARITY WELLS WAS THE THIRD, REVISITED THE SAME WAY: since 2026-10-01 its wells pull the player and turn
+	// projectiles, so the row is `Built`. Issue #1605.
+	TestEqual(TEXT("Singularity Wells is built: its wells pull"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
 				  FName(UCataclysmDungeonModifierEffects::SingularityWellsKey))),
-			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 
 	return true;
 }
@@ -3177,9 +3174,13 @@ bool FCataclysmInfernalRainBeatTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no patch falls before the cadence has passed"),
 			  CountPatches(), 0);
 
-	// AND ONE ON THE BEAT IT FALLS DUE.
+	// A FIREBALL ON THE BEAT IT FALLS DUE, AND ITS PATCH WHEN IT LANDS. Since 2026-10-01 the patch is placed when
+	// the fireball's fall ends, `InfernalRainFireballFallSeconds` later, rather than on the due beat. Issue #1699.
 	Beats(1);
-	TestEqual(TEXT("the cadence's beat drops exactly one patch"),
+	TestEqual(TEXT("the cadence's beat drops a fireball, not yet a patch"), CountPatches(), 0);
+	TestEqual(TEXT("one fireball is falling"), Mode->InfernalRainLandingPoints().Num(), 1);
+	Beats(FMath::CeilToInt(Effects::InfernalRainFireballFallSeconds / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks));
+	TestEqual(TEXT("its patch is placed when it lands, exactly one"),
 			  CountPatches(), 1);
 
 	ACataclysmGroundZone* Patch = FirstPatch();
@@ -43250,6 +43251,401 @@ bool FCataclysmTrialWithReaperTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("and it did not run out"), Mode->TrialOfEnduranceRanOut());
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TrialRow),
 			  FString(TEXT("trial of endurance: cleared in time")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Void_Singularity_Wells' pull and Demonic_Infernal_Rain's fireballs. Issues #1605, #1699 and #41. Ruled 2026-10-01:
+// the player is drawn 120 cm/s toward the nearest well's centre, swept, never past it; a projectile inside a well turns
+// up to 120 degrees a second toward its centre; a fireball falls for 0.75 s and its patch is placed where it lands.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** A dungeon carrying only Singularity Wells, on floor 2 of several, with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AWellsFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {SingularityWells};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** A floor cell with two more floor cells after it along X, or (-1, -1). */
+	FIntPoint ThreeFloorCellsAlongX(const FCataclysmFloorPlan& Plan)
+	{
+		for (int32 Y = 0; Y < Plan.Height; ++Y)
+		{
+			for (int32 X = 0; X < Plan.Width; ++X)
+			{
+				const FIntPoint Cell(X, Y);
+				if (Plan.IsFloor(Cell) && Plan.IsFloor(Cell + FIntPoint(1, 0)) && Plan.IsFloor(Cell + FIntPoint(2, 0))
+					&& Plan.IsFloor(Cell + FIntPoint(0, 1)) && Plan.IsFloor(Cell + FIntPoint(0, -1)))
+				{
+					return Cell;
+				}
+			}
+		}
+		return FIntPoint(-1, -1);
+	}
+
+	/** A floor cell whose next cell along X is solid rock, or (-1, -1). */
+	FIntPoint AFloorCellBeforeAWall(const FCataclysmFloorPlan& Plan)
+	{
+		for (int32 Y = 0; Y < Plan.Height; ++Y)
+		{
+			for (int32 X = 0; X < Plan.Width; ++X)
+			{
+				const FIntPoint Cell(X, Y);
+				if (Plan.IsFloor(Cell) && Plan.Contains(Cell + FIntPoint(1, 0)) && !Plan.IsFloor(Cell + FIntPoint(1, 0))
+					&& Plan.IsFloor(Cell + FIntPoint(-1, 0)))
+				{
+					return Cell;
+				}
+			}
+		}
+		return FIntPoint(-1, -1);
+	}
+
+	/** The player stood at this point, at the height the floor put them. */
+	void StandThePlayerAt(const FPossessedPlayer& Player, const FVector& At)
+	{
+		Player.Character->SetActorLocation(FVector(At.X, At.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** The point at this cell's centre, at the player's height. */
+	FVector CellAtThePlayersHeight(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, FIntPoint Cell)
+	{
+		const FVector At = Mode->CurrentFloor->WorldOfCell(Cell);
+		return FVector(At.X, At.Y, Player.Character->GetActorLocation().Z);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellsPullFiguresTest,
+	"Cataclysm.DungeonModifierEffects.SingularityWellsPullFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellsPullFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("the player is drawn 120 cm a second"), Effects::SingularityWellsPullCmPerSecond, 120.0f, 0.001f);
+	TestEqual(TEXT("half the walk left inside a well"), Effects::SingularityWellsPullCmPerSecond,
+			  0.5f * ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond
+				  * (1.0f - Effects::SingularityWellsSlowPercent / 100.0f), 0.001f);
+	TestEqual(TEXT("a projectile turns up to 120 degrees a second"),
+			  Effects::SingularityWellsProjectileTurnDegreesPerSecond, 120.0f, 0.001f);
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(SingularityWells)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellsPullTest,
+	"Cataclysm.DungeonModifierEffects.SingularityWellsDrawAPlayerInsideThirtyCentimetresABeatTowardTheCentre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellsPullTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWellsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FIntPoint Cell = ThreeFloorCellsAlongX(Mode->CurrentFloor->GetPlan());
+	if (!TestTrue(TEXT("set-up: three floor cells along X"), Cell.X >= 0))
+	{
+		return false;
+	}
+	const FVector Start = CellAtThePlayersHeight(Mode, Player, Cell);
+	const FVector Centre = CellAtThePlayersHeight(Mode, Player, Cell + FIntPoint(1, 0));
+	if (!TestNotNull(TEXT("set-up: a well placed"), Mode->PlaceASingularityWellAt(Centre, 0.0f)))
+	{
+		return false;
+	}
+
+	// OUTSIDE IT, 400 CM FROM ITS CENTRE: NOT DRAWN.
+	StandThePlayerAt(Player, Start);
+	Beat(Mode, 1);
+	TestEqual(TEXT("a player outside every well is not drawn"),
+			  FVector::Dist2D(Player.Character->GetActorLocation(), Start), 0.0, 0.5);
+
+	// INSIDE IT, 250 CM FROM ITS CENTRE: DRAWN 30 CM TOWARD IT, ALONG THE LINE TO IT.
+	const FVector Inside = Start + FVector(150.0f, 0.0f, 0.0f);
+	StandThePlayerAt(Player, Inside);
+	Beat(Mode, 1);
+	const FVector After = Player.Character->GetActorLocation();
+	TestEqual(TEXT("drawn 30 cm toward the centre in a beat"), After.X - Inside.X, 30.0, 0.5);
+	TestEqual(TEXT("and only toward it"), After.Y - Inside.Y, 0.0, 0.5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellsPullHoldsTest,
+	"Cataclysm.DungeonModifierEffects.SingularityWellsPullHoldsThirtyABeatAndStopsAtTheCentre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellsPullHoldsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWellsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FIntPoint Cell = ThreeFloorCellsAlongX(Mode->CurrentFloor->GetPlan());
+	if (!TestTrue(TEXT("set-up: three floor cells along X"), Cell.X >= 0))
+	{
+		return false;
+	}
+	const FVector Centre = CellAtThePlayersHeight(Mode, Player, Cell + FIntPoint(1, 0));
+	if (!TestNotNull(TEXT("set-up: a well placed"), Mode->PlaceASingularityWellAt(Centre, 0.0f)))
+	{
+		return false;
+	}
+	StandThePlayerAt(Player, Centre - FVector(290.0f, 0.0f, 0.0f));
+
+	// NOT HALVED BY DIMINISHING RETURNS: EIGHT BEATS IN A ROW, EACH THE WHOLE 30 CM.
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		const float Before = FVector::Dist2D(Player.Character->GetActorLocation(), Centre);
+		Beat(Mode, 1);
+		const float Now = FVector::Dist2D(Player.Character->GetActorLocation(), Centre);
+		TestEqual(FString::Printf(TEXT("beat %d draws the whole 30 cm (%.1f to %.1f)"), Index + 1, Before, Now),
+				  Before - Now, 30.0f, 0.5f);
+	}
+
+	// AND IT STOPS AT THE CENTRE: 50 CM LEFT, TWO MORE BEATS, AND NEVER PAST IT.
+	Beat(Mode, 2);
+	TestEqual(TEXT("at the centre"), FVector::Dist2D(Player.Character->GetActorLocation(), Centre), 0.0, 0.5);
+	Beat(Mode, 4);
+	TestEqual(TEXT("and still there, not drawn past it"),
+			  FVector::Dist2D(Player.Character->GetActorLocation(), Centre), 0.0, 0.5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellsWallTest,
+	"Cataclysm.DungeonModifierEffects.SingularityWellsPullDoesNotCarryThePlayerThroughAWall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellsWallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWellsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FIntPoint Cell = AFloorCellBeforeAWall(Plan);
+	if (!TestTrue(TEXT("set-up: a floor cell before a wall along X"), Cell.X >= 0))
+	{
+		return false;
+	}
+	// THE WELL'S CENTRE IN THE ROCK, 150 CM PAST THE WALL'S FACE; THE PLAYER 250 CM FROM IT, ON THE FLOOR SIDE.
+	const FVector CellCentre = CellAtThePlayersHeight(Mode, Player, Cell);
+	const float FaceX = CellCentre.X + 0.5f * FCataclysmFloorGenerator::CellSizeCm;
+	const FVector Centre(FaceX + 150.0f, CellCentre.Y, CellCentre.Z);
+	if (!TestNotNull(TEXT("set-up: a well placed against the wall"), Mode->PlaceASingularityWellAt(Centre, 0.0f)))
+	{
+		return false;
+	}
+	const FVector Start = Centre - FVector(250.0f, 0.0f, 0.0f);
+	StandThePlayerAt(Player, Start);
+	Beat(Mode, 20);
+	const FVector Now = Player.Character->GetActorLocation();
+	TestTrue(FString::Printf(TEXT("drawn toward the wall (%.1f cm)"), Now.X - Start.X), Now.X > Start.X + 1.0);
+	TestTrue(FString::Printf(TEXT("but not past its face (%.1f, the face at %.1f)"), Now.X, FaceX), Now.X < FaceX);
+	TestTrue(TEXT("and still on the floor cell"), Mode->CurrentFloor->CellOfWorld(Now) == Cell);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellsProjectileTest,
+	"Cataclysm.DungeonModifierEffects.SingularityWellsTurnAProjectileTowardTheirCentre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellsProjectileTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWellsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FIntPoint Cell = ThreeFloorCellsAlongX(Mode->CurrentFloor->GetPlan());
+	if (!TestTrue(TEXT("set-up: three floor cells along X"), Cell.X >= 0))
+	{
+		return false;
+	}
+	const FVector Centre = CellAtThePlayersHeight(Mode, Player, Cell + FIntPoint(1, 0));
+	ACataclysmGroundZone* Well = Mode->PlaceASingularityWellAt(Centre, 0.0f);
+	if (!TestNotNull(TEXT("set-up: a well placed"), Well))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the well is in the register of pulling zones"),
+			 ACataclysmGroundZone::ProjectilePullZones().Contains(TWeakObjectPtr<ACataclysmGroundZone>(Well)));
+
+	// A SHOT INSIDE THE WELL, 100 CM TO ONE SIDE OF ITS CENTRE, FLYING ALONG X: ITS HEADING TURNS TOWARD THE CENTRE BY
+	// 120 DEGREES A SECOND, SO 12 IN A TENTH OF A SECOND.
+	const FVector From = Centre + FVector(-150.0f, -100.0f, 0.0f);
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(Player.Character, From, From + FVector(3000.0f, 0.0f, 0.0f),
+															20.0f, 1000.0f, 0, false, 0.0f, FGameplayTagContainer(), false);
+	if (!TestNotNull(TEXT("set-up: a shot fired"), Shot))
+	{
+		return false;
+	}
+	Shot->Step(0.1f);
+	const FVector Heading = Shot->TravelDirection();
+	const float Turned = FMath::RadiansToDegrees(FMath::Atan2(Heading.Y, Heading.X));
+	TestTrue(FString::Printf(TEXT("it turned toward the centre (%.2f degrees)"), Turned), Turned > 0.0f);
+	TestEqual(TEXT("by 12 degrees in a tenth of a second"), Turned, 12.0f, 0.5f);
+
+	// A SHOT OUTSIDE EVERY WELL FLIES STRAIGHT.
+	const FVector Far = Centre + FVector(-1500.0f, -1500.0f, 0.0f);
+	ACataclysmProjectile* Straight = ACataclysmProjectile::Fire(Player.Character, Far, Far + FVector(3000.0f, 0.0f, 0.0f),
+																20.0f, 1000.0f, 0, false, 0.0f, FGameplayTagContainer(),
+																false);
+	if (TestNotNull(TEXT("set-up: a second shot"), Straight))
+	{
+		Straight->Step(0.1f);
+		TestEqual(TEXT("a shot outside every well does not turn"), Straight->TravelDirection().Y, 0.0, 0.0001);
+	}
+
+	// THE WELL GONE, IT LEAVES THE REGISTER.
+	Well->Destroy();
+	TestFalse(TEXT("a well destroyed leaves the register"),
+			  ACataclysmGroundZone::ProjectilePullZones().Contains(TWeakObjectPtr<ACataclysmGroundZone>(Well)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRainFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InfernalRainFireballFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRainFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a fireball falls for 0.75 s"), Effects::InfernalRainFireballFallSeconds, 0.75f, 0.001f);
+	TestEqual(TEXT("three beats"), Effects::InfernalRainFireballFallSeconds / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks,
+			  3.0f, 0.001f);
+	TestEqual(TEXT("from 600 cm to one side"), Effects::InfernalRainFireballFromSideCm, 600.0f, 0.001f);
+	TestEqual(TEXT("and 1500 cm up"), Effects::InfernalRainFireballFromHeightCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(InfernalRain)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRainFireballTest,
+	"Cataclysm.DungeonModifierEffects.InfernalRainAFireballFallsAndItsPatchIsPlacedWhereItLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRainFireballTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {InfernalRain};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// THE CADENCE: A FIREBALL, AND NO PATCH YET.
+	Beat(Mode, BeatsFor(Effects::InfernalRainSecondsBetweenPatches));
+	const TArray<ACataclysmProjectile*> Falling = Mode->InfernalRainFireballsFalling();
+	const TArray<FVector> Landing = Mode->InfernalRainLandingPoints();
+	if (!TestEqual(TEXT("one fireball falling"), Falling.Num(), 1) || !TestEqual(TEXT("to one point"), Landing.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no patch until it lands"), Mode->InfernalRainPatchesNow().Num(), 0);
+	ACataclysmProjectile* Ball = Falling[0];
+	TestEqual(TEXT("the fireball deals nothing"), Ball->DamagePercentOfAHit(), 0.0f, 0.0001f);
+	const FName BallType = UCataclysmProjectileEffect::DamageTypeFor(Ball);
+	TestEqual(TEXT("it is coloured by the row's type, Demonic: there is no Fire element"), BallType, FName(TEXT("Demonic")));
+
+	// IT LANDS THREE BEATS LATER, AND THE PATCH IS PLACED WHERE IT WAS AIMED, OF THE FIREBALL'S TYPE.
+	Beat(Mode, BeatsFor(Effects::InfernalRainFireballFallSeconds) - 1);
+	TestEqual(TEXT("still falling a beat before it lands"), Mode->InfernalRainPatchesNow().Num(), 0);
+	Beat(Mode, 1);
+	const TArray<ACataclysmGroundZone*> Patches = Mode->InfernalRainPatchesNow();
+	if (!TestEqual(TEXT("its patch is placed as it lands"), Patches.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("where the fireball was aimed"), FVector::Dist2D(Patches[0]->GetActorLocation(), Landing[0]), 0.0, 1.0);
+	TestEqual(TEXT("the fireball's damage type is the patch's"), BallType, Patches[0]->DamageType);
+	TestEqual(TEXT("no fireball still falling"), Mode->InfernalRainFireballsFalling().Num(), 0);
+	TestFalse(TEXT("and the ball is gone"), IsValid(Ball));
 	return true;
 }
 

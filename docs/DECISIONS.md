@@ -2,6 +2,120 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Singularity Wells pull the player and turn projectiles, and Infernal Rain's fireballs fall: both rows built
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`SetProjectilePull`, the register
+`ProjectilePullZones`), `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and `.cpp` (`TurnTowardAPull` in
+`Step`, and the read-only `TravelDirection` and `DamagePercentOfAHit`),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the figures, both keys' comments, and
+both rows answered `Built`), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the pull in
+`StepSingularityWells`, `PlaceASingularityWellAt`, the falls in `StepInfernalRain` and `PlaceAnInfernalRainPatch`), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
+[#1605](https://github.com/sdubois777/Cataclysm/issues/1605), [#1699](https://github.com/sdubois777/Cataclysm/issues/1699)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and
+the three guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The rows
+
+`Void_Singularity_Wells`: "Pulsing void orbs pull players and projectiles toward them, dealing void damage and slowing
+movement by 40%." Until this change the orbs damaged and slowed, and nothing pulled.
+
+`Demonic_Infernal_Rain`: "Fireballs rain in combat zones, leaving patches of burning ground that deal fire damage over
+time for 10 seconds." Until this change the burning ground appeared, and no fireball was drawn.
+
+### What the research settles, and what it does not
+
+Researched 2026-10-01, before any figure was proposed, as this project's rule asks:
+
+- **Path of Exile's Void Sphere**, game text from [poedb.tw/us/Void_Sphere](https://poedb.tw/us/Void_Sphere): "Base
+  radius is 3.8 metres", "Pulses every 0.4 seconds", "Base duration is 5 seconds", and enemies in range are Hindered
+  "with up to (30—39)% reduced Movement Speed, based on distance". It states no pull distance. Search results quoting
+  the Path of Exile wiki say its first pulses pull harder than later ones; **the wiki pages themselves could not be
+  reached** (poewiki.net answers a bot-protection page, and the fandom wiki answers HTTP 402).
+- **Diablo III's Black Hole**, from Blizzard's own skill page through search: it draws enemies to it and deals its
+  damage over 2 seconds to all enemies within 15 yards.
+- **Diablo IV's Black Hole**, through search: it pulls in all enemies in range and counts as a knockback.
+- **Last Epoch's Black Hole**, through search: a base radius of 3 and a duration of 2.75 seconds; its Tidal Force node
+  "pulls enemies towards it slower" and Recurrence reduces "pull strength and pull area", so the pull is a tuned number
+  there too. **The ability page could not be read**: lastepoch.tunklab.com builds it with script.
+- **No shipped hazard that pulls the player** was found; Diablo IV's Nightmare Dungeon affixes have none.
+
+So the research settles the SHAPE: the pull acts inside the orb's own radius, in pulses, with the slow there too, as
+Void Sphere does. **It does not settle a strength: no shipped game publishes a pull speed.** The figures below are
+judgements.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01, each a labelled judgement:**
+
+- **The player is drawn 120 cm a second toward the centre of the nearest well covering them**,
+  `SingularityWellsPullCmPerSecond`, as 30 cm a beat. **The reason:** the player walks at 400 cm a second
+  (`DefaultWalkSpeedCmPerSecond`), and inside a well the 40% slow leaves 240; half of that leaves a player walking
+  straight out 120 cm a second net, so a well can always be left. A player standing still is drawn from the edge to the
+  centre in 2.5 seconds, near Last Epoch's Black Hole drawing over its radius within its 2.75 seconds. Diablo III's 15
+  yards in 2 seconds is a player's skill against monsters, far stronger, and is not the model for a hazard against the
+  player.
+- **By a swept `SetActorLocation`**, as `ACataclysmTether::Check` moves its ends, **not
+  `UCataclysmSkillEffects::ApplyPull`**, whose diminishing-returns rule halves every displacement inside a five-second
+  window, so a pulsing pull would fade within about a second. Swept, so a wall stops it. **It never draws the player
+  past the centre**, it pulls **once however many wells overlap**, toward the nearest, and it pulls **players only**:
+  the row says "players".
+- **A projectile inside a well turns toward its centre, up to 120 degrees a second**,
+  `SingularityWellsProjectileTurnDegreesPerSecond`, **every projectile**, the player's and the creatures': the row says
+  "projectiles". No shipped figure exists; Diablo IV's Black Hole with its Event Horizon absorbs projectiles instead,
+  a stronger effect than a bend.
+- **The turn happens inside `ACataclysmProjectile::Step`, every sub-step, and reads a register, not the world.** A well
+  is registered by `ACataclysmGroundZone::SetProjectilePull` when it is placed and leaves the register in `EndPlay`;
+  `ProjectilePullZones` is what a projectile reads. **The cost** of a projectile's step is therefore one pass over the
+  register, which holds at most three zones (Singularity Wells' cap), whatever else is on the floor. A zone of another
+  world, or one gone, is skipped. Turning from the rule's 0.25 s beat instead was smaller and was not chosen: a projectile
+  crossing a 600 cm well at 1500 cm a second is inside it for 0.4 s, so it would be turned once or not at all.
+- **Infernal Rain's fireball falls for 0.75 seconds**, `InfernalRainFireballFallSeconds`, three beats, lobbed onto the
+  landing point from `InfernalRainFireballFromSideCm` beyond it, on the far side from the player, and
+  `InfernalRainFireballFromHeightCm` above, **and the patch is placed where it lands**, when its fall ends, so the
+  fireball visibly makes the patch. **It deals nothing**; the patch does. It passes through what it meets, so the patch
+  lands where it was aimed. A fireball still falling counts against the cap of three as the patch it will be.
+- **The fireball's colour is the row's own type, through an `Element.` tag** read from the row as the patch's type is:
+  Demonic today. **There is no Fire element**: the colour table, `game/Data/ElementVisuals.csv`, has the eight Cataclysm
+  types and nothing else, and the floor's hazard source carries no damage type of its own (issue #1924), so with no tag
+  the fireball would be drawn white. The ball and the patch it leaves are the same colour, and a row retyped in the
+  workbook recolours both.
+
+### Tests
+
+Seven new automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `SingularityWellsPullFiguresAndTheRowBuilt`: 120 cm a second, which is half the walk left inside a well; 120 degrees
+  a second; the row built.
+- `SingularityWellsDrawAPlayerInsideThirtyCentimetresABeatTowardTheCentre`: not drawn from 400 cm, outside the well;
+  drawn 30 cm in a beat from 250 cm, along the line to the centre.
+- `SingularityWellsPullHoldsThirtyABeatAndStopsAtTheCentre`: eight beats in a row each draw the whole 30 cm, which is
+  what diminishing returns would halve; then at the centre, and still there four beats later.
+- `SingularityWellsPullDoesNotCarryThePlayerThroughAWall`: a well whose centre is in the rock beyond a wall; after
+  twenty beats the player has been drawn toward the wall but not past its face, and still stands on the floor cell.
+- `SingularityWellsTurnAProjectileTowardTheirCentre`: a shot inside a well turns 12 degrees in a tenth of a second, one
+  outside does not turn, and a destroyed well leaves the register.
+- `InfernalRainFireballFiguresAndTheRowBuilt`
+- `InfernalRainAFireballFallsAndItsPatchIsPlacedWhereItLands`: a fireball on the cadence and no patch; it deals nothing
+  and is Demonic; no patch a beat before it lands; then one, where it was aimed, of the fireball's damage type, and the
+  ball gone.
+
+**Three existing assertions change on purpose:** the controls in `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack` that said Infernal
+Rain and Singularity Wells are partly built now say both are built, as their own comments said they would be revisited;
+and `AFloorCarryingInfernalRainDropsTypedPatches` now finds a fireball on the due beat and its patch three beats later.
+The other Infernal Rain and Singularity Wells tests run as the regression check.
+
+Two Python checks, `test_singularity_wells_row_still_says_pulling_orbs_pull_players_and_projectiles` and
+`test_infernal_rain_row_still_says_fireballs_rain_leaving_burning_ground`, pin the phrases the rulings rest on.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the player's move removed; Pb, the pull
+sent through `UCataclysmSkillEffects::ApplyPull` instead; Pc, the projectile's turn removed.
+
+---
+
 ## 2026-10-01 — A floor is cleared when its own creatures are dead: the Reaper, a Blood Bond's elite and every rule's arrivals no longer hold it uncleared
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`IsOneOfTheFloorsOwnStanding`, new,
