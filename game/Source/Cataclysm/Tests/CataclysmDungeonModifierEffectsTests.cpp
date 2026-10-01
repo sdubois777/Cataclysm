@@ -41982,6 +41982,8 @@ namespace CataclysmDungeonModifierEffectsTest
 		const float Maximum =
 			System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : -1.0f;
 		const float Armor = System ? System->GetNumericAttribute(UCataclysmCombatAttributeSet::GetArmorAttribute()) : -1.0f;
+		const float Evasion =
+			System ? System->GetNumericAttribute(UCataclysmCombatAttributeSet::GetEvasionAttribute()) : -1.0f;
 		FString Rows;
 		for (const FName& Row : Victim->ModifierRows)
 		{
@@ -41989,8 +41991,9 @@ namespace CataclysmDungeonModifierEffectsTest
 		}
 		Test.AddError(FString::Printf(
 			TEXT("still standing: rung %d (%d before the blow); health %.1f of %.1f (%.1f before); armour %.1f (%.1f "
-				 "before); the blow dealt %.1f; cannot be hurt %d; in a sigil %d; a seal bearer %d; modifiers [%s]"),
-			Victim->RarityStep, RungBefore, Health, Maximum, HealthBefore, Armor, ArmorBefore, Blow,
+				 "before); evasion %.1f; the blow sent %.1f; cannot be hurt %d; in a sigil %d; a seal bearer %d; "
+				 "modifiers [%s]"),
+			Victim->RarityStep, RungBefore, Health, Maximum, HealthBefore, Armor, ArmorBefore, Evasion, Blow,
 			Victim->bCannotBeHurt ? 1 : 0, UCataclysmEnemyModifiers::IsProtectedBySigil(Victim) ? 1 : 0,
 			Victim->bIsASealBearer ? 1 : 0, *Rows));
 	}
@@ -42065,6 +42068,25 @@ namespace CataclysmDungeonModifierEffectsTest
 			Placed.Add(One);
 		}
 		Mode->ChooseTheSealBearers();
+
+		// AND NONE OF THEM CAN DODGE, AGAIN. Choosing raises a Common bearer to Elite through `SetRarityStep`, which
+		// re-applies the starting attributes and so writes the Imp's designed evasion back over the zero
+		// `PlaceCreatureAtRung` set; the test's one blow was then dodged at random. Found by seals Pa2's diagnostic in
+		// the second exit-lock window, 2026-10-01: health untouched by a blow `ApplyHit` reported as sent. The cause is
+		// read from the code, not printed; the assertion below is the check, so a later refresh that puts evasion back
+		// fails here by name instead of dodging at random.
+		for (ACataclysmEnemyCharacter* One : Placed)
+		{
+			if (UAbilitySystemComponent* System = One->GetAbilitySystemComponent())
+			{
+				System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			}
+			UAbilitySystemComponent* Reading = UCataclysmTargeting::AbilitySystemOf(One);
+			Test.TestEqual(TEXT("set-up: a placed creature cannot dodge after the bearers are chosen"),
+						   Reading ? Reading->GetNumericAttribute(UCataclysmCombatAttributeSet::GetEvasionAttribute())
+								   : -1.0f,
+						   0.0f, 0.001f);
+		}
 		return Placed;
 	}
 }

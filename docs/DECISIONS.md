@@ -253,6 +253,19 @@ the blow does not kill, the victim's rung, health, armour, the blow, and whether
 **Pa stays NOT A PROOF with those causes. Pa2, the same break at the new top, is a fourth run of this row's proofs**,
 allowed by the coordinating session because Pa failed on test faults rather than on a fair test.
 
+**Pa2, run in the second window at `6d27d288`, was also NOT A PROOF**, from a third test fault. The kill diagnostic
+printed, four times, a bearer at the Elite rung with health "100.0 of 100.0 (100.0 before)", no armour, no modifiers,
+not in a sigil and able to be hurt, after a blow `ApplyHit` reported as 57600 sent. Choosing the bearers raises a
+Common to Elite through `SetRarityStep`, which re-applies the starting attributes and so writes back the Imp's designed
+25% evasion over the zero `PlaceCreatureAtRung` had set; `ApplyHit` returns the figure sent, not what landed (issue
+#1156), so a dodged blow still reports its damage. **That evasion was the cause is inferred from the code, not
+printed**: the diagnostic did not yet read evasion. The tests now zero every placed creature's evasion after the
+bearers are chosen, and **a set-up assertion that each reads 0 is the check**; the diagnostic now prints evasion too. In
+play the raised bearer keeps its designed evasion, which is correct. In Pa2's half with the break in, two of the three
+predicted tests failed at their predicted assertions; the third, `InfernalSealsTheStairsOpenWithTheLastPiece`, failed
+earlier, on a dodged kill. **Pa2 stays NOT A PROOF with that cause, and Pa3, the same break, is a fifth run of this
+row's proofs, the last the coordinating session allows.**
+
 ---
 
 ## 2026-10-01 — A death deals the remaining damage of the player's own damage over time on the enemies within 5 m, and a critical strike deals 20%-40% of a target's Necrosis; an Ailment column
