@@ -12168,6 +12168,50 @@ bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPyreStopsAtTheCeilingTest,
+	"Cataclysm.Skills.TheLivingPyreStopsAtTheHealingCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1607, ruled 2026-09-30. A holder whose healing ceiling is half its
+ * maximum -- Point of No Return's "You cannot be healed above 50% of your
+ * maximum health" -- gets back only what fits under half, and nothing once at
+ * or above it. Until then the Pyre capped at the maximum.
+ */
+bool FCataclysmPyreStopsAtTheCeilingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	Caster.GiveFervourForUltimates(1);
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre || !TestTrue(TEXT("it activates"), Activate(Caster, Pyre)))
+	{
+		return false;
+	}
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute(), 50.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 49990.0f);
+	TestEqual(TEXT("a blow dealing 400 below the ceiling returns only the 10 that fit"),
+			  Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f), 10.0f, 0.01f);
+	TestEqual(TEXT("and the holder stops at half its maximum"), Caster.Health(), 50000.0f, 0.01f);
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 60000.0f);
+	TestEqual(TEXT("above the ceiling a blow returns nothing"),
+			  Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and does not pull it down either"), Caster.Health(), 60000.0f, 0.01f);
+	return true;
+}
+
+
 
 /**
  * A real blow, dealt by another character's real skill, returns the health.

@@ -33,6 +33,28 @@ const TCHAR* UCataclysmRegeneration::ManaRegenRestoresShieldStat =
 const TCHAR* UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat =
 	TEXT("energy_shield_recharge_ceiling_reduction");
 
+float UCataclysmRegeneration::HealthHealingCeiling(const UAbilitySystemComponent& AbilitySystem,
+												  float CeilingShare)
+{
+	float Ceiling = AbilitySystem.GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+		* FMath::Clamp(CeilingShare, 0.0f, 1.0f);
+
+	// THE CEILING: "You cannot be healed above 50% of your maximum health",
+	// and the enchantment rows that say the same with other shares.
+	const float Reduction = FMath::Clamp(
+		AbilitySystem.GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute()),
+		0.0f, 100.0f);
+	Ceiling *= (100.0f - Reduction) / 100.0f;
+
+	// AND WHAT IS RESERVED STAYS UNFILLED. Issue #1833.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem))
+	{
+		Ceiling = FMath::Min(Ceiling, Cataclysm->UnreservedMaximumHealth());
+	}
+	return FMath::Max(0.0f, Ceiling);
+}
+
 void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 								   const FGameplayAttribute& Pool,
 								   const FGameplayAttribute& Maximum,
@@ -141,6 +163,8 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// HERE RATHER THAN AT EACH CALLER, because this is the one place health
 	// regeneration and life leech both restore health, and the node says
 	// "cannot be healed" rather than naming one of them.
+	// The answer itself is `HealthHealingCeiling`, which Living Pyre asks as
+	// well: issue #1607, the one heal of health that does not come through here.
 	//
 	// HEALTH ONLY. The node says health, and mana and the energy shield come
 	// through this same function.
@@ -155,21 +179,7 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// it was and no character without the node is changed by a single number.
 	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
 	{
-		const float Reduction = FMath::Clamp(
-			AbilitySystem.GetNumericAttribute(
-				UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute()),
-			0.0f, 100.0f);
-		Ceiling *= (100.0f - Reduction) / 100.0f;
-
-		// AND NO HEAL FILLS WHAT IS RESERVED. Issue #1833, ruled 2026-09-30:
-		// "every healing, regeneration, leech and potion stops at that cap".
-		// The lower of the two ceilings, so a character carrying both stops at
-		// whichever it reaches first.
-		if (const UCataclysmAbilitySystemComponent* Cataclysm =
-				Cast<UCataclysmAbilitySystemComponent>(&AbilitySystem))
-		{
-			Ceiling = FMath::Min(Ceiling, Cataclysm->UnreservedMaximumHealth());
-		}
+		Ceiling = HealthHealingCeiling(AbilitySystem, CeilingShare);
 	}
 
 	// A POOL WITH NO MAXIMUM IS NOT A POOL. A class with no energy shield is a
