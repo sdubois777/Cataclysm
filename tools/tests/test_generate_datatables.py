@@ -2222,6 +2222,89 @@ class TestHealthThresholdAndFloorStart:
             gen.enchantment_effects(self.cap(tmp_path, {"Fraction Of": "maximum"}))
 
 
+class TestNearbyActionsAndTheirEvents:
+    """A smite or a heal of every enemy nearby, on a broken energy shield or the
+    player's death. Issue #1833 group D part 3, ruled 2026-10-01: "When your
+    energy shield is broken, you smite all nearby enemies" and "On death all
+    nearby enemies are healed for 10%-20% of their maximum HP"."""
+
+    SMITE_WORDS = "When your energy shield is broken, you smite all nearby enemies"
+    SMITE = gen.row_name("Positive", SMITE_WORDS[:48])
+    DEATH_WORDS = "On death all nearby enemies are healed for 10%-20% of their maximum HP"
+    DEATH = gen.row_name("Negative", DEATH_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [SMITE_WORDS, "Generic", 4, "Stat.Defense.EnergyShield", None,
+         DEATH_WORDS, "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "nearby.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def smite(self, tmp_path, changes):
+        values = {"Enchantment": self.SMITE, "Effect": self.SMITE_WORDS,
+                  "Action": "smite_nearby", "Action Event": "energy_shield_broken",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def heal(self, tmp_path, changes):
+        values = {"Enchantment": self.DEATH, "Effect": self.DEATH_WORDS,
+                  "Action": "heal_nearby_enemies", "Action Event": "player_death",
+                  "Value Low": 10, "Value High": 20}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_smite_on_a_broken_shield_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.smite(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"]) == ("smite_nearby", "energy_shield_broken", 100.0, "")
+
+    def test_a_broken_shield_is_hit_fired_so_takes_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.smite(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_a_heal_on_the_players_death_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            "heal_nearby_enemies", "player_death", 10.0, 20.0, "")
+
+    def test_the_players_death_is_not_hit_fired_so_takes_no_default_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_nearby_action_on_an_event_the_game_does_not_fire_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which the game does not fire"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Action Event": "shield_shattered"}))
+
+    def test_a_nearby_action_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which the game does not fire"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Action Event": None}))
+
+    def test_a_heal_of_more_than_a_whole_maximum_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Value Low": 150, "Value High": None}))
+
+    def test_a_smite_past_its_bound_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 1000"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Value Low": 1500}))
+
+    def test_a_nearby_action_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_a_nearby_action_with_stacks_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="caps nothing"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Scale Max Steps": 3}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 

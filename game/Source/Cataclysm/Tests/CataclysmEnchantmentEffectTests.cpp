@@ -33,6 +33,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -10867,6 +10868,164 @@ bool FCataclysmFloorStartRowTest::RunTest(const FString&)
 	TestTrue(TEXT("the player has a maximum"), Maximum > 0.0f);
 	TestEqual(TEXT("a full player wearing the row starts the floor at its share"),
 		AbilitySystem->GetNumericAttribute(Health), Maximum * Share / 100.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDivineRetributionRowTest,
+	"Cataclysm.Enchantments.DivineRetributionSixPiecesSmiteNearbyEnemiesWhenTheShieldBreaks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Divine Retribution (6-Piece Bonus): When your energy shield is broken, you
+ * smite all nearby enemies". Issue #1833 group D part 3: `smite_nearby` 100 on
+ * `energy_shield_broken`, the 2026-09-11 judgement "a nova at 100% of weapon
+ * damage" within five metres. THROUGH A REAL BLOW that empties the wearer's
+ * shield. Five pieces do not smite.
+ */
+bool FCataclysmDivineRetributionRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Retribution = TEXT("Positive_Divine_Retribution_2_Piece_Bonus_Your_energy");
+
+	for (const int32 Pieces : {5, 6})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, Retribution, Pieces);
+		SetHealth(Wearer.AbilitySystem, 1000.0f, 1000.0f);
+		Wearer.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100.0f);
+		Wearer.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 100.0f);
+		Wearer.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 200.0f);
+		if (!TestEqual(TEXT("set-up: the wearer holds a hundred shield"),
+				Wearer.AbilitySystem->GetNumericAttribute(
+					UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()), 100.0f, 0.01f))
+		{
+			return false;
+		}
+
+		ACataclysmEnemyCharacter* Near = World->SpawnActor<ACataclysmEnemyCharacter>(
+			Wearer.Actor->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!TestNotNull(TEXT("an enemy three metres away"), Near))
+		{
+			return false;
+		}
+		Near->SetHealth(1000.0f);
+		const UAbilitySystemComponent* NearSystem = UCataclysmTargeting::AbilitySystemOf(Near);
+		if (!TestNotNull(TEXT("the enemy's ability system"), NearSystem))
+		{
+			return false;
+		}
+		const float Before = HealthOf(NearSystem);
+
+		FWearer Attacker(World);
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 500.0f);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Wearer.Actor, /*DamagePercent=*/100.0f);
+		if (!TestEqual(TEXT("set-up: the blow emptied the shield"),
+				Wearer.AbilitySystem->GetNumericAttribute(
+					UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()), 0.0f, 0.01f))
+		{
+			return false;
+		}
+		if (Pieces < 6)
+		{
+			TestEqual(TEXT("five pieces: the enemy nearby is not smitten"), HealthOf(NearSystem), Before, 0.01f);
+			continue;
+		}
+		TestTrue(*FString::Printf(TEXT("six pieces: the enemy nearby is smitten: %.2f to %.2f"),
+			Before, HealthOf(NearSystem)), HealthOf(NearSystem) < Before);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathHealsEnemiesRowTest,
+	"Cataclysm.Enchantments.TheDeathRowHealsNearbyEnemiesByItsRolledShareThroughARealDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "On death all nearby enemies are healed for 10%-20% of their maximum HP".
+ * Issue #1833 group D part 3: `heal_nearby_enemies` 10 to 20 on `player_death`.
+ * WORN BY A PLAYER who dies through a real blow, read against the roll the item
+ * gave the row.
+ */
+bool FCataclysmDeathHealsEnemiesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Killer = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player state"), PlayerState)
+		|| !TestNotNull(TEXT("a player character"), Character)
+		|| !TestNotNull(TEXT("an enemy three metres away"), Killer))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Character->GetAbilitySystemComponent());
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	if (!TestNotNull(TEXT("the player's ability system"), AbilitySystem)
+		|| !TestNotNull(TEXT("the player's equipment"), Equipment))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+		TEXT("Negative_On_death_all_nearby_enemies_are_healed_for_10_2")),
+		Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(AbilitySystem);
+	float Share = -1.0f;
+	for (const FCataclysmPoolAction& Action : AbilitySystem->GetPoolActions())
+	{
+		if (Action.Nearby == ECataclysmNearbyAction::HealEnemies)
+		{
+			Share = Action.Percent;
+		}
+	}
+	if (!TestTrue(*FString::Printf(TEXT("the worn row gave a heal between 10 and 20: %.2f"), Share),
+			Share >= 10.0f && Share <= 20.0f))
+	{
+		return false;
+	}
+
+	Killer->SetHealth(1000.0f);
+	UAbilitySystemComponent* KillerSystem = UCataclysmTargeting::AbilitySystemOf(Killer);
+	if (!TestNotNull(TEXT("the enemy's ability system"), KillerSystem))
+	{
+		return false;
+	}
+	KillerSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer, Character, 100000.0f);
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Character)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the enemy nearby is healed by the rolled share of its maximum"),
+		KillerSystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+		500.0f + 1000.0f * Share / 100.0f, 0.01f);
 	return true;
 }
 

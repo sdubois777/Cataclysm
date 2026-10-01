@@ -25,6 +25,7 @@
 // character being hit. Issue #1515. An actor with no ability system is the
 // "cannot be read" case the condition refuses on.
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 // For TopUp, which is how a worn row restores a pool: it clamps to the
 // maximum, and for health it is the healing path, so the nodes that boost
 // healing reach it and the Masochist's rule that healing removes Fervour
@@ -2487,6 +2488,16 @@ float UCataclysmAbilitySystemComponent::SecondsSinceBasicAttackUsed() const
 		0.0f, World->GetTimeSeconds() - LastBasicAttackAtSeconds);
 }
 
+void UCataclysmAbilitySystemComponent::NoteEnergyShieldBroken()
+{
+	ActOnEvent(FName(TEXT("energy_shield_broken")));
+}
+
+void UCataclysmAbilitySystemComponent::NotePlayerDeath()
+{
+	ActOnEvent(FName(TEXT("player_death")));
+}
+
 void UCataclysmAbilitySystemComponent::NoteBlocked()
 {
 	if (const UWorld* World = GetWorld())
@@ -3213,6 +3224,9 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyRandomDotAction =
 	TEXT("apply_random_dot");
 const TCHAR* UCataclysmAbilitySystemComponent::HealthCappedAtAction =
 	TEXT("health_capped_at");
+const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyAction = TEXT("smite_nearby");
+const TCHAR* UCataclysmAbilitySystemComponent::HealNearbyEnemiesAction =
+	TEXT("heal_nearby_enemies");
 
 namespace
 {
@@ -4107,6 +4121,22 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// A SMITE OR A HEAL OF EVERY ENEMY NEARBY. Issue #1833 group D part 3,
+		// ruled 2026-10-01. Landed only, once per row per event. Its cooldown
+		// starts when it is released, whether or not anything stood in reach,
+		// as the Nova's interval does: "you smite all nearby enemies" does not
+		// make the smite depend on there being one.
+		if (Action.Nearby != ECataclysmNearbyAction::None)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				ActOnNearby(Action);
+				NoteTriggerFired(Action);
+			}
+			continue;
+		}
 		// A RANDOM DAMAGE OVER TIME ON THE OTHER CHARACTER OF THE EVENT. Issue
 		// #1833 group D, ruled 2026-09-30. Landed only, once per row per event,
 		// only for an event naming that character and carrying what reached its
@@ -4208,6 +4238,61 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 		}
 	}
 	return true;
+}
+
+void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& Action)
+{
+	// FROM THE CHARACTER, NOT THE PLAYER STATE THAT OWNS THIS COMPONENT: the
+	// avatar is where the wearer stands and the side it is on.
+	AActor* Self = GetAvatarActor();
+	UWorld* World = Self ? Self->GetWorld() : nullptr;
+	if (!World || Action.Percent <= 0.0f)
+	{
+		return;
+	}
+
+	// THE SEARCH THE PLAYER'S OWN NOVAS MAKE (`UCataclysmNova`): every living
+	// character with an ability system that the wearer's side counts as an
+	// enemy, floor sources included, nearest first. A dead wearer still
+	// searches, because "On death" fires after the death is marked.
+	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+		World, Self, Self->GetActorLocation(), NearbyActionRadiusCm);
+
+	for (AActor* Other : Nearby)
+	{
+		if (Action.Nearby == ECataclysmNearbyAction::Smite)
+		{
+			// A REAL HIT OF THE STATED SHARE OF WEAPON DAMAGE, as the Nova's
+			// is: "Smite ... a nova at 100% of weapon damage", the judgement of
+			// 2026-09-11. ACT ON EVENT IS DEPTH ONE, so these hits fire none of
+			// the wearer's own `hit_dealt` or `critical_strike` rows.
+			UCataclysmSkillEffects::ApplyHit(Self, Other, Action.Percent);
+			continue;
+		}
+
+		// A HEAL NEVER REACHES THE WEARER'S OWN SIDE, maddened or not. See
+		// `UCataclysmTeams::ShareSideIgnoringMadness`: `FindEnemiesInSphere`
+		// returns a maddened player's thralls and imps, and this must not heal
+		// them.
+		if (UCataclysmTeams::ShareSideIgnoringMadness(Self, Other))
+		{
+			continue;
+		}
+		UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Other);
+		if (!Theirs)
+		{
+			continue;
+		}
+		// EACH BY ITS OWN MAXIMUM, through `TopUp`, the one route every heal of
+		// health takes (#2187), so its healing ceiling and anything reducing the
+		// healing it receives apply.
+		const float Gain = Theirs->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * Action.Percent / 100.0f;
+		UCataclysmRegeneration::TopUp(*Theirs,
+			UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(),
+			Gain, FGameplayTagContainer());
+	}
 }
 
 void UCataclysmAbilitySystemComponent::ApplyPoolAction(

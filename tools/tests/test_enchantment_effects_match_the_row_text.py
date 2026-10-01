@@ -265,6 +265,11 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # every time. Issue #1833 group D. One word for each of its two rows'
     # sentences, so each is needed by a row.
     "apply_random_dot": {"apply": 100.0, "applies": 100.0},
+    # "SMITE" IS 100 ON `smite_nearby`, a share of weapon damage: the 2026-09-11
+    # judgement "Smite ... a nova at 100% of weapon damage". Issue #1833 group D
+    # part 3, for "Divine Retribution (6-Piece Bonus): When your energy shield is
+    # broken, you smite all nearby enemies".
+    "smite_nearby": {"smite": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -532,8 +537,10 @@ JUDGED_NUMBERS = {
 #: issue #1833 group D, from 421 over 342: two rows on two enchantments.
 #: AND 428 OVER 347 SINCE THE HEALTH THRESHOLDS,
 #: issue #1833 group D part 2, from 423 over 344: five rows on three enchantments.
-AUTHORED_ROWS = 428
-AUTHORED_ENCHANTMENTS = 347
+#: AND 430 OVER 349 SINCE THE NEARBY ACTIONS,
+#: issue #1833 group D part 3, from 428 over 347: two rows on two enchantments.
+AUTHORED_ROWS = 430
+AUTHORED_ENCHANTMENTS = 349
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

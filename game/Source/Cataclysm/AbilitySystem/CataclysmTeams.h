@@ -114,4 +114,20 @@ public:
 
 	/** Whether this actor currently carries the Madness tag. */
 	static bool IsMaddened(const AActor* Actor);
+
+	/**
+	 * Whether two actors are on one side, as `AttitudeBetween` judges it WITHOUT
+	 * ITS MADNESS STEP: one owns the other, however many links away, or both
+	 * carry the same team.
+	 *
+	 * IT EXISTS FOR THE DEATH HEAL ALONE, "On death all nearby enemies are healed
+	 * for 10%-20% of their maximum HP", ruled 2026-10-01 under the owner's
+	 * delegation: "enemies" there means the dungeon's creatures, and madness
+	 * changes whom a creature attacks, not whose side it is on. So a maddened
+	 * player who dies heals no thrall, imp or co-op player of their own.
+	 *
+	 * TARGETING AND ATTITUDE STILL USE `AttitudeBetween`, madness included. This
+	 * answers only "is that one of mine", never "may I strike it".
+	 */
+	static bool ShareSideIgnoringMadness(const AActor* A, const AActor* B);
 };

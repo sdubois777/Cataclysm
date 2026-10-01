@@ -2,6 +2,129 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — A broken energy shield smites the enemies within 5 m, and a death heals them; Divine Retribution's 6-piece bonus and "On death all nearby enemies are healed" work in play
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`NoteEnergyShieldBroken`, `NotePlayerDeath`, `ActOnNearby`, `NearbyActionRadiusCm`, `SmiteNearbyAction`,
+`HealNearbyEnemiesAction`, the nearby branch in `ActOnEvent`), `CataclysmVitalAttributeSet.cpp` (the break,
+read at the blow's shield write), `CataclysmStatPipeline.h` (`ECataclysmNearbyAction`,
+`FCataclysmPoolAction::Nearby`), `CataclysmTeams.h` and `.cpp` (`ShareSideIgnoringMadness`),
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (`HandleDeath`),
+`game/Source/Cataclysm/Items/CataclysmItem.cpp`, `tools/generate_datatables.py` (`energy_shield_broken`,
+`player_death`, `NEARBY_ACTIONS`), the new `game/Source/Cataclysm/Tests/CataclysmNearbyActionTests.cpp`
+(five tests), two row tests in `CataclysmEnchantmentEffectTests.cpp`,
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (`STATED_BY_WORD`, the row-count pins), `CataclysmDataTableTests.cpp`, `docs/All_Things_Cataclysm.xlsx`, `docs/README.md`, `game/Data/EnchantmentEffects.csv` and
+its asset. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group D part 3.
+
+### WHAT WAS RULED, 2026-10-01, UNDER THE OWNER'S DELEGATION
+
+1. **"On death all nearby enemies are healed for 10%-20% of their maximum HP" is written as it reads.** A
+   LABELLED JUDGEMENT, made by the coordinating session and not put to the owner. The owner ruled on
+   2026-09-10 ("Dying in an ordinary dungeon resolves it at once") that a death resolves a Basic dungeon,
+   regardless of the time left. That is recorded and not built: it belongs to issue
+   [#41](https://github.com/sdubois777/Cataclysm/issues/41), and today the player stands back up in the same
+   dungeon, among the creatures this row healed. So the row costs something now. Once #41 resolves a Basic
+   dungeon on death, it costs nothing there, because nothing reads those creatures' health afterwards. It
+   still costs something where a death does not end the dungeon: a Quest dungeon and a Dungeon City, which
+   the 2026-09-10 ruling did not ask about and which do not resolve, and co-operative play, where the same
+   entry records a single death as "a setback rather than an ending". **The same answer covers D4's "When you
+   die, all active DoTs on nearby enemies instantly deal their remaining damage"**, which has the same
+   question.
+2. **A break is defined as the Sacrificial Ward defines "would break"**: a blow whose shield share reaches
+   what the shield holds, while it holds something (`CataclysmVitalAttributeSet.cpp`, issue #1515). A shield
+   already at nothing is not broken again. A drain or a reservation that empties the shield is no break, and
+   a damage over time tick that reaches the shield is one, as the ward counts it.
+3. **`energy_shield_broken` takes the 0.25 s default.** A hit causes it, so it joins `HIT_FIRED_EVENTS`.
+   `player_death` is a death, and takes none.
+4. **One radius, 5 m, shared by both nearby actions**: `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`.
+   It is the 2026-09-11 judgement for "nearby" or "close range" with no number (the entry "The owner's answers
+   on enchantment ranges, stagger, stacks and damage taken by source"). Other figures for "nearby" already in
+   the code are each for their own sentence and are not changed: `NearbyDeathRadiusCm` 3 m, the floor rules'
+   `UCataclysmContagion::RadiusMetres` 6 m, and `UCataclysmFervour::EnemyDeathNearbyRadiusMetres` 10 m.
+5. **The smite picks its targets as the player's Nova does**: `UCataclysmTargeting::FindEnemiesInSphere` from
+   the wearer, every living character with an ability system that the wearer's side counts as an enemy,
+   nearest first. A maddened player's smite therefore reaches its own followers, as its novas do. Its damage
+   is a real hit (`UCataclysmSkillEffects::ApplyHit`) of the stated share of weapon damage, 100% by the
+   2026-09-11 judgement "Smite ... a nova at 100% of weapon damage".
+6. **The heal never heals a follower of the player: option (a).** It takes `FindEnemiesInSphere`'s result and
+   then drops any character that shares the wearer's owner chain or team, judged WITHOUT the madness step
+   (`UCataclysmTeams::ShareSideIgnoringMadness`). LABELLED JUDGEMENT: "enemies" in the row means the
+   dungeon's creatures; madness changes whom a creature attacks, not whose side it is on. The reason this was
+   needed: madness on either side makes `AttitudeBetween` answer hostile, and Insanity Bursts' "maddens" kind
+   puts madness on the player (owner's decision of 2026-09-26), so a player who dies maddened would otherwise
+   heal their own thrall, imp and fellow player. Targeting and attitude still use `AttitudeBetween`.
+7. **Floor-rule objects are reached by both**, the smite and the heal. They are enemy-side characters the
+   player has to destroy, the Nova already hits them, and the row text does not exclude them. Checked before
+   building: a floor source's health is set through `ACataclysmEnemyCharacter::SetHealth` like any creature's,
+   and nothing in the base class or its eleven subclasses refuses or limits healing, so `TopUp` heals it as it
+   heals any creature.
+8. **The heal goes through `TopUp`**, the one route every heal of health takes (#2187), each creature by the
+   share of its own maximum, so its healing ceiling and anything reducing the healing it receives apply.
+9. **A nearby action's cooldown starts when it is released, whether or not anything stood in reach**, as the
+   Nova's interval does.
+
+**DEPTH ONE: THE SMITE'S HITS FIRE NONE OF THE WEARER'S OWN ROWS.** `ActOnEvent` is depth one
+(`PoolActionDepth`), and the smite runs inside the `energy_shield_broken` event, so its hits raise no
+`hit_dealt` or `critical_strike` row of the wearer's. Recorded as a consequence, not a choice made here.
+
+**FOR THE OWNER'S PLAY-CHECK LIST:** Divine Retribution's smite on a broken shield, and the death heal.
+
+### WHAT WAS BUILT
+
+- **`energy_shield_broken`**, raised on the defender after the blow is wholly resolved, from the shield share
+  read at the blow's shield write.
+- **`player_death`**, raised in `ACataclysmPlayerCharacter::HandleDeath` inside its once-only guard, after the
+  death is marked and before the respawn timer. `Revive`, which runs `ClearWhatDeathEnds`, raises nothing.
+- **The rows** (EnchantmentEffects 428 to 430, over 347 to 349):
+
+  | Sentence | Row |
+  | :-- | :-- |
+  | Divine Retribution (6-Piece Bonus): When your energy shield is broken, you smite all nearby enemies | `smite_nearby` 100 on `energy_shield_broken`, Trigger Cooldown 0.25 by default |
+  | On death all nearby enemies are healed for 10%-20% of their maximum HP | `heal_nearby_enemies` 10 to 20 on `player_death` |
+
+### HOW THE TESTS REACH PLAY, AND WHAT THEY DO NOT
+
+- **The death is real.** The tests kill the player with `UCataclysmSkillEffects::ApplyDirectDamage`, whose
+  damage branch calls `NotifyIfHealthReachedZero`, which calls `HandleDeath`. No test calls `HandleDeath`
+  itself.
+- **`Revive` is called by hand, standing in for `RespawnTimer`.** A world made by `UWorld::CreateWorld` is
+  never ticked, so the timer never fires; `CataclysmDeathTests.cpp` drives the respawn the same way. "The
+  respawn raises no second `player_death`" is therefore measured on `Revive`, the function the timer runs, and
+  not on the timer.
+- **`stale_creature_scan` cannot see these tests.** It splits a file on `IMPLEMENT_SIMPLE_AUTOMATION_TEST`, and
+  `CataclysmNearbyActionTests.cpp` registers through a local `CATACLYSM_TEST` macro, so it read 0 test bodies.
+  The check used instead was a direct search: `GoToFloor` and `EnterEmpireDungeon` appear in none of the seven
+  D3 tests, so no creature pointer outlives a floor change.
+- **The smite's 100 is stated by its word**, `"smite_nearby": {"smite": 100.0}` in `STATED_BY_WORD`, not
+  excused in `JUDGED_NUMBERS`. The rows rehearsal found that `numbers_in` reads the "6" of "(6-Piece Bonus)",
+  so `test_every_judged_number_is_still_needed` refused the excuse. Found and corrected before any window.
+
+### THE RUN
+
+D3 is commits `7371b5d3` (engine), `0c38d6ef` (rows) and `163c827c` (asset), on development `11685f71`,
+pushed as `feat/shield-break-and-death-actions-2`. It was written on `ca6c0929` as `c2511f5b` and moved after
+window B merged, with no conflict; window B and D3 share no file.
+
+| Step | Result |
+| :-- | :-- |
+| Rehearsals on `git archive` copies | engine "11 failed, 5603 passed, 13 skipped"; rows "12 failed, 5602 passed, 13 skipped"; JUnit 5627 each: the 11 tests that need a git directory, and with the rows the stale asset hash. The first rows rehearsal found the `JUDGED_NUMBERS` excuse refused (above) |
+| Compile-only scans, `7371b5d3` | sweep 0 candidates over 9 files; check 7 read 24 definitions, none flagged; check 6 0 candidates; `check_resolved_cpp` 9 files, 0 complaints; one engine-name hit (`World`, 83 precedents in the file) and one access candidate (`InitAbilityActorInfo`, called the same way in at least five test files), both read and explained |
+| Build 1 | "Succeeded - 32 actions, 29 files compiled" |
+| `Cataclysm.NearbyAction.` | 5 performed, 5 succeeded, first run; 0 "was ignored", 0 failed assertions |
+| Python of record, `7371b5d3` | "5622 passed, 8 skipped in 321.17s"; JUnit 5630, as registered (5619 + 11) |
+| Proof A, the break never raised | PROVED: the break test alone, on the 3 assertions predicted; restored 5 of 5 |
+| Proof B, the death never raised | PROVED: the two death tests, on the 6 assertions predicted; restored 5 of 5 |
+| Proof C, the nearby search at radius 0 | PROVED: the smite and both death tests, on the 5 assertions predicted; restored 5 of 5 |
+| Python after the rows, `0c38d6ef` | "1 failed, 5621 passed, 8 skipped in 319.43s": the stale asset hash, as registered; JUnit 5630 |
+| Build 2 and the asset rebuild, `163c827c` | "5 actions, 2 files compiled"; only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` (428 to 430 rows) |
+| Row tests | Divine Retribution 1 of 1, the death row 1 of 1; 0 "was ignored", 0 failed assertions |
+| Whole suite, `163c827c`, in its own command | "2996 tests performed, 2996 succeeded, 0 failed"; 2996 declared, gap 0, as registered (2989 + 7); no "was ignored" line, no failed assertion |
+
+Every broken file's hash was the same after its proof.
+
+---
+
 ## 2026-09-30 — Blood Price: every choice at a floor object costs 10% of current health and leaves a bleed of 0.25% of maximum health a second for the rest of the dungeon, at most ten
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, which choices

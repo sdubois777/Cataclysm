@@ -47,6 +47,21 @@ bool UCataclysmTeams::SharesAnOwnerChain(const AActor* A, const AActor* B)
 	return false;
 }
 
+bool UCataclysmTeams::ShareSideIgnoringMadness(const AActor* A, const AActor* B)
+{
+	if (!A || !B)
+	{
+		return false;
+	}
+	if (A == B || SharesAnOwnerChain(A, B))
+	{
+		return true;
+	}
+	// NO TEAM IS NOBODY'S SIDE, as in `AttitudeBetween`, where it reads hostile.
+	const FGenericTeamId Mine = TeamOf(A);
+	return Mine != FGenericTeamId::NoTeam && Mine == TeamOf(B);
+}
+
 FGameplayTag UCataclysmTeams::MadnessTag()
 {
 	// Requested by name rather than declared as a native tag, matching
