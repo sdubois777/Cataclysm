@@ -731,6 +731,15 @@ public:
 	static const TCHAR* HealNearbyEnemiesAction;
 
 	/**
+	 * The two actions that deal the remaining damage of the wearer's own damage
+	 * over time effects. Issue #1833 group D part 4, ruled 2026-10-01.
+	 * `tools/generate_datatables.py` holds the same names in
+	 * `REMAINING_DAMAGE_ACTIONS`. See `ECataclysmRemainingDamage`.
+	 */
+	static const TCHAR* RemainingDamageNearbyAction;
+	static const TCHAR* RemainingDamageTargetAction;
+
+	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
 	 * of 2026-09-11 under the owner's delegation, recorded in
 	 * `docs/DECISIONS.md`: "nearby" or "close range" with no number is 5 m. Ruled

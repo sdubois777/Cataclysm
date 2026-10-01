@@ -50,6 +50,9 @@ CONSTANTS = {
     # AND THE TWO NEARBY ACTIONS, since issue #1833 group D part 3.
     "SmiteNearbyAction": "smite_nearby",
     "HealNearbyEnemiesAction": "heal_nearby_enemies",
+    # AND THE TWO REMAINING DAMAGE ACTIONS, since issue #1833 group D part 4.
+    "RemainingDamageNearbyAction": "dot_remaining_nearby",
+    "RemainingDamageTargetAction": "dot_remaining_target",
 }
 
 
@@ -115,6 +118,13 @@ def test_the_generator_accepts_exactly_the_nearby_names_the_engine_has() -> None
     names = engine_names()
     assert set(gen.NEARBY_ACTIONS) == {names["SmiteNearbyAction"],
                                        names["HealNearbyEnemiesAction"]}
+
+
+def test_the_generator_accepts_exactly_the_remaining_damage_names_the_engine_has() -> None:
+    """Issue #1833 group D part 4."""
+    names = engine_names()
+    assert set(gen.REMAINING_DAMAGE_ACTIONS) == {names["RemainingDamageNearbyAction"],
+                                                 names["RemainingDamageTargetAction"]}
 
 
 def test_the_generator_accepts_exactly_the_random_dot_name_the_engine_has() -> None:

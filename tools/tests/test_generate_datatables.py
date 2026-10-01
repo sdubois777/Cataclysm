@@ -1840,7 +1840,8 @@ class TestScaleStepHigh:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High", "Trigger Cooldown", "Event Value"]
+              "Condition Value High", "Trigger Cooldown", "Event Value",
+              "Ailment"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -2305,6 +2306,111 @@ class TestNearbyActionsAndTheirEvents:
             gen.enchantment_effects(self.smite(tmp_path, {"Scale Max Steps": 3}))
 
 
+class TestRemainingDamageAndTheAilmentColumn:
+    """The remaining damage of the wearer's own damage over time, around the
+    wearer on its death or on the event's target, and the Ailment column that
+    limits it. Issue #1833 group D part 4, ruled 2026-10-01: "When you die, all
+    active DoTs on nearby enemies instantly deal their remaining damage" and
+    "Necrosis effects deal 20%-40% of their remaining damage instantly when you
+    land a critical strike"."""
+
+    DEATH_WORDS = "When you die, all active DoTs on nearby enemies instantly deal their remaining damage"
+    DEATH = gen.row_name("Positive", DEATH_WORDS[:48])
+    NECROSIS_WORDS = "Necrosis effects deal 20%-40% of their remaining damage instantly when you land a critical strike"
+    NECROSIS = gen.row_name("Positive", NECROSIS_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [DEATH_WORDS, "Generic", 4, "Keyword.DoT", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [NECROSIS_WORDS, "Generic", 4, "Keyword.DoT.Necrosis", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values, header=None):
+        header = header or self.HEADER
+        row = [values.get(column) for column in header]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "remaining.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [header, row]}))
+
+    def death(self, tmp_path, changes, header=None):
+        values = {"Enchantment": self.DEATH, "Effect": self.DEATH_WORDS,
+                  "Action": "dot_remaining_nearby", "Action Event": "player_death",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values, header)
+
+    def necrosis(self, tmp_path, changes):
+        values = {"Enchantment": self.NECROSIS, "Effect": self.NECROSIS_WORDS,
+                  "Action": "dot_remaining_target", "Action Event": "critical_strike",
+                  "Ailment": "Necrosis", "Value Low": 20, "Value High": 40}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_the_death_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.death(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"], out[0]["Ailment"], out[0]["TriggerCooldown"]) == (
+            "dot_remaining_nearby", "player_death", 100.0, "", "", 0.0)
+
+    def test_the_necrosis_row_is_carried_through_with_its_ailment(self, tmp_path):
+        out = gen.enchantment_effects(self.necrosis(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "dot_remaining_target", "critical_strike", 20.0, 40.0, "Necrosis")
+
+    def test_a_critical_strike_is_hit_fired_so_takes_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.necrosis(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_the_death_row_may_name_an_ailment(self, tmp_path):
+        out = gen.enchantment_effects(self.death(tmp_path, {"Ailment": "Burn"}))
+        assert out[0]["Ailment"] == "Burn"
+
+    def test_a_sheet_without_the_column_is_refused_now_its_rows_are_written(self, tmp_path):
+        header = [column for column in self.HEADER if column != "Ailment"]
+        with pytest.raises(gen.DataError, match="no 'Ailment' column"):
+            gen.enchantment_effects(self.death(tmp_path, {}, header=header))
+
+    def test_the_target_row_without_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no Ailment"):
+            gen.enchantment_effects(self.necrosis(tmp_path, {"Ailment": None}))
+
+    def test_an_ailment_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="not one the game has"):
+            gen.enchantment_effects(self.necrosis(tmp_path, {"Ailment": "Frostbite"}))
+
+    def test_an_ailment_on_an_action_that_does_not_read_it_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.death(tmp_path, {
+                "Action": "health", "Action Event": "block", "Ailment": "Burn"}))
+
+    def test_an_ailment_on_a_stat_row_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.death(tmp_path, {
+                "Action": None, "Action Event": None, "Stat": "attack_damage",
+                "Value Kind": "increased", "Value Low": 10, "Ailment": "Burn"}))
+
+    def test_the_target_row_on_an_event_naming_nobody_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot use"):
+            gen.enchantment_effects(self.necrosis(tmp_path, {"Action Event": "block"}))
+
+    def test_the_death_row_on_an_event_the_game_does_not_fire_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot use"):
+            gen.enchantment_effects(self.death(tmp_path, {"Action Event": "shield_shattered"}))
+
+    def test_a_share_past_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.enchantment_effects(self.death(tmp_path, {"Value Low": 150}))
+
+    def test_a_remaining_damage_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.death(tmp_path, {"Fraction Of": "maximum"}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
@@ -2343,7 +2449,8 @@ class TestEnchantmentEffects:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High", "Trigger Cooldown", "Event Value"]
+              "Condition Value High", "Trigger Cooldown", "Event Value",
+              "Ailment"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -2372,7 +2479,8 @@ class TestEnchantmentEffects:
             "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
             "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
             "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
-            "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0}]
+            "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0,
+            "Ailment": ""}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
