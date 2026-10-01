@@ -403,6 +403,8 @@ play-check list.**
 One Python check: the row still says "certain enemies", "panic and flee when their leader dies", "if allowed to escape"
 and "return later with reinforcements".
 
+**A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` asserted that every creature coming back was of the first follower's kind; 18 of 20 were. A group can hold more than its pack's kind -- the populator gives a Succubus escort its pack's group (`Escort.Pack = Pack`) -- and the rule brings each escapee back as its own kind with one reinforcement of that kind, as ruled. The test now counts the followers that leave by kind and checks that each kind comes back exactly twice as many times. **Proof Pa is recorded as not a proof and is not rerun**, since it reached the tests; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

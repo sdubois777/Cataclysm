@@ -37053,7 +37053,13 @@ bool FCataclysmMoraleBreakReturnTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const int32 Escaping = Followers.Num();
-	const UClass* Kind = Followers[0]->GetClass();
+	// HOW MANY OF EACH KIND LEAVE, counted before they go: a group may hold more than its pack's kind -- a Succubus
+	// escorts a pack in its group -- and each one comes back as itself.
+	TMap<const UClass*, int32> Leaving;
+	for (const ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		++Leaving.FindOrAdd(Follower->GetClass());
+	}
 	Followers[0]->SetRarityStep(1);
 	if (!KillIt(*this, Player, Leader))
 	{
@@ -37099,7 +37105,7 @@ bool FCataclysmMoraleBreakReturnTest::RunTest(const FString& Parameters)
 	int32 Back = 0;
 	int32 AtElite = 0;
 	int32 InAGroup = 0;
-	int32 OfTheirKind = 0;
+	TMap<const UClass*, int32> Returning;
 	for (int32 Index = Before; Index < Mode->FloorEnemies.Num(); ++Index)
 	{
 		const ACataclysmEnemyCharacter* Returned = Mode->FloorEnemies[Index];
@@ -37108,11 +37114,16 @@ bool FCataclysmMoraleBreakReturnTest::RunTest(const FString& Parameters)
 			++Back;
 			AtElite += Returned->RarityStep == 1 ? 1 : 0;
 			InAGroup += Returned->PackGroup != INDEX_NONE ? 1 : 0;
-			OfTheirKind += Returned->GetClass() == Kind ? 1 : 0;
+			++Returning.FindOrAdd(Returned->GetClass());
 		}
 	}
 	TestEqual(TEXT("at 30 s the escaped are back with one reinforcement each"), Back, 2 * Escaping);
-	TestEqual(TEXT("all of their kind"), OfTheirKind, 2 * Escaping);
+	TestEqual(TEXT("as many kinds come back as left"), Returning.Num(), Leaving.Num());
+	for (const TPair<const UClass*, int32>& Kind : Leaving)
+	{
+		TestEqual(*FString::Printf(TEXT("each %s that left comes back with one of its own"), *GetNameSafe(Kind.Key)),
+				  Returning.FindRef(Kind.Key), 2 * Kind.Value);
+	}
 	TestEqual(TEXT("the Elite came back an Elite, and every other one a Common"), AtElite, 1);
 	TestEqual(TEXT("in no group, so they never panic again"), InAGroup, 0);
 	TestEqual(TEXT("none away now"), Mode->MoraleBreakEscapedNow(), 0);
