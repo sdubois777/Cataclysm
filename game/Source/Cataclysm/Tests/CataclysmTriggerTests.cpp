@@ -91,48 +91,66 @@ namespace CataclysmTriggerTest
 		TObjectPtr<UCataclysmVitalAttributeSet> Vitals = nullptr;
 	};
 
-	/** Pins one integer console variable for the life of this object. */
+	/**
+	 * Pins one integer console variable for the life of this object, AT THE
+	 * CONSOLE'S OWN PRIORITY, and restores the previous value the same way, as
+	 * `CataclysmTestWorld::FScopedCritRoll` does. A write from code is discarded
+	 * once any earlier test has set the variable at console priority: these pins
+	 * were at code priority until D1's whole suite ran them after a test that
+	 * restored `Cataclysm.RandomDotPick` at console priority, and every pick was
+	 * then random.
+	 */
 	struct FPinnedInt
 	{
 		FPinnedInt(const TCHAR* Name, int32 Value)
 			: Variable(IConsoleManager::Get().FindConsoleVariable(Name))
 		{
+			if (Variable)
+			{
+				Previous = Variable->GetInt();
+			}
 			Set(Value);
 		}
 		~FPinnedInt()
 		{
-			Set(-1);
+			Set(Previous);
 		}
 		void Set(int32 Value) const
 		{
 			if (Variable)
 			{
-				Variable->Set(Value, ECVF_SetByCode);
+				Variable->Set(Value, ECVF_SetByConsole);
 			}
 		}
 		IConsoleVariable* Variable = nullptr;
+		int32 Previous = -1;
 	};
 
-	/** Pins one float console variable for the life of this object. */
+	/** The same for a float console variable. */
 	struct FPinnedFloat
 	{
 		FPinnedFloat(const TCHAR* Name, float Value)
 			: Variable(IConsoleManager::Get().FindConsoleVariable(Name))
 		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+			}
 			Set(Value);
 		}
 		~FPinnedFloat()
 		{
-			Set(-1.0f);
+			Set(Previous);
 		}
 		void Set(float Value) const
 		{
 			if (Variable)
 			{
-				Variable->Set(Value, ECVF_SetByCode);
+				Variable->Set(Value, ECVF_SetByConsole);
 			}
 		}
 		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
 	};
 
 	/** A random damage over time on an event, always, with no cooldown. */

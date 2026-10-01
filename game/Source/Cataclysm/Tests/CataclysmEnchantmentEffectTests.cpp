@@ -10507,7 +10507,12 @@ namespace CataclysmRandomDotRowTest
 		Character->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
 	}
 
-	/** Pins `Cataclysm.RandomDotPick` for the life of this object. */
+	/**
+	 * Pins `Cataclysm.RandomDotPick` for the life of this object, at the
+	 * console's own priority, restoring the previous value the same way, as
+	 * `CataclysmTestWorld::FScopedCritRoll` does: a write from code is discarded
+	 * once an earlier test has set the variable at console priority.
+	 */
 	struct FPinnedPick
 	{
 		explicit FPinnedPick(int32 Pick)
@@ -10515,17 +10520,19 @@ namespace CataclysmRandomDotRowTest
 		{
 			if (Variable)
 			{
-				Variable->Set(Pick, ECVF_SetByCode);
+				Previous = Variable->GetInt();
+				Variable->Set(Pick, ECVF_SetByConsole);
 			}
 		}
 		~FPinnedPick()
 		{
 			if (Variable)
 			{
-				Variable->Set(-1, ECVF_SetByCode);
+				Variable->Set(Previous, ECVF_SetByConsole);
 			}
 		}
 		IConsoleVariable* Variable = nullptr;
+		int32 Previous = -1;
 	};
 }
 
