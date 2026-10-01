@@ -415,3 +415,8 @@ Negative_Your_critical_strike_chance_cannot_exceed_30_50#1,Negative_Your_critica
 Negative_Your_energy_shield_cannot_recharge_above_50_of#1,Negative_Your_energy_shield_cannot_recharge_above_50_of,energy_shield_recharge_ceiling_reduction,flat,50.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
 Negative_Kills_no_longer_generate_any_experience#1,Negative_Kills_no_longer_generate_any_experience,experience_gain,removed,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
 Negative_Movement_abilities_cost_20_50_of_your_maximum#1,Negative_Movement_abilities_cost_20_50_of_your_maximum,mana_cost_as_maximum_mana_percent,flat,20.0,50.0,Slot.Movement,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Negative_Enemies_deal_5_8_increased_damage_for_every_15#1,Negative_Enemies_deal_5_8_increased_damage_for_every_15,damage_taken,increased,5.0,8.0,,,0.0,seconds_on_floor,15.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_Your_armor_is_increased_by_1_2_for_every_dunge#1,Positive_Your_armor_is_increased_by_1_2_for_every_dunge,armor,increased,1.0,2.0,,,0.0,floors_cleared,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_Your_retaliation_damage_is_increased_by_2_4_fo#1,Positive_Your_retaliation_damage_is_increased_by_2_4_fo,retaliation,increased,2.0,4.0,,,0.0,armor,100.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_For_every_unique_Cataclysm_boss_defeated_gain_5#1,Positive_For_every_unique_Cataclysm_boss_defeated_gain_5,attack_damage,more,5.0,10.0,,,0.0,cataclysm_bosses_defeated,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_For_every_unique_Cataclysm_boss_defeated_gain_5#2,Positive_For_every_unique_Cataclysm_boss_defeated_gain_5,spell_damage,more,5.0,10.0,,,0.0,cataclysm_bosses_defeated,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
