@@ -3451,6 +3451,16 @@ static TAutoConsoleVariable<float> CVarCooldownResetRoll(
 	TEXT("Pins the 0-100 roll a cooldown reset enchantment makes. Negative rolls for real."),
 	ECVF_Default);
 
+/**
+ * Pins the roll a status action makes against its chance, 0 to 100, for tests.
+ * Negative, the default, rolls for real. Issue #1833 group E part 1; the same
+ * shape as `Cataclysm.CooldownResetRoll` above.
+ */
+static TAutoConsoleVariable<float> CVarStatusRoll(
+	TEXT("Cataclysm.StatusRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a status enchantment makes against its chance. Negative rolls for real."),
+	ECVF_Default);
+
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags,
 	bool* bOutRollSucceeded)
@@ -4226,9 +4236,11 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				// THE CHANCE, where 100 is always. Compared as at most rather than
 				// rolled, because `FRandRange` can return 100 itself.
+				const float Pinned = CVarStatusRoll.GetValueOnAnyThread();
 				const bool bComesUp = Action.ApplyStatus == ECataclysmApplyStatus::Seconds
 					|| Action.Percent >= 100.0f
-					|| FMath::FRandRange(0.0f, 100.0f) < Action.Percent;
+					|| (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f))
+						< Action.Percent;
 				// APPLIED BY THE AVATAR, as a random damage over time is below.
 				AActor* Applier = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
 				if (bComesUp && ApplyStatusOf(Action, Applier, Other, EventAmount))
