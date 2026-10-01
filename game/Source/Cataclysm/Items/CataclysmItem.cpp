@@ -1306,6 +1306,20 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bHealthCap = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::HealthCappedAtAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT ACTS ON THE CHARACTERS NEAR THE WEARER. Issue
+					// #1833 group D part 3. The value is a percentage of weapon
+					// damage for a smite, and of each one's maximum health for a heal.
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::Smite;
+					}
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::HealNearbyEnemiesAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::HealEnemies;
+					}
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

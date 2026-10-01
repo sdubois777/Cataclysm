@@ -1468,6 +1468,17 @@ void ACataclysmPlayerCharacter::HandleDeath()
 				   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()));
 	}
 
+	// AND A WORN ROW ON THE PLAYER'S DEATH FIRES, once per death, inside the
+	// once-only guard above. Issue #1833 group D part 3: "On death all nearby
+	// enemies are healed for 10%-20% of their maximum HP". Before the respawn's
+	// `ClearWhatDeathEnds`, which runs from `Revive`, and the respawn raises
+	// nothing.
+	if (UCataclysmAbilitySystemComponent* Acting =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		Acting->NotePlayerDeath();
+	}
+
 	// WHATEVER IT WAS DOING STOPS, which is the second of the three things
 	// `docs/DECISIONS.md` states an enemy's death is, and it transfers unchanged.
 	// DisableMovement clears the velocity too: UCharacterMovementComponent::
