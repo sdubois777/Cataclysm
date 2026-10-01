@@ -1542,10 +1542,11 @@ void ACataclysmPlayerCharacter::HandleDeath()
 	// Standard, 10 in Hardcore and 15 in Heretic, plus a per-piece equipment drop
 	// chance, plus a respawn at the capital. None of it can be applied: the
 	// running game has no day clock, no lethality mode, no equipped inventory and
-	// no capital. Issue #41 builds the layer that would carry all four. Standing
+	// no capital. Issue #41 builds the layer that would carry all four, and the
+	// 2026-09-10 ruling "Dying in an ordinary dungeon resolves it at once"
+	// (docs/DECISIONS.md) put a death resolving its dungeon there too. Standing
 	// the player back up where the level starts them is the whole of the rule
-	// that this game currently has the machinery for, and #570 records the rest
-	// as owed.
+	// that this game currently has the machinery for.
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(

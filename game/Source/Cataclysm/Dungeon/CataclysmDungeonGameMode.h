@@ -2427,6 +2427,9 @@ public:
 	/** Warzone Control Points, for tests: the creatures its waves sent that still stand. */
 	TArray<ACataclysmEnemyCharacter*> WarzoneAttackersStanding() const;
 
+	/** Warzone Control Points, for tests: the allied soldiers its captured points brought that still stand. */
+	TArray<ACataclysmEnemyCharacter*> WarzoneAlliesStanding() const;
+
 	/** Swarm of Locusts, for tests: this arena's shelters, drawn from its first beat. */
 	TArray<class ACataclysmGroundZone*> LocustSheltersNow() const;
 
@@ -2787,6 +2790,12 @@ private:
 
 	/** Warzone Control Points: a wave near this point; returns how many creatures came. */
 	int32 SendWarzoneWave(const FVector& Point);
+
+	/** Warzone Control Points: a captured point's allied soldiers beside it, on the player's side; how many came. */
+	int32 BringWarzoneAllies(const FVector& Point, class ACataclysmPlayerCharacter* Player);
+
+	/** Warzone Control Points: every allied soldier the points brought removed. At the floor change and with the hold. */
+	void EndTheWarzoneAllies();
 
 	/** Raw Sewage: this arena's rivers chosen, where a new arena is populated. Drawn on the next beat. */
 	void PlaceTheRivers();
@@ -4337,6 +4346,9 @@ private:
 	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> WarzoneAttackers;
 	int32 WarzonePointsApplied = 0;
 	int32 WarzonePanelKey = -1;
+
+	/** Warzone Control Points: the allied soldiers this floor's captured points brought. Issues #1820 and #41. */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> WarzoneAllies;
 
 	/**
 	 * Raw Sewage: where this arena's river marks stand and the marks drawn there; the dungeon's stacks; whether

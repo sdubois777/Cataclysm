@@ -5677,6 +5677,8 @@ void ACataclysmDungeonGameMode::ForgetTheWarzoneHold()
 	WarzoneSecondsHeld.Reset();
 	WarzoneCaptured.Reset();
 	WarzoneAttackers.Reset();
+	// AND THE ALLIED SOLDIERS THE POINTS BROUGHT, which last the floor. Issues #1820 and #41.
+	EndTheWarzoneAllies();
 	// THE FIRST WAVE ON THE FIRST BEAT INSIDE A POINT.
 	WarzoneWaveClock = UCataclysmDungeonModifierEffects::WarzoneWaveSeconds;
 	WarzonePanelKey = -1;
@@ -5699,6 +5701,76 @@ void ACataclysmDungeonGameMode::PlaceTheControlPoints()
 	UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: %d point(s) on floor %d"), WarzonePointCells.Num(),
 		   FloorNumber);
 	RefreshFloorModifierPanel();
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::WarzoneAlliesStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : WarzoneAllies)
+	{
+		ACataclysmEnemyCharacter* Ally = One.Get();
+		if (IsValid(Ally) && !UCataclysmSkillEffects::IsDead(Ally))
+		{
+			Standing.Add(Ally);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::EndTheWarzoneAllies()
+{
+	// REMOVED AS THE PLAYER'S FOLLOWERS ARE WHEN THE DUNGEON IS LEFT, by being destroyed: they came with the point, and
+	// the point is the floor's.
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : WarzoneAllies)
+	{
+		if (ACataclysmEnemyCharacter* Ally = One.Get())
+		{
+			Ally->Destroy();
+		}
+	}
+	WarzoneAllies.Reset();
+}
+
+int32 ACataclysmDungeonGameMode::BringWarzoneAllies(const FVector& Point, ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !IsValid(Player))
+	{
+		return 0;
+	}
+	// THE FLOOR'S OWN KINDS AT COMMON, on the cells around the captured point, as a wave's fall back to them; then each
+	// taken onto the player's side, keeping its own brain and abilities, as a thrall is (issue #1202).
+	const FCataclysmFloorPopulation Population =
+		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Point);
+	int32 Came = 0;
+	for (int32 Which = 0; Which < Effects::WarzoneAlliesPerPoint && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
+		 ++Which)
+	{
+		FCataclysmEnemyPlacement Placement = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+		ACataclysmEnemyCharacter* Ally =
+			SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Effects::WarzoneAllyRung);
+		if (!Ally)
+		{
+			continue;
+		}
+		// RAISED BY THE RULE, so it is never the floor's own (issue #2194), and UNPAID, so it is worth nothing if it
+		// dies. NOT ON THE FLOOR'S LIST: it is no enemy of the floor.
+		Ally->bDiesUnpaid = true;
+		Ally->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Ally);
+		if (!UCataclysmCommand::Subjugate(Player, Ally))
+		{
+			Ally->Destroy();
+			continue;
+		}
+		WarzoneAllies.Add(Ally);
+		++Came;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: %d allied soldier(s) came on floor %d"), Came, FloorNumber);
+	return Came;
 }
 
 int32 ACataclysmDungeonGameMode::SendWarzoneWave(const FVector& Point)
@@ -5794,6 +5866,8 @@ void ACataclysmDungeonGameMode::StepWarzoneControlPoints(
 				WarzoneWaveClock = Effects::WarzoneWaveSeconds;
 				UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: point %d captured on floor %d"), Index,
 					   FloorNumber);
+				// AND ITS ALLIED SOLDIERS, the row's "summoning allied soldiers". Ruled 2026-10-01.
+				BringWarzoneAllies(CurrentFloor->WorldOfCell(WarzonePointCells[Index]), Player);
 			}
 			else
 			{
@@ -18632,6 +18706,10 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 				   FloorNumber, Removed);
 		}
 	}
+
+	// WARZONE'S ALLIED SOLDIERS LAST THE FLOOR, so they are removed here, before `BringFollowersTo` below carries the
+	// player's followers to the new entrance -- a Horde arena's next wave included. Ruled 2026-10-01.
+	EndTheWarzoneAllies();
 
 	PopulateFloor();
 

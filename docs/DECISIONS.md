@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Warzone Control Points: a captured point brings two allied soldiers onto the player's side for the rest of the floor
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`WarzoneAlliesPerPoint`,
+`WarzoneAllyRung`, the key's comment and the partly-built reason), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (`BringWarzoneAllies` at a capture, `EndTheWarzoneAllies` at the floor change and with the hold,
+`WarzoneAlliesStanding`), a comment in `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied; the row stays partly built**, because "opening shortcuts" waits on doors and on changing a floor's layout
+during play. The Unreal compile, the automation tests and the three guard proofs have NOT run yet; the figures are added
+at the end of this entry when they have.
+
+### The row
+
+`War_Warzone_Control_Points`: "Dungeons in the War cataclysm feature control points that players must capture and hold
+against waves of enemies. Holding these points provides strategic advantages, such as summoning allied soldiers, gaining
+access to powerful buffs, or opening shortcuts to progress deeper into the dungeon."
+
+**Nothing states a count, a rung or a duration.** The row gives none; the War sections of `docs/Cataclysm_GDD_v2.md`
+(the class identities, and "World War") do not mention control points or allies; and the Warzone entry of 2026-09-26
+left the allies for their own ruling. So every answer below is a judgement.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01, each a labelled judgement:**
+
+- **Two allies a captured point**, `WarzoneAlliesPerPoint`, arriving beside the point at the capture, on the cells a wave
+  falls back to: within `NecroticBloomWaveWithinCm` of it. At most four on a floor with its two points.
+- **Common, of the floor's own kinds**, `WarzoneAllyRung`, placed as `SendWarzoneWave` places its creatures, and then
+  taken onto the player's side by `UCataclysmCommand::Subjugate`, so each keeps its own brain and abilities, as a thrall
+  does (issue #1202).
+- **They last the floor**: the point gave them, and the point is a floor fact, as the held points' strength is.
+  `EndTheWarzoneAllies` removes them at the floor change in `GoToFloor`, before `PopulateFloor` and so before
+  `BringFollowersTo` carries the player's followers to the new entrance, a Horde arena's next wave included; and with
+  the hold, in `ForgetTheWarzoneHold`, which also runs on leaving the dungeon. A thrall the player took keeps going down
+  the stairs, as the 2026-09-30 entry rules.
+- **No cap, and no Fervour reserved.** The only limit on a player's thralls is the Fervour reserve
+  (`HasRoomForAnotherThrall` and `ReservedFervourOf`), and `ReservedFervour` is set only by the skills that take or make a
+  follower, so an ally reserves nothing and blocks no summon. **A Second Self may choose a Warzone ally**: it is a
+  follower like any other.
+- **Marked raised by a rule** as well as following the player, so an ally is never the floor's own
+  (`IsOneOfTheFloorsOwnStanding`, issue #2194) even if it stopped being a follower. It is not on the floor's list
+  (`FloorEnemies`), being no enemy of the floor.
+
+**Judgements of this change, not ruled separately:** an ally is unpaid (`bDiesUnpaid`), so its death is worth nothing;
+and its kills are a follower's, which count as the player's only with the Conduit keystone (issue #1515), so they do not
+open Blood Gates for the player. The floor panel's Warzone line is unchanged; an ally shows as the player's follower does.
+
+### A citation corrected in the same change
+
+`ACataclysmPlayerCharacter::HandleDeath`'s comment said "#570 records the rest as owed" of the designed death penalty.
+Issue #570 is closed and is about two enemy hits killing the player. The comment now cites issue #41, where the
+2026-09-10 ruling "Dying in an ordinary dungeon resolves it at once" put a death resolving its dungeon. No open issue
+other than #41 records the designed penalty. A comment-only change.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.` and named `WarzoneAllies...`:
+
+- `WarzoneAlliesFiguresAndTheRowStaysPartly`: two a point, at Common, and the row still partly built.
+- `WarzoneAlliesACapturedPointBringsTwoOnThePlayersSide`: none a beat before the capture; two at it, each commanded by
+  the player, at Common, raised by the rule and within reach of the point; four with both points held.
+- `WarzoneAlliesHoldNothingAndReserveNoFervour`: an ally is not on the floor's list nor one of the floor's own; the floor
+  is cleared with the allies and the waves standing; no Fervour is reserved.
+- `WarzoneAlliesEndWithTheFloor`: the allies do not come down the stairs; a thrall the player took does.
+
+One Python check, `test_warzone_row_still_names_allied_soldiers_and_shortcuts`, pins the three phrases the rulings rest
+on. The Warzone tests already in the file run as the regression check.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the `Subjugate` call removed; Pb, the
+count raised; Pc, both removals at the floor change taken out.
+
+---
+
 ## 2026-10-01 — A gadget killed and a resource consumed are events: the remaining gadgets gain 30%-50% damage, and a resource consumed grants 5%-10% damage and restores 1%-3% of maximum health
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`NoteGadgetDestroyed`,
@@ -5800,6 +5877,8 @@ resistances; capturing, 5 of 30 s".
 
 **Not built: "summoning allied soldiers"**, which needs its own ruling, **and "opening shortcuts"**, which waits on
 doors and on changing the floor's layout during play. The row is listed among those partly built for those reasons.
+**"Summoning allied soldiers" was built on 2026-10-01**, by the entry of that date "Warzone Control Points: a captured
+point brings two allied soldiers"; "opening shortcuts" is still not built, and the row is still partly built for it.
 
 ### Rulings
 
