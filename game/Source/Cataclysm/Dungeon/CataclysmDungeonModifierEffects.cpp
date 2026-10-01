@@ -270,6 +270,103 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfernalBeaconsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::WarBannerKey =
 	TEXT("War_War_Banner");
 
+const TCHAR* UCataclysmDungeonModifierEffects::ForcedTithesKey =
+	TEXT("Celestial_Forced_Tithes");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PactOfTemptationKey =
+	TEXT("Demonic_Pact_of_Temptation");
+
+const TCHAR* UCataclysmDungeonModifierEffects::BloodPriceKey =
+	TEXT("Demonic_Blood_Price");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PactName(int32 Pact)
+{
+	switch (Pact)
+	{
+	case PactWrath: return TEXT("Wrath");
+	case PactHaste: return TEXT("Haste");
+	case PactBulwark: return TEXT("Bulwark");
+	case PactGreed: return TEXT("Greed");
+	case PactBlood: return TEXT("Blood");
+	default: return TEXT("");
+	}
+}
+
+int32 UCataclysmDungeonModifierEffects::PactOfChoice(FName ChoiceKey)
+{
+	for (int32 Pact = 0; Pact < PactKinds; ++Pact)
+	{
+		if (ChoiceKey == FName(PactName(Pact)))
+		{
+			return Pact;
+		}
+	}
+	return INDEX_NONE;
+}
+
+FString UCataclysmDungeonModifierEffects::PactButtonLabel(int32 Pact)
+{
+	switch (Pact)
+	{
+	case PactWrath:
+		return FString::Printf(TEXT("Pact of Wrath: %d%% more damage next floor; %d%% less maximum health for the dungeon"),
+							   FMath::RoundToInt(PactWrathDamageMorePercent), FMath::RoundToInt(PactWrathMaxHealthLessPercent));
+	case PactHaste:
+		return FString::Printf(TEXT("Pact of Haste: %d%% more attack and movement speed next floor; %d less to every "
+									"resistance for the dungeon"),
+							   FMath::RoundToInt(PactHasteSpeedMorePercent), FMath::RoundToInt(PactHasteCurseResistance));
+	case PactBulwark:
+		return FString::Printf(TEXT("Pact of the Bulwark: +%d to every resistance next floor; %d%% less movement speed "
+									"for the dungeon"),
+							   FMath::RoundToInt(PactBulwarkResistance), FMath::RoundToInt(PactBulwarkSpeedLessPercent));
+	case PactGreed:
+		return FString::Printf(TEXT("Pact of Greed: +%d magic find next floor; creatures deal %d%% more damage for the "
+									"dungeon"),
+							   FMath::RoundToInt(PactGreedMagicFind), FMath::RoundToInt(PactGreedCreatureDamagePercent));
+	case PactBlood:
+		return FString::Printf(TEXT("Pact of Blood: %d%% more damage next floor; %d%% less healing received for the "
+									"dungeon"),
+							   FMath::RoundToInt(PactBloodDamageMorePercent), FMath::RoundToInt(PactBloodHealingLessPercent));
+	default:
+		return FString();
+	}
+}
+
+FString UCataclysmDungeonModifierEffects::PactCurseText(int32 Pact, int32 Taken)
+{
+	switch (Pact)
+	{
+	case PactWrath: return FString::Printf(TEXT("-%d%% health"), FMath::RoundToInt(Taken * PactWrathMaxHealthLessPercent));
+	case PactHaste: return FString::Printf(TEXT("-%d resistances"), FMath::RoundToInt(Taken * PactHasteCurseResistance));
+	case PactBulwark:
+		return FString::Printf(TEXT("-%d%% movement speed"), FMath::RoundToInt(Taken * PactBulwarkSpeedLessPercent));
+	case PactGreed:
+		return FString::Printf(TEXT("creatures +%d%% damage"), FMath::RoundToInt(Taken * PactGreedCreatureDamagePercent));
+	case PactBlood: return FString::Printf(TEXT("-%d%% healing"), FMath::RoundToInt(Taken * PactBloodHealingLessPercent));
+	default: return FString();
+	}
+}
+
+void UCataclysmDungeonModifierEffects::WritePactEffects(FCataclysmPlayerFloorEffects& Into, int32 BuffPact,
+														const TArray<int32>& CursesTaken)
+{
+	const auto Taken = [&CursesTaken](int32 Pact) { return CursesTaken.IsValidIndex(Pact) ? CursesTaken[Pact] : 0; };
+
+	// THE BUFF, THIS FLOOR'S ONLY.
+	Into.PactDamageMorePercent = BuffPact == PactWrath ? PactWrathDamageMorePercent
+		: BuffPact == PactBlood ? PactBloodDamageMorePercent : 0.0f;
+	Into.PactAttackSpeedMorePercent = BuffPact == PactHaste ? PactHasteSpeedMorePercent : 0.0f;
+	Into.PactSpeedMorePercent = BuffPact == PactHaste ? PactHasteSpeedMorePercent : 0.0f;
+	Into.PactResistancePercent = BuffPact == PactBulwark ? PactBulwarkResistance : 0.0f;
+	Into.PactMagicFindAdded = BuffPact == PactGreed ? PactGreedMagicFind : 0.0f;
+
+	// THE CURSES, ADDED: each pact taken adds its own again, the same pact twice included.
+	Into.PactMaxHealthLessPercent = Taken(PactWrath) * PactWrathMaxHealthLessPercent;
+	Into.PactCurseResistancePercent = Taken(PactHaste) * PactHasteCurseResistance;
+	Into.PactCurseSpeedLessPercent = Taken(PactBulwark) * PactBulwarkSpeedLessPercent;
+	Into.PactHealingLessPercent = Taken(PactBlood) * PactBloodHealingLessPercent;
+}
+
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
@@ -443,6 +540,28 @@ namespace
 		}
 
 		DungeonModifierEffectsAddMultiplier(Into, FName(Stat), -LessPercent);
+	}
+
+	/**
+	 * One flat SUBTRACTION from a dungeon rule, or nothing for a value of nothing: the value held positive, as
+	 * `DungeonModifierEffectsAddLess` holds its share, and written negative. Issues #1820 and #41. The first rule to take
+	 * points off a stat rather than a share: a Pact of Haste's curse takes 10 off every resistance.
+	 */
+	void DungeonModifierEffectsTakeFlat(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value)
+	{
+		if (Value <= 0.0f)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = -Value;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
 	}
 
 	/**
@@ -648,6 +767,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PandorasBoxKey)
 		|| RowKey == FName(InfernalBeaconsKey)
 		|| RowKey == FName(WarBannerKey)
+		|| RowKey == FName(ForcedTithesKey)
+		|| RowKey == FName(PactOfTemptationKey)
+		|| RowKey == FName(BloodPriceKey)
 		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
 		|| RowKey == FName(CarrionFeastKey)
 		|| RowKey == FName(InfestedVeinsKey)
@@ -890,6 +1012,9 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PandorasBoxKey),
 		FName(InfernalBeaconsKey),
 		FName(WarBannerKey),
+		FName(ForcedTithesKey),
+		FName(PactOfTemptationKey),
+		FName(BloodPriceKey),
 		FName(TrialOfEnduranceKey),
 		FName(FogOfWarKey),
 		FName(BlackestShadowKey),
@@ -1405,6 +1530,29 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.BannerResistancePercent);
 	}
 
+	// AND PACT OF TEMPTATION: this floor's buff, a More on damage and speeds and points on each resistance and on
+	// magic find, as the relics' are; and the curses of every pact taken, a Less on maximum health and movement speed,
+	// points off each resistance, and healing received less on Death's Embrace's stat. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.PactDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.PactDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackSpeedStat),
+										Effects.PactAttackSpeedMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.PactSpeedMorePercent);
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.PactMagicFindAdded);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.PactResistancePercent);
+		DungeonModifierEffectsTakeFlat(Modifiers, *Stat, Effects.PactCurseResistancePercent);
+	}
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat, Effects.PactMaxHealthLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat,
+								  Effects.PactCurseSpeedLessPercent);
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsHealingReceivedStat, Effects.PactHealingLessPercent);
+
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
 	//
@@ -1854,6 +2002,23 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and %.0f more to every resistance inside a war banner's aura"),
 									Effects.BannerDamageMorePercent, Effects.BannerResistancePercent));
+	}
+	if (Effects.PactDamageMorePercent > 0.0f || Effects.PactAttackSpeedMorePercent > 0.0f
+		|| Effects.PactSpeedMorePercent > 0.0f || Effects.PactResistancePercent > 0.0f || Effects.PactMagicFindAdded > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("from a pact taken: damage %.0f%% more, attack speed %.0f%% more, movement speed "
+										 "%.0f%% more, %.0f more to every resistance, %.0f more magic find"),
+									Effects.PactDamageMorePercent, Effects.PactAttackSpeedMorePercent,
+									Effects.PactSpeedMorePercent, Effects.PactResistancePercent,
+									Effects.PactMagicFindAdded));
+	}
+	if (Effects.PactMaxHealthLessPercent > 0.0f || Effects.PactCurseResistancePercent > 0.0f
+		|| Effects.PactCurseSpeedLessPercent > 0.0f || Effects.PactHealingLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cursed by the pacts taken: maximum health %.0f%% less, %.0f less to every "
+										 "resistance, movement speed %.0f%% less, healing received %.0f%% less"),
+									Effects.PactMaxHealthLessPercent, Effects.PactCurseResistancePercent,
+									Effects.PactCurseSpeedLessPercent, Effects.PactHealingLessPercent));
 	}
 	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
 	{

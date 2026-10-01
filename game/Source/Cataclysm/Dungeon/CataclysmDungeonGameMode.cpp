@@ -33,6 +33,7 @@
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -745,6 +746,13 @@ static TAutoConsoleVariable<FString> CVarBattlefieldRelicKinds(
 	TEXT(""),
 	TEXT("Pin the kinds Battlefield Relics are placed as, in order: 0 Fury, 1 Haste, 2 the Bulwark, comma separated. ")
 	TEXT("Empty draws each."),
+	ECVF_Cheat);
+
+static TAutoConsoleVariable<FString> CVarPactOfTemptationOffer(
+	TEXT("Cataclysm.PactOfTemptationOffer"),
+	TEXT(""),
+	TEXT("Pin the pacts a Pact Altar offers: 0 Wrath, 1 Haste, 2 the Bulwark, 3 Greed, 4 Blood, comma separated, the ")
+	TEXT("first three different ones used, on every floor. Empty draws them, different each floor."),
 	ECVF_Cheat);
 
 /**
@@ -1701,6 +1709,15 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// `ApplyFloorRulesToPlayer` runs after it. A Horde wave's survivors stop being
 	// Harbingers; their trails go with the wave's other rule zones. Issues #1820 and #41.
 	ForgetThePlagueHarbingers();
+
+	// AND FORCED TITHES, ONCE A FLOOR OR WAVE, before the branch below: a Horde arena asks a tithe of each wave but the
+	// last, as the row asks one at "the end of each floor". Leaving the last altar unpaid owes the angels, brought at
+	// the next beat to this floor's entrance. Issues #1820 and #41.
+	PlaceTheTitheAltar();
+
+	// AND PACT OF TEMPTATION, FOR THE SAME REASON: a pact is offered at the end of each floor or wave, and the one
+	// taken on the last becomes this one's buff. Issues #1820 and #41.
+	PlaceThePactAltar();
 
 	if (!FloorBrief.bSameArenaAsLastFloor)
 	{
@@ -7886,6 +7903,13 @@ void ACataclysmDungeonGameMode::StepPlayersFollowers()
 			{
 				Thrall->SetInfernalBeaconsDamageMultiplier(1.0f);
 			}
+			// THE PACT OF GREED'S CURSE, given while it was hostile, put back for the reason
+			// Infernal Beacons' is above.
+			if (!FMath::IsNearlyEqual(
+					Thrall->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource), 1.0f))
+			{
+				Thrall->SetPactOfTemptationDamageMultiplier(1.0f);
+			}
 			// THE PLAYER'S CONTAGION STACKS FROM ITS HOSTILE TOUCHES END TOO: the
 			// row means the enemy that applied them, and the only other way to
 			// clear them would be to kill the player's own thrall.
@@ -8466,22 +8490,37 @@ TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PlaceFloorObjects(FNam
 	{
 		return Placed;
 	}
-	FActorSpawnParameters Spawn;
-	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
 	{
-		ACataclysmFloorObject* Object = World->SpawnActor<ACataclysmFloorObject>(
-			ACataclysmFloorObject::StaticClass(), CurrentFloor->WorldOfCell(Cell), FRotator::ZeroRotator, Spawn);
-		if (!Object)
+		if (ACataclysmFloorObject* Object = PlaceFloorObjectAt(RuleKey, CurrentFloor->WorldOfCell(Cell), DisplayName,
+															   Prompt))
 		{
-			continue;
+			Placed.Add(Object);
 		}
-		Object->RuleKey = RuleKey;
-		Object->DisplayName = DisplayName;
-		Object->Prompt = Prompt;
-		Placed.Add(Object);
 	}
 	return Placed;
+}
+
+ACataclysmFloorObject* ACataclysmDungeonGameMode::PlaceFloorObjectAt(FName RuleKey, const FVector& Where,
+																	 const FString& DisplayName, const FString& Prompt)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmFloorObject* Object = World->SpawnActor<ACataclysmFloorObject>(
+		ACataclysmFloorObject::StaticClass(), Where, FRotator::ZeroRotator, Spawn);
+	if (!Object)
+	{
+		return nullptr;
+	}
+	Object->RuleKey = RuleKey;
+	Object->DisplayName = DisplayName;
+	Object->Prompt = Prompt;
+	return Object;
 }
 
 TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BringCreaturesNear(const FVector& At, float AwayCm,
@@ -9187,7 +9226,581 @@ void ACataclysmDungeonGameMode::PlaceTheTotems()
 	RefreshFloorModifierPanel();
 }
 
+ACataclysmFloorObject* ACataclysmDungeonGameMode::TitheAltarNow() const
+{
+	ACataclysmFloorObject* Altar = TitheAltar.Get();
+	return IsValid(Altar) ? Altar : nullptr;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::TitheAngelsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : TitheAngels)
+	{
+		ACataclysmEnemyCharacter* Angel = One.Get();
+		// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+		if (IsValid(Angel) && !UCataclysmSkillEffects::IsDead(Angel) && !DungeonGameModeIsAPlayersFollower(Angel))
+		{
+			Standing.Add(Angel);
+		}
+	}
+	return Standing;
+}
+
+FVector ACataclysmDungeonGameMode::ExitAltarWorld(FName RuleKey) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return FVector::ZeroVector;
+	}
+	// THE ROWS THAT STAND AN ALTAR AT THE EXIT, IN THE ORDER THEY TAKE ITS CELLS. This rule's place is how many of the
+	// ones before it the floor carries.
+	const FName InOrder[] = {FName(Effects::BloodAltarKey), FName(Effects::ForcedTithesKey),
+							 FName(Effects::PactOfTemptationKey)};
+	int32 Place = 0;
+	for (const FName& Row : InOrder)
+	{
+		if (Row == RuleKey)
+		{
+			break;
+		}
+		Place += FloorBrief.Modifiers.Contains(Row) ? 1 : 0;
+	}
+	if (Place == 0)
+	{
+		return CurrentFloor->ExitWorld();
+	}
+
+	// AND EACH AFTER THE FIRST ON THE NEXT WALKABLE CELL BESIDE THE EXIT, in a fixed order, so the same floor puts them
+	// in the same places. An exit with no such cell keeps the exit, which a floor's plan does not produce.
+	const FCataclysmFloorPlan& Plan = CurrentFloor->GetPlan();
+	const FIntPoint Beside[] = {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1),
+								FIntPoint(1, 1), FIntPoint(-1, 1), FIntPoint(1, -1), FIntPoint(-1, -1)};
+	int32 Found = 0;
+	for (const FIntPoint& Step : Beside)
+	{
+		const FIntPoint Cell = Plan.Exit + Step;
+		if (Plan.IsFloor(Cell) && ++Found == Place)
+		{
+			return CurrentFloor->WorldOfCell(Cell);
+		}
+	}
+	return CurrentFloor->ExitWorld();
+}
+
+void ACataclysmDungeonGameMode::ForgetTheTitheAltar()
+{
+	if (ACataclysmFloorObject* Altar = TitheAltar.Get())
+	{
+		Altar->Destroy();
+	}
+	TitheAltar = nullptr;
+	bTitheAltarPlaced = false;
+	bTithePaid = false;
+	bTitheRefused = false;
+	TithePanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheTitheAltar()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// LEAVING UNPAID IS REFUSING: an altar placed and neither paid nor refused owes the angels, brought on the next
+	// beat to where this floor or wave begins.
+	if (bTitheAltarPlaced && !bTithePaid && !bTitheRefused)
+	{
+		bTitheAngelsDue = true;
+		UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: the last tithe was left unpaid; the angels come on floor %d"),
+			   FloorNumber);
+	}
+	ForgetTheTitheAltar();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::ForcedTithesKey))
+		|| IsOnTheLastFloor())
+	{
+		return;
+	}
+
+	ACataclysmFloorObject* Altar = PlaceFloorObjectAt(
+		FName(Effects::ForcedTithesKey), ExitAltarWorld(FName(Effects::ForcedTithesKey)), TEXT("Tithe Altar"),
+		TEXT("A tithe is owed to go on. Pay it, or the angels will come."));
+	if (!Altar)
+	{
+		return;
+	}
+	FCataclysmFloorObjectChoice Health;
+	Health.Key = FName(Effects::ForcedTithesPayHealth);
+	Health.Label = FString::Printf(TEXT("Pay in health: %d%% of maximum health"),
+								   FMath::RoundToInt(Effects::ForcedTithesHealthPercent));
+	FCataclysmFloorObjectChoice Potion;
+	Potion.Key = FName(Effects::ForcedTithesPayPotion);
+	Potion.Label = FString::Printf(TEXT("Pay with a potion drink: %d charges from the fullest potion"),
+								   FMath::RoundToInt(Effects::ForcedTithesPotionCharges));
+	FCataclysmFloorObjectChoice Materials;
+	Materials.Key = FName(Effects::ForcedTithesPayMaterials);
+	Materials.Label = FString::Printf(TEXT("Pay in materials: %d of the material you carry most of"),
+									  Effects::ForcedTithesMaterials);
+	FCataclysmFloorObjectChoice Refuse;
+	Refuse.Key = FName(Effects::ForcedTithesRefuse);
+	Refuse.Label = FString::Printf(TEXT("Refuse: %d angels come at once"), Effects::ForcedTithesAngelCount);
+	Altar->Choices = {Health, Potion, Materials, Refuse};
+	TitheAltar = Altar;
+	bTitheAltarPlaced = true;
+	UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: a tithe altar on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayerCharacter* Player,
+											   int32* OutPotionSlot, FName* OutMaterial) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		IsValid(Player) ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayHealth))
+	{
+		return Effects::ForcedTithesHealthIsAffordable(AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()),
+													   AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+	}
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayPotion))
+	{
+		// THE FULLEST SLOT, THE FIRST OF EQUALS.
+		int32 Fullest = INDEX_NONE;
+		for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+		{
+			if (Fullest == INDEX_NONE || AbilitySystem->GetPotionCharges(Slot) > AbilitySystem->GetPotionCharges(Fullest))
+			{
+				Fullest = Slot;
+			}
+		}
+		if (OutPotionSlot)
+		{
+			*OutPotionSlot = Fullest;
+		}
+		return Fullest != INDEX_NONE
+			&& AbilitySystem->GetPotionCharges(Fullest) >= Effects::ForcedTithesPotionCharges - KINDA_SMALL_NUMBER;
+	}
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayMaterials))
+	{
+		// THE MATERIAL CARRIED MOST OF, THE FIRST OF EQUALS IN SLOT ORDER.
+		const UCataclysmInventoryComponent* Inventory = Player->GetInventory();
+		if (!Inventory)
+		{
+			return false;
+		}
+		FName Most;
+		int32 MostCount = 0;
+		for (const FCataclysmCarriedSlot& Slot : Inventory->GetSlots())
+		{
+			if (!Slot.Material.IsNone() && Slot.Quantity > MostCount)
+			{
+				Most = Slot.Material;
+				MostCount = Slot.Quantity;
+			}
+		}
+		if (OutMaterial)
+		{
+			*OutMaterial = Most;
+		}
+		return MostCount >= Effects::ForcedTithesMaterials;
+	}
+	return false;
+}
+
+void ACataclysmDungeonGameMode::BringTheTitheAngels(const FVector& At)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	for (ACataclysmEnemyCharacter* Angel : BringCreaturesNear(At, Effects::ForcedTithesAngelsAwayCm,
+															  Effects::ForcedTithesAngelCount,
+															  Effects::ForcedTithesAngelRung,
+															  Effects::TheReaperSightMultiplier))
+	{
+		Angel->bIsATitheAngel = true;
+		TitheAngels.Add(Angel);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: the angels came on floor %d"), FloorNumber);
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtTitheAltar(ACataclysmFloorObject* Altar, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	if (!IsValid(Altar) || Altar != TitheAltar.Get())
+	{
+		return false;
+	}
+	const FVector At = Altar->GetActorLocation();
+
+	if (ChoiceKey == FName(Effects::ForcedTithesRefuse))
+	{
+		bTitheRefused = true;
+		Altar->Destroy();
+		TitheAltar = nullptr;
+		BringTheTitheAngels(At);
+		RefreshFloorModifierPanel();
+		return true;
+	}
+
+	// A PRICE, ASKED AGAIN NOW: what the panel showed may be a beat old.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	int32 PotionSlot = INDEX_NONE;
+	FName Material;
+	if (!CanPayTheTithe(ChoiceKey, Player, &PotionSlot, &Material))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent());
+
+	if (ChoiceKey == FName(Effects::ForcedTithesPayHealth))
+	{
+		// TAKEN STRAIGHT OFF HEALTH, NOT A HIT, as Forced March takes it: nothing the player wears changes a price.
+		UCataclysmSkillEffects::ReduceHealthDirectly(
+			Player, Player,
+			Effects::ForcedTithesHealthPrice(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())));
+	}
+	else if (ChoiceKey == FName(Effects::ForcedTithesPayPotion))
+	{
+		AbilitySystem->SetPotionCharges(PotionSlot,
+										AbilitySystem->GetPotionCharges(PotionSlot) - Effects::ForcedTithesPotionCharges);
+	}
+	else if (!Player->GetInventory() || !Player->GetInventory()->RemoveMaterial(Material, Effects::ForcedTithesMaterials))
+	{
+		return false;
+	}
+
+	bTithePaid = true;
+	UE_LOG(LogCataclysm, Log, TEXT("Forced Tithes: paid in %s on floor %d"), *ChoiceKey.ToString(), FloorNumber);
+	Altar->Destroy();
+	TitheAltar = nullptr;
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepForcedTithes(ACataclysmPlayerCharacter* Player)
+{
+	// THE ANGELS OWED FOR A TITHE LEFT UNPAID, at this floor's entrance, where the player arrives.
+	if (bTitheAngelsDue && CurrentFloor && CurrentFloor->IsBuilt())
+	{
+		bTitheAngelsDue = false;
+		BringTheTitheAngels(CurrentFloor->EntranceWorld());
+		RefreshFloorModifierPanel();
+	}
+
+	// EACH PRICE SHOWN AS PAYABLE OR NOT, AS IT IS NOW; a price that cannot be paid is shown and refused.
+	if (ACataclysmFloorObject* Altar = TitheAltarNow())
+	{
+		for (FCataclysmFloorObjectChoice& Choice : Altar->Choices)
+		{
+			if (Choice.Key != FName(UCataclysmDungeonModifierEffects::ForcedTithesRefuse))
+			{
+				Choice.bAvailable = CanPayTheTithe(Choice.Key, Player, nullptr, nullptr);
+			}
+		}
+	}
+
+	const int32 Key = (TitheAltarNow() ? 1 : 0) + (bTithePaid ? 10 : 0) + (bTitheRefused ? 100 : 0);
+	if (Key != TithePanelKey)
+	{
+		TithePanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
+ACataclysmFloorObject* ACataclysmDungeonGameMode::PactAltarNow() const
+{
+	ACataclysmFloorObject* Altar = PactAltar.Get();
+	return IsValid(Altar) ? Altar : nullptr;
+}
+
+void ACataclysmDungeonGameMode::ForgetThePactAltar()
+{
+	if (ACataclysmFloorObject* Altar = PactAltar.Get())
+	{
+		Altar->Destroy();
+	}
+	PactAltar = nullptr;
+	PactOffered.Reset();
+	PactPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceThePactAltar()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE PACT TAKEN ON THE FLOOR BEFORE IS THIS FLOOR'S BUFF, and this floor's is still to be taken.
+	PactBuffNow = PactBuffNext;
+	PactBuffNext = INDEX_NONE;
+	ForgetThePactAltar();
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::PactOfTemptationKey))
+		|| IsOnTheLastFloor())
+	{
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// THE OFFER: PINNED FOR A TEST, OR THREE OF THE FIVE DRAWN, NOT THE SAME THREE AS THE LAST FLOOR'S.
+	TArray<int32> Offer;
+	TArray<FString> Parts;
+	CVarPactOfTemptationOffer.GetValueOnGameThread().ParseIntoArray(Parts, TEXT(","));
+	for (const FString& Part : Parts)
+	{
+		const int32 Pact = FMath::Clamp(FCString::Atoi(*Part.TrimStartAndEnd()), 0, Effects::PactKinds - 1);
+		if (Offer.Num() < Effects::PactsOffered)
+		{
+			Offer.AddUnique(Pact);
+		}
+	}
+	if (Offer.IsEmpty())
+	{
+		// TEN SETS OF THREE AND ONE RULED OUT, SO A HANDFUL OF DRAWS FINDS ANOTHER; the last draw stands if none did.
+		for (int32 Draw = 0; Draw < 32; ++Draw)
+		{
+			TArray<int32> Pacts = {Effects::PactWrath, Effects::PactHaste, Effects::PactBulwark, Effects::PactGreed,
+								   Effects::PactBlood};
+			for (int32 Index = Pacts.Num() - 1; Index > 0; --Index)
+			{
+				Pacts.Swap(Index, FMath::RandRange(0, Index));
+			}
+			Offer = TArray<int32>(Pacts.GetData(), Effects::PactsOffered);
+			Offer.Sort();
+			if (Offer != PactLastOffered)
+			{
+				break;
+			}
+		}
+	}
+	Offer.Sort();
+	PactOffered = Offer;
+	PactLastOffered = Offer;
+
+	ACataclysmFloorObject* Altar = PlaceFloorObjectAt(
+		FName(Effects::PactOfTemptationKey), ExitAltarWorld(FName(Effects::PactOfTemptationKey)), TEXT("Pact Altar"),
+		TEXT("The dungeon offers a pact: power on the next floor, a curse for the rest of the dungeon. One may be taken."));
+	if (!Altar)
+	{
+		return;
+	}
+	for (const int32 Pact : PactOffered)
+	{
+		FCataclysmFloorObjectChoice Choice;
+		Choice.Key = FName(Effects::PactName(Pact));
+		Choice.Label = Effects::PactButtonLabel(Pact);
+		Altar->Choices.Add(Choice);
+	}
+	PactAltar = Altar;
+	UE_LOG(LogCataclysm, Log, TEXT("Pact of Temptation: a pact altar on floor %d"), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtPactAltar(ACataclysmFloorObject* Altar, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Pact = Effects::PactOfChoice(ChoiceKey);
+	if (!IsValid(Altar) || Altar != PactAltar.Get() || !PactOffered.Contains(Pact))
+	{
+		return false;
+	}
+
+	// THE BUFF WAITS FOR THE NEXT FLOOR; THE CURSE STARTS NOW, written on the next beat, and adds to any before it. ONE
+	// PACT A FLOOR: the altar goes.
+	PactBuffNext = Pact;
+	++PactCurseCounts[Pact];
+	++PactsTaken;
+	UE_LOG(LogCataclysm, Log, TEXT("Pact of Temptation: the Pact of %s taken on floor %d"), Effects::PactName(Pact),
+		   FloorNumber);
+	Altar->Destroy();
+	PactAltar = nullptr;
+	PactOffered.Reset();
+	RefreshFloorModifierPanel();
+	return true;
+}
+
+void ACataclysmDungeonGameMode::StepPactOfTemptation(ACataclysmPlayerCharacter* Player,
+													 UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// GREED'S CURSE ON EVERY CREATURE ON THE PLAYER'S OTHER SIDE, the sweep Infernal Beacons makes. Written only when it
+	// changed.
+	const float Multiplier = Effects::PactGreedDamageMultiplier(PactCurseCounts[Effects::PactGreed]);
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| !UCataclysmTargeting::IsHostileTo(Creature, Player)
+			|| FMath::IsNearlyEqual(Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource),
+									Multiplier))
+		{
+			continue;
+		}
+		Creature->SetPactOfTemptationDamageMultiplier(Multiplier);
+	}
+
+	// AND THE BUFF AND THE CURSES ON THE PLAYER, written when they changed OR WHEN A FLOOR CHANGE HAS TAKEN THEM OFF:
+	// the curses last the dungeon, and `ApplyFloorRulesToPlayer` replaces the floor's modifiers wholesale.
+	if (!bPactWritten || PactBuffApplied != PactBuffNow || PactCursesApplied != PactCurseCounts)
+	{
+		bPactWritten = true;
+		PactBuffApplied = PactBuffNow;
+		PactCursesApplied = PactCurseCounts;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	int32 Key = (PactAltarNow() ? 1 : 0) + (PactBuffNow + 1) * 2 + (PactBuffNext + 1) * 12 + PactsTaken * 72;
+	if (Key != PactPanelKey)
+	{
+		PactPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
 bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Object, FName ChoiceKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// BLOOD PRICE: WHETHER THIS CHOICE IS PRICED, AND THE HEALTH THE PLAYER HAS BEFORE IT ACTS, read first; the price
+	// is taken only once the choice has acted, so a refused choice costs nothing. Issues #1820 and #41.
+	const bool bPriced = IsValid(Object) && FloorBrief.Modifiers.Contains(FName(Effects::BloodPriceKey))
+		&& Effects::BloodPriceIsAsked(Object->RuleKey, ChoiceKey);
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	const float HealthBefore = AbilitySystem ? AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()) : 0.0f;
+
+	const bool bActed = ChooseAtFloorObjectForItsRule(Object, ChoiceKey);
+	if (bActed && bPriced && AbilitySystem)
+	{
+		PayTheBloodPrice(Player, AbilitySystem, HealthBefore);
+	}
+	return bActed;
+}
+
+void ACataclysmDungeonGameMode::PayTheBloodPrice(ACataclysmPlayerCharacter* Player,
+												 UCataclysmAbilitySystemComponent* AbilitySystem, float HealthBefore)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE SHARE OF THE HEALTH HELD BEFORE THE CHOICE, AND NEVER THE LAST POINT: what the player holds now leaves at
+	// least 1 too, in case the choice itself cost health. Straight off health, not a hit.
+	const float Now = AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	const float Cost = FMath::Min(Effects::BloodPriceCost(HealthBefore), FMath::Max(0.0f, Now - 1.0f));
+	if (Cost > 0.0f)
+	{
+		UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Cost);
+	}
+	BloodPriceStacks = FMath::Min(BloodPriceStacks + 1, Effects::BloodPriceMostStacks);
+	UE_LOG(LogCataclysm, Log, TEXT("Blood Price: %.0f health paid on floor %d; %d bleed stack(s)"), Cost, FloorNumber,
+		   BloodPriceStacks);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepBloodPrice(ACataclysmPlayerCharacter* Player,
+											   UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// EVERY PRICED BUTTON SAYS SO, on a floor carrying the row, whichever rule placed its object.
+	if (FloorBrief.Modifiers.Contains(FName(Effects::BloodPriceKey)))
+	{
+		const FString Suffix = FString::Printf(TEXT(" (costs %d%% health)"), FMath::RoundToInt(Effects::BloodPriceHealthPercent));
+		for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
+		{
+			for (FCataclysmFloorObjectChoice& Choice : It->Choices)
+			{
+				if (Effects::BloodPriceIsAsked(It->RuleKey, Choice.Key) && !Choice.Label.EndsWith(Suffix))
+				{
+					Choice.Label += Suffix;
+				}
+			}
+		}
+	}
+
+	// THE BLEED, ONCE A SECOND ON ANY FLOOR WHILE A STACK IS HELD: Raw Sewage's burn, a share of maximum health dealt as
+	// damage over time typed as the row, from the floor's hazard source.
+	if (BloodPriceStacks > 0)
+	{
+		BloodPriceSecondsSinceBleed += SecondsBetweenWaveChecks;
+		if (BloodPriceSecondsSinceBleed >= 1.0f)
+		{
+			BloodPriceSecondsSinceBleed = 0.0f;
+			ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(GetWorld());
+			const float Bleed = AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())
+				* Effects::BloodPricePercentPerSecond(BloodPriceStacks) / 100.0f;
+			if (Source && Bleed > 0.0f && !UCataclysmSkillEffects::IsDead(Player))
+			{
+				FCataclysmHitDelivery Delivery;
+				Delivery.bIsDamageOverTime = true;
+				Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::BloodPriceKey);
+				UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Bleed, Delivery);
+			}
+		}
+	}
+	else
+	{
+		BloodPriceSecondsSinceBleed = 0.0f;
+	}
+
+	// THE BLEED KEYWORD WHILE ANY STACK IS HELD, as ruled, so every reader of the player's debuffs sees a bleed. A LOOSE
+	// TAG, which a cleanse does not remove: it removes effects.
+	const bool bWantTag = BloodPriceStacks > 0;
+	if (bWantTag != bBloodPriceTagged)
+	{
+		const FGameplayTag Bleeding =
+			UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+		if (Bleeding.IsValid())
+		{
+			if (bWantTag)
+			{
+				AbilitySystem->AddLooseGameplayTag(Bleeding);
+			}
+			else
+			{
+				AbilitySystem->RemoveLooseGameplayTag(Bleeding);
+			}
+		}
+		bBloodPriceTagged = bWantTag;
+	}
+
+	if (BloodPriceStacks != BloodPricePanelStacks)
+	{
+		BloodPricePanelStacks = BloodPriceStacks;
+		RefreshFloorModifierPanel();
+	}
+}
+
+bool ACataclysmDungeonGameMode::ChooseAtFloorObjectForItsRule(ACataclysmFloorObject* Object, FName ChoiceKey)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
@@ -9225,6 +9838,14 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 	if (Object->RuleKey == FName(Effects::WarBannerKey))
 	{
 		return ChooseAtWarBanner(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::ForcedTithesKey))
+	{
+		return ChooseAtTitheAltar(Object, ChoiceKey);
+	}
+	if (Object->RuleKey == FName(Effects::PactOfTemptationKey))
+	{
+		return ChooseAtPactAltar(Object, ChoiceKey);
 	}
 	return false;
 }
@@ -10416,6 +11037,23 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	InfernalBeaconStacks = 0;
 	InfernalBeaconStacksApplied = 0;
 	ForgetTheWarBanner();
+	// AND FORCED TITHES: nothing is owed outside a dungeon. Issues #1820 and #41.
+	ForgetTheTitheAltar();
+	bTitheAngelsDue = false;
+	TitheAngels.Reset();
+	// AND PACT OF TEMPTATION: the curses last until the dungeon is left, and the buff with them. Issues #1820 and #41.
+	ForgetThePactAltar();
+	PactLastOffered.Reset();
+	PactBuffNow = INDEX_NONE;
+	PactBuffNext = INDEX_NONE;
+	PactCurseCounts = {0, 0, 0, 0, 0};
+	PactsTaken = 0;
+	PactBuffApplied = INDEX_NONE;
+	PactCursesApplied = {0, 0, 0, 0, 0};
+	bPactWritten = false;
+	// AND BLOOD PRICE: the bleed lasts until the dungeon is left. The next beat takes the keyword off. #1820, #41.
+	BloodPriceStacks = 0;
+	BloodPriceSecondsSinceBleed = 0.0f;
 
 	// THE RUN IS OVER, AND WHAT THE PLAYER COMMANDED ENDS WITH IT. Issue
 	// #1202, ruled 2026-09-30. Their Fervour reserves go with them, because
@@ -10997,6 +11635,16 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND WAR BANNER, ON EVERY FLOOR CARRYING IT, AND WHILE ITS AURA IS ON THE CHARACTER. Issues #1820 and #41.
 	const bool bWarBanner = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::WarBannerKey))
 		|| WarBannerDamageApplied > 0.0f || WarBannerResistanceApplied > 0.0f;
+	// AND FORCED TITHES, ON EVERY FLOOR CARRYING IT, AND WHILE ANGELS ARE OWED. Issues #1820 and #41.
+	const bool bForcedTithes =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::ForcedTithesKey)) || bTitheAngelsDue;
+	// AND PACT OF TEMPTATION, ON EVERY FLOOR CARRYING IT, AND WHILE A BUFF OR A CURSE IS HELD. Issues #1820 and #41.
+	const bool bPactOfTemptation =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::PactOfTemptationKey))
+		|| PactsTaken > 0 || PactBuffNow != INDEX_NONE || PactBuffApplied != INDEX_NONE;
+	// AND BLOOD PRICE, ON EVERY FLOOR CARRYING IT, AND WHILE A STACK OR ITS KEYWORD IS HELD. Issues #1820 and #41.
+	const bool bBloodPrice = FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodPriceKey))
+		|| BloodPriceStacks > 0 || bBloodPriceTagged;
 	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
@@ -11036,6 +11684,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPandorasBox
 		&& !bInfernalBeacons
 		&& !bWarBanner
+		&& !bForcedTithes
+		&& !bPactOfTemptation
+		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts)
 	{
 		return;
@@ -11418,6 +12069,24 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bWarBanner)
 	{
 		StepWarBanner(Player, AbilitySystem);
+	}
+
+	// AND FORCED TITHES, WHICH BRINGS ANGELS OWED AND SHOWS WHICH PRICES CAN BE PAID. Issues #1820 and #41.
+	if (bForcedTithes)
+	{
+		StepForcedTithes(Player);
+	}
+
+	// AND PACT OF TEMPTATION, WHICH WRITES GREED'S CURSE ON THE CREATURES AND THE PACTS ON THE PLAYER. #1820, #41.
+	if (bPactOfTemptation)
+	{
+		StepPactOfTemptation(Player, AbilitySystem);
+	}
+
+	// AND BLOOD PRICE, WHICH PRICES THE BUTTONS AND BLEEDS THE PLAYER. Issues #1820 and #41.
+	if (bBloodPrice)
+	{
+		StepBloodPrice(Player, AbilitySystem);
 	}
 
 	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
@@ -12444,6 +13113,8 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// AND A PLANTED WAR BANNER'S AURA, while the player stands inside. Issues #1820 and #41.
 	Effects.BannerDamageMorePercent = WarBannerDamageApplied;
 	Effects.BannerResistancePercent = WarBannerResistanceApplied;
+	// AND PACT OF TEMPTATION'S BUFF AND CURSES, as last written by its beat. Issues #1820 and #41.
+	UCataclysmDungeonModifierEffects::WritePactEffects(Effects, PactBuffApplied, PactCursesApplied);
 	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
 
 	// AND WHAT JUDGMENT IS TAKING OFF ONE RESISTANCE. Issues #1820 and #41. Read
@@ -14515,6 +15186,61 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  FMath::CeilToInt(Effects::WarBannerHoldSeconds - WarBannerHeldSeconds),
 							  FMath::RoundToInt(Effects::WarBannerDamageMorePercent),
 							  FMath::RoundToInt(Effects::WarBannerResistance)));
+	}
+
+	// AND FORCED TITHES: whether this floor's tithe is paid, refused or still owed. None on a floor with no altar, the
+	// dungeon's last. Issues #1820 and #41.
+	const FName Tithes(Effects::ForcedTithesKey);
+	if (FloorBrief.Modifiers.Contains(Tithes) && bTitheAltarPlaced)
+	{
+		Counting.Add(Tithes, bTithePaid ? FString(TEXT("forced tithes: paid"))
+			: bTitheRefused ? FString(TEXT("forced tithes: refused; the angels came"))
+			: FString(TEXT("forced tithes: unpaid; the angels will come")));
+	}
+
+	// AND PACT OF TEMPTATION: how many pacts were taken, this floor's and the next floor's buff, and the curses held, on a
+	// floor carrying the row or once one is taken. Issues #1820 and #41.
+	const FName Pacts(Effects::PactOfTemptationKey);
+	if (FloorBrief.Modifiers.Contains(Pacts) || PactsTaken > 0)
+	{
+		FString Line = PactsTaken == 0 ? FString(TEXT("pact of temptation: no pact taken"))
+			: FString::Printf(TEXT("pact of temptation: %d pact%s taken"), PactsTaken, PactsTaken == 1 ? TEXT("") : TEXT("s"));
+		if (PactBuffNow != INDEX_NONE)
+		{
+			Line += FString::Printf(TEXT("; this floor: %s"), Effects::PactName(PactBuffNow));
+		}
+		if (PactBuffNext != INDEX_NONE)
+		{
+			Line += FString::Printf(TEXT("; next floor: %s"), Effects::PactName(PactBuffNext));
+		}
+		TArray<FString> Curses;
+		for (int32 Pact = 0; Pact < Effects::PactKinds; ++Pact)
+		{
+			if (PactCurseCounts[Pact] > 0)
+			{
+				Curses.Add(Effects::PactCurseText(Pact, PactCurseCounts[Pact]));
+			}
+		}
+		if (!Curses.IsEmpty())
+		{
+			Line += TEXT("; curses: ") + FString::Join(Curses, TEXT(", "));
+		}
+		Counting.Add(Pacts, Line);
+	}
+
+	// AND BLOOD PRICE: the stacks, the bleed they deal, and the price, on a floor carrying the row or once a stack is
+	// held. Issues #1820 and #41.
+	const FName Price(Effects::BloodPriceKey);
+	if (FloorBrief.Modifiers.Contains(Price) || BloodPriceStacks > 0)
+	{
+		FString PerSecond = FString::Printf(TEXT("%.2f"), Effects::BloodPricePercentPerSecond(BloodPriceStacks));
+		PerSecond.RemoveFromEnd(TEXT("0"));
+		PerSecond.RemoveFromEnd(TEXT("0"));
+		PerSecond.RemoveFromEnd(TEXT("."));
+		Counting.Add(Price, FString::Printf(TEXT("blood price: %d bleed stack%s, %s%% health a second; each choice costs %d%% "
+												 "of current health"),
+											BloodPriceStacks, BloodPriceStacks == 1 ? TEXT("") : TEXT("s"), *PerSecond,
+											FMath::RoundToInt(Effects::BloodPriceHealthPercent)));
 	}
 
 	// AND INFERNAL BEACONS: how many this dungeon has activated and what they give, on a floor carrying the row or once
@@ -16879,6 +17605,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// TAKEN IT OFF, for March of Progress's reason below: the stacks last the dungeon, so the next beat must put it
 		// back. Without this a floor with no beacon activated left the player none. Issues #1820 and #41.
 		InfernalBeaconStacksApplied = 0;
+
+		// AND PACT OF TEMPTATION, FOR THE SAME REASON: the curses last the dungeon and the next floor may hold a buff, so
+		// the next beat writes both again. Issues #1820 and #41.
+		bPactWritten = false;
 
 		// AND A WAR BANNER'S AURA ENDS WITH THE FLOOR; its zone went with the rules' others and is drawn again on the
 		// next beat while the banner stands on this arena. Issues #1820 and #41.

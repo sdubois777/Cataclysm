@@ -2,6 +2,483 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Blood Price: every choice at a floor object costs 10% of current health and leaves a bleed of 0.25% of maximum health a second for the rest of the dungeon, at most ten
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, which choices
+are priced, the price, the bleed, the cap, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the price taken where every choice passes, the bleed, the keyword, the priced buttons, the panel line); the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+The eighth and last of Group 2's chain, on Pact of Temptation. **Applied. They were done in Group 2's window B on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`Demonic_Blood_Price` in `game/Data/DungeonModifiers.csv`, weight 5: "Interacting with chests, shrines, or levers costs a
+percentage of current HP. Gain a permanent, uncleansable stack of bleed each time." It states no figure.
+
+### What the design already said
+
+Nothing: the design document and this log name no price in health for a choice. The game has no chest, shrine or lever
+of its own; the things a player interacts with on a floor are the floor objects the choice screen opens.
+
+### What the rule does
+
+On a floor carrying the row, every choice made at a floor object -- a relic, a totem, a banner, a box, a beacon, an
+altar -- costs 10% of the player's current health, never the last point, and leaves one bleed stack, except paying a
+Tithe Altar's price. The panel's "Leave" is not a choice and costs nothing. Every priced button ends "(costs 10%
+health)".
+
+Each stack bleeds 0.25% of maximum health a second, dealt once a second as damage over time typed as the row, Demonic,
+from the floor's hazard source, on every floor for the rest of the dungeon, at most ten stacks, 2.5% a second. While any
+stack is held the player carries `Keyword.DoT.Bleed`, which every reader of the player's debuffs sees. A cleanse does not
+remove them; leaving the dungeon does. The panel reads "blood price: 2 bleed stacks, 0.5% health a second; each choice
+costs 10% of current health".
+
+**The price is taken where every choice passes.** `ChooseAtFloorObject` now reads whether the choice is priced and the
+player's health first, sends the choice to its rule through `ChooseAtFloorObjectForItsRule` -- the dispatch it held
+before, unchanged -- and takes the price only once the rule answers that the choice acted, from the health held before
+it. So a choice refused costs nothing, and no rule that places a floor object has to know this row exists.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **Every choice at any floor object costs; the leave button does not; paying a tithe does not; accepting a pact and
+  opening a box do.**
+- **10% of current health before the choice acts, never kills.**
+- **One stack a choice for the rest of the dungeon: 0.25% of maximum health a second a stack, typed as the row, from the
+  hazard source, as damage over time, `Keyword.DoT.Bleed` on while held, at most 10 (2.5% a second), not removed by a
+  cleanse.**
+- **The panel line, and the buttons say "(costs 10% health)".**
+- **The tests with Pandora's Box, the Pact Altar and the Tithe Altar go with whichever is built second**: this one.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Refusing a tithe costs**: only paying one is excepted, and refusing is a choice.
+- **The price is taken once the choice has acted, from the health held before it**, so a choice refused costs nothing;
+  and it leaves at least 1 of the health held after it too.
+- **The price is asked only on a floor carrying the row; the stacks bleed on every floor**, as Raw Sewage's do.
+- **At ten stacks a choice still costs health**, and adds no stack.
+- **The first bleed comes a second after the first stack**, and the player's death does not end the stacks.
+- **The panel says "1 bleed stack" in the singular**, and the percentage without trailing zeros: "0.25%", "2.5%".
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| The Binding of Isaac, Blood Donation Machine | [bindingofisaacrebirth.wiki.gg/wiki/Blood_Donation_Machine](https://bindingofisaacrebirth.wiki.gg/wiki/Blood_Donation_Machine) | "Bumping into the Blood Donation Machine will damage Isaac", and it pays out coins |
+| Hades, Chaos Gate | [hades.wiki.fextralife.com/Chaos](https://hades.wiki.fextralife.com/Chaos) | "Sacrificing a portion of Zagreus' health is required to enter a Chaos Gate." |
+
+**What it settles:** a price in health for using something on the floor is a shape shipped games use. **What it does
+not:** the figures and the bleed, which are this row's own.
+
+### Tests
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `BloodPriceFiguresCostBleedAndCap`: 100 of 1000, nothing from 1, 0.25% a stack, 2.5% at ten and past it; a tithe paid
+  not priced, a tithe refused and a box opened priced; the row built.
+- `BloodPriceAChoiceCostsATenthOfCurrentHealthAndLeavesABleed`: the banner's button priced and the panel at nought;
+  planting at 50,000 of 100,000 leaves 45,000, one stack, the keyword, the panel.
+- `BloodPriceTheBleedTakesAQuarterPercentAStackEachSecond`: two relics of Fury, two stacks; two seconds lose between one
+  and two seconds' bleed; on a floor without the row the stacks stay, bleed and keep the keyword.
+- `BloodPriceNeverKills`: at 1 health a choice takes nothing, the player lives, and the stack is left.
+- `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar`: the box's and a pact's buttons priced, the tithe's price not
+  and its refusal priced; opening the box costs a tenth, taking a pact a tenth, and paying the tithe in health only the
+  tithe's fifth of maximum health, with no stack.
+- `BloodPriceAChoiceThatDoesNotActCostsNothing`: a pact not offered is refused, with no health taken and no stack.
+- `BloodPriceStacksLastTheDungeonAndAreNotCleansed`: kept on the next floor and by a cleanse, keyword included;
+  leaving the dungeon ends them and the keyword.
+
+One Python check: the row still says "interacting with chests, shrines, or levers", "a percentage of current hp",
+"permanent, uncleansable" and "stack of bleed each time".
+
+### Two test faults found by guard proof Pa, 2026-10-01
+
+**Proof Pa is NOT A PROOF, with its cause.** `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar` failed with the
+files restored as well: "Expected 'opening a box cost a tenth' to be 90000.000000, but it was 510.000000". The rule's own
+log in that run showed the price right ("Blood Price: 10000 health paid"). A diagnostic build, never committed, printed
+the player's health and maximum at each step and dumped the stack where the maximum fell:
+`GiveThePlayerHealthForTypedDamage` writes a maximum of a hundred thousand by hand, and on the set-up beat Pact of
+Temptation's first write of its buff and curses went through `ApplyChangingFloorEffects`, `RefreshAttributes` and
+`UCataclysmPlayerClassStats::ApplyTo`, which put the stat pipeline's own maximum, 510, back. Health stayed at 100000,
+above it, until the price's write was clamped to 510. `BloodPriceTheBleedTakesAQuarterPercentAStackEachSecond` failed
+the same way through a Battlefield Relic's buff. The test had never run before this window.
+
+**The finding, for any test using `GiveThePlayerHealthForTypedDamage`:** its hand-written maximum is undone by any
+rule's attribute refresh on a beat, and health is left above the new maximum until the next write. **The guard is
+`MaximumIsStillTheTestsOwn`**, asked wherever these tests read health against that maximum.
+
+**Fixed in the tests only, as the coordinating session ruled:** the set-up takes a beat before the maximum is written
+and checks it after the pricing beat; the altars test checks it before each priced choice; the bleed test takes its two
+stacks from two of Pandora's boxes at a reward roll, which refresh nothing, writes the maximum again after the floor
+change, and checks it before and after each measurement. Nothing in the game changed.
+
+**A fourth proof run, Pa2**, the same break against the fixed test, allowed by the coordinating session because Pa found
+a real gap in a test rather than failing a fair one.
+
+### Group 2's window B, 2026-10-01
+
+Run in Group 2's window B on 2026-10-01, with the chain moved onto development `ca6c0929` as `feat/forced-tithes-7` `539a1ec2`, `feat/pact-of-temptation-7` `8d01772e` (Pact's entry gains the known defect of #2190, docs only) and `feat/blood-price-8` `faef87e6` (Blood Price's tests fixed, as its entry says). The pull request comes from `feat/blood-price-8`, which carries all three rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `forced-tithes-7` "Build: Succeeded - 32 actions, 29 files compiled"; `pact-of-temptation-7` "32 actions, 29 files compiled"; `blood-price-7` `1315b5d0` "19 actions, 16 files compiled"; `blood-price-8` "7 actions, 4 files compiled" |
+| Blood Price's tests at `faef87e6` | "Tests: 7 tests performed, 7 succeeded, 0 failed" |
+| Unreal, whole suite, `faef87e6` | "Tests: 2989 tests performed, 2989 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2989 tests in the tree at faef87e6; 2989 performed, gap 0" |
+| Python, `faef87e6` | "5611 passed, 8 skipped in 321.87s"; JUnit: 5619 tests, 0 failures, 0 errors, 8 skipped |
+
+A PROVED proof is one where a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's, with the commit each ran at:
+
+- **Pa NOT A PROOF** at `1315b5d0`: `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar` failed with the files restored as well, "Expected 'opening a box cost a tenth' to be 90000.000000, but it was 510.000000"; the test fault above. Not rerun as Pa.
+- **Pa2 PROVED** at `faef87e6`, the same break as Pa against the fixed test: `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar` failed with the break in; passed restored.
+- **Pb PROVED** at `faef87e6`: `BloodPriceAChoiceCostsATenthOfCurrentHealthAndLeavesABleed` (2 tests performed, 1 failed, with the break in; 2 succeeded restored).
+- **Pc PROVED** at `faef87e6`: `BloodPriceTheBleedTakesAQuarterPercentAStackEachSecond`.
+
+---
+
+## 2026-09-30 — Pact of Temptation: a Pact Altar at every floor's exit but the last offers three of five pacts; one taken buffs the next floor and curses the rest of the dungeon
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, the five
+pacts, their figures, buttons and curse text, the nine floor-effect fields and how they reach the player, a helper that
+takes points off a stat, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the
+altar, the offer, the buff and curses, Greed's curse on the creatures, the panel line, and the exit order);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (Greed's key of the damage map); the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`;
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+The seventh of Group 2's chain, on Forced Tithes. **Applied. They were done in Group 2's window B on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`Demonic_Pact_of_Temptation` in `game/Data/DungeonModifiers.csv`, weight 5: "Players are offered pacts by the dungeon
+at the end of each floor. Accepting a pact grants a powerful buff for the floor but applies a curse for the rest of the
+dungeon." It states no figure and names no pact.
+
+### What the design already said
+
+Nothing: the design document and this log name no pact.
+
+### The owner's decision
+
+**THE OWNER DECIDED, 2026-09-30, asked directly by the coordinating session: the five pacts AS DRAFTED, names and
+figures, and Greed's curse on the creatures approved.**
+
+| Pact | Buff, the next floor | Curse, the rest of the dungeon |
+| :-- | :-- | :-- |
+| Wrath | 50% more damage | 10% less maximum health |
+| Haste | 30% more attack speed and 30% more movement speed | 10 off every resistance |
+| The Bulwark | +30 to every resistance | 10% less movement speed |
+| Greed | +50 magic find | every creature deals 10% more damage |
+| Blood | 50% more damage | 25% less healing received |
+
+### What the rule does
+
+On every floor carrying the row but the dungeon's last, a floor object named "Pact Altar" stands on the exit cell; on a
+Horde arena, one on each wave but the last. With a Blood Altar or a Tithe Altar also at the exit, it stands on the next
+walkable cell beside the exit, never sharing one: `ExitAltarWorld` now orders Blood Altar, Forced Tithes, then Pact of
+Temptation. It offers three of the five, never the same three as the floor before, each a button such as "Pact of Wrath:
+50% more damage next floor; 10% less maximum health for the dungeon". One may be taken, and the altar goes.
+
+The curse starts at once and lasts until the player leaves the dungeon; it is not cleansed, and curses add, the same pact
+twice included: two Pacts of Wrath are 20% less maximum health. The buff is the next floor's, and ends with it. Greed's
+curse is on every creature, on its own key of the damage map. The panel reads, for example, "pact of temptation: 2 pacts
+taken; this floor: Wrath; next floor: Haste; curses: -10% health, -10 resistances".
+
+**The curses are written again after every floor change.** `ApplyFloorRulesToPlayer` replaces the player's floor
+modifiers wholesale, so the rule's beat is told there that nothing of it is on the player, and puts buff and curses
+back; the Infernal Beacons fault of the same shape was found and fixed today.
+
+**Points off a stat are new.** Haste's curse takes 10 off every resistance, and until now a dungeon rule could add points
+to a stat or take a share off it, not take points. `DungeonModifierEffectsTakeFlat` writes a negative Flat, which the stat
+pipeline adds like any other. Blood's curse is on the stat Death's Embrace writes, `healing_received_reduction`, which is
+held between 0 and 100.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30:**
+
+- **"Pact Altar" on the exit cell of every floor but the last; a Horde arena's, one between waves; another altar at the
+  exit goes one cell apart, never on the same cell.**
+- **Three of the five offered, different each floor; at most one accepted, and the altar goes then.**
+- **The buff lasts the next floor. The curse lasts until the player leaves the dungeon, is not cleansable, and curses
+  add, the same pact twice too.**
+- **The buttons and the panel line** as above.
+- **No curse has a ceiling**, ruled on review of this change: every pact is the player's own choice, one a floor at most,
+  and the stat pipeline's bound of 99% on a single Less already keeps 1% of maximum health when ten Pacts of Wrath would
+  take all of it.
+
+**On the owner's play-check list**, added by the coordinating session: the choice at a floor's end, the buff on the next
+floor, and the curses in the panel; and **whether stacking the same pact's curse over a long dungeon needs a ceiling**.
+
+**Judgements of this change, under the same delegation, accepted on review:**
+
+- **"Different each floor" is read as never the same three as the floor before.** Two floors apart may repeat an offer;
+  a pact may appear on consecutive floors among different companions.
+- **A curse starts on the floor its pact is taken**, since the row's "for the rest of the dungeon" begins there; Greed's
+  curse too, on that floor's creatures.
+- **On a Horde arena, the buff lasts the next wave**, which is the next floor.
+- **The panel adds "this floor: X"** while a buff is held, **reads "no pact taken" before one is**, and says "1 pact
+  taken" in the singular.
+- **The button for the Bulwark reads "Pact of the Bulwark"**, as the Battlefield Relic of the Bulwark does; its key is
+  "Bulwark".
+- **A test may pin the offer**, with `Cataclysm.PactOfTemptationOffer`; a pinned offer is the same on every floor.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Slay the Spire, Neow | [slaythespire.wiki.gg/wiki/Neow](https://slaythespire.wiki.gg/wiki/Neow) | the third blessing pairs a drawback -- "Lose Max HP", "Obtain a Curse" -- with an advantage |
+| Hades, Chaos | [hades.wiki.fextralife.com/Chaos](https://hades.wiki.fextralife.com/Chaos) | Chaos' boons "impose a debuff for a certain number of encounters, offering significantly greater power down the line" |
+
+**What it settles:** a reward taken with a lasting drawback, chosen from a short offer, is a shape shipped games use.
+**What it does not:** the pacts and their figures, which are the owner's as drafted.
+
+### Tests
+
+Eleven automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `PactOfTemptationFiguresTheFivePacts`: the figures, Greed's multiplier at two, a button, the row built.
+- `PactOfTemptationAltarStandsOnTheExitOfferingThreePacts`: on the exit cell, named, placed by the row, Wrath, Haste and
+  the Bulwark offered with their buttons, the panel.
+- `PactOfTemptationOfferIsDifferentEachFloor`: drawn on floors 2 to 6, three different pacts each, never the floor
+  before's three.
+- `PactOfWrathBuffsTheNextFloorAndCursesTheDungeon`: taken on floor 2, the altar goes, 10% less maximum health at once
+  and no damage, the panel; floor 3, 50% more attack and spell damage and the curse, the panel; **floors 4 and 5, with no
+  new pact, no damage and the curse still there** -- on floor 5 nothing of the pact changed, so only the floor change
+  telling the beat puts it back.
+- `PactCursesAddAreNotCleansedAndEndWithTheDungeon`: Wrath twice is 20% less; a cleanse leaves it and the count;
+  leaving the dungeon ends it, the count and the buff owed.
+- `PactOfGreedCursesEveryCreatureAndGivesMagicFind`: floor 2's Imp deals 10% more on the row's own key at once, no
+  magic find yet; floor 3's Imp 10% more, +50 magic find, the panel.
+- `PactsOfHasteBulwarkAndBloodBuffAndCurseAsDrafted`: Haste, the Bulwark and Blood on floors 2 to 4, each buff on its
+  next floor only and the curses adding, on resistance, movement speed and healing; the panel on floor 5.
+- `PactOfTemptationAtMostOnePactAFloor`: a pact not offered is refused; after one is taken, a second is refused.
+- `PactOfTemptationAltarStandsApartFromTheOtherExitAltars`: with Blood Altar and Forced Tithes, on a walkable cell
+  beside the exit, on neither the exit cell nor the Tithe Altar's.
+- `PactOfTemptationTheLastFloorHasNoAltar`: a bound dungeon of two floors; floor 1 has one, floor 2 none.
+- `PactOfGreedACreatureThePlayerTakesLosesTheCurse`: Greed taken, floor 2's Imp at 10% more; taken, it deals its own
+  damage a beat later, and the beat after.
+
+Python: the row still says "offered pacts", "at the end of each floor", "a powerful buff for the floor" and "a curse for
+the rest of the dungeon"; Greed's setter writes its own key of the damage map, in the check every such setter is in; and
+`PactMagicFindAdded` is recorded as a flat figure, as the other magic find fields are.
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **The Pact of Greed's sweep already leaves a thrall out**, as Infernal Beacons' does: it acts
+only on a creature that `UCataclysmTargeting::IsHostileTo` the player, and a taken creature has the player as its owner
+and the player's team. No skip was added to the sweep, as ruled.
+
+**What a creature carried from before it was taken is put back**, as ruled the same day: `StepPlayersFollowers` now sets
+`PactOfTemptationDamageSource` back to 1 on each thrall, so a creature taken after a Pact of Greed no longer keeps the
+curse's 10% more damage on the player's side.
+
+### A known defect: the floor-start health cap reads the maximum without the Pact of Wrath's curse
+
+Found by reading, 2026-10-01, when this row moved onto the health-threshold enchantments (pull request
+[#2189](https://github.com/sdubois777/Cataclysm/pull/2189)); recorded as a defect, not as design, in issue
+[#2190](https://github.com/sdubois777/Cataclysm/issues/2190). That change added the row "You start every dungeon floor at
+30%-50% of your maximum HP", acted on by `DungeonGameModeRaiseFloorStart` as the last call of `GoToFloor`: it lowers
+health to that share of the maximum it reads at that moment, and never raises it. The call before it,
+`ApplyFloorRulesToPlayer`, replaces the player's floor modifiers wholesale, which takes this row's buff and curses off
+until the next beat writes them again (`bPactWritten`). So the cap reads a maximum without the Pact of Wrath's 10% less
+maximum health, and the curse lowers the maximum a beat later without moving current health. With a maximum of 1000, one
+Pact of Wrath and a 30% cap, health is lowered to 300, the maximum then becomes 900, and the floor starts at a third of
+it rather than 30%. The cap is not undone and not applied twice; only its share is read against the wrong maximum.
+
+**Ruled by the coordinating session on 2026-10-01:** this row is not changed for it. The fix is to raise the floor
+start after every per-floor rule that changes maximum health has been written, built as its own change under #2190,
+which also checks other rules of the same shape and runs, rather than reads, what happens to health above a lowered
+maximum.
+
+### Group 2's window B, 2026-10-01
+
+Run in Group 2's window B on 2026-10-01, with the chain moved onto development `ca6c0929` as `feat/forced-tithes-7` `539a1ec2`, `feat/pact-of-temptation-7` `8d01772e` (Pact's entry gains the known defect of #2190, docs only) and `feat/blood-price-8` `faef87e6` (Blood Price's tests fixed, as its entry says). The pull request comes from `feat/blood-price-8`, which carries all three rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `forced-tithes-7` "Build: Succeeded - 32 actions, 29 files compiled"; `pact-of-temptation-7` "32 actions, 29 files compiled"; `blood-price-7` `1315b5d0` "19 actions, 16 files compiled"; `blood-price-8` "7 actions, 4 files compiled" |
+| Blood Price's tests at `faef87e6` | "Tests: 7 tests performed, 7 succeeded, 0 failed" |
+| Unreal, whole suite, `faef87e6` | "Tests: 2989 tests performed, 2989 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2989 tests in the tree at faef87e6; 2989 performed, gap 0" |
+| Python, `faef87e6` | "5611 passed, 8 skipped in 321.87s"; JUnit: 5619 tests, 0 failures, 0 errors, 8 skipped |
+
+A PROVED proof is one where a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's, with the commit each ran at:
+
+- **Pa PROVED** at `8d01772e`: `PactOfWrathBuffsTheNextFloorAndCursesTheDungeon`.
+- **Pb PROVED** at `8d01772e`: `PactCursesAddAreNotCleansedAndEndWithTheDungeon`.
+- **Pc PROVED** at `8d01772e`: `PactOfWrathBuffsTheNextFloorAndCursesTheDungeon`.
+
+---
+
+## 2026-09-30 — Forced Tithes: a Tithe Altar at every floor's exit but the last asks 20% of maximum health, a potion drink or 5 materials; refusing or leaving unpaid brings 8 angels
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its choices,
+its prices and figures, the row built); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the
+altar, the prices, the angels, the panel line, where an exit altar stands, and one floor object placed at a point);
+`game/Source/Cataclysm/Items/CataclysmInventoryComponent.h` and `.cpp` (taking a material out);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the "Angel" flag);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Angel"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmInventoryTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`.
+Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). The sixth of Group 2's chain and the first of its second
+window, on War Banner. **Applied. They were done in Group 2's window B on 2026-10-01; the figures are at the end of this entry.**
+
+### The row
+
+`Celestial_Forced_Tithes` in `game/Data/DungeonModifiers.csv`, weight 15: "At the end of each floor, players must pay a
+tithe (e.g., currency, consumables, health) to progress. Refusing or offering too little summons a horde of angels that
+attack with relentless zeal." It states no figure.
+
+### What the design already said
+
+Nothing: the design document and this log name no tithe. The game has no currency yet, so the row's first example
+cannot be built.
+
+### The owner's decision
+
+**THE OWNER DECIDED, 2026-09-30, asked by the coordinating session: the tithe is payable in HEALTH, A POTION DRINK and
+CRAFTING MATERIALS, all three built now; CURRENCY is added once gold exists.**
+
+### What the rule does
+
+On every floor carrying the row but the dungeon's last, a floor object named "Tithe Altar" stands on the exit cell,
+where the stairs are; on a Horde arena, one on each wave but the last. Its four choices:
+
+| Choice | What it takes |
+| :-- | :-- |
+| "Pay in health: 20% of maximum health" | 20% of maximum health, off current health, straight off health rather than as a hit |
+| "Pay with a potion drink: 10 charges from the fullest potion" | 10 charges, one drink, from the potion slot holding most |
+| "Pay in materials: 5 of the material you carry most of" | 5 of the crafting material carried in the largest stack |
+| "Refuse: 8 angels come at once" | nothing; 8 angels come beside the altar |
+
+A price the player cannot pay whole is shown and cannot be chosen: health that would leave less than 1, no potion slot
+holding 10 charges, no material carried 5 times. Which prices can be paid is asked again on every beat and again when one
+is chosen. Paying, or refusing, the altar goes. **Leaving the floor with the altar standing is refusing**: the 8 angels
+come on the next floor's first beat, at its entrance, where the player arrives.
+
+The angels are creatures of the floor's kinds at Common, 8 m from where they come, noticing the player from anywhere on
+the floor, each saying "Angel"; they are the floor's creatures and pay as their rung does. The panel reads "forced
+tithes: unpaid; the angels will come", then "forced tithes: paid" or "forced tithes: refused; the angels came".
+
+Taking a material out of the bag did not exist, since nothing in the game spent one. `RemoveMaterial` takes that many
+of a material or, when fewer are carried, none, and a stack taken to nothing empties its slot.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A "Tithe Altar" on the exit cell of every floor but the last; on a Horde arena, one between waves. Another altar at
+  the exit goes one cell apart, never on the same cell.** Blood Altar's ring stands on the exit cell, so with both rows
+  the Tithe Altar stands on a walkable cell beside it. `ExitAltarWorld` decides this for every exit altar, in a fixed
+  order, Blood Altar first; the Pact of Temptation's altar, next in Group 2's chain, joins that order.
+- **Leaving unpaid is refusing: the angels come at the next floor's entrance.** "Refuse" brings them at once beside
+  the altar.
+- **Fixed prices; a price the player cannot pay is shown and refused; no partial offer**: 20% of maximum health from
+  current, never below 1; 10 charges from the fullest potion slot; 5 of the most plentiful material.
+- **Build a function that takes a quantity of a material out of the inventory, with its own test.**
+- **8 Common angels of the floor's kinds, noticing the player from across the floor, the floor's creatures, paying.**
+  What an angel is, is the owner's content question for later; these stand in for one.
+- **The panel lines "forced tithes: paid" and "forced tithes: unpaid; the angels will come".**
+- **Walking onto the stairs with the tithe unpaid is refusing**, ruled on review of this change. The stairs share the
+  exit cell and take the player down within 2 m of it; a click on the altar stops the walk 3 m from it, so opening the
+  altar from inside the floor stops short of them.
+
+**On the owner's play-check list**, added by the coordinating session: pay a tithe in each of the three prices, refuse
+one, and leave one unpaid; and **whether a player can reach the Tithe Altar without stepping onto the stairs by
+accident**. If play shows it too easy to miss, the altar moves to a cell beside the exit.
+
+**Judgements of this change, under the same delegation, accepted on review:**
+
+- **The angels come 8 m from the altar or the entrance**, Battlefield Relics' spirits' distance.
+- **The panel after a refusal reads "forced tithes: refused; the angels came"**, since "unpaid; the angels will come"
+  would be untrue then. The last floor, with no altar, has no line.
+- **On a Horde arena, a tithe left unpaid brings the angels to the arena's entrance as the next wave arrives.** The
+  next wave is the next floor, and the arena's entrance is its entrance.
+- **Of equals, the first**: the fullest potion slot is the first of the fullest, and the material is the first stack in
+  bag order of the largest.
+- **A refused tithe owes nothing more**, and leaving the dungeon owes nothing.
+- **A potion can pay the tithe where the floor forbids drinking one**, under Famine's Hard Mode: the charges are the
+  player's, and the tithe takes them rather than drinking them.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Hades, Chaos Gate | [hades.wiki.fextralife.com/Chaos](https://hades.wiki.fextralife.com/Chaos) | "Sacrificing a portion of Zagreus' health is required to enter a Chaos Gate." |
+| Rogue Legacy, Charon | [roguelegacy.wiki.gg/wiki/Charon](https://roguelegacy.wiki.gg/wiki/Charon) | Charon "will demand all your gold for passage each time you attempt to enter the castle"; the Charon's Obol item is taken "instead of gold" |
+
+**What it settles:** a price in health to go on, taken from what the player has, is a shape a shipped game uses, and a
+toll that accepts something other than gold is one too. **What it does not:** the figures, and the angels, which are
+this row's own.
+
+### Tests
+
+Ten automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `ForcedTithes`:
+
+- `ForcedTithesFiguresPricesAndAngels`, the row built among them.
+- `ForcedTithesAltarStandsOnTheExitWithThreePricesAndRefuse`: one altar, on the exit cell, named, placed by the row,
+  its four choices in order, not paid, the panel.
+- `ForcedTithesPayingInHealthTakesAFifthOfMaximumAndOwesNothing`: a fifth of maximum health off current; paid, the
+  altar gone, the panel; the next floor owes nothing, brings no angel and asks its own tithe.
+- `ForcedTithesPayingWithAPotionOrMaterialsTakesFromTheFullest`: slots of 10, 30, 20 and 0 charges; the second gives
+  10 and the others are untouched. On the next floor 7 Corrupted Motes and 12 Whispering Ash; the Ash gives 5.
+- `ForcedTithesAPriceThePlayerCannotPayIsShownAndRefused`: at a fifth of maximum health, 5 charges a slot and no
+  material, each price is shown, cannot be chosen and is refused, nothing is taken and the altar stands; "Refuse" can
+  be chosen; healed, health can be chosen on the next beat.
+- `ForcedTithesRefusingBringsEightAngelsBesideTheAltarAtOnce`: eight at once, at Common, "Angel", raised and paying,
+  near the altar; refused, the altar gone, the panel; the next floor owes nothing.
+- `ForcedTithesLeavingUnpaidBringsTheAngelsToTheNextEntrance`: none on the floor left; eight on the next, near its
+  entrance, saying "Angel"; owed no longer, and four more beats bring no more.
+- `ForcedTithesAltarStandsOneCellFromABloodAltar`: with Blood Altar, not on the exit cell but on a walkable cell beside
+  it.
+- `ForcedTithesTheLastFloorHasNoAltar`: a bound dungeon of two floors; floor 1 has an altar, floor 2, the last, none
+  and no panel line.
+- `ForcedTithesAnAngelThePlayerTakesIsNoLongerOne`: refused; one angel taken loses "Angel" and seven stand, without
+  it.
+
+One in `Cataclysm.Inventory.`: `RemovingAMaterialTakesThatManyOrNone` -- 5 of 12 taken and a change counted; 5 of 3
+refused, all 3 left and no change counted; a material not carried, none and a negative number refused; all 7 taken
+empties the slot.
+
+One Python check: the row still says "at the end of each floor", "pay a tithe", "currency, consumables, health",
+"refusing or offering too little" and "a horde of angels".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **An angel the player takes is no longer an angel**: "Angel" leaves its bar and
+`TitheAngelsStanding()` leaves it out, through the two questions Battlefield Relics' entry names.
+
+### Group 2's window B, 2026-10-01
+
+Run in Group 2's window B on 2026-10-01, with the chain moved onto development `ca6c0929` as `feat/forced-tithes-7` `539a1ec2`, `feat/pact-of-temptation-7` `8d01772e` (Pact's entry gains the known defect of #2190, docs only) and `feat/blood-price-8` `faef87e6` (Blood Price's tests fixed, as its entry says). The pull request comes from `feat/blood-price-8`, which carries all three rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `forced-tithes-7` "Build: Succeeded - 32 actions, 29 files compiled"; `pact-of-temptation-7` "32 actions, 29 files compiled"; `blood-price-7` `1315b5d0` "19 actions, 16 files compiled"; `blood-price-8` "7 actions, 4 files compiled" |
+| Blood Price's tests at `faef87e6` | "Tests: 7 tests performed, 7 succeeded, 0 failed" |
+| Unreal, whole suite, `faef87e6` | "Tests: 2989 tests performed, 2989 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2989 tests in the tree at faef87e6; 2989 performed, gap 0" |
+| Python, `faef87e6` | "5611 passed, 8 skipped in 321.87s"; JUnit: 5619 tests, 0 failures, 0 errors, 8 skipped |
+
+A PROVED proof is one where a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's, with the commit each ran at:
+
+- **Pa PROVED** at `539a1ec2`: `ForcedTithesPayingInHealthTakesAFifthOfMaximumAndOwesNothing`.
+- **Pb PROVED** at `539a1ec2`: `ForcedTithesLeavingUnpaidBringsTheAngelsToTheNextEntrance`.
+- **Pc PROVED** at `539a1ec2`: `RemovingAMaterialTakesThatManyOrNone` (`Cataclysm.Inventory.`).
+
+---
+
 ## 2026-10-01 — Archon's Aegis saves a lethal blow and heals, the Demon King's Regalia rages below 25%, and every dungeon floor starts at 30%-50% health
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`

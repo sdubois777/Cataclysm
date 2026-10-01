@@ -488,6 +488,32 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float BannerResistancePercent = 0.0f;
 
 	/**
+	 * Pact of Temptation. Issues #1820 and #41. THE BUFF of the pact taken on the floor before, for this floor: damage
+	 * more (Wrath, Blood), attack and movement speed more (Haste), points on each resistance (the Bulwark) and magic
+	 * find added (Greed). THE CURSES of every pact taken in this dungeon, added: maximum health less (Wrath), points
+	 * off each resistance (Haste), movement speed less (the Bulwark) and healing received less (Blood). Greed's curse is
+	 * on the creatures, not here.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactDamageMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactAttackSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactResistancePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactMagicFindAdded = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactMaxHealthLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactCurseResistancePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactCurseSpeedLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PactHealingLessPercent = 0.0f;
+
+	/**
 	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
 	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
 	 * long. Issues #1820 and #41.
@@ -565,6 +591,9 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& RelicDamageMorePercent <= 0.0f && RelicAttackSpeedMorePercent <= 0.0f
 			&& RelicSpeedMorePercent <= 0.0f && RelicResistancePercent <= 0.0f
 			&& BannerDamageMorePercent <= 0.0f && BannerResistancePercent <= 0.0f
+			&& PactDamageMorePercent <= 0.0f && PactAttackSpeedMorePercent <= 0.0f && PactSpeedMorePercent <= 0.0f
+			&& PactResistancePercent <= 0.0f && PactMagicFindAdded <= 0.0f && PactMaxHealthLessPercent <= 0.0f
+			&& PactCurseResistancePercent <= 0.0f && PactCurseSpeedLessPercent <= 0.0f && PactHealingLessPercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
@@ -2746,6 +2775,145 @@ public:
 
 	/** A War Banner's one choice. */
 	static constexpr const TCHAR* WarBannerPlant = TEXT("Plant");
+
+	/**
+	 * The row whose altar at a floor's end asks a price to go on: health, a potion drink or materials, or angels.
+	 * Issues #1820 and #41.
+	 *
+	 * "At the end of each floor, players must pay a tithe (e.g., currency, consumables, health) to progress. Refusing or
+	 * offering too little summons a horde of angels that attack with relentless zeal."
+	 *
+	 * THE OWNER DECIDED, 2026-09-30, asked by the coordinating session: payable in HEALTH, A POTION DRINK and CRAFTING
+	 * MATERIALS, all three built now; CURRENCY is added once gold exists, since the game has none yet.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - A floor object named "Tithe Altar" ON THE EXIT CELL OF EVERY FLOOR BUT THE LAST, and on each wave of a Horde
+	 *   arena but the last. ANOTHER ALTAR AT THE EXIT GOES ONE CELL APART, never on the same cell: see
+	 *   `ACataclysmDungeonGameMode::ExitAltarWorld`.
+	 * - FIXED PRICES, one paid whole: `ForcedTithesHealthPercent` of maximum health taken from current health, never
+	 *   leaving less than 1; `ForcedTithesPotionCharges` charges from the fullest potion slot; `ForcedTithesMaterials` of
+	 *   the most plentiful crafting material carried. A PRICE THE PLAYER CANNOT PAY IS SHOWN AND REFUSED; no partial
+	 *   offer. Paying, the altar goes.
+	 * - "Refuse" BRINGS THE ANGELS AT ONCE, beside the altar, and the altar goes. LEAVING UNPAID IS REFUSING: the angels
+	 *   come at the next floor's entrance, or on a Horde arena at the entrance as the next wave arrives.
+	 * - THE ANGELS: `ForcedTithesAngelCount` creatures of the floor's kinds at Common, `ForcedTithesAngelsAwayCm` from
+	 *   where they come, noticing the player from anywhere on the floor, each saying "Angel". They are the floor's
+	 *   creatures and pay as their rung does. What an angel is, is the owner's content question for later; these stand
+	 *   in for one.
+	 */
+	static const TCHAR* ForcedTithesKey;
+
+	/** A Tithe Altar's four choices: the three prices and the refusal. */
+	static constexpr const TCHAR* ForcedTithesPayHealth = TEXT("Health");
+	static constexpr const TCHAR* ForcedTithesPayPotion = TEXT("Potion");
+	static constexpr const TCHAR* ForcedTithesPayMaterials = TEXT("Materials");
+	static constexpr const TCHAR* ForcedTithesRefuse = TEXT("Refuse");
+
+	/** Forced Tithes' health price for this maximum health. */
+	static float ForcedTithesHealthPrice(float MaximumHealth)
+	{
+		return MaximumHealth * ForcedTithesHealthPercent / 100.0f;
+	}
+
+	/** Whether a player at this health can pay the health price: it never leaves them below 1. */
+	static bool ForcedTithesHealthIsAffordable(float Health, float MaximumHealth)
+	{
+		return Health - ForcedTithesHealthPrice(MaximumHealth) >= 1.0f;
+	}
+
+	/**
+	 * The row whose altar at a floor's end offers pacts: a buff for the next floor, a curse for the rest of the dungeon.
+	 * Issues #1820 and #41.
+	 *
+	 * "Players are offered pacts by the dungeon at the end of each floor. Accepting a pact grants a powerful buff for
+	 * the floor but applies a curse for the rest of the dungeon."
+	 *
+	 * THE OWNER DECIDED, 2026-09-30, asked by the coordinating session: THE FIVE PACTS AS DRAFTED, names and figures,
+	 * Greed's curse on the creatures approved. Each a buff for the next floor and a curse for the rest of the dungeon:
+	 * - WRATH: `PactWrathDamageMorePercent` more damage / `PactWrathMaxHealthLessPercent` less maximum health.
+	 * - HASTE: `PactHasteSpeedMorePercent` more attack and movement speed / `PactHasteCurseResistance` off every
+	 *   resistance.
+	 * - THE BULWARK: `PactBulwarkResistance` on every resistance / `PactBulwarkSpeedLessPercent` less movement speed.
+	 * - GREED: `PactGreedMagicFind` magic find / every creature `PactGreedCreatureDamagePercent` more damage, on its
+	 *   own key of the damage map.
+	 * - BLOOD: `PactBloodDamageMorePercent` more damage / `PactBloodHealingLessPercent` less healing received.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, AND BUILT:
+	 * - A floor object named "Pact Altar" ON THE EXIT CELL OF EVERY FLOOR BUT THE LAST, and on each wave of a Horde
+	 *   arena but the last. ANOTHER ALTAR AT THE EXIT GOES ONE CELL APART: see
+	 *   `ACataclysmDungeonGameMode::ExitAltarWorld`.
+	 * - `PactsOffered` OF THE FIVE OFFERED, DIFFERENT EACH FLOOR; AT MOST ONE ACCEPTED, and the altar goes then.
+	 * - THE BUFF LASTS THE NEXT FLOOR. THE CURSE LASTS UNTIL THE PLAYER LEAVES THE DUNGEON; it is not cleansed, and
+	 *   curses add, the same pact twice included.
+	 */
+	static const TCHAR* PactOfTemptationKey;
+
+	/** The five pacts, in the order the altar lists them. */
+	static constexpr int32 PactWrath = 0;
+	static constexpr int32 PactHaste = 1;
+	static constexpr int32 PactBulwark = 2;
+	static constexpr int32 PactGreed = 3;
+	static constexpr int32 PactBlood = 4;
+	static constexpr int32 PactKinds = 5;
+
+	/** A pact's name, "Wrath" to "Blood", which is also its choice's key; "" for no pact. */
+	static const TCHAR* PactName(int32 Pact);
+
+	/** The pact a choice's key names, or INDEX_NONE. */
+	static int32 PactOfChoice(FName ChoiceKey);
+
+	/** A pact's button: "Pact of Wrath: 50% more damage next floor; 10% less maximum health for the dungeon". */
+	static FString PactButtonLabel(int32 Pact);
+
+	/** A pact's curse at this many of it, for the panel: "-10% health", "creatures +20% damage". */
+	static FString PactCurseText(int32 Pact, int32 Taken);
+
+	/** What every creature's damage is multiplied by for this many Pacts of Greed taken: 10% more each, added. */
+	static float PactGreedDamageMultiplier(int32 Taken)
+	{
+		return 1.0f + FMath::Max(Taken, 0) * PactGreedCreatureDamagePercent / 100.0f;
+	}
+
+	/** The pact fields of the player's floor effects: this floor's buff, and the curses of every pact taken. */
+	static void WritePactEffects(FCataclysmPlayerFloorEffects& Into, int32 BuffPact, const TArray<int32>& CursesTaken);
+
+	/**
+	 * The row where every choice at a floor object costs health and leaves a bleed for the rest of the dungeon. Issues
+	 * #1820 and #41.
+	 *
+	 * "Interacting with chests, shrines, or levers costs a percentage of current HP. Gain a permanent, uncleansable
+	 * stack of bleed each time."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - EVERY CHOICE AT ANY FLOOR OBJECT COSTS, on a floor carrying the row; the panel's "Leave" does not, and neither
+	 *   does PAYING A TITHE. Opening a Pandora's Box and accepting a pact do cost. See `BloodPriceIsAsked`.
+	 * - `BloodPriceHealthPercent` OF CURRENT HEALTH, read before the choice acts, and NEVER KILLS: it leaves at least 1.
+	 * - ONE BLEED STACK A CHOICE, for the rest of the dungeon, at most `BloodPriceMostStacks`: `BloodPricePercentPerStack`
+	 *   of maximum health a second a stack, dealt once a second as damage over time typed as the row, from the floor's
+	 *   hazard source; the player carries `Keyword.DoT.Bleed` while any stack is held. NOT REMOVED BY A CLEANSE.
+	 * - Each button says "(costs 10% health)"; the panel says the stacks, the bleed and the price.
+	 */
+	static const TCHAR* BloodPriceKey;
+
+	/** Whether a choice at an object the rule of this key placed costs the blood price: every one but a tithe paid. */
+	static bool BloodPriceIsAsked(FName RuleKey, FName ChoiceKey)
+	{
+		return RuleKey != FName(ForcedTithesKey) || ChoiceKey == FName(ForcedTithesRefuse);
+	}
+
+	/** The blood price at this current health: its share, leaving at least 1, and nothing from 1 or less. */
+	static float BloodPriceCost(float CurrentHealth)
+	{
+		return FMath::Max(0.0f, FMath::Min(CurrentHealth * BloodPriceHealthPercent / 100.0f, CurrentHealth - 1.0f));
+	}
+
+	/** The bleed a second at this many stacks, as a percentage of maximum health, at most the cap's. */
+	static float BloodPricePercentPerSecond(int32 Stacks)
+	{
+		return FMath::Clamp(Stacks, 0, BloodPriceMostStacks) * BloodPricePercentPerStack;
+	}
 
 	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
@@ -5569,6 +5737,32 @@ public:
 	static constexpr float WarBannerWaveEverySeconds = 15.0f;
 	static constexpr int32 WarBannerWaveSize = 4;
 	static constexpr float WarBannerWaveAwayCm = 1500.0f;
+
+	/** Forced Tithes' figures, every one a play-test value. See the key. */
+	static constexpr float ForcedTithesHealthPercent = 20.0f;
+	static constexpr float ForcedTithesPotionCharges = 10.0f;
+	static constexpr int32 ForcedTithesMaterials = 5;
+	static constexpr int32 ForcedTithesAngelCount = 8;
+	static constexpr int32 ForcedTithesAngelRung = 0;
+	static constexpr float ForcedTithesAngelsAwayCm = 800.0f;
+
+	/** Pact of Temptation's figures, the owner's as drafted. See the key. */
+	static constexpr int32 PactsOffered = 3;
+	static constexpr float PactWrathDamageMorePercent = 50.0f;
+	static constexpr float PactWrathMaxHealthLessPercent = 10.0f;
+	static constexpr float PactHasteSpeedMorePercent = 30.0f;
+	static constexpr float PactHasteCurseResistance = 10.0f;
+	static constexpr float PactBulwarkResistance = 30.0f;
+	static constexpr float PactBulwarkSpeedLessPercent = 10.0f;
+	static constexpr float PactGreedMagicFind = 50.0f;
+	static constexpr float PactGreedCreatureDamagePercent = 10.0f;
+	static constexpr float PactBloodDamageMorePercent = 50.0f;
+	static constexpr float PactBloodHealingLessPercent = 25.0f;
+
+	/** Blood Price's figures, every one a play-test value. See the key. */
+	static constexpr float BloodPriceHealthPercent = 10.0f;
+	static constexpr float BloodPricePercentPerStack = 0.25f;
+	static constexpr int32 BloodPriceMostStacks = 10;
 
 	/** Infernal Beacons' figures, every one a play-test value. See the key. */
 	static constexpr int32 InfernalBeaconsPerFloor = 1;

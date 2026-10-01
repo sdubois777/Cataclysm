@@ -695,6 +695,15 @@ FString UCataclysmCombatOverlay::BannerAssailantTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::TitheAngelTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsATitheAngel && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Angel"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::ChaosSpawnTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -763,7 +772,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
 		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
 		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
-		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor),
+		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor), TitheAngelTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),

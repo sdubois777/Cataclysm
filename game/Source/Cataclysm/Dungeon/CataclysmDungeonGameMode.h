@@ -2168,6 +2168,37 @@ public:
 	bool WarBannerIsHeld() const { return bWarBannerHeld; }
 	float WarBannerSecondsHeld() const { return WarBannerHeldSeconds; }
 	TArray<ACataclysmEnemyCharacter*> BannerAssailantsStanding() const;
+
+	/**
+	 * Forced Tithes, for the panel and tests: the altar standing, or null; whether this floor's tithe was paid or
+	 * refused; whether angels are owed for a tithe left unpaid; and the angels still standing.
+	 */
+	class ACataclysmFloorObject* TitheAltarNow() const;
+	bool TitheWasPaid() const { return bTithePaid; }
+	bool TitheWasRefused() const { return bTitheRefused; }
+	bool TitheAngelsAreOwed() const { return bTitheAngelsDue; }
+	TArray<ACataclysmEnemyCharacter*> TitheAngelsStanding() const;
+
+	/**
+	 * Pact of Temptation, for the panel and tests: the altar standing, or null; the pacts it offers; this floor's buff
+	 * and the next floor's, INDEX_NONE for none; how many of each pact this dungeon has taken; and how many in all.
+	 */
+	class ACataclysmFloorObject* PactAltarNow() const;
+	const TArray<int32>& PactsOfferedNow() const { return PactOffered; }
+	int32 PactBuffThisFloor() const { return PactBuffNow; }
+	int32 PactBuffNextFloor() const { return PactBuffNext; }
+	const TArray<int32>& PactCursesTaken() const { return PactCurseCounts; }
+	int32 PactsTakenNow() const { return PactsTaken; }
+
+	/** Blood Price, for the panel and tests: the bleed stacks this dungeon has left on the player. */
+	int32 BloodPriceStacksHeld() const { return BloodPriceStacks; }
+
+	/**
+	 * Where a rule standing an altar at the floor's exit puts it: THE EXIT CELL FOR THE FIRST, and for each after it the
+	 * next walkable cell beside the exit, so two altars never share a cell. The first is the earliest in a fixed order
+	 * of such rows the floor carries: Blood Altar, then Forced Tithes, then Pact of Temptation. Issues #1820 and #41.
+	 */
+	FVector ExitAltarWorld(FName RuleKey) const;
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
 
 	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
@@ -2881,6 +2912,64 @@ private:
 
 	/** War Banner, on the beat: the zone drawn, the hold counted, the waves brought and the aura written. */
 	void StepWarBanner(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Forced Tithes, on every floor and every wave: angels owed if the last altar was left unpaid, the last altar
+	 * forgotten, and this floor's placed at the exit unless it is the dungeon's last. Issues #1820 and #41.
+	 */
+	void PlaceTheTitheAltar();
+
+	/** Forced Tithes: the altar and this floor's tithe forgotten. The angels owed are not touched. */
+	void ForgetTheTitheAltar();
+
+	/** Forced Tithes: a choice at the altar, a price paid or the tithe refused. */
+	bool ChooseAtTitheAltar(class ACataclysmFloorObject* Altar, FName ChoiceKey);
+
+	/**
+	 * Forced Tithes: whether the player can pay this price now, and what paying takes -- the potion slot or the
+	 * material. False for a key that is not a price.
+	 */
+	bool CanPayTheTithe(FName ChoiceKey, class ACataclysmPlayerCharacter* Player, int32* OutPotionSlot,
+						FName* OutMaterial) const;
+
+	/** Forced Tithes: the angels brought near this point. */
+	void BringTheTitheAngels(const FVector& At);
+
+	/** Forced Tithes, on the beat: owed angels brought to the entrance, and the altar's prices shown as payable or not. */
+	void StepForcedTithes(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * Pact of Temptation, on every floor and every wave: last floor's accepted pact becomes this floor's buff, the last
+	 * altar goes, and this floor's is placed at the exit offering pacts unless it is the dungeon's last. #1820, #41.
+	 */
+	void PlaceThePactAltar();
+
+	/** Pact of Temptation: the altar and its offer forgotten. The buffs and curses are not touched. */
+	void ForgetThePactAltar();
+
+	/** Pact of Temptation: a pact accepted at the altar. */
+	bool ChooseAtPactAltar(class ACataclysmFloorObject* Altar, FName ChoiceKey);
+
+	/** Pact of Temptation, on the beat: Greed's curse on every creature, and the buff and curses on the player. */
+	void StepPactOfTemptation(class ACataclysmPlayerCharacter* Player,
+							  class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The choice screen's rule half: a choice sent to the rule that placed the object, answering whether anything
+	 * happened. `ChooseAtFloorObject` wraps it, so a rule that prices every choice -- Blood Price -- asks once.
+	 */
+	bool ChooseAtFloorObjectForItsRule(class ACataclysmFloorObject* Object, FName ChoiceKey);
+
+	/** Blood Price: the price of a choice that acted, from the health the player had before it, and a bleed stack. */
+	void PayTheBloodPrice(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem,
+						  float HealthBefore);
+
+	/** Blood Price, on the beat: the buttons priced, the bleed once a second, and the bleed keyword while it is held. */
+	void StepBloodPrice(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** A floor object at this point, carrying the rule's key, the name and the prompt given. Issues #1820 and #41. */
+	class ACataclysmFloorObject* PlaceFloorObjectAt(FName RuleKey, const FVector& Where, const FString& DisplayName,
+													const FString& Prompt);
 
 	/** Infernal Beacons, on the beat: every creature's damage at the dungeon's stacks, and the player's magic find. */
 	void StepInfernalBeacons(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -4393,6 +4482,46 @@ private:
 	float WarBannerDamageApplied = 0.0f;
 	float WarBannerResistanceApplied = 0.0f;
 	int32 WarBannerPanelKey = -1;
+
+	/**
+	 * Forced Tithes: this floor's altar; whether one was placed, and whether its tithe was paid or refused; whether
+	 * angels are owed at the next beat for an altar left unpaid; the angels brought; and what the panel last showed.
+	 * Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> TitheAltar;
+	bool bTitheAltarPlaced = false;
+	bool bTithePaid = false;
+	bool bTitheRefused = false;
+	bool bTitheAngelsDue = false;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> TitheAngels;
+	int32 TithePanelKey = -1;
+
+	/**
+	 * Pact of Temptation: this floor's altar and what it offers, and the last floor's offer; the buff of the pact taken
+	 * on the floor before, for this floor, and the one taken on this floor, for the next; how many of each pact the
+	 * dungeon has taken, and in all; what was last written on the player, and whether it was written since the last
+	 * floor change replaced the player's floor modifiers; and what the panel last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> PactAltar;
+	TArray<int32> PactOffered;
+	TArray<int32> PactLastOffered;
+	int32 PactBuffNow = INDEX_NONE;
+	int32 PactBuffNext = INDEX_NONE;
+	TArray<int32> PactCurseCounts = {0, 0, 0, 0, 0};
+	int32 PactsTaken = 0;
+	int32 PactBuffApplied = INDEX_NONE;
+	TArray<int32> PactCursesApplied = {0, 0, 0, 0, 0};
+	bool bPactWritten = false;
+	int32 PactPanelKey = -1;
+
+	/**
+	 * Blood Price: the bleed stacks this dungeon has left, the clock to the next second's bleed, whether the player
+	 * carries the bleed keyword, and what the panel last showed. The dungeon's, cleared on leaving it. Issues #1820, #41.
+	 */
+	int32 BloodPriceStacks = 0;
+	float BloodPriceSecondsSinceBleed = 0.0f;
+	bool bBloodPriceTagged = false;
+	int32 BloodPricePanelStacks = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

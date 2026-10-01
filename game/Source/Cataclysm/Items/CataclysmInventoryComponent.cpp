@@ -174,6 +174,29 @@ int32 UCataclysmInventoryComponent::AddMaterial(FName Material, int32 Quantity)
 	return Slot;
 }
 
+bool UCataclysmInventoryComponent::RemoveMaterial(FName Material, int32 Quantity)
+{
+	// NOTHING TO TAKE, OR NOT ENOUGH OF IT: NOTHING IS TAKEN. A price is paid whole or not at all.
+	const int32 Slot = SlotOfMaterial(Material);
+	if (Quantity <= 0 || Slot == INDEX_NONE || Slots[Slot].Quantity < Quantity)
+	{
+		return false;
+	}
+
+	Slots[Slot].Quantity -= Quantity;
+	if (Slots[Slot].Quantity <= 0)
+	{
+		// AN EMPTY STACK IS AN EMPTY SLOT, reset as `RemoveItemAt` resets one.
+		Slots[Slot] = FCataclysmCarriedSlot();
+	}
+
+	// A STACK GETTING SMALLER IS A CHANGE, as one getting bigger is: the tool tip states how many are carried.
+	++Changes;
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+										ECataclysmSaveTrigger::InventoryChanged);
+	return true;
+}
+
 bool UCataclysmInventoryComponent::SwapSlots(int32 First, int32 Second)
 {
 	if (!Slots.IsValidIndex(First) || !Slots.IsValidIndex(Second))

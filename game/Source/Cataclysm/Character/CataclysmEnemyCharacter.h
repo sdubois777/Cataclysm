@@ -662,6 +662,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetFamishedBeastsDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies the attack damage of every creature of a dungeon in which the player took a Pact of Greed: its curse.
+	 * `Demonic_Pact_of_Temptation`. Issues #1820 and #41.
+	 *
+	 * A KEY OF `DamageMultipliersBySource` OF ITS OWN. Everything the setters above say about the route, the designed
+	 * figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetPactOfTemptationDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -677,6 +689,7 @@ public:
 	static constexpr const TCHAR* BlackestShadowDamageSource = TEXT("BlackestShadow");
 	static constexpr const TCHAR* PlaguebearerDamageSource = TEXT("Plaguebearer");
 	static constexpr const TCHAR* FamishedBeastsDamageSource = TEXT("FamishedBeasts");
+	static constexpr const TCHAR* PactOfTemptationDamageSource = TEXT("PactOfTemptation");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -1310,6 +1323,10 @@ public:
 	/** Whether a planted War Banner's waves brought this creature; it says "Assailant". Issues #1820 and #41. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsABannerAssailant = false;
+
+	/** Whether Forced Tithes brought this creature for a tithe refused or unpaid; it says "Angel". Issues #1820, #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsATitheAngel = false;
 
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues

@@ -3044,7 +3044,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource"),
                         ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource"),
                         ("SetFamishedBeastsDamageMultiplier", "FamishedBeastsDamageSource"),
-                        ("SetInfernalBeaconsDamageMultiplier", "InfernalBeaconsDamageSource")):
+                        ("SetInfernalBeaconsDamageMultiplier", "InfernalBeaconsDamageSource"),
+                        ("SetPactOfTemptationDamageMultiplier", "PactOfTemptationDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4834,3 +4835,61 @@ def test_war_banner_row_still_names_planting_an_aura_waves_and_a_defended_period
         assert phrase in lower, (
             f"War_War_Banner no longer says {phrase.upper()!r}. A reading of the rule rests on it; see WarBannerKey "
             "in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_forced_tithes_row_still_names_a_floors_end_its_prices_and_the_angels():
+    """The phrases the rule's readings rest on.
+
+    "At the end of each floor, players must pay a tithe (e.g., currency, consumables, health) to progress. Refusing or
+    offering too little summons a horde of angels that attack with relentless zeal." AT THE END OF EACH FLOOR is the
+    altar on the exit cell; CURRENCY, CONSUMABLES, HEALTH are the prices, the owner deciding on health, a potion drink
+    and materials with currency once gold exists; REFUSING OR OFFERING TOO LITTLE is "Refuse" and leaving unpaid, a
+    price not payable being refused rather than part-paid; A HORDE OF ANGELS is the eight. If any of them changes, the
+    reading must be revisited.
+    """
+    words = flat(rows()["Celestial_Forced_Tithes"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("at the end of each floor", "pay a tithe", "currency, consumables, health",
+                   "refusing or offering too little", "a horde of angels"):
+        assert phrase in lower, (
+            f"Celestial_Forced_Tithes no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "ForcedTithesKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_pact_of_temptation_row_still_names_the_offer_the_buff_and_the_curse():
+    """The phrases the rule's readings rest on.
+
+    "Players are offered pacts by the dungeon at the end of each floor. Accepting a pact grants a powerful buff for the
+    floor but applies a curse for the rest of the dungeon." OFFERED PACTS is the altar's three of five; AT THE END OF
+    EACH FLOOR is the altar on the exit cell; A POWERFUL BUFF FOR THE FLOOR is the next floor's buff, the pact being
+    taken as a floor ends; A CURSE FOR THE REST OF THE DUNGEON is the curse held until the dungeon is left. If any of
+    them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Demonic_Pact_of_Temptation"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("offered pacts", "at the end of each floor", "a powerful buff for the floor",
+                   "a curse for the rest of the dungeon"):
+        assert phrase in lower, (
+            f"Demonic_Pact_of_Temptation no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "PactOfTemptationKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_blood_price_row_still_names_the_interactions_the_price_and_the_bleed():
+    """The phrases the rule's readings rest on.
+
+    "Interacting with chests, shrines, or levers costs a percentage of current HP. Gain a permanent, uncleansable stack
+    of bleed each time." INTERACTING WITH CHESTS, SHRINES, OR LEVERS is every choice at a floor object, the game having
+    no chest, shrine or lever of its own; A PERCENTAGE OF CURRENT HP is the tenth of current health; PERMANENT,
+    UNCLEANSABLE is a stack held to the dungeon's end that a cleanse leaves; STACK OF BLEED EACH TIME is one stack a
+    choice. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Demonic_Blood_Price"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("interacting with chests, shrines, or levers", "a percentage of current hp",
+                   "permanent, uncleansable", "stack of bleed each time"):
+        assert phrase in lower, (
+            f"Demonic_Blood_Price no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "BloodPriceKey in CataclysmDungeonModifierEffects.h. " + words)

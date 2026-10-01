@@ -683,4 +683,57 @@ bool FCataclysmInventoryCountsItsChanges::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * Taking a material out: that many from its stack, or none when fewer are carried; a stack taken to nothing empties
+ * its slot. Issues #1820 and #41, for Forced Tithes, whose altar takes materials as a price.
+ *
+ * ALL OR NOTHING IS THE POINT. A price is paid whole or not at all, so a request for more than is carried must leave
+ * the stack exactly as it was.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemoveMaterialTest,
+	"Cataclysm.Inventory.RemovingAMaterialTakesThatManyOrNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRemoveMaterialTest::RunTest(const FString&)
+{
+	using namespace CataclysmInventoryTest;
+
+	UCataclysmInventoryComponent* Inventory = MakeInventory();
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+	const FName Mote(TEXT("Material_Corrupted_Mote"));
+	const FName Ash(TEXT("Material_Whispering_Ash"));
+	Inventory->AddMaterial(Mote, 12);
+	Inventory->AddMaterial(Ash, 3);
+
+	const int32 Before = Inventory->ChangeCount();
+	TestTrue(TEXT("five of twelve can be taken"), Inventory->RemoveMaterial(Mote, 5));
+	TestEqual(TEXT("seven are left"), Inventory->CountOfMaterial(Mote), 7);
+	TestEqual(TEXT("in the same slot"), Inventory->SlotOfMaterial(Mote), 0);
+	TestTrue(TEXT("and it is a change"), Inventory->ChangeCount() > Before);
+
+	// FEWER CARRIED THAN ASKED: NONE IS TAKEN.
+	const int32 AfterTaking = Inventory->ChangeCount();
+	TestFalse(TEXT("five of three cannot be taken"), Inventory->RemoveMaterial(Ash, 5));
+	TestEqual(TEXT("and all three are still carried"), Inventory->CountOfMaterial(Ash), 3);
+	TestEqual(TEXT("which is not a change"), Inventory->ChangeCount(), AfterTaking);
+
+	// NOTHING TO TAKE.
+	TestFalse(TEXT("a material not carried cannot be taken"),
+			  Inventory->RemoveMaterial(FName(TEXT("Material_Aetherial_Shard")), 1));
+	TestFalse(TEXT("nor none of one"), Inventory->RemoveMaterial(Mote, 0));
+	TestFalse(TEXT("nor a negative number"), Inventory->RemoveMaterial(Mote, -2));
+	TestEqual(TEXT("and none of that changed the stack"), Inventory->CountOfMaterial(Mote), 7);
+
+	// THE WHOLE STACK: ITS SLOT IS EMPTY AGAIN.
+	TestTrue(TEXT("all seven can be taken"), Inventory->RemoveMaterial(Mote, 7));
+	TestEqual(TEXT("none is carried"), Inventory->CountOfMaterial(Mote), 0);
+	TestEqual(TEXT("and no slot holds it"), Inventory->SlotOfMaterial(Mote), INDEX_NONE);
+	TestTrue(TEXT("its slot is empty"), UCataclysmInventoryComponent::SlotIsEmpty(Inventory->GetSlots()[0]));
+	TestEqual(TEXT("and one slot is used"), Inventory->NumItems(), 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
