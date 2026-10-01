@@ -11,8 +11,7 @@ CataclysmVitalAttributeSet.h` and `.cpp` (`PostAttributeChange`); the automation
 `tools/tests/test_maximum_health_rules_are_written_before_the_floor_start.py`. Issue
 [#2190](https://github.com/sdubois777/Cataclysm/issues/2190), found while moving Pact of Temptation onto the
 health-threshold enchantments ([#2189](https://github.com/sdubois777/Cataclysm/pull/2189)); Pact's entry records it as a
-known defect. **Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are
-added at the end of this entry when they have.**
+known defect. **Applied. They were done in the window of 2026-10-01; the figures are at the end of this entry.**
 
 ### What was wrong
 
@@ -126,10 +125,34 @@ left 204.
 Two Python checks, in `tools/tests/test_maximum_health_rules_are_written_before_the_floor_start.py`: the list is whole,
 and every caller goes through `ApplyFloorRulesKeepingHealth`.
 
-### Not yet run
+### The window of 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in their own window after
-the enchantments' D3 merges.
+Run on `fix/floor-start-cap-order-2`, moved onto development `b1ac2a92`. The pull request comes from its head.
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `c2eb9e06` | "Build: Succeeded - 32 actions, 29 files compiled" |
+| Build, `616eda14` (the keep-health test fixed) | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `616eda14` | "Tests: 3003 tests performed, 3002 succeeded, 1 failed: RawSewageBurnsEachSecondAndOnTheNextFloor. 40 skipped part of what they check"; "Declared: 3003 tests in the tree at 616eda14; 3003 performed, gap 0" -- the one failure is the test this change exposed, above |
+| Raw Sewage's group, `4ed6d375` (its test fixed) | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp"; "Tests: 3 tests performed, 3 succeeded, 0 failed" -- a test-only fix after the whole suite reruns its group, by the project's rule |
+| Python, `4ed6d375` | "5624 passed, 8 skipped in 330.22s"; JUnit: 5632 tests, 0 failures, 0 errors, 8 skipped |
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after:
+
+- **Pa NOT A PROOF** at `c2eb9e06`: with the break in, "10 tests performed, 4 succeeded, 6 failed", the six predicted;
+  restored, `AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull` failed as well -- the test fault above.
+- **Pa2 PROVED** at `616eda14`, the same break against the fixed test: "with the break in: 10 tests performed, 4
+  succeeded, 6 failed" -- `AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull`, `AFloorStartCapReadsTheMaximumAfterChaosTouched`,
+  `AFloorStartCapReadsTheMaximumAfterThePactOfWrath`, `AFloorStartCapReadsTheMaximumAfterTheStarvationCurse`,
+  `AFloorStartCapReadsTheMaximumAfterWastingSickness` and `SixPactsOfWrathAndTheFloorStartCapLeaveHealthAtOrBelowItsMaximum`;
+  "restored: 10 tests performed, 10 succeeded, 0 failed".
+- **Pb PROVED** at `616eda14`, the clamp removed: `LoweringMaximumHealthLowersHealthAboveIt` failed with the break in;
+  passed restored.
+- **Pc PROVED** at `616eda14`, the health restore removed: `AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull` failed with
+  the break in; passed restored.
+- **The two Python checks** were each shown failing on their own break, with `tools/prove_guard.py` in a copy of the
+  commit: a step dropped from `WriteTheMaximumHealthRulesBack` failed the first, a caller going round
+  `ApplyFloorRulesKeepingHealth` the second; both passed restored.
 
 ---
 
