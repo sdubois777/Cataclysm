@@ -204,8 +204,21 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 		const float Before = HealthOfRetaliationTarget(Target);
 		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount,
 												  Delivery);
-		TakenAltogether +=
+		const float Taken =
 			FMath::Max(0.0f, Before - HealthOfRetaliationTarget(Target));
+		TakenAltogether += Taken;
+
+		// AND THE DEFENDER'S ROWS HEAR OF IT, once for each target, with that
+		// target and what reached its health. Issue #1833 group D: "Your
+		// retaliation damage also applies a random DoT to attackers". Landed
+		// only when health was taken, so a payment every defence absorbed
+		// fires nothing.
+		if (UCataclysmAbilitySystemComponent* Paying =
+				Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Paying->ActOnEvent(FName(TEXT("retaliation_dealt")), /*EventTags=*/nullptr,
+							   /*EventAmount=*/Taken, /*bLanded=*/Taken > 0.0f, Target);
+		}
 	}
 
 	// AND THE DEFENDER LEECHES FROM IT, IF IT HAS BOUGHT THAT. Issue #1048, the

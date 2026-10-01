@@ -2027,6 +2027,109 @@ class TestSecondConditionAndThresholdHigh:
                                                          "Condition Value": None}))
 
 
+class TestTriggerCooldownAndRandomDot:
+    """An action row's trigger cooldown, and the random damage over time.
+    Issue #1833 group D, ruled 2026-09-30 under the owner's delegation: an
+    action row that makes something happen on a hit-fired event waits 0.25 s
+    after it fires unless its Trigger Cooldown says otherwise, and "Critical
+    strikes apply a random DoT to the target" applies one of five."""
+
+    CRIT = gen.row_name("Positive", "Critical strikes apply a random DoT to the target"[:48])
+    CRIT_WORDS = "Critical strikes apply a random DoT to the target"
+    BLOCK = gen.row_name("Positive", "Blocking an attack restores 3%-6% of your maximum HP"[:48])
+    BLOCK_WORDS = "Blocking an attack restores 3%-6% of your maximum HP"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [CRIT_WORDS, "Generic", 4, "Trigger.OnCrit", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [BLOCK_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER + ["Trigger Cooldown"]
+
+    def book(self, tmp_path, values, header=None):
+        header = header or self.HEADER
+        row = [values.get(column) for column in header]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "trigger_cooldown.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [header, row]}))
+
+    def heal(self, tmp_path, changes, header=None):
+        values = {"Enchantment": self.BLOCK, "Effect": self.BLOCK_WORDS,
+                  "Action": "health", "Action Event": "block",
+                  "Value Low": 3, "Value High": 6}
+        values.update(changes)
+        return self.book(tmp_path, values, header)
+
+    def dot(self, tmp_path, changes):
+        values = {"Enchantment": self.CRIT, "Effect": self.CRIT_WORDS,
+                  "Action": "apply_random_dot", "Action Event": "critical_strike",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_an_empty_cell_on_a_hit_fired_event_is_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_a_sheet_without_the_column_gives_the_same_default(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}, TestScaleStepHigh.HEADER))
+        assert out[0]["TriggerCooldown"] == 0.25
+
+    def test_an_explicit_nought_is_none(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Trigger Cooldown": 0}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_stated_cooldown_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Trigger Cooldown": 600}))
+        assert out[0]["TriggerCooldown"] == 600.0
+
+    def test_an_event_no_hit_fires_takes_no_default(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "kill"}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_stat_row_gets_no_default_and_refuses_one(self, tmp_path):
+        stat = {"Action": None, "Action Event": None, "Stat": "block_chance",
+                "Value Kind": "increased"}
+        assert gen.enchantment_effects(self.heal(tmp_path, stat))[0]["TriggerCooldown"] == 0.0
+        with pytest.raises(gen.DataError, match="never waits"):
+            gen.enchantment_effects(self.heal(tmp_path, dict(stat, **{"Trigger Cooldown": 1})))
+
+    def test_a_timed_row_refuses_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="never waits"):
+            gen.enchantment_effects(self.heal(tmp_path, {
+                "Action Event": "every_seconds", "Every Seconds": 10,
+                "Trigger Cooldown": 1}))
+
+    def test_a_cooldown_past_an_hour_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 3600"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Trigger Cooldown": 3601}))
+
+    def test_a_random_dot_on_a_critical_strike_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.dot(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "apply_random_dot", "critical_strike", 100.0, "", 0.25)
+
+    def test_a_random_dot_on_retaliation_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.dot(tmp_path, {"Action Event": "retaliation_dealt"}))
+        assert out[0]["ActionEvent"] == "retaliation_dealt"
+
+    def test_a_random_dot_on_an_event_carrying_no_amount_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="what reached its health"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Action Event": "hit_dealt"}))
+
+    def test_a_random_dot_chance_past_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="A chance is above 0"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Value Low": 150}))
+
+    def test_a_random_dot_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Fraction Of": "maximum"}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 

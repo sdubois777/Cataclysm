@@ -4,6 +4,7 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmAilments.h"
 // For the class resource a scaling bonus counts points of. Issue #980.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For the two ailment chances a condition asks whether this character has at
@@ -3208,6 +3209,31 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction =
 const TCHAR* UCataclysmAbilitySystemComponent::NextSpellCooldownReducedAction =
 	TEXT("next_spell_cooldown_reduced");
 const TCHAR* UCataclysmAbilitySystemComponent::CleanseAction = TEXT("cleanse");
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyRandomDotAction =
+	TEXT("apply_random_dot");
+
+bool UCataclysmAbilitySystemComponent::TriggerCoolingDown(FName TriggerKey) const
+{
+	const UWorld* World = GetWorld();
+	const float* ReadyAt = TriggerReadyAtSeconds.Find(TriggerKey);
+	return World && ReadyAt && World->GetTimeSeconds() < *ReadyAt;
+}
+
+bool UCataclysmAbilitySystemComponent::TriggerReady(const FCataclysmPoolAction& Action) const
+{
+	return Action.TriggerCooldownSeconds <= 0.0f || Action.TriggerKey.IsNone()
+		|| !TriggerCoolingDown(Action.TriggerKey);
+}
+
+void UCataclysmAbilitySystemComponent::NoteTriggerFired(const FCataclysmPoolAction& Action)
+{
+	const UWorld* World = GetWorld();
+	if (World && Action.TriggerCooldownSeconds > 0.0f && !Action.TriggerKey.IsNone())
+	{
+		TriggerReadyAtSeconds.Add(Action.TriggerKey,
+			World->GetTimeSeconds() + Action.TriggerCooldownSeconds);
+	}
+}
 
 int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolAction& Action)
 {
@@ -3305,9 +3331,14 @@ static TAutoConsoleVariable<float> CVarCooldownResetRoll(
 	ECVF_Default);
 
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
-	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags)
+	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags,
+	bool* bOutRollSucceeded)
 {
 	using EReset = ECataclysmCooldownReset;
+	if (bOutRollSucceeded)
+	{
+		*bOutRollSucceeded = false;
+	}
 	if (Action.CooldownReset == EReset::None || Action.Percent <= 0.0f)
 	{
 		return 0;
@@ -3317,6 +3348,12 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 	if (Roll >= Action.Percent)
 	{
 		return 0;
+	}
+	// WHAT STARTS A TRIGGER COOLDOWN: the roll coming up, whether or not any
+	// cooldown was running to clear. Issue #1833 group D.
+	if (bOutRollSucceeded)
+	{
+		*bOutRollSucceeded = true;
 	}
 
 	// THE SLOT THE EVENT'S SKILL IS IN, read off its `Slot.*` tag, for the two
@@ -3880,10 +3917,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// Issue #1833, the cooldown reduction action.
 		if (Action.CooldownReduce != ECataclysmCooldownReset::None)
 		{
-			if (bLanded && !StackedThisEvent.Contains(Action.ResetKey))
+			if (bLanded && !StackedThisEvent.Contains(Action.ResetKey)
+				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.ResetKey);
 				ReduceCooldowns(Action);
+				NoteTriggerFired(Action);
 			}
 			continue;
 		}
@@ -3891,10 +3930,16 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// that landed. Issue #1833, the cooldown reset action.
 		if (Action.CooldownReset != ECataclysmCooldownReset::None)
 		{
-			if (bLanded && !StackedThisEvent.Contains(Action.ResetKey))
+			if (bLanded && !StackedThisEvent.Contains(Action.ResetKey)
+				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.ResetKey);
-				RollAndResetCooldowns(Action, EventTags);
+				bool bRollSucceeded = false;
+				RollAndResetCooldowns(Action, EventTags, &bRollSucceeded);
+				if (bRollSucceeded)
+				{
+					NoteTriggerFired(Action);
+				}
 			}
 			continue;
 		}
@@ -3963,17 +4008,43 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// A RANDOM DAMAGE OVER TIME ON THE OTHER CHARACTER OF THE EVENT. Issue
+		// #1833 group D, ruled 2026-09-30. Landed only, once per row per event,
+		// only for an event naming that character and carrying what reached its
+		// health, and only past the owner's rule of 2026-09-02 (#917): the blow
+		// took a tenth of the target's maximum health and left it alive.
+		if (Action.bRandomDamageOverTime)
+		{
+			AActor* Other = const_cast<AActor*>(EventTarget);
+			if (bLanded && Other && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action)
+				&& UCataclysmAilments::BlowCanCarryAnAilment(Other, EventAmount))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				// THE CHANCE, where 100 is always. Compared as at most rather than
+				// rolled, because `FRandRange` can return 100 itself.
+				const bool bComesUp = Action.Percent >= 100.0f
+					|| FMath::FRandRange(0.0f, 100.0f) < Action.Percent;
+				if (bComesUp
+					&& UCataclysmAilments::ApplyRandomDamageOverTime(GetOwnerActor(), Other))
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
 		// AND ONLY A LANDED EVENT MOVES A POOL, since issue #1833's small engine
 		// halves. "Every hit you take deals an additional 5%-10% of your maximum
 		// HP as bonus damage" is a pool action on `hit_taken`, and an evaded blow
 		// is not a hit: ruled 2026-09-23. Only `hit_taken` and `melee_hit_taken`
 		// pass an unlanded event, and no pool row named either before that row,
 		// measured 2026-09-25, so no row that existed changes.
-		if (!bLanded)
+		if (!bLanded || !TriggerReady(Action))
 		{
 			continue;
 		}
 		ApplyPoolAction(Action, EventTags, EventAmount);
+		NoteTriggerFired(Action);
 	}
 }
 

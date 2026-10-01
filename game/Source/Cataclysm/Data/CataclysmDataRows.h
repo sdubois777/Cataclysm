@@ -2345,4 +2345,19 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float ConditionValueHigh = 0.0f;
+
+	/**
+	 * The seconds an action row waits after it fires before it may fire again,
+	 * or 0 for none. Issue #1833 group D, ruled 2026-09-30 under the owner's
+	 * delegation, building the judgement of 2026-09-11: a trigger that states no
+	 * cooldown waits 0.25 s when a hit dealt or taken fires it.
+	 *
+	 * THE DEFAULT IS WRITTEN BY THE GENERATOR, not applied here, so the table
+	 * says what each row does: `tools/generate_datatables.py` writes 0.25 for a
+	 * row that moves a pool, resets or reduces a cooldown or applies a random
+	 * damage over time on a hit-fired event when the cell is empty, and an
+	 * explicit 0 stays 0. See `FCataclysmPoolAction::TriggerCooldownSeconds`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float TriggerCooldown = 0.0f;
 };

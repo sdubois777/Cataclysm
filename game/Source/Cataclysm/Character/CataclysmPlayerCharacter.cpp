@@ -970,9 +970,18 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// A CRITICAL STRIKE IS A KIND OF HIT, so it is a second event rather than a
 	// different one, and a row may want either. Fired after the hit so that a
 	// character wearing both rows gets both, in the order they are written.
+	//
+	// WITH WHO WAS STRUCK AND WHAT REACHED THEIR HEALTH, since issue #1833 group
+	// D: "Critical strikes apply a random DoT to the target" acts on the target,
+	// and the owner's rule of 2026-09-02 (#917) asks whether the blow took a
+	// tenth of its maximum health. No row read either before, measured
+	// 2026-09-30: no critical_strike row takes a fraction of its event's amount,
+	// and none carries a condition on the target.
 	if (Notice.bCritical)
 	{
-		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags);
+		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
+						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
+						   Notice.Target);
 	}
 }
 
