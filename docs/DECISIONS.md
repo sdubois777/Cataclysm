@@ -88,7 +88,19 @@ Seven automation tests:
 - `Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterChaosTouched`: more maximum health on the maximum the
   floor starts with.
 - `Cataclysm.HealthThreshold.AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull`: no cap row; a full player touched with
-  more health is still at that stated figure after a floor change.
+  more health is still at that stated figure after a floor change, on a floor that keeps the row with its draw pinned to
+  more speed: one speed touch added, the health touch kept.
+
+**A test fault found by guard proof Pa, 2026-10-01.** Pa printed NOT A PROOF: with the files restored, this test read a
+maximum of 510 where it expected the touched 561. Its first version went to floor 3 with no rows at all, and a brief
+carrying none is the player out of the dungeon: `ApplyFloorRulesToPlayer` ends every touch there, correctly. The other
+nine tests Pa selected passed restored. Fixed in the test only, as the coordinating session ruled; **Pa stays NOT A
+PROOF with this cause, and Pa2, the same break against the fixed test, is a fourth proof run,** allowed because Pa found
+a fault in its own test rather than failing a fair one.
+
+**The six-curse case, measured in Pa's two runs:** with the code as it stands, six Pacts of Wrath took the maximum from
+510 to 204 and the 50% cap left health at 102, half the cursed maximum; with the write-back removed, the cap read 510 and
+left 204.
 - `Cataclysm.Attributes.LoweringMaximumHealthLowersHealthAboveIt`: by a base write and by an effect; a raise raises
   nothing; health below a lowered maximum stays.
 

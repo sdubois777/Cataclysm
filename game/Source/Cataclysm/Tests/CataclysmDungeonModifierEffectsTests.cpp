@@ -41849,11 +41849,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTouchedKeepsFullTest,
  * Issue #2190, ruled 2026-10-01. Chaos Touched's more maximum health is taken off by the floor's rules and written back;
  * between the two the clamp lowers health to the lower maximum, and `ApplyFloorRulesKeepingHealth` puts it back. Read
  * against the stated figure the touched maximum had before the change, so a floor change that left the maximum low, or
- * left health at the low figure, both fail. No cap row is worn.
+ * left health at the low figure, both fail. No cap row is worn. The next floor keeps the row, with its draw pinned to
+ * more speed; see the comment at the floor change.
  */
 bool FCataclysmTouchedKeepsFullTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -41882,12 +41884,23 @@ bool FCataclysmTouchedKeepsFullTest::RunTest(const FString& Parameters)
 	}
 	FillThePlayer(Player);
 
-	// A FLOOR WITHOUT THE ROW, so no new touch is added; the one held lasts the dungeon and is written back.
-	Mode->DungeonModifiers = {};
-	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	// FLOOR 3 KEEPS THE ROW, ITS DRAW PINNED TO MORE SPEED, so the touch held is written back and the new one adds no
+	// health. NOT A FLOOR WITHOUT ROWS: a brief carrying none is the player out of the dungeon, which ends every touch
+	// in `ApplyFloorRulesToPlayer` -- the first run of this test, in #2190's window, did that and read 510.
+	const int32 HealthStacks = Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore);
+	const int32 SpeedStacks = Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedSpeedMore);
 	{
-		return false;
+		FScopedConsoleString Pinned(TEXT("Cataclysm.ChaosTouchedRoll"), TEXT("12.5"));
+		if (!TestNotNull(TEXT("the draw can be pinned"), Pinned.Variable)
+			|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return false;
+		}
 	}
+	TestEqual(TEXT("floor 3 added one touch, of more speed"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedSpeedMore),
+			  SpeedStacks + 1);
+	TestEqual(TEXT("and the more-health touch held is kept"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore),
+			  HealthStacks);
 	TestEqual(TEXT("the maximum is the touched one"), MaximumHealthOf(Player), Touched, 0.01f);
 	TestEqual(*FString::Printf(TEXT("and health is still the full touched %.1f, not the untouched %.1f"), Touched,
 							   Unruled),
