@@ -43,6 +43,8 @@ CONSTANTS = {
     "CooldownReduceAllAction": "cooldown_reduce_all",
     "CooldownReduceHeavyAction": "cooldown_reduce_heavy",
     "NextSpellCooldownReducedAction": "next_spell_cooldown_reduced",
+    # AND THE RANDOM DAMAGE OVER TIME, since issue #1833 group D.
+    "ApplyRandomDotAction": "apply_random_dot",
 }
 
 
@@ -96,3 +98,8 @@ def test_the_generator_accepts_exactly_the_cooldown_reset_names_the_engine_has()
     engine = {name for constant, name in engine_names().items()
               if constant.startswith("CooldownReset")}
     assert set(gen.COOLDOWN_RESET_ACTIONS) == engine
+
+
+def test_the_generator_accepts_exactly_the_random_dot_name_the_engine_has() -> None:
+    """Issue #1833 group D."""
+    assert gen.RANDOM_DOT_ACTION == engine_names()["ApplyRandomDotAction"]
