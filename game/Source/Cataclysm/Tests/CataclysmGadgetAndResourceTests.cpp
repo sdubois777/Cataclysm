@@ -135,10 +135,21 @@ namespace CataclysmGadgetAndResourceTest
 		FDelegateHandle Handle;
 	};
 
+	/**
+	 * A minion of the type named, with its evasion written to nought. A minion's
+	 * evasion is the combat set's default of nought today, and nothing writes it;
+	 * it is written here anyway, because a test measuring a death must not depend
+	 * on a blow landing by chance (an enemy Imp, a different class, evades 25%).
+	 */
 	ACataclysmMinion* Summon(AActor* Summoner, const TCHAR* Type, const FVector& Where,
 		float Lifetime = 60.0f)
 	{
-		return ACataclysmMinion::Spawn(Summoner, Where, Lifetime, /*bBurns=*/false, Type);
+		ACataclysmMinion* Minion = ACataclysmMinion::Spawn(Summoner, Where, Lifetime, /*bBurns=*/false, Type);
+		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Minion))
+		{
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+		return Minion;
 	}
 }
 
@@ -174,12 +185,18 @@ CATACLYSM_TEST(FCataclysmGadgetKilledTest,
 	FEventCount Destroyed(Summoner.AbilitySystem, TEXT("gadget_destroyed"));
 
 	UCataclysmSkillEffects::ApplyDirectDamage(Killer.Actor, Turret, 100000.0f);
-	TestTrue(TEXT("the turret died"), UCataclysmSkillEffects::IsDead(Turret));
+	if (!TestTrue(TEXT("set-up: the turret died"), UCataclysmSkillEffects::IsDead(Turret)))
+	{
+		return false;
+	}
 	TestEqual(TEXT("and its summoner was told once"), Destroyed.Count, 1);
 	UCataclysmSkillEffects::ApplyDirectDamage(Killer.Actor, Turret, 100000.0f);
 	TestEqual(TEXT("a blow on its body tells nothing more"), Destroyed.Count, 1);
 	UCataclysmSkillEffects::ApplyDirectDamage(Killer.Actor, Trap, 100000.0f);
-	TestTrue(TEXT("the trap died"), UCataclysmSkillEffects::IsDead(Trap));
+	if (!TestTrue(TEXT("set-up: the trap died"), UCataclysmSkillEffects::IsDead(Trap)))
+	{
+		return false;
+	}
 	TestEqual(TEXT("and a trap is a gadget too"), Destroyed.Count, 2);
 	return true;
 }
@@ -218,7 +235,10 @@ CATACLYSM_TEST(FCataclysmGadgetNotKilledTest,
 	TestEqual(TEXT("and its summoner was told nothing"), Destroyed.Count, 0);
 
 	UCataclysmSkillEffects::ApplyDirectDamage(Killer.Actor, Imp, 100000.0f);
-	TestTrue(TEXT("the Imp died"), UCataclysmSkillEffects::IsDead(Imp));
+	if (!TestTrue(TEXT("set-up: the Imp died"), UCataclysmSkillEffects::IsDead(Imp)))
+	{
+		return false;
+	}
 	TestEqual(TEXT("and an Imp is no gadget, so nothing is told"), Destroyed.Count, 0);
 	return true;
 }
