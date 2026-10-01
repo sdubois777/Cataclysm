@@ -2,6 +2,108 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — A status applied on an event: critical strikes bleed, retaliation bleeds, staggers and slows, Strike skills apply a random debuff, a first hit and a gadget stagger; a first hit is its own event
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the action names
+`apply_status` and `apply_status_seconds`, the status names `Stagger` and `Random Debuff`, `ApplyStatusOf`, the status
+branch of `ActOnEvent`, `NoteStruckBy`'s answer, the console variable `Cataclysm.StatusRoll`),
+`CataclysmStatPipeline.h` (`ECataclysmApplyStatus`, `FCataclysmPoolAction::ApplyStatus` and `StatusName`),
+`CataclysmAilments.h` and `.cpp` (`RandomDebuffPool`, `ApplyRandomDebuff`, `Cataclysm.RandomDebuffPick`, and
+`Apply`'s `Seconds`), `CataclysmCombatEvents.h` and `.cpp` (`FCataclysmHitNotice::bFirstFromAttacker`, `NoteBlow`'s
+`bFirstFromAttacker`), `CataclysmVitalAttributeSet.cpp`, `CataclysmPlayerCharacter.cpp` (`hit_dealt`'s amount and
+`first_hit_dealt`), `CataclysmItem.cpp`, `tools/generate_datatables.py`, the new
+`game/Source/Cataclysm/Tests/CataclysmApplyStatusTests.cpp` (eight tests), seven row tests in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`, `docs/README.md`,
+`game/Data/EnchantmentEffects.csv` and its asset. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833),
+group E part 1.
+
+### WHAT WAS RULED, 2026-10-01, UNDER THE OWNER'S DELEGATION
+
+1. **A status is applied by one of two actions**, on the event's other character: `apply_status`, whose value is the
+   chance at the status's own duration, and `apply_status_seconds`, whose value is the seconds, always applied. The
+   status is the row's `Ailment` cell, extended from the five damage over time ailments to every ailment
+   `UCataclysmAilments::Apply` applies, `Stagger` and `Random Debuff`. A seconds row may name `Stagger` or `Cripple`.
+2. **"Your first hit against each enemy" is a new event, `first_hit_dealt`**, raised by the player character beside
+   `hit_dealt` (same tags, the target, what reached its health; landed only). It cannot be `hit_dealt` with the
+   condition `target_not_yet_struck_by_you`, and that was found before any code was written: in
+   `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` the target records the striker (`NoteStruckBy`) before the
+   blow is announced (`UCataclysmCombatEvents::NoteBlow`), so by `hit_dealt` the condition is false on every hit, the
+   first included. `NoteStruckBy` now returns whether the striker is new, and that answer travels to the
+   announcement as `FCataclysmHitNotice::bFirstFromAttacker`. It is a hit, so it joins `HIT_FIRED_EVENTS` and takes the
+   quarter second. **No other row or code reads `target_not_yet_struck_by_you` on an event**: its five rows, measured
+   2026-10-01, are all stat rows ("Your first hit against each enemy deals 100%-300% ...", "... ignores all armor",
+   "... in a combat ignores all resistances"), read while the blow resolves and before the record is written, which
+   the comment above `NoteStruckBy`'s call says.
+3. **`hit_dealt` carries what reached the target's health**, where it carried nothing. Before this, the owner's rule of
+   #917 refused every ailment on `hit_dealt`, so "Strike skills ... random debuff on hit" could never apply one. No row
+   read the amount: only `health_cost` lets a row take a fraction of its event's amount, and only `health_falls_below`
+   rows state a threshold; no Python test pins the call's text, measured 2026-10-01.
+4. **THE GATE FOLLOWS THE CODE'S OWN CLASSIFICATION**, as ruled. `UCataclysmAilments::RollOnLandedBlow` asks
+   `BlowCanCarryAnAilment` (a tenth of the target's maximum health, and a target alive) before any of the eleven
+   ailments a blow carries, Cripple and Stun included, and the random damage over time on an event asks it too. So
+   every status here that is an ailment asks it: Bleed, the Cripple slow and the random debuff. **No path that
+   staggers asks it**: `ApplyStagger` is called by a knockback, a pull and a knockdown with no such test, so a stagger
+   here is not gated. `ApplyStagger` keeps its own health ceiling, and the target's `debuff_duration_taken` still
+   applies.
+5. **THE RANDOM DEBUFF POOL**, from the judgement of 2026-09-11, quoted verbatim:
+
+   > | The random buff and debuff pools (P368, N050, N145, N158) | Every buff and debuff in `game/Data/StatusEffects.csv` that the game can apply | No genre source. It needs nothing new built. |
+
+   **Read as the Debuff rows a character can apply to an enemy with a duration of their own. Five, equally likely:**
+   Madness (3 s), Cripple (30% for 4 s), Weaken (20% for 5 s), Shred (10 for 6 s), each through
+   `UCataclysmAilments::Apply` at its normal magnitude, and Stun (0.75 s) through `ApplyStun`, whose immunity window,
+   a boss's immunity and its own rule of a tenth apply. **Left out, with why:**
+
+   | Row | Why |
+   | :-- | :-- |
+   | `Debuff_Knockdown` | its duration is 0; whatever applies it states one |
+   | `Debuff_Quarry` | a skill's mark, with a mechanic of its own (minions break off to attack it) |
+   | `Debuff_Abyssal_Aura`, `Debuff_Beguiling`, `Debuff_Infernal_Brand`, `Debuff_Withered_Touch`, `Debuff_Contagion` | applied by creatures, or a floor's rule, to the player |
+   | the other 16 Debuff rows | no duration in their row, and nothing applies them: no source file outside the tests and no data table names them, searched by row name and by tag on 2026-10-01 |
+   | (Stagger) | has no row in `StatusEffects.csv` |
+
+   **28 Debuff rows**: five in the pool, Knockdown, Quarry, the five above and these sixteen.
+
+6. **A SECOND BLEED** follows the one-stack rule (the rulings of 2026-09-09, #913's context), read from
+   `UCataclysmSkillEffects::ApplyDamageOverTime`: a target carries one bleed; an equal or weaker one refreshes how long
+   the running one lasts and never shortens it; a stronger one, by damage a second, replaces it. Tested.
+7. **STAGGER AGAINST ELITES AND BOSSES FOLLOWS THE CODE**: rarity does not resist it (`EnemyRarities.csv` has no stagger
+   or duration column), and only the target's `debuff_duration_taken`, read with no tags, can shorten it. Nothing was
+   changed.
+8. **LABELLED JUDGEMENT: "a 2-4 second slow" is Cripple's own slow, 30%, for the rolled seconds.** The sentence states
+   a duration and no strength, and Cripple is the one slow a character applies. The applier's increases to Cripple's
+   duration still apply.
+
+**Held, not built:** Null Emperor's 2-piece bonus, which needs a silence status; and "Bleed effects applied to you deal
+30%-50% increased damage", "Bleeding on you lasts 50%-100% longer" and "DoTs last 2x-4x as long on you", which need a
+defender-side scope by ailment (`damage_over_time_taken` and `DurationOn` read no tags).
+
+### WHAT WAS BUILT
+
+- **The rows** (EnchantmentEffects 437 to 447, over 354 to 363):
+
+  | Sentence | Row |
+  | :-- | :-- |
+  | Your critical strikes always cause bleeding | `apply_status` Bleed 100 on `critical_strike` |
+  | Your retaliation damage also applies a bleed stack to the attacker | `apply_status` Bleed 100 on `retaliation_dealt` |
+  | Retaliation damage has a 20%-40% chance to stagger the attacker | `apply_status` Stagger 20 to 40 on `retaliation_dealt` |
+  | Retaliation damage applies a 2-4 second slow to the attacker | `apply_status_seconds` Cripple 2 to 4 on `retaliation_dealt` |
+  | Strike skills have a 15%-30% chance to apply a random debuff on hit | `apply_status` Random Debuff 15 to 30 on `hit_dealt`, Required Tags `Type.Strike` |
+  | Your first hit against each enemy has a 50%-100% chance to stagger them | `apply_status` Stagger 50 to 100 on `first_hit_dealt` |
+  | Gadgets apply a 1-2 second stagger to enemies they hit, once every 5 seconds | `apply_status_seconds` Stagger 1 to 2 on `deployable_hit`, Trigger Cooldown 5 |
+  | Your damage over time effects deal 50%-100% more damage | `dot_damage` more 50 to 100 |
+  | You deal 3%-5% more damage to an enemy carrying a void splinter | `attack_damage` and `spell_damage` more 3 to 5, `target_carries_void_splinter` |
+
+- "always" and "applies" state 100 on `apply_status` in `STATED_BY_WORD`, as "apply" and "applies" do on
+  `apply_random_dot`.
+- **A status action fires once per row per event, landed only, and only for an event naming the other character.** Its
+  cooldown starts only when the status was applied, as a random damage over time's does, so a chance that failed or a
+  blow too small to carry an ailment starts none.
+
+---
+
 ## 2026-10-01 — A floor is cleared when its own creatures are dead: the Reaper, a Blood Bond's elite and every rule's arrivals no longer hold it uncleared
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`IsOneOfTheFloorsOwnStanding`, new,
