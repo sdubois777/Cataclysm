@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Sacrificial Bond now divides a blow among the creature's allies, and Unholy Sigils now keeps a creature standing in one from dying
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the health clamp in
+`PreAttributeChange`, and the damage branch of `PostGameplayEffectExecute`),
+`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (`ShareOfDamageKept` now also says
+who shares) and `game/Source/Cataclysm/Tests/CataclysmEnemyModifierTests.cpp` (four tests). Issue
+[#1559](https://github.com/sdubois777/Cataclysm/issues/1559), ruled by the coordinating session on 2026-09-30
+under the owner's delegation.
+
+### WHAT CHANGES IN PLAY
+
+Until this change both Demonic creature modifiers worked out their effect and nothing used it. The entry of
+2026-09-05, "The remaining six Demonic enemy modifiers, and a debuff that stacks", described both as built.
+
+- **Sacrificial Bond**, "All damage taken is redirected and divided among nearby allies". A blow that reaches
+  a bonded creature's health is now divided evenly between it and each ally within six metres. One ally
+  halves what the creature loses, and three leave it a quarter. The allies lose the rest at once.
+- **Unholy Sigils**, "Allies in this sigil cannot be killed". A creature inside a friendly caster's live
+  sigil is now left at one health by anything that would kill it. That covers a blow, a direct reduction of
+  health, and a write to its health. A creature that walks out of the sigil can be killed by the next blow.
+
+### HOW EACH IS BUILT
+
+- **The sigil is a clamp in `PreAttributeChange`**, next to the existing holds for a creature that cannot be
+  hurt and for a shrouded one. That function runs for every way health is lowered.
+  - The search for a sigil runs only for a write that would kill.
+  - That function clamps only the current value, so the damage branch writes the stored base back to match.
+    This is the same write-back the health branch already makes for The Reaper.
+  - The blow's announcement no longer calls it lethal.
+- **The bond's split happens in the damage branch only.** The allies' shares are direct reductions of
+  health (`UCataclysmSkillEffects::ReduceHealthDirectly`).
+  - Those never return to the damage branch, so an ally that is bonded too cannot pass its share on again.
+  - The shares are not met again by the allies' armour and resistances. The blow was already resolved
+    against the bonded creature's armour and resistances, and the row says "redirected".
+  - The record of the blow (`Outcome`) is not changed, so whoever struck still leeches and is told of the
+    whole blow.
+
+### THE RULINGS AND JUDGEMENTS
+
+- **One health is the sigil's floor. This is a judgement:** the row gives no figure, and one is the least
+  that is still alive. A creature already below one keeps what it has.
+- **An ally the bond can share with is a creature that can lose health.** Excluded:
+  - every floor-rule object: spires, beacons, carcasses, portals and the rest, all of which derive from
+    `ACataclysmFloorSourceCharacter`;
+  - a creature that cannot be hurt;
+  - a shrouded creature.
+  The coordinating session ruled that floor-rule objects are not allies in the row's sense, and that a
+  bonded creature must not push damage onto an objective. The other two would take a share and lose
+  nothing, which would halve the blow at no cost.
+  A creature standing in a sigil still counts, so a sigil protects an ally from its share as well.
+- **A player's thrall or minion is never an ally of a bonded creature.** The ally search
+  (`UCataclysmTeams::AttitudeBetween`) calls a creature friendly only when it shares an owner chain or a
+  team. Taking a thrall gives it the commander's team (`CataclysmCommand.cpp`, `SetGenericTeamId`), and a
+  minion gets its summoner's (`CataclysmMinion.cpp`).
+- **A death the bond causes is the striker's kill.** Before each ally's share, the ally is given a copy of
+  the blow's record, with the killing tags added when the share is enough to kill. On-kill effects such as
+  Wrung Out read the victim's last blow, and a direct reduction leaves none. Loot and experience already
+  came to the player for every creature death.
+  - **A judgement, ruled:** Follow Through counts a redirected melee kill as the player's own, because the
+    player's melee blow caused it.
+  - Damage-over-time effects carry granted tags as well, and those are not copied into the ally's killing
+    tags. Only the blow's own tags are.
+
+### HOW IT IS CHECKED
+
+Four tests, each landing a real blow from a player through the damage pipeline. Every creature has evasion
+and block set to zero, and the player has no critical strike chance.
+
+- `ABondedCreatureSharesALandedBlowEvenlyWithItsAlly`:
+  - The same blow is measured on a creature with no bond.
+  - With one ally beside it, the bonded creature and the ally each lose half of that.
+  - An ally at one health dies from its share, and its death names the player as the killer.
+- `ABondedCreatureWithNoCreatureToShareWithKeepsTheWholeBlow`:
+  - The ally search does find a spire, a creature that cannot be hurt and a shrouded creature beside it.
+  - The bonded creature still keeps the whole blow, and the spire loses nothing.
+- `ALethalBlowLeavesACreatureInAnUnholySigilAtOneHealth`:
+  - Inside the sigil, a lethal blow leaves the creature at one health, and its stored base is one as well.
+  - The same blow outside the sigil kills.
+- `ABondsShareDoesNotKillAnAllyInAnUnholySigil`:
+  - A share that would kill an ally standing in a sigil leaves it at one health.
+
+The existing tests `SacrificialBondDividesAHitAmongTheAlliesPresent` and
+`AnUnholySigilProtectsAlliesStandingInIt` call the two functions directly, and are kept.
+
+**Not built or run when this was written.** The build machine was held by another session; the run table
+follows when the window runs.
+
+---
+
 ## 2026-09-30 — The two Fervour clamps that no test noticed keep the stored base at or under the maximum; both stay, and two tests now show why
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp` (the comment on `Move`'s clamp),
