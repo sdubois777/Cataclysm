@@ -10,8 +10,7 @@ and `.cpp` (the price taken where every choice passes, the bleed, the keyword, t
 automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-The eighth and last of Group 2's chain, on Pact of Temptation. **Applied. The Unreal compile, the automation tests and
-the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+The eighth and last of Group 2's chain, on Pact of Temptation. **Applied. They were done in Group 2's window B on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -121,10 +120,23 @@ change, and checks it before and after each measurement. Nothing in the game cha
 **A fourth proof run, Pa2**, the same break against the fixed test, allowed by the coordinating session because Pa found
 a real gap in a test rather than failing a fair one.
 
-### Not yet run
+### Group 2's window B, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
-window.
+Run in Group 2's window B on 2026-10-01, with the chain moved onto development `ca6c0929` as `feat/forced-tithes-7` `539a1ec2`, `feat/pact-of-temptation-7` `8d01772e` (Pact's entry gains the known defect of #2190, docs only) and `feat/blood-price-8` `faef87e6` (Blood Price's tests fixed, as its entry says). The pull request comes from `feat/blood-price-8`, which carries all three rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `forced-tithes-7` "Build: Succeeded - 32 actions, 29 files compiled"; `pact-of-temptation-7` "32 actions, 29 files compiled"; `blood-price-7` `1315b5d0` "19 actions, 16 files compiled"; `blood-price-8` "7 actions, 4 files compiled" |
+| Blood Price's tests at `faef87e6` | "Tests: 7 tests performed, 7 succeeded, 0 failed" |
+| Unreal, whole suite, `faef87e6` | "Tests: 2989 tests performed, 2989 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2989 tests in the tree at faef87e6; 2989 performed, gap 0" |
+| Python, `faef87e6` | "5611 passed, 8 skipped in 321.87s"; JUnit: 5619 tests, 0 failures, 0 errors, 8 skipped |
+
+A PROVED proof is one where a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's, with the commit each ran at:
+
+- **Pa NOT A PROOF** at `1315b5d0`: `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar` failed with the files restored as well, "Expected 'opening a box cost a tenth' to be 90000.000000, but it was 510.000000"; the test fault above. Not rerun as Pa.
+- **Pa2 PROVED** at `faef87e6`, the same break as Pa against the fixed test: `BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar` failed with the break in; passed restored.
+- **Pb PROVED** at `faef87e6`: `BloodPriceAChoiceCostsATenthOfCurrentHealthAndLeavesABleed` (2 tests performed, 1 failed, with the break in; 2 succeeded restored).
+- **Pc PROVED** at `faef87e6`: `BloodPriceTheBleedTakesAQuarterPercentAStackEachSecond`.
 
 ---
 
@@ -139,8 +151,7 @@ tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`;
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and
 `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-The seventh of Group 2's chain, on Forced Tithes. **Applied. The Unreal compile, the automation tests and the guard
-proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+The seventh of Group 2's chain, on Forced Tithes. **Applied. They were done in Group 2's window B on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -288,10 +299,22 @@ start after every per-floor rule that changes maximum health has been written, b
 which also checks other rules of the same shape and runs, rather than reads, what happens to health above a lowered
 maximum.
 
-### Not yet run
+### Group 2's window B, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
-window.
+Run in Group 2's window B on 2026-10-01, with the chain moved onto development `ca6c0929` as `feat/forced-tithes-7` `539a1ec2`, `feat/pact-of-temptation-7` `8d01772e` (Pact's entry gains the known defect of #2190, docs only) and `feat/blood-price-8` `faef87e6` (Blood Price's tests fixed, as its entry says). The pull request comes from `feat/blood-price-8`, which carries all three rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `forced-tithes-7` "Build: Succeeded - 32 actions, 29 files compiled"; `pact-of-temptation-7` "32 actions, 29 files compiled"; `blood-price-7` `1315b5d0` "19 actions, 16 files compiled"; `blood-price-8` "7 actions, 4 files compiled" |
+| Blood Price's tests at `faef87e6` | "Tests: 7 tests performed, 7 succeeded, 0 failed" |
+| Unreal, whole suite, `faef87e6` | "Tests: 2989 tests performed, 2989 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2989 tests in the tree at faef87e6; 2989 performed, gap 0" |
+| Python, `faef87e6` | "5611 passed, 8 skipped in 321.87s"; JUnit: 5619 tests, 0 failures, 0 errors, 8 skipped |
+
+A PROVED proof is one where a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's, with the commit each ran at:
+
+- **Pa PROVED** at `8d01772e`: `PactOfWrathBuffsTheNextFloorAndCursesTheDungeon`.
+- **Pb PROVED** at `8d01772e`: `PactCursesAddAreNotCleansedAndEndWithTheDungeon`.
+- **Pc PROVED** at `8d01772e`: `PactOfWrathBuffsTheNextFloorAndCursesTheDungeon`.
 
 ---
 
@@ -307,8 +330,7 @@ altar, the prices, the angels, the panel line, where an exit altar stands, and o
 `game/Source/Cataclysm/Tests/CataclysmInventoryTests.cpp`; and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`.
 Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). The sixth of Group 2's chain and the first of its second
-window, on War Banner. **Applied. The Unreal compile, the automation tests and the guard proofs have NOT run yet; the
-figures are added at the end of this entry when they have.**
+window, on War Banner. **Applied. They were done in Group 2's window B on 2026-10-01; the figures are at the end of this entry.**
 
 ### The row
 
@@ -438,10 +460,22 @@ Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https:
 floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **An angel the player takes is no longer an angel**: "Angel" leaves its bar and
 `TitheAngelsStanding()` leaves it out, through the two questions Battlefield Relics' entry names.
 
-### Not yet run
+### Group 2's window B, 2026-10-01
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
-window.
+Run in Group 2's window B on 2026-10-01, with the chain moved onto development `ca6c0929` as `feat/forced-tithes-7` `539a1ec2`, `feat/pact-of-temptation-7` `8d01772e` (Pact's entry gains the known defect of #2190, docs only) and `feat/blood-price-8` `faef87e6` (Blood Price's tests fixed, as its entry says). The pull request comes from `feat/blood-price-8`, which carries all three rows.
+
+| Run | Printed |
+| :-- | :-- |
+| Builds | `forced-tithes-7` "Build: Succeeded - 32 actions, 29 files compiled"; `pact-of-temptation-7` "32 actions, 29 files compiled"; `blood-price-7` `1315b5d0` "19 actions, 16 files compiled"; `blood-price-8` "7 actions, 4 files compiled" |
+| Blood Price's tests at `faef87e6` | "Tests: 7 tests performed, 7 succeeded, 0 failed" |
+| Unreal, whole suite, `faef87e6` | "Tests: 2989 tests performed, 2989 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2989 tests in the tree at faef87e6; 2989 performed, gap 0" |
+| Python, `faef87e6` | "5611 passed, 8 skipped in 321.87s"; JUnit: 5619 tests, 0 failures, 0 errors, 8 skipped |
+
+A PROVED proof is one where a named test failed with the break in and passed with the files restored, the anchor matched once, and the source hash was the same before and after. This row's, with the commit each ran at:
+
+- **Pa PROVED** at `539a1ec2`: `ForcedTithesPayingInHealthTakesAFifthOfMaximumAndOwesNothing`.
+- **Pb PROVED** at `539a1ec2`: `ForcedTithesLeavingUnpaidBringsTheAngelsToTheNextEntrance`.
+- **Pc PROVED** at `539a1ec2`: `RemovingAMaterialTakesThatManyOrNone` (`Cataclysm.Inventory.`).
 
 ---
 
