@@ -2019,12 +2019,18 @@ float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemCompon
 		return 0.0f;
 	}
 
+	// BOTH FROM THE TIMER MANAGER'S CLOCK, which is the one the engine ticks and
+	// expires the effect on. The world clock is a different number at the same
+	// moment: measured in the test world, 0.05 s ahead, which counted one tick too
+	// few. The world clock is used only for an effect with no duration timer.
 	const FTimerManager& Timers = World->GetTimerManager();
 	const float FirstTickIn = Timers.TimerExists(Active->PeriodHandle)
 		? Timers.GetTimerRemaining(Active->PeriodHandle)
 		: -1.0f;
-	const int32 Ticks = DamageOverTimeTicksLeft(
-		FirstTickIn, SecondsPerTick, Active->GetTimeRemaining(World->GetTimeSeconds()));
+	const float SecondsLeft = Timers.TimerExists(Active->DurationHandle)
+		? Timers.GetTimerRemaining(Active->DurationHandle)
+		: Active->GetTimeRemaining(World->GetTimeSeconds());
+	const int32 Ticks = DamageOverTimeTicksLeft(FirstTickIn, SecondsPerTick, SecondsLeft);
 	if (Ticks <= 0)
 	{
 		return 0.0f;

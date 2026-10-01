@@ -1400,6 +1400,9 @@ public:
 	 * the one due in `FirstTickInSeconds` and each `SecondsPerTick` after it, up to
 	 * and including the end, within that same tolerance.
 	 *
+	 * BOTH TIMES ON ONE CLOCK, the timer manager's: the period timer's remaining time
+	 * and the duration timer's. The world clock differs from it within a frame.
+	 *
 	 * @param FirstTickInSeconds  what the period timer has left, or below 0 for none
 	 * @param SecondsLeft         what the effect has left, or below 0 for no end
 	 * @return 0 for an effect that does not tick or never ends

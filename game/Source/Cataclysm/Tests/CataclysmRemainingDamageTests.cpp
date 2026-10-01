@@ -438,6 +438,44 @@ CATACLYSM_TEST(FCataclysmRemainingNecrosisShareTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmWholeDurationTest,
+	"Cataclysm.RemainingDamage.ATenSecondEffectOfTenATickDealsAHundredOverItsWholeDuration")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// THE FACT THE REMAINING DAMAGE RESTS ON: an effect lasting an exact multiple
+	// of its period delivers its last tick at expiry, so ten seconds of ten a
+	// second is a hundred. The engine runs that last tick only when its period
+	// timer is due as the duration ends, a float comparison on the timer manager's
+	// clock (GameplayEffect.cpp, `CheckDuration`). Measured 2026-10-01 at
+	// `RunClock` steps of 0.025, 0.05 and 0.1: ten ticks at each. The first test to
+	// measure a whole duration; `CataclysmDebuffTests.cpp` asks for "at least 30" of
+	// four ticks so that the edge cannot decide it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Poison = Tag(TEXT("Keyword.DoT.Poison"));
+	if (!TestTrue(TEXT("set-up: the poison tag exists"), Poison.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Target(World);
+		if (!TestTrue(TEXT("set-up: a poison lands"), TenATick(Wearer.Actor, Target.Actor, Poison)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 11.0f);
+		TestEqual(TEXT("ten ticks of ten, the last at expiry"), HealthOf(Target.Actor), 900.0f, 0.01f);
+		TestFalse(TEXT("and the poison has ended"), Running(Target.Actor, Poison).IsValid());
+	}
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_DEV_AUTOMATION_TESTS
