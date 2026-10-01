@@ -12,8 +12,7 @@ and `.cpp` (its own key of the damage map, the drops a creature ate, and the fla
 health write, the panel line); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Gorged N"); the
 automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
-and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
 
 ### The row
 
@@ -177,17 +176,29 @@ nothing. **Call the Damned's Imps did not**, and Volatile Evolution and Famished
 world, so a called Imp that ate and then mutated took the share twice, and mutated without its new rung's health. The
 called Imp now gets `SetHealth` with the maximum it arrived with, so its health in play does not change; the test
 `Cataclysm.Gatekeeper.ACalledImpHasAStartingMaximumSoARungChangeRewritesIt` checks it. A creature restored from a save
-has none either, but restoring creatures has no caller in play; the coordinating session opens an issue for it.
+has none either, but restoring creatures has no caller in play; issue [#2181](https://github.com/sdubois777/Cataclysm/issues/2181) records that a restored creature needs its starting maximum and the rules' records saved.
 
 **The test now makes its Imps as play does**, with `SetHealth`. **Proof Pa is recorded as not a proof and is not
 rerun**; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
 
 **A MISSING INCLUDE, FOUND BY GUARD PROOF Pb's BUILD, 2026-09-30, fixed in the window as the coordinating session ruled.** Pb breaks a line in `CataclysmDungeonModifierEffects.cpp`, so the adaptive build compiled that file on its own and regrouped the unity files; `CataclysmCombatOverlay.cpp` then stopped with C2653, because The Plaguebearer's "Diseased N" text names `UCataclysmDungeonModifierEffects` and the file never included its header -- it had compiled only because an earlier file in its unity group did. No test ran in that run. A sweep of every source file that names the class without including it found two more, already on development before this change: `CataclysmFloorModifierPanelLayout.cpp` and `CataclysmEquipmentComponent.cpp`. All three now include `Dungeon/CataclysmDungeonModifierEffects.h`; nothing else changed. Pb was rerun with the same break once they did.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted, stacked with the rest of its group.
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa NOT A PROOF**: at `6b6c702b`: `FamishedBeastsARungChangeKeepsTheDropsShare` failed with the files restored as well; the fault and the test above, not rerun.
+- **Pb PROVED**: its first run, at `ba775b3b`, had its build fail and no test run -- the missing include above; rerun with the same break at `ee05d557`, `FamishedBeastsAnInfestedDropIsNeverEaten` failed with the break in and passed restored.
+- **Pc PROVED**: at `ee05d557`: `FamishedBeastsAFeederThatEatsStacksWithCarrionFeast` and `FamishedBeastsAFeederThatRisesARungKeepsBothShares` failed with the break in; both passed restored.
 
 ---
 
@@ -201,8 +212,7 @@ retaliation, the panel line, and finding the game mode by walking the level);
 `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Infecting N"); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
-and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
 
 ### The row
 
@@ -319,10 +329,22 @@ One Python check: the row still says "no longer deal damage on contact", "stacki
 
 **A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `ContagiousTouchAnEvadedTouchAddsNoStack` set the player's evasion attribute to 1000, and three touches still added three stacks. A diagnostic run, never committed, printed `base=1000.000 current=1000.000 asked_melee=0.000 asked_plain=0.000 melee_suppressed=0.000 inputs=1 base_input=0.000 mods=1 plain_hit_evaded=0`: the evasion step asks `StatForSkill("evasion")`, a player holds stat inputs for evasion, so the answer is worked out from those and the attribute is not read; a creature holds none and falls back to its attribute. That is the pipeline as designed. The test's `SetPlayerEvasion` now also sets the base of the player's evasion inputs. Every other test that writes a player's evasion attribute writes 0, which the inputs already give, so none of them is affected. **Proof Pa is recorded as not a proof and is not rerun**; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted, stacked with the rest of its group.
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa NOT A PROOF**: at `1c04d207`: `ContagiousTouchAnEvadedTouchAddsNoStack` failed with the files restored as well; the test fault above, not rerun.
+- **Pb PROVED**: at `6b6c702b`, the head carrying the test's fix: `ContagiousTouchAnEvadedTouchAddsNoStack` failed with the break in; passed restored.
+- **Pc PROVED**: at `6b6c702b`: `ContagiousTouchKillingACreatureRemovesItsStacks` failed with the break in; passed restored.
 
 ---
 
@@ -335,8 +357,7 @@ floor is populated, the leaders, the beat, the living count, the panel line, the
 `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Leader" and "Panicked"); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
-and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
 
 ### The row
 
@@ -439,10 +460,22 @@ and "return later with reinforcements".
 
 **A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` asserted that every creature coming back was of the first follower's kind; 18 of 20 were. A group can hold more than its pack's kind -- the populator gives a Succubus escort its pack's group (`Escort.Pack = Pack`) -- and the rule brings each escapee back as its own kind with one reinforcement of that kind, as ruled. The test now counts the followers that leave by kind and checks that each kind comes back exactly twice as many times. **Proof Pa is recorded as not a proof and is not rerun**, since it reached the tests; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted, stacked with the rest of its group.
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa NOT A PROOF**: at `1e894092`: `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` failed with the files restored as well; the test fault above, not rerun.
+- **Pb PROVED**: at `6b6c702b`, the head carrying the test's fix: `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` failed with the break in; passed restored.
+- **Pc PROVED**: at `6b6c702b`: `MoraleBreakAHordeLeaderRalliesItsGroupInstead` failed with the break in; passed restored.
 
 ---
 
@@ -456,8 +489,7 @@ the beat, the panel line, the end of the dungeon); `game/Source/Cataclysm/Interf
 ("Plaguebearer" and "Diseased N"); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
-and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. The Unreal compile, the automation tests and the
-guard proofs have NOT run yet; the figures are added at the end of this entry when they have.**
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
 
 ### The row
 
@@ -548,10 +580,22 @@ Six automation tests in `Cataclysm.DungeonModifierEffects.`:
 Two Python checks: the row still says "one random elite", "doesn't directly attack you", "5% per stack", "a maximum of
 10 stacks" and "flee when you get close"; and its setter writes its own key of the damage map.
 
-### Not yet run
+### The window of 2026-09-30
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window
-when the build machine is granted, stacked with the rest of its group.
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, each with its registered prefix, as printed:
+
+- **Pa PROVED**: at `8f5bb4b2`: `EveryOtherCreatureGainsAStackEveryThreeSecondsToTen` failed with the break in; passed restored.
+- **Pb PROVED**: at `8f5bb4b2`: `ThePlaguebearersDeathClearsEveryStack` failed with the break in; passed restored.
+- **Pc PROVED**: at `8f5bb4b2`: `ThePlaguebearerFleesWithinTenMetresAndStandsBeyond` failed with the break in; passed restored.
 
 ---
 
