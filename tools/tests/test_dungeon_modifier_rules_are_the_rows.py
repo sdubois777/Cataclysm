@@ -3779,6 +3779,22 @@ def test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names
             "LightforgedWallsKey in CataclysmDungeonModifierEffects.h. " + words)
 
 
+def test_warzone_row_still_names_allied_soldiers_and_shortcuts():
+    """The phrases Warzone Control Points' readings rest on.
+
+    "Holding these points provides strategic advantages, such as summoning allied soldiers, gaining access to powerful
+    buffs, or opening shortcuts". HOLDING THESE POINTS is why a captured point brings the allies and why they last the
+    floor; SUMMONING ALLIED SOLDIERS is what is built; OPENING SHORTCUTS is why the row is still Partly. If any changes,
+    the reading built on it must be revisited; see WarzoneControlPointsKey in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["War_Warzone_Control_Points"]["Description"])
+    lower = words.lower()
+    for phrase in ("holding these points", "summoning allied soldiers", "opening shortcuts"):
+        assert phrase in lower, (
+            f"War_Warzone_Control_Points no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "WarzoneControlPointsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
 def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
     """The row's own figure and scope, and the half that grants nothing today.
 

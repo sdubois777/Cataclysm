@@ -43253,4 +43253,180 @@ bool FCataclysmTrialWithReaperTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// War_Warzone_Control_Points' allied soldiers. Issues #1820 and #41. Ruled 2026-10-01: a captured point brings two
+// Common creatures of the floor's kinds onto the player's side; they last the floor, reserve no Fervour, and are never
+// the floor's own.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneAlliesFiguresTest,
+	"Cataclysm.DungeonModifierEffects.WarzoneAlliesFiguresAndTheRowStaysPartly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneAlliesFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two allies a captured point"), Effects::WarzoneAlliesPerPoint, 2);
+	TestEqual(TEXT("at Common"), Effects::WarzoneAllyRung, 0);
+	TestEqual(TEXT("the row is still partly built: shortcuts are not"),
+			  static_cast<int32>(Effects::BuiltStateOf(WarzoneRow)), static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneAlliesSideTest,
+	"Cataclysm.DungeonModifierEffects.WarzoneAlliesACapturedPointBringsTwoOnThePlayersSide",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneAlliesSideTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWarzoneFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// NONE BEFORE THE CAPTURE.
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds) - 1);
+	TestEqual(TEXT("no ally a beat before the capture"), Mode->WarzoneAlliesStanding().Num(), 0);
+	Beat(Mode, 1);
+	const TArray<ACataclysmEnemyCharacter*> Allies = Mode->WarzoneAlliesStanding();
+	if (!TestEqual(TEXT("two allies at the capture"), Allies.Num(), Effects::WarzoneAlliesPerPoint))
+	{
+		return false;
+	}
+	const FVector Point = Mode->CurrentFloor->WorldOfCell(Mode->WarzonePointCellsNow()[0]);
+	for (ACataclysmEnemyCharacter* Ally : Allies)
+	{
+		TestTrue(TEXT("on the player's side"), UCataclysmCommand::CommanderOf(Ally) == Player.Character);
+		TestEqual(TEXT("at Common"), Ally->RarityStep, Effects::WarzoneAllyRung);
+		TestTrue(TEXT("raised by the rule"), Ally->bRaisedByARule);
+		TestTrue(FString::Printf(TEXT("beside the point (%.0f cm)"), FVector::Dist2D(Ally->GetActorLocation(), Point)),
+				 FVector::Dist2D(Ally->GetActorLocation(), Point) <= Effects::NecroticBloomWaveWithinCm + 1.0f);
+	}
+
+	// THE SECOND POINT BRINGS TWO MORE.
+	StandOnAPoint(Mode, Player, 1);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds));
+	TestEqual(TEXT("four allies with both points held"), Mode->WarzoneAlliesStanding().Num(),
+			  2 * Effects::WarzoneAlliesPerPoint);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneAlliesHoldNothingTest,
+	"Cataclysm.DungeonModifierEffects.WarzoneAlliesHoldNothingAndReserveNoFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneAlliesHoldNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWarzoneFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds));
+	if (!TestEqual(TEXT("set-up: point 0 held"), Mode->WarzonePointsHeld(), 1))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Allies = Mode->WarzoneAlliesStanding();
+	if (!TestEqual(TEXT("set-up: two allies came"), Allies.Num(), Effects::WarzoneAlliesPerPoint))
+	{
+		return false;
+	}
+
+	for (ACataclysmEnemyCharacter* Ally : Allies)
+	{
+		TestFalse(TEXT("an ally is not on the floor's list"), Mode->FloorEnemies.Contains(Ally));
+		TestFalse(TEXT("nor one of the floor's own"), Mode->IsOneOfTheFloorsOwnStanding(Ally));
+	}
+	TestEqual(TEXT("the floor's own: none, with two allies and the waves standing"), Mode->LivingFloorEnemies(), 0);
+	TestTrue(TEXT("so the floor is cleared"), Mode->FloorIsCleared());
+	TestEqual(TEXT("and no Fervour is reserved for them"), UCataclysmCommand::ReservedFervourOf(Player.Character), 0.0f,
+			  0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneAlliesFloorTest,
+	"Cataclysm.DungeonModifierEffects.WarzoneAlliesEndWithTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneAlliesFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWarzoneFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	StandOnAPoint(Mode, Player, 0);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds));
+	if (!TestEqual(TEXT("set-up: point 0 held"), Mode->WarzonePointsHeld(), 1))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Allies = Mode->WarzoneAlliesStanding();
+	if (!TestEqual(TEXT("set-up: two allies came"), Allies.Num(), Effects::WarzoneAlliesPerPoint))
+	{
+		return false;
+	}
+
+	// A THRALL TAKEN BY THE PLAYER, WHICH DOES GO DOWN THE STAIRS, so the allies' going is theirs and not every follower's.
+	ACataclysmEnemyCharacter* Thrall = PlaceCreatureAtRung(World, Mode, Player.Character->GetActorLocation()
+																		 + FVector(300.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a creature to take"), Thrall)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Thrall)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Ally : Allies)
+	{
+		TestFalse(TEXT("an ally did not come down the stairs"), IsValid(Ally));
+	}
+	TestEqual(TEXT("none stands"), Mode->WarzoneAlliesStanding().Num(), 0);
+	TestTrue(TEXT("the thrall did"), IsValid(Thrall) && UCataclysmCommand::CommanderOf(Thrall) == Player.Character);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

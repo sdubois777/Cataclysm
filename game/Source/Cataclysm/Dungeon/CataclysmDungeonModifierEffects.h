@@ -2539,8 +2539,13 @@ public:
 	 *   `WarzoneWaveSeconds`, `WarzoneWaveAwayCm` from the point. They pay nothing.
 	 * - EACH HELD POINT GIVES `WarzoneDamageMorePercentPerPoint` MORE DAMAGE AND `WarzoneResistancePercentPerPoint`
 	 *   RESISTANCE until the floor ends.
-	 * - NOT BUILT: "summoning allied soldiers", which needs its own ruling, and "opening shortcuts", which waits on
-	 *   doors and on changing the floor's layout during play.
+	 * - "SUMMONING ALLIED SOLDIERS", ruled 2026-10-01, each a labelled judgement: a captured point brings
+	 *   `WarzoneAlliesPerPoint` creatures of the floor's own kinds at `WarzoneAllyRung`, placed beside the point as a
+	 *   wave is, and taken onto the player's side by `UCataclysmCommand::Subjugate`. They last the floor: they are
+	 *   removed at the floor change before the player's followers are carried, and with the hold on a Horde arena's next
+	 *   wave. No Fervour is reserved for them and no cap counts them; A Second Self may choose one. They are marked raised
+	 *   by a rule, so one is never the floor's own (issue #2194).
+	 * - NOT BUILT: "opening shortcuts", which waits on doors and on changing the floor's layout during play.
 	 */
 	static const TCHAR* WarzoneControlPointsKey;
 
@@ -5694,6 +5699,10 @@ public:
 	static constexpr float WarzoneWaveAwayCm = 800.0f;
 	static constexpr float WarzoneDamageMorePercentPerPoint = 10.0f;
 	static constexpr float WarzoneResistancePercentPerPoint = 10.0f;
+
+	/** Warzone's allied soldiers a captured point brings, and their rung: Common. Judgements; see the key's comment. */
+	static constexpr int32 WarzoneAlliesPerPoint = 2;
+	static constexpr int32 WarzoneAllyRung = 0;
 
 	/** The player's sight while a travelling swarm covers them, a play-test value. */
 	static constexpr float SwarmOfLocustsSightCm = 400.0f;
