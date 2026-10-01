@@ -689,8 +689,10 @@ FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
 FString UCataclysmCombatOverlay::ChaosSpawnTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
-	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsAChaosSpawn ? FString(TEXT("Chaos Spawn"))
-																					  : FString();
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsAChaosSpawn && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Chaos Spawn"))
+		: FString();
 }
 
 FString UCataclysmCombatOverlay::RelicSpiritTextFor(const AActor* Actor)
