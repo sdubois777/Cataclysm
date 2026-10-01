@@ -489,6 +489,17 @@ namespace
 		}
 	}
 
+	/**
+	 * Whether a player commands this creature: a thrall. Issue #1202, ruled
+	 * 2026-09-30: a floor's rules about what the player can see, and what a
+	 * cleansed totem weakens, are rules about the floor's creatures, and a
+	 * player's thrall goes floor to floor with the player instead.
+	 */
+	bool DungeonGameModeIsAPlayersFollower(const AActor* Creature)
+	{
+		return Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Creature)) != nullptr;
+	}
+
 	/** How far above the walking surface a pawn's capsule middle has to sit. */
 	float DungeonGameModeStandingHeightOf(const APawn* Pawn)
 	{
@@ -2548,6 +2559,23 @@ void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
 		ACataclysmEnemyCharacter* Creature = *It;
 		if (!IsValid(Creature))
 		{
+			continue;
+		}
+
+		// A PLAYER'S THRALL IS NEITHER HIDDEN NOR A STALKER, as a player's imp
+		// never was. Issue #1202, ruled 2026-09-30. One taken while it was
+		// either is put back.
+		if (DungeonGameModeIsAPlayersFollower(Creature))
+		{
+			if (HiddenBySight.Remove(Creature) > 0)
+			{
+				Creature->SetActorHiddenInGame(false);
+			}
+			if (InvisibleStalkers.Remove(Creature) > 0)
+			{
+				Creature->SetBlackestShadowDamageMultiplier(1.0f);
+				Creature->DarknessAttackSpeedMultiplier = 1.0f;
+			}
 			continue;
 		}
 		const bool bBeyond = PlayerSightRadius > 0.0f
@@ -7976,7 +8004,10 @@ void ACataclysmDungeonGameMode::StepShadowyEnemies(ACataclysmPlayerCharacter* Pl
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 	{
 		ACataclysmEnemyCharacter* Creature = Enemy.Get();
-		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature))
+		// NOR IS A PLAYER'S THRALL SHROUDED. Issue #1202, ruled 2026-09-30; the
+		// loop over the shrouded below takes off one it already carried.
+		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature)
+			|| DungeonGameModeIsAPlayersFollower(Creature))
 		{
 			continue;
 		}
@@ -8011,7 +8042,10 @@ void ACataclysmDungeonGameMode::StepShadowyEnemies(ACataclysmPlayerCharacter* Pl
 		{
 			It.RemoveCurrent();
 		}
-		else if (!bRow)
+		// AND A THRALL THAT WAS SHROUDED WHEN IT WAS TAKEN, wherever it is now.
+		// After a floor change it is in no floor's list, so the loop above
+		// would never reach it. Issue #1202, ruled 2026-09-30.
+		else if (!bRow || DungeonGameModeIsAPlayersFollower(Creature))
 		{
 			Creature->bShrouded = false;
 			It.RemoveCurrent();
@@ -8270,7 +8304,10 @@ bool ACataclysmDungeonGameMode::ChooseAtGrimTotem(ACataclysmFloorObject* Totem, 
 		int32 Weakened = 0;
 		for (ACataclysmEnemyCharacter* Creature : FloorEnemies)
 		{
+			// NOT A PLAYER'S THRALL: the cleanse weakens the floor's creatures.
+			// Issue #1202, ruled 2026-09-30.
 			if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
+				&& !DungeonGameModeIsAPlayersFollower(Creature)
 				&& FVector::Dist2D(Creature->GetActorLocation(), At) <= Effects::GrimTotemsCleanseRadiusCm)
 			{
 				Creature->SetGrimTotemsDamageMultiplier(Multiplier);

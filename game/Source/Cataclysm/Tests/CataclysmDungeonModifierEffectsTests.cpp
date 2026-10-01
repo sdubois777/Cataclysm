@@ -38040,4 +38040,117 @@ bool FCataclysmFamishedBeastsFeederRungTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallOutOfTheDarkTest,
+	"Cataclysm.DungeonModifierEffects.APlayersThrallIsNeitherHiddenNorAStalkerNorShrouded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30: a creature a player commands is skipped by
+ * the floor's sight rules -- the fog hiding it, The Blackest Shadow making it
+ * an Invisible Stalker, Shadowy Enemies shrouding it -- as a player's imp
+ * already was. One taken while it carried any of them is put back.
+ *
+ * TWO IMPS BEYOND THE LIGHT, SEVEN AND SEVEN AND A HALF METRES OUT. Both carry
+ * all three first; then one is taken, and only that one loses them.
+ */
+bool FCataclysmThrallOutOfTheDarkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player,
+		{ShadowyRow, FName(UCataclysmDungeonModifierEffects::BlackestShadowKey)});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Taken = AFloorImpAway(Mode, World, Player, 700.0f);
+	ACataclysmEnemyCharacter* Stranger = AFloorImpAway(Mode, World, Player, 750.0f);
+	if (!TestNotNull(TEXT("an Imp 7 m away"), Taken) || !TestNotNull(TEXT("and one 7.5 m away"), Stranger))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("before it is taken, the first is hidden, a stalker and shrouded"),
+				  Taken->IsHidden() && Mode->IsAnInvisibleStalker(Taken) && Taken->bShrouded))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+
+	TestFalse(TEXT("the thrall is seen"), Taken->IsHidden());
+	TestFalse(TEXT("and is no stalker"), Mode->IsAnInvisibleStalker(Taken));
+	TestEqual(TEXT("so its damage is its own"),
+			  Taken->DamageMultiplierFrom(ACataclysmEnemyCharacter::BlackestShadowDamageSource), 1.0f, 0.001f);
+	TestFalse(TEXT("and it is not shrouded"), Taken->bShrouded);
+
+	TestTrue(TEXT("the control, nobody's, is still hidden"), Stranger->IsHidden());
+	TestTrue(TEXT("still a stalker"), Mode->IsAnInvisibleStalker(Stranger));
+	TestTrue(TEXT("and still shrouded"), Stranger->bShrouded);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallNotCleansedTest,
+	"Cataclysm.DungeonModifierEffects.CleansingAGrimTotemDoesNotWeakenAPlayersThrall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30: cleansing a Grim Totem weakens the floor's
+ * creatures near it, and a player's thrall standing as near is not one.
+ */
+bool FCataclysmThrallNotCleansedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATotemFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Totem = Mode->GrimTotemsNow()[0];
+	const FVector At = Totem->GetActorLocation();
+	ACataclysmEnemyCharacter* Stranger = SpawnImpWithHealth(World, At + FVector(1400.0f, 0.0f, 100.0f), 100.0f);
+	ACataclysmEnemyCharacter* Taken = SpawnImpWithHealth(World, At + FVector(0.0f, 1400.0f, 100.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature 14 m away"), Stranger) || !TestNotNull(TEXT("and another"), Taken))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Stranger);
+	Mode->FloorEnemies.Add(Taken);
+	if (!TestTrue(TEXT("the player takes the second"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("cleansing acted"), Mode->ChooseAtFloorObject(Totem, CleanseKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the creature nobody took deals 25% less"),
+			  Stranger->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 0.75f, 0.001f);
+	TestEqual(TEXT("and the player's thrall as near is untouched"),
+			  Taken->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), 1.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

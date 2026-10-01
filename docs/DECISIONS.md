@@ -60,9 +60,24 @@ Decisions made outside the Google Drive documents, newest first.
 - So the research settles that followers cross a zone change. It says nothing about stationary gadgets,
   which is why that row is labelled a judgement.
 
+### A PLAYER'S THRALL IS NOT ONE OF THE FLOOR'S CREATURES TO FOUR DUNGEON RULES, RULED 2026-09-30
+
+The dungeon modifiers merged as #1820 put state on creatures, and three of them reached a player's thrall,
+read on `development` 230f5079 before this was written: `StepVision` walks every
+`ACataclysmEnemyCharacter` with no side check, so a thrall beyond sight was hidden and, under The Blackest
+Shadow, an Invisible Stalker with twice the damage and half again the attack speed; `StepShadowyEnemies`
+shrouded a thrall in the floor's list, and one no longer in any floor's list after the stairs stayed
+shrouded; and a Grim Totem's cleanse left a thrall near it at 25% less damage for good. A player's imp is
+not an enemy class and was never touched. **Now a creature a player commands is skipped by all four**, and
+one taken while it carried the hide, the stalker or the shroud is put back. The player's own cleanse, the
+locust sight and Reality Twister put nothing on creatures and needed nothing.
+
 ### TESTS
 
-Two new tests in `Cataclysm.DungeonStairs.`: a thrall and an imp come down with the player, stand
+- Two in `Cataclysm.DungeonModifierEffects.`: an imp beyond the light, hidden, a stalker and shrouded,
+  loses all three once the player takes it, while one nobody took keeps them; and a cleansed totem weakens
+  a creature nobody took and not a player's thrall standing as near.
+- Two new tests in `Cataclysm.DungeonStairs.`: a thrall and an imp come down with the player, stand
 within two metres of it on walkable floor, and are still commanded, while a turret and an enemy nobody
 took are gone; and leaving the dungeon ends a thrall, an imp and a turret, leaving nothing commanded
 and no Fervour held back.
