@@ -264,11 +264,11 @@ public:
 	 * curses stack in the restrictive direction -- which is what a player
 	 * expects two curses to do.
 	 *
-	 * IT IS READ WHERE HEALTH ARRIVES, AND THERE IS NO ONE SUCH PLACE.
-	 * `UCataclysmRegeneration::TopUp` covers health regeneration and life leech
-	 * for any character; the Fist Ultimate Living Pyre returns health by its own
-	 * route, reached by neither that function nor the ceiling. This is read at
-	 * both of them.
+	 * IT IS READ IN `UCataclysmRegeneration::TopUp`, WHERE A PLAYER'S HEALTH
+	 * ARRIVES. Health regeneration, life leech and, since issue #1608, the Fist
+	 * Ultimate Living Pyre's returned health all go through it, for any
+	 * character. Until #1608 the Pyre had its own route and read this stat
+	 * itself.
 	 *
 	 * A THIRD ROUTE IS NOT REDUCED, AND THAT IS KNOWN RATHER THAN MISSED. The
 	 * enemy modifier Sacrifice restores a quarter of a creature's maximum health
@@ -280,10 +280,9 @@ public:
 	 * exactly true and had been read twice as "the one place health is
 	 * restored".
 	 *
-	 * THAT THERE IS NO SINGLE PLACE IS ISSUE #1608, and that the ceiling misses
-	 * Living Pyre is issue #1607. Neither is fixed here, and this stat is applied
-	 * at each site rather than in a shared helper so that closing them stays a
-	 * separate decision.
+	 * ISSUES #1607 AND #1608 ARE CLOSED: Living Pyre's heal goes through `TopUp`,
+	 * so the ceiling and this reduction reach it from one place. Ruled
+	 * 2026-09-30.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_HealingReceivedReduction)
 	FGameplayAttributeData HealingReceivedReduction;
