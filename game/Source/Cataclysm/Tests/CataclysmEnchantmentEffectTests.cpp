@@ -10741,18 +10741,37 @@ bool FCataclysmDemonKingsRegaliaRowTest::RunTest(const FString&)
 			FName(TEXT("crowd_control_resistance")), FGameplayTagContainer(), 0.0f);
 	};
 
-	TestEqual(TEXT("at full health: no immunity"), Immunity(), 0.0f, 0.01f);
+	// THE WEARER'S OWN RESISTANCE FIRST, with no stack held. The refresh gives it
+	// a crowd_control_resistance line of its own -- 7.85 when this test was
+	// written -- and the first run of this test assumed none. Asserting that no
+	// stack is held when the base is read stops a stack hiding inside it, which
+	// would let every "+100" check below pass while measuring nothing.
+	int32 StacksAtFull = -1;
+	for (const FCataclysmPoolAction& Action : Wearer.AbilitySystem->GetPoolActions())
+	{
+		if (!Action.StackKey.IsNone())
+		{
+			StacksAtFull = FMath::Max(StacksAtFull, 0) + Wearer.AbilitySystem->OwnStacksHeld(Action.StackKey);
+		}
+	}
+	if (!TestEqual(TEXT("at full health the Regalia holds no stack"), StacksAtFull, 0))
+	{
+		return false;
+	}
+	const float Base = Immunity();
+
 	SetHealth(Wearer.AbilitySystem, 1000.0f, 200.0f);
-	TestEqual(TEXT("falling below 25%: immune"), Immunity(), 100.0f, 0.01f);
+	TestEqual(TEXT("falling below 25%: immune, 100 above its own"), Immunity(), Base + 100.0f, 0.01f);
 	World->TimeSeconds += 11.0f;
-	TestEqual(TEXT("eleven seconds later: lapsed"), Immunity(), 0.0f, 0.01f);
+	TestEqual(TEXT("eleven seconds later: lapsed to its own"), Immunity(), Base, 0.01f);
 	SetHealth(Wearer.AbilitySystem, 1000.0f, 800.0f);
 	SetHealth(Wearer.AbilitySystem, 1000.0f, 200.0f);
-	TestEqual(TEXT("a second fall inside five minutes: none"), Immunity(), 0.0f, 0.01f);
+	TestEqual(TEXT("a second fall inside five minutes: nothing added"), Immunity(), Base, 0.01f);
 	World->TimeSeconds += 300.0f;
 	SetHealth(Wearer.AbilitySystem, 1000.0f, 800.0f);
 	SetHealth(Wearer.AbilitySystem, 1000.0f, 200.0f);
-	TestEqual(TEXT("after five minutes: immune again"), Immunity(), 100.0f, 0.01f);
+	TestEqual(TEXT("after five minutes: immune again, 100 above its own"),
+		Immunity(), Base + 100.0f, 0.01f);
 	return true;
 }
 
