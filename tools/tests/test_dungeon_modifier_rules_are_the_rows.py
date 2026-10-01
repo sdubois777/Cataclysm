@@ -3747,6 +3747,22 @@ def test_infernal_seals_row_still_names_four_pieces_held_by_powerful_enemies():
             "InfernalSealsKey in CataclysmDungeonModifierEffects.h. " + words)
 
 
+def test_sanctioned_passage_row_still_names_a_ten_second_channel_at_divine_gates():
+    """The phrases Sanctioned Passage's readings rest on.
+
+    "Divine gates require a 10s channel to open; enemies surge toward the gate during the unlock." DIVINE GATES is the
+    floor object; A 10S CHANNEL is `SanctionedPassageChannelSeconds`; and ENEMIES SURGE TOWARD THE GATE is why every
+    creature notices the player while the channel lasts. If any changes, the reading built on it must be revisited; see
+    SanctionedPassageKey in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Celestial_Sanctioned_Passage"]["Description"])
+    lower = words.lower()
+    for phrase in ("divine gates", "a 10s channel to open", "enemies surge toward the gate during the unlock"):
+        assert phrase in lower, (
+            f"Celestial_Sanctioned_Passage no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "SanctionedPassageKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
 def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
     """The row's own figure and scope, and the half that grants nothing today.
 

@@ -2015,6 +2015,15 @@ public:
 	 */
 	TArray<FName> StairsSealedBy() const;
 
+	/**
+	 * Sanctioned Passage, for the panel and tests: the Divine Gate standing, or null; whether its channel has begun; the
+	 * seconds channelled; and whether it seals the stairs. Issues #1820 and #41.
+	 */
+	class ACataclysmFloorObject* DivineGateNow() const;
+	bool DivineGateChannelBegun() const { return bDivineGateChannelling; }
+	float DivineGateSecondsChannelled() const { return DivineGateSeconds; }
+	bool SanctionedPassageSealsTheStairs() const;
+
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
 
@@ -2218,7 +2227,8 @@ public:
 	/**
 	 * Where a rule standing an altar at the floor's exit puts it: THE EXIT CELL FOR THE FIRST, and for each after it the
 	 * next walkable cell beside the exit, so two altars never share a cell. The first is the earliest in a fixed order
-	 * of such rows the floor carries: Blood Altar, then Forced Tithes, then Pact of Temptation. Issues #1820 and #41.
+	 * of such rows the floor carries: Blood Altar, then Forced Tithes, then Pact of Temptation, then Sanctioned
+	 * Passage's Divine Gate. Issues #1820 and #41.
 	 */
 	FVector ExitAltarWorld(FName RuleKey) const;
 	TArray<ACataclysmEnemyCharacter*> GrimTotemElitesStanding() const;
@@ -2984,6 +2994,24 @@ private:
 
 	/** Pact of Temptation: a pact accepted at the altar. */
 	bool ChooseAtPactAltar(class ACataclysmFloorObject* Altar, FName ChoiceKey);
+
+	/**
+	 * Sanctioned Passage, on every floor and every wave: the last gate forgotten, and this floor's placed beside the exit
+	 * unless the floor is a Horde floor or the dungeon's last. Issues #1820 and #41.
+	 */
+	void PlaceTheDivineGate();
+
+	/** Sanctioned Passage: the gate and its channel forgotten, and every creature it called given its own sight back. */
+	void ForgetTheDivineGate();
+
+	/** Sanctioned Passage: "Channel" chosen at the gate, which begins the channel once. */
+	bool ChooseAtDivineGate(class ACataclysmFloorObject* Gate, FName ChoiceKey);
+
+	/** Sanctioned Passage, on the beat: the channel counted within reach, and every creature called while it lasts. */
+	void StepSanctionedPassage(class ACataclysmPlayerCharacter* Player);
+
+	/** Sanctioned Passage: every creature the channel called given its own sight back. */
+	void SendBackTheCalled();
 
 	/** Pact of Temptation, on the beat: Greed's curse on every creature, and the buff and curses on the player. */
 	void StepPactOfTemptation(class ACataclysmPlayerCharacter* Player,
@@ -3961,6 +3989,16 @@ private:
 	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> InfernalSealBearers;
 	TArray<bool> InfernalSealBearerGave;
 	int32 InfernalSealPieces = 0;
+
+	/**
+	 * Sanctioned Passage: this floor's gate; whether its channel has begun and the seconds channelled; each creature the
+	 * channel called, with the sight it had; and what the panel last showed. Issues #1820 and #41.
+	 */
+	TWeakObjectPtr<class ACataclysmFloorObject> DivineGate;
+	bool bDivineGateChannelling = false;
+	float DivineGateSeconds = 0.0f;
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> DivineGateCalled;
+	int32 DivineGatePanelKey = -1;
 
 	/**
 	 * Unstable Portal: its rolls on this floor and the last outcome. Both go at the stairs.

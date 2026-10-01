@@ -113,6 +113,7 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 	TEXT("Demonic_Blood_Gates");
 
 const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_Infernal_Seals");
+const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Celestial_Sanctioned_Passage");
 
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
@@ -726,6 +727,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(SufferingAuraKey)
 		|| RowKey == FName(BloodGatesKey)
 		|| RowKey == FName(InfernalSealsKey)
+		|| RowKey == FName(SanctionedPassageKey)
 		|| RowKey == FName(DirgeResonanceKey)
 		|| RowKey == FName(ScarcityKey)
 		|| RowKey == FName(ChaoticLootKey)
@@ -971,6 +973,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SufferingAuraKey),
 		FName(BloodGatesKey),
 		FName(InfernalSealsKey),
+		FName(SanctionedPassageKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),

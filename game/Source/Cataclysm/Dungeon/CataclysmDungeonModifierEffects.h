@@ -1745,6 +1745,29 @@ public:
 	static const TCHAR* InfernalSealsKey;
 
 	/**
+	 * The row where the way down is sealed until the player channels at a Divine Gate, and every creature comes while
+	 * it lasts. Issues #1820 and #41.
+	 *
+	 * "Divine gates require a 10s channel to open; enemies surge toward the gate during the unlock."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
+	 * - THE GATE IS A FLOOR OBJECT, "Divine Gate", on a cell beside the exit by `ExitAltarWorld`, so it never shares a
+	 *   cell with another exit altar. Its one choice, "Channel", begins the channel; the stairs stay sealed while the
+	 *   gate stands, and it goes when the channel completes.
+	 * - THE CHANNEL COUNTS ONLY WHILE THE PLAYER IS WITHIN `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm` OF
+	 *   THE GATE, the 2026-09-11 "nearby" reach. Stepping away PAUSES it and keeps its progress. TAKING DAMAGE DOES NOT
+	 *   INTERRUPT IT.
+	 * - "ENEMIES SURGE TOWARD THE GATE": while the channel lasts every creature of the floor notices the player from
+	 *   `TheReaperSightMultiplier` times its own sight, as Plague Convergence's arrivals do, and each is given its own
+	 *   sight back when the channel ends.
+	 * - NO GATE, NO SEAL: a floor that could not place one is not sealed, so nothing can lock the player in.
+	 * - THE LAST FLOOR IS NOT SEALED, as Blood Gates rules: its way out leads out, not to a next floor.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS (`GoToFloor` places none when `bWaveWalksIn`), so this row does nothing there.
+	 */
+	static const TCHAR* SanctionedPassageKey;
+
+	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
 	 * Issues #1820 and #41.
 	 *
@@ -5231,6 +5254,12 @@ public:
 
 	/** The rung a bearer is raised to when it is below it: Elite. A judgement; see `InfernalSealsKey`. */
 	static constexpr int32 InfernalSealsBearerRung = 1;
+
+	/** Sanctioned Passage's channel, in seconds within reach of the gate. STATED BY THE ROW: "a 10s channel". */
+	static constexpr float SanctionedPassageChannelSeconds = 10.0f;
+
+	/** Sanctioned Passage: the gate's one choice. */
+	static constexpr const TCHAR* SanctionedPassageChannel = TEXT("Channel");
 
 	static_assert(
 		BloodGatesSlainPercent > 0 && BloodGatesSlainPercent < 100,
