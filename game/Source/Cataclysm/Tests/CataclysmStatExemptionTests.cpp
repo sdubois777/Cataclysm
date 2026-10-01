@@ -3781,9 +3781,51 @@ namespace CataclysmStatExemptionTest
 			!bClean && Evaded());
 	}
 
+	/**
+	 * `crowd_control_resistance`, asked by
+	 * `UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance` on every
+	 * crowd control. Issue #1833 group D part 2: the Demon King's Regalia scales
+	 * it by its own stacks. Measured with a scale the probe can move, a machine
+	 * commanded, as the evasion probe does.
+	 */
+	void ProbeScaledCrowdControlResistance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetCrowdControlResistanceAttribute(), 40.0f);
+		ScaledBy(Defender.Actor, TEXT("crowd_control_resistance"), 100.0f,
+				 ECataclysmStatScale::PerDeployableActive, /*Base=*/40.0f);
+
+		const float Clean =
+			UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance(Defender.Actor, 4.0f);
+		ACataclysmMinion* Ballista = ACataclysmMinion::Spawn(
+			Defender.Actor, FVector(300.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+			/*bBurns=*/false, TEXT("Ballista"));
+		if (!Test.TestNotNull(TEXT("a ballista commanded"), Ballista))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Ballista)) { Ballista->Destroy(); } };
+		const float Commanding =
+			UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance(Defender.Actor, 4.0f);
+		Test.TestTrue(
+			FString::Printf(TEXT("crowd control resistance is asked for, so a machine "
+								 "commanded shortens a crowd control: %.2f then %.2f"),
+							Clean, Commanding),
+			Commanding < Clean);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
+			{TEXT("crowd_control_resistance"),   &ProbeScaledCrowdControlResistance},
 			{TEXT("skill_locked"),               &ProbeScaledSkillLocked},
 			{TEXT("attack_damage"),              &ProbeScaledAttackDamage},
 			{TEXT("spell_damage"),               &ProbeScaledSpellDamage},
