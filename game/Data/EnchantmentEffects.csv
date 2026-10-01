@@ -411,3 +411,7 @@ Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar#1,Positive_Your_critical
 Negative_While_stationary_you_take_20_35_increased_dama#1,Negative_While_stationary_you_take_20_35_increased_dama,damage_taken,increased,20.0,35.0,,while_stationary,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,hit_is_ranged_attack,0.0,0.0
 Negative_You_take_20_35_increased_damage_from_melee_att#1,Negative_You_take_20_35_increased_damage_from_melee_att,damage_taken,increased,20.0,35.0,,hit_is_melee_attack,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,health_above,75.0,0.0
 Positive_Your_abilities_are_free_when_above_80_95_hp#1,Positive_Your_abilities_are_free_when_above_80_95_hp,mana_cost,removed,1.0,1.0,,health_above,80.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,95.0
+Negative_Your_critical_strike_chance_cannot_exceed_30_50#1,Negative_Your_critical_strike_chance_cannot_exceed_30_50,max_crit_chance,flat,-70.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Negative_Your_energy_shield_cannot_recharge_above_50_of#1,Negative_Your_energy_shield_cannot_recharge_above_50_of,energy_shield_recharge_ceiling_reduction,flat,50.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Negative_Kills_no_longer_generate_any_experience#1,Negative_Kills_no_longer_generate_any_experience,experience_gain,removed,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Negative_Movement_abilities_cost_20_50_of_your_maximum#1,Negative_Movement_abilities_cost_20_50_of_your_maximum,mana_cost_as_maximum_mana_percent,flat,20.0,50.0,Slot.Movement,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0

@@ -4374,6 +4374,9 @@ MAX_STACK_SECONDS = 60.0
 #: and checks that every name in it is still needed.
 COMPLEMENT_RANGE_ENCHANTMENTS = frozenset({
     "Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor",
+    # AND THE CRIT CEILING, issue #1833, 2026-09-30: max_crit_chance flat
+    # -70 to -50 over the attribute's 100.
+    "Negative_Your_critical_strike_chance_cannot_exceed_30_50",
 })
 
 #: The scales that read a Scale Offset: how much of the reading is not counted.
