@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the announcements a worn row hears, and the counts of what was sent.
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmFervour.h"
 // For a minion of the wearer's own, and for dealing real blows and burns.
@@ -27,6 +28,7 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/ScopeExit.h"
+#include "HAL/IConsoleManager.h"
 #include "Player/CataclysmPlayerState.h"
 
 /**
@@ -1987,6 +1989,131 @@ bool FCataclysmOnlyALandedBlowIsAHitDealt::RunTest(const FString&)
 	}
 	TestEqual(TEXT("an evaded blow restores nothing"),
 			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmACriticalStrikeNamesWhoItStruck,
+	"Cataclysm.Player.ACriticalStrikeByThePlayerNamesTheCreatureStruckToAWornRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmACriticalStrikeNamesWhoItStruck::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "Critical strikes apply a random DoT to the target". Issue #1833 group D:
+	// the player's `critical_strike` event now carries the creature struck and
+	// what reached its health, and a worn row acts on that creature. The other
+	// tests of the action raise the event by hand; this one lands a real blow
+	// from a real player character, so it is the one that sees the event's
+	// target and amount leave `OnSomethingWasHit`.
+	//
+	// THE CONTROL: the same blow, not critical, applies nothing.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	IConsoleVariable* CritRoll =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+	IConsoleVariable* Pick =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RandomDotPick"));
+	if (!TestNotNull(TEXT("the critical strike roll can be pinned"), CritRoll)
+		|| !TestNotNull(TEXT("and so can the pick"), Pick))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT
+	{
+		CritRoll->Set(-1.0f, ECVF_SetByCode);
+		Pick->Set(-1, ECVF_SetByCode);
+	};
+	Pick->Set(0, ECVF_SetByCode);
+
+	UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 300.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 50.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 150.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction OnCrit;
+	OnCrit.Event = FName(TEXT("critical_strike"));
+	OnCrit.Pool = FName(UCataclysmAbilitySystemComponent::ApplyRandomDotAction);
+	OnCrit.Percent = 100.0f;
+	OnCrit.bRandomDamageOverTime = true;
+	OnCrit.TriggerKey = FName(TEXT("A_row:apply_random_dot:critical_strike"));
+	AbilitySystem->SetPoolActions({OnCrit});
+
+	const FCataclysmAilmentKind* Bleed = UCataclysmAilments::KindNamed(TEXT("Bleed"));
+	const FGameplayTag BleedTag = Bleed
+		? FGameplayTag::RequestGameplayTag(FName(Bleed->TagName), /*ErrorIfNotFound=*/false)
+		: FGameplayTag();
+	if (!TestTrue(TEXT("Bleed and its tag exist"), BleedTag.IsValid()))
+	{
+		return false;
+	}
+	const auto MakeCreature = [World](float AlongMetres) -> UCataclysmAbilitySystemComponent*
+	{
+		ACataclysmEnemyCharacter* Creature =
+			SpawnHostile(World, FVector(AlongMetres * M, 0.0f, 0.0f));
+		UCataclysmAbilitySystemComponent* System = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Creature));
+		if (System)
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+		}
+		return System;
+	};
+
+	// NOT CRITICAL: a roll of 100 never critically strikes.
+	UCataclysmAbilitySystemComponent* Plain = MakeCreature(2.0f);
+	if (!TestNotNull(TEXT("a creature to hit plainly"), Plain))
+	{
+		return false;
+	}
+	CritRoll->Set(100.0f, ECVF_SetByCode);
+	UCataclysmSkillEffects::ApplyHit(Character, Plain->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	const float PlainTaken = 1000.0f - Plain->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	TestTrue(*FString::Printf(TEXT("the plain blow took a tenth or more: %.1f"), PlainTaken),
+		PlainTaken >= 100.0f);
+	TestFalse(TEXT("and applied nothing, because it was not critical"),
+		Plain->HasMatchingGameplayTag(BleedTag));
+
+	// CRITICAL: a roll of 0 always is, against any chance above it.
+	UCataclysmAbilitySystemComponent* Struck = MakeCreature(-2.0f);
+	if (!TestNotNull(TEXT("a creature to strike critically"), Struck))
+	{
+		return false;
+	}
+	CritRoll->Set(0.0f, ECVF_SetByCode);
+	UCataclysmSkillEffects::ApplyHit(Character, Struck->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	TestTrue(TEXT("the critical strike put the pinned Bleed on the creature it struck"),
+		Struck->HasMatchingGameplayTag(BleedTag));
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS
