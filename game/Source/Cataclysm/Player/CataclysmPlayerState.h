@@ -143,13 +143,13 @@ public:
 	static const TCHAR* ExperienceGainStat;
 
 	/**
-	 * What a kill worth `Score` experience grants this character: the score
+	 * What a kill worth `KillScore` experience grants this character: the score
 	 * times `experience_gain` asked through its stat line over a base of 100,
 	 * rounded down, and the whole score unchanged when nothing moves it. Issue
 	 * #1833, ruled 2026-09-30: "Kills no longer generate any experience" removes
 	 * the stat, which leaves nothing.
 	 */
-	int64 ExperienceAfterGain(int32 Score) const;
+	int64 ExperienceAfterGain(int32 KillScore) const;
 
 	/**
 	 * Put a saved level and progress back onto the character.
