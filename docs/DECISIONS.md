@@ -2,6 +2,54 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Mutilation Mastery's bleed needs the blow to take a tenth of the target's maximum health, and a killing blow leaves none
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the condition on the
+Masochist's Mutilation Mastery roll) and `game/Source/Cataclysm/Tests/CataclysmMeleeBleedTests.cpp` (the
+shared fighter's health, and two tests). Issue [#1565](https://github.com/sdubois777/Cataclysm/issues/1565),
+ruled by the coordinating session on 2026-10-01.
+
+### WHAT CHANGES IN PLAY
+
+Mutilation Mastery reads "Your melee critical strikes have a 5% chance per point to apply Bleeding". Two
+changes, both to when it may apply:
+
+1. **A melee critical strike that takes less than a tenth of the target's maximum health no longer
+   bleeds.** Until this change any blow that reached health could.
+2. **A melee critical strike that kills no longer leaves Bleeding on the corpse.** Until this change it
+   could, because applying damage over time does not refuse a dead target.
+
+### WHY
+
+Both are rules already recorded, applied to the one place that did not follow them:
+
+- **The owner's rule of 2026-09-02 (#917):** an ailment that does not come from the skill's own row needs
+  the blow to have taken a tenth of the target's maximum health.
+- **The coordinating session's reading of 2026-09-11,** recorded beside that rule, that a passive node is
+  not the skill's own row. That entry names #1565 as the one place not yet following it.
+- **"A blow that killed applies nothing,"** which the gear ailment roll follows.
+
+The roll now asks `UCataclysmAilments::BlowCanCarryAnAilment`, which holds both halves. The gear ailment
+roll and the enchantment that applies a random damage over time ask the same function, so the three cannot
+hold different rules. The coordinating session ruled the corpse half in, rather than changing only the
+threshold.
+
+### THE TESTS
+
+- **The shared test fighter now has 10,000 health, not 1,000,000.** The tests' blow of 1,500 took 0.15% of
+  a million, so every assertion that the strike bleeds would have failed under the threshold. At 10,000 the
+  blow takes 15%. No defender takes more than two blows, so none comes near death. What the tests assert is
+  unchanged.
+- **`AMeleeCriticalStrikeTakingLessThanATenthOfMaximumHealthAppliesNothing`:** the same blow against 16,000
+  maximum health (9.4%) does not bleed, and against 14,000 (10.7%) it does. The exact boundary is avoided on
+  purpose, since a float comparison there says nothing about the rule.
+- **`AKillingMeleeCriticalStrikeLeavesNoBleedingOnTheCorpse`:** a defender at 1,000 of 14,000 health is
+  killed by the blow and is left with no Bleeding.
+
+**Not built or run when this was written.** The run table follows when the window runs.
+
+---
+
 ## 2026-10-01 — A status applied on an event: critical strikes bleed, retaliation bleeds, staggers and slows, Strike skills apply a random debuff, a first hit and a gadget stagger; a first hit is its own event
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the action names
