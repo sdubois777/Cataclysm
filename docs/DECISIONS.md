@@ -7,7 +7,7 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures
 and the pieces needed), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the bearers chosen at
 each floor's population, the step that gives the pieces, the floor panel line, and `StairsSealedBy`, which the stairs
-handler now asks), `game/Source/Cataclysm/Enemies/CataclysmEnemyCharacter.h` (`bIsASealBearer`),
+handler now asks), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (`bIsASealBearer`),
 `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Seal Bearer" under a bearer's bar), the
 automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
