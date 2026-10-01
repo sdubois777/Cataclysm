@@ -8974,7 +8974,8 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BannerAssailantsSta
 	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : BannerAssailants)
 	{
 		ACataclysmEnemyCharacter* Assailant = One.Get();
-		if (IsValid(Assailant) && !UCataclysmSkillEffects::IsDead(Assailant))
+		// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+		if (IsValid(Assailant) && !UCataclysmSkillEffects::IsDead(Assailant) && !DungeonGameModeIsAPlayersFollower(Assailant))
 		{
 			Standing.Add(Assailant);
 		}
