@@ -715,6 +715,40 @@ public:
 	bool TriggerCoolingDown(FName TriggerKey) const;
 
 	/**
+	 * The action that lowers health to a share of its maximum and never raises
+	 * it. Issue #1833 group D part 2, ruled 2026-09-30.
+	 * `tools/generate_datatables.py` holds the same name in `HEALTH_CAP_ACTION`.
+	 * See `FCataclysmPoolAction::bHealthCap`.
+	 */
+	static const TCHAR* HealthCappedAtAction;
+
+	/**
+	 * Note this character's health now, and raise `health_falls_below` when it
+	 * has dropped, carrying the share of maximum health it held before, in
+	 * percent. A row on that event fires only when that share was at or above
+	 * its `EventValue` and the share now is below it. Issue #1833 group D part 2.
+	 * `UCataclysmVitalAttributeSet::NotifyHealthChanged` calls it on every
+	 * health write, the way it calls the two hard-coded crossers.
+	 */
+	void NoteHealthForCrossing();
+
+	/**
+	 * Whether a blow that would empty health is cut to leave one point instead,
+	 * because a row on `health_falls_below` would heal this character as health
+	 * crosses its threshold. Ruled 2026-09-30 for Archon's Aegis, "When your
+	 * health falls below 10%, you are instantly healed to 100%": 0 is below 10%.
+	 *
+	 * TWO LABELLED JUDGEMENTS. Only a row that HEALS saves a blow, so the Demon
+	 * King's Regalia, which grants damage and immunity below 25%, does not cheat
+	 * death. And only a blow that CROSSES the threshold from at or above it is
+	 * saved: a wearer already below it has nothing left to fall below. The row
+	 * must also be off its trigger cooldown.
+	 *
+	 * @param HealthPercentBefore the share of maximum health held before the blow
+	 */
+	bool SavesLethalBlowByCrossing(float HealthPercentBefore) const;
+
+	/**
 	 * Take a reduction action's seconds off every running cooldown it names.
 	 * Issue #1833, the cooldown reduction action.
 	 *
@@ -2581,6 +2615,19 @@ protected:
 
 	/** Whether this action may fire now, as far as its trigger cooldown goes. */
 	bool TriggerReady(const FCataclysmPoolAction& Action) const;
+
+	/** The share of maximum health held now, in percent, or -1 for none. */
+	float HealthPercentNow() const;
+
+	/**
+	 * Whether `health_falls_below` crossed this row's threshold: the share
+	 * before, carried as the event's amount, at or above it, and the share now
+	 * below it. True for every other event.
+	 */
+	bool EventThresholdCrossed(const FCataclysmPoolAction& Action, float EventAmount) const;
+
+	/** The share of maximum health last noted, in percent, or -1 before any. */
+	float LastHealthPercentNoted = -1.0f;
 
 	/** Start this action's trigger cooldown, if it has one. Called when it fires. */
 	void NoteTriggerFired(const FCataclysmPoolAction& Action);

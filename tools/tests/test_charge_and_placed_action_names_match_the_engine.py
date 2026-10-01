@@ -45,6 +45,8 @@ CONSTANTS = {
     "NextSpellCooldownReducedAction": "next_spell_cooldown_reduced",
     # AND THE RANDOM DAMAGE OVER TIME, since issue #1833 group D.
     "ApplyRandomDotAction": "apply_random_dot",
+    # AND THE HEALTH CAP, since issue #1833 group D part 2.
+    "HealthCappedAtAction": "health_capped_at",
 }
 
 
@@ -98,6 +100,11 @@ def test_the_generator_accepts_exactly_the_cooldown_reset_names_the_engine_has()
     engine = {name for constant, name in engine_names().items()
               if constant.startswith("CooldownReset")}
     assert set(gen.COOLDOWN_RESET_ACTIONS) == engine
+
+
+def test_the_generator_accepts_exactly_the_health_cap_name_the_engine_has() -> None:
+    """Issue #1833 group D part 2."""
+    assert gen.HEALTH_CAP_ACTION == engine_names()["HealthCappedAtAction"]
 
 
 def test_the_generator_accepts_exactly_the_random_dot_name_the_engine_has() -> None:
