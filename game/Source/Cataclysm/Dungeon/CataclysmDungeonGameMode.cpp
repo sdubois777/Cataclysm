@@ -9198,7 +9198,8 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::TitheAngelsStanding
 	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : TitheAngels)
 	{
 		ACataclysmEnemyCharacter* Angel = One.Get();
-		if (IsValid(Angel) && !UCataclysmSkillEffects::IsDead(Angel))
+		// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+		if (IsValid(Angel) && !UCataclysmSkillEffects::IsDead(Angel) && !DungeonGameModeIsAPlayersFollower(Angel))
 		{
 			Standing.Add(Angel);
 		}

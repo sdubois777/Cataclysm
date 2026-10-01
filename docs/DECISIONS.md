@@ -109,7 +109,7 @@ this row's own.
 
 ### Tests
 
-Nine automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `ForcedTithes`:
+Ten automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `ForcedTithes`:
 
 - `ForcedTithesFiguresPricesAndAngels`, the row built among them.
 - `ForcedTithesAltarStandsOnTheExitWithThreePricesAndRefuse`: one altar, on the exit cell, named, placed by the row,
@@ -129,6 +129,8 @@ Nine automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `Fo
   it.
 - `ForcedTithesTheLastFloorHasNoAltar`: a bound dungeon of two floors; floor 1 has an altar, floor 2, the last, none
   and no panel line.
+- `ForcedTithesAnAngelThePlayerTakesIsNoLongerOne`: refused; one angel taken loses "Angel" and seven stand, without
+  it.
 
 One in `Cataclysm.Inventory.`: `RemovingAMaterialTakesThatManyOrNone` -- 5 of 12 taken and a change counted; 5 of 3
 refused, all 3 left and no change counted; a material not carried, none and a negative number refused; all 7 taken
@@ -136,6 +138,12 @@ empties the slot.
 
 One Python check: the row still says "at the end of each floor", "pay a tithe", "currency, consumables, health",
 "refusing or offering too little" and "a horde of angels".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **An angel the player takes is no longer an angel**: "Angel" leaves its bar and
+`TitheAngelsStanding()` leaves it out, through the two questions Battlefield Relics' entry names.
 
 ### Not yet run
 
