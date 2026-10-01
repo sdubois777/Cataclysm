@@ -485,10 +485,18 @@ public:
 	 * What share of a hit this creature keeps, after Sacrificial Bond has
 	 * divided it among its nearby allies.
 	 *
+	 * AN ALLY IS A CREATURE THAT CAN LOSE HEALTH. Issue #1559, ruled 2026-09-30:
+	 * a floor-rule object (a spire, a beacon, a carcass and the rest, every
+	 * `ACataclysmFloorSourceCharacter`) is not an ally in the row's sense, and a
+	 * creature that cannot be hurt or is shrouded would take a share and lose
+	 * nothing. A creature standing in an Unholy Sigil still counts.
+	 *
+	 * @param OutSharing  filled with the allies the rest is divided among, when
+	 *                    given. Empty when the creature keeps the whole hit
 	 * @return one when it does not carry the modifier or has nobody to share
 	 *         with, and one over the number sharing otherwise
 	 */
-	static float ShareOfDamageKept(AActor* Character);
+	static float ShareOfDamageKept(AActor* Character, TArray<AActor*>* OutSharing = nullptr);
 
 	/**
 	 * Whether this character is standing in a sigil that will not let it die.
