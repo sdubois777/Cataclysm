@@ -197,6 +197,16 @@ CATACLYSM_TEST(FCataclysmHealthLethalSaveTest,
 		Low.AbilitySystem->SetPoolActions({HealBelow(10.0f, 100.0f, 600.0f)});
 		Strike(World, Low, 5000.0f);
 		TestEqual(TEXT("a wearer already at 5% is not saved"), Low.Health(), 0.0f, 0.01f);
+
+		// ONLY WHEN THE HEAL CAN RESTORE SOMETHING, ruled 2026-10-01: a wearer who
+		// cannot be healed at all is not saved, or the save would heal nothing.
+		const FFighter Unhealable(World);
+		Unhealable.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute(), 100.0f);
+		Unhealable.AbilitySystem->SetPoolActions({HealBelow(10.0f, 100.0f, 600.0f)});
+		Strike(World, Unhealable, 5000.0f);
+		TestEqual(TEXT("a wearer whose healing ceiling is nothing is not saved"),
+			Unhealable.Health(), 0.0f, 0.01f);
 	}
 	World->DestroyWorld(false);
 	return true;

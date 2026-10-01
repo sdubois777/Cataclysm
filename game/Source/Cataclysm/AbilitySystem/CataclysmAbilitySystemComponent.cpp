@@ -3256,6 +3256,15 @@ void UCataclysmAbilitySystemComponent::NoteHealthForCrossing()
 bool UCataclysmAbilitySystemComponent::SavesLethalBlowByCrossing(
 	float HealthPercentBefore) const
 {
+	// ONLY WHEN THE HEAL CAN RESTORE SOMETHING, a labelled judgement ruled
+	// 2026-10-01: the save exists because of the heal. The heal goes through
+	// `TopUp`, which stops at `HealthHealingCeiling`, so with a ceiling at or
+	// below the one point the save would leave, the wearer would survive on one
+	// health and be healed by nothing.
+	if (UCataclysmRegeneration::HealthHealingCeiling(*this) <= 1.0f)
+	{
+		return false;
+	}
 	for (const FCataclysmPoolAction& Action : PoolActions)
 	{
 		const bool bHeals = Action.Pool == FName(TEXT("health")) && Action.Percent > 0.0f
