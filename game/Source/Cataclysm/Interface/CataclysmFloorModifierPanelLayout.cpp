@@ -3,6 +3,7 @@
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
 
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 
 TArray<FCataclysmFloorModifierLine> UCataclysmFloorModifierPanelLayout::LinesFor(

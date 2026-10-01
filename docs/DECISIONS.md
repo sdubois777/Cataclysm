@@ -182,6 +182,8 @@ has none either, but restoring creatures has no caller in play; the coordinating
 **The test now makes its Imps as play does**, with `SetHealth`. **Proof Pa is recorded as not a proof and is not
 rerun**; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
 
+**A MISSING INCLUDE, FOUND BY GUARD PROOF Pb's BUILD, 2026-09-30, fixed in the window as the coordinating session ruled.** Pb breaks a line in `CataclysmDungeonModifierEffects.cpp`, so the adaptive build compiled that file on its own and regrouped the unity files; `CataclysmCombatOverlay.cpp` then stopped with C2653, because The Plaguebearer's "Diseased N" text names `UCataclysmDungeonModifierEffects` and the file never included its header -- it had compiled only because an earlier file in its unity group did. No test ran in that run. A sweep of every source file that names the class without including it found two more, already on development before this change: `CataclysmFloorModifierPanelLayout.cpp` and `CataclysmEquipmentComponent.cpp`. All three now include `Dungeon/CataclysmDungeonModifierEffects.h`; nothing else changed. Pb was rerun with the same break once they did.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

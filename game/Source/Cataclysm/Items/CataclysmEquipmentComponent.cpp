@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Character/CataclysmPassiveTree.h"

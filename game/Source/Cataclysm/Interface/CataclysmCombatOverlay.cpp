@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmBeaconCharacter.h"
