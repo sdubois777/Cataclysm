@@ -42533,7 +42533,10 @@ bool FCataclysmPassagePauseTest::RunTest(const FString& Parameters)
 	}
 
 	ThePlayerStandsFromTheGate(Player, Mode, 100.0f);
-	if (!TestTrue(TEXT("\"Channel\" acted"), Mode->ChooseAtFloorObject(Mode->DivineGateNow(), ChannelKey)))
+	ACataclysmEnemyCharacter* Called = PlaceCreatureAtRung(
+		World, Mode, Player.Character->GetActorLocation() + FVector(0.0f, 4000.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a creature to be called"), Called)
+		|| !TestTrue(TEXT("\"Channel\" acted"), Mode->ChooseAtFloorObject(Mode->DivineGateNow(), ChannelKey)))
 	{
 		return false;
 	}
@@ -42546,6 +42549,9 @@ bool FCataclysmPassagePauseTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("still five away from the gate"), Mode->DivineGateSecondsChannelled(), 5.0f, 0.001f);
 	TestTrue(TEXT("the channel is not ended"), Mode->DivineGateChannelBegun());
 	TestEqual(TEXT("the stairs still lead nowhere"), TakeTheStairs(*this, Mode), 2);
+	// THE CREATURES STAY CALLED WHILE THE CHANNEL IS PAUSED, as ruled 2026-10-01: they have been called.
+	TestEqual(TEXT("a called creature's sight stays raised while the player is away"), Called->SightRadiusMultiplier,
+			  Effects::TheReaperSightMultiplier, 0.001f);
 
 	// BACK WITHIN REACH, AND HIT: A CREATURE'S BLOW LANDS ON THE PLAYER AND THE CHANNEL GOES ON.
 	ThePlayerStandsFromTheGate(Player, Mode, UCataclysmAbilitySystemComponent::NearbyActionRadiusCm - 100.0f);

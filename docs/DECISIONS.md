@@ -96,7 +96,8 @@ Choosing "Channel" begins the channel, once; the choice is then shown spent. Fro
 within 5 m of the gate adds a beat's time, and at 10 seconds the gate goes and the stairs open. While the channel lasts
 every creature of the floor notices the player from `TheReaperSightMultiplier` times its own sight, as Plague
 Convergence's arrivals do; a creature that arrives during the channel is called on the next beat, and a player's thrall
-is not called. When the channel completes, each creature it called is given its own sight back. The floor panel says
+is not called. When the channel completes, or the floor ends, each creature it called is given its own sight back.
+The floor panel says
 `sanctioned passage: channel 10 s at the Divine Gate` before the choice, `sanctioned passage: channelling N of 10 s`
 during it, and `sanctioned passage: open` after.
 
@@ -117,6 +118,10 @@ settles:**
   it**: nothing in the channel listens for damage.
 - **"Enemies surge toward the gate" is every creature noticing the player while the channel lasts.** The player is at
   the gate while it counts, so a creature that comes for the player comes to the gate.
+- **The creatures stay called while the channel is paused.** From the first "Channel" until the gate opens or the floor
+  ends, each called creature keeps its raised sight, with the player out of reach and the progress kept: the creatures
+  have been called. The calling runs every beat of the channel whether or not the player is within reach; only the
+  count asks the reach.
 - **No gate, no seal.** The stairs are sealed only while a gate stands, so a floor that could not place one is open,
   and nothing a creature does can hold the seal: the channel is the player's alone.
 - **The last floor is not sealed**, as Blood Gates rules: its way out leads out of the dungeon, and the row seals the
@@ -136,7 +141,8 @@ test, follows the ruling that all three exit-lock rows do nothing on a Horde dun
 - `SanctionedPassageTheStairsOpenAfterTenSecondsChannelled`: standing at the gate without choosing counts nothing; the
   choice cannot be made twice; sealed at 9.75 seconds, open at 10.
 - `SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt`: five seconds kept across five seconds just beyond
-  the reach; a creature's blow lands on the player and the channel goes on to open the gate.
+  the reach, with a called creature's sight still raised; a creature's blow lands on the player and the channel goes on
+  to open the gate.
 - `SanctionedPassageEveryCreatureComesWhileItChannels`: a creature 40 m off does not notice the player before the
   channel and does during it; one arriving during it is called, a thrall is not; both have their own sight back after.
 - `SanctionedPassageDoesNothingOnAHordeArena`.
