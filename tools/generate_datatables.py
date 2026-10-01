@@ -1632,6 +1632,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: of its rows while the design workbook is with another session.
 #: IT LEFT with the two random damage over time rows, and the table is empty
 #: again.
+#: EVENT VALUE JOINED ON 2026-09-30 for issue #1833 group D part 2, built ahead
+#: of its rows while the design workbook is with another session.
+#: IT LEFT with the health threshold rows, and the table is empty again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -4836,13 +4839,27 @@ DEFAULT_TRIGGER_COOLDOWN = 0.25
 MAX_TRIGGER_COOLDOWN = 3600.0
 
 
+#: The action that LOWERS HEALTH TO A SHARE OF ITS MAXIMUM and never raises it.
+#: Issue #1833 group D part 2, ruled 2026-09-30: "You start every dungeon floor
+#: at 30%-50% of your maximum HP". The value is the share in percent, above 0 and
+#: below 100. `UCataclysmAbilitySystemComponent::HealthCappedAtAction` holds the
+#: same name.
+HEALTH_CAP_ACTION = "health_capped_at"
+
+#: The event that needs a threshold, and so the one event that reads Event
+#: Value: health falling from at or above that share of its maximum to below it.
+#: Issue #1833 group D part 2, ruled 2026-09-30.
+THRESHOLD_EVENT = "health_falls_below"
+
+
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
     firings: a pool moved, a cooldown reset or reduced, or a random damage
     over time. Ruled 2026-09-30: a row that counts or stacks, and a next-use
     charge, states a count per event and never waits."""
     return (action in POOL_ACTIONS or action in COOLDOWN_RESET_ACTIONS
-            or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION)
+            or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION
+            or action == HEALTH_CAP_ACTION)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -4910,6 +4927,16 @@ ACTION_ONLY_EVENTS = (
     # and what reached its health. Issue #1833 group D: "Your retaliation
     # damage also applies a random DoT to attackers".
     "retaliation_dealt",
+    # HEALTH FALLING BELOW A SHARE OF ITS MAXIMUM, raised by
+    # `UCataclysmAbilitySystemComponent::NoteHealthForCrossing` on every drop,
+    # carrying the share held before; each row names its threshold in Event
+    # Value. Issue #1833 group D part 2: Archon's Aegis and the Demon King's
+    # Regalia.
+    "health_falls_below",
+    # A DUNGEON FLOOR STARTING, raised on the player in `StartPlay` and
+    # `GoToFloor` after the floor's rules reach it. Issue #1833 group D part 2:
+    # "You start every dungeon floor at 30%-50% of your maximum HP".
+    "floor_start",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -4985,6 +5012,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_random_dot_action(index, who, action, event, fraction_of, kind,
                                  raw, headers)
         return
+    if action == HEALTH_CAP_ACTION:
+        _check_health_cap_action(index, who, action, event, fraction_of, kind,
+                                 raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -4994,7 +5025,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(PLACED_ACTIONS)}; or an every-Nth action, "
             f"{', '.join(NTH_ACTIONS)}; or a cooldown reset, "
             f"{', '.join(COOLDOWN_RESET_ACTIONS)}; or a cooldown reduction, "
-            f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}; or {RANDOM_DOT_ACTION}.")
+            f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}; or {RANDOM_DOT_ACTION}; "
+            f"or {HEALTH_CAP_ACTION}.")
 
     known = granting_events()
     if not event:
@@ -5087,6 +5119,32 @@ def _check_random_dot_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} applies a random "
                 f"damage over time and states {column} {written!r}. Its value "
                 f"is a chance and nothing else, so the column must be empty.")
+
+
+def _check_health_cap_action(index: int, who: str, action: str, event: str,
+                             fraction_of: str, kind: str, raw,
+                             headers: dict[str, int]) -> None:
+    """Everything a health cap row must say, and everything it must not. Issue
+    #1833 group D part 2. An event is required, because the cap happens AT
+    something; the share is checked where the value is read. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than
+    dropped.
+    """
+    known = action_events()
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} lowers health on the event "
+            f"{event or '(none)'!r}, which the game does not fire. Known: "
+            f"{', '.join(sorted(known))}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} lowers health to a "
+                f"share of its maximum and states {column} {written!r}. Its "
+                f"value is that share and nothing else, so the column must be "
+                f"empty.")
 
 
 def _check_nth_action(index: int, who: str, action: str, event: str,
@@ -5347,7 +5405,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in NTH_ACTIONS \
                     and action not in COOLDOWN_RESET_ACTIONS \
                     and action not in COOLDOWN_REDUCE_ACTIONS \
-                    and action != RANDOM_DOT_ACTION:
+                    and action != RANDOM_DOT_ACTION \
+                    and action != HEALTH_CAP_ACTION:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5461,6 +5520,20 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} applies a random "
                     f"damage over time and states Scale Max Steps. It has no "
                     f"stacks, so it would be dropped.")
+
+        # A HEALTH CAP'S VALUE IS A SHARE OF MAXIMUM HEALTH, above 0 and below
+        # 100, since 100 would cap nothing. Issue #1833 group D part 2.
+        if action == HEALTH_CAP_ACTION:
+            if not (0 < low < 100 and 0 < high < 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} lowers health to "
+                    f"{low:g} to {high:g} per cent of its maximum. The share is "
+                    f"above 0 and below 100.")
+            if scale_max_steps:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} lowers health and "
+                    f"states Scale Max Steps. It has no stacks, so it would be "
+                    f"dropped.")
 
         # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
         # Issue #1833, the cooldown reduction action.
@@ -5790,9 +5863,12 @@ def enchantment_effects(book) -> list[dict]:
         # sentence that says every hit.
         cooldown_text = clean(_cell(raw, headers, "Trigger Cooldown"))
         trigger_cooldown = 0.0
+        # AN OWN STACK TAKES ONE WHEN ITS SENTENCE STATES ONE, ruled 2026-09-30
+        # for the Demon King's Regalia's "(5 minute cd)", and never by default.
+        own_stack_grant = not action and scale == "own_stacks"
         if cooldown_text:
             trigger_cooldown = number(cooldown_text, "Trigger Cooldown", index)
-            if not (action and takes_a_trigger_cooldown(action)) \
+            if not ((action and takes_a_trigger_cooldown(action)) or own_stack_grant) \
                     or action_event == TIMED_EVENT:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} states a Trigger "
@@ -5809,6 +5885,29 @@ def enchantment_effects(book) -> list[dict]:
         elif action and takes_a_trigger_cooldown(action) \
                 and action_event in HIT_FIRED_EVENTS:
             trigger_cooldown = DEFAULT_TRIGGER_COOLDOWN
+
+        # THE THRESHOLD ITS EVENT CROSSES. Issue #1833 group D part 2, ruled
+        # 2026-09-30: only `health_falls_below` reads it, so it is required there
+        # and refused everywhere else, on an action row and an own stack alike.
+        event_value_text = clean(_cell(raw, headers, "Event Value"))
+        event_value = 0.0
+        if action_event == THRESHOLD_EVENT:
+            if not event_value_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} hangs on "
+                    f"{THRESHOLD_EVENT} and states no Event Value. It is the share "
+                    f"of maximum health, in per cent, that health falls below.")
+            event_value = number(event_value_text, "Event Value", index)
+            if not 0 < event_value < 100:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has an Event Value "
+                    f"of {event_value:g}. It is a share of maximum health above 0 "
+                    f"and below 100.")
+        elif event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states an Event Value on "
+                f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT} "
+                f"reads one, so it would be dropped.")
 
         counts[name] = counts.get(name, 0) + 1
         out.append({
@@ -5837,6 +5936,7 @@ def enchantment_effects(book) -> list[dict]:
             "ConditionValue2": condition_value2,
             "ConditionValueHigh": condition_value_high,
             "TriggerCooldown": trigger_cooldown,
+            "EventValue": event_value,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
@@ -6274,6 +6374,12 @@ def stats_with_no_attribute() -> set[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-09-30 FOR THE DEMON KING'S REGALIA'S 6-PIECE, issue #1833 group D
+    # part 2: "becoming immune to all crowd control ... for 10 seconds", a row
+    # scaled by its own stacks. `HeldSecondsAfterCrowdControlResistance` in
+    # CataclysmSkillEffects.cpp asks it through `StatForSkill` on every crowd
+    # control; `ProbeScaledCrowdControlResistance` measures that.
+    "crowd_control_resistance",
     # ADDED 2026-09-25 FOR "Each active gadget increases your evasion chance by
     # 5%-10%", issue #1833, deployable Part 3. `DefenderStat` in
     # CataclysmDamageCalculation.cpp asks it through `StatForSkill` on every

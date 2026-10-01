@@ -2360,4 +2360,14 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float TriggerCooldown = 0.0f;
+
+	/**
+	 * A threshold the row's Action Event needs, or 0. Issue #1833 group D part
+	 * 2, ruled 2026-09-30: only `health_falls_below` reads it, as the share of
+	 * maximum health, in percent, that health must fall from at or above to
+	 * below. "When your health falls below 10%" is 10. The generator refuses it
+	 * on any other event, and refuses that event without it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float EventValue = 0.0f;
 };

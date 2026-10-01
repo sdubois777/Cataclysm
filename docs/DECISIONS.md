@@ -2,6 +2,127 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Archon's Aegis saves a lethal blow and heals, the Demon King's Regalia rages below 25%, and every dungeon floor starts at 30%-50% health
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`NoteHealthForCrossing`, `SavesLethalBlowByCrossing`, `EventThresholdCrossed`, `HealthCappedAtAction`,
+the own-stack cooldown and the health cap in `ActOnEvent`), `CataclysmVitalAttributeSet.cpp` (the
+crossing in `NotifyHealthChanged`, and the lethal save after Nothing Stops It), `CataclysmStatPipeline.h`
+(`FCataclysmPoolAction::EventValue`, `bHealthCap`), `game/Source/Cataclysm/Data/CataclysmDataRows.h`
+(`EventValue`), `game/Source/Cataclysm/Items/CataclysmItem.cpp`, `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`
+(`DungeonGameModeRaiseFloorStart` after the floor's rules in `StartPlay` and `GoToFloor`),
+`tools/generate_datatables.py` (`health_falls_below`, `floor_start`, `health_capped_at`, Event Value, an
+explicit cooldown on an own stack, and `crowd_control_resistance` in `STATS_WITH_AN_ASKER`), the new
+`game/Source/Cataclysm/Tests/CataclysmHealthThresholdTests.cpp` (four tests), three row tests in
+`CataclysmEnchantmentEffectTests.cpp`, a probe in `CataclysmStatExemptionTests.cpp`, the five hand-written
+effect-row CSV fixtures, `CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`,
+`docs/README.md`, `game/Data/EnchantmentEffects.csv` and its asset. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group D part 2.
+
+### WHAT WAS RULED, 2026-09-30 AND 2026-10-01, UNDER THE OWNER'S DELEGATION
+
+1. **A new event, `health_falls_below`, with its threshold in a new Event Value column.** It is raised on
+   every drop in health and carries the share held before; a row fires when that share was at or above
+   its Event Value and the share now is below it. The generator refuses Event Value on any other event and
+   refuses the event without it. A new column, because Condition is taken: on an own-stack row it scopes
+   the stat, not the grant (the 2026-09-23 ruling).
+2. **The lethal save**, for Archon's Aegis, because 0 is below 10%: a blow that would empty health is cut
+   to leave one point when a row on the fall would heal, so the fall then fires the heal. Three labelled
+   judgements: only a row that HEALS saves, so the Regalia does not cheat death; only a blow that CROSSES
+   the threshold from at or above it is saved, so a wearer already below it is not; and, ruled 2026-10-01,
+   **only when the heal can restore something** (`HealthHealingCeiling` above one point), because the save
+   exists for the heal.
+3. **An explicit Trigger Cooldown on an own-stack grant**, for the Regalia's "(5 minute cd)". The default
+   for a stack stays none; the other counting kinds still refuse one.
+4. **`floor_start`** is raised on the player after the floor's rules in `StartPlay` and `GoToFloor` only.
+   Leaving the dungeon applies the rules and starts no floor; a Horde wave is not a floor start. The
+   first floor's `GoToFloor` runs before there is a pawn, so `StartPlay`'s raise is the one that reaches
+   the player there.
+5. **The Aegis heal goes through `TopUp`**, the one route every heal takes since #1607 and #1608
+   (#2187). So it heals only to `HealthHealingCeiling` and the unreserved maximum: "You cannot heal above
+   60% of your maximum HP" saves and heals to 60%. And, like every heal of health, it removes a
+   Masochist's Fervour, 1 per 1% restored (#954).
+6. **"Start every floor at 30%-50%" sets health and never raises it**: a player already below keeps theirs.
+
+**Unholy Sigils and Sacrificial Bond (#2187) do not interact with the save.**
+`UCataclysmEnemyModifiers::IsProtectedBySigil` answers false for anything that is not an enemy, and
+`ShareOfDamageKept` answers 1 for anything that is not an enemy carrying the Bond, so the player's blow
+reaches health whole after the save has cut it.
+
+**FOR THE OWNER'S PLAY-CHECK LIST:** Archon's Aegis saving a one-shot, and the floor-start health cap.
+
+### WHAT WAS BUILT
+
+- **The crossing**, noted in `NotifyHealthChanged` beside the two hard-coded crossers (Breaking Point and
+  Rock Bottom). `ActOnEvent` is depth one, so a fall caused by another action's write raises no crossing.
+- **The rows** (EnchantmentEffects 423 to 428, over 344 to 347 enchantments):
+
+  | Sentence | Row |
+  | :-- | :-- |
+  | Archon's Aegis (10-Piece Bonus): When your health falls below 10%, you are instantly healed to 100% of your maximum health. (10 minute cd) | `health` 100 of maximum, `health_falls_below`, Event Value 10, Trigger Cooldown 600 |
+  | Demon King's Regalia (6-Piece Bonus): When your health falls below 25%, you enter a "Demonic Rage" becoming immune to all crowd control and dealing 100% more damage for 10 seconds. (5 minute cd) | three own-stack rows on `health_falls_below`, Event Value 25, Stack Seconds 10, cap 1, Trigger Cooldown 300: `crowd_control_resistance` flat 100, `attack_damage` and `spell_damage` more 100 |
+  | You start every dungeon floor at 30%-50% of your maximum HP | `health_capped_at` 30 to 50 on `floor_start` |
+
+- **`crowd_control_resistance` joins `STATS_WITH_AN_ASKER`**, approved 2026-10-01. The generator refused
+  the Regalia's immunity row because the stat was missing from that hand-kept list, although
+  `HeldSecondsAfterCrowdControlResistance` asks it through `StatForSkill` on every crowd control.
+  `ProbeScaledCrowdControlResistance` measures that a scaled row moves the answer. Found by the rows
+  rehearsal, before any window.
+
+### FINDINGS IN THE WINDOW
+
+- **The floor-start mechanism test first failed** ("4 tests performed, 3 succeeded, 1 failed", 1000 where
+  204 was expected). The floor's rules refresh the player's equipment
+  (`UCataclysmDungeonModifierEffects::ApplyToCharacter`), and the refresh rebuilds the action list from
+  what is worn, so a cap built by hand on the player did not survive `GoToFloor`. In play the row is worn,
+  so the refresh puts it back. The test now hears `floor_start` on `OnActionEvent` through a real
+  `GoToFloor` and caps a bare fighter; and **the play path is measured**: the row test wears the row on a
+  possessed player and enters through a real `GoToFloor`.
+- **The Regalia row test first failed** on the wearer's own crowd control resistance, 7.85 from the
+  refresh, which the test assumed was 0; it now asserts no stack is held at full health and reads against
+  that base. **I first reported part of it as unexplained, and that was my own mistake**: I listed the
+  failed assertions with `| head -4` and there were five, so one failing assertion read as passing.
+  Temporary readouts, never committed, accounted for every value. **Count failed assertions with
+  `grep -c` before listing them.**
+- **Proof B is NOT A PROOF**: with the save removed, nothing failed. On a bare fighter the blow took
+  health to 0, nothing died (the death notice acts only on an `ACataclysmCharacterBase`), and the fall
+  below 10% healed it to 1000, so a test reading only the end value read the same either way. The tests
+  now record the lowest health reached through the component's value-change delegate, with a control
+  showing the recorder sees a 0 that is later overwritten. **B2 is the same break against the fixed test,
+  a fourth proof run for this change**, allowed because B found a real gap in a test rather than failing
+  a fair one.
+
+### THE RUN
+
+D2 is commits `4c0891bc` (engine), `647def12` (the asker and probe), `3df202c9` (the ceiling condition), on
+development `b6900aaa`, moved onto `9111f41c` as `feat/health-threshold-triggers-3`; then `1656fb3c` (the
+floor-start test), `8a005b9a` (rows), `3adbb08a` (assets), `a589baf2` (the Regalia test) and `92134f43`
+(the lowest-health tests).
+
+| Step | Result |
+| :-- | :-- |
+| Rows rehearsal 1 | "16 failed, 5583 passed, 13 skipped": the generator refused the Regalia's immunity row; the asker was added |
+| Rehearsals at `3df202c9` | engine and rows each "12 failed, 5587 passed, 13 skipped", JUnit 5612: the 11 git-directory tests and the stale hash |
+| Check 7, the duplicate-definition sweep | 9 .cpp files, "read 209 namespace-level function definitions", none flagged |
+| Python of record, `b0498b46` | "1 failed, 5607 passed, 8 skipped in 337.69s": the stale hash; JUnit 5616 |
+| Build 1 | "Build: Succeeded - 32 actions, 29 files compiled" |
+| `Cataclysm.HealthThreshold.` | first "4 performed, 3 succeeded, 1 failed" (the floor-start test above); after `1656fb3c`, 4 of 4 |
+| `Cataclysm.StatExemption.EveryStatTheDataScales` | 1 of 1, with the new probe |
+| Python after the rows, `8a005b9a` | "1 failed, 5607 passed, 8 skipped in 318.50s"; JUnit 5616 |
+| Build 2, asset rebuild `3adbb08a` | "5 actions, 2 files compiled"; only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| Row tests | the Aegis and the floor start 1 of 1; the Regalia first 0 of 1 (above), then 1 of 1 at `a589baf2` |
+| Proof A, the crossing never raised, `a589baf2` | PROVED: the crossing, the lethal save and the stack cooldown tests; 5 assertions measured; restored 4 of 4 |
+| Proof B, the save not applied, `a589baf2` | NOT A PROOF: 4 of 4 passed with the break in (above) |
+| Proof C, `GoToFloor` raising no floor start, `92134f43` | PROVED: 1 test, 2 assertions measured (0 arrivals on each floor); restored 1 of 1 |
+| Proof B2, the save not applied, `92134f43` | PROVED: the lethal-save test, 1 assertion measured (lowest health 0, not 1); restored 4 of 4 |
+| Whole suite, `92134f43`, in its own command | "2960 tests performed, 2960 succeeded, 0 failed"; 2960 declared, gap 0; no "was ignored" line |
+
+Every "was ignored" count in the window was 0, and every broken file's SHA was the same after its proof.
+
+---
+
 ## 2026-09-30 — War Banner: one banner a floor, planted where it stands; inside its 12 m area 20% more damage and +15 resistance, and held 60 s through a wave of four every 15 s it doubles
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,

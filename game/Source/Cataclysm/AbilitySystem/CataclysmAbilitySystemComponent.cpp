@@ -3211,6 +3211,77 @@ const TCHAR* UCataclysmAbilitySystemComponent::NextSpellCooldownReducedAction =
 const TCHAR* UCataclysmAbilitySystemComponent::CleanseAction = TEXT("cleanse");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyRandomDotAction =
 	TEXT("apply_random_dot");
+const TCHAR* UCataclysmAbilitySystemComponent::HealthCappedAtAction =
+	TEXT("health_capped_at");
+
+namespace
+{
+	/** The event a health crossing raises. Issue #1833 group D part 2. */
+	const FName HealthFallsBelowEvent(TEXT("health_falls_below"));
+}
+
+float UCataclysmAbilitySystemComponent::HealthPercentNow() const
+{
+	const UCataclysmVitalAttributeSet* Vitals = GetSet<UCataclysmVitalAttributeSet>();
+	const float Maximum = Vitals ? Vitals->GetMaxHealth() : 0.0f;
+	return Maximum > 0.0f ? Vitals->GetHealth() / Maximum * 100.0f : -1.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::EventThresholdCrossed(
+	const FCataclysmPoolAction& Action, float EventAmount) const
+{
+	if (Action.Event != HealthFallsBelowEvent)
+	{
+		return true;
+	}
+	return Action.EventValue > 0.0f && EventAmount >= Action.EventValue
+		&& HealthPercentNow() >= 0.0f && HealthPercentNow() < Action.EventValue;
+}
+
+void UCataclysmAbilitySystemComponent::NoteHealthForCrossing()
+{
+	const float Now = HealthPercentNow();
+	const float Before = LastHealthPercentNoted;
+	// NOTED FIRST, so a heal a row makes while this event is handled is seen as
+	// the next starting point rather than as the drop being handled again.
+	LastHealthPercentNoted = Now;
+	if (Now < 0.0f || Before < 0.0f || Now >= Before)
+	{
+		return;
+	}
+	ActOnEvent(FName(TEXT("health_falls_below")), /*EventTags=*/nullptr,
+			   /*EventAmount=*/Before, /*bLanded=*/true);
+}
+
+bool UCataclysmAbilitySystemComponent::SavesLethalBlowByCrossing(
+	float HealthPercentBefore) const
+{
+	// ONLY WHEN THE HEAL CAN RESTORE SOMETHING, a labelled judgement ruled
+	// 2026-10-01: the save exists because of the heal. The heal goes through
+	// `TopUp`, which stops at `HealthHealingCeiling`, so with a ceiling at or
+	// below the one point the save would leave, the wearer would survive on one
+	// health and be healed by nothing.
+	if (UCataclysmRegeneration::HealthHealingCeiling(*this) <= 1.0f)
+	{
+		return false;
+	}
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		const bool bHeals = Action.Pool == FName(TEXT("health")) && Action.Percent > 0.0f
+			&& !Action.bHealthCap && !Action.bRandomDamageOverTime && !Action.bCleanse
+			&& Action.StackKey.IsNone() && Action.NextUseKey.IsNone()
+			&& Action.PlacedKey.IsNone() && Action.NthKind == ECataclysmEveryNth::None
+			&& Action.CooldownReset == ECataclysmCooldownReset::None
+			&& Action.CooldownReduce == ECataclysmCooldownReset::None;
+		if (Action.Event == HealthFallsBelowEvent && bHeals && Action.EventValue > 0.0f
+			&& HealthPercentBefore >= Action.EventValue && TriggerReady(Action)
+			&& PoolActionAllowed(Action, nullptr))
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 bool UCataclysmAbilitySystemComponent::TriggerCoolingDown(FName TriggerKey) const
 {
@@ -3909,7 +3980,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	TSet<FName> StackedThisEvent;
 	for (const FCataclysmPoolAction& Action : Firing)
 	{
-		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags, EventTarget))
+		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags, EventTarget)
+			|| !EventThresholdCrossed(Action, EventAmount))
 		{
 			continue;
 		}
@@ -4001,10 +4073,37 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			// ONLY A LANDED EVENT GRANTS A STACK, ruled 2026-09-23. A pool
 			// action refuses one too, since issue #1833's small engine halves:
 			// see below.
-			if (bLanded && !StackedThisEvent.Contains(Action.StackKey))
+			// AND A COOLDOWN, WHEN THE ROW'S SENTENCE STATES ONE. Issue #1833
+			// group D part 2, ruled 2026-09-30: an own stack takes none by
+			// default, and an explicit one starts when the stack is granted.
+			if (bLanded && !StackedThisEvent.Contains(Action.StackKey)
+				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.StackKey);
 				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// HEALTH LOWERED TO A SHARE OF ITS MAXIMUM, never raised. Issue #1833
+		// group D part 2, ruled 2026-09-30: "You start every dungeon floor at
+		// 30%-50% of your maximum HP". A player already below it keeps its health.
+		if (Action.bHealthCap)
+		{
+			if (bLanded && TriggerReady(Action))
+			{
+				if (UCataclysmVitalAttributeSet* Vitals =
+						const_cast<UCataclysmVitalAttributeSet*>(
+							GetSet<UCataclysmVitalAttributeSet>()))
+				{
+					const float Cap = Vitals->GetMaxHealth() * Action.Percent / 100.0f;
+					if (Cap > 0.0f && Vitals->GetHealth() > Cap)
+					{
+						SetNumericAttributeBase(
+							UCataclysmVitalAttributeSet::GetHealthAttribute(), Cap);
+					}
+				}
+				NoteTriggerFired(Action);
 			}
 			continue;
 		}

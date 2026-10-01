@@ -1840,7 +1840,7 @@ class TestScaleStepHigh:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High", "Trigger Cooldown"]
+              "Condition Value High", "Trigger Cooldown", "Event Value"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -2131,6 +2131,97 @@ class TestTriggerCooldownAndRandomDot:
             gen.enchantment_effects(self.dot(tmp_path, {"Fraction Of": "maximum"}))
 
 
+class TestHealthThresholdAndFloorStart:
+    """A health crossing, its Event Value, the health cap and an explicit
+    cooldown on an own stack. Issue #1833 group D part 2, ruled 2026-09-30:
+    Archon's Aegis, the Demon King's Regalia and "You start every dungeon floor
+    at 30%-50% of your maximum HP"."""
+
+    FLOOR = gen.row_name("Negative", "You start every dungeon floor at 30%-50% of your maximum HP"[:48])
+    FLOOR_WORDS = "You start every dungeon floor at 30%-50% of your maximum HP"
+    ENCHANTMENTS = TestTriggerCooldownAndRandomDot.ENCHANTMENTS[:2] + [
+        [TestTriggerCooldownAndRandomDot.BLOCK_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         FLOOR_WORDS, "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestTriggerCooldownAndRandomDot.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "threshold.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def heal(self, tmp_path, changes):
+        values = {"Enchantment": TestTriggerCooldownAndRandomDot.BLOCK,
+                  "Effect": TestTriggerCooldownAndRandomDot.BLOCK_WORDS,
+                  "Action": "health", "Action Event": "health_falls_below",
+                  "Event Value": 10, "Value Low": 3, "Value High": 6}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def stack(self, tmp_path, changes):
+        values = {"Enchantment": TestTriggerCooldownAndRandomDot.CRIT,
+                  "Effect": TestTriggerCooldownAndRandomDot.CRIT_WORDS,
+                  "Stat": "attack_damage", "Value Kind": "more", "Value Low": 100,
+                  "Scale": "own_stacks", "Scale Step": 1,
+                  "Action Event": "health_falls_below", "Event Value": 25,
+                  "Stack Seconds": 10, "Scale Max Steps": 1}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def cap(self, tmp_path, changes):
+        values = {"Enchantment": self.FLOOR, "Effect": self.FLOOR_WORDS,
+                  "Action": "health_capped_at", "Action Event": "floor_start",
+                  "Value Low": 30, "Value High": 50}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_crossing_row_carries_its_event_value(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert (out[0]["ActionEvent"], out[0]["EventValue"]) == ("health_falls_below", 10.0)
+
+    def test_the_crossing_event_without_an_event_value_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Event Value"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Event Value": None}))
+
+    def test_an_event_value_on_another_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only health_falls_below reads one"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "block"}))
+
+    def test_an_event_value_of_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="above 0 and below 100"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Event Value": 100}))
+
+    def test_the_crossing_is_not_hit_fired_so_takes_no_default_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_an_own_stack_takes_a_stated_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.stack(tmp_path, {"Trigger Cooldown": 300}))
+        assert (out[0]["Scale"], out[0]["EventValue"], out[0]["TriggerCooldown"]) == (
+            "own_stacks", 25.0, 300.0)
+
+    def test_an_own_stack_takes_no_cooldown_by_default(self, tmp_path):
+        out = gen.enchantment_effects(self.stack(tmp_path, {"Action Event": "critical_strike",
+                                                            "Event Value": None}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_health_cap_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.cap(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            "health_capped_at", "floor_start", 30.0, 50.0, "")
+
+    def test_a_health_cap_of_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="above 0 and below 100"):
+            gen.enchantment_effects(self.cap(tmp_path, {"Value Low": 100, "Value High": None}))
+
+    def test_a_health_cap_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be"):
+            gen.enchantment_effects(self.cap(tmp_path, {"Fraction Of": "maximum"}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
@@ -2169,7 +2260,7 @@ class TestEnchantmentEffects:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High", "Trigger Cooldown"]
+              "Condition Value High", "Trigger Cooldown", "Event Value"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -2198,7 +2289,7 @@ class TestEnchantmentEffects:
             "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
             "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
             "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
-            "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0}]
+            "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
@@ -2595,9 +2686,14 @@ class TestEnchantmentEffects:
     def test_an_event_with_no_clock_of_its_own_is_accepted(self, tmp_path):
         # FIVE EVENTS HAVE NO CLOCK, because every clock is something done TO
         # the character and these are things the character DID.
+        # AND THE ONE THAT NEEDS A THRESHOLD IS GIVEN ONE: health_falls_below
+        # requires an Event Value, issue #1833 group D part 2.
         for event in gen.ACTION_ONLY_EVENTS:
+            changes = {"Action Event": event}
+            if event == gen.THRESHOLD_EVENT:
+                changes["Event Value"] = 10
             out = gen.enchantment_effects(self.book(tmp_path, [
-                self.action_row({"Action Event": event})]))
+                self.action_row(changes)]))
             assert out[0]["ActionEvent"] == event
 
     def test_a_hit_dealt_is_not_a_hit_taken(self):
