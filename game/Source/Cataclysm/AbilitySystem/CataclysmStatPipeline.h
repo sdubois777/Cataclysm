@@ -3399,6 +3399,33 @@ enum class ECataclysmNearbyAction : uint8
 };
 
 /**
+ * Where an action deals the remaining damage of the wearer's own damage over time
+ * effects. Issue #1833 group D part 4, ruled 2026-10-01. `REMAINING_DAMAGE_ACTIONS`
+ * in `tools/generate_datatables.py` holds the two action names, one per value below
+ * but None. See `UCataclysmSkillEffects::DealRemainingDamageOverTime`.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmRemainingDamage : uint8
+{
+	/** Not a remaining damage row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * On every enemy within `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`,
+	 * and each effect ENDS once dealt: "When you die, all active DoTs on nearby
+	 * enemies instantly deal their remaining damage".
+	 */
+	Nearby UMETA(DisplayName = "Nearby enemies, ending each"),
+
+	/**
+	 * On the event's other character, and each effect is NEITHER ENDED NOR
+	 * REDUCED: "Necrosis effects deal 20%-40% of their remaining damage instantly
+	 * when you land a critical strike".
+	 */
+	Target UMETA(DisplayName = "The event's target, keeping each"),
+};
+
+/**
  * Which skill cooldowns a reset action clears. Issue #1833, the cooldown reset
  * action. `COOLDOWN_RESET_ACTIONS` in `tools/generate_datatables.py` holds the
  * six action names, one per value below but None.
@@ -3767,6 +3794,22 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmNearbyAction Nearby = ECataclysmNearbyAction::None;
+
+	/**
+	 * Set, this action deals `Percent` of the remaining damage of the wearer's own
+	 * damage over time effects instead of moving a pool. Issue #1833 group D part 4.
+	 * See `ECataclysmRemainingDamage`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmRemainingDamage RemainingDamage = ECataclysmRemainingDamage::None;
+
+	/**
+	 * The ailment a remaining damage action is limited to, from the row's
+	 * `Ailment`, or no tag for every damage over time. Issue #1833 group D part 4:
+	 * "Necrosis effects deal ..." is `Keyword.DoT.Necrosis`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FGameplayTag Ailment;
 };
 
 /**

@@ -3227,6 +3227,10 @@ const TCHAR* UCataclysmAbilitySystemComponent::HealthCappedAtAction =
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyAction = TEXT("smite_nearby");
 const TCHAR* UCataclysmAbilitySystemComponent::HealNearbyEnemiesAction =
 	TEXT("heal_nearby_enemies");
+const TCHAR* UCataclysmAbilitySystemComponent::RemainingDamageNearbyAction =
+	TEXT("dot_remaining_nearby");
+const TCHAR* UCataclysmAbilitySystemComponent::RemainingDamageTargetAction =
+	TEXT("dot_remaining_target");
 
 namespace
 {
@@ -4133,6 +4137,39 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				ActOnNearby(Action);
+				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// THE REMAINING DAMAGE OF THE WEARER'S OWN DAMAGE OVER TIME. Issue #1833
+		// group D part 4, ruled 2026-10-01. Landed only, once per row per event.
+		// Around the wearer, every effect ends once dealt, and the cooldown starts
+		// whether or not anything stood in reach, as a nearby action's does. On
+		// the event's target, only for an event naming one, and nothing ends.
+		if (Action.RemainingDamage != ECataclysmRemainingDamage::None)
+		{
+			AActor* Self = GetAvatarActor();
+			const bool bNearby = Action.RemainingDamage == ECataclysmRemainingDamage::Nearby;
+			if (bLanded && Self && (bNearby || EventTarget)
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				if (bNearby)
+				{
+					for (AActor* Other : UCataclysmTargeting::FindEnemiesInSphere(
+							 Self->GetWorld(), Self, Self->GetActorLocation(),
+							 NearbyActionRadiusCm))
+					{
+						UCataclysmSkillEffects::DealRemainingDamageOverTime(
+							Self, Other, Action.Percent, Action.Ailment, /*bEndEach=*/true);
+					}
+				}
+				else
+				{
+					UCataclysmSkillEffects::DealRemainingDamageOverTime(
+						Self, const_cast<AActor*>(EventTarget), Action.Percent,
+						Action.Ailment, /*bEndEach=*/false);
+				}
 				NoteTriggerFired(Action);
 			}
 			continue;

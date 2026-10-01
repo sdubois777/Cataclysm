@@ -1635,7 +1635,14 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: EVENT VALUE JOINED ON 2026-09-30 for issue #1833 group D part 2, built ahead
 #: of its rows while the design workbook is with another session.
 #: IT LEFT with the health threshold rows, and the table is empty again.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#: AILMENT JOINED ON 2026-10-01 for issue #1833 group D part 4, built ahead of
+#: its rows while the design workbook is with another session, and leaves with
+#: them.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Enchantment Effects": {
+        "Ailment": "#1833",
+    },
+}
 
 
 class _Headers(dict):
@@ -4874,6 +4881,41 @@ MAX_NEARBY_PERCENT = {
     "heal_nearby_enemies": 100.0,
 }
 
+#: The actions that DEAL THE REMAINING DAMAGE of the wearer's own damage over
+#: time effects, as one instance each. Issue #1833 group D part 4, ruled
+#: 2026-10-01. The value is a percentage of that remaining damage, above 0 and up
+#: to 100. `dot_remaining_nearby` reaches every enemy within five metres and ends
+#: each effect: "When you die, all active DoTs on nearby enemies instantly deal
+#: their remaining damage". `dot_remaining_target` reaches the event's other
+#: character and ends nothing: "Necrosis effects deal 20%-40% of their remaining
+#: damage instantly when you land a critical strike".
+#: `UCataclysmAbilitySystemComponent::RemainingDamageNearbyAction` and
+#: `RemainingDamageTargetAction` hold the same names.
+REMAINING_DAMAGE_ACTIONS = (
+    "dot_remaining_nearby",
+    "dot_remaining_target",
+)
+
+#: The events `dot_remaining_target` may hang on: the ones naming the character
+#: the wearer struck. Issue #1833 group D part 4.
+REMAINING_DAMAGE_TARGET_EVENTS = (
+    "hit_dealt",
+    "critical_strike",
+    "retaliation_dealt",
+)
+
+#: The ailments an Ailment cell may name: the five damage over time ailments,
+#: as `UCataclysmAilments::KindNamed` reads them. Issue #1833 group D part 4,
+#: ruled 2026-10-01. Required on `dot_remaining_target`, allowed on
+#: `dot_remaining_nearby`, and refused on every other row.
+AILMENTS = (
+    "Bleed",
+    "Poison",
+    "Disease",
+    "Necrosis",
+    "Burn",
+)
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -4882,7 +4924,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
     charge, states a count per event and never waits."""
     return (action in POOL_ACTIONS or action in COOLDOWN_RESET_ACTIONS
             or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION
-            or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS)
+            or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS
+            or action in REMAINING_DAMAGE_ACTIONS)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -5054,6 +5097,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_nearby_action(index, who, action, event, fraction_of, kind,
                              raw, headers)
         return
+    if action in REMAINING_DAMAGE_ACTIONS:
+        _check_remaining_damage_action(index, who, action, event, fraction_of,
+                                       kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -5065,7 +5112,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(COOLDOWN_RESET_ACTIONS)}; or a cooldown reduction, "
             f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}; or {RANDOM_DOT_ACTION}; "
             f"or {HEALTH_CAP_ACTION}; or a nearby action, "
-            f"{', '.join(NEARBY_ACTIONS)}.")
+            f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
+            f"{', '.join(REMAINING_DAMAGE_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -5209,6 +5257,32 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} acts on the characters "
                 f"nearby and states {column} {written!r}. Its value is a share "
                 f"and nothing else, so the column must be empty.")
+
+
+def _check_remaining_damage_action(index: int, who: str, action: str, event: str,
+                                   fraction_of: str, kind: str, raw,
+                                   headers: dict[str, int]) -> None:
+    """Everything a remaining damage row must say, and everything it must not.
+    Issue #1833 group D part 4. An event is required, and on
+    `dot_remaining_target` it must name the character struck; the share and the
+    Ailment are checked where they are read. A fraction, a value kind and a scale
+    each mean nothing here, so each is refused rather than dropped.
+    """
+    known = (REMAINING_DAMAGE_TARGET_EVENTS if action == "dot_remaining_target"
+             else tuple(sorted(action_events())))
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} deals remaining damage on "
+            f"the event {event or '(none)'!r}, which {action} cannot use. Known: "
+            f"{', '.join(known)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} deals remaining damage "
+                f"and states {column} {written!r}. Its value is a share and "
+                f"nothing else, so the column must be empty.")
 
 
 def _check_nth_action(index: int, who: str, action: str, event: str,
@@ -5471,7 +5545,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in COOLDOWN_REDUCE_ACTIONS \
                     and action != RANDOM_DOT_ACTION \
                     and action != HEALTH_CAP_ACTION \
-                    and action not in NEARBY_ACTIONS:
+                    and action not in NEARBY_ACTIONS \
+                    and action not in REMAINING_DAMAGE_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5610,6 +5685,15 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} acts on the "
                     f"characters nearby at {low:g} to {high:g} per cent. "
                     f"{action} takes above 0 and up to {bound:g}.")
+
+        # A REMAINING DAMAGE ACTION'S VALUE IS A SHARE OF THAT DAMAGE, above 0 and
+        # up to 100. Issue #1833 group D part 4.
+        if action in REMAINING_DAMAGE_ACTIONS:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} deals {low:g} to "
+                    f"{high:g} per cent of the remaining damage. It deals above 0 "
+                    f"and up to 100.")
 
         # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
         # Issue #1833, the cooldown reduction action.
@@ -5985,6 +6069,28 @@ def enchantment_effects(book) -> list[dict]:
                 f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT} "
                 f"reads one, so it would be dropped.")
 
+        # THE AILMENT A REMAINING DAMAGE ACTION IS LIMITED TO. Issue #1833 group D
+        # part 4, ruled 2026-10-01: required on `dot_remaining_target`, allowed on
+        # `dot_remaining_nearby`, and refused everywhere else, as Event Value is.
+        ailment = clean(_cell(raw, headers, "Ailment"))
+        if ailment:
+            if action not in REMAINING_DAMAGE_ACTIONS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} names the ailment "
+                    f"{ailment!r} on {action or stat!r}. Only "
+                    f"{', '.join(REMAINING_DAMAGE_ACTIONS)} read one, so it would "
+                    f"be dropped.")
+            if ailment not in AILMENTS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} names the ailment "
+                    f"{ailment!r}, which is not one the game has. Known: "
+                    f"{', '.join(AILMENTS)}.")
+        elif action == "dot_remaining_target":
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} deals remaining damage on "
+                f"the event's target and names no Ailment. Name one of "
+                f"{', '.join(AILMENTS)}.")
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -6013,6 +6119,7 @@ def enchantment_effects(book) -> list[dict]:
             "ConditionValueHigh": condition_value_high,
             "TriggerCooldown": trigger_cooldown,
             "EventValue": event_value,
+            "Ailment": ailment,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A

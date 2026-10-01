@@ -42,6 +42,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "GameplayEffect.h"
+#include "TimerManager.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 #include "GameplayTagsManager.h"
 
@@ -1962,6 +1963,161 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	return true;
+}
+
+int32 UCataclysmSkillEffects::DamageOverTimeTicksLeft(float FirstTickInSeconds,
+													 float SecondsPerTick, float SecondsLeft)
+{
+	if (SecondsPerTick <= 0.0f || SecondsLeft < 0.0f || FirstTickInSeconds < 0.0f
+		|| FirstTickInSeconds > SecondsLeft + KINDA_SMALL_NUMBER)
+	{
+		return 0;
+	}
+	return 1 + FMath::FloorToInt32(
+		(SecondsLeft - FirstTickInSeconds + KINDA_SMALL_NUMBER) / SecondsPerTick);
+}
+
+float UCataclysmSkillEffects::ShareOfHealthOverTicks(float Share, float Health,
+													 float MaxHealth, bool bIsBoss,
+													 int32 Ticks)
+{
+	if (Share <= 0.0f || Health <= 0.0f || Ticks <= 0)
+	{
+		return 0.0f;
+	}
+	const float Taken = Health * (1.0f - FMath::Pow(1.0f - FMath::Min(Share, 1.0f),
+													 static_cast<float>(Ticks)));
+	return FMath::Min(Taken, ShareOfHealthRoomLeft(Health, MaxHealth, bIsBoss));
+}
+
+float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
+													  const FActiveGameplayEffectHandle& Handle)
+{
+	const UWorld* World = Defender ? Defender->GetWorld() : nullptr;
+	const FActiveGameplayEffect* Active =
+		Defender ? Defender->GetActiveGameplayEffect(Handle) : nullptr;
+	if (!World || !Active || Active->bIsInhibited || !Active->Spec.Def)
+	{
+		return 0.0f;
+	}
+
+	// ONLY AN EFFECT THAT TICKS ON HEALTH: a period, and a modifier on Damage.
+	float PerTick = 0.0f;
+	bool bDamages = false;
+	const TArray<FGameplayModifierInfo>& Modifiers = Active->Spec.Def->Modifiers;
+	for (int32 Index = 0; Index < Modifiers.Num(); ++Index)
+	{
+		if (Modifiers[Index].Attribute == UCataclysmVitalAttributeSet::GetDamageAttribute())
+		{
+			bDamages = true;
+			PerTick += Active->Spec.GetModifierMagnitude(Index);
+		}
+	}
+	const float SecondsPerTick = Active->GetPeriod();
+	if (!bDamages || SecondsPerTick <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FTimerManager& Timers = World->GetTimerManager();
+	const float FirstTickIn = Timers.TimerExists(Active->PeriodHandle)
+		? Timers.GetTimerRemaining(Active->PeriodHandle)
+		: -1.0f;
+	const int32 Ticks = DamageOverTimeTicksLeft(
+		FirstTickIn, SecondsPerTick, Active->GetTimeRemaining(World->GetTimeSeconds()));
+	if (Ticks <= 0)
+	{
+		return 0.0f;
+	}
+
+	// A SHARE OF CURRENT HEALTH, whose ticks each take the share of the health
+	// held when they land. Ruled 2026-10-01: what its ticks would take if
+	// nothing else struck.
+	const float Share = Active->Spec.GetSetByCallerMagnitude(
+		FName(ShareOfCurrentHealthDataName), /*WarnIfNotFound=*/false,
+		/*DefaultIfNotFound=*/-1.0f);
+	if (Share >= 0.0f)
+	{
+		const ACataclysmEnemyCharacter* AsEnemy =
+			Cast<ACataclysmEnemyCharacter>(Defender->GetAvatarActor());
+		return ShareOfHealthOverTicks(Share,
+			Defender->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			Defender->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+			AsEnemy && AsEnemy->IsBoss(), Ticks);
+	}
+	return FMath::Max(0.0f, PerTick) * static_cast<float>(Ticks);
+}
+
+int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, AActor* Target,
+														  float Percent,
+														  const FGameplayTag& OnlyGranting,
+														  bool bEndEach)
+{
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Owner || !Defender || Percent <= 0.0f)
+	{
+		return 0;
+	}
+
+	// WHAT EACH BURST NEEDS IS TAKEN FIRST, because ending an effect, or the
+	// burst itself killing the target, changes the list being read.
+	struct FBurst
+	{
+		FActiveGameplayEffectHandle Handle;
+		FGameplayEffectContextHandle Context;
+		FGameplayTagContainer AssetTags;
+		FGameplayTagContainer GrantedTags;
+		float Amount = 0.0f;
+	};
+	TArray<FBurst> Bursts;
+	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
+	{
+		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
+		if (!Active || Active->Spec.GetContext().GetInstigator() != Owner)
+		{
+			continue;
+		}
+		FBurst Burst;
+		Active->Spec.GetAllGrantedTags(Burst.GrantedTags);
+		if (OnlyGranting.IsValid() && !Burst.GrantedTags.HasTag(OnlyGranting))
+		{
+			continue;
+		}
+		Burst.Amount = RemainingDamageOverTime(Defender, Handle) * Percent / 100.0f;
+		if (Burst.Amount <= 0.0f)
+		{
+			continue;
+		}
+		Burst.Handle = Handle;
+		Burst.Context = Active->Spec.GetContext();
+		Active->Spec.GetAllAssetTags(Burst.AssetTags);
+		Bursts.Add(MoveTemp(Burst));
+	}
+
+	for (const FBurst& Burst : Bursts)
+	{
+		if (bEndEach)
+		{
+			Defender->RemoveActiveGameplayEffect(Burst.Handle);
+		}
+
+		UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmRemainingDamageOverTime"));
+		Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+		const int32 Index = Effect->Modifiers.Num();
+		Effect->Modifiers.SetNum(Index + 1);
+		FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+		Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(Burst.Amount);
+
+		// THE TICK'S OWN TAGS: its element and the damage over time flag as asset
+		// tags, and what it granted, which is how the damage branch knows a bleed.
+		FGameplayEffectSpec Spec(Effect, Burst.Context, /*Level=*/1.0f);
+		Spec.AppendDynamicAssetTags(Burst.AssetTags);
+		Spec.DynamicGrantedTags.AppendTags(Burst.GrantedTags);
+		Defender->ApplyGameplayEffectSpecToSelf(Spec);
+	}
+	return Bursts.Num();
 }
 
 FGameplayTag UCataclysmSkillEffects::BurnTag()

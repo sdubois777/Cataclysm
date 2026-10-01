@@ -2315,9 +2315,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0,0,0,\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4290,9 +4290,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0,0,0\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0,0,0,\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -4409,9 +4409,9 @@ bool FCataclysmStackSecondsRollTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0,0,0\n"),
+				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0,0,0,\n"),
 				DrawbackWithNoEffect, DrawbackWithNoEffect, StackSecondsHigh));
 		if (!Effects)
 		{
