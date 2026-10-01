@@ -166,6 +166,32 @@ float UCataclysmVitalAttributeSet::MaximumEnergyShieldAsked() const
 	return GetMaxEnergyShield();
 }
 
+void UCataclysmVitalAttributeSet::PostAttributeChange(
+	const FGameplayAttribute& Attribute, float OldValue, float NewValue)
+{
+	Super::PostAttributeChange(Attribute, OldValue, NewValue);
+
+	// HEALTH IS LOWERED TO A LOWERED MAXIMUM. Issue #2190, ruled by the coordinating session on 2026-10-01 as a
+	// labelled judgement: health above its maximum is a fault, because the next write of any size -- a hit of one
+	// point -- clamps it in `PreAttributeChange` and reads as a large hit. Measured before this: a Pact of Wrath's or a
+	// refresh's lowered maximum left health above it until the next write.
+	//
+	// HERE AND NOT IN `PreAttributeChange`, because that hook can change only the value being written, which is the
+	// maximum. The engine calls this after every write to an attribute's current value, by a base write or by an
+	// effect (`FGameplayAttribute::SetNumericValueChecked`), so no route that lowers the maximum misses it.
+	//
+	// THE MAXIMUM ONLY: not the healing ceiling and not what a reservation leaves, which are their own rules. RAISING
+	// the maximum raises nothing. Health only: issue #1757's ruling that a lowered ceiling does not take shield or
+	// mana away is a different case and stands.
+	if (Attribute == GetMaxHealthAttribute() && NewValue < OldValue && GetHealth() > NewValue)
+	{
+		if (UAbilitySystemComponent* Owner = GetOwningAbilitySystemComponent())
+		{
+			Owner->SetNumericAttributeBase(GetHealthAttribute(), NewValue);
+		}
+	}
+}
+
 void UCataclysmVitalAttributeSet::PreAttributeChange(
 	const FGameplayAttribute& Attribute, float& NewValue)
 {

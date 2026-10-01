@@ -3201,8 +3201,10 @@ def test_march_of_progress_forgets_its_commander_before_the_floor_is_populated()
     # THE ORDER ITSELF, SO THE REASON ABOVE CANNOT QUIETLY STOP BEING TRUE. If GoToFloor
     # is ever rearranged to apply the floor rules before populating, the two assertions
     # above become the wrong way round and this is what says so.
+    # GoToFloor applies the floor rules through ApplyFloorRulesKeepingHealth since issue #2190, which calls
+    # ApplyFloorRulesToPlayer itself; the order checked is the same.
     go = body_of(game_mode, "bool ACataclysmDungeonGameMode::GoToFloor(")
-    assert go.index("PopulateFloor()") < go.index("ApplyFloorRulesToPlayer()"), (
+    assert go.index("PopulateFloor()") < go.index("ApplyFloorRulesKeepingHealth()"), (
         "GoToFloor now applies the floor rules before populating the floor. March of "
         "Progress forgets its Commander in PopulateFloor precisely because that ran "
         "first; with the order swapped, the Commander must be forgotten in the applier "

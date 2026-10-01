@@ -2795,6 +2795,19 @@ private:
 	void StepPlayersFollowers();
 
 	/**
+	 * Writes back onto the player, at once, every dungeon-long rule that changes its maximum health, so the floor's
+	 * start reads the maximum they leave. Issue #2190; the reason and the guard are on the definition.
+	 */
+	void WriteTheMaximumHealthRulesBack();
+
+	/**
+	 * Every caller's way to apply the floor's rules to the player: `ApplyFloorRulesToPlayer`, then
+	 * `WriteTheMaximumHealthRulesBack`, then health restored to the lower of what it was and the maximum they leave.
+	 * Issue #2190; the reason is on the definition.
+	 */
+	void ApplyFloorRulesKeepingHealth();
+
+	/**
 	 * Famished Beasts: an eater's damage and maximum health for the drops it has eaten. Issues #1820 and #41.
 	 * `bFreshBlock` after a rung change has written its whole stat block over, as Soul Harvest's is: nothing this rule
 	 * added is still on it.
