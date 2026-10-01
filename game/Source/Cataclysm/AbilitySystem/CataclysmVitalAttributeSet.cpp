@@ -684,6 +684,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  /*Target=*/GetOwningActor(),
 								  EnemiesStruckTogether)
 							: Offence->GetArmorPenetration();
+
+						// AND THE SHARE A CRITICAL STRIKE IGNORES ON TOP, asked with the
+						// same facts and added in the damage calculation only if the
+						// blow critically strikes, which is not known yet. Issue #1833,
+						// ruled 2026-09-30: "Your critical strikes ignore 20%-40% of
+						// enemy armor". Nothing without an ability system of ours.
+						Hit.CriticalArmorPenetration = AskingToPenetrate
+							? AskingToPenetrate->StatForSkill(
+								  FName(UCataclysmDamageCalculation::CriticalArmorPenetrationStat),
+								  AssetTags, 0.0f,
+								  /*SkillHealthCostPercent=*/-1.0f,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  Hit.OpponentDistanceMetres,
+								  UCataclysmSkillEffects::IsStaggered(GetOwningActor()),
+								  /*Target=*/GetOwningActor(),
+								  EnemiesStruckTogether)
+							: 0.0f;
 					}
 
 					// AND THE CRITICAL STRIKE, read here for that same reason.
@@ -811,9 +829,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						// passes through that clamp, so a skill stating 80% on a
 						// character an enchantment has capped at 30% would
 						// otherwise land at 80%. Issue #680.
+						//
+						// AND THE CEILING IS ASKED THROUGH THE PIPELINE, over the
+						// attribute. Issue #1833, ruled 2026-09-30: "Your critical
+						// strike chance cannot exceed 30%-50%" is `max_crit_chance`
+						// flat -70 to -50 on the attribute's 100. Clamped to the
+						// attribute, so a row can lower the ceiling and never raise it,
+						// the owner's ruling of 2026-08-17.
+						const float Ceiling = Asking
+							? FMath::Clamp(Asking->StatAppliedTo(
+											  FName(UCataclysmCombatAttributeSet::MaxCritChanceStat),
+											  AssetTags, Offence->GetMaxCritChance()),
+										  0.0f, Offence->GetMaxCritChance())
+							: Offence->GetMaxCritChance();
 						Hit.CritChance = FMath::Min(
-							Stated >= 0.0f ? Stated : OwnCritChance,
-							Offence->GetMaxCritChance());
+							Stated >= 0.0f ? Stated : OwnCritChance, Ceiling);
 
 						// THE MULTIPLIER IS ASKED FOR TOO, AND FOR THE SAME
 						// REASON THE CHANCE IS. Issue #947 lists it among the

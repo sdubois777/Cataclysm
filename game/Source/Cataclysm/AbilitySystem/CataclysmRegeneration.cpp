@@ -30,12 +30,15 @@ const TCHAR* UCataclysmRegeneration::ShieldRechargeHasNoDelayStat =
 	TEXT("shield_recharge_has_no_delay");
 const TCHAR* UCataclysmRegeneration::ManaRegenRestoresShieldStat =
 	TEXT("mana_regen_restores_shield");
+const TCHAR* UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat =
+	TEXT("energy_shield_recharge_ceiling_reduction");
 
 void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 								   const FGameplayAttribute& Pool,
 								   const FGameplayAttribute& Maximum,
 								   float Gain,
-								   const FGameplayTagContainer& Healing)
+								   const FGameplayTagContainer& Healing,
+								   float CeilingShare)
 {
 	if (Gain <= 0.0f)
 	{
@@ -124,6 +127,12 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 			Ceiling = Vitals->MaximumEnergyShieldAsked();
 		}
 	}
+
+	// AND A CALLER MAY ALLOW ONLY A SHARE OF THAT. Issue #1833, ruled
+	// 2026-09-30: "Your energy shield cannot recharge above 50% of its
+	// maximum" is the shield's regeneration step passing a half. A pool
+	// already above the share is not drained; it simply gains nothing.
+	Ceiling *= FMath::Clamp(CeilingShare, 0.0f, 1.0f);
 
 	// AND A CHARACTER MAY BE FORBIDDEN TO BE HEALED ALL THE WAY UP. Issue
 	// #988. The Masochist's Point of No Return keystone reads "You cannot be
@@ -405,10 +414,26 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 			* RechargeScale
 		+ FromMana;
 
+	// AND ONLY UP TO THE RECHARGE CEILING: what is left of 100 after the
+	// reduction the character carries. Issue #1833, ruled 2026-09-30: "Your
+	// energy shield cannot recharge above 50% of its maximum" is
+	// `energy_shield_recharge_ceiling_reduction` flat 50, the shape the healing
+	// ceiling has (`healing_ceiling_reduction`). Regeneration only, a labelled
+	// judgement of the same ruling: "recharge" is not leech or any other
+	// restoration.
+	const UCataclysmAbilitySystemComponent* Ceilinged =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float RechargeCeilingShare = Ceilinged
+		? 1.0f - FMath::Clamp(Ceilinged->StatAppliedTo(
+								  FName(EnergyShieldRechargeCeilingReductionStat),
+								  FGameplayTagContainer(), 0.0f),
+							  0.0f, 100.0f) / 100.0f
+		: 1.0f;
 	TopUp(*AbilitySystem,
 		  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
-		  GainPerStep(ShieldRate, SecondsInStep));
+		  GainPerStep(ShieldRate, SecondsInStep), FGameplayTagContainer(),
+		  RechargeCeilingShare);
 
 	// AND THE RATE IS KEPT, for the minions sharing this shield. Issue #1515,
 	// Shared Blood: their shields refill at the same share of their maximum.

@@ -131,6 +131,16 @@ public:
 	static const TCHAR* ManaRegenRestoresShieldStat;
 
 	/**
+	 * How many percentage points of its maximum the energy shield may NOT
+	 * regenerate into; the shield regenerates to what is left of 100. Issue
+	 * #1833: "Your energy shield cannot recharge above 50% of its maximum" is
+	 * flat 50, the shape `healing_ceiling_reduction` has, so nothing reaching
+	 * it means no ceiling. Read in the regeneration step alone; no attribute,
+	 * so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* EnergyShieldRechargeCeilingReductionStat;
+
+	/**
 	 * What share of its usual rate an energy shield recharges at during the
 	 * wait, for a character holding Ablative.
 	 *
@@ -241,10 +251,14 @@ public:
 	 *                 scoped to one source of it. `Keyword.Regeneration` for a
 	 *                 regeneration step, nothing for leech. Ignored for every
 	 *                 pool except health, which is the only one Fervour reads
+	 * @param CeilingShare  the share of the maximum this restoration may fill to,
+	 *                 1 for all of it. Issue #1833: the shield's regeneration
+	 *                 step passes its recharge ceiling; everything else passes 1
 	 */
 	static void TopUp(UAbilitySystemComponent& AbilitySystem,
 					  const FGameplayAttribute& Pool,
 					  const FGameplayAttribute& Maximum, float Gain,
 					  const FGameplayTagContainer& Healing =
-						  FGameplayTagContainer());
+						  FGameplayTagContainer(),
+					  float CeilingShare = 1.0f);
 };

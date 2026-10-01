@@ -62,6 +62,7 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, CharacterLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, ExperienceIntoLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, RunKills);
+	DOREPLIFETIME(ACataclysmPlayerState, FloorsClearedThisRun);
 	DOREPLIFETIME(ACataclysmPlayerState, LifetimeKills);
 	DOREPLIFETIME(ACataclysmPlayerState, CreationChoice);
 	DOREPLIFETIME(ACataclysmPlayerState, PassiveAllocation);
@@ -157,6 +158,25 @@ int32 ACataclysmPlayerState::GetCharacterLevel() const
 		: UCataclysmPlayerClassStats::ChosenLevel();
 }
 
+const TCHAR* ACataclysmPlayerState::ExperienceGainStat = TEXT("experience_gain");
+
+int64 ACataclysmPlayerState::ExperienceAfterGain(int32 KillScore) const
+{
+	const UCataclysmAbilitySystemComponent* Earner =
+		Cast<const UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Earner)
+	{
+		return KillScore;
+	}
+	const float Share = FMath::Max(0.0f, Earner->StatAppliedTo(
+		FName(ExperienceGainStat), FGameplayTagContainer(), 100.0f)) / 100.0f;
+	// UNCHANGED TO THE POINT WHEN NOTHING MOVES IT, so no rounding reaches a
+	// character without the row.
+	return FMath::IsNearlyEqual(Share, 1.0f)
+		? static_cast<int64>(KillScore)
+		: static_cast<int64>(FMath::FloorToDouble(static_cast<double>(KillScore) * Share));
+}
+
 int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 {
 	// GRANTING NOTHING CHANGES NOTHING, INCLUDING THE LEVEL, and that is worth
@@ -195,6 +215,21 @@ void ACataclysmPlayerState::SetLevelAndExperience(int32 NewLevel,
 	const int64 Ceiling = UCataclysmExperience::CostOfLevel(CharacterLevel + 1);
 	const int64 Most = FMath::Max<int64>(0, Ceiling - 1);
 	ExperienceIntoLevel = FMath::Clamp<int64>(NewExperience, 0, Most);
+}
+
+void ACataclysmPlayerState::NoteFloorBegan(float WorldSeconds)
+{
+	FloorBeganAtSeconds = FMath::Max(0.0f, WorldSeconds);
+}
+
+float ACataclysmPlayerState::SecondsOnFloor(float WorldSeconds) const
+{
+	return FloorBeganAtSeconds < 0.0f ? -1.0f : FMath::Max(0.0f, WorldSeconds - FloorBeganAtSeconds);
+}
+
+void ACataclysmPlayerState::NoteFloorCleared()
+{
+	FloorsClearedThisRun = FloorsClearedThisRun < MAX_int32 ? FloorsClearedThisRun + 1 : FloorsClearedThisRun;
 }
 
 void ACataclysmPlayerState::NoteKill()

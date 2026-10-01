@@ -135,6 +135,23 @@ public:
 	int32 GrantExperience(int64 Amount);
 
 	/**
+	 * The share of a kill's experience this character receives, as a
+	 * percentage over a base of 100, asked where the kill grants it. Issue
+	 * #1833: "Kills no longer generate any experience" removes it. No
+	 * attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* ExperienceGainStat;
+
+	/**
+	 * What a kill worth `KillScore` experience grants this character: the score
+	 * times `experience_gain` asked through its stat line over a base of 100,
+	 * rounded down, and the whole score unchanged when nothing moves it. Issue
+	 * #1833, ruled 2026-09-30: "Kills no longer generate any experience" removes
+	 * the stat, which leaves nothing.
+	 */
+	int64 ExperienceAfterGain(int32 KillScore) const;
+
+	/**
 	 * Put a saved level and progress back onto the character.
 	 *
 	 * CLAMPED RATHER THAN REFUSED, because this is reached from a save record
@@ -169,6 +186,35 @@ public:
 	/** Kills this run. Issue #1833. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Kills")
 	int32 GetRunKills() const { return RunKills; }
+
+	/**
+	 * The world time the floor this character stands on began, recorded by the
+	 * dungeon game mode each time it places one. Issue #1833: "Enemies deal
+	 * 5%-8% increased damage for every 15 seconds spent on the same dungeon
+	 * floor" counts from here, and a new floor starts it again.
+	 */
+	void NoteFloorBegan(float WorldSeconds);
+
+	/** Seconds since `NoteFloorBegan` at this world time, or -1 if no floor began. */
+	float SecondsOnFloor(float WorldSeconds) const;
+
+	/**
+	 * One more dungeon floor cleared this run, recorded by the dungeon game
+	 * mode the first time it sees a floor's enemies all dead. Issue #1833:
+	 * "Your armor is increased by 1%-2% for every dungeon floor cleared this
+	 * run". "This run" is since the session began, as for the kills.
+	 *
+	 * NOTHING IS REFRESHED HERE. A blow asks for armour through the stat
+	 * pipeline each time, so a row scaled by this count reaches play at once.
+	 * The character sheet reads the Armor attribute, and a refresh cannot put a
+	 * state-scaled row there: `UCataclysmPlayerClassStats::ApplyTo` resolves each
+	 * stat with no state. A known limit, ruled 2026-09-30; the sheet shows the
+	 * unscaled armour, as it does for every state-scaled stat but maximum health.
+	 */
+	void NoteFloorCleared();
+
+	/** Floors cleared this run. Issue #1833. */
+	int32 GetFloorsClearedThisRun() const { return FloorsClearedThisRun; }
 
 	/** Kills across every run this character has played. Issue #1833. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Kills")
@@ -432,6 +478,13 @@ protected:
 	/** See `NoteKill`. Replicated so a client's character sheet can show them. */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Kills")
 	int32 RunKills = 0;
+
+	/** See `NoteFloorCleared`. Replicated so a client's sheet can show it. */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Dungeon")
+	int32 FloorsClearedThisRun = 0;
+
+	/** See `NoteFloorBegan`. -1 until a floor begins. */
+	float FloorBeganAtSeconds = -1.0f;
 
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Kills")
 	int32 LifetimeKills = 0;

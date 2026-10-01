@@ -641,7 +641,15 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 396 SINCE HEALTH RESERVATION, issue #1833, from 394.
 	//
 	// AND 402 SINCE THE DURATIONS, issue #1833, from 396.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    402)
+	//
+	// AND 408 SINCE PROJECTILES AND RANGE, issue #1833, from 402.
+	//
+	// AND 412 SINCE THE CONDITIONS, issue #1833, from 408.
+	//
+	// AND 416 SINCE THE CEILINGS AND COSTS, issue #1833, from 412.
+	//
+	// AND 421 SINCE THE SCALES, issue #1833, from 416.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    421)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

@@ -764,6 +764,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// replaces every field, so a reading taken first would be discarded.
 		State.MaximumHealth = Vitals->GetMaxHealth();
 
+		// AND THE ARMOR ATTRIBUTE, for "for every 100 points of armor you have".
+		// Issue #1833. The attribute, as the maximum above is, so no row can scale
+		// armour by armour.
+		if (const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>())
+		{
+			State.Armor = Combat->GetArmor();
+		}
+
 		// AND HOW MUCH ENERGY SHIELD IS IN HAND, WITH THE TOP OF THAT BAR.
 		// Issue #1515. Cold Reading asks for it: "+2% increased Spell Damage per
 		// point while your Energy Shield is full."
@@ -1116,6 +1124,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// AND THE KILLS, WHICH ONLY A PLAYER COUNTS. Issue #1833.
 		State.RunKills = Player->GetRunKills();
 		State.CharacterKills = Player->GetLifetimeKills();
+
+		// AND THE DUNGEON'S TWO RECORDS AND THE BOSSES BEATEN. Issue #1833 group
+		// C part 3c. The floor clock reads the world this character is in.
+		State.FloorsCleared = Player->GetFloorsClearedThisRun();
+		State.CataclysmBossesDefeated = Player->GetDefeatedCataclysmBosses().Num();
+		if (const UWorld* World = GetWorld())
+		{
+			State.SecondsOnFloor = Player->SecondsOnFloor(World->GetTimeSeconds());
+		}
 	}
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT
@@ -1215,7 +1232,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	float WidestCrippled = -1.0f;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
+		// EITHER CONDITION MAY ASK, since issue #1833 gave a row a second one.
 		if (Modifier.Condition == ECataclysmStatCondition::EnemiesInReachAtLeast
+			|| Modifier.Condition2 == ECataclysmStatCondition::EnemiesInReachAtLeast
 			|| Modifier.Scale == ECataclysmStatScale::PerEnemyInReach)
 		{
 			Widest = FMath::Max(Widest, Modifier.ReachMetres);
@@ -1328,40 +1347,46 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsHistory = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
-		switch (Modifier.Condition)
+		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
+		// 2026-09-30: a row naming two states must gather what either needs, or
+		// the one this switch never saw is judged against an empty field.
+		for (const ECataclysmStatCondition Asked : {Modifier.Condition, Modifier.Condition2})
 		{
-		case ECataclysmStatCondition::TargetCarriesCripple:
-		case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
-		// AND THE VOID SPLINTER, WHICH MUST BE LISTED HERE OR IT READS NOTHING.
-		// Issue #1642. `TargetDebuffs` is filled only when some modifier in this
-		// lookup asks about an ailment, so a condition missing from this switch
-		// is judged against an empty container, answers false every time, and
-		// the row grants nothing with no error anywhere.
-		case ECataclysmStatCondition::TargetCarriesVoidSplinter:
-		// AND THE TWO THAT ASK ABOUT ANY DEBUFF. Issue #1815.
-		case ECataclysmStatCondition::TargetCarriesAnyDebuff:
-		case ECataclysmStatCondition::TargetCarriesADot:
-			bWantsAilments = true;
-			break;
-		case ECataclysmStatCondition::TargetHealthBelowPercent:
-			bWantsHealth = true;
-			break;
-		// AND WHETHER THE TARGET IS A BOSS, LISTED HERE FOR THE REASON THE
-		// AILMENT COMMENT ABOVE GIVES. Issue #1815. A condition missing from
-		// this switch is judged against a field nothing filled, answers false
-		// every time, and the row grants nothing with no error anywhere.
-		case ECataclysmStatCondition::TargetIsBoss:
-		case ECataclysmStatCondition::TargetIsNotBoss:
-			bWantsBoss = true;
-			break;
-		case ECataclysmStatCondition::TargetNotYetStruckByYou:
-		case ECataclysmStatCondition::TargetNotYetCritByYou:
-		// AND HOW LONG AGO, from the same record. Issue #1515, Set Upon.
-		case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
-			bWantsHistory = true;
-			break;
-		default:
-			break;
+			switch (Asked)
+			{
+			case ECataclysmStatCondition::TargetCarriesCripple:
+			case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
+			// AND THE VOID SPLINTER, WHICH MUST BE LISTED HERE OR IT READS NOTHING.
+			// Issue #1642. `TargetDebuffs` is filled only when some modifier in this
+			// lookup asks about an ailment, so a condition missing from this switch
+			// is judged against an empty container, answers false every time, and
+			// the row grants nothing with no error anywhere.
+			case ECataclysmStatCondition::TargetCarriesVoidSplinter:
+			// AND THE TWO THAT ASK ABOUT ANY DEBUFF. Issue #1815.
+			case ECataclysmStatCondition::TargetCarriesAnyDebuff:
+			case ECataclysmStatCondition::TargetCarriesADot:
+				bWantsAilments = true;
+				break;
+			case ECataclysmStatCondition::TargetHealthBelowPercent:
+				bWantsHealth = true;
+				break;
+			// AND WHETHER THE TARGET IS A BOSS, LISTED HERE FOR THE REASON THE
+			// AILMENT COMMENT ABOVE GIVES. Issue #1815. A condition missing from
+			// this switch is judged against a field nothing filled, answers false
+			// every time, and the row grants nothing with no error anywhere.
+			case ECataclysmStatCondition::TargetIsBoss:
+			case ECataclysmStatCondition::TargetIsNotBoss:
+				bWantsBoss = true;
+				break;
+			case ECataclysmStatCondition::TargetNotYetStruckByYou:
+			case ECataclysmStatCondition::TargetNotYetCritByYou:
+			// AND HOW LONG AGO, from the same record. Issue #1515, Set Upon.
+			case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
+				bWantsHistory = true;
+				break;
+			default:
+				break;
+			}
 		}
 
 		// A SCALE ASKS TOO, and asks separately from the condition. Issue
@@ -2625,7 +2650,9 @@ bool UCataclysmAbilitySystemComponent::MaximumHealthMovesWithState() const
 	for (const FCataclysmStatModifier& Modifier : Line->Modifiers)
 	{
 		if (Modifier.Scale != ECataclysmStatScale::Fixed
-			|| Modifier.Condition != ECataclysmStatCondition::Always)
+			|| Modifier.Condition != ECataclysmStatCondition::Always
+			// OR A SECOND CONDITION, which moves the line as the first does. #1833.
+			|| Modifier.Condition2 != ECataclysmStatCondition::Always)
 		{
 			return true;
 		}

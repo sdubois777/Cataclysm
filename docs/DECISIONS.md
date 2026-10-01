@@ -2,6 +2,294 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — A row may scale with seconds on the floor, floors cleared this run, armour or unique bosses defeated
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (four scales
+and their state), `CataclysmAbilitySystemComponent.cpp` (the state fill),
+`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp` (`NoteFloorBegan`, `SecondsOnFloor`,
+`NoteFloorCleared`, `GetFloorsClearedThisRun`), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`tools/generate_datatables.py`, the built-ahead scale test, the new
+`game/Source/Cataclysm/Tests/CataclysmFloorScalesTests.cpp` (two tests), five row tests including
+the kill counter's, the workbook and the effects table. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group C part 3c. This entry carries the
+run of the whole stack: the projectile, conditions and ceilings entries below went in with it as one
+pull request.
+
+### WHAT WAS RULED, 2026-09-30, UNDER THE OWNER'S DELEGATION
+
+- **"Enemies deal 5%-8% increased damage for every 15 seconds spent on the same dungeon floor"** is
+  damage the wearer takes, with **no cap**, and the clock starts again on each new floor. A labelled
+  judgement; the sentence states no cap, and **it is on the owner's list to check in play**, because
+  an uncapped clock on a floor the player lingers on grows without end.
+- **A floor is cleared when its enemies are all dead**, not when the player descends. "This run" is
+  since the session began, as for the kill count.
+- **A Horde wave is a floor for the floor clock.** A labelled judgement: the clock starts where the
+  game mode starts the floor's clear clock, which a Horde wave starts again, so each wave starts the
+  floor clock again too.
+- **"Unique Cataclysm boss" counts the record the player state already keeps.** No unique Cataclysm
+  boss exists yet and `RecordCataclysmBossDefeat` has no caller in play, so **the boss row reaches
+  nothing in play today.** It is tested through the record.
+
+### WHAT WAS BUILT
+
+- **Four scales:** `seconds_on_floor`, `floors_cleared`, `armor` and `cataclysm_bosses_defeated`. Each
+  reads -1, "not known", outside the state it needs, so a scaled row adds nothing there.
+- **The player state keeps the floor clock and the clear count.** The game mode calls
+  `NoteFloorBegan` beside the start of the floor's clear clock, and `NoteFloorCleared` where it first
+  records the floor's clear time.
+  The clear count is replicated.
+- **The rows:** `damage_taken` increased 5-8 per 15 seconds on the floor; `armor` increased 1-2 per
+  floor cleared; `retaliation` increased 2-4 per 100 armour; `attack_damage` and `spell_damage` more
+  5-10 per unique boss, two rows. EnchantmentEffects 416 to 421.
+
+### CORRECTIONS
+
+- **My finding on the kill counter was wrong, and was withdrawn before any change.** I reported that
+  "maximum health increased per 1000 kills" would reach the health bar only at the next equipment
+  change, because nothing refreshes attributes on a kill. That missed `RefreshLiveMaximumHealth`
+  ([#1815](https://github.com/sdubois777/Cataclysm/issues/1815)): a character whose maximum health
+  moves with its state, which a scaled row makes it, has the maximum rewritten from the pipeline at
+  every regeneration step. The new test
+  `Cataclysm.KillCounter.TheMaxHealthPerKillRowReachesTheHealthBarAtTheNextRegenerationStep` guards
+  that the attribute, and not only the increase, moves.
+- **The ruling that a clear refreshes the attributes was withdrawn by its ruler after the window
+  measured it.** The rows test read the sheet's armour as 171.50 before and after two clears, while a
+  blow read 178.36. `UCataclysmPlayerClassStats::ApplyTo` resolves each stat with no state, so a
+  scaled or conditioned row never reaches an attribute through a refresh. `NoteFloorCleared` now only
+  counts, and the test is
+  `Cataclysm.Enchantments.TheFloorsClearedRowRaisesTheArmorABlowReads`. **A known limit:** the
+  character sheet shows armour without its floors-cleared increase, as it does every state-scaled
+  stat; what a blow reads is right. Proof B was replaced to match.
+
+### THE RUN
+
+The engine commits end at `282b3089` on development `32982485`. The rename is `8f0b70fa`; the rows
+are `b3ee70cc`, `cabcc126`, `f1411568` and `f51c184f`; the assets `1c1b3714`; the window's test fixes
+`b9d12888` and `edd15ca4`.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `282b3089` | "1 failed, 5578 passed, 8 skipped in 316.43s": the stale CSV hash, as predicted; JUnit tests 5587, failures 1. The registration said 5586 passed, an arithmetic slip: 5587 - 1 - 8 is 5578 |
+| First build | "Build: Failed - 31 actions, 28 files compiled": one C4458, recorded in the ceilings entry |
+| Build after the rename `8f0b70fa` | "Build: Succeeded - 26 actions, 23 files compiled" |
+| Python after the rows, `f51c184f` | "1 failed, 5578 passed, 8 skipped in 331.81s": the stale CSV hash |
+| Stale-asset step | "4 actions, 1 file compiled"; "173 tests performed, 155 succeeded, 18 failed", the 18 registered |
+| Asset rebuild `1c1b3714` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The 26 new tests and the probe test | "27 tests performed, 23 succeeded, 4 failed": predicted 27 of 27. The gadget range test, the floors-cleared test and both ceiling row tests; the causes are in this entry and the projectile and ceilings entries |
+| The four, re-run at `edd15ca4` | "Build: Succeeded - 6 actions, 3 files compiled"; "4 tests performed, 4 succeeded, 0 failed" |
+| Twelve proofs at `edd15ca4` | all PROVED, each failing exactly its registered tests, and each restored half passing; the rows are in the four entries |
+| Whole suite, `edd15ca4`, in its own command | "2897 tests performed, 2897 succeeded, 0 failed"; 2897 declared, gap 0. Predicted 2871 + 26 |
+
+### THE PROOFS, at `edd15ca4`
+
+| Proof | Result |
+| :-- | :-- |
+| A, the floor clock not started again | PROVED: `TheFloorClockStartsAgainOnANewFloorAndEachClearIsCounted`, 1 assertion; restored 1 of 1 |
+| B, replaced: `State.FloorsCleared` written as -1 | PROVED: `TheFloorsClearedRowRaisesTheArmorABlowReads`, 2 assertions, the increase and the armour a blow reads; restored 1 of 1 |
+| C, `State.Armor` left unknown | PROVED: `TheRetaliationPerArmorRowCountsWholeHundreds`, 1 assertion; restored 1 of 1 |
+
+---
+
+## 2026-09-30 — A crit ceiling, a shield recharge ceiling, experience gain and a mana cost from the maximum each reach play
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the hit's crit
+chance), `CataclysmCombatAttributeSet.h` and `.cpp` (`MaxCritChanceStat`), `CataclysmRegeneration.h`
+and `.cpp` (`TopUp`'s `CeilingShare`, `EnergyShieldRechargeCeilingReductionStat`),
+`CataclysmGameplayAbility.h` and `.cpp` (`ManaCostFor`), `game/Source/Cataclysm/Player/CataclysmPlayerState.h`
+and `.cpp` (`ExperienceGainStat`, `ExperienceAfterGain`), `CataclysmEnemyCharacter.cpp` (the kill's
+experience), `CataclysmPlayerClassStats.cpp`, `tools/generate_datatables.py`
+(`COMPLEMENT_RANGE_ENCHANTMENTS`), `tools/tests/test_enchantment_effects_match_the_row_text.py`
+(`COMPLEMENT_STATS`), `tools/tests/test_stat_lookups_hand_over_what_they_should.py`, four probes, four
+row tests, the workbook and the effects table. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group C part 3b.
+
+### WHAT WAS RULED, 2026-09-30, UNDER THE OWNER'S DELEGATION
+
+Four stats with no attribute, each read through the stat pipeline over the figure it changes, the
+`resistance_cap` pattern, so none needs an engine-supplied base. Labelled judgements:
+
+- **The crit ceiling can lower the ceiling and never raise it**, the owner's ruling of 2026-08-17. It is
+  the complement of its range, as the maximum health ceiling is: -70 to -50 leaves 30 to 50.
+- **The shield ceiling caps regeneration only.** "Recharge" is not leech or any other restoration, and
+  a shield already above the ceiling is not drained. The stat is a REDUCTION, flat 50 leaving 50 of 100,
+  the shape `healing_ceiling_reduction` has, so the row is not a negative value on words that take
+  nothing away.
+- **No experience means all experience;** kills are its only source. It is a removal.
+- **A cost from the maximum mana is PLUS the normal cost**, following the 2026-09-24 every-Nth-spell
+  ruling: "instead" would make a drawback cheaper whenever the share is below the normal cost.
+
+### WHAT WAS BUILT
+
+- **`max_crit_chance`** is asked where a blow takes its chance, over the `MaxCritChance` attribute,
+  with the skill's tags, and clamped to that attribute. A skill's stated chance is capped too.
+- **`TopUp` takes a ceiling share**, default 1, so every other caller is unchanged; the shield's
+  regeneration step passes one minus the reduction.
+- **`ACataclysmPlayerState::ExperienceAfterGain`** gives a kill's score times the experience share,
+  rounded down and exact when nothing moves it. The kill's grant stays the first statement inside its
+  gate, which a Python test reads as text.
+- **`mana_cost_as_maximum_mana_percent`** is added to `ManaCostFor`'s extra beside the every-Nth share,
+  asked with the skill's tags.
+- **The rows:** `max_crit_chance` flat -70 to -50; `energy_shield_recharge_ceiling_reduction` flat 50;
+  `experience_gain` removed; `mana_cost_as_maximum_mana_percent` flat 20-50 on `Slot.Movement`.
+  EnchantmentEffects 412 to 416.
+
+### FOUND IN THE WINDOW
+
+- **The first build failed on one error, C4458:** a parameter named `Score` on
+  `ExperienceAfterGain` hid the engine's `APlayerState::Score`. The parameter is `KillScore`. The
+  check that looks for a hidden local cannot see an inherited engine member; a scan of the stack's
+  declared names against twelve engine base headers found it on the commit before the fix and nothing
+  else after.
+- **The crit ceiling and shield ceiling row tests failed their first run, and temporary readouts showed
+  why.** After a refresh the wearer carries `crit_chance` and `energy_shield_regen` stat lines of base
+  0, and the readers ask the lines: the tests had written the attributes and read a chance of 0 and a
+  rate of 0. Each test now writes those lines beside the worn row's own. The readouts were never
+  committed; the file's hash after restoring them matched before.
+- **The crit test's "no critical strike at a roll of 60" had passed against a corpse:** the first
+  blow killed the 100-health target. The target now has 100,000 health.
+- **Both base-0 lines are the design, by reading.** A character's crit chance comes from Ferocity
+  ("+0.5% crit chance", `docs/Cataclysm_GDD_v2.md`) and gear, and a skill states its own chance
+  (`sim/cataclysm_sim/character.py`, `DEFAULT_SKILL_CRIT_CHANCE = 5.0`); no class line names it. Only
+  the Ritualist has a class base for shield regeneration, 8 and 1.6 a level, and Spirit adds 1 a point.
+
+### THE PROOFS, at the stack's top `edd15ca4`
+
+| Proof | Result |
+| :-- | :-- |
+| A, the hit asks a stat nothing carries | PROVED: the crit ceiling row and the probe, 2 assertions; restored 2 of 2 |
+| B, the shield step passes the whole maximum | PROVED: the shield ceiling row and the probe, 2 assertions; restored 2 of 2 |
+| C, the maximum-mana share worked out and not added | PROVED: the movement mana row and the probe, 2 assertions; restored 2 of 2 |
+
+---
+
+## 2026-09-30 — A row may name two conditions and roll its threshold, and a critical strike ignores its own share of armour
+
+**Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h` (`Condition2`, `ConditionValue2`,
+`ConditionValueHigh`), `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`
+(`FCataclysmStatModifier::Condition2`, `ModifierApplies`, `ValidateModifier`),
+`CataclysmAbilitySystemComponent.cpp` (the three readers of a modifier's condition),
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the movement speed refresh),
+`game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp` (`RolledConditionValue`),
+`CataclysmDamageCalculation.h` and `.cpp` and `CataclysmVitalAttributeSet.cpp` (critical armour
+penetration), `tools/generate_datatables.py`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, the new
+`game/Source/Cataclysm/Tests/CataclysmConditionsTests.cpp` (three tests), four row tests, a probe, the
+five hand-written effect-row CSV fixtures, the workbook and the effects table. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group C part 3a.
+
+### WHAT WAS RULED, 2026-09-30, UNDER THE OWNER'S DELEGATION
+
+- **A second condition, and both must hold**, the literal reading of every sentence that names two.
+- **A threshold stated as a range rolls with the value.** A labelled judgement: "Your abilities are
+  free when above 80%-95% hp" is written 80 to 95 so the hover text and the threshold agree, so a
+  higher roll is a harder threshold.
+- **"Free" means mana only.** A labelled judgement; Fervour and health costs stay.
+- **No "the hit is critical" condition.** Armour penetration is asked before `Resolve` rolls the
+  critical strike, so no such condition could be answered there. A stat of its own instead,
+  `critical_armor_penetration`, carried on the hit and added inside the same clamp only after the roll;
+  the Ironhide suppression still wins.
+- **"Free" is a removal, confirmed when the rows were written.** The proposal said `more` -100, and
+  `ValidateModifier` refuses a More of -100 or below; `removed` is the bucket for a stat that is gone.
+  A conditioned removal removes the cost only while its condition holds, and the row test checks both
+  sides: free above the threshold, the normal cost below it. "free" joins the words that say a stat is
+  gone, a labelled judgement.
+
+### WHAT WAS BUILT
+
+- **Everything that read a modifier's one condition now reads both**: `ModifierApplies`; the switch
+  that decides what a lookup gathers; the enemies-in-reach walk; `MaximumHealthMovesWithState`; and the
+  movement speed refresh. `ValidateModifier` bounds the second threshold by checking a copy that
+  carries it in the first place.
+- **Three optional generator columns**, Condition 2, Condition Value 2 and Condition Value High, with
+  refusals for an unknown condition, a second with no first, the same condition twice, a second
+  condition on an action row, a value out of bounds, a value with no condition, and a threshold range
+  the words do not state. They left `OPTIONAL_COLUMNS` with the rows.
+- **The rows:** `critical_armor_penetration` flat 20-40; `damage_taken` increased 20-35 [while
+  stationary, and a ranged hit]; `damage_taken` increased 20-35 [a melee hit, and health above 75];
+  `mana_cost` removed [health above 80, rolled to 95]. EnchantmentEffects 408 to 412.
+
+### FOUND BEFORE THE WINDOW
+
+The rows rehearsal failed 56 Python tests against the usual 12: the generator tests' hand-written
+headers lacked the new columns once those stopped being optional, the new lookup was missing from the
+`StatForSkill` call-site inventory, and the README's column list and the removed-row count had to move.
+All four were fixed on the branch before the window.
+
+### THE PROOFS, at the stack's top `edd15ca4`
+
+| Proof | Result |
+| :-- | :-- |
+| A, the second condition never asked | PROVED: the two-condition test and the two two-condition rows, 3 assertions; restored 3 of 3 |
+| B, the threshold not rolled | PROVED: `TheFreeAbilitiesRowUsesTheThresholdItRolled`, 1 assertion; restored 1 of 1 |
+| C, critical penetration added without the critical check | PROVED: `ACriticalStrikeIgnoresItsShareOfArmourAndAPlainHitDoesNot`, 1 assertion; restored 1 of 1 |
+
+---
+
+## 2026-09-30 — Projectile speed, a skill's range and a gadget's attack range each have a stat a row can raise, and melee reach has its row
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp`
+(`SkillRangeStat`, `ProjectileSpeedStat`, `ScaledRangeCm`, `ScaledProjectileSpeed`),
+`CataclysmSkillTemplates.cpp` (every read of a skill's stated range, and both player fire sites),
+`CataclysmMinion.cpp` (`Spawn`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(`StatsWithNoAttribute`), the new `game/Source/Cataclysm/Tests/CataclysmProjectileRangeTests.cpp`
+(three tests), `CataclysmEnchantmentEffectTests.cpp` (five row tests), `CataclysmStatExemptionTests.cpp`
+(three probes), `docs/All_Things_Cataclysm.xlsx`, `game/Data/EnchantmentEffects.csv` and the pins that
+count it. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group C part 2. Merged
+with parts 3a, 3b and 3c as one stack; the shared run is in the scales entry above.
+
+### WHAT WAS RULED, 2026-09-30, UNDER THE OWNER'S DELEGATION
+
+Six rows on six enchantments, as proposed. Three **labelled judgements**, which no source settles:
+
+- **A projectile's speed is floored at a tenth of what the skill states.** A speed of nought is a beam
+  that arrives at once, so enough "slower" must not make a shot instant. The worst shipped combination,
+  -50% and -35%, leaves 0.15, so the floor changes no shipped roll.
+- **"Range" is the skill's stated Range**, not the reach of what happens when its target dies
+  (`OnDeathRangeCm`, Harrower's leap and Quarry's spread).
+- **A gadget's notice radius grows with its reach.** A minion finds what to attack within its notice
+  radius and strikes within its reach; the two are equal on every gadget today.
+
+**No formula was chosen.** Each sentence states an increase or a reduction to a figure a skill
+already states, which is the project's increased bucket, so no genre research was needed or done.
+
+**"Gadgets last 30%-60% longer" was proposed as a seventh row and dropped:** it has had a row since
+#2131. The proposal's search of the effects table looked for other words; the rows rehearsal refused
+the duplicate.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmSkillTemplate::ScaledRangeCm`** is the stated range times one plus `skill_range`'s
+  increases, asked with the skill's tags and floored at nought. It replaces all twenty reads of a
+  skill's stated range in the templates; the five checks of whether a skill states a range at all keep
+  reading the stated figure. It answers the stated range for a skill with no owner, reading
+  `GetCurrentActorInfo` rather than the accessor that ensures on missing actor information.
+- **`ScaledProjectileSpeed`** feeds both player fire sites. A lob takes its speed from its flight time
+  and ignores it; no player skill lobs.
+- **`minion_range`** multiplies a minion's reach and notice radius at the summoning, a snapshot as
+  health and duration are, asked with the minion's type tags.
+- **The rows:** `projectile_speed` increased 30-60 on `Type.Ranged`, -20 to -35 on `Type.Ranged` and
+  -30 to -50 on `Type.Projectile`; `skill_range` increased 20-40 on `Type.Ranged`; `minion_range`
+  increased 20-40 on `Type.Deployable`; `melee_reach_metres` flat 0.5-1 on `Type.Melee`, on Overreach's
+  stat (#2052). EnchantmentEffects 402 to 408.
+
+### FOUND IN THE WINDOW
+
+`GadgetRangeLengthensAMachinesReachAndNoticeAndNotAnImps` failed its first run on an engine ensure in
+`ACataclysmMinion::Spawn`: the test built a bare world, so the minion had no vital set when its health
+was written. It now uses a world that has begun play. The row test for the same gadget, in a begun-play
+world, had passed.
+
+### THE PROOFS, at the stack's top `edd15ca4`
+
+| Proof | Result |
+| :-- | :-- |
+| A, the single-throw fire site passes the stated speed | PROVED: `ProjectileSpeedQuickensTheShotsItsTagsReachAndIsFloored`, 1 assertion; restored 3 of 3 |
+| B, `ScaledRangeCm` answers the stated range | PROVED: the range row, `SkillRangeLengthensTheSkillsItsTagsReach` and the probe, 5 assertions, each 1000; restored 3 of 3 |
+| C, the notice radius not lengthened | PROVED: the gadget range row, the gadget range test and the probe, 3 assertions, each a notice radius (1000 against 1400, and 1500 against 2100); restored 3 of 3 |
+
+---
+
 ## 2026-09-30 — Famished Beasts: creatures walk to drops within 10 m and eat them for good, each a tenth stronger in damage and health, up to ten; The Infested Hoard's drops are left alone
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,

@@ -1624,6 +1624,10 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: session, and leaves with those rows.
 #: STACK SECONDS HIGH LEFT with the two skill-lock rows, and the table is
 #: empty again.
+#: CONDITION 2, CONDITION VALUE 2 AND CONDITION VALUE HIGH JOINED ON
+#: 2026-09-30 for issue #1833 group C part 3a, built ahead of their rows
+#: while the design workbook is with another session.
+#: THEY LEFT with the four condition rows, and the table is empty again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -4328,6 +4332,16 @@ SCALES = {
     # `deployables_active`, the machines the character commands now. Issue
     # #1833, deployable Part 3.
     "deployables_active": (0.0, 20.0, "a number of deployable machines"),
+    # Issue #1833 group C part 3c. "for every 15 seconds spent on the same
+    # dungeon floor" is `seconds_on_floor` with a step of 15; "for every dungeon
+    # floor cleared this run" is `floors_cleared` with a step of 1; "for every
+    # 100 points of armor you have" is `armor` with a step of 100, the Armor
+    # attribute; "For every unique Cataclysm boss defeated" is
+    # `cataclysm_bosses_defeated` with a step of 1.
+    "seconds_on_floor": (0.0, 3600.0, "a number of seconds on one floor"),
+    "floors_cleared": (0.0, 1000.0, "a number of dungeon floors cleared"),
+    "armor": (0.0, 100_000.0, "an amount of armor"),
+    "cataclysm_bosses_defeated": (0.0, 100.0, "a number of unique Cataclysm bosses"),
 }
 
 
@@ -4360,6 +4374,9 @@ MAX_STACK_SECONDS = 60.0
 #: and checks that every name in it is still needed.
 COMPLEMENT_RANGE_ENCHANTMENTS = frozenset({
     "Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor",
+    # AND THE CRIT CEILING, issue #1833, 2026-09-30: max_crit_chance flat
+    # -70 to -50 over the attribute's 100.
+    "Negative_Your_critical_strike_chance_cannot_exceed_30_50",
 })
 
 #: The scales that read a Scale Offset: how much of the reading is not counted.
@@ -5574,6 +5591,89 @@ def enchantment_effects(book) -> list[dict]:
                     f"its words {words[name]!r} do not state as a range, so the "
                     f"hover text would show one time and the effect use another.")
 
+        # A SECOND CONDITION, WHICH MUST HOLD AS WELL. Issue #1833, ruled
+        # 2026-09-30 under the owner's delegation: "While stationary you take
+        # 20%-35% increased damage from ranged attacks" names two states, and the
+        # literal reading is both. Only a stat row carries it: an action row's
+        # condition is copied onto its action one at a time.
+        condition2 = clean(_cell(raw, headers, "Condition 2")).lower()
+        condition_value2 = 0.0
+        value2_text = clean(_cell(raw, headers, "Condition Value 2"))
+        if condition2:
+            if condition2 not in CONDITIONS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} names the second "
+                    f"condition {condition2!r}, which the game cannot judge. "
+                    f"Known: {', '.join(sorted(CONDITIONS))}.")
+            if not condition:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states Condition 2 "
+                    f"and no Condition. Write a single condition in Condition.")
+            if condition2 == condition:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} names "
+                    f"{condition!r} as both conditions.")
+            if action:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} moves {action} and "
+                    f"states Condition 2. An action carries one condition.")
+            if CONDITIONS[condition2] is None:
+                if value2_text:
+                    raise DataError(
+                        f"Enchantment Effects row {index}: {name} carries the "
+                        f"second condition {condition2!r} and a value of "
+                        f"{value2_text!r}. That condition compares nothing, so "
+                        f"the value would be ignored. Leave the column empty.")
+            else:
+                condition_value2 = number(value2_text, "Condition Value 2", index)
+                low2, high2, units2 = CONDITIONS[condition2]
+                if not low2 <= condition_value2 <= high2:
+                    raise DataError(
+                        f"Enchantment Effects row {index}: {name} has a second "
+                        f"condition value of {condition_value2}, and "
+                        f"{condition2!r} takes {units2} between {low2:g} and "
+                        f"{high2:g}.")
+        elif value2_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Condition Value "
+                f"2 and no Condition 2, so it would be dropped.")
+
+        # THE CONDITION'S HIGH END, WHEN THE THRESHOLD ROLLS WITH THE VALUE.
+        # Issue #1833, ruled 2026-09-30, following Scale Step High: "Your
+        # abilities are free when above 80%-95% hp" states the threshold as a
+        # range, and the item's roll picks one threshold where it picks the
+        # value. The pair is a range the sentence states, low end first, inside
+        # the condition's own bounds. Only a stat row's threshold rolls.
+        condition_high_text = clean(_cell(raw, headers, "Condition Value High"))
+        condition_value_high = 0.0
+        if condition_high_text:
+            condition_value_high = number(condition_high_text,
+                                          "Condition Value High", index)
+            if not condition or CONDITIONS[condition] is None:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states Condition "
+                    f"Value High and no condition that compares a value, so it "
+                    f"would be dropped.")
+            if action:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} moves {action} and "
+                    f"states Condition Value High. An action's threshold does "
+                    f"not roll.")
+            top_condition = CONDITIONS[condition][1]
+            if not condition_value < condition_value_high <= top_condition:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has a threshold of "
+                    f"{condition_value:g} to {condition_value_high:g}. The high "
+                    f"end is above Condition Value and at most "
+                    f"{top_condition:g}.")
+            if (condition_value, condition_value_high) not in enchantment_ranges(words[name]):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has a threshold of "
+                    f"{condition_value:g} to {condition_value_high:g}, which its "
+                    f"words {words[name]!r} do not state as a range, so the "
+                    f"hover text would show one threshold and the effect use "
+                    f"another.")
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -5597,6 +5697,9 @@ def enchantment_effects(book) -> list[dict]:
             "EveryNth": every_nth,
             "ScaleStepHigh": scale_step_high,
             "StackSecondsHigh": stack_seconds_high,
+            "Condition2": condition2,
+            "ConditionValue2": condition_value2,
+            "ConditionValueHigh": condition_value_high,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
@@ -5624,7 +5727,9 @@ def enchantment_effects(book) -> list[dict]:
         # two reading as one row written twice.
         key = (row["Enchantment"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
-               row["Action"], row["ActionEvent"], row["FractionOf"])
+               row["Action"], row["ActionEvent"], row["FractionOf"],
+               # AND THE SECOND CONDITION, since issue #1833 gave a row one.
+               row["Condition2"], row["ConditionValue2"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:

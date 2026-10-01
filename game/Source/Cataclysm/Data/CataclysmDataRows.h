@@ -2320,4 +2320,29 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float StackSecondsHigh = 0.0f;
+
+	/**
+	 * A second state the character must be in as well, or empty for none.
+	 * Issue #1833, ruled 2026-09-30 under the owner's delegation: "While
+	 * stationary you take 20%-35% increased damage from ranged attacks" is
+	 * `while_stationary` in `Condition` and `hit_is_ranged_attack` here. BOTH
+	 * MUST HOLD, the literal reading of every sentence that names two.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString Condition2;
+
+	/** What the second condition compares against, as `ConditionValue` does. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ConditionValue2 = 0.0f;
+
+	/**
+	 * The first condition's threshold at the highest roll when it rolls with the
+	 * value, or 0 when `ConditionValue` is the one threshold. Issue #1833, ruled
+	 * 2026-09-30: "Your abilities are free when above 80%-95% hp" is 80 to 95,
+	 * and the item's roll picks the threshold where it picks the value, as
+	 * `ScaleStepHigh` does for a step, so the hover text and the effect agree.
+	 * See `UCataclysmItemModifiers::RolledConditionValue`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ConditionValueHigh = 0.0f;
 };

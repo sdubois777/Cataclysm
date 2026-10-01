@@ -174,6 +174,10 @@ namespace
 		{ TEXT("weapon_kills"),        ECataclysmStatScale::PerKillOfThisWeapon },
 		{ TEXT("minion_seconds_active"), ECataclysmStatScale::PerSecondTheMinionHasBeenActive },
 		{ TEXT("deployables_active"),  ECataclysmStatScale::PerDeployableActive },
+		{ TEXT("seconds_on_floor"),    ECataclysmStatScale::PerSecondOnThisFloor },
+		{ TEXT("floors_cleared"),      ECataclysmStatScale::PerFloorClearedThisRun },
+		{ TEXT("armor"),               ECataclysmStatScale::PerPointOfArmor },
+		{ TEXT("cataclysm_bosses_defeated"), ECataclysmStatScale::PerUniqueCataclysmBossDefeated },
 	};
 
 	/**
@@ -1567,6 +1571,23 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerDeployableActive:
 		return StackedValue(Modifier, State.DeployablesActive);
 
+	// THE FOUR OF ISSUE #1833 GROUP C PART 3c. Whole steps, as every count is;
+	// an unknown reading (-1) is nothing, as for the kills.
+	case ECataclysmStatScale::PerSecondOnThisFloor:
+		return State.SecondsOnFloor < 0.0f
+			? 0.0f : StackedValue(Modifier, FMath::FloorToInt32(State.SecondsOnFloor));
+
+	case ECataclysmStatScale::PerFloorClearedThisRun:
+		return State.FloorsCleared < 0 ? 0.0f : StackedValue(Modifier, State.FloorsCleared);
+
+	case ECataclysmStatScale::PerPointOfArmor:
+		return State.Armor < 0.0f
+			? 0.0f : StackedValue(Modifier, FMath::FloorToInt32(State.Armor));
+
+	case ECataclysmStatScale::PerUniqueCataclysmBossDefeated:
+		return State.CataclysmBossesDefeated < 0
+			? 0.0f : StackedValue(Modifier, State.CataclysmBossesDefeated);
+
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
 		// THE REFUSALS OF THE MAXIMUM MANA SCALE, AND A PERCENTAGE. Issue #1815.
@@ -1645,6 +1666,15 @@ bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modif
 		return false;
 	}
 
+	// AND THE SECOND, WHICH MUST HOLD TOO. Issue #1833, ruled 2026-09-30 under
+	// the owner's delegation: a sentence naming two states means both. Always
+	// holds, so a modifier stating one condition is unchanged.
+	if (!ConditionHolds(Modifier.Condition2, Modifier.ConditionValue2, State,
+						Modifier.ReachMetres))
+	{
+		return false;
+	}
+
 	const FGameplayTag Global = GlobalScopeTag();
 
 	for (const FGameplayTag& Required : Modifier.RequiredTags)
@@ -1668,6 +1698,23 @@ bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modif
 
 FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& Modifier)
 {
+	// THE SECOND CONDITION'S THRESHOLD IS BOUNDED AS THE FIRST'S IS. Issue #1833,
+	// ruled 2026-09-30. Checked by asking the same questions of a copy that
+	// carries it in the first place, so the bounds below are written once and a
+	// condition added to them later bounds both.
+	if (Modifier.Condition2 != ECataclysmStatCondition::Always)
+	{
+		FCataclysmStatModifier AsFirst = Modifier;
+		AsFirst.Condition = Modifier.Condition2;
+		AsFirst.ConditionValue = Modifier.ConditionValue2;
+		AsFirst.Condition2 = ECataclysmStatCondition::Always;
+		const FString Second = ValidateModifier(AsFirst);
+		if (!Second.IsEmpty())
+		{
+			return FString::Printf(TEXT("in its second condition, %s"), *Second);
+		}
+	}
+
 	if (Modifier.Bucket == ECataclysmStatBucket::More)
 	{
 		if (!CanGrantMore(Modifier.Source))

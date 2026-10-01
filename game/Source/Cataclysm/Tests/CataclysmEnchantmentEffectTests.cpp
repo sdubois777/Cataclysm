@@ -2312,9 +2312,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4287,9 +4287,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -4406,9 +4406,9 @@ bool FCataclysmStackSecondsRollTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g\n"),
+				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0\n"),
 				DrawbackWithNoEffect, DrawbackWithNoEffect, StackSecondsHigh));
 		if (!Effects)
 		{
@@ -9660,6 +9660,825 @@ bool FCataclysmChronomancerSetTest::RunTest(const FString&)
 		TestEqual(FString::Printf(TEXT("%d piece(s): a buff"), Pieces),
 				  Skill->OwnDurationMultiplier(true), bWhole ? 0.75f : 1.0f, 0.001f);
 	}
+	return true;
+}
+
+namespace CataclysmProjectileRangeRowsTest
+{
+	/** A skill of this template granted to the wearer, stating these params and tags. */
+	template <typename T>
+	T* SkillOn(UCataclysmAbilitySystemComponent* ASC, AActor* Avatar,
+			   const TCHAR* ParamText, const TCHAR* TagCell)
+	{
+		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
+			T::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Avatar);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+		T* Skill = Spec ? Cast<T>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		}
+		return Skill;
+	}
+
+	constexpr const TCHAR* Bolt = TEXT("Range=10; Radius=1; Speed=2000");
+	constexpr const TCHAR* RangedTags = TEXT("Type.Ranged, Type.Projectile");
+	constexpr const TCHAR* ThrownTags = TEXT("Type.Melee, Type.Projectile");
+
+	/** A Bolt Turret summoned by this actor, or null with an error if the row is missing. */
+	ACataclysmMinion* TurretFrom(FAutomationTestBase& Test, AActor* Summoner)
+	{
+		ACataclysmMinion* Turret = ACataclysmMinion::Spawn(
+			Summoner, FVector(300.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+			/*bBurns=*/false, TEXT("BoltTurret"));
+		if (Turret && Turret->TypeName != FString(TEXT("BoltTurret")))
+		{
+			Test.AddError(TEXT("DT_MinionTypes could not supply the BoltTurret row. Run "
+							   "tools/generate_datatable_assets.py"));
+			return nullptr;
+		}
+		return Turret;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileSpeedRowTest,
+	"Cataclysm.Enchantments.TheProjectileSpeedRowQuickensOnlyARangedSkillsShots",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Ranged skills have 30%-60% increased projectile speed", worn at the top,
+ * makes a ranged skill's twenty metres a second into thirty-two and leaves a
+ * melee skill's alone. Issue #1833, `projectile_speed` scoped to `Type.Ranged`.
+ */
+bool FCataclysmProjectileSpeedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Ranged_skills_have_30_60_increased_projectile"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	const UCataclysmProjectileSkill* Ranged =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, RangedTags);
+	const UCataclysmProjectileSkill* Thrown =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+	if (!TestNotNull(TEXT("a ranged skill"), Ranged) || !TestNotNull(TEXT("a melee skill"), Thrown))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a ranged skill's shot: 60% faster"), Ranged->ScaledProjectileSpeed(), 3200.0f, 0.01f);
+	TestEqual(TEXT("a melee skill's: unchanged"), Thrown->ScaledProjectileSpeed(), 2000.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSlowerProjectileRowsTest,
+	"Cataclysm.Enchantments.TheTwoSlowerProjectileRowsSlowTheShotsTheyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The two negatives, each worn at the top. "Ranged skills have 20%-35% reduced
+ * projectile speed" slows a ranged skill's shot to 0.65 and leaves a melee
+ * skill's alone; "Projectiles travel 30%-50% slower" slows any projectile
+ * skill's to 0.5. Issue #1833.
+ */
+bool FCataclysmSlowerProjectileRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	{
+		FWorn Worn(TEXT("Negative_Ranged_skills_have_20_35_reduced_projectile_sp"), false);
+		if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+		{
+			return false;
+		}
+		const UCataclysmProjectileSkill* Ranged =
+			SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, RangedTags);
+		const UCataclysmProjectileSkill* Thrown =
+			SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+		if (TestNotNull(TEXT("a ranged skill"), Ranged) && TestNotNull(TEXT("a melee skill"), Thrown))
+		{
+			TestEqual(TEXT("35% reduced: a ranged skill's shot at 0.65"),
+					  Ranged->ScaledProjectileSpeed(), 1300.0f, 0.01f);
+			TestEqual(TEXT("and a melee skill's unchanged"),
+					  Thrown->ScaledProjectileSpeed(), 2000.0f, 0.01f);
+		}
+	}
+	{
+		FWorn Worn(TEXT("Negative_Projectiles_travel_30_50_slower"), false);
+		if (!TestNotNull(TEXT("a second wearer"), Worn.ASC()))
+		{
+			return false;
+		}
+		const UCataclysmProjectileSkill* Thrown =
+			SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+		if (TestNotNull(TEXT("a projectile skill"), Thrown))
+		{
+			TestEqual(TEXT("50% slower: any projectile skill's shot at half speed"),
+					  Thrown->ScaledProjectileSpeed(), 1000.0f, 0.01f);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRangeRowTest,
+	"Cataclysm.Enchantments.TheRangeRowLengthensOnlyARangedSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your ranged skills have 20%-40% increased range", worn at the top, makes a
+ * ranged skill's ten metres fourteen and leaves a melee skill's alone. Issue
+ * #1833, `skill_range` scoped to `Type.Ranged`.
+ */
+bool FCataclysmRangeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_ranged_skills_have_20_40_increased_range"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	const UCataclysmProjectileSkill* Ranged =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, RangedTags);
+	const UCataclysmProjectileSkill* Thrown =
+		SkillOn<UCataclysmProjectileSkill>(Worn.ASC(), Worn.Wearer->Actor, Bolt, ThrownTags);
+	if (!TestNotNull(TEXT("a ranged skill"), Ranged) || !TestNotNull(TEXT("a melee skill"), Thrown))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a ranged skill's range: 40% longer"), Ranged->ScaledRangeCm(), 1400.0f, 0.01f);
+	TestEqual(TEXT("a melee skill's: unchanged"), Thrown->ScaledRangeCm(), 1000.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetRangeRowTest,
+	"Cataclysm.Enchantments.TheGadgetRangeRowLengthensAGadgetsReachAndNotice",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Gadgets have 20%-40% increased attack range", worn at the top: a Bolt Turret
+ * the wearer summons reaches and notices 40% further than one summoned by a
+ * character wearing nothing. Issue #1833, `minion_range` scoped to
+ * `Type.Deployable`.
+ */
+bool FCataclysmGadgetRangeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Gadgets_have_20_40_increased_attack_range"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	AActor* Bare = Worn.World->SpawnActor<AActor>();
+	ACataclysmMinion* Geared = TurretFrom(*this, Worn.Wearer->Actor);
+	ACataclysmMinion* Plain = TurretFrom(*this, Bare);
+	if (!TestNotNull(TEXT("the wearer's turret"), Geared) || !TestNotNull(TEXT("a plain turret"), Plain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's turret reaches 40% further"), Geared->ReachCm, Plain->ReachCm * 1.4f, 0.01f);
+	TestEqual(TEXT("and notices 40% further"), Geared->NoticeRadiusCm, Plain->NoticeRadiusCm * 1.4f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeReachRowTest,
+	"Cataclysm.Enchantments.TheMeleeReachRowAddsAMetreToAMeleeStrike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your melee skills have +0.5-1 metre reach", worn at the top, adds a metre to
+ * a melee strike's reach and nothing to a ranged one's. Issue #1833, on
+ * Overreach's `melee_reach_metres` (issue #1515) scoped to `Type.Melee`.
+ */
+bool FCataclysmMeleeReachRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileRangeRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	const UCataclysmStrikeSkill* Melee = SkillOn<UCataclysmStrikeSkill>(
+		Worn.ASC(), Worn.Wearer->Actor, TEXT("Radius=2; Angle=90"), TEXT("Type.Melee, Type.Strike"));
+	const UCataclysmStrikeSkill* Ranged = SkillOn<UCataclysmStrikeSkill>(
+		Worn.ASC(), Worn.Wearer->Actor, TEXT("Radius=2; Angle=90"), TEXT("Type.Ranged, Type.Strike"));
+	if (!TestNotNull(TEXT("a melee strike"), Melee) || !TestNotNull(TEXT("a ranged strike"), Ranged))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a melee strike reaches a metre further"), Melee->MeleeReachBonusCm(), 100.0f, 0.01f);
+	TestEqual(TEXT("a ranged one no further"), Ranged->MeleeReachBonusCm(), 0.0f, 0.01f);
+	return true;
+}
+
+namespace CataclysmConditionRowsTest
+{
+	/** The wearer's damage taken, asked with a blow of this kind. */
+	float DamageTakenFrom(UCataclysmAbilitySystemComponent* ASC, bool bMelee)
+	{
+		FCataclysmBlowContext Blow;
+		Blow.bIsMelee = bMelee;
+		Blow.bIsRanged = !bMelee;
+		return ASC->StatForSkill(FName(UCataclysmDamageCalculation::DamageTakenStat),
+								 FGameplayTagContainer(),
+								 UCataclysmDamageCalculation::NormalDamageTaken,
+								 /*SkillHealthCostPercent=*/-1.0f, Blow);
+	}
+
+	/** Maximum first, then current: the vital set clamps health to it. */
+	void SetHealth(UCataclysmAbilitySystemComponent* ASC, float Maximum, float Current)
+	{
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Maximum);
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Current);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalArmourRowTest,
+	"Cataclysm.Enchantments.TheCriticalArmourRowGivesItsShareToCriticalStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your critical strikes ignore 20%-40% of enemy armor", worn at the top, gives
+ * the wearer 40 `critical_armor_penetration`, the share
+ * `UCataclysmDamageCalculation::Resolve` adds once a blow critically strikes.
+ * Issue #1833, ruled 2026-09-30.
+ */
+bool FCataclysmCriticalArmourRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("critical strikes ignore 40% of armour"),
+			  Worn.ASC()->StatForSkill(FName(UCataclysmDamageCalculation::CriticalArmorPenetrationStat),
+									   FGameplayTagContainer(), 0.0f),
+			  40.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStationaryRangedRowTest,
+	"Cataclysm.Enchantments.TheStationaryRangedRowNeedsBothStandingStillAndARangedHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "While stationary you take 20%-35% increased damage from ranged attacks",
+ * worn at the top: a ranged hit on a wearer standing still is taken at 1.35. A
+ * melee hit, or a ranged hit while moving, is taken at 1. Issue #1833, the row's
+ * two conditions, ruled 2026-09-30 to mean both.
+ */
+bool FCataclysmStationaryRangedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmConditionRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_While_stationary_you_take_20_35_increased_dama"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+
+	// A CHARACTER THAT HAS NEVER MOVED IS NOT STATIONARY, so it moves once first.
+	ASC->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("moving, a ranged hit: 100"), DamageTakenFrom(ASC, false), 100.0f, 0.001f);
+
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(Worn.World, 3.0f);
+	TestEqual(TEXT("standing still, a ranged hit: 135"), DamageTakenFrom(ASC, false), 135.0f, 0.001f);
+	TestEqual(TEXT("standing still, a melee hit: 100"), DamageTakenFrom(ASC, true), 100.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeHighHealthRowTest,
+	"Cataclysm.Enchantments.TheMeleeHighHealthRowNeedsBothAMeleeHitAndHealthAboveThreeQuarters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You take 20%-35% increased damage from melee attacks while your HP is above
+ * 75%", worn at the top: a melee hit at 80% health is taken at 1.35; a ranged
+ * hit at 80%, or a melee hit at half health, at 1. Issue #1833.
+ */
+bool FCataclysmMeleeHighHealthRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmConditionRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_You_take_20_35_increased_damage_from_melee_att"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+
+	SetHealth(ASC, 1000.0f, 800.0f);
+	TestEqual(TEXT("80% health, a melee hit: 135"), DamageTakenFrom(ASC, true), 135.0f, 0.001f);
+	TestEqual(TEXT("80% health, a ranged hit: 100"), DamageTakenFrom(ASC, false), 100.0f, 0.001f);
+	SetHealth(ASC, 1000.0f, 500.0f);
+	TestEqual(TEXT("half health, a melee hit: 100"), DamageTakenFrom(ASC, true), 100.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFreeAboveRowTest,
+	"Cataclysm.Enchantments.TheFreeAbilitiesRowUsesTheThresholdItRolled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your abilities are free when above 80%-95% hp". At 90% health a skill is
+ * free for a piece rolled at the bottom, whose threshold is 80, and costs its
+ * mana for a piece rolled at the top, whose threshold is 95. Issue #1833: the
+ * threshold rolls with the value, and a higher roll is a harder threshold, a
+ * labelled judgement of 2026-09-30.
+ */
+bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmConditionRowsTest;
+
+	const auto CostAt = [](float Roll, float Health) -> float
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return -1.0f;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		FCataclysmItem Piece = Carrying(TEXT("Head_Helm"),
+										TEXT("Positive_Your_abilities_are_free_when_above_80_95_hp"),
+										DrawbackWithNoEffect);
+		Piece.Enchantments[0].PositiveRoll = Roll;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(Piece, Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		SetHealth(Wearer.AbilitySystem, 1000.0f, Health);
+
+		const FGameplayAbilitySpecHandle Handle = Wearer.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1,
+			Wearer.Actor);
+		FGameplayAbilitySpec* Spec =
+			Handle.IsValid() ? Wearer.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		const UCataclysmStrikeSkill* Skill =
+			Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		return Skill ? Skill->ManaCostFor(Wearer.AbilitySystem) : -1.0f;
+	};
+
+	const float Bottom = CostAt(0.0f, 900.0f);
+	const float BottomBelow = CostAt(0.0f, 700.0f);
+	const float Top = CostAt(1.0f, 900.0f);
+	TestEqual(TEXT("rolled at the bottom, a threshold of 80: free at 90% health"), Bottom, 0.0f, 0.001f);
+	// AND THE SAME PIECE BELOW ITS THRESHOLD PAYS: a conditioned removal
+	// removes the cost only while its condition holds.
+	TestTrue(*FString::Printf(TEXT("the same piece at 70%% health, below 80: it costs its mana, %.2f"), BottomBelow),
+			 BottomBelow > 0.0f);
+	TestTrue(*FString::Printf(TEXT("rolled at the top, a threshold of 95: it costs its mana at 90%%, %.2f"), Top),
+			 Top > 0.0f);
+	return true;
+}
+
+namespace CataclysmCeilingRowsTest
+{
+	/** Pin the critical strike roll for the life of this object. */
+	struct FPinnedCritRoll
+	{
+		explicit FPinnedCritRoll(float Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		~FPinnedCritRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCritCeilingRowTest,
+	"Cataclysm.Enchantments.TheCritCeilingRowStopsACriticalStrikeAboveIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your critical strike chance cannot exceed 30%-50%", worn at the top of its
+ * roll, is a ceiling of 50: a wearer at 100% chance critically strikes on a
+ * roll of 40 and not on a roll of 60. Issue #1833, `max_crit_chance` flat -50,
+ * the complement of the sentence's 50.
+ */
+bool FCataclysmCritCeilingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmCeilingRowsTest;
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Your_critical_strike_chance_cannot_exceed_30_50"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	// AFTER THE REFRESH, which writes nothing a wearer holding no weapon strikes with.
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	// THE STAT LINES A BLOW READS, NOT THE ATTRIBUTES. After the refresh the wearer
+	// carries a crit_chance line of base 0 (the attribute effect's), and a blow asks
+	// the line: the first run of this test wrote the attribute and read a chance of
+	// 0. So the line is written here, with the worn row's own ceiling line kept.
+	const FCataclysmStatInputs* Ceiling =
+		ASC->GetStatInputs(FName(UCataclysmCombatAttributeSet::MaxCritChanceStat));
+	if (!TestNotNull(TEXT("the worn row's ceiling line"), Ceiling))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Lines;
+	Lines.Add(FName(UCataclysmCombatAttributeSet::MaxCritChanceStat), *Ceiling);
+	Lines.FindOrAdd(FName(TEXT("crit_chance"))).Base = 100.0f;
+	Lines.FindOrAdd(FName(TEXT("crit_multiplier"))).Base = 200.0f;
+	ASC->SetStatInputs(MoveTemp(Lines));
+
+	// A TARGET THE FIRST BLOW CANNOT KILL, so the second is a real blow. The first
+	// run's target died to the first and the "no critical strike" check passed
+	// against a corpse.
+	CataclysmEnchantmentEffectTest::FWearer Target(Worn.World);
+	Target.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	Target.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+
+	const auto CriticalOn = [&](float Roll)
+	{
+		const FPinnedCritRoll Pinned(Roll);
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Worn.Wearer->Actor, Target.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
+		return Result.bWasCritical;
+	};
+	TestTrue(TEXT("a roll of 40 is under the ceiling of 50: a critical strike"), CriticalOn(40.0f));
+	TestFalse(TEXT("a roll of 60 is over it: no critical strike, though the chance is 100%"), CriticalOn(60.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShieldCeilingRowTest,
+	"Cataclysm.Enchantments.TheShieldCeilingRowStopsRegenerationAtHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your energy shield cannot recharge above 50% of its maximum": a shield of
+ * 400 of 1000 regenerating 1000 a second stops at 500. Issue #1833,
+ * `energy_shield_recharge_ceiling_reduction` flat 50, leaving 50 of 100.
+ */
+bool FCataclysmShieldCeilingRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Your_energy_shield_cannot_recharge_above_50_of"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 1000.0f);
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 400.0f);
+
+	// THE REGENERATION RATE THROUGH ITS STAT LINE, NOT THE ATTRIBUTE: after the
+	// refresh the wearer carries an energy_shield_regen line of base 0, and the step
+	// asks the line. The first run wrote the attribute and regenerated nothing. The
+	// worn row's own reduction line is kept.
+	const FCataclysmStatInputs* Reduction =
+		ASC->GetStatInputs(FName(UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat));
+	if (!TestNotNull(TEXT("the worn row's reduction line"), Reduction))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Lines;
+	Lines.Add(FName(UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat), *Reduction);
+	Lines.FindOrAdd(FName(UCataclysmRegeneration::EnergyShieldRegenStat)).Base = 1000.0f;
+	ASC->SetStatInputs(MoveTemp(Lines));
+	UCataclysmRegeneration::ApplyStep(Worn.Wearer->Actor, 1.0f, 100.0f);
+	TestEqual(TEXT("a second of regeneration stops at half the maximum, 500"),
+			  ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()),
+			  500.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoExperienceRowTest,
+	"Cataclysm.Enchantments.TheNoExperienceRowRemovesExperienceGain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Kills no longer generate any experience" removes `experience_gain`, so the
+ * share a kill grants, asked over its base of 100, is nothing. Issue #1833.
+ * `ACataclysmPlayerState::ExperienceAfterGain` is what asks it, measured by the
+ * stat's probe; a wearer here is no player state.
+ */
+bool FCataclysmNoExperienceRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Kills_no_longer_generate_any_experience"), false);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the share of experience a kill grants: nothing"),
+			  Worn.ASC()->StatAppliedTo(FName(ACataclysmPlayerState::ExperienceGainStat),
+										FGameplayTagContainer(), 100.0f),
+			  0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMovementManaRowTest,
+	"Cataclysm.Enchantments.TheMovementManaRowAddsHalfTheMaximumToAMovementSkillOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Movement abilities cost 20%-50% of your maximum mana", worn at the top: a
+ * Movement skill costs its own mana plus 500 of a maximum of 1000, and a
+ * Special skill only its own. Issue #1833, `mana_cost_as_maximum_mana_percent`
+ * scoped to Slot.Movement, PLUS the normal cost.
+ */
+bool FCataclysmMovementManaRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Negative_Movement_abilities_cost_20_50_of_your_maximum"), false);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+
+	const auto SkillIn = [&](ECataclysmAbilitySlot Slot, const TCHAR* SlotTag) -> UCataclysmStrikeSkill*
+	{
+		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), Slot, /*Level=*/1, Worn.Wearer->Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmStrikeSkill* Skill = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(SlotTag);
+		}
+		return Skill;
+	};
+	const UCataclysmStrikeSkill* Dash = SkillIn(ECataclysmAbilitySlot::Movement, TEXT("Slot.Movement"));
+	const UCataclysmStrikeSkill* Strike = SkillIn(ECataclysmAbilitySlot::Special, TEXT("Slot.Special"));
+	if (!TestNotNull(TEXT("a movement skill"), Dash) || !TestNotNull(TEXT("a special skill"), Strike))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a movement skill: its own cost plus half the maximum mana"),
+			  Dash->ManaCostFor(ASC), Dash->GetManaCost() + 500.0f, 0.01f);
+	TestEqual(TEXT("a special skill: its own cost only"),
+			  Strike->ManaCostFor(ASC), Strike->GetManaCost(), 0.01f);
+	return true;
+}
+
+namespace CataclysmFloorRowsTest
+{
+	/** A possessed player wearing one helm carrying these two enchantments, refreshed. */
+	struct FWearingPlayer
+	{
+		FWearingPlayer(UWorld* World, const TCHAR* Positive, const TCHAR* Negative)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			Player = CataclysmKillCounterTest::SpawnPossessedPlayer(World);
+			State = Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+			ASC = State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+			UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+			if (!ASC || !Equipment)
+			{
+				ASC = nullptr;
+				return;
+			}
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Equipment->Equip(Carrying(TEXT("Head_Helm"), Positive, Negative), Removed, AlsoRemoved, Slot);
+			Equipment->RefreshAttributes(ASC);
+		}
+
+		ACataclysmPlayerCharacter* Player = nullptr;
+		ACataclysmPlayerState* State = nullptr;
+		UCataclysmAbilitySystemComponent* ASC = nullptr;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorTimeRowTest,
+	"Cataclysm.Enchantments.TheFloorTimeRowRaisesDamageTakenEveryFifteenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies deal 5%-8% increased damage for every 15 seconds spent on the same
+ * dungeon floor", worn at the top: before any floor begins the wearer takes
+ * normal damage, and 31 seconds into a floor, two whole steps, it takes 1.16.
+ * Issue #1833, `damage_taken` scaled by `seconds_on_floor`. No cap, a labelled
+ * judgement of 2026-09-30 on the owner's play-check list.
+ */
+bool FCataclysmFloorTimeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, BenefitWithNoEffect,
+						   TEXT("Negative_Enemies_deal_5_8_increased_damage_for_every_15"));
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	const FName Stat(UCataclysmDamageCalculation::DamageTakenStat);
+	const float Normal = UCataclysmDamageCalculation::NormalDamageTaken;
+
+	TestEqual(TEXT("before any floor began: normal damage"),
+			  Wearing.ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal), 100.0f, 0.001f);
+	Wearing.State->NoteFloorBegan(Scope.World->GetTimeSeconds());
+	CataclysmTestWorld::RunClock(Scope.World, 31.0f);
+	TestEqual(TEXT("31 seconds into the floor, two steps of 8%: 116"),
+			  Wearing.ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal), 116.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorsClearedRowTest,
+	"Cataclysm.Enchantments.TheFloorsClearedRowRaisesTheArmorABlowReads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your armor is increased by 1%-2% for every dungeon floor cleared this run",
+ * worn at the top on a helm granting 200 armour: two clears add 4 points to
+ * armour's increases, and the armour a blow asks for rises with them. Issue
+ * #1833, `armor` scaled by `floors_cleared`.
+ *
+ * THE BLOW'S FIGURE AND NOT THE SHEET'S, ruled 2026-09-30 after this test's first
+ * run. The character sheet reads the Armor attribute, and
+ * `UCataclysmPlayerClassStats::ApplyTo` resolves each stat with no state, so no
+ * refresh can put a state-scaled row on the sheet: a known limit.
+ */
+bool FCataclysmFloorsClearedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_Your_armor_is_increased_by_1_2_for_every_dunge"),
+						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	const FName Armor(TEXT("armor"));
+	FCataclysmStatBreakdown Before;
+	if (!TestTrue(TEXT("armour has a stat line"),
+				  Wearing.ASC->StatBreakdownForSkill(Armor, FGameplayTagContainer(), Before)))
+	{
+		return false;
+	}
+
+	Wearing.State->NoteFloorCleared();
+	Wearing.State->NoteFloorCleared();
+
+	FCataclysmStatBreakdown After;
+	Wearing.ASC->StatBreakdownForSkill(Armor, FGameplayTagContainer(), After);
+	TestEqual(TEXT("two clears at 2% a floor: 4 more points of increase"),
+			  After.SumOfIncreases - Before.SumOfIncreases, 4.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("and the armour a blow reads rose: %.2f to %.2f"), Before.Final, After.Final),
+			 After.Final > Before.Final + 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRetaliationPerArmorRowTest,
+	"Cataclysm.Enchantments.TheRetaliationPerArmorRowCountsWholeHundreds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your retaliation damage is increased by 2%-4% for every 100 points of armor
+ * you have", worn at the top: 250 armour is two whole hundreds, 8% increased
+ * retaliation. Issue #1833, `retaliation` scaled by the Armor attribute.
+ */
+bool FCataclysmRetaliationPerArmorRowTest::RunTest(const FString&)
+{
+	using FWorn = CataclysmSmallHalvesTest::FWorn;
+
+	FWorn Worn(TEXT("Positive_Your_retaliation_damage_is_increased_by_2_4_fo"), true);
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	if (!TestNotNull(TEXT("a wearer"), ASC))
+	{
+		return false;
+	}
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 250.0f);
+	TestEqual(TEXT("250 armour: 8% increased retaliation"),
+			  ASC->IncreasesForStat(FName(TEXT("retaliation")), FGameplayTagContainer()), 0.08f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossesRowTest,
+	"Cataclysm.Enchantments.TheBossRowGivesMoreDamagePerUniqueBossDefeated",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "For every unique Cataclysm boss defeated, gain 5%-10% more damage
+ * permanently", worn at the top: two unique bosses, one of them beaten twice,
+ * are 20% more attack damage. Issue #1833, `cataclysm_bosses_defeated`. Through
+ * the record alone: it reaches nothing in play until a unique boss exists.
+ */
+bool FCataclysmBossesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_For_every_unique_Cataclysm_boss_defeated_gain_5"),
+						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	Wearing.State->RecordCataclysmBossDefeat(FName(TEXT("Test_Boss_A")));
+	Wearing.State->RecordCataclysmBossDefeat(FName(TEXT("Test_Boss_B")));
+	Wearing.State->RecordCataclysmBossDefeat(FName(TEXT("Test_Boss_A")));
+
+	FCataclysmStatBreakdown Breakdown;
+	if (!TestTrue(TEXT("attack damage has a stat line"),
+				  Wearing.ASC->StatBreakdownForSkill(FName(TEXT("attack_damage")), FGameplayTagContainer(), Breakdown)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two unique bosses: 20% more"), Breakdown.MoreMultiplier, 1.2f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaxHealthPerKillAttributeTest,
+	"Cataclysm.KillCounter.TheMaxHealthPerKillRowReachesTheHealthBarAtTheNextRegenerationStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your maximum HP is increased by 0.01%-0.05% permanently for every 1000
+ * enemies killed this run", worn at the top: 100,000 kills move the MaxHealth
+ * ATTRIBUTE, the health bar's figure, at the next regeneration step, to what
+ * the stat line answers. Issue #1833 group C part 3c: the row's own test reads
+ * `IncreasesForStat` and could not see the bar. The step is what keeps it live
+ * (`UCataclysmRegeneration::ApplyStep` and `RefreshLiveMaximumHealth`, issue
+ * #1815); a kill refreshes nothing itself.
+ */
+bool FCataclysmMaxHealthPerKillAttributeTest::RunTest(const FString&)
+{
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm"),
+						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Before = Wearing.ASC->GetNumericAttribute(MaxHealth);
+	for (int32 Kill = 0; Kill < 100000; ++Kill)
+	{
+		Wearing.State->NoteKill();
+	}
+	TestEqual(TEXT("kills alone write nothing to the bar"),
+			  Wearing.ASC->GetNumericAttribute(MaxHealth), Before, 0.01f);
+
+	UCataclysmRegeneration::ApplyStep(Wearing.Player, 1.0f, 100.0f);
+	const float After = Wearing.ASC->GetNumericAttribute(MaxHealth);
+	TestTrue(*FString::Printf(TEXT("after a regeneration step the bar rose: %.2f to %.2f"), Before, After),
+			 After > Before + 1.0f);
+	TestEqual(TEXT("to what the stat line answers"),
+			  After, Wearing.ASC->StatForSkill(FName(TEXT("max_health")), FGameplayTagContainer(), After), 0.01f);
 	return true;
 }
 

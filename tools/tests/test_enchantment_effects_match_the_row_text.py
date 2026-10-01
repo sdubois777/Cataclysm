@@ -150,7 +150,7 @@ LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
 #: the MEANING by one word that says a thing is gone: "HP regeneration is disabled
 #: during combat". Swept first: two sentences use it, both removals -- that one,
 #: and "Your own ultimate ability is disabled", which has no row.
-REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled)\b", re.IGNORECASE)
+REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.IGNORECASE)
 
 #: Stats whose value is a yes or a no rather than a quantity, so the sentence
 #: states no number for it and should not. `skill_locked` above zero means the
@@ -213,7 +213,11 @@ FLAG_STATS = {"skill_locked", "mana_pool_becomes_health", "auras_end_at_death",
 #: FILLED ON 2026-09-14, with the two rows. "You cannot heal above 60% of your
 #: maximum HP" is `healing_ceiling_reduction` flat 40 and "You cannot be healed
 #: above 75%" is flat 25, and each sentence states the complement of its row.
-COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction"}
+#: AND "energy_shield_recharge_ceiling_reduction" SINCE 2026-09-30, issue
+#: #1833: "Your energy shield cannot recharge above 50% of its maximum" is
+#: flat 50, which leaves 50 of 100, the healing ceiling's shape.
+COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction",
+                              "energy_shield_recharge_ceiling_reduction"}
 
 #: Words that state one stat's value without a number, per stat. Issue #1815.
 #:
@@ -511,8 +515,16 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 394 over 316: two rows on two enchantments.
 #: AND 402 OVER 324 SINCE THE DURATIONS,
 #: issue #1833, from 396 over 318: six rows on six enchantments.
-AUTHORED_ROWS = 402
-AUTHORED_ENCHANTMENTS = 324
+#: AND 408 OVER 330 SINCE PROJECTILES AND RANGE,
+#: issue #1833, from 402 over 324: six rows on six enchantments.
+#: AND 412 OVER 334 SINCE THE CONDITIONS,
+#: issue #1833, from 408 over 330: four rows on four enchantments.
+#: AND 416 OVER 338 SINCE THE CEILINGS AND COSTS,
+#: issue #1833, from 412 over 334: four rows on four enchantments.
+#: AND 421 OVER 342 SINCE THE SCALES,
+#: issue #1833, from 416 over 338: five rows on four enchantments.
+AUTHORED_ROWS = 421
+AUTHORED_ENCHANTMENTS = 342
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -526,7 +538,11 @@ AUTHORED_ENCHANTMENTS = 324
 #: passive node added in #1966, is the same shape on the passive side.
 #: AND 32 SINCE "HP regeneration is disabled during combat", from 31, issue
 #: #1815: a removal under `in_combat`.
-REMOVED_ROWS = 32
+#: AND 33 SINCE "Your abilities are free when above 80%-95% hp",
+#: from 32, issue #1833: a removal under a rolled health_above.
+#: AND 34 SINCE "Kills no longer generate any experience",
+#: from 33, issue #1833: experience_gain removed.
+REMOVED_ROWS = 34
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
@@ -810,14 +826,20 @@ def condition_values_not_stated(effects, enchantments, word_map) -> list[str]:
     stated by a phrase `word_map` gives their condition."""
     wrong = []
     for r in effects:
-        value = float(r["ConditionValue"])
-        if not value:
-            continue
-        words = words_of(r, enchantments)
-        by_word = {amount for phrase, amount in word_map.get(r["Condition"], {}).items()
-                   if re.search(rf"\b{re.escape(phrase)}\b", words, re.IGNORECASE)}
-        if value not in numbers_in(words) | by_word:
-            wrong.append(f"{r['Name']}: {r['ConditionValue']} against {words!r}")
+        # AND THE SECOND CONDITION'S VALUE, AND THE ROLLED THRESHOLD'S HIGH END,
+        # since issue #1833 gave a row both. A fixture written before those
+        # columns carries neither, which reads as nought and is skipped.
+        for condition, column in ((r["Condition"], "ConditionValue"),
+                                  (r.get("Condition2", ""), "ConditionValue2"),
+                                  (r["Condition"], "ConditionValueHigh")):
+            value = float(r.get(column) or 0.0)
+            if not value:
+                continue
+            words = words_of(r, enchantments)
+            by_word = {amount for phrase, amount in word_map.get(condition, {}).items()
+                       if re.search(rf"\b{re.escape(phrase)}\b", words, re.IGNORECASE)}
+            if value not in numbers_in(words) | by_word:
+                wrong.append(f"{r['Name']}: {column} {r[column]} against {words!r}")
     return wrong
 
 
@@ -1075,7 +1097,8 @@ def test_the_complement_list_holds_what_it_is_measured_to_hold():
     honest rather than vacuous. `healing_ceiling_reduction` went in with the two
     rows that need it, in one commit, so the exemption and its users have never
     existed apart. Issue #1793."""
-    assert COMPLEMENT_STATS == {"healing_ceiling_reduction"}, (
+    assert COMPLEMENT_STATS == {"healing_ceiling_reduction",
+                                "energy_shield_recharge_ceiling_reduction"}, (
         f"COMPLEMENT_STATS holds {sorted(COMPLEMENT_STATS)}. If that is "
         f"deliberate, change this test and check that every name in it has a "
         f"row in game/Data/EnchantmentEffects.csv.")

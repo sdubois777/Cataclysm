@@ -739,6 +739,19 @@ public:
 	static float RolledStackSeconds(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
 
 	/**
+	 * A row's first condition's threshold at this roll. Issue #1833, ruled
+	 * 2026-09-30. `ConditionValue` for a row stating one threshold; for a row
+	 * stating `ConditionValueHigh`, the number between the two at the roll's
+	 * place, the way `RolledScaleStep` picks a step.
+	 *
+	 * A HIGHER ROLL IS A HIGHER THRESHOLD, WHICH MAY BE WORSE. "Your abilities
+	 * are free when above 80%-95% hp" is 80 to 95, so the hover text, which
+	 * shows the sentence's number at the roll, and the threshold agree; the top
+	 * roll is the hardest to meet. A labelled judgement of the same ruling.
+	 */
+	static float RolledConditionValue(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
+
+	/**
 	 * Whether one more kill takes this item across a step of a `weapon_kills`
 	 * row one of its enchantments carries, from a count of `KillsBefore`.
 	 * Issue #1833. The equipment refreshes the grant only when it does.

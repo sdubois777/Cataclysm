@@ -934,7 +934,21 @@ namespace
 			{
 				return false;
 			}
-			Out.ConditionValue = Effect.ConditionValue;
+			// ROLLED WITH THE VALUE WHEN THE ROW STATES TWO THRESHOLDS. Issue #1833,
+			// ruled 2026-09-30.
+			Out.ConditionValue = UCataclysmItemModifiers::RolledConditionValue(Effect, Roll);
+		}
+
+		// AND A SECOND CONDITION, WHICH MUST HOLD AS WELL. Issue #1833, ruled
+		// 2026-09-30. Its threshold does not roll; no sentence names two ranges.
+		if (!Effect.Condition2.IsEmpty())
+		{
+			if (!UCataclysmStatPipeline::ConditionNamed(Effect.Condition2,
+														Out.Condition2))
+			{
+				return false;
+			}
+			Out.ConditionValue2 = Effect.ConditionValue2;
 		}
 
 		if (!Effect.Scale.IsEmpty())
@@ -981,6 +995,14 @@ float UCataclysmItemModifiers::RolledStackSeconds(const FCataclysmEnchantmentEff
 	return Effect.StackSecondsHigh > Effect.StackSeconds
 		? UCataclysmItemValues::EnchantmentValue(Effect.StackSeconds, Effect.StackSecondsHigh, Roll)
 		: Effect.StackSeconds;
+}
+
+float UCataclysmItemModifiers::RolledConditionValue(const FCataclysmEnchantmentEffectRow& Effect,
+													float Roll)
+{
+	return Effect.ConditionValueHigh > Effect.ConditionValue
+		? UCataclysmItemValues::EnchantmentValue(Effect.ConditionValue, Effect.ConditionValueHigh, Roll)
+		: Effect.ConditionValue;
 }
 
 bool UCataclysmItemModifiers::KillCrossesAStep(const FCataclysmItem& Item, int32 KillsBefore,

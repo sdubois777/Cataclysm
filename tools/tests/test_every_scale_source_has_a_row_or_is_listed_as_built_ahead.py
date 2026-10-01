@@ -104,6 +104,10 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `deployables_active` JOINED the same day for deployable Part 3, and leaves
 #: with its row.
 #: `deployables_active` LEFT with its row, issue #1833.
+#: FOUR JOINED ON 2026-09-30 for issue #1833 group C part 3c, built ahead of
+#: their rows while the design workbook is with another session, and leave with
+#: them.
+#: THE FOUR LEFT with their rows, issue #1833, and the list is empty again.
 BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
@@ -139,7 +143,10 @@ KNOWN_USED = "debuffs_carried"
 #: AND 30 OF 30 WHEN `minion_seconds_active` GAINED ITS TWO ROWS, issue #1833.
 #:
 #: AND 31 OF 31 WHEN `deployables_active` GAINED ITS ROW, issue #1833.
-EXPECTED_NAMED_BY_A_ROW = 31
+#: AND 35 SINCE THE SCALES OF ISSUE #1833 GROUP C PART 3c,
+#: from 31: seconds_on_floor, floors_cleared, armor and
+#: cataclysm_bosses_defeated.
+EXPECTED_NAMED_BY_A_ROW = 35
 
 
 def scales_named_by_a_row() -> set[str]:

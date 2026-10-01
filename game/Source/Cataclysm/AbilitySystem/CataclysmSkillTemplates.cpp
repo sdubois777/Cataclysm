@@ -1129,7 +1129,7 @@ ACataclysmTether* UCataclysmProjectileSkill::BindTether(AActor* Caster)
 	// burned by it -- while the range is how far the whip is thrown. Asking the
 	// wrong one would look for two enemies inside a metre and a half.
 	TArray<AActor*> Found = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Caster, Caster->GetActorLocation(), Params.RangeCm,
+		GetWorld(), Caster, Caster->GetActorLocation(), ScaledRangeCm(),
 		Params.TetherTargets);
 
 	if (Found.Num() < Params.TetherTargets)
@@ -1177,7 +1177,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 	// end of that wait would let a shot curve toward a cursor moved during the
 	// wind-up. It would also disagree with the body, which turned to face this
 	// point in CommitAndBegin before the wait began.
-	Destination = AimedPointWithin(Params.RangeCm);
+	Destination = AimedPointWithin(ScaledRangeCm());
 
 	// AND IT LEAVES WHEN THE THROW REACHES ITS RELEASE. Issue #1133. Until then
 	// the shot appeared in the frame the ability activated, before the arm had
@@ -1265,7 +1265,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 
 		InFlight = ACataclysmProjectile::Fire(
 			Caster, Origin, Destination, ScaledRadiusCm(),
-			Params.SpeedCmPerSecond, Params.Pierce, Params.bReturns,
+			ScaledProjectileSpeed(), Params.Pierce, Params.bReturns,
 			GetDamagePercent(), SkillTags, Params.bBurns,
 			/*InBodyMesh=*/nullptr, FlightSeconds,
 			CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
@@ -1306,7 +1306,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 				: 0.0f;
 			InFlight->GlancesOnward(
 				Params.Bounces,
-				Params.RangeCm > 0.0f ? Params.RangeCm : ScaledRadiusCm(),
+				Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm(),
 				PerGlance);
 		}
 
@@ -1369,7 +1369,7 @@ int32 UCataclysmProjectileSkill::SpreadCursesFrom(const TArray<AActor*>& Struck)
 		return 0;
 	}
 
-	const float ReachCm = Params.RangeCm > 0.0f ? Params.RangeCm : ScaledRadiusCm();
+	const float ReachCm = Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm();
 	const FName Type = DamageTypeName();
 
 	int32 Applied = 0;
@@ -1449,7 +1449,7 @@ AActor* UCataclysmProjectileSkill::NextThrowTarget()
 	// enemies move and die during it, so a list gathered once would go on
 	// throwing at corpses and at places nobody is standing any more.
 	const TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Self, Self->GetActorLocation(), Params.RangeCm);
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRangeCm());
 	if (InRange.IsEmpty())
 	{
 		return nullptr;
@@ -1505,7 +1505,7 @@ bool UCataclysmProjectileSkill::ThrowOne()
 
 	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
 		Self, From, Target->GetActorLocation(), ScaledRadiusCm(),
-		Params.SpeedCmPerSecond, Params.Pierce, Params.bReturns,
+		ScaledProjectileSpeed(), Params.Pierce, Params.bReturns,
 		GetDamagePercent(), SkillTags, Params.bBurns,
 		/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
 		CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
@@ -2470,13 +2470,13 @@ FVector UCataclysmMovementSkill::ConditionalDestination(const FVector& Start) co
 	{
 		// Every other movement skill goes where the player pointed. Eight of the
 		// ten Demonic movement rows take this line.
-		return AimedPointWithin(Params.RangeCm);
+		return AimedPointWithin(ScaledRangeCm());
 	}
 
 	const AActor* Self = Avatar();
 	if (!Self)
 	{
-		return AimedPointWithin(Params.RangeCm);
+		return AimedPointWithin(ScaledRangeCm());
 	}
 
 	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
@@ -2497,7 +2497,7 @@ FVector UCataclysmMovementSkill::ConditionalDestination(const FVector& Start) co
 					   Candidate->GetActorLocation().Y, Start.Z);
 	}
 
-	return AimedPointWithin(Params.RangeCm);
+	return AimedPointWithin(ScaledRangeCm());
 }
 
 void UCataclysmMovementSkill::ActivateAbility(
@@ -2573,12 +2573,12 @@ void UCataclysmMovementSkill::ActivateAbility(
 		// out of reach.
 		FVector Apart = MarkedAt - Marker->GetActorLocation();
 		Apart.Z = 0.0f;
-		if (Params.RangeCm > 0.0f && Apart.Size() > Params.RangeCm)
+		if (Params.RangeCm > 0.0f && Apart.Size() > ScaledRangeCm())
 		{
 			UE_LOG(LogCataclysm, Verbose,
 				TEXT("'%s' is %.0fcm from its mark and may return from %.0fcm, "
 					 "so the mark was kept and nothing was spent."),
-				*SkillName, Apart.Size(), Params.RangeCm);
+				*SkillName, Apart.Size(), ScaledRangeCm());
 
 			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 			return;
@@ -2617,7 +2617,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 		// one group to the next for as long as the skill ran.
 		FlickerCircuit.Reset();
 		for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
-				GetWorld(), Self, Start, Params.RangeCm, Params.MaxTargets))
+				GetWorld(), Self, Start, ScaledRangeCm(), Params.MaxTargets))
 		{
 			FlickerCircuit.Add(Enemy);
 		}
@@ -2742,7 +2742,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 	if (Params.MovementMode == ECataclysmMovementMode::Swap)
 	{
 		const TArray<AActor*> Commanded =
-			UCataclysmCommand::ThingsCommandedBy(Self, Params.RangeCm);
+			UCataclysmCommand::ThingsCommandedBy(Self, ScaledRangeCm());
 		if (Commanded.IsEmpty())
 		{
 			// A TRADE WITH NOBODY IS NOT A MOVE. Every other movement mode has
@@ -2754,7 +2754,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 			UE_LOG(LogCataclysm, Verbose,
 				TEXT("'%s' commands nothing within %.0fcm, so there was nothing "
 					 "to trade places with."),
-				*SkillName, Params.RangeCm);
+				*SkillName, ScaledRangeCm());
 
 			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 			return;
@@ -3024,7 +3024,7 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	//
 	// FLATTENED, so an advance does not walk into the floor or the sky when the
 	// cursor lands on ground above or below the caster.
-	FVector Facing = AimedPointWithin(Params.RangeCm) - Start;
+	FVector Facing = AimedPointWithin(ScaledRangeCm()) - Start;
 	Facing.Z = 0.0f;
 	Advance = Facing.GetSafeNormal();
 
@@ -3043,7 +3043,7 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	// `Duration` is how long it takes, so the two together are its speed, and the
 	// row states both. Inexorable's fourteen metres in one and a half seconds is
 	// 9.3 metres a second, a little over twice a Ravager's 4.6 metre walk.
-	SpeedCmPerSecond = Params.RangeCm / Params.Duration;
+	SpeedCmPerSecond = ScaledRangeCm() / Params.Duration;
 	LastSearchedFrom = Start;
 
 	// THE ENGINE MOVES THE CHARACTER, AND THIS SKILL USED TO DO IT ITSELF. Until
@@ -3279,7 +3279,7 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	// with no Range goes at the caster's feet, which is what a spike trap laid
 	// underfoot would be.
 	DeployLocation = Params.RangeCm > 0.0f
-		? AimedPointWithin(Params.RangeCm)
+		? AimedPointWithin(ScaledRangeCm())
 		: Self->GetActorLocation();
 
 	// EVERY KIND THE ROW NAMES, NOT JUST THE FIRST. Iron Fortress writes
@@ -3495,7 +3495,7 @@ bool UCataclysmSummonSkill::Possess()
 	// "an enemy up to 15 meters away", so this is the same search every other
 	// single-target skill makes.
 	TArray<AActor*> Targets = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Self, AimedPointWithin(Params.RangeCm), ScaledRadiusCm(),
+		GetWorld(), Self, AimedPointWithin(ScaledRangeCm()), ScaledRadiusCm(),
 		FMath::Max(1, Params.MaxTargets));
 
 	if (Targets.IsEmpty())
@@ -3512,7 +3512,7 @@ bool UCataclysmSummonSkill::Possess()
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' found nothing within %.0fcm of the point it was aimed at, "
 				 "%.0fcm out, so it took nobody."),
-			*SkillName, ScaledRadiusCm(), Params.RangeCm);
+			*SkillName, ScaledRadiusCm(), ScaledRangeCm());
 		return false;
 	}
 
@@ -3782,7 +3782,7 @@ void UCataclysmSummonSkill::ActivateAbility(
 	// A rift is torn at a place and stays there. Summon Imp has no Range, so its
 	// imps appear at the caster.
 	RiftLocation = Params.RangeCm > 0.0f
-		? AimedPointWithin(Params.RangeCm)
+		? AimedPointWithin(ScaledRangeCm())
 		: Self->GetActorLocation();
 
 	UWorld* World = Self->GetWorld();
@@ -4435,7 +4435,7 @@ void UCataclysmDebuffSkill::ActivateAbility(
 		// nothing takes the nearest, which is what a single-target curse should
 		// do.
 		TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Caster, Caster->GetActorLocation(), Params.RangeCm);
+			GetWorld(), Caster, Caster->GetActorLocation(), ScaledRangeCm());
 
 		const FVector Aim = AimPoint();
 		InRange.Sort([&Aim](const AActor& A, const AActor& B)

@@ -33,6 +33,7 @@
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmBeaconCharacter.h"
@@ -72,6 +73,21 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "UObject/Class.h"
+
+namespace
+{
+	/**
+	 * The player state of the world's first player, or null. Issue #1833 group
+	 * C part 3c: where a floor begins and is first cleared, the player's own
+	 * floor clock and count are told. Named for this file, because two files'
+	 * anonymous helpers of one name collide in a unity build.
+	 */
+	ACataclysmPlayerState* DungeonFloorPlayerState(UWorld* World)
+	{
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		return Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	}
+}
 
 namespace
 {
@@ -1521,6 +1537,15 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	FloorSecondsSincePlaced = 0.0f;
 	FloorClearedSeconds = -1.0f;
 	TrialSeconds = 0.0f;
+
+	// AND THE PLAYER'S OWN FLOOR CLOCK, for "for every 15 seconds spent on the
+	// same dungeon floor". Issue #1833 group C part 3c. Here, with the clear
+	// clock, so a Horde wave starts it again as it starts that one: a labelled
+	// judgement that a wave is a floor for this count, as it is for the clear.
+	if (ACataclysmPlayerState* Player = DungeonFloorPlayerState(GetWorld()))
+	{
+		Player->NoteFloorBegan(GetWorld()->GetTimeSeconds());
+	}
 	bTrialClearedInTime = false;
 	bTrialRanOut = false;
 	ForgetRuleResistances();
@@ -3949,6 +3974,13 @@ void ACataclysmDungeonGameMode::NoteTheFloorsClearTime()
 	}
 	// ONCE A FLOOR OR WAVE, THE FIRST TIME NONE OF ITS CREATURES IS ALIVE.
 	FloorClearedSeconds = FloorSecondsSincePlaced;
+
+	// AND THE PLAYER'S COUNT OF FLOORS CLEARED, once a floor, here where the
+	// clear is first seen. Issue #1833 group C part 3c.
+	if (ACataclysmPlayerState* Player = DungeonFloorPlayerState(GetWorld()))
+	{
+		Player->NoteFloorCleared();
+	}
 	UE_LOG(LogCataclysm, Log, TEXT("Floor %d cleared: %d floor cells, %.1f seconds after it was placed%s"),
 		   FloorNumber, CurrentFloor->GetPlan().FloorCount(), FloorClearedSeconds,
 		   FloorBrief.bWaveWalksIn ? TEXT(" (a Horde wave)") : TEXT(""));
