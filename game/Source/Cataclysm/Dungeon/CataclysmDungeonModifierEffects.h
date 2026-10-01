@@ -1768,6 +1768,26 @@ public:
 	static const TCHAR* SanctionedPassageKey;
 
 	/**
+	 * The row where the way down is sealed until every creature the floor placed is slain. Issues #1820 and #41.
+	 *
+	 * "Radiant barriers seal sections until all enemies in the area are slain, forcing full clears."
+	 *
+	 * `Partly` BUILT, AND THE MISSING HALF IS "SECTIONS": nothing divides a floor into areas a barrier could close, and
+	 * nothing changes a floor's layout during play. What is built is the floor-wide reading: the stairs are the one
+	 * barrier, and the floor the one area.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
+	 * - "ALL ENEMIES" IS EVERY CREATURE THE FLOOR PLACED: one in the floor's creatures that was not raised by a rule,
+	 *   can be hurt, and is not the player's follower. So the Reaper, a Blood Bond's elite, and every rule's arrivals
+	 *   never hold the stairs, and nothing can lock the player in. NOT `FloorIsCleared`, which never counts a floor with
+	 *   the Reaper or a Blood Bond elite as cleared: issue #2194.
+	 * - THE LAST FLOOR IS NOT SEALED, as Blood Gates rules: its way out leads out.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS (`GoToFloor` places none when `bWaveWalksIn`), so this row does nothing there.
+	 */
+	static const TCHAR* LightforgedWallsKey;
+
+	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
 	 * Issues #1820 and #41.
 	 *

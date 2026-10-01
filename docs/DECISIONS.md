@@ -2,6 +2,72 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Lightforged Walls: the way down stays sealed until every creature the floor placed is slain; partly built, because nothing divides a floor into sections
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, and the row
+answered `Partly`), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the count of the creatures
+still standing, the row added to `StairsSealedBy`, the floor panel line and the beat that refreshes it), the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Partly applied, by design: "sections" are not built.** The Unreal compile, the automation tests and the three guard
+proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### The row
+
+`Celestial_Lightforged_Walls` in `game/Data/DungeonModifiers.csv`: "Radiant barriers seal sections until all enemies in
+the area are slain, forcing full clears."
+
+### What the rule does
+
+On a floor carrying the row, the stairs refuse the player while any creature the floor placed still stands, and watch
+for the player again after a refusal, as Blood Gates' do. The floor panel says `lightforged walls: N still standing`
+while sealed and `lightforged walls: open` after. The stairs ask `StairsSealedBy()`, so with another sealing row on the
+floor they open only when both release.
+
+**`BuiltStateOf` answers `Partly`, and the missing half is "sections".** Nothing divides a floor into areas a barrier
+could close, and nothing changes a floor's layout during play. What is built is the floor-wide reading: the stairs are
+the one barrier and the floor the one area. The owner keeps the design over the code, so the floor-wide clear is not
+called the row.
+
+**It does nothing on a Horde dungeon.** A Horde dungeon has no stairs (GoToFloor places none when bWaveWalksIn), so this
+row does nothing there, and the panel says `lightforged walls: no stairs on a Horde floor`.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01. These are judgements, not readings the row
+settles:**
+
+- **"All enemies" is every creature the floor placed**: one in the floor's creatures that was not raised by a rule (by
+  either of the two marks a rule leaves), can be hurt, and is not the player's follower. "Slain" is any death, whoever
+  killed it. So the Reaper, a Blood Bond's elite and every rule's arrivals never hold the stairs, and nothing can lock
+  the player in.
+- **Not `FloorIsCleared`.** It never counts a floor with the Reaper or a Blood Bond's elite as cleared, which is issue
+  [#2194](https://github.com/sdubois777/Cataclysm/issues/2194). Built on it, this row would seal such a floor for good.
+- **The last floor is not sealed**, as Blood Gates rules: its way out leads out of the dungeon.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `LightforgedWallsFiguresAndTheRowPartly`: the row has a rule and is `Partly` built.
+- `LightforgedWallsSealedWhileAPlacedCreatureStands`: open with none; a thrall does not hold the stairs; refused with two
+  and with one standing; the last, killed by another creature, opens them.
+- `LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt`: with the Reaper on the floor, which `FloorIsCleared` never
+  counts as cleared, the walls are open; a creature that cannot be hurt and one raised by a rule, each by its one mark,
+  hold nothing; an ordinary creature holds them, and its death opens them with the Reaper still there.
+- `LightforgedWallsDoesNothingOnAHordeArena`.
+
+One Python check, `test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names_sections`, pins the
+three phrases the rulings rest on, "seal sections" among them.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the seal never applied; Pb, the
+can-be-hurt filter removed; Pc, the not-raised-by-a-rule filter removed.
+
+---
+
 ## 2026-10-01 — Sanctioned Passage: a Divine Gate seals the way down until the player channels at it for 10 seconds, and every creature comes while the channel lasts
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, the channel's

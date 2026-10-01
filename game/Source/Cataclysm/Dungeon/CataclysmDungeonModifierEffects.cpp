@@ -114,6 +114,7 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_Infernal_Seals");
 const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Celestial_Sanctioned_Passage");
+const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
 
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
@@ -827,7 +828,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(RealityRiftsKey)
 		// WARZONE CONTROL POINTS. The points are captured and held and give their strength; "summoning allied
 		// soldiers" and "opening shortcuts" do nothing. Issues #1820 and #41.
-		|| RowKey == FName(WarzoneControlPointsKey))
+		|| RowKey == FName(WarzoneControlPointsKey)
+		// LIGHTFORGED WALLS. The stairs stay sealed until every creature the floor placed is slain; "sections" do
+		// nothing, because nothing divides a floor into areas a barrier could close. Issues #1820 and #41.
+		|| RowKey == FName(LightforgedWallsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -974,6 +978,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(BloodGatesKey),
 		FName(InfernalSealsKey),
 		FName(SanctionedPassageKey),
+		FName(LightforgedWallsKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
