@@ -38895,4 +38895,64 @@ bool FCataclysmRelicsNewFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The first of these a player can take: not a boss, and not one that cannot be hurt. Null if none. */
+	ACataclysmEnemyCharacter* OneThePlayerCanTake(const TArray<ACataclysmEnemyCharacter*>& From)
+	{
+		for (ACataclysmEnemyCharacter* One : From)
+		{
+			if (IsValid(One) && !One->IsBoss() && !One->bCannotBeHurt)
+			{
+				return One;
+			}
+		}
+		return nullptr;
+	}
+}
+
+// A SPIRIT THE PLAYER TAKES IS NO LONGER A SPIRIT: "Spirit" GOES AND FOUR STAND. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRelicsTakenSpiritTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicsASpiritThePlayerTakesIsNoLongerOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRelicsTakenSpiritTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT("0"));
+	if (!TestNotNull(TEXT("the kinds can be pinned"), Kinds.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARelicFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->BattlefieldRelicsNow()[0], ActivateKey)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Before = Mode->RelicSpiritsStanding();
+	ACataclysmEnemyCharacter* Taken = OneThePlayerCanTake(Before);
+	if (!TestEqual(TEXT("set-up: all came"), Before.Num(), Effects::BattlefieldRelicsSpiritCount)
+		|| !TestNotNull(TEXT("set-up: one the player can take"), Taken)
+		|| !TestTrue(TEXT("set-up: \"Spirit\" under its bar"),
+					 UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Spirit")))
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no \"Spirit\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Spirit")));
+	TestEqual(TEXT("one fewer standing"), Mode->RelicSpiritsStanding().Num(), Effects::BattlefieldRelicsSpiritCount - 1);
+	TestFalse(TEXT("and it is not among them"), Mode->RelicSpiritsStanding().Contains(Taken));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
