@@ -3041,7 +3041,9 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetInfectionBloomDamageMultiplier", "InfectionBloomDamageSource"),
                         ("SetCarrionFeastDamageMultiplier", "CarrionFeastDamageSource"),
                         ("SetGrimTotemsDamageMultiplier", "GrimTotemsDamageSource"),
-                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource")):
+                        ("SetBlackestShadowDamageMultiplier", "BlackestShadowDamageSource"),
+                        ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource"),
+                        ("SetFamishedBeastsDamageMultiplier", "FamishedBeastsDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4682,3 +4684,79 @@ def test_reality_twister_row_is_the_owners_reword():
             f"Chaos_Reality_Twister no longer says {phrase.upper()!r}. The rule is built to that text; see "
             "RealityTwisterKey. " + words)
     assert "every 30 seconds" not in lower, "Chaos_Reality_Twister has its old text back. " + words
+
+
+def test_plaguebearer_row_still_names_an_elite_that_empowers_by_stacks_and_flees():
+    """The phrases the rule's readings rest on.
+
+    "One random elite on each floor is a "Plaguebearer." This enemy doesn't directly attack you, but it constantly
+    applies a stacking disease debuff to all other enemies in the dungeon. The Plaguebearer's debuff increases the
+    damage of other enemies by 5% per stack, to a maximum of 10 stacks. The Plaguebearer will flee when you get close,
+    forcing you to hunt it down to make the rest of the floor manageable." ONE RANDOM ELITE is who; DOESN'T DIRECTLY
+    ATTACK YOU is TakesNoHostileAction; 5% PER STACK and A MAXIMUM OF 10 STACKS are the figures; FLEE WHEN YOU GET
+    CLOSE is FleeFrom within its reach. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_The_Plaguebearer"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("one random elite", "doesn't directly attack you", "5% per stack", "a maximum of 10 stacks",
+                   "flee when you get close"):
+        assert phrase in lower, (
+            f"Pestilence_The_Plaguebearer no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "PlaguebearerKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_morale_break_row_still_names_a_leader_a_flight_an_escape_and_a_return():
+    """The phrases the rule's readings rest on.
+
+    "Certain enemies panic and flee when their leader dies, but if allowed to escape, they return later with
+    reinforcements." CERTAIN ENEMIES is read as a group with a leader at Elite or above; WHEN THEIR LEADER DIES is its
+    own group and no other; IF ALLOWED TO ESCAPE is alive and far from the player when the flight ends; RETURN LATER
+    WITH REINFORCEMENTS is back at the group's middle with one more of each kind. If any of them changes, the reading
+    must be revisited.
+    """
+    words = flat(rows()["War_Morale_Break"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("certain enemies", "panic and flee when their leader dies", "if allowed to escape",
+                   "return later with reinforcements"):
+        assert phrase in lower, (
+            f"War_Morale_Break no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "MoraleBreakKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_contagious_touch_row_still_names_contact_a_stack_a_share_per_stack_and_the_applier():
+    """The phrases the rule's readings rest on.
+
+    "Enemies no longer deal damage on contact. Instead, they apply a stacking "Contagion" debuff. When you hit an
+    enemy, you take a percentage of their total health as damage for every stack of the debuff. The only way to remove
+    the debuff is to kill the enemy that applied it." ON CONTACT is the basic attack; WHEN YOU HIT AN ENEMY is each hit
+    the player lands; THEIR TOTAL HEALTH is the struck creature's maximum; FOR EVERY STACK is every stack carried; KILL
+    THE ENEMY THAT APPLIED IT is each creature counting its own. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Contagious_Touch"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("no longer deal damage on contact", "stacking", "when you hit an enemy",
+                   "percentage of their total health", "for every stack", "kill the enemy that applied it"):
+        assert phrase in lower, (
+            f"Pestilence_Contagious_Touch no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "ContagiousTouchKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_famished_beasts_row_still_names_seeking_eating_denying_and_growing():
+    """The phrases the rule's readings rest on.
+
+    "Enemies actively seek out and consume dropped items, denying players their rewards and getting stronger with each
+    item eaten." SEEK OUT is the walk to the nearest drop; CONSUME DROPPED ITEMS is eating every drop but The Infested
+    Hoard's; DENYING PLAYERS THEIR REWARDS is the drop gone for good; STRONGER WITH EACH ITEM EATEN is a tenth more
+    damage and health a drop. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Famine_Famished_Beasts"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("actively seek out", "consume dropped items", "denying players their rewards",
+                   "stronger with each item eaten"):
+        assert phrase in lower, (
+            f"Famine_Famished_Beasts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "FamishedBeastsKey in CataclysmDungeonModifierEffects.h. " + words)

@@ -188,6 +188,12 @@ enum class ECataclysmBrainAction : uint8
 	 * renumbers every value after it.
 	 */
 	Fleeing,
+
+	/**
+	 * Walking to the nearest drop within reach to eat it: Famished Beasts. Issues
+	 * #1820 and #41. Appended, for the reason every value above gives.
+	 */
+	SeekingADrop,
 };
 
 /**

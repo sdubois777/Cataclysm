@@ -36418,4 +36418,1626 @@ bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Pestilence_The_Plaguebearer. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName PlaguebearerRow(UCataclysmDungeonModifierEffects::PlaguebearerKey);
+
+	/** A dungeon carrying only The Plaguebearer, on floor 2 with its own creatures placed and its Plaguebearer chosen. */
+	ACataclysmDungeonGameMode* APlaguebearerFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {PlaguebearerRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor has a Plaguebearer"), Mode->PlaguebearerOnTheFloor()))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** A living creature of the floor other than the Plaguebearer, or null. */
+	ACataclysmEnemyCharacter* APlaguebearersNeighbour(ACataclysmDungeonGameMode* Mode)
+	{
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy != Mode->PlaguebearerOnTheFloor())
+			{
+				return Enemy;
+			}
+		}
+		return nullptr;
+	}
+
+	/** Puts the player this far from the Plaguebearer, measured flat, at the player's own height. */
+	void StandFromTheBearer(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, float Cm)
+	{
+		const FVector At = Mode->PlaguebearerOnTheFloor()->GetActorLocation();
+		Player.Character->SetActorLocation(FVector(At.X + Cm, At.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** The Plaguebearer's own key of a creature's damage map. */
+	float PlagueMultiplierOn(const ACataclysmEnemyCharacter* Creature)
+	{
+		return Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource);
+	}
+}
+
+// THE FIGURES: 5% A STACK, ADDED; TEN STACKS; ONE EVERY 3 S; IT FLEES WITHIN 10 M, FOR 2 S AT A TIME; AN ELITE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PlaguebearerFiguresStacksReachAndRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("5% a stack, as the row says"), Effects::PlaguebearerDamagePercentPerStack, 5.0f, 0.001f);
+	TestEqual(TEXT("ten stacks at most, as the row says"), Effects::PlaguebearerMostStacks, 10);
+	TestEqual(TEXT("a stack every 3 s"), Effects::PlaguebearerSecondsBetweenStacks, 3.0f, 0.001f);
+	TestEqual(TEXT("it flees within 10 m"), Effects::PlaguebearerFleeWithinCm, 1000.0f, 0.001f);
+	TestEqual(TEXT("for 2 s at a time"), Effects::PlaguebearerFleeSeconds, 2.0f, 0.001f);
+	TestEqual(TEXT("an Elite"), Effects::PlaguebearerRung, 1);
+	TestEqual(TEXT("no stack, no more damage"), Effects::PlaguebearerMultiplier(0), 1.0f, 0.0001f);
+	TestEqual(TEXT("one stack, 5% more"), Effects::PlaguebearerMultiplier(1), 1.05f, 0.0001f);
+	TestEqual(TEXT("three, 15% more, added"), Effects::PlaguebearerMultiplier(3), 1.15f, 0.0001f);
+	TestEqual(TEXT("ten, 50% more"), Effects::PlaguebearerMultiplier(10), 1.5f, 0.0001f);
+	TestEqual(TEXT("never past ten"), Effects::PlaguebearerMultiplier(11), 1.5f, 0.0001f);
+	TestEqual(TEXT("nine and one more is ten"), Effects::PlaguebearerStacksAfter(9), 10);
+	TestEqual(TEXT("ten stays ten"), Effects::PlaguebearerStacksAfter(10), 10);
+	TestFalse(TEXT("not due at 2.99 s"), Effects::PlaguebearerStackIsDue(2.99f));
+	TestTrue(TEXT("due at 3 s"), Effects::PlaguebearerStackIsDue(3.0f));
+	return true;
+}
+
+// ONE ELITE OF THE FLOOR IS THE PLAGUEBEARER, NEVER THE FLOOR'S BOSS; IT TAKES NO HOSTILE ACTION AND SAYS WHAT IT IS; A
+// FLOOR WITH NO ELITE RAISES A COMMON TO ELITE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerChosenTest,
+	"Cataclysm.DungeonModifierEffects.OneEliteOfTheFloorIsThePlaguebearerOrACommonRaisedToElite",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerChosenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	auto CountBearers = [Mode]()
+	{
+		int32 Count = 0;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			Count += IsValid(Enemy) && Enemy->bIsPlaguebearer ? 1 : 0;
+		}
+		return Count;
+	};
+	ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+	TestEqual(TEXT("one Plaguebearer on the floor"), CountBearers(), 1);
+	TestEqual(TEXT("at the Elite rung"), Bearer->RarityStep, Effects::PlaguebearerRung);
+	TestFalse(TEXT("never the floor's boss"), Bearer->IsBoss() || Bearer->IsA<ACataclysmGatekeeperCharacter>());
+	TestTrue(TEXT("it takes no hostile action"), Bearer->TakesNoHostileAction());
+	TestTrue(TEXT("\"Plaguebearer\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Bearer).Contains(TEXT("Plaguebearer")));
+
+	// EVERY CREATURE MADE COMMON, AND THE CHOICE MADE AGAIN: A COMMON IS RAISED TO ELITE.
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && !Enemy->IsBoss() && !Enemy->IsA<ACataclysmGatekeeperCharacter>())
+		{
+			Enemy->SetRarityStep(0);
+		}
+	}
+	Mode->ForgetThePlaguebearer();
+	Mode->ChooseThePlaguebearer();
+	ACataclysmEnemyCharacter* Raised = Mode->PlaguebearerOnTheFloor();
+	if (!TestNotNull(TEXT("with no Elite, a Plaguebearer is still chosen"), Raised))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Common raised to Elite"), Raised->RarityStep, Effects::PlaguebearerRung);
+	TestEqual(TEXT("and still only one"), CountBearers(), 1);
+	return true;
+}
+
+// EVERY 3 S EVERY OTHER CREATURE GAINS A STACK, UP TO TEN: 5% MORE DAMAGE EACH, ADDED; "Diseased N" UNDER ITS BAR.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerStacksTest,
+	"Cataclysm.DungeonModifierEffects.EveryOtherCreatureGainsAStackEveryThreeSecondsToTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Other = Mode ? APlaguebearersNeighbour(Mode) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("another creature on the floor"), Other))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+	StandFromTheBearer(Mode, Player, 5000.0f);
+
+	Beat(Mode, BeatsFor(Effects::PlaguebearerSecondsBetweenStacks) - 1);
+	TestEqual(TEXT("no stack at 2.75 s"), Mode->PlaguebearerStacksNow(), 0);
+	TestEqual(TEXT("and no more damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("one stack at 3 s"), Mode->PlaguebearerStacksNow(), 1);
+	TestEqual(TEXT("5% more damage"), PlagueMultiplierOn(Other), 1.05f, 0.0001f);
+	TestTrue(TEXT("\"Diseased 1\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Other).Contains(TEXT("Diseased 1")));
+
+	Beat(Mode, BeatsFor(9.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	TestEqual(TEXT("ten stacks at 30 s"), Mode->PlaguebearerStacksNow(), 10);
+	TestEqual(TEXT("50% more damage"), PlagueMultiplierOn(Other), 1.5f, 0.0001f);
+	Beat(Mode, BeatsFor(Effects::PlaguebearerSecondsBetweenStacks));
+	TestEqual(TEXT("still ten at 33 s"), Mode->PlaguebearerStacksNow(), 10);
+	TestEqual(TEXT("still 50%"), PlagueMultiplierOn(Other), 1.5f, 0.0001f);
+	TestTrue(TEXT("\"Diseased 10\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Other).Contains(TEXT("Diseased 10")));
+	TestEqual(TEXT("never on the Plaguebearer itself"), PlagueMultiplierOn(Bearer), 1.0f, 0.0001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(PlaguebearerRow),
+			  FString(TEXT("the plaguebearer: 10 stacks, +50% damage")));
+	return true;
+}
+
+// A CREATURE THAT COMES LATER JOINS AT THE COUNT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerLateTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureThatComesLaterJoinsThePlaguebearersCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerLateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	StandFromTheBearer(Mode, Player, 5000.0f);
+	Beat(Mode, BeatsFor(3.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	if (!TestEqual(TEXT("set-up: three stacks"), Mode->PlaguebearerStacksNow(), 3))
+	{
+		return false;
+	}
+	const FVector At = Mode->PlaguebearerOnTheFloor()->GetActorLocation();
+	ACataclysmEnemyCharacter* Late = SpawnImpWithHealth(World, At + FVector(0.0f, 600.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature that comes later"), Late))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Late);
+	TestEqual(TEXT("it carries nothing yet"), PlagueMultiplierOn(Late), 1.0f, 0.0001f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and joins at three stacks on the next beat"), PlagueMultiplierOn(Late), 1.15f, 0.0001f);
+	return true;
+}
+
+// IT FLEES WITHIN 10 M AND STANDS BEYOND, NOTICING NOBODY. Through the brain's answer: a test world has no navigation.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerFleesTest,
+	"Cataclysm.DungeonModifierEffects.ThePlaguebearerFleesWithinTenMetresAndStandsBeyond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerFleesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+	ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Bearer->GetController());
+	if (!TestNotNull(TEXT("the Plaguebearer has a brain"), Brain))
+	{
+		return false;
+	}
+
+	StandFromTheBearer(Mode, Player, 1010.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("at 10.1 m it stands"), static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::Idle));
+	TestNull(TEXT("noticing nobody"), Brain->CurrentTarget.Get());
+
+	StandFromTheBearer(Mode, Player, 990.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("at 9.9 m it flees"), static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::Fleeing));
+	TestTrue(TEXT("and the panel says so"),
+			 Mode->LiveCountsForTheFloor().FindRef(PlaguebearerRow).EndsWith(TEXT("; it flees")));
+	return true;
+}
+
+// ITS DEATH CLEARS EVERY STACK AT ONCE, AND NO MORE COME THAT FLOOR.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlaguebearerDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlaguebearersDeathClearsEveryStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlaguebearerDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlaguebearerFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Other = Mode ? APlaguebearersNeighbour(Mode) : nullptr;
+	if (!Mode || !TestNotNull(TEXT("another creature on the floor"), Other))
+	{
+		return false;
+	}
+	StandFromTheBearer(Mode, Player, 5000.0f);
+	Beat(Mode, BeatsFor(3.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	if (!TestEqual(TEXT("set-up: 15% more damage at three stacks"), PlagueMultiplierOn(Other), 1.15f, 0.0001f)
+		|| !KillIt(*this, Player, Mode->PlaguebearerOnTheFloor()))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("its death clears every stack"), Mode->PlaguebearerStacksNow(), 0);
+	TestEqual(TEXT("so the others deal their own damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(PlaguebearerRow),
+			  FString(TEXT("the plaguebearer is dead")));
+	Beat(Mode, BeatsFor(2.0f * Effects::PlaguebearerSecondsBetweenStacks));
+	TestEqual(TEXT("and no more come that floor"), Mode->PlaguebearerStacksNow(), 0);
+	TestEqual(TEXT("still their own damage"), PlagueMultiplierOn(Other), 1.0f, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// War_Morale_Break. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName MoraleRow(UCataclysmDungeonModifierEffects::MoraleBreakKey);
+
+	/** A dungeon carrying only Morale Break, on floor 2 with its own creatures placed. */
+	ACataclysmDungeonGameMode* AMoraleFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {MoraleRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** The floor's groups of two or more living creatures, each in the order placed, the largest first. */
+	TArray<TArray<ACataclysmEnemyCharacter*>> MoraleGroups(ACataclysmDungeonGameMode* Mode)
+	{
+		TMap<int32, int32> Where;
+		TArray<TArray<ACataclysmEnemyCharacter*>> Groups;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || Enemy->PackGroup == INDEX_NONE)
+			{
+				continue;
+			}
+			if (!Where.Contains(Enemy->PackGroup))
+			{
+				Where.Add(Enemy->PackGroup, Groups.Num());
+				Groups.AddDefaulted();
+			}
+			Groups[Where[Enemy->PackGroup]].Add(Enemy.Get());
+		}
+		Groups.RemoveAll([](const TArray<ACataclysmEnemyCharacter*>& Group) { return Group.Num() < 2; });
+		Groups.StableSort([](const TArray<ACataclysmEnemyCharacter*>& A, const TArray<ACataclysmEnemyCharacter*>& B)
+		{
+			return A.Num() > B.Num();
+		});
+		return Groups;
+	}
+
+	/** Every grouped creature made Common. */
+	void EveryGroupCommon(ACataclysmDungeonGameMode* Mode)
+	{
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			if (IsValid(Enemy) && Enemy->PackGroup != INDEX_NONE)
+			{
+				Enemy->SetRarityStep(0);
+			}
+		}
+	}
+
+	/**
+	 * Every group made Common, then the first placed of the largest group an Elite carrying no Horde Leader, and the
+	 * leaders chosen again: it is the one leader. `Followers` is the rest of its group, `Others` the next group.
+	 */
+	ACataclysmEnemyCharacter* AMoraleLeader(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+											TArray<ACataclysmEnemyCharacter*>& Followers,
+											TArray<ACataclysmEnemyCharacter*>& Others)
+	{
+		const TArray<TArray<ACataclysmEnemyCharacter*>> Groups = MoraleGroups(Mode);
+		if (!Test.TestTrue(TEXT("set-up: two groups of two or more"), Groups.Num() >= 2))
+		{
+			return nullptr;
+		}
+		EveryGroupCommon(Mode);
+		ACataclysmEnemyCharacter* Leader = Groups[0][0];
+		Leader->SetRarityStep(UCataclysmDungeonModifierEffects::MoraleBreakLeaderLowestRung);
+		Leader->ModifierRows.Remove(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+		Followers = Groups[0];
+		Followers.RemoveAt(0);
+		Others = Groups[1];
+		Mode->ForgetMoraleBreak();
+		Mode->ChooseTheMoraleLeaders();
+		const TArray<ACataclysmEnemyCharacter*> Leaders = Mode->MoraleLeadersNow();
+		if (!Test.TestEqual(TEXT("set-up: one leader"), Leaders.Num(), 1)
+			|| !Test.TestTrue(TEXT("set-up: the Elite leads"), Leaders.Contains(Leader)))
+		{
+			return nullptr;
+		}
+		return Leader;
+	}
+
+	/** What a creature's brain answers now. */
+	int32 BrainSays(ACataclysmEnemyCharacter* Creature)
+	{
+		ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Creature->GetController());
+		return Brain ? static_cast<int32>(Brain->Think()) : -1;
+	}
+
+	/** Puts a creature this far from the player along X, measured flat, at its own height. */
+	void StandFromThePlayer(ACataclysmEnemyCharacter* Creature, const FPossessedPlayer& Player, float Cm)
+	{
+		const FVector At = Player.Character->GetActorLocation();
+		Creature->SetActorLocation(FVector(At.X + Cm, At.Y, Creature->GetActorLocation().Z));
+	}
+}
+
+// THE FIGURES: 8 S OF FLIGHT, BEYOND 15 M IS ESCAPED, BACK 30 S LATER WITH ONE COMMON EACH; AN ELITE LEADS TWO OR MORE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakFiguresTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakFiguresFlightEscapeAndReturn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("8 s of flight"), Effects::MoraleBreakFleeSeconds, 8.0f, 0.001f);
+	TestEqual(TEXT("beyond 15 m is escaped"), Effects::MoraleBreakEscapeBeyondCm, 1500.0f, 0.001f);
+	TestEqual(TEXT("back 30 s later"), Effects::MoraleBreakReturnSeconds, 30.0f, 0.001f);
+	TestEqual(TEXT("one reinforcement for each escaped"), Effects::MoraleBreakReinforcementsPerEscapee, 1);
+	TestEqual(TEXT("at Common"), Effects::MoraleBreakReinforcementRung, 0);
+	TestEqual(TEXT("an Elite leads"), Effects::MoraleBreakLeaderLowestRung, 1);
+	TestTrue(TEXT("an Elite leads a group of two"), Effects::MoraleBreakLeads(1, 2));
+	TestFalse(TEXT("a Common leads nobody"), Effects::MoraleBreakLeads(0, 10));
+	TestFalse(TEXT("a group of one has no leader"), Effects::MoraleBreakLeads(4, 1));
+	TestFalse(TEXT("the flight is not over at 7.99 s"), Effects::MoraleBreakFlightIsOver(7.99f));
+	TestTrue(TEXT("and is at 8 s"), Effects::MoraleBreakFlightIsOver(8.0f));
+	TestFalse(TEXT("15 m is not escaped"), Effects::MoraleBreakHasEscaped(1500.0f));
+	TestTrue(TEXT("15.01 m is"), Effects::MoraleBreakHasEscaped(1501.0f));
+	TestFalse(TEXT("not back at 29.99 s"), Effects::MoraleBreakReturnIsDue(29.99f));
+	TestTrue(TEXT("back at 30 s"), Effects::MoraleBreakReturnIsDue(30.0f));
+	return true;
+}
+
+// A LEADER IS ITS GROUP'S HIGHEST RUNG, ELITE OR ABOVE, TIES TO THE FIRST PLACED; A GROUP OF COMMONS HAS NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakLeaderTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakLeaderIsItsGroupsHighestRungEliteOrAbove",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakLeaderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* First = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!First)
+	{
+		return false;
+	}
+	TestTrue(TEXT("\"Leader\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(First).Contains(TEXT("Leader")));
+	TestFalse(TEXT("a group of Commons has no leader"),
+			  Others.ContainsByPredicate([](const ACataclysmEnemyCharacter* One) { return One->bIsMoraleLeader; }));
+
+	// A HIGHER RUNG PLACED LATER LEADS.
+	ACataclysmEnemyCharacter* Second = Followers[0];
+	Second->SetRarityStep(2);
+	Mode->ForgetMoraleBreak();
+	Mode->ChooseTheMoraleLeaders();
+	TestTrue(TEXT("a Legendary placed second leads"), Mode->MoraleLeadersNow().Contains(Second));
+	TestFalse(TEXT("and the Elite does not"), First->bIsMoraleLeader);
+
+	// A TIE GOES TO THE FIRST PLACED.
+	Second->SetRarityStep(1);
+	Mode->ForgetMoraleBreak();
+	Mode->ChooseTheMoraleLeaders();
+	TestTrue(TEXT("two Elites: the first placed leads"), Mode->MoraleLeadersNow().Contains(First));
+	TestFalse(TEXT("and only it"), Second->bIsMoraleLeader);
+
+	// EVERY GROUP COMMON: NO LEADER ANYWHERE.
+	EveryGroupCommon(Mode);
+	Mode->ForgetMoraleBreak();
+	Mode->ChooseTheMoraleLeaders();
+	TestEqual(TEXT("groups of Commons have no leader"), Mode->MoraleLeadersNow().Num(), 0);
+	return true;
+}
+
+// A LEADER'S DEATH PANICS ITS OWN GROUP, WHICH FLEES AND SAYS SO, AND NO OTHER GROUP.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakPanicTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakALeadersDeathPanicsItsOwnGroupAndNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakPanicTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader)
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the panel before"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: no leader has fallen")));
+	if (!KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+
+	const int32 Fleeing = static_cast<int32>(ECataclysmBrainAction::Fleeing);
+	for (ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		TestTrue(TEXT("its group panics"), Follower->bIsPanicked);
+		TestEqual(TEXT("and flees"), BrainSays(Follower), Fleeing);
+		TestTrue(TEXT("\"Panicked\" under its bar"),
+				 UCataclysmCombatOverlay::StatusLineFor(Follower).Contains(TEXT("Panicked")));
+	}
+	for (ACataclysmEnemyCharacter* Other : Others)
+	{
+		TestFalse(TEXT("another group does not panic"), Other->bIsPanicked);
+		TestNotEqual(TEXT("or flee"), BrainSays(Other), Fleeing);
+	}
+	TestEqual(TEXT("the count"), Mode->MoraleBreakPanickedNow(), Followers.Num());
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString::Printf(TEXT("morale break: %d panicked, 0 escaped"), Followers.Num()));
+	return true;
+}
+
+// AT 8 S ONE BEYOND 15 M HAS ESCAPED AND LEFT WITHOUT DYING; ONE WITHIN STOPS RUNNING AND FIGHTS ON. Placed there by
+// hand: a test world has no navigation, so nothing runs anywhere.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakEscapeTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakBeyondFifteenMetresEscapesAndWithinFightsOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakEscapeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader || !TestTrue(TEXT("set-up: two followers or more"), Followers.Num() >= 2)
+		|| !KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> Far = Followers[0];
+	ACataclysmEnemyCharacter* Near = Followers[1];
+	StandFromThePlayer(Followers[0], Player, 2000.0f);
+	for (int32 Index = 1; Index < Followers.Num(); ++Index)
+	{
+		StandFromThePlayer(Followers[Index], Player, 1000.0f);
+	}
+
+	Beat(Mode, BeatsFor(Effects::MoraleBreakFleeSeconds) - 1);
+	TestTrue(TEXT("at 7.75 s the far one still runs"), Far.IsValid() && Far->bIsPanicked);
+	Beat(Mode, 1);
+	TestFalse(TEXT("at 8 s beyond 15 m it has escaped and left"), Far.IsValid());
+	TestEqual(TEXT("one escaped"), Mode->MoraleBreakEscapedNow(), 1);
+	TestFalse(TEXT("the near one did not die"), UCataclysmSkillEffects::IsDead(Near));
+	TestFalse(TEXT("it stops panicking"), Near->bIsPanicked);
+	TestNotEqual(TEXT("and fights on"), BrainSays(Near), static_cast<int32>(ECataclysmBrainAction::Fleeing));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: 0 panicked, 1 escaped, back in 30s")));
+	return true;
+}
+
+// THE ESCAPED COUNT AS LIVING WHILE AWAY, AND 30 S LATER COME BACK AT THEIR OWN RUNGS WITH ONE COMMON EACH, IN NO GROUP.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakReturnTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakReturnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader)
+	{
+		return false;
+	}
+	const int32 Escaping = Followers.Num();
+	// HOW MANY OF EACH KIND LEAVE, counted before they go: a group may hold more than its pack's kind -- a Succubus
+	// escorts a pack in its group -- and each one comes back as itself.
+	TMap<const UClass*, int32> Leaving;
+	for (const ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		++Leaving.FindOrAdd(Follower->GetClass());
+	}
+	Followers[0]->SetRarityStep(1);
+	if (!KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	for (ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		StandFromThePlayer(Follower, Player, 2000.0f);
+	}
+	Beat(Mode, BeatsFor(Effects::MoraleBreakFleeSeconds));
+	if (!TestEqual(TEXT("set-up: the whole group escaped"), Mode->MoraleBreakEscapedNow(), Escaping))
+	{
+		return false;
+	}
+
+	// EVERY CREATURE STILL STANDING KILLED: THE FLOOR IS NOT CLEARED WHILE THE ESCAPED ARE AWAY.
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			Standing.Add(Enemy.Get());
+		}
+	}
+	for (ACataclysmEnemyCharacter* One : Standing)
+	{
+		if (!KillIt(*this, Player, One))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("the escaped count as living"), Mode->LivingFloorEnemies(), Escaping);
+	TestFalse(TEXT("so the floor is not cleared"), Mode->FloorIsCleared());
+
+	const int32 Before = Mode->FloorEnemies.Num();
+	Beat(Mode, BeatsFor(Effects::MoraleBreakReturnSeconds) - 1);
+	TestEqual(TEXT("not back at 29.75 s"), Mode->FloorEnemies.Num(), Before);
+	TestEqual(TEXT("the panel while away"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString::Printf(TEXT("morale break: 0 panicked, %d escaped, back in 1s"), Escaping));
+	Beat(Mode, 1);
+
+	int32 Back = 0;
+	int32 AtElite = 0;
+	int32 InAGroup = 0;
+	TMap<const UClass*, int32> Returning;
+	for (int32 Index = Before; Index < Mode->FloorEnemies.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Returned = Mode->FloorEnemies[Index];
+		if (IsValid(Returned) && !UCataclysmSkillEffects::IsDead(Returned))
+		{
+			++Back;
+			AtElite += Returned->RarityStep == 1 ? 1 : 0;
+			InAGroup += Returned->PackGroup != INDEX_NONE ? 1 : 0;
+			++Returning.FindOrAdd(Returned->GetClass());
+		}
+	}
+	TestEqual(TEXT("at 30 s the escaped are back with one reinforcement each"), Back, 2 * Escaping);
+	TestEqual(TEXT("as many kinds come back as left"), Returning.Num(), Leaving.Num());
+	for (const TPair<const UClass*, int32>& Kind : Leaving)
+	{
+		TestEqual(*FString::Printf(TEXT("each %s that left comes back with one of its own"), *GetNameSafe(Kind.Key)),
+				  Returning.FindRef(Kind.Key), 2 * Kind.Value);
+	}
+	TestEqual(TEXT("the Elite came back an Elite, and every other one a Common"), AtElite, 1);
+	TestEqual(TEXT("in no group, so they never panic again"), InAGroup, 0);
+	TestEqual(TEXT("none away now"), Mode->MoraleBreakEscapedNow(), 0);
+	TestEqual(TEXT("the living are the ones back"), Mode->LivingFloorEnemies(), 2 * Escaping);
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: 0 panicked, 0 escaped")));
+	return true;
+}
+
+// A LEADER CARRYING HORDE LEADER RALLIES ITS GROUP INSTEAD: NOBODY PANICS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMoraleBreakHordeLeaderTest,
+	"Cataclysm.DungeonModifierEffects.MoraleBreakAHordeLeaderRalliesItsGroupInstead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMoraleBreakHordeLeaderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AMoraleFloor(*this, World, Player);
+	TArray<ACataclysmEnemyCharacter*> Followers;
+	TArray<ACataclysmEnemyCharacter*> Others;
+	ACataclysmEnemyCharacter* Leader = Mode ? AMoraleLeader(*this, Mode, Followers, Others) : nullptr;
+	if (!Leader)
+	{
+		return false;
+	}
+	Leader->ModifierRows.Add(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+	Beat(Mode, 1);
+	if (!KillIt(*this, Player, Leader))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	for (ACataclysmEnemyCharacter* Follower : Followers)
+	{
+		TestFalse(TEXT("its group does not panic"), Follower->bIsPanicked);
+		TestNotEqual(TEXT("or flee"), BrainSays(Follower), static_cast<int32>(ECataclysmBrainAction::Fleeing));
+	}
+	TestEqual(TEXT("nobody panicked"), Mode->MoraleBreakPanickedNow(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(MoraleRow),
+			  FString(TEXT("morale break: 0 panicked, 0 escaped")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Contagious_Touch. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ContagionRow(UCataclysmDungeonModifierEffects::ContagiousTouchKey);
+
+	/** Sets the player's evasion. Uncapped, so 1000 evades every roll and 0 none. */
+	void SetPlayerEvasion(const FPossessedPlayer& Player, float Evasion)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), Evasion);
+
+		// AND THE BASE OF THE PLAYER'S OWN EVASION INPUTS, WHICH IS WHAT A HIT ASKS. The evasion step reads
+		// `StatForSkill("evasion")`, and a player holds stat inputs for evasion, so it is worked out from those and the
+		// attribute is not read; a creature holds none and falls back to its attribute. A diagnostic run on 2026-09-30
+		// printed the attribute at 1000 and the asked evasion at 0. Written in place so every other input is kept.
+		if (const FCataclysmStatInputs* Inputs = Player.AbilitySystem->GetStatInputs(FName(TEXT("evasion"))))
+		{
+			const_cast<FCataclysmStatInputs*>(Inputs)->Base = Evasion;
+		}
+	}
+
+	/**
+	 * A dungeon carrying only Contagious Touch, on floor 2, with a player of a hundred thousand health who evades
+	 * nothing.
+	 */
+	ACataclysmDungeonGameMode* AContagionFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {ContagionRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !GiveThePlayerHealthForTypedDamage(Test, Player))
+		{
+			return nullptr;
+		}
+		SetPlayerEvasion(Player, 0.0f);
+		return Mode;
+	}
+
+	/** A creature beside the player with 1000 health that swings for 100, or null. */
+	ACataclysmEnemyCharacter* AToucher(UWorld* World, const FPossessedPlayer& Player, float Along)
+	{
+		ACataclysmEnemyCharacter* Creature = SpawnCreatureWithHealth(
+			World, Player.Character->GetActorLocation() + FVector(Along, 0.0f, 0.0f), 1000.0f);
+		if (Creature && GiveCreatureAttackDamage(Creature, 100.0f) <= 0.0f)
+		{
+			return nullptr;
+		}
+		return Creature;
+	}
+
+	/** `Times` swings of `Creature`'s basic attack at the player. */
+	void Touch(ACataclysmEnemyCharacter* Creature, const FPossessedPlayer& Player, int32 Times)
+	{
+		for (int32 Index = 0; Index < Times; ++Index)
+		{
+			Creature->AttackTarget(Player.Character);
+		}
+	}
+}
+
+// THE FIGURES: 1% OF THE STRUCK CREATURE'S MAXIMUM A STACK, TEN STACKS IN ALL, ONE A TOUCH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchFiguresTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchFiguresShareCapAndStacksPerTouch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("1% a stack"), Effects::ContagiousTouchPercentPerStack, 1.0f, 0.001f);
+	TestEqual(TEXT("ten stacks in all"), Effects::ContagiousTouchMostStacks, 10);
+	TestEqual(TEXT("one a touch"), Effects::ContagiousTouchStacksPerTouch, 1);
+	TestEqual(TEXT("a touch at none adds one"), Effects::ContagiousTouchStacksAdded(0), 1);
+	TestEqual(TEXT("at nine, one"), Effects::ContagiousTouchStacksAdded(9), 1);
+	TestEqual(TEXT("at ten, none"), Effects::ContagiousTouchStacksAdded(10), 0);
+	TestEqual(TEXT("past ten, none"), Effects::ContagiousTouchStacksAdded(11), 0);
+	TestEqual(TEXT("no stack costs nothing"), Effects::ContagiousTouchRetaliation(1000.0f, 0), 0.0f, 0.001f);
+	TestEqual(TEXT("three stacks, 3% of 1000"), Effects::ContagiousTouchRetaliation(1000.0f, 3), 30.0f, 0.001f);
+	TestEqual(TEXT("never past ten"), Effects::ContagiousTouchRetaliation(1000.0f, 12), 100.0f, 0.001f);
+	return true;
+}
+
+// A SWING AT THE PLAYER DEALS NOTHING AND ADDS A STACK; OFF THE ROW IT DEALS DAMAGE; A BLOW THAT IS NOT THE BASIC
+// ATTACK STILL DEALS DAMAGE ON THE ROW.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchSwingTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchASwingDealsNothingAndAddsAStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchSwingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+
+	// THE CONTROL, ON A FLOOR WITHOUT THE ROW: THE SAME SWING DEALS DAMAGE.
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	SetPlayerEvasion(Player, 0.0f);
+	ACataclysmEnemyCharacter* Plain = AToucher(World, Player, 200.0f);
+	if (!TestNotNull(TEXT("a creature for the control"), Plain))
+	{
+		return false;
+	}
+	const float BeforeControl = HealthOf(Player.Character);
+	Touch(Plain, Player, 1);
+	TestTrue(TEXT("off the row a swing deals damage"), HealthOf(Player.Character) < BeforeControl);
+	TestEqual(TEXT("and adds no stack"), Plain->ContagionStacksApplied, 0);
+
+	// ON THE ROW.
+	Mode->DungeonModifiers = {ContagionRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	SetPlayerEvasion(Player, 0.0f);
+	ACataclysmEnemyCharacter* Toucher = AToucher(World, Player, 200.0f);
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher))
+	{
+		return false;
+	}
+	const float Before = HealthOf(Player.Character);
+	Touch(Toucher, Player, 1);
+	TestEqual(TEXT("on the row a swing deals nothing"), HealthOf(Player.Character), Before, 0.01f);
+	TestEqual(TEXT("and adds one stack to the creature"), Toucher->ContagionStacksApplied, 1);
+	TestEqual(TEXT("which the player carries"), Mode->ContagionStacksNow(), 1);
+	TestTrue(TEXT("\"Infecting 1\" under its bar"),
+			 UCataclysmCombatOverlay::StatusLineFor(Toucher).Contains(TEXT("Infecting 1")));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(ContagionRow),
+			  FString(TEXT("contagious touch: 1 stacks, hits cost 1% of the target's health")));
+
+	// A BLOW THAT IS NOT THE BASIC ATTACK -- a charge, a stomp, a projectile -- STILL DEALS DAMAGE.
+	UCataclysmSkillEffects::ApplyHit(Toucher, Player.Character, 100.0f);
+	TestTrue(TEXT("a blow that is not contact still deals damage"), HealthOf(Player.Character) < Before);
+	TestEqual(TEXT("and adds no stack"), Toucher->ContagionStacksApplied, 1);
+	return true;
+}
+
+// TEN STACKS IN ALL, ACROSS THE CREATURES THAT APPLIED THEM; A TOUCH AT TEN ADDS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchCapTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchStacksStopAtTenAcrossCreatures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* First = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Second = Mode ? AToucher(World, Player, -200.0f) : nullptr;
+	if (!TestNotNull(TEXT("a first creature"), First) || !TestNotNull(TEXT("and a second"), Second))
+	{
+		return false;
+	}
+	Touch(First, Player, 7);
+	Touch(Second, Player, 5);
+	TestEqual(TEXT("seven from the first"), First->ContagionStacksApplied, 7);
+	TestEqual(TEXT("three from the second, the rest refused at ten"), Second->ContagionStacksApplied, 3);
+	TestEqual(TEXT("ten in all"), Mode->ContagionStacksNow(), 10);
+	Touch(First, Player, 1);
+	TestEqual(TEXT("a touch at ten adds nothing"), Mode->ContagionStacksNow(), 10);
+	TestEqual(TEXT("to anyone"), First->ContagionStacksApplied, 7);
+	return true;
+}
+
+// AN EVADED TOUCH ADDS NO STACK, ASKED OF THE PIPELINE'S OWN EVASION STEP; ONE THAT LANDS DOES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchEvadedTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchAnEvadedTouchAddsNoStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchEvadedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher))
+	{
+		return false;
+	}
+	SetPlayerEvasion(Player, 1000.0f);
+	Touch(Toucher, Player, 3);
+	TestEqual(TEXT("three evaded touches add no stack"), Toucher->ContagionStacksApplied, 0);
+	SetPlayerEvasion(Player, 0.0f);
+	Touch(Toucher, Player, 1);
+	TestEqual(TEXT("one that lands adds one"), Toucher->ContagionStacksApplied, 1);
+	return true;
+}
+
+// A HIT THE PLAYER LANDS COSTS 1% OF THE STRUCK CREATURE'S MAXIMUM HEALTH FOR EVERY STACK, TYPED AS THE ROW AND DEALT
+// FROM THE FLOOR'S HAZARD SOURCE; A BLOW THE PLAYER DID NOT STRIKE COSTS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchRetaliationTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchAHitCostsOnePercentOfTheTargetsMaximumPerStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchRetaliationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Struck = Mode
+		? SpawnCreatureWithHealth(World, Player.Character->GetActorLocation() + FVector(0.0f, 200.0f, 0.0f), 50000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher) || !TestNotNull(TEXT("and one to strike"), Struck))
+	{
+		return false;
+	}
+	Struck->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	Touch(Toucher, Player, 3);
+	if (!TestEqual(TEXT("set-up: three stacks"), Mode->ContagionStacksNow(), 3))
+	{
+		return false;
+	}
+
+	// WHAT 3% OF 50,000 FROM THE FLOOR'S HAZARD SOURCE, TYPED AS THE ROW, COSTS THIS PLAYER, measured on the player.
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Full = Player.Read(Health);
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.DamageType = FName(TEXT("Pestilence"));
+	UCataclysmSkillEffects::ApplyDirectDamage(ACataclysmFloorHazardSource::ForFloor(World), Player.Character,
+											  1500.0f, Delivery);
+	const float Expected = Full - Player.Read(Health);
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Full);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the reference cost something: %.1f"), Expected), Expected > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Struck, 100.0f);
+	TestTrue(TEXT("the player's hit landed"), HealthOf(Struck) < 50000.0f);
+	TestEqual(TEXT("and cost the player 3% of the struck creature's maximum"), Full - Player.Read(Health), Expected, 0.5f);
+
+	// A BLOW THE PLAYER DID NOT STRIKE -- one creature on another -- COSTS THE PLAYER NOTHING.
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Full);
+	UCataclysmSkillEffects::ApplyHit(Toucher, Struck, 100.0f);
+	TestEqual(TEXT("a blow the player did not strike costs nothing"), Player.Read(Health), Full, 0.01f);
+	return true;
+}
+
+// KILLING A CREATURE REMOVES EXACTLY THE STACKS IT APPLIED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchKillTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchKillingACreatureRemovesItsStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* First = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Second = Mode ? AToucher(World, Player, -200.0f) : nullptr;
+	if (!TestNotNull(TEXT("a first creature"), First) || !TestNotNull(TEXT("and a second"), Second))
+	{
+		return false;
+	}
+	Touch(First, Player, 2);
+	Touch(Second, Player, 3);
+	if (!TestEqual(TEXT("set-up: five stacks"), Mode->ContagionStacksNow(), 5) || !KillIt(*this, Player, First))
+	{
+		return false;
+	}
+	TestEqual(TEXT("killing the first removes its two"), Mode->ContagionStacksNow(), 3);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(ContagionRow),
+			  FString(TEXT("contagious touch: 3 stacks, hits cost 3% of the target's health")));
+	if (!KillIt(*this, Player, Second))
+	{
+		return false;
+	}
+	TestEqual(TEXT("killing the second removes the rest"), Mode->ContagionStacksNow(), 0);
+	return true;
+}
+
+// THE RETALIATION IS NOT HEARD AS THE PLAYER'S OWN HIT, SO IT CANNOT FEED ITSELF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmContagiousTouchNotHeardTest,
+	"Cataclysm.DungeonModifierEffects.ContagiousTouchTheRetaliationIsNotHeardAsThePlayersHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmContagiousTouchNotHeardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AContagionFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Toucher = Mode ? AToucher(World, Player, 200.0f) : nullptr;
+	ACataclysmEnemyCharacter* Struck = Mode
+		? SpawnCreatureWithHealth(World, Player.Character->GetActorLocation() + FVector(0.0f, 200.0f, 0.0f), 50000.0f)
+		: nullptr;
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("a creature that touches"), Toucher) || !TestNotNull(TEXT("and one to strike"), Struck)
+		|| !TestNotNull(TEXT("the world announces hits"), Events))
+	{
+		return false;
+	}
+	Struck->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	Touch(Toucher, Player, 2);
+	if (!TestEqual(TEXT("set-up: two stacks"), Mode->ContagionStacksNow(), 2))
+	{
+		return false;
+	}
+
+	AActor* const You = Player.Character;
+	int32 ByThePlayer = 0;
+	int32 OnThePlayer = 0;
+	int32 OnThePlayerByThePlayer = 0;
+	const FDelegateHandle Heard = Events->OnHit.AddLambda(
+		[You, &ByThePlayer, &OnThePlayer, &OnThePlayerByThePlayer](const FCataclysmHitNotice& Notice)
+		{
+			ByThePlayer += Notice.Attacker == You ? 1 : 0;
+			OnThePlayer += Notice.Target == You ? 1 : 0;
+			OnThePlayerByThePlayer += (Notice.Target == You && Notice.Attacker == You) ? 1 : 0;
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Heard); };
+
+	const float Before = HealthOf(Player.Character);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Struck, 100.0f);
+	TestTrue(TEXT("the retaliation reached the player"), HealthOf(Player.Character) < Before);
+	TestEqual(TEXT("one hit heard from the player: its own, on the creature"), ByThePlayer, 1);
+	TestEqual(TEXT("the retaliation is heard on the player once"), OnThePlayer, 1);
+	TestEqual(TEXT("and not as the player's own hit"), OnThePlayerByThePlayer, 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Famine_Famished_Beasts. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName FamishedRow(UCataclysmDungeonModifierEffects::FamishedBeastsKey);
+
+	/** A dungeon carrying these rows, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AFamishedFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+											  const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		return Mode;
+	}
+
+	/** A drop at `At`: gear, or a crafting material. */
+	ACataclysmDroppedItem* ADropAt(UWorld* World, const FVector& At, bool bMaterial)
+	{
+		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(At, FRotator::ZeroRotator);
+		if (Drop && bMaterial)
+		{
+			Drop->Material = FName(TEXT("Material_Purified_Essence"));
+			Drop->MaterialQuantity = 1;
+			Drop->MaterialTier = 5;
+		}
+		else if (Drop)
+		{
+			Drop->Item.Base = FName(TEXT("Greataxe"));
+		}
+		return Drop;
+	}
+
+	/** Every drop in the world destroyed: what a kill leaves, so a test counts only the drops it places. */
+	void ClearTheDrops(UWorld* World)
+	{
+		TArray<ACataclysmDroppedItem*> Drops;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			Drops.Add(*It);
+		}
+		for (ACataclysmDroppedItem* Drop : Drops)
+		{
+			Drop->Destroy();
+		}
+	}
+
+	/** A creature's maximum health. */
+	float MaxHealthOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		return Creature->GetAbilitySystemComponent()->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	}
+}
+
+// THE FIGURES: 10 M TO SEEK, EATEN WITHIN THE ROAM'S ACCEPTANCE RADIUS, 10% A DROP, UP TO 10.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsFiguresReachShareAndMost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("seeks within 10 m"), Effects::FamishedBeastsSeekWithinCm, 1000.0f, 0.001f);
+	TestEqual(TEXT("eats within the roam's acceptance radius"), Effects::FamishedBeastsEatWithinCm,
+			  ACataclysmEnemyController::RoamAcceptanceRadiusCm, 0.001f);
+	TestEqual(TEXT("10% a drop, Carrion Feast's"), Effects::FamishedBeastsStrongerPercentPerDrop, 10.0f, 0.001f);
+	TestEqual(TEXT("up to 10, Carrion Feast's"), Effects::FamishedBeastsMostStacks, 10);
+	TestEqual(TEXT("none eaten"), Effects::FamishedBeastsMultiplier(0), 1.0f, 0.0001f);
+	TestEqual(TEXT("one, a tenth more"), Effects::FamishedBeastsMultiplier(1), 1.1f, 0.0001f);
+	TestEqual(TEXT("three, added"), Effects::FamishedBeastsMultiplier(3), 1.3f, 0.0001f);
+	TestEqual(TEXT("ten, twice"), Effects::FamishedBeastsMultiplier(10), 2.0f, 0.0001f);
+	TestEqual(TEXT("never past ten"), Effects::FamishedBeastsMultiplier(11), 2.0f, 0.0001f);
+	return true;
+}
+
+// A CREATURE WALKS TO A DROP WITHIN 10 M, NOT ONE FARTHER, AND FIGHTS INSTEAD WHEN THE PLAYER IS WITHIN ITS REACH.
+// Through the brain's answer: a test world has no navigation.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsSeekTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsACreatureWalksToADropWithinTenMetresUnlessThePlayerIsInReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsSeekTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	const FVector Feet = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Imp = Mode ? SpawnImpWithHealth(World, Feet + FVector(3000.0f, 0.0f, 0.0f), 1000.0f) : nullptr;
+	ACataclysmEnemyController* Brain = Imp ? Cast<ACataclysmEnemyController>(Imp->GetController()) : nullptr;
+	ACataclysmDroppedItem* Drop = Imp ? ADropAt(World, Imp->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f), false) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("with a brain"), Brain)
+		|| !TestNotNull(TEXT("and a drop"), Drop))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const int32 Seeking = static_cast<int32>(ECataclysmBrainAction::SeekingADrop);
+	TestTrue(TEXT("the rule marks it to seek"), Imp->bSeeksDropsForTheFloorRule);
+	TestEqual(TEXT("a drop at 5 m: it walks to it"), static_cast<int32>(Brain->Think()), Seeking);
+
+	Drop->SetActorLocation(Imp->GetActorLocation() + FVector(1100.0f, 0.0f, 0.0f));
+	TestNotEqual(TEXT("a drop at 11 m: it does not"), static_cast<int32>(Brain->Think()), Seeking);
+
+	Drop->SetActorLocation(Imp->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f));
+	const FVector At = Imp->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(At.X + Imp->AttackReachCm() * 0.5f, At.Y, Feet.Z));
+	TestNotEqual(TEXT("the player within its reach: it fights instead"), static_cast<int32>(Brain->Think()), Seeking);
+	return true;
+}
+
+// A DROP UNDER A CREATURE IS EATEN AND GONE, GEAR OR MATERIAL; EACH MAKES IT A TENTH STRONGER IN DAMAGE AND HEALTH, UP TO
+// TEN; IT GOES ON EATING PAST TEN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsEatTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsADropUnderACreatureIsEatenAndMakesItStronger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsEatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	ACataclysmEnemyCharacter* Imp = Mode
+		? SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	const float OwnMaximum = MaxHealthOf(Imp);
+	const TWeakObjectPtr<ACataclysmDroppedItem> Gear = ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	TestFalse(TEXT("the gear drop under it is eaten and gone"), Gear.IsValid());
+	TestEqual(TEXT("one drop eaten"), Imp->DropsEaten, 1);
+	TestEqual(TEXT("a tenth more damage, on its own key"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("a tenth more maximum health"), MaxHealthOf(Imp), OwnMaximum * 1.1f, 0.5f);
+	TestTrue(TEXT("\"Gorged 1\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Imp).Contains(TEXT("Gorged 1")));
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(FamishedRow),
+			  FString(TEXT("famished beasts: 1 drops eaten")));
+
+	const TWeakObjectPtr<ACataclysmDroppedItem> Material = ADropAt(World, Imp->GetActorLocation(), true);
+	Beat(Mode, 1);
+	TestFalse(TEXT("a material drop is eaten too"), Material.IsValid());
+	TestEqual(TEXT("two eaten"), Imp->DropsEaten, 2);
+
+	for (int32 More = 0; More < Effects::FamishedBeastsMostStacks; ++More)
+	{
+		ADropAt(World, Imp->GetActorLocation(), false);
+		Beat(Mode, 1);
+	}
+	TestEqual(TEXT("it grows no stronger past ten"), Imp->DropsEaten, Effects::FamishedBeastsMostStacks);
+	TestEqual(TEXT("twice the damage"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 2.0f, 0.0001f);
+	TestEqual(TEXT("twice the maximum health"), MaxHealthOf(Imp), OwnMaximum * 2.0f, 0.5f);
+	TestEqual(TEXT("but it ate all twelve"), Mode->FamishedBeastsDropsEatenNow(), 12);
+	return true;
+}
+
+// THE INFESTED HOARD'S DROP IS NEVER SOUGHT OR EATEN: IT IS THE PLAYER'S CHOICE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsInfestedTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAnInfestedDropIsNeverEaten",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsInfestedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	ACataclysmEnemyCharacter* Imp = Mode
+		? SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f)
+		: nullptr;
+	ACataclysmEnemyController* Brain = Imp ? Cast<ACataclysmEnemyController>(Imp->GetController()) : nullptr;
+	ACataclysmDroppedItem* Infested = Imp ? ADropAt(World, Imp->GetActorLocation(), false) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("with a brain"), Brain)
+		|| !TestNotNull(TEXT("and a drop"), Infested))
+	{
+		return false;
+	}
+	Infested->bInfested = true;
+	Beat(Mode, 2);
+	TestTrue(TEXT("an infested drop under it is not eaten"), IsValid(Infested));
+	TestEqual(TEXT("nothing eaten"), Imp->DropsEaten, 0);
+	Infested->SetActorLocation(Imp->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f));
+	TestNotEqual(TEXT("nor walked to"), static_cast<int32>(Brain->Think()),
+				 static_cast<int32>(ECataclysmBrainAction::SeekingADrop));
+	return true;
+}
+
+// A CARRION FEEDER THAT EATS A DROP CARRIES BOTH RULES: BOTH KEYS OF ITS DAMAGE, AND BOTH MULTIPLIERS ON ITS HEALTH, IN
+// EITHER ORDER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsWithCarrionTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAFeederThatEatsStacksWithCarrionFeast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsWithCarrionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {CarrionRow, FamishedRow});
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: a feeder"), Mode->CarrionFeedersNow().Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Feeder = Mode->CarrionFeedersNow()[0];
+	const float Own = MaxHealthOf(Feeder) / Effects::CarrionFeastMultiplier(1);
+
+	ADropAt(World, Feeder->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: the feeder ate a drop"), Feeder->DropsEaten, 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Carrion Feast's key"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::CarrionFeastDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("and Famished Beasts' own"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("its health carries both"), MaxHealthOf(Feeder), Own * 1.1f * 1.1f, 0.5f);
+
+	// AND A SECOND CARCASS EATEN: CARRION FEAST'S WRITE KEEPS THE DROP'S SHARE.
+	if (!SlayForACarcass(*this, World, Mode, Player, true, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: two carcasses eaten"), Mode->CarrionFeastStacksNow(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Carrion Feast's write keeps the drop's share"), MaxHealthOf(Feeder), Own * 1.2f * 1.1f, 0.5f);
+	TestEqual(TEXT("and its own key is untouched"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+	return true;
+}
+
+// A SHARE ANOTHER RULE ADDED ONTO THE MAXIMUM IS KEPT WHEN THE CREATURE EATS AGAIN. Soul Harvest's souls and Nothing
+// Is Forgotten's gift are added onto the current maximum, which the write below stands in for.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsOtherShareTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAHealthShareAnotherRuleAddedIsKept",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsOtherShareTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	ACataclysmEnemyCharacter* Imp = Mode
+		? SpawnImpWithHealth(World, Player.Character->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f)
+		: nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	const float Own = MaxHealthOf(Imp);
+	ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: one drop eaten"), Imp->DropsEaten, 1))
+	{
+		return false;
+	}
+
+	// ANOTHER RULE ADDS 500 ONTO THE MAXIMUM, as Soul Harvest and Nothing Is Forgotten do.
+	Imp->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), MaxHealthOf(Imp) + 500.0f);
+	ADropAt(World, Imp->GetActorLocation(), false);
+	Beat(Mode, 1);
+	TestEqual(TEXT("set-up: two drops eaten"), Imp->DropsEaten, 2);
+	TestEqual(TEXT("the other rule's 500 is kept, and the drops' fifth is on top of it"), MaxHealthOf(Imp),
+			  (Own + 500.0f) * 1.2f, 0.5f);
+	return true;
+}
+
+// A RUNG CHANGE WRITES THE WHOLE STAT BLOCK OVER, AND VOLATILE EVOLUTION PUTS THE DROPS' SHARE BACK AFTER IT, as it puts
+// Soul Harvest's back. Blood-Forged Champions makes the same call after its own rung change.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsRungTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsARungChangeKeepsTheDropsShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {FamishedRow});
+	const FVector Feet = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Eater = Mode ? SpawnImpWithHealth(World, Feet + FVector(3000.0f, 0.0f, 0.0f), 1000.0f) : nullptr;
+	ACataclysmEnemyCharacter* Fasting = Mode ? SpawnImpWithHealth(World, Feet + FVector(-3000.0f, 0.0f, 0.0f), 1000.0f) : nullptr;
+	if (!TestNotNull(TEXT("an Imp that eats"), Eater) || !TestNotNull(TEXT("and one that does not"), Fasting))
+	{
+		return false;
+	}
+	// MADE AS PLAY MAKES A CREATURE, WITH A STARTING MAXIMUM, so the rung change below rewrites the maximum as it does in
+	// play. `SpawnImpWithHealth` writes the attribute only, and a rung change then left the maximum where it was; a
+	// diagnostic run on 2026-09-30 showed it, and showed a floor creature's maximum rewritten.
+	Eater->SetHealth(1000.0f);
+	Fasting->SetHealth(1000.0f);
+	ADropAt(World, Eater->GetActorLocation(), false);
+	Beat(Mode, 1);
+	ADropAt(World, Eater->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: two drops eaten"), Eater->DropsEaten, 2))
+	{
+		return false;
+	}
+
+	// BOTH WOUNDED, AND THE FLOOR NOW CARRIES VOLATILE EVOLUTION: BOTH RISE A RUNG ON THE NEXT BEAT.
+	const int32 RungBefore = Eater->RarityStep;
+	for (ACataclysmEnemyCharacter* One : {Eater, Fasting})
+	{
+		One->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), MaxHealthOf(One) * 0.1f);
+	}
+	Mode->FloorBrief.Modifiers.Add(FName(UCataclysmDungeonModifierEffects::VolatileEvolutionKey));
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("set-up: the eater rose a rung"), Eater->RarityStep > RungBefore)
+		|| !TestEqual(TEXT("set-up: and so did the other"), Fasting->RarityStep, Eater->RarityStep))
+	{
+		return false;
+	}
+
+	// THE SAME KIND AT THE SAME RUNG, SO THE SAME DESIGNED MAXIMUM BUT FOR THE MODIFIERS EACH DREW.
+	const float Designed = MaxHealthOf(Fasting) / UCataclysmEnemyModifiers::MaxHealthMultiplier(Fasting->ModifierRows)
+		* UCataclysmEnemyModifiers::MaxHealthMultiplier(Eater->ModifierRows);
+	TestEqual(TEXT("after the rung change the eater still carries the drops' fifth"), MaxHealthOf(Eater),
+			  Designed * 1.2f, 0.5f);
+	return true;
+}
+
+// A CARRION FEEDER THAT ATE A DROP AND RISES A RUNG KEEPS BOTH SHARES ON THE NEW RUNG'S MAXIMUM, AND CARRION FEAST'S
+// RECORD IS TAKEN AGAIN: the next carcass moves its maximum by 1.2 / 1.1 exactly. Its kind is drawn at random, so it is
+// measured against itself.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFamishedBeastsFeederRungTest,
+	"Cataclysm.DungeonModifierEffects.FamishedBeastsAFeederThatRisesARungKeepsBothShares",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFamishedBeastsFeederRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFamishedFloor(*this, World, Player, {CarrionRow, FamishedRow});
+	FVector DiedAt;
+	if (!Mode || !SlayForACarcass(*this, World, Mode, Player, false, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: a feeder"), Mode->CarrionFeedersNow().Num(), 1)
+		|| !TestEqual(TEXT("set-up: one carcass eaten"), Mode->CarrionFeastStacksNow(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Feeder = Mode->CarrionFeedersNow()[0];
+	ADropAt(World, Feeder->GetActorLocation(), false);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: the feeder ate a drop"), Feeder->DropsEaten, 1))
+	{
+		return false;
+	}
+
+	// WOUNDED, AND THE FLOOR NOW CARRIES VOLATILE EVOLUTION: IT RISES A RUNG ON THE NEXT BEAT.
+	const int32 RungBefore = Feeder->RarityStep;
+	const float MaximumBefore = MaxHealthOf(Feeder);
+	Feeder->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), MaximumBefore * 0.1f);
+	const FName Volatile(Effects::VolatileEvolutionKey);
+	Mode->FloorBrief.Modifiers.Add(Volatile);
+	Beat(Mode, 1);
+	Mode->FloorBrief.Modifiers.Remove(Volatile);
+	if (!TestTrue(TEXT("set-up: the feeder rose a rung"), Feeder->RarityStep > RungBefore))
+	{
+		return false;
+	}
+	const float OnTheNewRung = MaxHealthOf(Feeder);
+	TestEqual(TEXT("its drop's key is kept"),
+			  Feeder->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), 1.1f, 0.0001f);
+
+	// A SECOND CARCASS EATEN: CARRION FEAST WRITES FROM ITS RECORD, WHICH MUST BE THE NEW RUNG'S.
+	if (!SlayForACarcass(*this, World, Mode, Player, true, DiedAt))
+	{
+		return false;
+	}
+	ClearTheDrops(World);
+	Beat(Mode, BeatsFor(Effects::CarrionFeastEatenAfterSeconds));
+	if (!TestEqual(TEXT("set-up: two carcasses eaten"), Mode->CarrionFeastStacksNow(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("both shares were on the new rung's maximum, and Carrion Feast's record is the new rung's"),
+			  MaxHealthOf(Feeder), OnTheNewRung / Effects::CarrionFeastMultiplier(1) * Effects::CarrionFeastMultiplier(2),
+			  0.5f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

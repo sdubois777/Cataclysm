@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmBeaconCharacter.h"
@@ -643,6 +644,34 @@ FString UCataclysmCombatOverlay::QuarantineTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::MoraleBreakTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	if (!Enemy || UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return FString();
+	}
+	return Enemy->bIsMoraleLeader ? FString(TEXT("Leader"))
+		: Enemy->bIsPanicked ? FString(TEXT("Panicked"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::ContagiousTouchTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->ContagionStacksApplied > 0
+		? FString::Printf(TEXT("Infecting %d"), Enemy->ContagionStacksApplied)
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->DropsEaten > 0
+		? FString::Printf(TEXT("Gorged %d"), Enemy->DropsEaten)
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)
 {
 	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
@@ -665,6 +694,24 @@ FString UCataclysmCombatOverlay::ShroudedTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::PlaguebearerTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	if (!Enemy || UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return FString();
+	}
+	if (Enemy->bIsPlaguebearer)
+	{
+		return TEXT("Plaguebearer");
+	}
+	// THE STACKS READ BACK FROM THE CREATURE'S OWN MULTIPLIER, so the word cannot disagree with the damage it deals.
+	const float Multiplier = Enemy->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource);
+	const int32 Stacks = FMath::RoundToInt(
+		(Multiplier - 1.0f) * 100.0f / UCataclysmDungeonModifierEffects::PlaguebearerDamagePercentPerStack);
+	return Stacks > 0 ? FString::Printf(TEXT("Diseased %d"), Stacks) : FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
@@ -673,7 +720,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
-		  InfectionBloomTextFor(Actor),
+		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
+		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),

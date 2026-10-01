@@ -23,6 +23,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
@@ -1648,6 +1649,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
 		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
 
+	// AND ITS GROUPS, NUMBERED AFTER EVERY GROUP PLACED BEFORE, for Morale Break. Issues #1820 and #41.
+	ArrivingPackGroupBase = PackGroupsPlaced;
+	PackGroupsPlaced += Population.PackCount;
+	ArrivingPackSites = Population.PackSites;
+
 	// THIS WAVE'S OWN CREATURES, EMPTIED BEFORE IT ARRIVES. What is left of the
 	// wave before stays in `FloorEnemies` and stops being counted here, which is
 	// what makes "10% or less of the previous wave" a question about one wave.
@@ -1682,6 +1688,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 			if (ACataclysmEnemyCharacter* Enemy =
 					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
 			{
+				NoteThePack(Enemy, Placement);
 				FloorEnemies.Add(Enemy);
 				CurrentWave.Add(Enemy);
 				++Spawned;
@@ -1703,6 +1710,12 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 		// AND THE FLOOR'S PLAGUE HARBINGERS, for the same reason. Issues #1820 and #41.
 		ChooseThePlagueHarbingers();
+
+		// AND THE FLOOR'S PLAGUEBEARER, for the same reason. Issues #1820 and #41.
+		ChooseThePlaguebearer();
+
+		// AND MORALE BREAK'S LEADERS, for the same reason. Issues #1820 and #41.
+		ChooseTheMoraleLeaders();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -2018,6 +2031,7 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 		if (ACataclysmEnemyCharacter* Enemy = SpawnPlacedCreature(
 				WaveStillToArrive[Index], ArrivingSightRadiusMultiplier))
 		{
+			NoteThePack(Enemy, WaveStillToArrive[Index]);
 			FloorEnemies.Add(Enemy);
 			CurrentWave.Add(Enemy);
 			++WaveSpawned;
@@ -2046,6 +2060,12 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 
 		// AND THIS WAVE'S PLAGUE HARBINGERS, chosen per wave as ruled. Issues #1820 and #41.
 		ChooseThePlagueHarbingers();
+
+		// AND THE FLOOR'S PLAGUEBEARER, for the same reason. Issues #1820 and #41.
+		ChooseThePlaguebearer();
+
+		// AND THIS WAVE'S MORALE BREAK LEADERS, one to a group of it. Issues #1820 and #41.
+		ChooseTheMoraleLeaders();
 	}
 
 	return Arrived;
@@ -3911,7 +3931,9 @@ int32 ACataclysmDungeonGameMode::LivingFloorEnemies() const
 	{
 		Living += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
 	}
-	return Living;
+	// AND MORALE BREAK'S ESCAPED, WHO ARE AWAY AND NOT DEAD, as ruled: the floor is not cleared while they are gone.
+	// Issues #1820 and #41.
+	return Living + MoraleBreakEscapedNow();
 }
 
 void ACataclysmDungeonGameMode::NoteTheFloorsClearTime()
@@ -4702,6 +4724,436 @@ void ACataclysmDungeonGameMode::PlaceTheGuide()
 	DemonicGuide = Guide;
 	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::ForgetThePlaguebearer()
+{
+	if (ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get())
+	{
+		Bearer->bIsPlaguebearer = false;
+	}
+	Plaguebearer = nullptr;
+	PlaguebearerStacks = 0;
+	PlaguebearerSecondsSinceStack = 0.0f;
+	PlaguebearerFloor = -1;
+	bPlaguebearerChosen = false;
+	bPlaguebearerFallen = false;
+	PlaguebearerPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::ChooseThePlaguebearer()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::PlaguebearerKey)))
+	{
+		return;
+	}
+	// A NEW FLOOR STARTS AGAIN; ONE A FLOOR, so a Horde arena's later waves on the same floor keep it, dead or alive.
+	if (PlaguebearerFloor != FloorNumber)
+	{
+		ForgetThePlaguebearer();
+		PlaguebearerFloor = FloorNumber;
+	}
+	if (bPlaguebearerChosen)
+	{
+		return;
+	}
+
+	// ONE RANDOM ELITE OF THIS FLOOR'S OWN CREATURES, never a floor's boss; A COMMON RAISED TO ELITE when there is none.
+	TArray<ACataclysmEnemyCharacter*> Elites;
+	TArray<ACataclysmEnemyCharacter*> Commons;
+	for (ACataclysmEnemyCharacter* Enemy : CurrentWave)
+	{
+		if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || DiedAsAFloorsBoss(Enemy))
+		{
+			continue;
+		}
+		if (Enemy->RarityStep == Effects::PlaguebearerRung)
+		{
+			Elites.Add(Enemy);
+		}
+		else if (Enemy->RarityStep == 0)
+		{
+			Commons.Add(Enemy);
+		}
+	}
+	TArray<ACataclysmEnemyCharacter*>& From = Elites.IsEmpty() ? Commons : Elites;
+	if (From.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("The Plaguebearer: no Elite or Common creature to choose on floor %d"),
+			   FloorNumber);
+		return;
+	}
+	ACataclysmEnemyCharacter* Chosen = From[FMath::RandRange(0, From.Num() - 1)];
+	const bool bRaised = Elites.IsEmpty();
+	if (bRaised)
+	{
+		Chosen->SetRarityStep(Effects::PlaguebearerRung);
+	}
+	Chosen->bIsPlaguebearer = true;
+	Plaguebearer = Chosen;
+	bPlaguebearerChosen = true;
+	UE_LOG(LogCataclysm, Log, TEXT("The Plaguebearer: %s on floor %d%s"), *Chosen->GetName(), FloorNumber,
+		   bRaised ? TEXT(", a Common raised to Elite") : TEXT(""));
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepPlaguebearer(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::PlaguebearerKey)) && PlaguebearerFloor == FloorNumber;
+	ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get();
+	const bool bAlive = bRow && IsValid(Bearer) && !UCataclysmSkillEffects::IsDead(Bearer);
+
+	if (!bRow)
+	{
+		// A FLOOR WITHOUT THE ROW, OR A NEW ONE NOT YET CHOSEN ON: no stack is carried there.
+		PlaguebearerStacks = 0;
+	}
+	else if (bPlaguebearerChosen && !bAlive && !bPlaguebearerFallen)
+	{
+		// ITS DEATH CLEARS EVERY STACK AT ONCE, and no more come this floor.
+		bPlaguebearerFallen = true;
+		PlaguebearerStacks = 0;
+		UE_LOG(LogCataclysm, Log, TEXT("The Plaguebearer: dead on floor %d, every stack cleared"), FloorNumber);
+	}
+	else if (bAlive)
+	{
+		// IT FLEES THE PLAYER WITHIN REACH, refreshed each beat, through `FleeFrom`, which is not fear.
+		if (World && IsValid(Player)
+			&& FVector::Dist2D(Player->GetActorLocation(), Bearer->GetActorLocation()) <= Effects::PlaguebearerFleeWithinCm)
+		{
+			Bearer->FleeFrom(Player->GetActorLocation(), World->GetTimeSeconds() + Effects::PlaguebearerFleeSeconds);
+		}
+
+		// A STACK EVERY FEW SECONDS, UP TO THE MOST.
+		PlaguebearerSecondsSinceStack += SecondsBetweenWaveChecks;
+		if (Effects::PlaguebearerStackIsDue(PlaguebearerSecondsSinceStack))
+		{
+			PlaguebearerSecondsSinceStack = 0.0f;
+			PlaguebearerStacks = Effects::PlaguebearerStacksAfter(PlaguebearerStacks);
+		}
+	}
+
+	// EVERY OTHER FLOOR CREATURE CARRIES THE COUNT, one that came later included; written only when it changed.
+	const float Multiplier = Effects::PlaguebearerMultiplier(PlaguebearerStacks);
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		ACataclysmEnemyCharacter* Creature = Enemy.Get();
+		if (IsValid(Creature) && Creature != Bearer
+			&& !FMath::IsNearlyEqual(Creature->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource),
+									 Multiplier))
+		{
+			Creature->SetPlaguebearerDamageMultiplier(Multiplier);
+		}
+	}
+
+	FVector Ignored;
+	const bool bFleeing = bAlive && Bearer->FleeSourceNow(Ignored);
+	const int32 Key = PlaguebearerStacks * 100 + (bPlaguebearerFallen ? 10 : 0) + (bFleeing ? 1 : 0);
+	if (Key != PlaguebearerPanelKey)
+	{
+		PlaguebearerPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteThePack(ACataclysmEnemyCharacter* Enemy, const FCataclysmEnemyPlacement& Placement) const
+{
+	if (!Enemy || Placement.Pack == INDEX_NONE)
+	{
+		return;
+	}
+	Enemy->PackGroup = ArrivingPackGroupBase + Placement.Pack;
+	// THE POPULATION'S OWN MIDDLE, OR THE CREATURE'S CELL if a population ever came without one.
+	Enemy->PackMiddleCell = ArrivingPackSites.IsValidIndex(Placement.Pack) ? ArrivingPackSites[Placement.Pack] : Placement.Cell;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::MoraleLeadersNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		return Standing;
+	}
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		ACataclysmEnemyCharacter* Leader = Group.Leader.Get();
+		if (!Group.bFallen && IsValid(Leader) && !UCataclysmSkillEffects::IsDead(Leader))
+		{
+			Standing.Add(Leader);
+		}
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::MoraleBreakPanickedNow() const
+{
+	int32 Panicked = 0;
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		return Panicked;
+	}
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Creature : Group.Panicked)
+		{
+			Panicked += (Creature.IsValid() && !UCataclysmSkillEffects::IsDead(Creature.Get())) ? 1 : 0;
+		}
+	}
+	return Panicked;
+}
+
+int32 ACataclysmDungeonGameMode::MoraleBreakEscapedNow() const
+{
+	int32 Away = 0;
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		return Away;
+	}
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		Away += Group.bReturned ? 0 : Group.Escaped.Num();
+	}
+	return Away;
+}
+
+void ACataclysmDungeonGameMode::ForgetMoraleBreak()
+{
+	for (FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		if (ACataclysmEnemyCharacter* Leader = Group.Leader.Get())
+		{
+			Leader->bIsMoraleLeader = false;
+		}
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Weak : Group.Panicked)
+		{
+			if (ACataclysmEnemyCharacter* Creature = Weak.Get())
+			{
+				Creature->bIsPanicked = false;
+				Creature->StopFleeing();
+			}
+		}
+	}
+	MoraleBreakGroups.Reset();
+	MoraleBreakFloor = -1;
+	MoraleBreakPanelKey = -1;
+}
+
+void ACataclysmDungeonGameMode::ChooseTheMoraleLeaders()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::MoraleBreakKey)))
+	{
+		return;
+	}
+	// A NEW FLOOR STARTS AGAIN, and what escaped the last one is forgotten with it.
+	if (MoraleBreakFloor != FloorNumber)
+	{
+		ForgetMoraleBreak();
+		MoraleBreakFloor = FloorNumber;
+	}
+
+	// EACH GROUP'S HIGHEST RUNG, STRICTLY GREATER so a tie keeps the first placed, and how many of it stand.
+	TMap<int32, ACataclysmEnemyCharacter*> Highest;
+	TMap<int32, int32> InTheGroup;
+	TArray<int32> Order;
+	for (ACataclysmEnemyCharacter* Enemy : CurrentWave)
+	{
+		if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || Enemy->PackGroup == INDEX_NONE)
+		{
+			continue;
+		}
+		ACataclysmEnemyCharacter*& Best = Highest.FindOrAdd(Enemy->PackGroup, nullptr);
+		if (Best == nullptr)
+		{
+			Order.Add(Enemy->PackGroup);
+		}
+		if (Best == nullptr || Enemy->RarityStep > Best->RarityStep)
+		{
+			Best = Enemy;
+		}
+		++InTheGroup.FindOrAdd(Enemy->PackGroup, 0);
+	}
+
+	int32 Chosen = 0;
+	for (const int32 Group : Order)
+	{
+		ACataclysmEnemyCharacter* Leader = Highest.FindRef(Group);
+		if (!Leader || !Effects::MoraleBreakLeads(Leader->RarityStep, InTheGroup.FindRef(Group))
+			|| MoraleBreakGroups.ContainsByPredicate([Group](const FMoraleBreakGroup& Known) { return Known.Group == Group; }))
+		{
+			continue;
+		}
+		FMoraleBreakGroup& Added = MoraleBreakGroups.AddDefaulted_GetRef();
+		Added.Group = Group;
+		Added.Middle = Leader->PackMiddleCell;
+		Added.Leader = Leader;
+		// READ NOW AND ON EVERY BEAT IT STANDS: a leader can carry `Generic_Horde_Leader`, which rallies instead.
+		Added.bLeaderRallies = Leader->ModifierRows.Contains(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+		Leader->bIsMoraleLeader = true;
+		++Chosen;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Morale Break: %d leaders chosen on floor %d"), Chosen, FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepMoraleBreak(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::MoraleBreakKey)) || MoraleBreakFloor != FloorNumber)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const FName HordeLeader(UCataclysmEnemyModifiers::HordeLeaderRow);
+
+	for (FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		if (!Group.bFallen)
+		{
+			ACataclysmEnemyCharacter* Leader = Group.Leader.Get();
+			if (IsValid(Leader) && !UCataclysmSkillEffects::IsDead(Leader))
+			{
+				// READ WHILE IT STANDS, so a leader destroyed with its body is still known to have carried it.
+				Group.bLeaderRallies = Leader->ModifierRows.Contains(HordeLeader);
+				continue;
+			}
+			Group.bFallen = true;
+			if (IsValid(Leader))
+			{
+				Leader->bIsMoraleLeader = false;
+			}
+			if (Group.bLeaderRallies)
+			{
+				UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d's leader was a Horde Leader; it rallies"), Group.Group);
+				continue;
+			}
+			// ITS OWN GROUP PANICS, and no other.
+			for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+			{
+				ACataclysmEnemyCharacter* Creature = Enemy.Get();
+				if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature) && Creature != Leader
+					&& Creature->PackGroup == Group.Group)
+				{
+					Creature->bIsPanicked = true;
+					Group.Panicked.Add(Creature);
+				}
+			}
+			UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d's leader died; %d panic"), Group.Group,
+				   Group.Panicked.Num());
+		}
+		else if (Group.bLeaderRallies || Group.bReturned)
+		{
+			continue;
+		}
+		else if (!Group.bFlightOver)
+		{
+			Group.SecondsSinceFall += SecondsBetweenWaveChecks;
+		}
+		else
+		{
+			// AWAY, AND BACK WHEN DUE: each at its own rung, and its reinforcements at Common, at the group's middle.
+			Group.SecondsAway += SecondsBetweenWaveChecks;
+			if (Effects::MoraleBreakReturnIsDue(Group.SecondsAway))
+			{
+				int32 Back = 0;
+				for (const TPair<ECataclysmDungeonCreature, int32>& Escaped : Group.Escaped)
+				{
+					FCataclysmEnemyPlacement Placement;
+					Placement.Cell = Group.Middle;
+					Placement.Creature = Escaped.Key;
+					// NO GROUP: `NoteThePack` is not called, so what comes back never panics again.
+					if (ACataclysmEnemyCharacter* Returned =
+							SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Escaped.Value))
+					{
+						FloorEnemies.Add(Returned);
+						++Back;
+					}
+					for (int32 More = 0; More < Effects::MoraleBreakReinforcementsPerEscapee; ++More)
+					{
+						if (ACataclysmEnemyCharacter* Reinforcement = SpawnPlacedCreature(
+								Placement, FloorBrief.SightRadiusMultiplier, Effects::MoraleBreakReinforcementRung))
+						{
+							FloorEnemies.Add(Reinforcement);
+							++Back;
+						}
+					}
+				}
+				Group.bReturned = true;
+				UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d is back, %d creatures"), Group.Group, Back);
+			}
+			continue;
+		}
+
+		// THE FLIGHT: refreshed each beat from where the player stands, until it is over.
+		if (!Effects::MoraleBreakFlightIsOver(Group.SecondsSinceFall))
+		{
+			for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Weak : Group.Panicked)
+			{
+				ACataclysmEnemyCharacter* Creature = Weak.Get();
+				if (World && IsValid(Player) && IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+				{
+					Creature->FleeFrom(Player->GetActorLocation(), Now + Effects::MoraleBreakFleeSeconds);
+				}
+			}
+			continue;
+		}
+
+		// OVER: FAR ENOUGH AWAY IS ESCAPED AND LEAVES WITHOUT DYING; NEAR ENOUGH STOPS AND FIGHTS ON.
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Weak : Group.Panicked)
+		{
+			ACataclysmEnemyCharacter* Creature = Weak.Get();
+			if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature))
+			{
+				continue;
+			}
+			Creature->bIsPanicked = false;
+			Creature->StopFleeing();
+			const float Cm = IsValid(Player) ? FVector::Dist2D(Player->GetActorLocation(), Creature->GetActorLocation())
+											 : TNumericLimits<float>::Max();
+			if (!Effects::MoraleBreakHasEscaped(Cm))
+			{
+				continue;
+			}
+			const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Creature);
+			if (Kind == ECataclysmDungeonCreature::Count)
+			{
+				// NOT ONE OF THE FLOOR'S KINDS, so nothing could bring it back: it stays and fights instead.
+				continue;
+			}
+			Group.Escaped.Emplace(Kind, Creature->RarityStep);
+			Creature->Destroy();
+		}
+		Group.Panicked.Reset();
+		Group.bFlightOver = true;
+		// NOTHING ESCAPED, NOTHING COMES BACK.
+		Group.bReturned = Group.Escaped.IsEmpty();
+		UE_LOG(LogCataclysm, Log, TEXT("Morale Break: group %d's flight is over; %d escaped"), Group.Group,
+			   Group.Escaped.Num());
+	}
+
+	int32 Back = 0;
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		if (Group.bFlightOver && !Group.bReturned)
+		{
+			Back = FMath::Max(Back, FMath::CeilToInt(Effects::MoraleBreakReturnSeconds - Group.SecondsAway));
+		}
+	}
+	const bool bAnyFallen = MoraleBreakGroups.ContainsByPredicate([](const FMoraleBreakGroup& Group) { return Group.bFallen; });
+	const int32 Key = (bAnyFallen ? 1 : 0) + MoraleBreakPanickedNow() * 10 + MoraleBreakEscapedNow() * 1000 + Back * 100000;
+	if (Key != MoraleBreakPanelKey)
+	{
+		MoraleBreakPanelKey = Key;
+		RefreshFloorModifierPanel();
+	}
 }
 
 void ACataclysmDungeonGameMode::StepDemonicGuide(
@@ -6909,7 +7361,10 @@ void ACataclysmDungeonGameMode::StrengthenTheFeeders()
 		Feeder->SetCarrionFeastDamageMultiplier(Multiplier);
 		UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Feeder);
 		const float OldMaximum = Abilities ? Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute()) : 0.0f;
-		const float NewMaximum = CarrionFeederOwnMaxHealth[Index] * Multiplier;
+		// AND ANY DROPS IT ATE FOR FAMISHED BEASTS, so the two rules' health stacks as their damage keys do: each writes
+		// its own maximum times both multipliers, in either order. Issues #1820 and #41.
+		const float NewMaximum = CarrionFeederOwnMaxHealth[Index] * Multiplier
+			* Effects::FamishedBeastsMultiplier(Feeder->DropsEaten);
 		if (OldMaximum <= 0.0f || NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
 		{
 			continue;
@@ -6917,6 +7372,170 @@ void ACataclysmDungeonGameMode::StrengthenTheFeeders()
 		const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
 		Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
 		Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+	}
+}
+
+void ACataclysmDungeonGameMode::StrengthenTheEater(ACataclysmEnemyCharacter* Eater, bool bFreshBlock)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Eater);
+	if (!IsValid(Eater) || !Abilities)
+	{
+		return;
+	}
+	const float Multiplier = Effects::FamishedBeastsMultiplier(Eater->DropsEaten);
+	Eater->SetFamishedBeastsDamageMultiplier(Multiplier);
+
+	const int32 AsFeeder = CarrionFeeders.IndexOfByPredicate(
+		[Eater](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Eater; });
+	const bool bFeeder = AsFeeder != INDEX_NONE && CarrionFeederOwnMaxHealth.IsValidIndex(AsFeeder);
+	const float OldMaximum = Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (OldMaximum <= 0.0f)
+	{
+		return;
+	}
+
+	// A CARRION FEEDER: CARRION FEAST'S OWN RECORD, TIMES BOTH MULTIPLIERS, which is what Carrion Feast's write does too,
+	// so the two agree in either order. After a rung change a feeder's shares go back through `PutTheHealthSharesBack`,
+	// which takes Carrion Feast's record again first, so there is nothing for this to do then.
+	if (bFeeder)
+	{
+		if (bFreshBlock)
+		{
+			return;
+		}
+		const float NewMaximum = CarrionFeederOwnMaxHealth[AsFeeder] * Multiplier
+			* Effects::CarrionFeastMultiplier(CarrionFeastStacks);
+		if (NewMaximum > 0.0f && !FMath::IsNearlyEqual(OldMaximum, NewMaximum))
+		{
+			const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
+			Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
+			Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+		}
+		return;
+	}
+
+	// ANY OTHER EATER: WHAT IS THERE NOW LESS WHAT THIS RULE ADDED, AND THE NEW SHARE ON TOP, as Soul Harvest does. So a
+	// share another rule added onto the maximum -- Soul Harvest's souls, Nothing Is Forgotten's gift -- is kept, in
+	// either order. After a rung change nothing this rule added is still there. Health keeps its share of the maximum,
+	// Carrion Feast's shape; after a rung change it is left as the rung change left it.
+	float& Added = FamishedBeastsHealthAdded.FindOrAdd(Eater, 0.0f);
+	if (bFreshBlock)
+	{
+		Added = 0.0f;
+	}
+	const float Own = OldMaximum - Added;
+	const float NewAdded = Own * (Multiplier - 1.0f);
+	const float NewMaximum = Own + NewAdded;
+	Added = NewAdded;
+	if (NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
+	{
+		return;
+	}
+	const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
+	Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), NewMaximum);
+	if (!bFreshBlock)
+	{
+		Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health * NewMaximum / OldMaximum);
+	}
+}
+
+void ACataclysmDungeonGameMode::PutTheHealthSharesBack(ACataclysmEnemyCharacter* Creature)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Creature);
+	if (!IsValid(Creature) || !Abilities)
+	{
+		return;
+	}
+
+	// A CARRION FEEDER. Carrion Feast writes its feeders from a record of the maximum each came with, so the record is
+	// taken again from the new rung's maximum -- or the next carcass eaten would write the old rung's maximum back --
+	// and the write `StrengthenTheFeeders` makes goes on it, carrying Famished Beasts' multiplier with it. Before this,
+	// a rung change took both shares off a feeder until the next carcass: Carrion Feast's gap, found by the survey of
+	// health writers in Famished Beasts' change and fixed there, as ruled by the coordinating session.
+	const int32 AsFeeder = CarrionFeeders.IndexOfByPredicate(
+		[Creature](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Creature; });
+	if (AsFeeder != INDEX_NONE && CarrionFeederOwnMaxHealth.IsValidIndex(AsFeeder))
+	{
+		const float Fresh = Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		if (Fresh <= 0.0f)
+		{
+			return;
+		}
+		CarrionFeederOwnMaxHealth[AsFeeder] = Fresh;
+		Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+			Fresh * Effects::CarrionFeastMultiplier(CarrionFeastStacks)
+				* Effects::FamishedBeastsMultiplier(Creature->DropsEaten));
+		return;
+	}
+
+	// ANY OTHER EATER: Famished Beasts' share on top of the new rung's maximum, as Soul Harvest's goes back.
+	if (Creature->DropsEaten > 0)
+	{
+		StrengthenTheEater(Creature, /*bFreshBlock=*/true);
+	}
+}
+
+void ACataclysmDungeonGameMode::StepFamishedBeasts()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	// A NEW FLOOR STARTS THE COUNT AGAIN.
+	if (FamishedBeastsFloor != FloorNumber)
+	{
+		FamishedBeastsFloor = FloorNumber;
+		FamishedBeastsDropsEaten = 0;
+		FamishedBeastsHealthAdded.Reset();
+	}
+	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::FamishedBeastsKey));
+
+	int32 Eaten = 0;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		// A CREATURE OF THE FLOOR'S KINDS THAT FIGHTS: not a carcass, a vein or another thing a rule stands on the
+		// floor, and not a guide or a medic, which take no hostile action.
+		const bool bEats = bRow && IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)
+			&& DungeonGameModeKindOf(Creature) != ECataclysmDungeonCreature::Count && !Creature->TakesNoHostileAction();
+		if (IsValid(Creature))
+		{
+			Creature->bSeeksDropsForTheFloorRule = bEats;
+		}
+		if (!bEats)
+		{
+			continue;
+		}
+		ACataclysmDroppedItem* Drop = Effects::FamishedBeastsNearestDrop(
+			World, Creature->GetActorLocation(), Effects::FamishedBeastsEatWithinCm);
+		if (!Drop)
+		{
+			continue;
+		}
+		// EATEN AND GONE FOR GOOD; STRONGER UP TO THE MOST, and it goes on eating past it.
+		UE_LOG(LogCataclysm, Log, TEXT("Famished Beasts: %s ate %s on floor %d"), *Creature->GetName(),
+			   *Drop->GetName(), FloorNumber);
+		Drop->Destroy();
+		++FamishedBeastsDropsEaten;
+		++Eaten;
+		if (Creature->DropsEaten < Effects::FamishedBeastsMostStacks)
+		{
+			++Creature->DropsEaten;
+			StrengthenTheEater(Creature);
+		}
+	}
+	if (Eaten > 0)
+	{
+		RefreshFloorModifierPanel();
 	}
 }
 
@@ -8669,7 +9288,11 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheRivers();
 	RawSewageStacks = 0;
 	ForgetTheGuide();
+	// AND MORALE BREAK'S LEADERS, FLIGHTS AND ESCAPED END WITH THE DUNGEON. Issues #1820 and #41.
+	ForgetMoraleBreak();
 	RawSewageSecondsInARiver = 0.0f;
+	// AND THE PLAGUEBEARER AND ITS STACKS END WITH THE DUNGEON. Issues #1820 and #41.
+	ForgetThePlaguebearer();
 	bRawSewageInARiver = false;
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
@@ -9206,6 +9829,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND CARRION FEAST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bCarrionFeast = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::CarrionFeastKey));
+	// AND THE PLAGUEBEARER, ON EVERY FLOOR CARRYING IT, AND WHILE STACKS ARE CARRIED. Issues #1820 and #41.
+	const bool bPlaguebearer = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::PlaguebearerKey)) || PlaguebearerStacks > 0;
+	// AND MORALE BREAK, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bMoraleBreak = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::MoraleBreakKey));
+	// AND FAMISHED BEASTS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bFamishedBeasts = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::FamishedBeastsKey));
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
@@ -9262,7 +9894,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bCarrionFeast && !bTrialOfEndurance && !bVoidParasite
 		&& !bVision
 		&& !bGrimTotems
-		&& !bObsidianSarcophagi && !bShadowyEnemies)
+		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts)
 	{
 		return;
 	}
@@ -9569,6 +10201,25 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bCarrionFeast)
 	{
 		StepCarrionFeast();
+	}
+
+	// AND THE PLAGUEBEARER, WHICH RUNS FROM THE PLAYER AND STRENGTHENS EVERY OTHER CREATURE. Issues #1820 and #41.
+	if (bPlaguebearer)
+	{
+		StepPlaguebearer(Player);
+	}
+
+	// AND MORALE BREAK, WHOSE GROUPS RUN WHEN THEIR LEADER DIES AND COME BACK IF THEY GET AWAY. Issues #1820 and #41.
+	if (bMoraleBreak)
+	{
+		StepMoraleBreak(Player);
+	}
+
+	// AND FAMISHED BEASTS, WHOSE CREATURES WALK TO DROPS AND EAT THEM. AFTER CARRION FEAST, so a feeder that came this
+	// beat is already a creature of the floor. Issues #1820 and #41.
+	if (bFamishedBeasts)
+	{
+		StepFamishedBeasts();
 	}
 
 	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
@@ -10673,6 +11324,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForMortalDecay(Notice);
 	NoteDeathForWastingSickness(Notice);
 	NoteDeathForSporeClouds(Notice);
+	NoteDeathForContagiousTouch(Notice);
 	NoteDeathForHellfire(Notice);
 	NoteDeathForDemonPrince(Notice);
 	NoteDeathForEpidemic(Notice);
@@ -11959,6 +12611,10 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
 	// shortfall and never draws one the creature already holds.
 	Champion->DrawModifiersForRarity();
 
+	// AND THE FLOOR RULES' HEALTH SHARES GO BACK ON THE NEW RUNG'S MAXIMUM, before the pools are held to it: Carrion
+	// Feast's and Famished Beasts'. Issues #1820 and #41.
+	PutTheHealthSharesBack(Champion);
+
 	// NOW PUT BOTH POOLS BACK, HELD TO THE NEW MAXIMUMS, which are read again because the
 	// rung is what moved them. A champion is therefore proportionally MORE wounded at its
 	// new rung than it was at its old one, which is what keeping the amount means.
@@ -12085,6 +12741,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	NoteHitForWastingSickness(Notice);
 	NoteHitForCarrionFeast(Notice);
 	NoteHitForBrandOfTheAggressor(Notice);
+	NoteHitForContagiousTouch(Notice);
 	NoteHitForHolyRepercussions(Notice);
 	NoteHitForTheReaper(Notice);
 	NoteHitForPlagueConvergence(Notice);
@@ -12685,6 +13342,60 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 											  FMath::RoundToInt((Effects::CarrionFeastMultiplier(CarrionFeastStacks) - 1.0f) * 100.0f)));
 	}
 
+	// AND THE PLAGUEBEARER: the stacks every other creature carries and what they add, whether it is running, or that it
+	// is dead. Issues #1820 and #41.
+	const FName BearerRow(Effects::PlaguebearerKey);
+	if (FloorBrief.Modifiers.Contains(BearerRow) && bPlaguebearerChosen && PlaguebearerFloor == FloorNumber)
+	{
+		const ACataclysmEnemyCharacter* Bearer = Plaguebearer.Get();
+		FVector Ignored;
+		const bool bFleeing = !bPlaguebearerFallen && IsValid(Bearer) && Bearer->FleeSourceNow(Ignored);
+		Counting.Add(BearerRow, bPlaguebearerFallen
+			? FString(TEXT("the plaguebearer is dead"))
+			: FString::Printf(TEXT("the plaguebearer: %d stacks, +%d%% damage%s"), PlaguebearerStacks,
+							  FMath::RoundToInt((Effects::PlaguebearerMultiplier(PlaguebearerStacks) - 1.0f) * 100.0f),
+							  bFleeing ? TEXT("; it flees") : TEXT("")));
+	}
+
+	// AND MORALE BREAK: whether a leader has fallen, how many run, how many are away and when they come back. Issues
+	// #1820 and #41.
+	const FName Morale(Effects::MoraleBreakKey);
+	if (FloorBrief.Modifiers.Contains(Morale) && MoraleBreakFloor == FloorNumber)
+	{
+		int32 Back = 0;
+		for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+		{
+			if (Group.bFlightOver && !Group.bReturned)
+			{
+				Back = FMath::Max(Back, FMath::CeilToInt(Effects::MoraleBreakReturnSeconds - Group.SecondsAway));
+			}
+		}
+		const int32 Away = MoraleBreakEscapedNow();
+		const bool bAnyFallen =
+			MoraleBreakGroups.ContainsByPredicate([](const FMoraleBreakGroup& Group) { return Group.bFallen; });
+		const FString BackIn = Away > 0 ? FString::Printf(TEXT(", back in %ds"), Back) : FString();
+		Counting.Add(Morale, !bAnyFallen
+			? FString(TEXT("morale break: no leader has fallen"))
+			: FString::Printf(TEXT("morale break: %d panicked, %d escaped%s"), MoraleBreakPanickedNow(), Away, *BackIn));
+	}
+
+	// AND CONTAGIOUS TOUCH: the stacks the player carries and what each hit costs. Issues #1820 and #41.
+	const FName Contagion(Effects::ContagiousTouchKey);
+	if (FloorBrief.Modifiers.Contains(Contagion))
+	{
+		const int32 Stacks = ContagionStacksNow();
+		Counting.Add(Contagion, FString::Printf(TEXT("contagious touch: %d stacks, hits cost %d%% of the target's health"),
+												Stacks,
+												FMath::RoundToInt(Stacks * Effects::ContagiousTouchPercentPerStack)));
+	}
+
+	// AND FAMISHED BEASTS: the drops eaten on this floor. Issues #1820 and #41.
+	const FName Famished(Effects::FamishedBeastsKey);
+	if (FloorBrief.Modifiers.Contains(Famished))
+	{
+		Counting.Add(Famished, FString::Printf(TEXT("famished beasts: %d drops eaten"), FamishedBeastsDropsEatenNow()));
+	}
+
 	// AND VOID PARASITE: how many voidlings the player carries, and what clears them. Issues #1820 and #41.
 	const FName Parasite(Effects::VoidParasiteKey);
 	if (FloorBrief.Modifiers.Contains(Parasite))
@@ -13195,6 +13906,107 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	}
 
 	return Counting;
+}
+
+ACataclysmDungeonGameMode* ACataclysmDungeonGameMode::InWorld(UWorld* World)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+	for (TActorIterator<ACataclysmDungeonGameMode> It(World); It; ++It)
+	{
+		return *It;
+	}
+	return nullptr;
+}
+
+bool ACataclysmDungeonGameMode::ContagiousTouchIsOn() const
+{
+	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::ContagiousTouchKey));
+}
+
+int32 ACataclysmDungeonGameMode::ContagionStacksNow() const
+{
+	// EVERY LIVING CREATURE IN THE WORLD, NOT ONLY THE FLOOR'S LIST, so a creature a rule raised counts as any other.
+	int32 Stacks = 0;
+	UWorld* World = GetWorld();
+	if (!World || !ContagiousTouchIsOn())
+	{
+		return Stacks;
+	}
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It))
+		{
+			Stacks += It->ContagionStacksApplied;
+		}
+	}
+	return Stacks;
+}
+
+void ACataclysmDungeonGameMode::NoteContagiousTouch(ACataclysmEnemyCharacter* Toucher)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Toucher) || !ContagiousTouchIsOn())
+	{
+		return;
+	}
+	const int32 Added = Effects::ContagiousTouchStacksAdded(ContagionStacksNow());
+	Toucher->ContagionStacksApplied += Added;
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForContagiousTouch(const FCataclysmDeathNotice& Notice)
+{
+	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (ContagiousTouchIsOn() && Fallen && Fallen->ContagionStacksApplied > 0)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteHitForContagiousTouch(const FCataclysmHitNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// BRAND OF THE AGGRESSOR'S THREE CHECKS, as ruled: a blow that landed, struck by the player, on a creature. A
+	// minion's hit is credited to the minion, so it does not count; the row says "When you hit an enemy".
+	if (!ContagiousTouchIsOn() || Notice.Landed <= 0.0f)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	const ACataclysmEnemyCharacter* Struck = Cast<ACataclysmEnemyCharacter>(Notice.Target);
+	if (!Player || Notice.Attacker != Player || !Struck)
+	{
+		return;
+	}
+
+	// EVERY STACK CARRIED, OF THE STRUCK CREATURE'S MAXIMUM HEALTH: "a percentage of their total health as damage for
+	// every stack". A blow that killed a creature that applied stacks has already removed them.
+	const int32 Stacks = ContagionStacksNow();
+	const UAbilitySystemComponent* StruckSystem = Struck->GetAbilitySystemComponent();
+	const float Retaliation = StruckSystem
+		? Effects::ContagiousTouchRetaliation(
+			StruckSystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), Stacks)
+		: 0.0f;
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (Retaliation <= 0.0f || !Source || UCataclysmSkillEffects::IsDead(Player))
+	{
+		return;
+	}
+
+	// FROM THE FLOOR'S HAZARD SOURCE, SO IT IS NEVER HEARD AS THE PLAYER'S OWN HIT and cannot feed itself. TYPED AS THE
+	// ROW, as Raw Sewage's burn is (`DungeonGameModeTypeOfRow(Effects::RawSewageKey)` in `StepRawSewage`). AN AREA
+	// BLOW, so it cannot be evaded, as Brand of the Aggressor's nova is; not damage over time, so a shield meets it.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::ContagiousTouchKey);
+	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Retaliation, Delivery);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
@@ -14357,6 +15169,10 @@ void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter*
 		// shortfall and never draws one the creature already holds, so a creature that
 		// rises from Common to Elite gains exactly one.
 		Creature->DrawModifiersForRarity();
+
+		// AND THE FLOOR RULES' HEALTH SHARES GO BACK ON THE NEW RUNG'S MAXIMUM, before the pools are held
+		// to it: Carrion Feast's and Famished Beasts'. Issues #1820 and #41.
+		PutTheHealthSharesBack(Creature);
 
 		// NOW PUT BOTH POOLS BACK, HELD TO THE NEW MAXIMUMS. The maximums are read again
 		// because the rung is what moved them.

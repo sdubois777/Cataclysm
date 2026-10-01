@@ -653,6 +653,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetBlackestShadowDamageMultiplier(float NewMultiplier);
 
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetPlaguebearerDamageMultiplier(float NewMultiplier);
+
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetFamishedBeastsDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -665,6 +671,8 @@ public:
 	static constexpr const TCHAR* InfectionBloomDamageSource = TEXT("InfectionBloom");
 	static constexpr const TCHAR* GrimTotemsDamageSource = TEXT("GrimTotems");
 	static constexpr const TCHAR* BlackestShadowDamageSource = TEXT("BlackestShadow");
+	static constexpr const TCHAR* PlaguebearerDamageSource = TEXT("Plaguebearer");
+	static constexpr const TCHAR* FamishedBeastsDamageSource = TEXT("FamishedBeasts");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -946,7 +954,8 @@ public:
 	virtual bool TakesNoHostileAction() const override
 	{
 		// AND DEMONIC GUIDE'S GUIDE, which leads the player and is no enemy of theirs. Issues #1820 and #41.
-		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule;
+		// AND THE PLAGUEBEARER, which "doesn't directly attack you". Issues #1820 and #41.
+		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule || bIsPlaguebearer;
 	}
 	//~ End
 
@@ -1220,6 +1229,68 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsACarrionFeeder = false;
+
+	/**
+	 * Whether this creature is its floor's Plaguebearer. Issues #1820 and #41. It never attacks
+	 * (`TakesNoHostileAction`), stands when it is not fleeing, and says "Plaguebearer" under its bar.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsPlaguebearer = false;
+
+	/**
+	 * Which group of the floor this creature was placed in, unique across the dungeon's populations; `INDEX_NONE` for
+	 * one placed in no group -- a boss, and every creature a rule brings. Issues #1820 and #41, for Morale Break.
+	 *
+	 * ON THE CREATURE, SO NOTHING CAN DROP IT MID-FLOOR. No `Forget*` of the game mode touches a creature's own field,
+	 * and it lasts exactly as long as the creature. Written only by the floor's own population
+	 * (`ACataclysmDungeonGameMode::NoteThePack`), never inside `SpawnPlacedCreature`, because rules such as Necrotic
+	 * Bloom spawn copies of another population's placements, whose group numbers mean nothing on this floor.
+	 *
+	 * NOT SAVED. `FCataclysmSaveApply::FloorInto` restores creatures into a floor, and nothing outside the tests calls
+	 * it, so no floor is restored in play. If one is, this belongs in `FCataclysmSavedCreature` beside
+	 * `bRisenFromTheDead`.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 PackGroup = INDEX_NONE;
+
+	/** The cell at the middle of that group, where the population put its first creature. (-1, -1) with no group. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	FIntPoint PackMiddleCell = FIntPoint(-1, -1);
+
+	/** Whether this creature leads its group for Morale Break; it says "Leader" under its bar. Issues #1820 and #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsMoraleLeader = false;
+
+	/** Whether this creature is fleeing because its Morale Break leader died; it says "Panicked". Issues #1820, #41. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsPanicked = false;
+
+	/**
+	 * The Contagion stacks this creature's touches put on the player. Issues #1820 and #41, Contagious Touch. The
+	 * player's count is the sum over the living creatures, so killing this one removes exactly these: the row's "the
+	 * only way to remove the debuff is to kill the enemy that applied it". It says "Infecting N" under its bar.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 ContagionStacksApplied = 0;
+
+	/**
+	 * True only while `AttackTarget` sends a Contagious Touch. `UCataclysmVitalAttributeSet` reads it off the blow's
+	 * causer, as it reads Perfect Aim, and keeps nothing of the blow but whether it was evaded. Issues #1820 and #41.
+	 *
+	 * A FLAG ON THE CAUSER AND NOT A TAG ON THE BLOW, because a new gameplay tag is generated from the design
+	 * workbook's Tags sheet (`tools/generate_gameplay_tags.py`). The blow is Instant, so it is resolved inside the
+	 * call that sets and clears this.
+	 */
+	bool bSwingIsAContagiousTouch = false;
+
+	/**
+	 * Famished Beasts: whether the brain sends this creature to the nearest drop within reach, and how many drops it
+	 * has eaten. Issues #1820 and #41. WRITTEN BY `ACataclysmDungeonGameMode` ON THE BEAT AND READ BY THE BRAIN, as
+	 * Demonic Guide's flag is. It says "Gorged N" under its bar.
+	 */
+	bool bSeeksDropsForTheFloorRule = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 DropsEaten = 0;
 
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
@@ -1815,11 +1886,12 @@ protected:
 	/**
 	 * What each rule that changes this creature's attack damage multiplies it by, under that
 	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
-	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
+	 * (Ravenous Hoard), `FamishedBeastsDamageSource` (Famished Beasts), `FloorDepthDamageSource`
+	 * (March of Progress), `SpireDamageSource`
 	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
 	 * `TrialOfEnduranceDamageSource` (Trial of Endurance), `ObsidianSarcophagiDamageSource` (Obsidian
-	 * Sarcophagi), `InfectionBloomDamageSource` (Infection Bloom) and `CarrionFeastDamageSource`
-	 * (Carrion Feast). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
+	 * Sarcophagi), `InfectionBloomDamageSource` (Infection Bloom), `CarrionFeastDamageSource`
+	 * (Carrion Feast) and `PlaguebearerDamageSource` (The Plaguebearer). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
 	 * by every entry. Issues #1820 and #41.
 	 *
 	 * ONE MAP RATHER THAN A FIELD PER SOURCE, as ruled by the coordinating session on

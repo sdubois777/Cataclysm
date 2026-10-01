@@ -14,6 +14,8 @@
 // brain has to know about it to ask whether one is running. Issue #499.
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmTargetCandidates.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -441,6 +443,19 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		return LastAction;
 	}
 
+	// A FLOOR RULE'S PLAGUEBEARER, WHEN IT IS NOT FLEEING, STANDS: it attacks nobody and does not come to the player,
+	// or it would walk in and flee out again. Issues #1820 and #41, The Plaguebearer. BELOW THE FLIGHT ABOVE, which is
+	// what moves it.
+	if (const ACataclysmEnemyCharacter* Bearer = Cast<ACataclysmEnemyCharacter>(Driven);
+		Bearer && Bearer->bIsPlaguebearer)
+	{
+		CurrentTarget = nullptr;
+		bHasRoamTarget = false;
+		StopMovement();
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
 	// A CHARGE ALREADY IN FLIGHT OUTRANKS EVERYTHING BELOW, and the brain does
 	// NOTHING while it runs. Issue #499.
 	//
@@ -489,6 +504,32 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	}
 
 	AActor* Target = ChooseTarget();
+
+	// A FLOOR RULE'S HUNGRY CREATURE WALKS TO THE NEAREST DROP WITHIN REACH AND EATS IT BEFORE IT CHASES THE PLAYER,
+	// unless what it would fight is already within its attack reach, where it fights. Issues #1820 and #41, Famished
+	// Beasts. The game mode's beat does the eating. The walk is the guide's: the roam's acceptance radius and the same
+	// straight-line fallback when there is no navigation mesh. BELOW THE CHARGE AND THE WIND-UP, which it does not cut.
+	if (const ACataclysmEnemyCharacter* Hungry = Cast<ACataclysmEnemyCharacter>(Driven);
+		Hungry && Hungry->bSeeksDropsForTheFloorRule
+		&& !(Target && FVector::Dist2D(Driven->GetActorLocation(), Target->GetActorLocation()) <= Driven->AttackReachCm()))
+	{
+		if (const AActor* Drop = UCataclysmDungeonModifierEffects::FamishedBeastsNearestDrop(
+				GetWorld(), Driven->GetActorLocation(), UCataclysmDungeonModifierEffects::FamishedBeastsSeekWithinCm))
+		{
+			bHasRoamTarget = false;
+			FaceTravelDirection(Driven);
+			FAIMoveRequest Request(Drop->GetActorLocation());
+			Request.SetAcceptanceRadius(RoamAcceptanceRadiusCm);
+			Request.SetUsePathfinding(true);
+			if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+			{
+				Request.SetUsePathfinding(false);
+				MoveTo(Request);
+			}
+			LastAction = ECataclysmBrainAction::SeekingADrop;
+			return LastAction;
+		}
+	}
 
 	// A FIGHT STARTS WHEN A CREATURE NOTICES SOMEBODY IT COULD NOT SEE BEFORE.
 	// That is the first of the five events section 6 writes on, and this is

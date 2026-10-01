@@ -971,6 +971,34 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					/*EvasionRoll=*/-1.0f, /*BlockRoll=*/-1.0f,
 					CVarCritRoll.GetValueOnAnyThread());
 
+			// A CONTAGIOUS TOUCH KEEPS ONLY WHETHER IT WAS EVADED. Issues #1820 and #41. The row: "Enemies no longer
+			// deal damage on contact. Instead, they apply a stacking "Contagion" debuff." The blow came through the
+			// whole pipeline so that the evasion step above answered it with every condition it reads, as ruled; the
+			// rest is dropped here, before anything is dealt, leeched, retaliated or announced, and nothing is drawn but
+			// an evaded touch's "Evaded". Recorded, so `ACataclysmEnemyCharacter::AttackTarget` learns the answer as
+			// every blow's sender does.
+			if (const ACataclysmEnemyCharacter* Toucher =
+					Cast<ACataclysmEnemyCharacter>(Data.EffectSpec.GetContext().GetEffectCauser());
+				Toucher && Toucher->bSwingIsAContagiousTouch)
+			{
+				FCataclysmDamageResult Touch;
+				Touch.bEvaded = Resolved.bEvaded;
+				if (UCataclysmAbilitySystemComponent* Touched =
+						Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
+				{
+					Touched->RecordResolvedHit(Touch);
+				}
+				// AN EVADED TOUCH STILL SAYS "Evaded", as ruled: the player sees that evasion worked, as with every
+				// evaded blow. The one call `PlayImpactEffect` makes for the number, on the actor it draws on; no
+				// particle and nothing else is drawn. A test world has no heads-up display, so no test sees it.
+				if (Touch.bEvaded)
+				{
+					UCataclysmCombatOverlay::Record(
+						UCataclysmImpactEffect::ActorToDrawOn(GetOwningAbilitySystemComponent()), Hit, Touch);
+				}
+				return;
+			}
+
 			// AND A BOSS'S FLOOR IS CHECKED A SECOND TIME, ON WHAT CAME OUT.
 			// Issue #915. The first check is made before the target's defences,
 			// in `ShareOfHealthTick` above, which is what keeps a boss's

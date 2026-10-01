@@ -1683,4 +1683,70 @@ bool FCataclysmGatekeeperCancelledSweepNeverStarts::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A called Imp has a starting maximum, as every creature play spawns does, so a rung change rewrites its maximum.
+ *
+ * WHY IT EXISTS. Until 2026-09-30 Call the Damned spawned its Imps with no starting maximum, the one creature play
+ * makes without one. A rung change then left the maximum where it was, so Volatile Evolution raised a called Imp's
+ * rung without its rung's health, and a rule that puts its health share back after a rung change put it on twice.
+ * Found by the sweep Famished Beasts' proof Pa started.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmGatekeeperCalledImpHasAStartingMaximum,
+	"Cataclysm.Gatekeeper.ACalledImpHasAStartingMaximumSoARungChangeRewritesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGatekeeperCalledImpHasAStartingMaximum::RunTest(const FString&)
+{
+	using namespace CataclysmGatekeeperTest;
+	using Gatekeeper_t = ACataclysmGatekeeperCharacter;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmGatekeeperCharacter* Boss = SpawnGatekeeper(World, FVector::ZeroVector);
+	if (!Boss)
+	{
+		AddError(TEXT("could not spawn a Gatekeeper"));
+		return false;
+	}
+
+	// AN IMP SPAWNED BARE, for the maximum an Imp arrives with.
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const ACataclysmImpCharacter* Bare = World->SpawnActor<ACataclysmImpCharacter>(
+		ACataclysmImpCharacter::StaticClass(), FVector(3000.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a bare Imp"), Bare))
+	{
+		return false;
+	}
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Arrives = Bare->GetAbilitySystemComponent()->GetNumericAttribute(MaxHealth);
+
+	Boss->UseEnemyAbility(Gatekeeper_t::CallTheDamnedAbility, nullptr, Boss->GetActorLocation());
+	ACataclysmImpCharacter* Called = nullptr;
+	for (const TWeakObjectPtr<ACataclysmImpCharacter>& Weak : Boss->CalledImps)
+	{
+		Called = Called ? Called : Weak.Get();
+	}
+	if (!TestNotNull(TEXT("an Imp was called"), Called) || !TestTrue(TEXT("set-up: an Imp arrives with a maximum"),
+																	  Arrives > 0.0f))
+	{
+		return false;
+	}
+	const float Before = Called->GetAbilitySystemComponent()->GetNumericAttribute(MaxHealth);
+	TestEqual(TEXT("a called Imp's health is what an Imp arrives with"), Before, Arrives, 0.01f);
+
+	// A RUNG UP: THE MAXIMUM IS REWRITTEN FROM THE STARTING ONE, AS EVERY OTHER CREATURE'S IS.
+	Called->SetRarityStep(Called->RarityStep + 1);
+	const float After = Called->GetAbilitySystemComponent()->GetNumericAttribute(MaxHealth);
+	TestTrue(*FString::Printf(TEXT("a rung up rewrites its maximum (%.1f, then %.1f)"), Before, After), After > Before);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -2507,6 +2507,100 @@ public:
 	static const TCHAR* CarrionFeastKey;
 
 	/**
+	 * The row whose Plaguebearer strengthens every other creature of the floor and runs from the player. Issues #1820
+	 * and #41.
+	 *
+	 * "One random elite on each floor is a "Plaguebearer." This enemy doesn't directly attack you, but it constantly
+	 * applies a stacking disease debuff to all other enemies in the dungeon. The Plaguebearer's debuff increases the
+	 * damage of other enemies by 5% per stack, to a maximum of 10 stacks. The Plaguebearer will flee when you get close,
+	 * forcing you to hunt it down to make the rest of the floor manageable."
+	 *
+	 * THE ROW STATES 5% A STACK AND 10 STACKS. RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION,
+	 * 2026-09-30, every other figure a play-test value, AND BUILT:
+	 * - ONE A FLOOR: a random floor creature at the Elite rung, or a Common raised to it when the floor has no Elite;
+	 *   never a boss or the Gatekeeper. It never attacks (`TakesNoHostileAction`) and stands when it is not fleeing.
+	 * - IT FLEES while the player is within `PlaguebearerFleeWithinCm`, through `FleeFrom`, which is not fear.
+	 * - EVERY `PlaguebearerSecondsBetweenStacks` every other floor creature gains a stack, up to
+	 *   `PlaguebearerMostStacks`; a creature that comes later joins at the count. `PlaguebearerDamagePercentPerStack`
+	 *   more damage a stack, ADDED, so 1 + 0.05n: +50% at ten. Through its own key of the damage map.
+	 * - ITS DEATH clears every stack at once, and no more come that floor. A new floor starts again at nought.
+	 * - THE DISEASE IS NOT THE PLAYER'S DISEASE AILMENT, which deals damage (the design document's ailment table);
+	 *   this one only raises damage.
+	 */
+	static const TCHAR* PlaguebearerKey;
+
+	/**
+	 * The row where a group whose leader dies runs from the player, and comes back stronger if it gets away. Issues
+	 * #1820 and #41.
+	 *
+	 * "Certain enemies panic and flee when their leader dies, but if allowed to escape, they return later with
+	 * reinforcements."
+	 *
+	 * THE ROW STATES NO FIGURE. RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every
+	 * figure a play-test value, AND BUILT:
+	 * - A LEADER is the highest-rung creature of a group of two or more that the floor was populated with, when that
+	 *   rung is `MoraleBreakLeaderLowestRung` (Elite) or above; ties to the first placed. A group of Commons has none,
+	 *   which is what makes "certain enemies" true. It says "Leader" under its bar.
+	 * - ITS DEATH makes the living rest of ITS OWN group panic: they run from the player through `FleeFrom`, which is
+	 *   not fear, refreshed each beat, and say "Panicked".
+	 * - `MoraleBreakFleeSeconds` after the death, each panicked creature still alive and farther than
+	 *   `MoraleBreakEscapeBeyondCm` from the player has ESCAPED: it leaves the floor without dying, so no loot, no
+	 *   experience and no death rule. One nearer stops running and fights on.
+	 * - `MoraleBreakReturnSeconds` after escaping, the escaped come back at their group's middle cell, each at its own
+	 *   rung, with `MoraleBreakReinforcementsPerEscapee` more of its kind at `MoraleBreakReinforcementRung` (Common).
+	 *   Once only: what comes back belongs to no group. Every one pays as its rung does. Forgotten on leaving the floor.
+	 * - THE ESCAPED COUNT AS LIVING until they return, so the floor is not cleared while they are away.
+	 * - A LEADER CARRYING `Generic_Horde_Leader` RALLIES ITS GROUP INSTEAD: that modifier enrages its allies on its
+	 *   death, the creature's own rule is the more specific, and the two cannot both happen. Nobody panics.
+	 */
+	static const TCHAR* MoraleBreakKey;
+
+	/**
+	 * The row where a creature's touch puts a stack on the player instead of damage, and every hit the player lands
+	 * costs them a share of the struck creature's health for each stack. Issues #1820 and #41.
+	 *
+	 * "Enemies no longer deal damage on contact. Instead, they apply a stacking "Contagion" debuff. When you hit an
+	 * enemy, you take a percentage of their total health as damage for every stack of the debuff. The only way to
+	 * remove the debuff is to kill the enemy that applied it."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - CONTACT IS A CREATURE'S BASIC ATTACK (`ACataclysmEnemyCharacter::AttackTarget`) at the player. It deals nothing
+	 *   and adds `ContagiousTouchStacksPerTouch`, up to `ContagiousTouchMostStacks` in total. Charges, stomps, leaps,
+	 *   projectiles and auras still deal damage.
+	 * - EVASION STOPS A STACK, asked of the damage calculation's own evasion step through the whole pipeline; block,
+	 *   which only halves a blow, does not.
+	 * - EACH CREATURE COUNTS THE STACKS IT APPLIED (`ContagionStacksApplied`); the player carries the sum over the
+	 *   living, so killing a creature removes exactly its stacks.
+	 * - EACH HIT THE PLAYER LANDS on a creature costs the player `ContagiousTouchPercentPerStack` of THAT creature's
+	 *   maximum health for every stack carried, charged per hit, so an area skill striking ten creatures pays ten
+	 *   times: the literal reading. Minions' hits do not count. Dealt from the floor's hazard source, typed as the row
+	 *   as Raw Sewage's burn is, as an area blow so it cannot be evaded, and so never heard as the player's own hit.
+	 */
+	static const TCHAR* ContagiousTouchKey;
+
+	/**
+	 * The row where creatures walk to drops on the floor and eat them, growing stronger. Issues #1820 and #41.
+	 *
+	 * "Enemies actively seek out and consume dropped items, denying players their rewards and getting stronger with
+	 * each item eaten."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-30, every figure a play-test value, AND
+	 * BUILT:
+	 * - EVERY DROP ON THE FLOOR IS EATEN, gear and material, EXCEPT The Infested Hoard's (`bInfested`): that drop
+	 *   exists so the player chooses whether to take it and its risk, and a creature eating it would remove the other
+	 *   rule's choice. `FamishedBeastsEats` is the one place that says so.
+	 * - A CREATURE OF THE FLOOR'S KINDS with a drop within `FamishedBeastsSeekWithinCm` walks to the nearest and eats
+	 *   it before chasing the player, unless the player is within its attack reach, where it fights.
+	 * - WITHIN `FamishedBeastsEatWithinCm`, the roam's acceptance radius, it eats the drop at once. GONE FOR GOOD: the
+	 *   row's own "denying players their rewards".
+	 * - EACH DROP EATEN makes it `FamishedBeastsStrongerPercentPerDrop` stronger in damage and maximum health, added,
+	 *   up to `FamishedBeastsMostStacks`: Carrion Feast's figures and shape, on its own key of the damage map. It pays
+	 *   as its rung does, and nothing extra.
+	 */
+	static const TCHAR* FamishedBeastsKey;
+
+	/**
 	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
 	 *
 	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
@@ -5301,6 +5395,95 @@ public:
 	static constexpr int32 GrimTotemsEliteRung = RoyalGuardLowestRungThatSummons;
 	static constexpr float GrimTotemsCleanseRadiusCm = 1500.0f;
 	static constexpr float GrimTotemsCleanseDamageLessPercent = 25.0f;
+
+	/** The Plaguebearer's figures. The row states 5% and 10; the rest are play-test values. See the key. */
+	static constexpr float PlaguebearerDamagePercentPerStack = 5.0f;
+	static constexpr int32 PlaguebearerMostStacks = 10;
+	static constexpr float PlaguebearerSecondsBetweenStacks = 3.0f;
+	static constexpr float PlaguebearerFleeWithinCm = 1000.0f;
+	static constexpr float PlaguebearerFleeSeconds = 2.0f;
+	static constexpr int32 PlaguebearerRung = RoyalGuardLowestRungThatSummons;
+
+	/** The Plaguebearer: the stacks after one more is added, up to the most. */
+	static int32 PlaguebearerStacksAfter(int32 Stacks) { return FMath::Clamp(Stacks + 1, 0, PlaguebearerMostStacks); }
+
+	/** The Plaguebearer: whether a stack is due this long after the last. */
+	static bool PlaguebearerStackIsDue(float SecondsSinceLast)
+	{
+		return SecondsSinceLast >= PlaguebearerSecondsBetweenStacks - KINDA_SMALL_NUMBER;
+	}
+
+	/** The Plaguebearer: what every other creature's damage is multiplied by at this many stacks, added: 1 + 0.05n. */
+	static float PlaguebearerMultiplier(int32 Stacks)
+	{
+		return 1.0f + FMath::Clamp(Stacks, 0, PlaguebearerMostStacks) * PlaguebearerDamagePercentPerStack / 100.0f;
+	}
+
+	/** Morale Break's figures, every one a play-test value. See the key. */
+	static constexpr float MoraleBreakFleeSeconds = 8.0f;
+	static constexpr float MoraleBreakEscapeBeyondCm = 1500.0f;
+	static constexpr float MoraleBreakReturnSeconds = 30.0f;
+	static constexpr int32 MoraleBreakReinforcementsPerEscapee = 1;
+	static constexpr int32 MoraleBreakReinforcementRung = 0;
+	static constexpr int32 MoraleBreakLeaderLowestRung = RoyalGuardLowestRungThatSummons;
+	static constexpr int32 MoraleBreakFewestInAGroup = 2;
+
+	/** Morale Break: whether a creature at this rung leads a group of this many. */
+	static bool MoraleBreakLeads(int32 Rung, int32 InTheGroup)
+	{
+		return Rung >= MoraleBreakLeaderLowestRung && InTheGroup >= MoraleBreakFewestInAGroup;
+	}
+
+	/** Morale Break: whether the flight is over this long after the leader died. */
+	static bool MoraleBreakFlightIsOver(float SecondsSinceTheLeaderDied)
+	{
+		return SecondsSinceTheLeaderDied >= MoraleBreakFleeSeconds - KINDA_SMALL_NUMBER;
+	}
+
+	/** Morale Break: whether a panicked creature this far from the player when the flight ends has escaped. */
+	static bool MoraleBreakHasEscaped(float CmFromThePlayer) { return CmFromThePlayer > MoraleBreakEscapeBeyondCm; }
+
+	/** Morale Break: whether the escaped come back this long after escaping. */
+	static bool MoraleBreakReturnIsDue(float SecondsAway)
+	{
+		return SecondsAway >= MoraleBreakReturnSeconds - KINDA_SMALL_NUMBER;
+	}
+
+	/** Contagious Touch's figures, every one a play-test value. See the key. */
+	static constexpr float ContagiousTouchPercentPerStack = 1.0f;
+	static constexpr int32 ContagiousTouchMostStacks = 10;
+	static constexpr int32 ContagiousTouchStacksPerTouch = 1;
+
+	/** Contagious Touch: how many stacks one more touch adds when the player carries this many in total. */
+	static int32 ContagiousTouchStacksAdded(int32 Carried)
+	{
+		return FMath::Clamp(ContagiousTouchMostStacks - Carried, 0, ContagiousTouchStacksPerTouch);
+	}
+
+	/** Contagious Touch: what one hit on a creature of this maximum health costs the player at this many stacks. */
+	static float ContagiousTouchRetaliation(float StruckMaxHealth, int32 Stacks)
+	{
+		return FMath::Max(0.0f, StruckMaxHealth) * FMath::Clamp(Stacks, 0, ContagiousTouchMostStacks)
+			* ContagiousTouchPercentPerStack / 100.0f;
+	}
+
+	/** Famished Beasts' figures, every one a play-test value: Carrion Feast's 10% and 10. See the key. */
+	static constexpr float FamishedBeastsSeekWithinCm = 1000.0f;
+	static constexpr float FamishedBeastsEatWithinCm = 50.0f;
+	static constexpr float FamishedBeastsStrongerPercentPerDrop = CarrionFeastStrongerPercentPerCarcass;
+	static constexpr int32 FamishedBeastsMostStacks = CarrionFeastMostStacks;
+
+	/** Famished Beasts: what a creature's damage and maximum health are multiplied by after eating this many drops. */
+	static float FamishedBeastsMultiplier(int32 DropsEaten)
+	{
+		return 1.0f + FMath::Clamp(DropsEaten, 0, FamishedBeastsMostStacks) * FamishedBeastsStrongerPercentPerDrop / 100.0f;
+	}
+
+	/** Famished Beasts: whether a creature eats this drop. Every drop but The Infested Hoard's. */
+	static bool FamishedBeastsEats(const class ACataclysmDroppedItem* Drop);
+
+	/** Famished Beasts: the nearest drop a creature eats within this many centimetres of `From`, measured flat. */
+	static class ACataclysmDroppedItem* FamishedBeastsNearestDrop(const UWorld* World, const FVector& From, float WithinCm);
 
 	/**
 	 * Void Parasite's figures, every one a play-test value. See the key. The chance is Demon Prince's

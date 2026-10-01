@@ -2,6 +2,603 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — Famished Beasts: creatures walk to drops within 10 m and eat them for good, each a tenth stronger in damage and health, up to ten; The Infested Hoard's drops are left alone
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+which drops are eaten and the nearest one, the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+and `.cpp` (its own key of the damage map, the drops a creature ate, and the flag the brain reads);
+`game/Source/Cataclysm/Character/CataclysmEnemyController.h` and `.cpp` (the walk to a drop, and `SeekingADrop`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the beat, the eater's strength, Carrion Feast's
+health write, the panel line); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Gorged N"); the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
+
+### The row
+
+`Famine_Famished_Beasts` in `game/Data/DungeonModifiers.csv`, weight 10: "Enemies actively seek out and consume dropped
+items, denying players their rewards and getting stronger with each item eaten." It states no figure.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md`, this log and `game/Source` for the row on 2026-09-30: none of them names it. Two
+things already existed. Demonic Guide's brain branch walks a creature to a point a floor rule sets, with the roam's
+acceptance radius and a straight-line fallback when there is no navigation mesh. Carrion Feast makes its feeders a tenth
+stronger in damage and maximum health for each carcass eaten, up to ten, on its own key of the damage map and its own
+record of each feeder's maximum health.
+
+### What the rule does
+
+On a floor carrying the row, every creature of the floor's kinds that takes hostile action walks to the nearest drop
+within 10 m before it chases the player, unless the player is within its attack reach, where it fights. Standing on a
+drop, within the roam's 50 cm acceptance radius, it eats it at once: the drop is destroyed and gone for good. Each drop
+eaten makes it a tenth stronger in damage and maximum health, added, up to ten drops, and it says "Gorged N" under its
+bar. Every drop is eaten, gear and material, except The Infested Hoard's. The panel reads "famished beasts: 3 drops
+eaten". The eater pays as its rung does, and nothing extra.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **Every drop on the floor is eaten, gear and material, EXCEPT The Infested Hoard's (`bInfested`).** That rule's drop
+  exists so the player can choose whether to pick it up and take its risk, and a creature eating it would remove the
+  other rule's choice.
+- **Any floor creature with a drop within 10 m walks to the nearest and eats it before chasing the player; with the
+  player within its attack reach, it fights instead.** Demonic Guide's walking branch, straight-line fallback included.
+- **Within the roam's acceptance radius it eats the drop at once, and the drop is destroyed.**
+- **Carrion Feast's mechanism and figures on the eater**: a tenth more damage and maximum health a drop, added, up to
+  ten, on its own key and its own maximum-health record. **With Carrion Feast on the same floor the two stack.**
+- **An eaten drop is gone for good**: the row's own "denying players their rewards".
+- **The eater pays as its rung does**, and nothing extra.
+- **The labels and the panel line**, with no count of the drops lying.
+
+**On the owner's play-check list**, added by the coordinating session: that creatures walk to loot and eat it, and
+whether losing a high-rarity drop for good feels fair.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **How the two rules' health stacks.** Neither rule has a share of a common health multiplier: each writes the maximum
+  itself, from its own record, so the later write would erase the other's share. So each writes its own record times
+  both multipliers. Carrion Feast's write in `StrengthenTheFeeders` now also multiplies by the feeder's
+  `FamishedBeastsMultiplier`, a one-line change to that rule, and `StrengthenTheEater` uses Carrion Feast's own record
+  of a feeder, times Carrion's multiplier. The two now agree in either order. Their damage stacks through the two keys
+  of the damage map, which already multiply.
+- **Any other eater's health is written as Soul Harvest writes it**: what is there now, less what this rule added, with
+  the new share on top. So a share another rule added onto the maximum is kept in either order.
+
+### Every writer of a creature's maximum health, surveyed for this change
+
+Asked by the coordinating session: for each writer of a creature's maximum health in the game module, which rule it
+is, whether it can meet this one on a floor, and whether either write erases the other's share. Read on this branch.
+A dungeon draws its rows from every Cataclysm active in the run (`UCataclysmDungeonModifierRules::PoolFor`), so
+two rules meet on one floor whenever both their Cataclysms are active in it; "can meet" is yes for every rule
+below, and no pair's Cataclysms were checked further.
+
+| Writer | Rule | Erases a share? | What this change does |
+| :-- | :-- | :-- | :-- |
+| `StrengthenTheFeeders` | Carrion Feast | yes, it wrote its record times its own multiplier | multiplies by the feeder's `FamishedBeastsMultiplier` too; tested |
+| `ApplySoulHarvestFigures` | Soul Harvest | no: it takes off only its own share and adds the new one | this rule now writes the same way, so a soul added after a drop is kept; tested with a write standing in for it |
+| `ApplyNothingIsForgottenFigures` | Nothing Is Forgotten | no: it adds onto the current maximum | the same; covered by the same test |
+| `ACataclysmEnemyCharacter::ApplyStartingAttributes`, reached through `SetRarityStep` and `DrawModifiersForRarity` | a rung change on a creature already standing: Volatile Evolution and Blood-Forged Champions | yes, it writes the designed maximum over everything | both put Soul Harvest's and Nothing Is Forgotten's shares back after it; they now call `PutTheHealthSharesBack` right after the rung, which puts this rule's back and a Carrion feeder's; tested through Volatile Evolution, for an eater and for a feeder |
+| the same, reached at spawn (`ApplyDesignedStats` and the rules that place or raise a creature) | every rule that spawns one | no: nothing has eaten yet | nothing |
+| `UCataclysmMinion` at spawn | the player's minions | no: a minion is not a creature class, so it never eats | nothing |
+| `RefreshLiveMaximumHealth`, `UCataclysmSecondSelf` | the player's own stats and the player's copy | no: not a creature | nothing |
+| `FCataclysmSaveApply` | restoring a floor | no: nothing in play calls it | nothing |
+
+The writes of current health that heal up to the maximum -- the Medic, Leech Spores, Sacrifice, a command's refill --
+do not change the maximum and are not writers here.
+
+**Carrion Feast's gap, found by this survey and fixed in this change under the coordinating session's ruling.** Carrion
+Feast writes its feeders from a record of the maximum each came with, and nothing put its share back after a rung
+change, so a feeder that Volatile Evolution or Blood-Forged Champions raised lost Carrion Feast's share, and with it
+Famished Beasts', until the next carcass; that next carcass then wrote the OLD rung's maximum back from the stale
+record. Both rules now call `PutTheHealthSharesBack` right after the rung is written and before the pools are held to
+the new maximum. For a feeder it takes Carrion Feast's record again from the new rung's maximum and makes the write
+`StrengthenTheFeeders` makes, carrying Famished Beasts' multiplier; for any other eater it puts Famished Beasts' share on
+top. The ruling's reason: this change already added the re-apply call in those two places, and a feeder that eats drops
+follows Carrion Feast's write, so Famished Beasts' own rule was wrong for exactly the creatures carrying both.
+- **Who eats: a creature of the floor's seven kinds that takes hostile action.** A carcass, a vein, a beacon and the
+  other things rules stand on a floor are creature classes too and do not walk; a guide and a medic take no hostile
+  action.
+- **It goes on eating past ten**, and grows no stronger: the row denies the reward whatever the count.
+- **One drop a beat for each creature**, the nearest one under it.
+- **The game mode writes the flag the brain reads on every beat**, for every living creature in the world, as Demonic
+  Guide's flag is written, so a creature a rule brings later seeks on the next beat.
+- **The walk sits below a charge and a wind-up already under way**, which it does not cut, and above the choice of what
+  to do about the target.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| NetHack | [nethackwiki.com/wiki/Gelatinous_cube](https://nethackwiki.com/wiki/Gelatinous_cube) | "Gelatinous cubes are known for consuming any and all objects that they come across, and will attempt to eat or engulf items that are on a square they move onto"; what it engulfed comes back only when it is "polymorphed or outright killed" |
+| Diablo III | [the Puzzle Ring's item page](https://us.diablo3.blizzard.com/en-gb/item/puzzle-ring-Unique_Ring_004_x1) | "Summon a treasure goblin who picks up normal-quality items for you. After picking up 16 items, he drops a rare item with a chance for a legendary. [12 - 16]" |
+
+`diablo.fandom.com` refused the fetch. **What it settles:** a monster moving to items on the ground and taking them.
+**What it does not:** who seeks, how far, how much stronger; and in both games what was taken comes back in some form,
+where this row says the reward is denied, so the loss for good is the row's reading and not the genre's.
+
+### Tests
+
+Eight automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `FamishedBeasts`. **A test world has no
+navigation, so no creature walks anywhere in a test**: the seeking is measured through the brain's answer, and a drop is
+placed under a creature by hand to be eaten. **That creatures walk to loot in play is on the owner's play-check list.**
+
+- `FamishedBeastsFiguresReachShareAndMost`: 10 m; the eating radius is the brain's `RoamAcceptanceRadiusCm`; 10% and ten,
+  Carrion Feast's; the multiplier at 0, 1, 3, 10 and 11.
+- `FamishedBeastsACreatureWalksToADropWithinTenMetresUnlessThePlayerIsInReach`: the rule marks it; at 5 m its brain
+  answers `SeekingADrop`; at 11 m it does not; with the player within its reach it does not.
+- `FamishedBeastsADropUnderACreatureIsEatenAndMakesItStronger`: a gear drop eaten and gone, a tenth more damage on its own
+  key and a tenth more maximum health, "Gorged 1", the panel; a material drop eaten too; after ten more, ten eaten for
+  strength, twice the damage and the health, and twelve on the panel's count.
+- `FamishedBeastsAnInfestedDropIsNeverEaten`: under it, not eaten; at 5 m, not walked to.
+- `FamishedBeastsAFeederThatEatsStacksWithCarrionFeast`: a feeder that eats a drop carries both keys at a tenth each and a
+  maximum of its own times both; after a second carcass, Carrion Feast's write keeps the drop's share. The drops a kill
+  leaves are cleared first, so the test counts only its own.
+
+- `FamishedBeastsAHealthShareAnotherRuleAddedIsKept`: after one drop, 500 is added onto the maximum, as Soul Harvest
+  and Nothing Is Forgotten add theirs; after a second drop the maximum is the creature's own plus 500, times 1.2.
+- `FamishedBeastsAFeederThatRisesARungKeepsBothShares`: a feeder that ate a drop rises a rung through Volatile
+  Evolution, keeps its drop's key, and when a second carcass is eaten its maximum moves by exactly 1.2 / 1.1: both
+  shares were on the new rung's maximum and Carrion Feast's record is the new rung's. Its kind is drawn at random, so it
+  is measured against itself.
+- `FamishedBeastsARungChangeKeepsTheDropsShare`: an Imp that ate two drops and one that ate none, both wounded, rise a
+  rung through Volatile Evolution with its roll pinned; the eater's maximum is the other's, corrected for the modifiers
+  each drew, times 1.2.
+
+Two Python checks: the row still says "actively seek out", "consume dropped items", "denying players their rewards" and
+"stronger with each item eaten"; and its setter writes its own key of the damage map.
+
+**A FAULT AND A TEST FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.**
+`FamishedBeastsARungChangeKeepsTheDropsShare` printed 1440 where it expected 1200: the drops' fifth went on twice. A
+diagnostic run, never committed, printed:
+
+```
+RUNG_DIAG before: eater max=1200.000 rung=0 | fasting max=1000.000 rung=0
+RUNG_DIAG after: eater max=1440.000 rung=1 drops=2 | fasting max=1000.000 rung=1
+RUNG_DIAG placed: class=CataclysmBruteCharacter own=549.000 with_share=658.800 after_rung_change=1015.650
+```
+
+**The assumption.** After a rung change this rule's fresh path takes nothing off before putting its share back,
+because the rung change rewrote the maximum. `ApplyStartingAttributes` rewrites it only when the creature has a
+starting maximum, set by `SetHealth`. A floor creature has one: the placed Brute's 549 became 1015.65, its new rung's
+figure with the share gone. The test's Imps, made by `SpawnImpWithHealth`, had none, so their maximum stayed and the
+share went on again. Three other rules make the same assumption and are right for the same reason: Carrion Feast's
+feeder branch in `PutTheHealthSharesBack`, Soul Harvest's `ApplySoulHarvestFigures` and Nothing Is Forgotten's
+`ApplyNothingIsForgottenFigures`.
+
+**The sweep of every creature play spawns**, for whether it has a starting maximum before a rung change can reach it:
+`SpawnPlacedCreature` through `ApplyDesignedStats` (every floor creature and every rule that spawns through it), the
+rule-made floor sources, phantasms, carcass feeders and the sandbox's spawns all call `SetHealth`; Subjugate spawns
+nothing. **Call the Damned's Imps did not**, and Volatile Evolution and Famished Beasts reach every creature in the
+world, so a called Imp that ate and then mutated took the share twice, and mutated without its new rung's health. The
+called Imp now gets `SetHealth` with the maximum it arrived with, so its health in play does not change; the test
+`Cataclysm.Gatekeeper.ACalledImpHasAStartingMaximumSoARungChangeRewritesIt` checks it. A creature restored from a save
+has none either, but restoring creatures has no caller in play; issue [#2181](https://github.com/sdubois777/Cataclysm/issues/2181) records that a restored creature needs its starting maximum and the rules' records saved.
+
+**The test now makes its Imps as play does**, with `SetHealth`. **Proof Pa is recorded as not a proof and is not
+rerun**; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
+
+**A MISSING INCLUDE, FOUND BY GUARD PROOF Pb's BUILD, 2026-09-30, fixed in the window as the coordinating session ruled.** Pb breaks a line in `CataclysmDungeonModifierEffects.cpp`, so the adaptive build compiled that file on its own and regrouped the unity files; `CataclysmCombatOverlay.cpp` then stopped with C2653, because The Plaguebearer's "Diseased N" text names `UCataclysmDungeonModifierEffects` and the file never included its header -- it had compiled only because an earlier file in its unity group did. No test ran in that run. A sweep of every source file that names the class without including it found two more, already on development before this change: `CataclysmFloorModifierPanelLayout.cpp` and `CataclysmEquipmentComponent.cpp`. All three now include `Dungeon/CataclysmDungeonModifierEffects.h`; nothing else changed. Pb was rerun with the same break once they did.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, with the commit each ran at and the tests the run named:
+
+- **Pa NOT A PROOF**: at `6b6c702b`: `FamishedBeastsARungChangeKeepsTheDropsShare` failed with the files restored as well; the fault and the test above, not rerun.
+- **Pb PROVED**: its first run, at `ba775b3b`, had its build fail and no test run -- the missing include above; rerun with the same break at `ee05d557`, `FamishedBeastsAnInfestedDropIsNeverEaten` failed with the break in and passed restored.
+- **Pc PROVED**: at `ee05d557`: `FamishedBeastsAFeederThatEatsStacksWithCarrionFeast` and `FamishedBeastsAFeederThatRisesARungKeepsBothShares` failed with the break in; both passed restored.
+
+---
+
+## 2026-09-30 — Contagious Touch: a creature's swing at the player deals nothing and adds a stack, up to ten; each hit the player lands costs 1% of the struck creature's maximum health per stack; killing a creature removes its stacks
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the stacks a creature applied,
+the touch flag, and the basic attack); `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (a touch
+keeps only whether it was evaded); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the count, the
+retaliation, the panel line, and finding the game mode by walking the level);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Infecting N"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
+
+### The row
+
+`Pestilence_Contagious_Touch` in `game/Data/DungeonModifiers.csv`, weight 10: "Enemies no longer deal damage on contact.
+Instead, they apply a stacking "Contagion" debuff. When you hit an enemy, you take a percentage of their total health as
+damage for every stack of the debuff. The only way to remove the debuff is to kill the enemy that applied it." It states
+no figure.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md` and this log on 2026-09-30. The design document does not name the row. This log's
+Necrotic Ground entry holds **the Contagious Touch probe**: a creature blow of zero damage is not announced as a hit,
+because `UCataclysmCombatEvents::NoteBlow` is reached only when the blow dealt something. So this rule could not learn of a
+touch by listening for hits, and the creature's swing reports it instead. `ACataclysmDungeonGameMode::OnSomethingWasHit`
+already named this row as a listener it expected.
+
+### What the rule does
+
+On a floor carrying the row, a creature's basic attack at the player (`ACataclysmEnemyCharacter::AttackTarget`) deals
+nothing. Unless the player evades it, it adds one Contagion stack to that creature's own count, up to ten across every
+creature. The creature says "Infecting N" under its bar. The player carries the sum over the living creatures, so killing
+a creature removes exactly the stacks it applied. Each hit the player lands on a creature costs the player 1% of that
+creature's maximum health for every stack carried, charged per hit. The panel reads "contagious touch: 3 stacks, hits
+cost 3% of the target's health". A charge, a stomp, a leap, a projectile or an aura still deals its damage, and a swing at
+anything but the player is dealt as always.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **Contact is a creature's basic attack**: it deals no damage and adds one stack.
+- **Evasion stops a stack**, asked of the damage calculation's existing evasion step with its conditional evasion stats:
+  no second roll and no copy of its formula. Block, which halves a blow and never stops one, does not stop a stack.
+- **Each creature counts the stacks it applied**, as a field on the creature, and the player's total is the sum over
+  the living.
+- **Ten stacks in total**; a touch at ten adds nothing.
+- **The literal reading of the cost**: each hit the player lands costs 1% of the struck creature's maximum health per
+  stack carried, charged per hit, so an area skill striking ten creatures pays ten times. Dealt from the floor's hazard
+  source. Minions' hits do not count. Brand of the Aggressor's three checks: the blow landed, the player struck it, and
+  it struck a creature.
+- **The damage type**: read from what Raw Sewage's disease deals first. Raw Sewage's burn is typed as its own row,
+  `const FName Type = DungeonGameModeTypeOfRow(Effects::RawSewageKey);` in `StepRawSewage` in
+  `CataclysmDungeonGameMode.cpp`, which reads the row's Cataclysm column. So this rule is typed as its own row the same
+  way, which is Pestilence.
+- **The labels and the panel line**; the player has no status line of its own, so the panel line is the player's.
+
+**On the owner's play-check list**, added by the coordinating session: whether the cost against high-health creatures (an
+Elite or a boss at ten stacks costs 10% of that creature's maximum per hit) is fair against the player's health, and
+whether an area skill should pay once per use instead.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **How evasion is asked without a second roll.** The facts the evasion step reads -- the striker's Perfect Aim, a
+  keystone that stops melee evasion, melee or ranged, a boss, the striker's state and distance -- are filled from the
+  gameplay effect in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, so building them anywhere else would copy
+  them. The swing is therefore sent through `ApplyHit` as always, with `bSwingIsAContagiousTouch` set on the creature, and
+  the attribute set, straight after `UCataclysmDamageCalculation::Resolve`, keeps only the evasion answer, records it as
+  every blow's result is recorded, and stops: nothing is dealt, leeched, retaliated or announced. The creature
+  reads the answer back through the defender's resolved-hit stamp, which also tells a blow refused before the pipeline --
+  an untargetable player -- from one that reached it.
+- **A flag on the creature and not a tag on the blow**, because a new gameplay tag is generated from the design
+  workbook's Tags sheet (`tools/generate_gameplay_tags.py`), which this change may not edit. The attribute set already
+  reads the blow's causer for Perfect Aim.
+- **An evaded touch draws "Evaded", and nothing else is drawn**, ruled by the coordinating session: the player sees
+  that evasion worked, as with every evaded blow. It is the one call `PlayImpactEffect` makes for a blow's number,
+  `UCataclysmCombatOverlay::Record`, on the actor `UCataclysmImpactEffect::ActorToDrawOn` names; no particle. A world
+  built for a test has no heads-up display, so `Record` draws nothing there and **no test sees it**: it is on the
+  owner's play-check list.
+- **A swing at anything but the player is dealt as always**: the debuff is the player's, so a minion or a maddened ally
+  struck by a creature takes its damage.
+- **The retaliation is an area blow**, so it cannot be evaded, as Brand of the Aggressor's nova is, and not damage over
+  time, so an energy shield meets it.
+- **The count is taken over every living creature in the world**, not only the floor's list, so a creature a rule raised
+  counts like any other. **A blow that kills a creature that applied stacks has removed them before its cost is taken.**
+- **The creature finds the game mode by walking the level**, as the player's revival does, because a world built for a
+  test has no authority game mode. `ACataclysmDungeonGameMode::InWorld` is that lookup.
+
+### The research
+
+Fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Corrupted Blood | [poedb.tw/us/Corrupted_Blood](https://poedb.tw/us/Corrupted_Blood) | applied by monster hits, one stack a hit; "Corrupted Blood can stack up to ten times" |
+| Path of Exile, the reflect map modifier | [maxroll.gg's map-rolling guide](https://maxroll.gg/poe/getting-started/how-to-roll-maps) | "Monsters reflect 18% of Elemental OR Physical Damage"; "Your character kills itself by hitting monsters"; among "some of the worst ones you can roll on t16 Maps" |
+| Path of Exile, curses | [the curses FAQ](https://www.pathofexile.com/forum/view-thread/3323572) | "your Curses will be removed if you die or leave the area" |
+
+A search summary says a monster's Mark ends when the monster that inflicted it is killed; `poedb.tw/us/Mark` did not say
+so when fetched, so it is not relied on. **What it settles:** stacks added by monster hits with a cap of ten, hitting
+monsters costing the player, and an effect tied to the life of whoever applied it. **What it does not:** the share, what
+counts as contact, and whether an area skill pays per hit.
+
+### Tests
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `ContagiousTouch`:
+
+- `ContagiousTouchFiguresShareCapAndStacksPerTouch`: 1%, ten, one; the edges of each helper.
+- `ContagiousTouchASwingDealsNothingAndAddsAStack`: off the row the same swing deals damage and adds no stack; on it,
+  nothing dealt, one stack on the creature and on the player, "Infecting 1", the panel; a blow that is not the basic
+  attack still deals damage and adds nothing.
+- `ContagiousTouchStacksStopAtTenAcrossCreatures`: seven and five touches make seven and three; a touch at ten adds nothing.
+- `ContagiousTouchAnEvadedTouchAddsNoStack`: at an evasion of 1000, which the pipeline does not cap, three touches add
+  nothing; at 0, one adds one.
+- `ContagiousTouchAHitCostsOnePercentOfTheTargetsMaximumPerStack`: at three stacks a hit on a creature of 50,000 costs what
+  1,500 from the floor's hazard source, typed Pestilence as an area blow, costs the same player, measured on the player;
+  a blow the player did not strike costs nothing.
+- `ContagiousTouchKillingACreatureRemovesItsStacks`: five stacks, three after the first creature dies, none after the
+  second; the panel.
+- `ContagiousTouchTheRetaliationIsNotHeardAsThePlayersHit`: one hit heard from the player, on the creature; the
+  retaliation heard once on the player and never as the player's own.
+
+One Python check: the row still says "no longer deal damage on contact", "stacking", "when you hit an enemy",
+"percentage of their total health", "for every stack" and "kill the enemy that applied it".
+
+**A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `ContagiousTouchAnEvadedTouchAddsNoStack` set the player's evasion attribute to 1000, and three touches still added three stacks. A diagnostic run, never committed, printed `base=1000.000 current=1000.000 asked_melee=0.000 asked_plain=0.000 melee_suppressed=0.000 inputs=1 base_input=0.000 mods=1 plain_hit_evaded=0`: the evasion step asks `StatForSkill("evasion")`, a player holds stat inputs for evasion, so the answer is worked out from those and the attribute is not read; a creature holds none and falls back to its attribute. That is the pipeline as designed. The test's `SetPlayerEvasion` now also sets the base of the player's evasion inputs. Every other test that writes a player's evasion attribute writes 0, which the inputs already give, so none of them is affected. **Proof Pa is recorded as not a proof and is not rerun**; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, with the commit each ran at and the tests the run named:
+
+- **Pa NOT A PROOF**: at `1c04d207`: `ContagiousTouchAnEvadedTouchAddsNoStack` failed with the files restored as well; the test fault above, not rerun.
+- **Pb PROVED**: at `6b6c702b`, the head carrying the test's fix: `ContagiousTouchAnEvadedTouchAddsNoStack` failed with the break in; passed restored.
+- **Pc PROVED**: at `6b6c702b`: `ContagiousTouchKillingACreatureRemovesItsStacks` failed with the break in; passed restored.
+
+---
+
+## 2026-09-30 — Morale Break: when a group's Elite leader dies the rest of the group runs; those that get away come back 30 seconds later with one more of their kind each
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (each creature's group, and the "Leader" and
+"Panicked" flags); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the groups numbered as the
+floor is populated, the leaders, the beat, the living count, the panel line, the end of the dungeon);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Leader" and "Panicked"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
+
+### The row
+
+`War_Morale_Break` in `game/Data/DungeonModifiers.csv`, weight 5: "Certain enemies panic and flee when their leader dies,
+but if allowed to escape, they return later with reinforcements." It states no figure.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md` and this log for morale, panic and leader on 2026-09-30: neither mentions them. The
+game had no leader. March of Progress' Commander is another rule's chosen creature, the Commander gameplay tag means
+"buffed by a commander", and `Generic_Horde_Leader` is an enemy modifier whose death enrages nearby enemies, the opposite
+reaction. `ACataclysmEnemyCharacter::FleeFrom` already named this row as a caller. The floor's population already places
+creatures in groups (`FCataclysmEnemyPlacement::Pack`): Imps ten to a group, Hellhounds three, Brutes two, and Abyssal
+Wardens and Corrupted Sentinels one; but nothing kept a creature's group once it was spawned.
+
+### What the rule does
+
+Once a floor's or wave's own creatures are placed, each group of two or more whose highest rung is Elite or above has a
+leader: that creature, the first placed on a tie. It says "Leader" under its bar. A group of Commons has none. When a
+leader dies, the living rest of its own group panic: they say "Panicked" and run from the player through `FleeFrom`, which
+moves them as fear does without the fear tag, refreshed each beat from where the player stands. Eight seconds after the
+death, each one still alive farther than 15 m from the player has escaped and leaves the floor without dying: no loot, no
+experience, no death rule. One nearer stops running and fights on. Thirty seconds after escaping, the escaped come back
+at their group's middle cell, each at its own rung, with one more creature of its kind each at Common. They come back
+once and belong to no group, so they never panic again, and every one pays as its rung does. While they are away they
+count as living, so the floor is not cleared. Leaving the floor forgets them. A leader carrying `Generic_Horde_Leader`
+rallies its group instead, and nobody panics. The panel reads "morale break: no leader has fallen", then "morale break: 3
+panicked, 0 escaped", and "morale break: 0 panicked, 3 escaped, back in 30s" while they are away.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure a play-test value:**
+
+- **A leader is a group's highest-rung creature, Elite or above, labelled "Leader"; a group of Commons has none.**
+- **Its own group panics**, and no other.
+- **They flee through `FleeFrom`, labelled "Panicked".**
+- **Escaped is alive at 8 seconds and beyond 15 m.**
+- **They return 30 seconds later at the group's middle cell, with one Common reinforcement for each, once only,
+  forgotten on leaving the floor.**
+- **The escaped count as living until they return.**
+- **Every returning creature pays as its rung does.**
+- **A leader carrying Horde Leader rallies instead of breaking.**
+- **The panel line.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Where a creature's group is kept: on the creature**, as `PackGroup` and `PackMiddleCell`, which the coordinating
+  session asked to be placed where nothing can drop it mid-floor. No `Forget*` of the game mode touches a creature's own
+  field, and it lasts exactly as long as the creature. It is **not saved**: `FCataclysmSaveApply::FloorInto` restores a
+  floor's creatures and nothing outside the tests calls it, so no floor is restored in play. If one ever is, the group
+  belongs in `FCataclysmSavedCreature` beside `bRisenFromTheDead`.
+- **Group numbers are counted up across the dungeon and never reset**, so a Horde arena's later wave never shares a number
+  with an earlier wave whose creatures still stand.
+- **A group is written only where the floor's own population is spawned**, all at once or as a wave, and never inside
+  `SpawnPlacedCreature`: Necrotic Bloom spawns copies of another population's placements, whose group numbers mean
+  nothing on this floor.
+- **What comes back joins the floor's creatures and not a Horde wave's count**, so a Horde arena's next wave is judged on
+  the wave it counted.
+- **Everything that comes back appears on the middle cell**, as a group was placed around it.
+- **A leader's Horde Leader is read when it is chosen and on every beat it stands**, so one destroyed with its body is
+  still known to have carried it.
+- **The floor number starts the rule again**, as The Plaguebearer's does, so the order of a floor's resets does not matter.
+
+### The research
+
+Both pages fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo II | [diablo2.io/monsters/fallen-t4199.html](https://diablo2.io/monsters/fallen-t4199.html) | "Fallen in the area may run away when they see their fellow friends killed" |
+| Total War: Rome II | [the manual's battle morale page](https://r2enc.totalwar.com/en/manual/single-player/0087_enc_page_battle_play_phase_conflict_morale/) | a broken unit "will rout - break from combat and begin to leave the battlefield"; "There is a chance that a routing unit can be persuaded to stay on the battlefield via the general's rally ability" |
+
+diablowiki.net and purediablo.com refused the fetch, so neither is quoted. **What it settles:** the shape: a death breaks
+the creatures around it, they run from the fight, and in Total War a routed unit can come back into it. **What it does
+not:** coming back with reinforcements, what counts as escaping, who leads, and every figure; those are specific to this
+game.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `MoraleBreak`. **A test world has no
+navigation, so no creature runs anywhere in a test**: the fleeing is measured through the brain's answer, and a creature
+is placed beyond or within 15 m by hand. **That they actually run, get away and come back in play is on the owner's
+play-check list.**
+
+- `MoraleBreakFiguresFlightEscapeAndReturn`: 8 s, 15 m, 30 s, one Common each, an Elite leads two or more; the edges of
+  each helper.
+- `MoraleBreakLeaderIsItsGroupsHighestRungEliteOrAbove`: the Elite leads and says so; a group of Commons has none; a
+  Legendary placed second leads; two Elites, the first placed leads; every group Common, no leader.
+- `MoraleBreakALeadersDeathPanicsItsOwnGroupAndNoOther`: the panel before; its group panics, says "Panicked" and its
+  brains answer `Fleeing`; another group does neither; the count and the panel.
+- `MoraleBreakBeyondFifteenMetresEscapesAndWithinFightsOn`: at 7.75 s the far one still runs; at 8 s the one at 20 m has
+  left, and the one at 10 m is alive, calm and not fleeing; the panel says it is back in 30 s.
+- `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor`: the whole group escapes; every other creature killed,
+  the escaped count as living and the floor is not cleared; nothing at 29.75 s; at 30 s twice as many of their kind, the
+  Elite back as an Elite and the rest Common, none in a group; the panel before and after.
+- `MoraleBreakAHordeLeaderRalliesItsGroupInstead`: a leader carrying Horde Leader dies and nobody panics.
+
+One Python check: the row still says "certain enemies", "panic and flee when their leader dies", "if allowed to escape"
+and "return later with reinforcements".
+
+**A TEST THAT FAILED ON THE CODE, FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.** `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` asserted that every creature coming back was of the first follower's kind; 18 of 20 were. A group can hold more than its pack's kind -- the populator gives a Succubus escort its pack's group (`Escort.Pack = Pack`) -- and the rule brings each escapee back as its own kind with one reinforcement of that kind, as ruled. The test now counts the followers that leave by kind and checks that each kind comes back exactly twice as many times. **Proof Pa is recorded as not a proof and is not rerun**, since it reached the tests; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, with the commit each ran at and the tests the run named:
+
+- **Pa NOT A PROOF**: at `1e894092`: `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` failed with the files restored as well; the test fault above, not rerun.
+- **Pb PROVED**: at `6b6c702b`, the head carrying the test's fix: `MoraleBreakTheEscapedReturnWithReinforcementsAndHoldTheFloor` failed with the break in; passed restored.
+- **Pc PROVED**: at `6b6c702b`: `MoraleBreakAHordeLeaderRalliesItsGroupInstead` failed with the break in; passed restored.
+
+---
+
+## 2026-09-30 — The Plaguebearer: one Elite a floor never attacks and runs from the player; every 3 seconds every other creature of the floor gains a stack of 5% more damage, up to ten; its death clears them all
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the row built); `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the Plaguebearer's flag, its
+own key of the damage map, and `TakesNoHostileAction`); `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`
+(it stands when it is not fleeing); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the choice,
+the beat, the panel line, the end of the dungeon); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`
+("Plaguebearer" and "Diseased N"); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied. They were done in the window of 2026-09-30; the figures are at the end of this entry.**
+
+### The row
+
+`Pestilence_The_Plaguebearer` in `game/Data/DungeonModifiers.csv`, weight 15: "One random elite on each floor is a
+"Plaguebearer." This enemy doesn't directly attack you, but it constantly applies a stacking disease debuff to all other
+enemies in the dungeon. The Plaguebearer's debuff increases the damage of other enemies by 5% per stack, to a maximum of
+10 stacks. The Plaguebearer will flee when you get close, forcing you to hunt it down to make the rest of the floor
+manageable." It states two figures: 5% a stack and ten stacks.
+
+### What the design already said
+
+Searched `docs/Cataclysm_GDD_v2.md` and this log for the row, fleeing and disease on 2026-09-30. The design document
+does not name a Plaguebearer. This log said the row "needs a creature that flees the player, which no creature does";
+`ACataclysmEnemyCharacter::FleeFrom` has done that since #2139, and its own comment names this row as a caller. **The
+design document's Disease is a player ailment that deals damage** ("12 damage a second for 6 seconds, and on the target's
+death it spreads its remaining duration to nearby enemies", in the ailment table); the row's disease only raises damage,
+so it is read as a separate stacking effect, not that ailment.
+
+### What the rule does
+
+On each floor carrying the row, once its creatures are placed, one of them is the Plaguebearer: a random creature at the
+Elite rung, or, on a floor with no Elite, a Common raised to Elite. Never a boss or the Gatekeeper. It says "Plaguebearer"
+under its bar, takes no hostile action (no swing, no ability, no hostile aura from its modifiers), and stands when it is
+not fleeing. While the player is within 10 m it runs from the player, through `FleeFrom`, which moves it as fear does
+without the fear tag, so no crowd-control immunity or resistance touches it. Every 3 seconds every other creature of the
+floor gains a stack, up to ten, and deals 5% more damage a stack, added: 1 + 0.05 n, so 50% more at ten. It is written
+through the Plaguebearer's own key of the damage map, so no other rule's multiplier is overwritten, and a creature that
+comes later joins at the count on the next beat. Each says "Diseased N" under its bar. The panel reads "the plaguebearer:
+3 stacks, +15% damage", with "; it flees" while it runs. **Its death clears every stack at once**, and no more come that
+floor; the panel then reads "the plaguebearer is dead". A new floor chooses a new one and starts at nought. It pays as its
+rung does.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-30, every figure but the row's two a play-test
+value:**
+
+- **One Elite a floor, or a Common raised to Elite; never a boss or the Gatekeeper.**
+- **It never attacks, stands when not fleeing, and flees within 10 m**, refreshed each beat for 2 seconds.
+- **A stack every 3 seconds to every other floor creature, up to ten**; a creature that comes later joins at the count.
+- **Additive, 1 + 0.05 n**, so 50% at ten: the plain reading of "5% per stack, to a maximum of 10 stacks".
+- **Its death clears every stack at once**, "to make the rest of the floor manageable".
+- **The three labels**, and it pays as its rung does.
+- **The disease is a separate stacking effect**, not the player's Disease ailment.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The Plaguebearer is chosen where the Medic, the Commander and the Plague Harbingers are**, after the floor's creatures
+  are placed, and again when a walking wave has finished arriving; one a floor, so a later call on the same floor keeps
+  the one chosen, dead or alive.
+- **The floor number starts the rule again**, rather than a reset beside the other rules', so the order in which a floor's
+  resets run does not matter.
+- **"; it flees" is shown only while it runs.**
+
+### The research
+
+Both pages fetched on 2026-09-30 before they were quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile | [poedb.tw/us/Tormented_Spirit](https://poedb.tw/us/Tormented_Spirit) | Tormented spirits "flee when encountered and imbue nearby monsters with dangerous powers" |
+| Diablo IV | [diablo4.wiki.fextralife.com/Treasure+Goblins](https://diablo4.wiki.fextralife.com/Treasure+Goblins) | "attacking the Treasure Goblin will cause it to flee"; "Players must act quickly to defeat the goblin before it escapes through a portal" |
+
+**What it settles:** the shape: a creature that does not fight, runs from the player, strengthens the monsters around it,
+and has to be chased down. **What it does not:** any figure; each game states its own, and the reach, the cadence and
+the rung here are play-test values.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `PlaguebearerFiguresStacksReachAndRung`: 5%, ten, 3 s, 10 m, 2 s, the Elite rung; the multiplier at 0, 1, 3, 10 and 11
+  stacks (1, 1.05, 1.15, 1.5, 1.5); a stack not due at 2.99 s and due at 3.
+- `OneEliteOfTheFloorIsThePlaguebearerOrACommonRaisedToElite`: one on the floor, at the Elite rung, never the boss, taking
+  no hostile action, labelled; then every creature made Common and the choice made again: a Common raised to Elite.
+- `EveryOtherCreatureGainsAStackEveryThreeSecondsToTen`: none at 2.75 s, one at 3 s (5% more, "Diseased 1"), ten at 30 s
+  (50% more), still ten at 33 s, "Diseased 10", never on the Plaguebearer itself, and the panel.
+- `ACreatureThatComesLaterJoinsThePlaguebearersCount`: at three stacks a creature added to the floor carries three on
+  the next beat.
+- `ThePlaguebearerFleesWithinTenMetresAndStandsBeyond`: at 10.1 m its brain reports `Idle` with no target; at 9.9 m
+  `Fleeing`, and the panel ends "; it flees". **Measured through the brain's answer, not by movement**: a world built for a
+  test has no navigation system. **A flight set once in a test lasts the rest of that test**, because `Beat` does not
+  advance the world clock; so no test shows the 2-second flight ending and being refreshed. **That it runs from the
+  player in play, and that its flight ends and is refreshed, are on the owner's play-check list.**
+- `ThePlaguebearersDeathClearsEveryStack`: at three stacks, its death clears them, the others deal their own damage, the
+  panel says it is dead, and six seconds later still nothing.
+
+Two Python checks: the row still says "one random elite", "doesn't directly attack you", "5% per stack", "a maximum of
+10 stacks" and "flee when you get close"; and its setter writes its own key of the damage map.
+
+### The window of 2026-09-30
+
+Run in the window of 2026-09-30, with the group moved onto development `230f5079` as a chain: `feat/plaguebearer-2`, `feat/morale-break-2`, `feat/contagious-touch-2` and `feat/famished-beasts-2`, which carries all four and the window's fixes. The suite figures are the group's, taken on its final head `ee05d557`:
+
+| Run | Printed |
+| :-- | :-- |
+| Unreal, whole suite | "Tests: 2871 tests performed, 2871 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 2871 tests in the tree at ee05d557; 2871 performed, gap 0" |
+| Python | "5569 passed, 8 skipped in 350.62s"; JUnit: 5577 tests, 0 failures, 0 errors, 8 skipped |
+
+The window's proofs found three tests that could not pass on the code, one fault in a spawn (Call the Damned's Imps) and one missing include; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
+
+This change's guard proofs, with the commit each ran at and the tests the run named:
+
+- **Pa PROVED**: at `8f5bb4b2`: `EveryOtherCreatureGainsAStackEveryThreeSecondsToTen` failed with the break in; passed restored.
+- **Pb PROVED**: at `8f5bb4b2`: `ThePlaguebearersDeathClearsEveryStack` failed with the break in; passed restored.
+- **Pc PROVED**: at `8f5bb4b2`: `ThePlaguebearerFleesWithinTenMetresAndStandsBeyond` failed with the break in; passed restored.
+
+---
+
 ## 2026-09-26 — Reality Twister: each floor gains one random row of any Cataclysm that does something in play, drawn again on the next floor, as the owner decided
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (the row's key, a second pool on the
