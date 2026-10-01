@@ -41042,4 +41042,48 @@ bool FCataclysmPactLastFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A CREATURE THE PLAYER TAKES AFTER A PACT OF GREED DEALS ITS OWN DAMAGE A BEAT LATER. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPactGreedTakenTest,
+	"Cataclysm.DungeonModifierEffects.PactOfGreedACreatureThePlayerTakesLosesTheCurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPactGreedTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("1,2,3"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("an Imp of floor 2"), Imp) || !TakeThePact(*this, Mode, GreedKey))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: 10% more from the curse"),
+				   Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource), 1.1f, 0.0001f)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Imp)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("a beat later it deals its own damage"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource), 1.0f, 0.0001f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and the sweep does not write it again"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource), 1.0f, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
