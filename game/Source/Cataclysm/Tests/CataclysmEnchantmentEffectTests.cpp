@@ -11291,4 +11291,166 @@ bool FCataclysmNecrosisShareRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDestroyedRowTest,
+	"Cataclysm.Enchantments.AKilledGadgetGivesTheWearersGadgetsItsRolledDamageForFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When any of your gadgets is destroyed, all remaining gadgets gain 30%-50%
+ * increased damage for 5 seconds". Issue #1833 group D part 5: two own stacks,
+ * attack and spell damage, scoped to `Type.Deployable`, 5 s, cap 1, on
+ * `gadget_destroyed`. WORN, and a real spike trap of the wearer's killed by a real
+ * blow: the wearer's damage for a deployable rises by the rolled share, and for
+ * anything else does not, and it lapses after five seconds.
+ */
+bool FCataclysmGadgetDestroyedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(Carrying(TEXT("Head_Helm"),
+		TEXT("Positive_When_any_of_your_gadgets_is_destroyed_all_remai"), DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+
+	const FGameplayTag Deployable = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("the deployable tag exists"), Deployable.IsValid()))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Gadget(Deployable);
+	const FName Attack(TEXT("attack_damage"));
+	const float GadgetBefore = Wearer.AbilitySystem->IncreasesForStat(Attack, Gadget);
+	const float PlainBefore = Wearer.AbilitySystem->IncreasesForStat(Attack, FGameplayTagContainer());
+
+	ACataclysmMinion* Trap = ACataclysmMinion::Spawn(Wearer.Actor, FVector(300.0f, 0.0f, 0.0f),
+		/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("SpikeTrap"));
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	FWearer Killer(World);
+	if (!TestNotNull(TEXT("a spike trap of the wearer's"), Trap))
+	{
+		return false;
+	}
+	// THE BLOW BELOW CANNOT BE DODGED: a minion holds no combat attribute set, and
+	// the damage calculation rolls evasion only against a defender holding one.
+	const UAbilitySystemComponent* TrapSystem = UCataclysmTargeting::AbilitySystemOf(Trap);
+	if (!TestTrue(TEXT("the trap holds no combat set, so it cannot evade"),
+			TrapSystem && TrapSystem->GetSet<UCataclysmCombatAttributeSet>() == nullptr))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer.Actor, Trap, 100000.0f);
+	if (!TestTrue(TEXT("the trap died"), UCataclysmSkillEffects::IsDead(Trap)))
+	{
+		return false;
+	}
+
+	const float Gained = Wearer.AbilitySystem->IncreasesForStat(Attack, Gadget) - GadgetBefore;
+	TestTrue(*FString::Printf(TEXT("a deployable's damage rose by the rolled 30%% to 50%%: %.3f"), Gained),
+		Gained >= 0.30f - 0.0001f && Gained <= 0.50f + 0.0001f);
+	TestEqual(TEXT("and damage for anything else did not"),
+		Wearer.AbilitySystem->IncreasesForStat(Attack, FGameplayTagContainer()), PlainBefore, 0.0001f);
+	World->TimeSeconds += 6.0f;
+	TestEqual(TEXT("six seconds later it has lapsed"),
+		Wearer.AbilitySystem->IncreasesForStat(Attack, Gadget), GadgetBefore, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResourceConsumedRowsTest,
+	"Cataclysm.Enchantments.AnUltimatesFervourCostHealsAndRaisesDamageThroughBothConsumedRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Consuming a resource stack or charge grants 5%-10% increased damage for 3
+ * seconds" and "Each resource or charge consumed restores 1%-3% of your maximum
+ * HP". Issue #1833 group D part 5: own stacks and a health pool action on
+ * `resource_consumed`. WORN, and a real Ultimate cast paying its fifty Fervour:
+ * the wearer is healed by the rolled share of its maximum, once, and its damage
+ * rises by the rolled share.
+ */
+bool FCataclysmResourceConsumedRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(Carrying(TEXT("Head_Helm"),
+		TEXT("Positive_Consuming_a_resource_stack_or_charge_grants_5_1"), DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->Equip(Carrying(TEXT("Chest_Cuirass"),
+		TEXT("Positive_Each_resource_or_charge_consumed_restores_1_3"), DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+	float Heal = -1.0f;
+	for (const FCataclysmPoolAction& Action : Wearer.AbilitySystem->GetPoolActions())
+	{
+		if (Action.Event == FName(TEXT("resource_consumed")) && Action.Pool == FName(TEXT("health")))
+		{
+			Heal = Action.Percent;
+		}
+	}
+	if (!TestTrue(*FString::Printf(TEXT("the worn heal rolled 1 to 3: %.2f"), Heal), Heal >= 1.0f && Heal <= 3.0f))
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* System = Wearer.AbilitySystem;
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+	System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 80.0f);
+	const FName Attack(TEXT("attack_damage"));
+	const float DamageBefore = Wearer.AbilitySystem->IncreasesForStat(Attack, FGameplayTagContainer());
+
+	const FGameplayAbilitySpecHandle Handle = Wearer.AbilitySystem->GiveAbilityInSlot(
+		UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Ultimate, /*Level=*/100, Wearer.Actor);
+	FGameplayAbilitySpec* Spec = Wearer.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+	UCataclysmSelfBuffSkill* Ultimate = Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("an Ultimate"), Ultimate))
+	{
+		return false;
+	}
+	Ultimate->SkillName = TEXT("Test Skill");
+	Ultimate->Params = UCataclysmSkillShapes::ParseParams(TEXT("Duration=6"));
+	if (!TestTrue(TEXT("the Ultimate is cast"),
+			Wearer.AbilitySystem->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("it paid its fifty Fervour"),
+			System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()),
+			30.0f, 0.001f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the payment healed the rolled share of 1000, once"),
+		System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+		500.0f + 1000.0f * Heal / 100.0f, 0.01f);
+	const float Gained = Wearer.AbilitySystem->IncreasesForStat(Attack, FGameplayTagContainer()) - DamageBefore;
+	TestTrue(*FString::Printf(TEXT("and damage rose by the rolled 5%% to 10%%: %.3f"), Gained),
+		Gained >= 0.05f - 0.0001f && Gained <= 0.10f + 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
