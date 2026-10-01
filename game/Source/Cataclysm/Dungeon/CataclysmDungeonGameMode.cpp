@@ -7903,6 +7903,13 @@ void ACataclysmDungeonGameMode::StepPlayersFollowers()
 			{
 				Thrall->SetInfernalBeaconsDamageMultiplier(1.0f);
 			}
+			// THE PACT OF GREED'S CURSE, given while it was hostile, put back for the reason
+			// Infernal Beacons' is above.
+			if (!FMath::IsNearlyEqual(
+					Thrall->DamageMultiplierFrom(ACataclysmEnemyCharacter::PactOfTemptationDamageSource), 1.0f))
+			{
+				Thrall->SetPactOfTemptationDamageMultiplier(1.0f);
+			}
 			// THE PLAYER'S CONTAGION STACKS FROM ITS HOSTILE TOUCHES END TOO: the
 			// row means the enemy that applied them, and the only other way to
 			// clear them would be to kill the player's own thrall.
