@@ -401,3 +401,9 @@ Negative_Buff_effects_applied_to_you_last_30_50_less_ti#1,Negative_Buff_effects_
 Positive_Debuff_effects_you_apply_last_30_60_longer#1,Positive_Debuff_effects_you_apply_last_30_60_longer,debuff_duration,increased,30.0,60.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
 Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de#1,Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de,debuff_duration,increased,50.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
 Negative_All_buffs_you_apply_to_yourself_now_last_25_les#1,Negative_All_buffs_you_apply_to_yourself_now_last_25_les,buff_duration,increased,-25.0,-25.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_Ranged_skills_have_30_60_increased_projectile#1,Positive_Ranged_skills_have_30_60_increased_projectile,projectile_speed,increased,30.0,60.0,Type.Ranged,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Negative_Ranged_skills_have_20_35_reduced_projectile_sp#1,Negative_Ranged_skills_have_20_35_reduced_projectile_sp,projectile_speed,increased,-20.0,-35.0,Type.Ranged,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Negative_Projectiles_travel_30_50_slower#1,Negative_Projectiles_travel_30_50_slower,projectile_speed,increased,-30.0,-50.0,Type.Projectile,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_Your_ranged_skills_have_20_40_increased_range#1,Positive_Your_ranged_skills_have_20_40_increased_range,skill_range,increased,20.0,40.0,Type.Ranged,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_Gadgets_have_20_40_increased_attack_range#1,Positive_Gadgets_have_20_40_increased_attack_range,minion_range,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
+Positive_Your_melee_skills_have_0_5_1_metre_reach#1,Positive_Your_melee_skills_have_0_5_1_metre_reach,melee_reach_metres,flat,0.5,1.0,Type.Melee,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0
