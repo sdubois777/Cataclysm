@@ -5010,6 +5010,16 @@ ACTION_ONLY_EVENTS = (
     # #1833 group D part 3: "On death all nearby enemies are healed for 10%-20%
     # of their maximum HP".
     "player_death",
+    # A GADGET KILLED, raised on its summoner in `ACataclysmMinion::HandleDeath`
+    # for a minion that is `Type.Deployable`, traps included, naming the gadget.
+    # Issue #1833 group D part 5, ruled 2026-10-01: "destroyed" means killed, so
+    # a lifespan running out, or the summon cap making room, raises nothing.
+    "gadget_destroyed",
+    # A RESOURCE CONSUMED: a class-resource cost paid, once per payment, or a
+    # next-use charge spent, once per charge. Issue #1833 group D part 5, ruled
+    # 2026-10-01. Mana is not a resource here, and the Fervour mechanics' own
+    # spends raise nothing.
+    "resource_consumed",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was

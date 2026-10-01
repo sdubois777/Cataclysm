@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — A gadget killed and a resource consumed are events: the remaining gadgets gain 30%-50% damage, and a resource consumed grants 5%-10% damage and restores 1%-3% of maximum health
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`NoteGadgetDestroyed`,
+`NoteResourceConsumed`, the charge counts in `SpendNextUseCharges` and `SpendNextSpellCooldownSeconds`),
+`CataclysmMinion.cpp` (`HandleDeath`), `CataclysmGameplayAbility.cpp` (`ApplyCost`), `tools/generate_datatables.py`
+(`gadget_destroyed` and `resource_consumed` in `ACTION_ONLY_EVENTS`), the new
+`game/Source/Cataclysm/Tests/CataclysmGadgetAndResourceTests.cpp` (six tests), two row tests in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`, `docs/README.md`,
+`game/Data/EnchantmentEffects.csv` and its asset. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833),
+group D part 5, and [#1844](https://github.com/sdubois777/Cataclysm/issues/1844).
+
+### WHAT WAS RULED, 2026-10-01, UNDER THE OWNER'S DELEGATION
+
+1. **"Destroyed" means killed.** `gadget_destroyed` is raised on the summoner in `ACataclysmMinion::HandleDeath`, which
+   only a death reaches. A gadget whose lifespan runs out leaves through the actor's lifespan and `Destroy` (no
+   `LifeSpanExpired` override exists), and one the summon cap removes to make room is exploded directly
+   (`CataclysmSkillTemplates.cpp`, `Oldest->Explode()`); neither reaches `HandleDeath`, so neither raises it.
+2. **A gadget is what `IsDeployable` says**, `Type.Deployable`: the bolt turret, the ballista and the spike trap. Traps
+   are gadgets, the one definition the shipped "Gadgets deal 20%-40% increased damage" rows already use.
+3. **"Consumed" is a class-resource cost paid, or a next-use charge spent**, superseding the 2026-09-14 reading of
+   "charge". **LABELLED JUDGEMENT: one event per class-resource payment** (the Ultimate's 50 is one, not fifty), **and
+   one per charge spent** (the count of a held charge).
+4. **LABELLED JUDGEMENT: MANA IS NOT A "RESOURCE" HERE.** Mana is every class's pool; counting it would raise the
+   event, and heal, on every cast.
+5. **The Fervour mechanics' own spends raise nothing**, `RemoveForHealing` among them, and neither does a death clearing
+   the charges. **The reason the control test exists**: the heal row heals through `TopUp`, which removes a Masochist's
+   Fervour; if that removal raised `resource_consumed`, the heal would raise the event that heals again.
+6. **"All remaining gadgets gain 30%-50% increased damage for 5 seconds"** is an own stack on the wearer scoped to
+   `Type.Deployable`, 5 s, cap 1, refreshed by another destruction; a gadget placed during the 5 s gains it too.
+
+**Held, not built: the two trap rows** "When a gadget is destroyed it arms all traps within 12 meters instantly" and
+"When a gadget is destroyed, the nearest active trap within 10 meters is triggered immediately". No trap arming or
+triggering exists; issue [#1561](https://github.com/sdubois777/Cataclysm/issues/1561) records that traps are not yet a
+mechanic.
+
+**#1844's premise no longer holds**: a class-resource cost now exists (`SkillSlots.csv` `FervourCost`, 50 on the
+Ultimate, paid in `UCataclysmGameplayAbility::ApplyCost`), and next-use charges are spent. Its row is built here.
+
+### WHAT WAS BUILT
+
+- **The events**: `gadget_destroyed` before `HandleDeath`'s explosion branch can return, naming the gadget and carrying
+  its type tags; `resource_consumed` inside the class-resource payment, and after the two charge-spending loops, so a
+  row granting a charge on the event cannot change the list being read. Neither is hit-fired; neither takes the 0.25 s
+  default.
+- **The rows** (EnchantmentEffects 432 to 437, over 351 to 354):
+
+  | Sentence | Rows |
+  | :-- | :-- |
+  | When any of your gadgets is destroyed, all remaining gadgets gain 30%-50% increased damage for 5 seconds | own stacks of `attack_damage` and `spell_damage` increased 30 to 50, Required Tags `Type.Deployable`, on `gadget_destroyed`, 5 s, cap 1 |
+  | Consuming a resource stack or charge grants 5%-10% increased damage for 3 seconds | own stacks of `attack_damage` and `spell_damage` increased 5 to 10, on `resource_consumed`, 3 s, cap 1 |
+  | Each resource or charge consumed restores 1%-3% of your maximum HP | `health` 1 to 3 of maximum on `resource_consumed`, through `TopUp` |
+
+### HOW THE TESTS REACH PLAY
+
+- Every event through real code: gadgets spawned by type and killed by a real blow; an Ultimate, two strikes and a spell
+  activated through the ability system; a heal through `TopUp`; a death through `HandleDeath` and `Revive`.
+- **Controls**: a gadget whose lifespan ends, a killed Imp (not deployable), a strike paying mana alone, Fervour lost to
+  a heal, and a death's clear each raise nothing.
+- **A minion cannot evade, and the tests check it rather than assume it.** The coordinating session asked, before the
+  window, that each victim's evasion be written to nought, after a dungeon test lost kills to an enemy Imp's 25%
+  evasion. A minion holds no combat attribute set, only the vital one (`CataclysmMinion.cpp`), so the write raised the
+  engine's ensure in `SetAttributeBaseValue` and failed one test on the first run. The code also shows why no write is
+  needed: step 1 of `UCataclysmDamageCalculation` rolls evasion only against a defender holding a combat set (the
+  `Combat` read and the `&& Combat` test, `CataclysmDamageCalculation.cpp` around 526 and 549). The tests now assert
+  that a minion holds no combat set before each kill, and gate on the death before reading a count.
+
+### THE RUN
+
+D5 is commits `c9656d01` (engine), `4751ab11` (the death gates), `8954dfcd` (the combat-set check in place of the
+evasion write), `53f98608` (rows) and `e3d8124d` (asset), on development `0444b75e`, pushed as
+`feat/gadget-and-resource-events-2`. It was written on `b3eea92a` and moved after #2196 merged, with no conflict.
+
+| Step | Result |
+| :-- | :-- |
+| Rehearsals on `git archive` copies | engine "11 failed, 5627 passed, 13 skipped", JUnit 5651: the 11 tests that need a git directory; rows "12 failed", the same and the stale asset hash; on `b3eea92a` |
+| Compile-only scans, `4751ab11` | sweep 0 candidates over 5 files; check 7 read 10 definitions, none flagged; check 6 0 candidates; `check_resolved_cpp` 5 files, 0 complaints; one engine-name hit (`Tags`, the same parameter name `IncreasesForStat` already has) and one access candidate (`InitAbilityActorInfo`), both read and explained |
+| Build 1, `4751ab11` | "Succeeded - 32 actions, 29 files compiled" |
+| `Cataclysm.GadgetAndResource.`, first run | "6 tests performed, 5 succeeded, 1 failed": the evasion write's ensure (above); stopped and asked |
+| The combat-set check, `8954dfcd` | build "4 actions, 1 file compiled"; the group "6 tests performed, 6 succeeded, 0 failed", 0 ensures |
+| Proof A, `gadget_destroyed` never raised | PROVED: test 1, the 3 assertions predicted; restored 6 of 6 |
+| Proof B, not raised at the class-resource payment | PROVED: test 3, the 1 assertion predicted; restored 6 of 6 |
+| Proof C, the deployable filter removed | PROVED: test 2, the 1 assertion predicted (the killed Imp told its summoner); restored 6 of 6 |
+| Python of record, `8954dfcd` | "5646 passed, 8 skipped in 324.41s"; JUnit 5654 (5649 + 5), 0 failures |
+| Python after the rows, `53f98608` | "1 failed, 5645 passed, 8 skipped in 318.93s": the stale asset hash, as registered |
+| Build 2 and the asset rebuild, `e3d8124d` | "5 actions, 2 files compiled"; only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` (432 to 437 rows) |
+| Row tests | the gadget row 1 of 1; both resource rows, through a real Ultimate, 1 of 1; 0 "was ignored", 0 failed assertions, 0 ensures |
+| Whole suite, `e3d8124d`, in its own command | "3037 tests performed, 3037 succeeded, 0 failed"; 3037 declared, gap 0, as registered (3029 + 8); no "was ignored" line, no failed assertion, no ensure |
+
+Every broken file's hash was the same after its proof.
+
+---
+
 ## 2026-10-01 — Lightforged Walls: the way down stays sealed until every creature the floor placed is slain; partly built, because nothing divides a floor into sections
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, and the row

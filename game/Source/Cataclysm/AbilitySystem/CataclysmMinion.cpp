@@ -939,6 +939,20 @@ void ACataclysmMinion::HandleDeath()
 		return;
 	}
 
+	// A GADGET KILLED IS A GADGET DESTROYED, told to its summoner before the
+	// explosion below can return. Issue #1833 group D part 5, ruled 2026-10-01:
+	// "destroyed" means killed, so a gadget whose lifespan runs out, or one the
+	// summon cap removes to make room, raises nothing; neither reaches this
+	// function. A gadget is what `IsDeployable` says, traps included.
+	if (IsDeployable())
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			Theirs->NoteGadgetDestroyed(this, TypeTags);
+		}
+	}
+
 	// AND IT MAY BLOW UP ON THE WAY OUT. Issue #1515.
 	// `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when
 	// it dies, as one destroyed to make room for another does, with the radius

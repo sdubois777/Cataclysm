@@ -2498,6 +2498,23 @@ void UCataclysmAbilitySystemComponent::NotePlayerDeath()
 	ActOnEvent(FName(TEXT("player_death")));
 }
 
+void UCataclysmAbilitySystemComponent::NoteGadgetDestroyed(const AActor* Gadget,
+														   const FGameplayTagContainer& GadgetTags)
+{
+	ActOnEvent(FName(TEXT("gadget_destroyed")), &GadgetTags, /*EventAmount=*/0.0f,
+			   /*bLanded=*/true, Gadget);
+}
+
+void UCataclysmAbilitySystemComponent::NoteResourceConsumed(float Amount,
+															const FGameplayTagContainer* Tags,
+															int32 Times)
+{
+	for (int32 Each = 0; Each < Times; ++Each)
+	{
+		ActOnEvent(FName(TEXT("resource_consumed")), Tags, Amount);
+	}
+}
+
 void UCataclysmAbilitySystemComponent::NoteBlocked()
 {
 	if (const UWorld* World = GetWorld())
@@ -3385,14 +3402,20 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 float UCataclysmAbilitySystemComponent::SpendNextSpellCooldownSeconds()
 {
 	float Seconds = 0.0f;
+	int32 Spent = 0;
 	for (auto It = NextUseCharges.CreateIterator(); It; ++It)
 	{
 		if (It.Value().bSpellCooldown)
 		{
 			Seconds += It.Value().Count * It.Value().Percent;
+			Spent += It.Value().Count;
 			It.RemoveCurrent();
 		}
 	}
+	// EACH CHARGE SPENT IS A CHARGE CONSUMED, raised once the spend is done so a
+	// row granting a charge on the event cannot change the list being read.
+	// Issue #1833 group D part 5.
+	NoteResourceConsumed(0.0f, nullptr, Spent);
 	return Seconds;
 }
 
@@ -3747,6 +3770,7 @@ float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell,
 {
 	float Spent = 0.0f;
 	float More = 1.0f;
+	int32 ChargesSpent = 0;
 	for (auto It = NextUseCharges.CreateIterator(); It; ++It)
 	{
 		const FNextUseCharge& Held = It.Value();
@@ -3772,12 +3796,17 @@ float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell,
 		{
 			Spent += Held.Count * Held.Percent;
 		}
+		ChargesSpent += Held.Count;
 		It.RemoveCurrent();
 	}
 	if (OutMoreMultiplier)
 	{
 		*OutMoreMultiplier = More;
 	}
+	// EACH CHARGE SPENT IS A CHARGE CONSUMED, raised once the spend is done so a
+	// row granting a charge on the event cannot change the list being read.
+	// Issue #1833 group D part 5.
+	NoteResourceConsumed(0.0f, nullptr, ChargesSpent);
 	return Spent;
 }
 
