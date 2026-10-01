@@ -39195,4 +39195,58 @@ bool FCataclysmBoxesWavesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A SPAWN THE PLAYER TAKES LEAVES ITS WAVE: "Chaos Spawn" GOES, THREE STAND, AND WHEN THEY DIE THE NEXT WAVE COMES. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesTakenSpawnTest,
+	"Cataclysm.DungeonModifierEffects.PandorasBoxASpawnThePlayerTakesLeavesItsWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesTakenSpawnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.PandorasBoxRoll"), TEXT("25"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("opening acted"), Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], OpenKey)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Before = Mode->ChaosSpawnStanding();
+	ACataclysmEnemyCharacter* Taken = OneThePlayerCanTake(Before);
+	if (!TestEqual(TEXT("set-up: all came"), Before.Num(), Effects::PandorasBoxWaveSize)
+		|| !TestNotNull(TEXT("set-up: one the player can take"), Taken)
+		|| !TestTrue(TEXT("set-up: \"Chaos Spawn\" under its bar"),
+					 UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Chaos Spawn")))
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no \"Chaos Spawn\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Chaos Spawn")));
+	TestEqual(TEXT("one fewer standing"), Mode->ChaosSpawnStanding().Num(), Effects::PandorasBoxWaveSize - 1);
+	TestFalse(TEXT("and it is not among them"), Mode->ChaosSpawnStanding().Contains(Taken));
+
+	// THE NEXT WAVE DOES NOT WAIT ON THE PLAYER'S THRALL: a judgement of this change.
+	if (!KillTheChaosSpawn(*this, Player, Mode))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the second wave came with the thrall alive"), Mode->ChaosSpawnStanding().Num(),
+			  Effects::PandorasBoxWaveSize);
+	TestFalse(TEXT("the thrall is alive"), UCataclysmSkillEffects::IsDead(Taken));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
