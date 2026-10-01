@@ -1636,13 +1636,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: of its rows while the design workbook is with another session.
 #: IT LEFT with the health threshold rows, and the table is empty again.
 #: AILMENT JOINED ON 2026-10-01 for issue #1833 group D part 4, built ahead of
-#: its rows while the design workbook is with another session, and leaves with
-#: them.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Ailment": "#1833",
-    },
-}
+#: its rows while the design workbook is with another session.
+#: IT LEFT with the remaining damage rows, and the table is empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):

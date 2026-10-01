@@ -429,3 +429,5 @@ Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#3,Positive_Demon_King_s_Re
 Negative_You_start_every_dungeon_floor_at_30_50_of_your#1,Negative_You_start_every_dungeon_floor_at_30_50_of_your,,,30.0,50.0,,,0.0,,0.0,health_capped_at,floor_start,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Divine_Retribution_6_Piece_Bonus_When_your_en#1,Positive_Divine_Retribution_6_Piece_Bonus_When_your_en,,,100.0,100.0,,,0.0,,0.0,smite_nearby,energy_shield_broken,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0,
 Negative_On_death_all_nearby_enemies_are_healed_for_10_2#1,Negative_On_death_all_nearby_enemies_are_healed_for_10_2,,,10.0,20.0,,,0.0,,0.0,heal_nearby_enemies,player_death,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_When_you_die_all_active_DoTs_on_nearby_enemies#1,Positive_When_you_die_all_active_DoTs_on_nearby_enemies,,,100.0,100.0,,,0.0,,0.0,dot_remaining_nearby,player_death,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_Necrosis_effects_deal_20_40_of_their_remaining#1,Positive_Necrosis_effects_deal_20_40_of_their_remaining,,,20.0,40.0,,,0.0,,0.0,dot_remaining_target,critical_strike,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0,Necrosis

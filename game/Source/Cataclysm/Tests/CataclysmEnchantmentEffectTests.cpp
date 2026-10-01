@@ -11029,4 +11029,266 @@ bool FCataclysmDeathHealsEnemiesRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathDealsRemainingRowTest,
+	"Cataclysm.Enchantments.TheDeathRowDealsTheRemainingDamageOfTheWearersDoTsThroughARealDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When you die, all active DoTs on nearby enemies instantly deal their remaining
+ * damage". Issue #1833 group D part 4: `dot_remaining_nearby` 100 on
+ * `player_death`. WORN BY A PLAYER whose poison has run two of its ten ticks on an
+ * enemy three metres away; the player dies through a real blow, and the enemy
+ * takes the eight ticks left at once and the poison ends.
+ */
+bool FCataclysmDeathDealsRemainingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Near = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	const FGameplayTag Poison = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+	if (!TestNotNull(TEXT("a player state"), PlayerState)
+		|| !TestNotNull(TEXT("a player character"), Character)
+		|| !TestNotNull(TEXT("an enemy three metres away"), Near)
+		|| !TestTrue(TEXT("the poison tag exists"), Poison.IsValid()))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+	Near->SetHealth(1000.0f);
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Character->GetAbilitySystemComponent());
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	if (!TestNotNull(TEXT("the player's ability system"), AbilitySystem)
+		|| !TestNotNull(TEXT("the player's equipment"), Equipment))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Carrying(TEXT("Head_Helm"),
+		TEXT("Positive_When_you_die_all_active_DoTs_on_nearby_enemies"), DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(AbilitySystem);
+	float Share = -1.0f;
+	for (const FCataclysmPoolAction& Action : AbilitySystem->GetPoolActions())
+	{
+		if (Action.RemainingDamage == ECataclysmRemainingDamage::Nearby)
+		{
+			Share = Action.Percent;
+		}
+	}
+	if (!TestEqual(TEXT("the worn row deals all of the remaining damage"), Share, 100.0f, 0.01f)
+		|| !TestTrue(TEXT("the player poisons the enemy"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Character, Near, /*DamagePerTick=*/10.0f,
+				/*DurationSeconds=*/10.0f, Poison, /*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const UAbilitySystemComponent* NearSystem = UCataclysmTargeting::AbilitySystemOf(Near);
+	const float Before = NearSystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float EachTick = (1000.0f - Before) / 2.0f;
+	if (!TestTrue(*FString::Printf(TEXT("two ticks landed, %.2f each"), EachTick), EachTick > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Near, Character, 100000.0f);
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Character)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the enemy takes the eight ticks left at once"),
+		NearSystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+		Before - 8.0f * EachTick, 0.05f);
+	TestEqual(TEXT("and the poison ends"),
+		NearSystem->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+			FGameplayTagContainer(Poison))).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisShareRowTest,
+	"Cataclysm.Enchantments.TheNecrosisRowDealsItsRolledShareOfTheTargetsNecrosisOnACriticalStrike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Necrosis effects deal 20%-40% of their remaining damage instantly when you
+ * land a critical strike". Issue #1833 group D part 4: `dot_remaining_target` 20
+ * to 40 on `critical_strike`, Ailment Necrosis. WORN BY A PLAYER who lands a REAL
+ * critical strike through the damage path, with the roll pinned at the console's
+ * own priority, so `critical_strike` is raised by the game with the creature
+ * struck: the coordinating session's condition of 2026-10-01, because a hand-raised
+ * event hides the play path.
+ *
+ * THE BLOW DEALS DAMAGE OF ITS OWN, so a CONTROL creature carrying no Necrosis takes
+ * the same critical blow first, and what the Necrosis creature loses beyond that is
+ * the burst: the rolled share of the eight ticks it has left, each worth what one of
+ * its two landed ticks took. The Necrosis keeps all of its remaining damage.
+ */
+bool FCataclysmNecrosisShareRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("the Necrosis tag exists"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player state"), PlayerState)
+		|| !TestNotNull(TEXT("a player character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Character->GetAbilitySystemComponent());
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	if (!TestNotNull(TEXT("the player's ability system"), AbilitySystem)
+		|| !TestNotNull(TEXT("the player's equipment"), Equipment))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Carrying(TEXT("Head_Helm"),
+		TEXT("Positive_Necrosis_effects_deal_20_40_of_their_remaining"), DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(AbilitySystem);
+	float Share = -1.0f;
+	FGameplayTag Ailment;
+	for (const FCataclysmPoolAction& Action : AbilitySystem->GetPoolActions())
+	{
+		if (Action.RemainingDamage == ECataclysmRemainingDamage::Target)
+		{
+			Share = Action.Percent;
+			Ailment = Action.Ailment;
+		}
+	}
+	if (!TestTrue(*FString::Printf(TEXT("the worn row gave a share between 20 and 40: %.2f"), Share),
+			Share >= 20.0f && Share <= 40.0f)
+		|| !TestTrue(TEXT("and limits it to Necrosis"), Ailment == Necrosis))
+	{
+		return false;
+	}
+
+	// THE STAT LINES A BLOW READS, written after the refresh, which leaves a
+	// crit_chance line of base 0 that a blow asks before the attribute; the same
+	// trap and the same answer as the player critical strike test in
+	// CataclysmPlayerMovementTests.cpp. The worn row is an action, kept apart from
+	// the stat lines, so replacing them does not remove it.
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(TEXT("crit_chance"))).Base = 50.0f;
+		Lines.FindOrAdd(FName(TEXT("crit_multiplier"))).Base = 150.0f;
+		Lines.FindOrAdd(FName(TEXT("attack_damage"))).Base = 300.0f;
+		AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	}
+	AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 300.0f);
+	AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 50.0f);
+	AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 150.0f);
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	// `SetHealth` SETS THE STARTING MAXIMUM, and the current value follows it, so a
+	// later `ApplyStartingAttributes` writes the same thousand back rather than the
+	// class's default, which the maximum-health clamp of #2193 would take health
+	// down to.
+	const auto MakeCreature = [World](float AlongMetres) -> UAbilitySystemComponent*
+	{
+		ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(AlongMetres * 100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (Creature)
+		{
+			Creature->SetHealth(1000.0f);
+		}
+		return UCataclysmTargeting::AbilitySystemOf(Creature);
+	};
+	UAbilitySystemComponent* Rotting = MakeCreature(2.0f);
+	UAbilitySystemComponent* Control = MakeCreature(-2.0f);
+	if (!TestNotNull(TEXT("a creature carrying the Necrosis"), Rotting)
+		|| !TestNotNull(TEXT("a control creature carrying none"), Control)
+		|| !TestTrue(TEXT("the player's Necrosis lands"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Character, Rotting->GetAvatarActor(),
+				/*DamagePerTick=*/10.0f, /*DurationSeconds=*/10.0f, Necrosis,
+				/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	// THE CONTROL MATCHES THE CREATURE IT STANDS IN FOR: one class, built the same
+	// way, at the same rarity step and armour, so the difference between their losses
+	// is the burst and nothing about the two creatures. A bare SpawnActor draws no
+	// rarity; only the dungeon game mode does, which is why both read 0.
+	const ACataclysmEnemyCharacter* RottingBody = Cast<ACataclysmEnemyCharacter>(Rotting->GetAvatarActor());
+	const ACataclysmEnemyCharacter* ControlBody = Cast<ACataclysmEnemyCharacter>(Control->GetAvatarActor());
+	if (!TestTrue(TEXT("the two creatures are one class at one rarity step"),
+			RottingBody && ControlBody && RottingBody->GetClass() == ControlBody->GetClass()
+			&& RottingBody->RarityStep == ControlBody->RarityStep)
+		|| !TestEqual(TEXT("and carry the same armour"),
+			Rotting->GetNumericAttribute(UCataclysmCombatAttributeSet::GetArmorAttribute()),
+			Control->GetNumericAttribute(UCataclysmCombatAttributeSet::GetArmorAttribute()), 0.001f))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const float Before = Rotting->GetNumericAttribute(Health);
+	const float EachTick = (1000.0f - Before) / 2.0f;
+	if (!TestTrue(*FString::Printf(TEXT("two ticks landed, %.2f each"), EachTick), EachTick > 0.0f))
+	{
+		return false;
+	}
+
+	// A ROLL OF 0 ALWAYS CRITICALLY STRIKES. The Necrosis creature is struck first,
+	// so the row's quarter second cooldown starts on the blow that matters.
+	{
+		const CataclysmTestWorld::FScopedCritRoll AlwaysCritical(0.0f);
+		UCataclysmSkillEffects::ApplyHit(Character, Rotting->GetAvatarActor(), /*DamagePercent=*/100.0f);
+		UCataclysmSkillEffects::ApplyHit(Character, Control->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	}
+	const float BlowAlone = 1000.0f - Control->GetNumericAttribute(Health);
+	if (!TestTrue(*FString::Printf(TEXT("the critical blow alone took %.2f from the control"), BlowAlone),
+			BlowAlone > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("beyond the blow, the Necrosis creature lost the rolled share of its eight ticks left"),
+		Before - Rotting->GetNumericAttribute(Health) - BlowAlone, Share / 100.0f * 8.0f * EachTick, 0.05f);
+	const TArray<FActiveGameplayEffectHandle> Still = Rotting->GetActiveEffects(
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Necrosis)));
+	TestEqual(TEXT("the Necrosis still runs"), Still.Num(), 1);
+	if (Still.Num() == 1)
+	{
+		TestEqual(TEXT("with all eight of its ticks of ten left"),
+			UCataclysmSkillEffects::RemainingDamageOverTime(Rotting, Still[0]), 80.0f, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

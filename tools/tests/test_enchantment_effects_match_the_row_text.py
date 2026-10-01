@@ -270,6 +270,10 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # part 3, for "Divine Retribution (6-Piece Bonus): When your energy shield is
     # broken, you smite all nearby enemies".
     "smite_nearby": {"smite": 100.0},
+    # "REMAINING" IS 100 ON `dot_remaining_nearby`, a share of the remaining
+    # damage: "When you die, all active DoTs on nearby enemies instantly deal
+    # their remaining damage" deals all of it. Issue #1833 group D part 4.
+    "dot_remaining_nearby": {"remaining": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -539,8 +543,10 @@ JUDGED_NUMBERS = {
 #: issue #1833 group D part 2, from 423 over 344: five rows on three enchantments.
 #: AND 430 OVER 349 SINCE THE NEARBY ACTIONS,
 #: issue #1833 group D part 3, from 428 over 347: two rows on two enchantments.
-AUTHORED_ROWS = 430
-AUTHORED_ENCHANTMENTS = 349
+#: AND 432 OVER 351 SINCE THE REMAINING DAMAGE ACTIONS,
+#: issue #1833 group D part 4, from 430 over 349: two rows on two enchantments.
+AUTHORED_ROWS = 432
+AUTHORED_ENCHANTMENTS = 351
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

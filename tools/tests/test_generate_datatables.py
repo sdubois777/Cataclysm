@@ -1840,7 +1840,8 @@ class TestScaleStepHigh:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High", "Trigger Cooldown", "Event Value"]
+              "Condition Value High", "Trigger Cooldown", "Event Value",
+              "Ailment"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -2325,7 +2326,7 @@ class TestRemainingDamageAndTheAilmentColumn:
         [NECROSIS_WORDS, "Generic", 4, "Keyword.DoT.Necrosis", None,
          None, None, None, None],
     ]
-    HEADER = TestScaleStepHigh.HEADER + ["Ailment"]
+    HEADER = TestScaleStepHigh.HEADER
 
     def book(self, tmp_path, values, header=None):
         header = header or self.HEADER
@@ -2369,9 +2370,10 @@ class TestRemainingDamageAndTheAilmentColumn:
         out = gen.enchantment_effects(self.death(tmp_path, {"Ailment": "Burn"}))
         assert out[0]["Ailment"] == "Burn"
 
-    def test_a_sheet_without_the_column_still_reads_while_it_is_optional(self, tmp_path):
-        out = gen.enchantment_effects(self.death(tmp_path, {}, header=TestScaleStepHigh.HEADER))
-        assert out[0]["Ailment"] == ""
+    def test_a_sheet_without_the_column_is_refused_now_its_rows_are_written(self, tmp_path):
+        header = [column for column in self.HEADER if column != "Ailment"]
+        with pytest.raises(gen.DataError, match="no 'Ailment' column"):
+            gen.enchantment_effects(self.death(tmp_path, {}, header=header))
 
     def test_the_target_row_without_an_ailment_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="names no Ailment"):
@@ -2447,7 +2449,8 @@ class TestEnchantmentEffects:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High", "Trigger Cooldown", "Event Value"]
+              "Condition Value High", "Trigger Cooldown", "Event Value",
+              "Ailment"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
