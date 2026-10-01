@@ -1165,6 +1165,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							ImmuneForStat, FGameplayTagContainer(), 0.0f));
 					}
 				}
+
+				// AND A WORN ROW THAT HEALS AS HEALTH FALLS BELOW ITS SHARE, which
+				// also saves a blow that would empty health: ruled 2026-09-30 for
+				// Archon's Aegis, because 0 is below 10%. The blow leaves one point,
+				// and the fall below the threshold then fires the heal through
+				// `NotifyHealthChanged`. A damage over time tick is saved too: the
+				// sentence is about health falling, not about a hit. After Nothing
+				// Stops It, which saves first and spends nothing of this.
+				if (!Guarded->IsImmuneAfterLethalHit() && GetHealth() > 1.0f
+					&& GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& Guarded->SavesLethalBlowByCrossing(GetHealth() / GetMaxHealth() * 100.0f))
+				{
+					Resolved.DealtToHealth = GetHealth() - 1.0f;
+				}
 			}
 
 			// AND A CREATURE NO DAMAGE REACHES: The Reaper. Issues #1820 and #41. The blow
@@ -2227,6 +2241,14 @@ void UCataclysmVitalAttributeSet::NotifyHealthChanged() const
 	// game without that capstone option, and it is returned for tests.
 	UCataclysmLowHealthRelief::NoteHealthChanged(
 		AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr);
+
+	// AND THE WORN ROWS ON A FALL BELOW A SHARE OF MAXIMUM HEALTH, beside the two
+	// hard-coded crossers. Issue #1833 group D part 2.
+	if (UCataclysmAbilitySystemComponent* Crossing =
+			Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
+	{
+		Crossing->NoteHealthForCrossing();
+	}
 
 	ACataclysmCharacterBase* Character = AbilitySystem
 		? Cast<ACataclysmCharacterBase>(AbilitySystem->GetAvatarActor())
