@@ -39585,4 +39585,45 @@ bool FCataclysmInfernalDungeonTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A CREATURE THE PLAYER TAKES AFTER A BEACON IS LIT DEALS ITS OWN DAMAGE A BEAT LATER. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalTakenTest,
+	"Cataclysm.DungeonModifierEffects.InfernalBeaconsACreatureThePlayerTakesLosesTheStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABeaconFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Imp = Mode ? ABeaconsImp(World, Mode, Player) : nullptr;
+	if (!TestNotNull(TEXT("an Imp"), Imp)
+		|| !TestTrue(TEXT("activating acted"), Mode->ChooseAtFloorObject(Mode->InfernalBeaconsNow()[0], LightKey)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: 10% more from the beacon"),
+				   Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.1f, 0.0001f)
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Imp)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("a beat later it deals its own damage"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.0f, 0.0001f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and the sweep does not write it again"),
+			  Imp->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.0f, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

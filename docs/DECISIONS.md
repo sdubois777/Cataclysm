@@ -76,7 +76,7 @@ power as damage only.
 
 ### Tests
 
-Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `InfernalBeacons`:
+Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `InfernalBeacons`:
 
 - `InfernalBeaconsFiguresStacksAndCaps`: one, one; the multiplier at 0, 1, 3, 10 and 12 stacks (1, 1.1, 1.3, 2, 2); the
   magic find at 1 and 12 (10, 100).
@@ -86,6 +86,8 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `In
 - `InfernalBeaconsTheStacksLastTheDungeon`: a beacon on floor 2; floor 3, before its own is activated, keeps 10 magic
   find; the second makes two stacks: 20% more on floor 3's Imp and 20 magic find; leaving the dungeon clears the stacks
   and the magic find.
+- `InfernalBeaconsACreatureThePlayerTakesLosesTheStacks`: a beacon lit, the Imp at 10% more; taken, it deals its own
+  damage a beat later, and the beat after.
 
 **A FAULT FOUND BY READING, BEFORE ANY WINDOW, AND FIXED ON THIS BRANCH** as the coordinating session ruled. A floor
 change replaces the player's floor modifiers wholesale in `ApplyFloorRulesToPlayer`, and the beat wrote the magic find
@@ -96,6 +98,18 @@ which moved the stacks.
 
 Two Python checks: the row still says "each floor contains an infernal beacon", "stacking power score buff", "per beacon
 activated" and "stacking magic find buff"; and its setter writes its own key of the damage map.
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **The sweep already leaves a thrall out**: it acts only on a creature that
+`UCataclysmTargeting::IsHostileTo` the player, and `UCataclysmCommand::Subjugate` gives a taken creature the player as
+its owner and the player's team, so it is no longer hostile. No skip was added to the sweep, as ruled.
+
+**What a creature carried from before it was taken is put back**, as the coordinating session ruled the same day: a
+creature taken after a beacon was lit kept 10% more damage a stack for as long as it lived, since the sweep that wrote it
+no longer reaches it. `StepPlayersFollowers` now sets `InfernalBeaconsDamageSource` back to 1 on each thrall, as it does
+Grim Totems', the Plaguebearer's and the Trial of Endurance's.
 
 ### Not yet run
 
