@@ -30,8 +30,8 @@ const TCHAR* UCataclysmRegeneration::ShieldRechargeHasNoDelayStat =
 	TEXT("shield_recharge_has_no_delay");
 const TCHAR* UCataclysmRegeneration::ManaRegenRestoresShieldStat =
 	TEXT("mana_regen_restores_shield");
-const TCHAR* UCataclysmRegeneration::EnergyShieldRechargeCeilingStat =
-	TEXT("energy_shield_recharge_ceiling");
+const TCHAR* UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat =
+	TEXT("energy_shield_recharge_ceiling_reduction");
 
 void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 								   const FGameplayAttribute& Pool,
@@ -414,17 +414,20 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 			* RechargeScale
 		+ FromMana;
 
-	// AND ONLY UP TO THE RECHARGE CEILING, asked through the pipeline over a
-	// base of 100. Issue #1833, ruled 2026-09-30: "Your energy shield cannot
-	// recharge above 50% of its maximum" is `energy_shield_recharge_ceiling`
-	// flat -50. Regeneration only, a labelled judgement of the same ruling:
-	// "recharge" is not leech or any other restoration.
+	// AND ONLY UP TO THE RECHARGE CEILING: what is left of 100 after the
+	// reduction the character carries. Issue #1833, ruled 2026-09-30: "Your
+	// energy shield cannot recharge above 50% of its maximum" is
+	// `energy_shield_recharge_ceiling_reduction` flat 50, the shape the healing
+	// ceiling has (`healing_ceiling_reduction`). Regeneration only, a labelled
+	// judgement of the same ruling: "recharge" is not leech or any other
+	// restoration.
 	const UCataclysmAbilitySystemComponent* Ceilinged =
 		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
 	const float RechargeCeilingShare = Ceilinged
-		? FMath::Clamp(Ceilinged->StatAppliedTo(FName(EnergyShieldRechargeCeilingStat),
-											  FGameplayTagContainer(), 100.0f),
-					   0.0f, 100.0f) / 100.0f
+		? 1.0f - FMath::Clamp(Ceilinged->StatAppliedTo(
+								  FName(EnergyShieldRechargeCeilingReductionStat),
+								  FGameplayTagContainer(), 0.0f),
+							  0.0f, 100.0f) / 100.0f
 		: 1.0f;
 	TopUp(*AbilitySystem,
 		  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),

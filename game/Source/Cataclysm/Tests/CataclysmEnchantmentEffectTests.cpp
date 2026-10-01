@@ -10124,7 +10124,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShieldCeilingRowTest,
 /**
  * "Your energy shield cannot recharge above 50% of its maximum": a shield of
  * 400 of 1000 regenerating 1000 a second stops at 500. Issue #1833,
- * `energy_shield_recharge_ceiling` flat -50 on a base of 100.
+ * `energy_shield_recharge_ceiling_reduction` flat 50, leaving 50 of 100.
  */
 bool FCataclysmShieldCeilingRowTest::RunTest(const FString&)
 {

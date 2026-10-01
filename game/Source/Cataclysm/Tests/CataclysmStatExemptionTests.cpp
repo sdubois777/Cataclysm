@@ -4172,10 +4172,10 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `energy_shield_recharge_ceiling`, read in `UCataclysmRegeneration::ApplyStep`.
+	 * `energy_shield_recharge_ceiling_reduction`, read in `UCataclysmRegeneration::ApplyStep`.
 	 * Issue #1833, "Your energy shield cannot recharge above 50% of its
 	 * maximum". A shield of 400 of 1000 regenerating 1000 a second: one second
-	 * fills it, and flat -50 stops it at 500.
+	 * fills it, and flat 50 stops it at 500.
 	 */
 	void ProbeEnergyShieldRechargeCeiling(FAutomationTestBase& Test)
 	{
@@ -4194,8 +4194,8 @@ namespace CataclysmStatExemptionTest
 			Each->AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 400.0f);
 			Each->AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldRegenAttribute(), 1000.0f);
 		}
-		GrantOne(Capped.AbilitySystem, UCataclysmRegeneration::EnergyShieldRechargeCeilingStat,
-				 ECataclysmStatBucket::Flat, -50.0f);
+		GrantOne(Capped.AbilitySystem, UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat,
+				 ECataclysmStatBucket::Flat, 50.0f);
 
 		UCataclysmRegeneration::ApplyStep(Plain.Actor, 1.0f, 100.0f);
 		UCataclysmRegeneration::ApplyStep(Capped.Actor, 1.0f, 100.0f);
@@ -4203,7 +4203,7 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("with no ceiling, one second fills the shield"),
 					   Plain.AbilitySystem->GetNumericAttribute(Vital::GetEnergyShieldAttribute()),
 					   1000.0f, 0.01f);
-		Test.TestEqual(TEXT("energy_shield_recharge_ceiling is read: it stops at half, 500"),
+		Test.TestEqual(TEXT("energy_shield_recharge_ceiling_reduction is read: it stops at half, 500"),
 					   Capped.AbilitySystem->GetNumericAttribute(Vital::GetEnergyShieldAttribute()),
 					   500.0f, 0.01f);
 	}
@@ -4334,7 +4334,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_range"), &ProbeMinionRange},
 			{TEXT("critical_armor_penetration"), &ProbeCriticalArmorPenetration},
 			{TEXT("max_crit_chance"), &ProbeMaxCritChance},
-			{TEXT("energy_shield_recharge_ceiling"), &ProbeEnergyShieldRechargeCeiling},
+			{TEXT("energy_shield_recharge_ceiling_reduction"), &ProbeEnergyShieldRechargeCeiling},
 			{TEXT("experience_gain"), &ProbeExperienceGain},
 			{TEXT("mana_cost_as_maximum_mana_percent"), &ProbeManaCostAsMaximumManaPercent},
 		};
