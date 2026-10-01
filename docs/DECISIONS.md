@@ -2,6 +2,167 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — A critical strike or retaliation can apply a random damage over time, and a triggered action row waits a quarter second after it fires
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`ApplyRandomDotAction`, `TriggerCoolingDown`, `TriggerReady`, `NoteTriggerFired`, the random damage
+over time in `ActOnEvent`, `RollAndResetCooldowns`' new out parameter),
+`CataclysmAilments.h` and `.cpp` (`BlowCanCarryAnAilment`, `RandomDamageOverTimePool`,
+`ApplyRandomDamageOverTime`, `Cataclysm.RandomDotPick`), `CataclysmStatPipeline.h`
+(`FCataclysmPoolAction::bRandomDamageOverTime`, `TriggerCooldownSeconds`, `TriggerKey`),
+`CataclysmRetaliation.cpp` (`retaliation_dealt`), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`
+(`critical_strike` now names the target and what reached its health), `game/Source/Cataclysm/Data/CataclysmDataRows.h`
+(`TriggerCooldown`), `game/Source/Cataclysm/Items/CataclysmItem.cpp`, `tools/generate_datatables.py`,
+the new `game/Source/Cataclysm/Tests/CataclysmTriggerTests.cpp` (five tests), a player test in
+`CataclysmPlayerMovementTests.cpp`, two row tests and one assertion in `CataclysmEnchantmentEffectTests.cpp`,
+the five hand-written effect-row CSV fixtures, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`,
+`docs/README.md`, `game/Data/EnchantmentEffects.csv` and its asset. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group D part 1.
+
+### WHAT WAS RULED, 2026-09-30, UNDER THE OWNER'S DELEGATION
+
+- **Group D goes in five changes**, each carrying at most three new mechanisms: this one; a health
+  threshold and a floor start; the player's death, a broken shield and an area action; a damage over time
+  dealing its remaining damage; and a gadget destroyed and a resource consumed. The per-enemy clocks for
+  "Enemies that have been alive for more than 15 seconds..." and "Enemies that survive more than 5 seconds
+  after first being hit..." are deferred to a proposal of their own.
+- **The random pool is Bleed, Poison, Disease, Necrosis and Burn, equally likely**, a labelled judgement.
+  Void Splinter is left out because it takes a share of current health rather than dealing damage over
+  time. The 2026-09-11 judgement on a random debuff pool covers debuffs, not damage over time, so it does
+  not settle this.
+- **The owner's rule of 2026-09-02 (#917) applies**: an ailment that does not come from the skill's own row
+  lands only from a blow that took a tenth of the target's maximum health and left it alive. The documents
+  already settled that it covers every such ailment (the 2026-09-23 Attrition entry), so the action reads
+  the rule through one function, `UCataclysmAilments::BlowCanCarryAnAilment`, which `RollOnLandedBlow`
+  now asks too.
+- **"Consumed", for D5, is a class-resource cost paid or a next-use charge spent**, not Fervour the Fervour
+  mechanics spend on their own effects. That supersedes the 2026-09-14 reading of "charge", which came
+  before next-use charges existed; #1844 is out of date and gets its comment when D5 merges.
+- **The other D readings, for the later changes**: Archon's Aegis also saves a lethal blow, as Nothing Stops
+  It does, because 0 is below 10%, and its 600 s cooldown applies either way; "start every floor at
+  30%-50%" sets health and never raises it; "all active DoTs" means only the wearer's own; a gadget is
+  destroyed when it is killed, not when its lifespan runs out.
+
+### THE TRIGGER COOLDOWN: THE JUDGEMENT OF 2026-09-11, BUILT AT LAST
+
+The 2026-09-11 judgement "0.25 s for a trigger fired by a hit dealt or taken (critical strike, hit, block,
+evade); none for kills, deaths, timers and resource events" was recorded and never built: no action row had
+an internal cooldown, and every seconds column was capped at 60. Ruled 2026-09-30:
+
+- **A Trigger Cooldown column**, from 0 to 3600 seconds, so a set bonus's "(10 minute cd)" fits.
+- **The default is written by the generator**, so the table says what each row does: an empty cell is 0.25 on
+  a hit-fired event (hit dealt, critical strike, hit taken, melee hit taken, block, dodge, a deployable's
+  hit, and retaliation dealt) and none elsewhere. An explicit 0 is none.
+- **Only rows that make something happen take one**: a pool moved, a cooldown reset or reduced, and the
+  random damage over time. A row that counts or stacks, and a next-use charge, states a count per event and
+  never waits. The generator refuses a cooldown on those, and on the timed event.
+- **The cooldown starts when the row FIRES, not when it is tried**, a labelled judgement that follows the
+  genre: an event that did not land, a condition that did not hold and a chance that did not come up each
+  leave it where it was.
+- **It is not cleared at death**, a labelled judgement: a once-a-while effect is not ready again because
+  its wearer died.
+
+**FOURTEEN SHIPPED ROWS CHANGE IN PLAY**, each now firing at most four times a second:
+
+| Enchantment row | Event | Action |
+| :-- | :-- | :-- |
+| Positive_Blocking_an_attack_restores_3_6_of_your_maximu | block | health |
+| Positive_Blocking_an_attack_generates_5_10_of_your_clas | block | class_resource |
+| Positive_Blocked_attacks_restore_1_3_of_your_maximum_ma | block | mana |
+| Negative_Blocking_attacks_reduces_your_class_resource_by | block | class_resource |
+| Positive_Blocking_an_attack_has_a_20_40_chance_to_reset | block | cooldown_reset_heavy |
+| Positive_Dodging_an_attack_restores_5_10_of_your_maximu | dodge | health |
+| Negative_Dodging_an_attack_drains_5_10_of_your_class_re | dodge | class_resource |
+| Positive_Dodging_an_attack_has_a_20_40_chance_to_reset | dodge | cooldown_reset_movement |
+| Positive_Critical_strikes_restore_2_4_of_your_maximum_H | critical_strike | health |
+| Negative_Critical_strikes_drain_3_6_of_your_current_HP | critical_strike | health |
+| Positive_Critical_strikes_have_a_15_30_chance_to_reset | critical_strike | cooldown_reset_movement |
+| Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5 | critical_strike | cooldown_reduce_heavy |
+| Positive_Strike_skills_generate_5_10_of_your_class_reso | hit_dealt | class_resource |
+| Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta | hit_dealt | cooldown_reset_heavy |
+
+A fifteenth, **"Every hit you take deals an additional 5%-10% of your maximum HP as bonus damage", has an
+explicit 0**: its sentence says every hit, and it is a drawback a cooldown would weaken. Its row test now
+also checks that a second landed blow in the same moment drains again.
+
+**Swept before registering**, as the coordinating session asked: six existing tests equip one of the fifteen,
+and none fires two triggering events within 0.25 s that both fire: an evaded blow, a missed roll and a
+failed condition do not start the wait. Predicted and measured: none failed on the cooldown.
+
+### WHAT WAS BUILT
+
+- **`apply_random_dot`**, an action on `critical_strike` or `retaliation_dealt` only: the events naming the
+  character struck and carrying what reached its health. Its value is the chance, where 100 is always,
+  compared as at most because `FRandRange` can return 100 itself. It is applied by the component's avatar,
+  the actor a blow of the character is credited to, which for the player is the character and not the
+  player state that owns the component.
+- **`critical_strike` now carries the target and what reached its health.** No critical_strike row read
+  either before, measured: none takes a fraction of its event's amount, and none has a target condition.
+- **`retaliation_dealt`**, raised by `UCataclysmRetaliation::Pay` once for each target, landed only when
+  health was taken.
+- **The rows**: "Critical strikes apply a random DoT to the target" and "Your retaliation damage also applies
+  a random DoT to attackers", each `apply_random_dot` at 100, each with the default 0.25 s. "apply" and
+  "applies" state 100 on that action in the row-text check. EnchantmentEffects 421 to 423, over 342 to 344
+  enchantments.
+- **A side effect stated, not changed**: a damage over time an action row applies does not raise
+  `dot_applied` rows, because `ActOnEvent` is depth one by construction (`PoolActionDepth`).
+
+### FINDINGS AND MISSES IN THIS CHANGE
+
+- **The rehearsal missed one pinned test because I narrowed the run.** `test_a_row_becomes_one_csv_row`
+  pins every column the generator writes and lacked the new one; I had run only my own test class with
+  `-k`. The whole of `tools/tests` is run after each generator change from then on.
+- **The rows rehearsal found 44 generator tests and a text check** that the new column and the two rows move,
+  before the window: two hand-written sheet headers and "apply"/"applies".
+- **A requested row already existed.** "Your minions have 20%-50% less hp" was asked for in this change, as
+  #1792's last missing row; it has had its `minion_health more -20 to -50` row and its test since #2118.
+  #1792 was closed with all three of its rows written.
+- **The player critical-strike test failed three times in the window, all in its setup, none in the code.**
+  The readouts, never committed and with the file's hash confirmed restored, showed the blow was not
+  critical, the trigger cooldown was not running, and the action applied the Bleed when raised directly.
+  I then diagnosed it, by reading, as the base-0 `crit_chance` stat line a refresh leaves, the trap part 3b's
+  ceiling tests met, and told the coordinating session so. **That was not measured, and the log
+  contradicted it**: "Setting the console variable 'Cataclysm.CritRoll' with 'SetByCode' was ignored as it
+  is lower priority than the previous 'SetByConsole'. Value remains '100'". The test now pins through
+  `CataclysmTestWorld::FScopedCritRoll` and writes the stat lines as well. **Where that console-priority 100
+  came from is not known**: each of those runs performed one test.
+- **My fix to that test then failed two other tests in the whole suite** ("2922 tests performed, 2920
+  succeeded, 2 failed"): it restored `Cataclysm.RandomDotPick` at console priority, the trigger tests run
+  after it, and their code-priority pins were all discarded (28 "was ignored" lines). Every pin this change
+  adds now writes and restores at console priority; `git diff fce1ab9b -- game/Source | grep "^+"` finds
+  no `ECVF_SetByCode`.
+- **Proof B's first start ran nothing**: its anchor spanned a line break written CRLF and was counted on
+  the file's bytes, while `prove_cpp_guard` hands the edit function `read_text()`, which turns CRLF into LF,
+  so it raised "changed nothing" before any build. And a capture of each proof's log read nothing, because
+  the helper's `tester` is a default argument bound at import; passing it explicitly fixed both for B and C.
+
+### THE RUN
+
+The change is commits `0df5c21e`, `1b2bf3dd`, `4e6d19e4`, `bc80b21a`, `b20fb951` (rows), `9b8ba763`
+(assets) and `a3c59bcc`, on development `fce1ab9b`.
+
+| Step | Result |
+| :-- | :-- |
+| Rehearsal, git-archive copy of the engine head | "12 failed, 5576 passed, 13 skipped"; JUnit 5601. The first rehearsal gave 13 failed: the column missing from `test_a_row_becomes_one_csv_row` |
+| Rows rehearsal, a copy with every window script | "12 failed, 5576 passed, 13 skipped"; JUnit 5601 |
+| Python of record, `4e6d19e4`, CI idle | "1 failed, 5592 passed, 8 skipped in 382.56s": the stale CSV hash; JUnit 5601 |
+| Build 1 | "Build: Succeeded - 31 actions, 28 files compiled" |
+| `Cataclysm.Triggers.` | "5 tests performed, 5 succeeded, 0 failed" |
+| The player critical-strike test | failed until its rolls were pinned at console priority; then "1 tests performed, 1 succeeded, 0 failed" |
+| Python after the rows, `b20fb951` | "1 failed, 5592 passed, 8 skipped in 390.84s"; JUnit 5601 |
+| Build 2 | "Build: Succeeded - 6 actions, 3 files compiled" |
+| Asset rebuild `9b8ba763` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The three row tests | each "1 tests performed, 1 succeeded, 0 failed" |
+| Proof A, the random damage over time given no target | PROVED: the three predicted tests in `Cataclysm.Triggers.`; restored 5 of 5. Its failed assertions were not measured |
+| Proof B, `critical_strike` passing no target | PROVED: `ACriticalStrikeByThePlayerNamesTheCreatureStruckToAWornRow`, 1 assertion, measured; restored 1 of 1 |
+| Proof C, the trigger cooldown never checked | PROVED: `ARowWithATriggerCooldownFiresOnceInItsWindowAndAgainAfter`, 3 assertions, measured (700, 800, 900 against 600, 600, 700); restored 5 of 5 |
+| Whole suite, `9b8ba763` | "2922 tests performed, 2920 succeeded, 2 failed": the pick pins above |
+| Whole suite, `a3c59bcc`, in its own command | "2922 tests performed, 2922 succeeded, 0 failed"; 2922 declared, gap 0; no "was ignored" line |
+
+---
+
 ## 2026-09-30 — The two Fervour clamps that no test noticed keep the stored base at or under the maximum; both stay, and two tests now show why
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp` (the comment on `Move`'s clamp),
