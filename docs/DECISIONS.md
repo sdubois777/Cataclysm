@@ -53,6 +53,44 @@ infinite effect is live on the pool, which was not read.
 - `Cataclysm.Fervour.AnEffectAtAFullPoolIsNotBankedForTheNextSpend`: an instant effect adding 50 to a full
   pool leaves it full, and an effect taking 10 after it takes the bar down by 10.
 
+
+### THE WINDOW'S RUN, FOR THE WHOLE STACK OF THREE
+
+This change was built and tested in one window with the two below it, stacked on `development` 3e14cfca: a
+player's followers across floors (issue #1202, head 2a423b4f), a minion's hits reading its own buffs (issue
+#1771, head e06409db), and this one, then two later #1202 commits and the window's fixes, to the top
+fa919c2d. **The #1202 and #1771 entries carry no run table of their own; this one is theirs as well.** Run
+2026-09-30 in the jovial-bouman worktree, which has built modules.
+
+**The first whole suite failed, and the window was stopped.** At 88cdc542 it printed "2914 tests performed,
+2911 succeeded, 3 failed": a Horde test whose player character did not spawn, the contagion-stacks test
+(the follower reset sat inside a function that returns early), and the minion buff test (it asked for an
+`Element.Fire` tag that does not exist). The three were fixed in fa919c2d under the coordinating session's
+ruling, the three groups rerun, and the whole suite run again.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 88cdc542 | Build: Succeeded - 31 actions, 28 files compiled |
+| First whole suite | 88cdc542 | 2914 tests performed, 2911 succeeded, 3 failed |
+| Rebuild after the fixes | fa919c2d | Build: Succeeded - 6 actions, 3 files compiled |
+| Group reruns | fa919c2d | DungeonModifierEffects 480/480, MinionStats 5/5, DungeonMode 33/33 |
+| Second whole suite | fa919c2d | 2914 tests performed, 2914 succeeded, 0 failed; declared 2914, gap 0 (registered 2897 + 17) |
+| Python of record | fa919c2d | 5579 passed, 8 skipped in 443.87s; JUnit tests=5587 failures=0 errors=0 skipped=8 |
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| #1202 a: a player's thrall is swept with the floor | 2a423b4f | PROVED: with the break in: 9 tests performed, 8 succeeded, 1 failed: AThrallAndAnImpComeDownWithThePlayerAndAGadgetDoesNot \| restored: 9 tests performed, 9 succeeded, 0 failed |
+| #1202 b: nothing moves the followers to the new floor | 2a423b4f | the same, the same test |
+| #1202 c: a gadget is kept at a floor change | 2a423b4f | the same, the same test |
+| #1771 a: the minion's swing reads no buffs of its own | e06409db | **NOT A PROOF.** With the break in the test failed for the right reason (330.75 expected, 220.5 dealt), and with it restored it failed too, on the `Element.Fire` tag: the proof was planned at e06409db, below the commit that corrected the test. Recorded as printed, not rerun, by ruling |
+| #1771 b: the minion's explosion reads no buffs of its own | e06409db | PROVED: with the break in: 17 tests performed, 16 succeeded, 1 failed: AMinionsExplosionAndSharedRuinReadTheBuffsOnItsOwnAbilitySystem \| restored: 17 tests performed, 17 succeeded, 0 failed |
+| #1036 a: `Move` no longer clamps the number it writes | fa919c2d | PROVED: with the break in: 19 tests performed, 18 succeeded, 1 failed: AGainAtAFullPoolIsNotBankedForTheNextSpend \| restored: 19 tests performed, 19 succeeded, 0 failed |
+| #1036 b: `PostGameplayEffectExecute` no longer writes the pool back | fa919c2d | PROVED: with the break in: 19 tests performed, 18 succeeded, 1 failed: AnEffectAtAFullPoolIsNotBankedForTheNextSpend \| restored: 19 tests performed, 19 succeeded, 0 failed |
+
+**Six proved and one not a proof.** So #1771 rests on one proof, the explosion and Shared Ruin path; the
+swing's own `ModifiedDamage` call is checked by its test, which passes in the whole suite, but not proved by
+a break.
+
 ---
 
 ## 2026-09-30 — A minion's blow reads the buffs on its own ability system; Conflagration's fire bonus still gives a minion nothing, because no minion deals fire damage
@@ -109,6 +147,10 @@ written onto the minion, was never read. **The first half had gone stale**: sinc
   50% increased explodes for half again as much as a plain one, and its Shared Ruin blast is half again
   as large too. It is in the command tests rather than beside the first, because an area blast finds
   its targets by collision and that file's creatures have it.
+- **Proved by one break, not two.** The window's run, recorded in the entry "The two Fervour clamps that no test
+  noticed..." above, proved the explosion and Shared Ruin path. The swing's own `ModifiedDamage` call is checked
+  by its test, which passes in the whole suite, but its proof was NOT A PROOF: it was planned below the commit
+  that corrected the test.
 
 ---
 
