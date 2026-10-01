@@ -659,7 +659,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 432 SINCE THE REMAINING DAMAGE ACTIONS, issue #1833 group D part 4, from 430.
 	//
 	// AND 437 SINCE THE GADGET AND RESOURCE EVENTS, issue #1833 group D part 5, from 432.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    437)
+	//
+	// AND 447 SINCE THE STATUS ACTIONS, issue #1833 group E part 1, from 437.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    447)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
