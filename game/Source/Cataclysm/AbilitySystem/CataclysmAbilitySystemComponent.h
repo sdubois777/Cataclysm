@@ -680,7 +680,8 @@ public:
 	 * @return how many cooldown effects were cleared
 	 */
 	int32 RollAndResetCooldowns(const FCataclysmPoolAction& Action,
-								const FGameplayTagContainer* EventTags);
+								const FGameplayTagContainer* EventTags,
+								bool* bOutRollSucceeded = nullptr);
 
 	/**
 	 * The two cooldown reduction action names and the next-spell cooldown
@@ -698,6 +699,20 @@ public:
 	 * `tools/generate_datatables.py`'s action vocabulary are the enchantment session's, and are not written yet.
 	 */
 	static const TCHAR* CleanseAction;
+
+	/**
+	 * The action that applies a random damage over time to the other character
+	 * of its event. Issue #1833 group D, ruled 2026-09-30. `tools/generate_datatables.py`
+	 * holds the same name in `RANDOM_DOT_ACTION`. See
+	 * `FCataclysmPoolAction::bRandomDamageOverTime`.
+	 */
+	static const TCHAR* ApplyRandomDotAction;
+
+	/**
+	 * Whether the action row kept under this key is waiting out its trigger
+	 * cooldown now. Issue #1833 group D. False for a key that has never fired.
+	 */
+	bool TriggerCoolingDown(FName TriggerKey) const;
 
 	/**
 	 * Take a reduction action's seconds off every running cooldown it names.
@@ -2554,6 +2569,21 @@ protected:
 	 * grant restarts the window, and the whole count lapses together.
 	 */
 	TMap<FName, FOwnStack> OwnStacks;
+
+	/**
+	 * When each action row with a trigger cooldown may fire again, in world
+	 * seconds, by `FCataclysmPoolAction::TriggerKey`. Issue #1833 group D.
+	 *
+	 * NOT CLEARED AT DEATH, a judgement: a cooldown is the row's own clock, and
+	 * dying is not a reason for a once-a-while effect to be ready again.
+	 */
+	TMap<FName, float> TriggerReadyAtSeconds;
+
+	/** Whether this action may fire now, as far as its trigger cooldown goes. */
+	bool TriggerReady(const FCataclysmPoolAction& Action) const;
+
+	/** Start this action's trigger cooldown, if it has one. Called when it fires. */
+	void NoteTriggerFired(const FCataclysmPoolAction& Action);
 
 	/** One row's hits in a row: on whom, how many, and when the last landed. */
 	struct FConsecutiveHits

@@ -1280,6 +1280,17 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// A CLEANSE. Ruled 2026-09-26. The row's value is not read: a cleanse has no size.
 					Action.bCleanse = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::CleanseAction, ESearchCase::IgnoreCase);
+					// A RANDOM DAMAGE OVER TIME ON THE OTHER CHARACTER. Issue #1833
+					// group D, ruled 2026-09-30. The value is the chance.
+					Action.bRandomDamageOverTime = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ApplyRandomDotAction,
+						ESearchCase::IgnoreCase);
+					// AND THE ROW'S TRIGGER COOLDOWN, which the generator has
+					// already defaulted. Keyed by the enchantment, the action and
+					// the event, which no two rows share.
+					Action.TriggerCooldownSeconds = Effect->TriggerCooldown;
+					Action.TriggerKey = FName(*FString::Printf(TEXT("%s:%s:%s"),
+						*Effect->Enchantment, *Effect->Action, *Effect->ActionEvent));
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

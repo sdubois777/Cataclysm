@@ -258,6 +258,37 @@ public:
 								  float DealtToHealth, bool bIsBlunt);
 
 	/**
+	 * Whether a blow that took this much health from this defender may leave an
+	 * ailment on it: the defender is still alive, and the blow took at least a
+	 * tenth of its maximum health.
+	 *
+	 * THE OWNER'S RULE OF 2026-09-02 (#917), for every ailment that does not
+	 * come from the skill's own row. `RollOnLandedBlow` asks it, and so does an
+	 * enchantment row that applies a random damage over time (issue #1833 group
+	 * D), so the two cannot hold different rules.
+	 */
+	static bool BlowCanCarryAnAilment(const AActor* Defender, float DealtToHealth);
+
+	/**
+	 * The ailments an enchantment row's random damage over time chooses among,
+	 * equally likely: Bleed, Poison, Disease, Necrosis and Burn. Issue #1833
+	 * group D, ruled 2026-09-30. Void Splinter is left out, because it takes a
+	 * share of current health rather than dealing damage over time.
+	 */
+	static TArray<const FCataclysmAilmentKind*> RandomDamageOverTimePool();
+
+	/**
+	 * Apply one ailment from `RandomDamageOverTimePool` at its normal
+	 * magnitude. The console variable `Cataclysm.RandomDotPick` pins which,
+	 * by its place in the pool, for tests; below nought, each is equally
+	 * likely.
+	 *
+	 * @return the ailment applied, or null when none was
+	 */
+	static const FCataclysmAilmentKind* ApplyRandomDamageOverTime(AActor* Instigator,
+																  AActor* Target);
+
+	/**
 	 * Apply one ailment at a magnitude, as its row of
 	 * `game/Data/StatusEffects.csv` says. Stun applies nothing here, because
 	 * `RollOnLandedBlow`'s pool applies it.

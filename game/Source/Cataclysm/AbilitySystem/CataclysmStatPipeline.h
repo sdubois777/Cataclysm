@@ -3681,6 +3681,42 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float EverySeconds = 0.0f;
+
+	/**
+	 * Set, this action APPLIES A RANDOM DAMAGE OVER TIME TO THE OTHER CHARACTER
+	 * of its event instead of moving a pool: one of Bleed, Poison, Disease,
+	 * Necrosis and Burn, equally likely, at the ailment's normal magnitude.
+	 * Issue #1833 group D, ruled 2026-09-30: "Critical strikes apply a random
+	 * DoT to the target". `Percent` is the chance, where 100 is always.
+	 *
+	 * THE BLOW MUST HAVE TAKEN A TENTH OF THE TARGET'S MAXIMUM HEALTH, the
+	 * owner's rule of 2026-09-02 (#917) for every ailment that does not come
+	 * from the skill's own row, so only an event carrying what reached health
+	 * as its amount may name it. See `UCataclysmAilments::BlowCanCarryAnAilment`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bRandomDamageOverTime = false;
+
+	/**
+	 * The seconds this action waits after it fires before it may fire again,
+	 * or 0 for none. Issue #1833 group D, ruled 2026-09-30, building the
+	 * judgement of 2026-09-11. Copied from the row's `TriggerCooldown`, where the
+	 * generator has already written the 0.25 s default.
+	 *
+	 * IT STARTS WHEN THE ACTION FIRES, NOT WHEN IT IS TRIED, a judgement that
+	 * follows the genre: an event that did not land, a condition that did not
+	 * hold and a chance that did not come up each leave it where it was.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float TriggerCooldownSeconds = 0.0f;
+
+	/**
+	 * What the cooldown above is kept under: the enchantment, the action and the
+	 * event, a triple no two rows share. Set on every action read from a row; a
+	 * random damage over time also keys its once-per-event rule by it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName TriggerKey;
 };
 
 /**

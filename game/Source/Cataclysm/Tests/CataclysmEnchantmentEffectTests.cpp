@@ -27,6 +27,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -2312,9 +2313,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4287,9 +4288,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -4406,9 +4407,9 @@ bool FCataclysmStackSecondsRollTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0\n"),
+				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0,0\n"),
 				DrawbackWithNoEffect, DrawbackWithNoEffect, StackSecondsHigh));
 		if (!Effects)
 		{
@@ -6936,6 +6937,12 @@ bool FCataclysmEveryHitTakenDrainRowTest::RunTest(const FString&)
 	Worn.ASC()->NoteHitTaken(/*bLanded=*/true);
 	TestEqual(TEXT("a landed blow takes 10% of the maximum"),
 		Worn.ASC()->GetNumericAttribute(Health), 900.0f, 0.01f);
+	// AND A SECOND IN THE SAME MOMENT TAKES ANOTHER 100. Issue #1833 group D,
+	// ruled 2026-09-30: the sentence says every hit, so its Trigger Cooldown is
+	// an explicit 0 rather than the quarter second other hit-fired rows wait.
+	Worn.ASC()->NoteHitTaken(/*bLanded=*/true);
+	TestEqual(TEXT("a second landed blow in the same moment takes another 10%"),
+		Worn.ASC()->GetNumericAttribute(Health), 800.0f, 0.01f);
 	return true;
 }
 
@@ -10479,6 +10486,143 @@ bool FCataclysmMaxHealthPerKillAttributeTest::RunTest(const FString&)
 			 After > Before + 1.0f);
 	TestEqual(TEXT("to what the stat line answers"),
 			  After, Wearing.ASC->StatForSkill(FName(TEXT("max_health")), FGameplayTagContainer(), After), 0.01f);
+	return true;
+}
+
+
+namespace CataclysmRandomDotRowTest
+{
+	/** Whether this character carries the tag one of the random pool's ailments grants. */
+	bool Carries(const UAbilitySystemComponent* Character, const FCataclysmAilmentKind& Kind)
+	{
+		const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(Kind.TagName), /*ErrorIfNotFound=*/false);
+		return Character && Tag.IsValid() && Character->HasMatchingGameplayTag(Tag);
+	}
+
+	/** A thousand health, so a tenth of the maximum is 100. */
+	void GiveAThousand(UAbilitySystemComponent* Character)
+	{
+		Character->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		Character->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+	}
+
+	/**
+	 * Pins `Cataclysm.RandomDotPick` for the life of this object, at the
+	 * console's own priority, restoring the previous value the same way, as
+	 * `CataclysmTestWorld::FScopedCritRoll` does: a write from code is discarded
+	 * once an earlier test has set the variable at console priority.
+	 */
+	struct FPinnedPick
+	{
+		explicit FPinnedPick(int32 Pick)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RandomDotPick")))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetInt();
+				Variable->Set(Pick, ECVF_SetByConsole);
+			}
+		}
+		~FPinnedPick()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		int32 Previous = -1;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalStrikeRandomDotRowTest,
+	"Cataclysm.Enchantments.TheCriticalStrikeRandomDotRowAppliesOneAndWaitsAQuarterSecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Critical strikes apply a random DoT to the target". Issue #1833 group D,
+ * ruled 2026-09-30: one of Bleed, Poison, Disease, Necrosis and Burn on the
+ * enemy struck, from a blow that took a tenth of its maximum health (#917). Its
+ * Trigger Cooldown cell is empty, so the generator wrote the quarter second a
+ * critical strike's trigger waits, and a second critical strike in the same
+ * moment applies nothing.
+ */
+bool FCataclysmCriticalStrikeRandomDotRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmRowsOnlyTest;
+	using namespace CataclysmRandomDotRowTest;
+	FWorn Worn(TEXT("Positive_Critical_strikes_apply_a_random_DoT_to_the_targe"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const TArray<const FCataclysmAilmentKind*> Pool = UCataclysmAilments::RandomDamageOverTimePool();
+	if (!TestEqual(TEXT("five ailments to choose among"), Pool.Num(), 5))
+	{
+		return false;
+	}
+	const FPinnedPick Pinned(1);
+	CataclysmEnchantmentEffectTest::FWearer First(Worn.World);
+	CataclysmEnchantmentEffectTest::FWearer Second(Worn.World);
+	GiveAThousand(First.AbilitySystem);
+	GiveAThousand(Second.AbilitySystem);
+	const FName Crit(TEXT("critical_strike"));
+
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, First.Actor);
+	TestTrue(TEXT("a critical strike taking a tenth applies the pinned Poison"),
+		Carries(First.AbilitySystem, *Pool[1]));
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, Second.Actor);
+	TestFalse(TEXT("a second in the same moment applies nothing: the row waits"),
+		Carries(Second.AbilitySystem, *Pool[1]));
+	Worn.World->TimeSeconds += 0.25f;
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, Second.Actor);
+	TestTrue(TEXT("a quarter of a second later it applies again"),
+		Carries(Second.AbilitySystem, *Pool[1]));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRetaliationRandomDotRowTest,
+	"Cataclysm.Enchantments.TheRetaliationRandomDotRowAppliesOneToTheAttacker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your retaliation damage also applies a random DoT to attackers". Issue #1833
+ * group D: `retaliation_dealt`, raised by `UCataclysmRetaliation::Pay` for each
+ * attacker paid, with what reached its health.
+ */
+bool FCataclysmRetaliationRandomDotRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmRowsOnlyTest;
+	using namespace CataclysmRandomDotRowTest;
+	FWorn Worn(TEXT("Positive_Your_retaliation_damage_also_applies_a_random_Do"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const TArray<const FCataclysmAilmentKind*> Pool = UCataclysmAilments::RandomDamageOverTimePool();
+	if (!TestEqual(TEXT("five ailments to choose among"), Pool.Num(), 5))
+	{
+		return false;
+	}
+	// RETALIATION OF A HUNDRED PER CENT, AS A STAT LINE AND AN ATTRIBUTE. The
+	// refresh leaves stat lines that a reader may ask before the attribute,
+	// which is why both are written. The row is an action, kept apart from the
+	// stat lines, so replacing them does not remove it.
+	TMap<FName, FCataclysmStatInputs> Lines;
+	Lines.FindOrAdd(FName(UCataclysmRetaliation::AmountStat)).Base = 100.0f;
+	Worn.ASC()->SetStatInputs(MoveTemp(Lines));
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 100.0f);
+
+	const FPinnedPick Pinned(3);
+	CataclysmEnchantmentEffectTest::FWearer Attacker(Worn.World);
+	GiveAThousand(Attacker.AbilitySystem);
+	const float Paid = UCataclysmRetaliation::Pay(
+		Worn.ASC(), Worn.Wearer->Actor, Attacker.Actor, 500.0f);
+	TestTrue(*FString::Printf(TEXT("a blow worth 500 paid at least a tenth back: %.1f"), Paid),
+		Paid >= 100.0f);
+	TestTrue(TEXT("and the attacker carries the pinned Necrosis"),
+		Carries(Attacker.AbilitySystem, *Pool[3]));
 	return true;
 }
 

@@ -39,6 +39,20 @@ static TAutoConsoleVariable<float> CVarAilmentRoll(
 		 "none."),
 	ECVF_Default);
 
+/**
+ * Pins which ailment an enchantment row's random damage over time applies, by
+ * its place in `UCataclysmAilments::RandomDamageOverTimePool`. Issue #1833 group
+ * D. -1, the default, picks each equally likely; a test pins it so it can say
+ * which ailment it expects.
+ */
+static TAutoConsoleVariable<int32> CVarRandomDotPick(
+	TEXT("Cataclysm.RandomDotPick"),
+	-1,
+	TEXT("Pins the ailment a random damage over time applies, by its place in "
+		 "the pool: 0 Bleed, 1 Poison, 2 Disease, 3 Necrosis, 4 Burn. -1 picks "
+		 "at random."),
+	ECVF_Default);
+
 namespace
 {
 	using Combat = UCataclysmCombatAttributeSet;
@@ -232,15 +246,13 @@ TMap<FName, float> UCataclysmAilments::ChancesFor(
 	return Chances;
 }
 
-int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
-										   AActor* Defender, float DealtToHealth,
-										   bool bIsBlunt)
+bool UCataclysmAilments::BlowCanCarryAnAilment(const AActor* Defender, float DealtToHealth)
 {
 	const UAbilitySystemComponent* Struck =
 		UCataclysmTargeting::AbilitySystemOf(Defender);
 	if (!Struck || !Struck->HasAttributeSetForAttribute(Vital::GetHealthAttribute()))
 	{
-		return 0;
+		return false;
 	}
 
 	// A TENTH OF MAXIMUM HEALTH, AND A TARGET STILL ALIVE TO CARRY IT. The first
@@ -251,9 +263,50 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 	const float Health = Struck->GetNumericAttribute(Vital::GetHealthAttribute());
 	const float MaxHealth =
 		Struck->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	if (Health <= 0.0f || MaxHealth <= 0.0f
-		|| DealtToHealth
-			< MaxHealth * UCataclysmSkillEffects::StunDamageThresholdPercent / 100.0f)
+	return Health > 0.0f && MaxHealth > 0.0f
+		&& DealtToHealth
+			>= MaxHealth * UCataclysmSkillEffects::StunDamageThresholdPercent / 100.0f;
+}
+
+TArray<const FCataclysmAilmentKind*> UCataclysmAilments::RandomDamageOverTimePool()
+{
+	// BY NAME RATHER THAN BY SHAPE. Void Splinter has a damage-over-time shape
+	// of its own kind, and the ruling of 2026-09-30 names the five.
+	TArray<const FCataclysmAilmentKind*> Pool;
+	for (const TCHAR* Name : {TEXT("Bleed"), TEXT("Poison"), TEXT("Disease"),
+							  TEXT("Necrosis"), TEXT("Burn")})
+	{
+		if (const FCataclysmAilmentKind* Kind = KindNamed(Name))
+		{
+			Pool.Add(Kind);
+		}
+	}
+	return Pool;
+}
+
+const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDamageOverTime(
+	AActor* Instigator, AActor* Target)
+{
+	const TArray<const FCataclysmAilmentKind*> Pool = RandomDamageOverTimePool();
+	if (Pool.IsEmpty() || !Instigator || !Target)
+	{
+		return nullptr;
+	}
+	const int32 Pinned = CVarRandomDotPick.GetValueOnAnyThread();
+	const int32 Pick = Pool.IsValidIndex(Pinned)
+		? Pinned
+		: FMath::RandRange(0, Pool.Num() - 1);
+	// THE NORMAL MAGNITUDE, one, because the sentence states none.
+	return Apply(Instigator, Target, *Pool[Pick], /*Magnitude=*/1.0f)
+		? Pool[Pick]
+		: nullptr;
+}
+
+int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
+										   AActor* Defender, float DealtToHealth,
+										   bool bIsBlunt)
+{
+	if (!BlowCanCarryAnAilment(Defender, DealtToHealth))
 	{
 		return 0;
 	}

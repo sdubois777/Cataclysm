@@ -1628,6 +1628,10 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: 2026-09-30 for issue #1833 group C part 3a, built ahead of their rows
 #: while the design workbook is with another session.
 #: THEY LEFT with the four condition rows, and the table is empty again.
+#: TRIGGER COOLDOWN JOINED ON 2026-09-30 for issue #1833 group D, built ahead
+#: of its rows while the design workbook is with another session.
+#: IT LEFT with the two random damage over time rows, and the table is empty
+#: again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -4788,6 +4792,58 @@ COOLDOWN_REDUCE_ACTIONS = (
 #: The most seconds a reduction may take off, the same sanity bound the clocks use.
 MAX_COOLDOWN_REDUCE_SECONDS = 60.0
 
+#: The action that APPLIES A RANDOM DAMAGE OVER TIME TO THE OTHER CHARACTER of
+#: its event: one of Bleed, Poison, Disease, Necrosis and Burn, equally likely,
+#: at the ailment's normal magnitude. Issue #1833 group D, ruled 2026-09-30:
+#: "Critical strikes apply a random DoT to the target". The value is the chance
+#: in percent, above 0 and up to 100, where 100 is always.
+#: `UCataclysmAbilitySystemComponent::ApplyRandomDotAction` holds the same name.
+RANDOM_DOT_ACTION = "apply_random_dot"
+
+#: The events a random damage over time may hang on: the ones naming the other
+#: character AND carrying what reached its health, because the owner's rule of
+#: 2026-09-02 (#917) lets an ailment that does not come from the skill's own row
+#: land only from a blow that took a tenth of the target's maximum health.
+#: `hit_dealt` names who was struck and carries no amount, so it is not here.
+RANDOM_DOT_EVENTS = (
+    "critical_strike",
+    "retaliation_dealt",
+)
+
+#: The events A HIT DEALT OR TAKEN fires, on which an action row that makes
+#: something happen waits `DEFAULT_TRIGGER_COOLDOWN` after it fires unless its
+#: Trigger Cooldown says otherwise. Issue #1833 group D, ruled 2026-09-30 under
+#: the owner's delegation, building the judgement of 2026-09-11: "0.25 s for a
+#: trigger fired by a hit dealt or taken (critical strike, hit, block, evade);
+#: none for kills, deaths, timers and resource events". Retaliation is paid
+#: because a hit was taken, so it is here too.
+HIT_FIRED_EVENTS = (
+    "hit_dealt",
+    "critical_strike",
+    "hit_taken",
+    "melee_hit_taken",
+    "block",
+    "dodge",
+    "deployable_hit",
+    "retaliation_dealt",
+)
+
+#: The seconds a trigger waits when its row states none. See `HIT_FIRED_EVENTS`.
+DEFAULT_TRIGGER_COOLDOWN = 0.25
+
+#: The longest trigger cooldown a row may state: an hour, so a set bonus's
+#: "(10 minute cd)" fits. The clocks' 60 s bound was the reason none could.
+MAX_TRIGGER_COOLDOWN = 3600.0
+
+
+def takes_a_trigger_cooldown(action: str) -> bool:
+    """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
+    firings: a pool moved, a cooldown reset or reduced, or a random damage
+    over time. Ruled 2026-09-30: a row that counts or stacks, and a next-use
+    charge, states a count per event and never waits."""
+    return (action in POOL_ACTIONS or action in COOLDOWN_RESET_ACTIONS
+            or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION)
+
 #: What a percentage on an action row is a percentage OF.
 #:
 #: "Restore 5% of your maximum HP" and "drain 3% of your current HP" are both
@@ -4849,6 +4905,11 @@ ACTION_ONLY_EVENTS = (
     # 2026-09-25: a new event rather than `hit_dealt`, whose unscoped rows
     # would otherwise begin firing on every machine's blow.
     "deployable_hit",
+    # RETALIATION PAID TO ONE ATTACKER, raised on the retaliating character
+    # once for each target in `UCataclysmRetaliation::Pay`, with that target
+    # and what reached its health. Issue #1833 group D: "Your retaliation
+    # damage also applies a random DoT to attackers".
+    "retaliation_dealt",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -4920,6 +4981,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_cooldown_reset_action(index, who, action, event, fraction_of,
                                      kind, raw, headers)
         return
+    if action == RANDOM_DOT_ACTION:
+        _check_random_dot_action(index, who, action, event, fraction_of, kind,
+                                 raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -4929,7 +4994,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(PLACED_ACTIONS)}; or an every-Nth action, "
             f"{', '.join(NTH_ACTIONS)}; or a cooldown reset, "
             f"{', '.join(COOLDOWN_RESET_ACTIONS)}; or a cooldown reduction, "
-            f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}.")
+            f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}; or {RANDOM_DOT_ACTION}.")
 
     known = granting_events()
     if not event:
@@ -4995,6 +5060,33 @@ def _check_placed_action(index: int, who: str, action: str, event: str,
                 f"states {column} {written!r}. A placed stack takes away its "
                 f"value per stack and nothing else, so the column must be "
                 f"empty.")
+
+
+def _check_random_dot_action(index: int, who: str, action: str, event: str,
+                             fraction_of: str, kind: str, raw,
+                             headers: dict[str, int]) -> None:
+    """Everything a random damage over time row must say, and everything it
+    must not. Issue #1833 group D.
+
+    THE EVENT MUST NAME THE OTHER CHARACTER AND CARRY WHAT REACHED ITS HEALTH;
+    see `RANDOM_DOT_EVENTS`. The chance is checked where the value is read. A
+    fraction, a value kind and a scale each mean nothing here, so each is
+    refused rather than dropped.
+    """
+    if event not in RANDOM_DOT_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} applies a random damage "
+            f"over time on the event {event or '(none)'!r}. Only an event "
+            f"naming the character struck and what reached its health can: "
+            f"{', '.join(RANDOM_DOT_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} applies a random "
+                f"damage over time and states {column} {written!r}. Its value "
+                f"is a chance and nothing else, so the column must be empty.")
 
 
 def _check_nth_action(index: int, who: str, action: str, event: str,
@@ -5254,7 +5346,8 @@ def enchantment_effects(book) -> list[dict]:
             if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS \
                     and action not in NTH_ACTIONS \
                     and action not in COOLDOWN_RESET_ACTIONS \
-                    and action not in COOLDOWN_REDUCE_ACTIONS:
+                    and action not in COOLDOWN_REDUCE_ACTIONS \
+                    and action != RANDOM_DOT_ACTION:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5354,6 +5447,20 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} resets cooldowns "
                     f"and states Scale Max Steps. A reset has no stacks, so it "
                     f"would be dropped.")
+
+        # A RANDOM DAMAGE OVER TIME'S VALUE IS ITS CHANCE, above 0 and up to
+        # 100, as a reset's is. Issue #1833 group D. 100 is always.
+        if action == RANDOM_DOT_ACTION:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} applies a random "
+                    f"damage over time with a chance of {low:g} to {high:g}. A "
+                    f"chance is above 0 and up to 100, and 100 is always.")
+            if scale_max_steps:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} applies a random "
+                    f"damage over time and states Scale Max Steps. It has no "
+                    f"stacks, so it would be dropped.")
 
         # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
         # Issue #1833, the cooldown reduction action.
@@ -5674,6 +5781,35 @@ def enchantment_effects(book) -> list[dict]:
                     f"hover text would show one threshold and the effect use "
                     f"another.")
 
+        # HOW LONG A TRIGGER WAITS AFTER IT FIRES. Issue #1833 group D, ruled
+        # 2026-09-30 under the owner's delegation. Only an action row that
+        # makes something happen takes one, and not on the timed event, whose
+        # own period is its spacing. EMPTY IS THE DEFAULT, written here so the
+        # table says what each row does: `DEFAULT_TRIGGER_COOLDOWN` on a
+        # hit-fired event and none elsewhere. An explicit 0 is none, for a
+        # sentence that says every hit.
+        cooldown_text = clean(_cell(raw, headers, "Trigger Cooldown"))
+        trigger_cooldown = 0.0
+        if cooldown_text:
+            trigger_cooldown = number(cooldown_text, "Trigger Cooldown", index)
+            if not (action and takes_a_trigger_cooldown(action)) \
+                    or action_event == TIMED_EVENT:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states a Trigger "
+                    f"Cooldown of {trigger_cooldown:g} seconds. Only an action "
+                    f"row that moves a pool, resets or reduces a cooldown or "
+                    f"applies a random damage over time on an event takes one; "
+                    f"a row that counts or stacks never waits, so it would be "
+                    f"dropped.")
+            if not 0 <= trigger_cooldown <= MAX_TRIGGER_COOLDOWN:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has a Trigger "
+                    f"Cooldown of {trigger_cooldown:g} seconds. It is from 0, "
+                    f"which is none, up to {MAX_TRIGGER_COOLDOWN:g}.")
+        elif action and takes_a_trigger_cooldown(action) \
+                and action_event in HIT_FIRED_EVENTS:
+            trigger_cooldown = DEFAULT_TRIGGER_COOLDOWN
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -5700,6 +5836,7 @@ def enchantment_effects(book) -> list[dict]:
             "Condition2": condition2,
             "ConditionValue2": condition_value2,
             "ConditionValueHigh": condition_value_high,
+            "TriggerCooldown": trigger_cooldown,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
