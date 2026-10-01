@@ -262,14 +262,22 @@ CATACLYSM_TEST(FCataclysmFloorStartCapTest,
 {
 	using namespace CataclysmHealthThresholdTest;
 
-	// "You start every dungeon floor at 30%-50% of your maximum HP", worn at 40,
-	// on a REAL floor start: `GoToFloor` raises `floor_start` on the possessed
-	// player after the floor's rules reach it. Ruled 2026-09-30: health is set
-	// to the share and never raised.
+	// "You start every dungeon floor at 30%-50% of your maximum HP". Ruled
+	// 2026-09-30: `floor_start` is raised on the player after the floor's rules
+	// in `StartPlay` and `GoToFloor`, and `health_capped_at` sets health to the
+	// share and never raises it.
+	//
+	// TWO HALVES, AND WHY. The floor's rules refresh the player's equipment
+	// (`UCataclysmDungeonModifierEffects::ApplyToCharacter`), and the refresh
+	// rebuilds the action list from what is worn, so an action built by hand on
+	// a player does not survive `GoToFloor`; the first run of this test lost its
+	// cap that way. So the REAL `GoToFloor` half listens for the event on the
+	// component's own `OnActionEvent`, which the refresh does not replace, and
+	// the cap half runs on a bare fighter, which nothing refreshes. The row test
+	// `TheFloorStartRow` wears the row through a real `GoToFloor`.
 	//
 	// `AController::Possess` AND NOT `APawn::PossessedBy`, for the reason
-	// CataclysmDungeonModifierEffectsTests.cpp gives: the game mode finds the
-	// player through `GetFirstPlayerController()->GetPawn()`.
+	// CataclysmDungeonModifierEffectsTests.cpp gives.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -298,40 +306,45 @@ CATACLYSM_TEST(FCataclysmFloorStartCapTest,
 		return false;
 	}
 
-	FCataclysmPoolAction Cap;
-	Cap.Event = FName(TEXT("floor_start"));
-	Cap.Pool = FName(UCataclysmAbilitySystemComponent::HealthCappedAtAction);
-	Cap.Percent = 40.0f;
-	Cap.bHealthCap = true;
-	Cap.TriggerKey = FName(TEXT("A_row:health_capped_at:floor_start"));
-	AbilitySystem->SetPoolActions({Cap});
-	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
-	AbilitySystem->SetNumericAttributeBase(
-		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
-	AbilitySystem->SetNumericAttributeBase(Health, 1000.0f);
+	int32 FloorStarts = 0;
+	const FDelegateHandle Listening = AbilitySystem->OnActionEvent.AddLambda(
+		[&FloorStarts](FName Event)
+		{
+			FloorStarts += Event == FName(TEXT("floor_start")) ? 1 : 0;
+		});
+	ON_SCOPE_EXIT { AbilitySystem->OnActionEvent.Remove(Listening); };
 
 	Mode->EnemyScale = 0.1f;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
 		return false;
 	}
-	// READ AGAINST THE MAXIMUM AS IT STANDS, because the floor's rules may
-	// refresh the player's stats and move it.
-	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
-	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
-	TestTrue(TEXT("the player has a maximum"), Maximum > 0.0f);
-	TestEqual(TEXT("a full player starts the floor at 40% of the maximum"),
-		AbilitySystem->GetNumericAttribute(Health), Maximum * 0.4f, 0.01f);
-
-	AbilitySystem->SetNumericAttributeBase(Health, Maximum * 0.25f);
+	TestEqual(TEXT("going to the first floor raises floor_start once on the player"), FloorStarts, 1);
 	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
 	{
 		return false;
 	}
-	const float MaximumThen = AbilitySystem->GetNumericAttribute(MaxHealth);
-	TestEqual(TEXT("a player already at a quarter keeps its health"),
-		AbilitySystem->GetNumericAttribute(Health),
-		FMath::Min(Maximum * 0.25f, MaximumThen * 0.4f), 0.01f);
+	TestEqual(TEXT("and going to the second raises it once more"), FloorStarts, 2);
+
+	// THE CAP, on a fighter nothing refreshes.
+	FCataclysmPoolAction Cap;
+	Cap.Event = FName(TEXT("floor_start"));
+	Cap.Pool = FName(UCataclysmAbilitySystemComponent::HealthCappedAtAction);
+	Cap.Percent = 40.0f;
+	Cap.bHealthCap = true;
+	Cap.TriggerKey = FName(TEXT("A_row:health_capped_at:floor_start"));
+
+	const FFighter Full(World);
+	Full.AbilitySystem->SetPoolActions({Cap});
+	Full.AbilitySystem->ActOnEvent(FName(TEXT("floor_start")));
+	TestEqual(TEXT("a full fighter starts the floor at 40% of its maximum"),
+		Full.Health(), 400.0f, 0.01f);
+
+	const FFighter Hurt(World);
+	Hurt.SetHealth(1000.0f, 250.0f);
+	Hurt.AbilitySystem->SetPoolActions({Cap});
+	Hurt.AbilitySystem->ActOnEvent(FName(TEXT("floor_start")));
+	TestEqual(TEXT("a fighter already at a quarter keeps its health"), Hurt.Health(), 250.0f, 0.01f);
 	return true;
 }
 
