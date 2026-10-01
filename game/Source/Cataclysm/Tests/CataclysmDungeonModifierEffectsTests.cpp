@@ -40445,4 +40445,43 @@ bool FCataclysmTithesLastFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// AN ANGEL THE PLAYER TAKES IS NO LONGER ONE: "Angel" GOES AND SEVEN STAND. Issue #1202, ruled 2026-09-30.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTithesTakenTest,
+	"Cataclysm.DungeonModifierEffects.ForcedTithesAnAngelThePlayerTakesIsNoLongerOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTithesTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATitheFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("refusing acted"), Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), RefuseKey)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Before = Mode->TitheAngelsStanding();
+	ACataclysmEnemyCharacter* Taken = OneThePlayerCanTake(Before);
+	if (!TestEqual(TEXT("set-up: all came"), Before.Num(), Effects::ForcedTithesAngelCount)
+		|| !TestNotNull(TEXT("set-up: one the player can take"), Taken)
+		|| !TestTrue(TEXT("set-up: \"Angel\" under its bar"),
+					 UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Angel")))
+		|| !TestTrue(TEXT("the player takes it"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no \"Angel\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Taken).Contains(TEXT("Angel")));
+	TestEqual(TEXT("one fewer standing"), Mode->TitheAngelsStanding().Num(), Effects::ForcedTithesAngelCount - 1);
+	TestFalse(TEXT("and it is not among them"), Mode->TitheAngelsStanding().Contains(Taken));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
