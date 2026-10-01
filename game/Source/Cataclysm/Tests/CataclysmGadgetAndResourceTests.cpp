@@ -135,21 +135,24 @@ namespace CataclysmGadgetAndResourceTest
 		FDelegateHandle Handle;
 	};
 
-	/**
-	 * A minion of the type named, with its evasion written to nought. A minion's
-	 * evasion is the combat set's default of nought today, and nothing writes it;
-	 * it is written here anyway, because a test measuring a death must not depend
-	 * on a blow landing by chance (an enemy Imp, a different class, evades 25%).
-	 */
 	ACataclysmMinion* Summon(AActor* Summoner, const TCHAR* Type, const FVector& Where,
 		float Lifetime = 60.0f)
 	{
-		ACataclysmMinion* Minion = ACataclysmMinion::Spawn(Summoner, Where, Lifetime, /*bBurns=*/false, Type);
-		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Minion))
-		{
-			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
-		}
-		return Minion;
+		return ACataclysmMinion::Spawn(Summoner, Where, Lifetime, /*bBurns=*/false, Type);
+	}
+
+	/**
+	 * Whether a blow on this minion cannot be evaded. A test measuring a death must
+	 * not depend on a blow landing by chance (an enemy Imp, a different class,
+	 * evades 25%). A MINION HOLDS NO COMBAT ATTRIBUTE SET, only the vital one, and
+	 * the damage calculation rolls evasion only against a defender holding one
+	 * (`CataclysmDamageCalculation.cpp`, step 1), so this asks for that absence
+	 * rather than writing an evasion the minion does not have.
+	 */
+	bool CannotEvade(const ACataclysmMinion* Minion)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Minion);
+		return System && System->GetSet<UCataclysmCombatAttributeSet>() == nullptr;
 	}
 }
 
@@ -178,7 +181,9 @@ CATACLYSM_TEST(FCataclysmGadgetKilledTest,
 	ON_SCOPE_EXIT { if (IsValid(Turret)) { Turret->Destroy(); } };
 	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
 	if (!TestNotNull(TEXT("set-up: a bolt turret"), Turret) || !TestNotNull(TEXT("set-up: a spike trap"), Trap)
-		|| !TestTrue(TEXT("set-up: both are deployable"), Turret->IsDeployable() && Trap->IsDeployable()))
+		|| !TestTrue(TEXT("set-up: both are deployable"), Turret->IsDeployable() && Trap->IsDeployable())
+		|| !TestTrue(TEXT("set-up: neither holds a combat set, so neither can evade"),
+			CannotEvade(Turret) && CannotEvade(Trap)))
 	{
 		return false;
 	}
@@ -222,7 +227,8 @@ CATACLYSM_TEST(FCataclysmGadgetNotKilledTest,
 	ACataclysmMinion* Imp = Summon(Summoner.Actor, TEXT("Imp"), FVector(-3.0f * M, 0.0f, 0.0f));
 	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
 	if (!TestNotNull(TEXT("set-up: a turret living one second"), Fleeting) || !TestNotNull(TEXT("set-up: an Imp"), Imp)
-		|| !TestFalse(TEXT("set-up: the Imp is not deployable"), Imp->IsDeployable()))
+		|| !TestFalse(TEXT("set-up: the Imp is not deployable"), Imp->IsDeployable())
+		|| !TestTrue(TEXT("set-up: the Imp holds no combat set, so it cannot evade"), CannotEvade(Imp)))
 	{
 		return false;
 	}
