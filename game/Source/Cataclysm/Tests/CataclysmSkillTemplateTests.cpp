@@ -11977,12 +11977,11 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 	using namespace CataclysmSkillTest;
 	using Vital = UCataclysmVitalAttributeSet;
 
-	// LIVING PYRE RETURNS HEALTH BY ITS OWN ROUTE, REACHED BY NEITHER
-	// `UCataclysmRegeneration::TopUp` NOR THE HEALING CEILING. Issue #41, slice
-	// 5. That is why the healing-received reduction is read here as well: a
-	// curse claiming to reduce healing would otherwise leave this skill healing
-	// at full strength, silently and in the player's favour. The ceiling still
-	// misses it, which is issue #1607 and deliberately not fixed here.
+	// A CURSE ON HEALING REACHES LIVING PYRE. Issue #41, slice 5: a curse
+	// claiming to reduce healing must not leave this skill healing at full
+	// strength, silently and in the player's favour. Since issue #1608 the
+	// Pyre heals through `UCataclysmRegeneration::TopUp`, which reads the
+	// reduction; until then the skill read it itself.
 	UWorld* World = MakeWorld();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
@@ -12044,12 +12043,12 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 
 	// AND A VALUE PAST A HUNDRED RETURNS NOTHING RATHER THAN TAKING HEALTH.
 	//
-	// THE ATTRIBUTE SET'S CLAMP IS WHAT HOLDS THIS, NOT THIS SKILL'S, and this
+	// THE ATTRIBUTE SET'S CLAMP IS WHAT HOLDS THIS, NOT `TopUp`'S, and this
 	// comment claimed the opposite until a guard proof disproved it. Issue #41,
 	// slice 5. A write to the base value DOES reach `PreAttributeChange` on its
 	// way to the current value, and `GetNumericAttribute` reads the current
-	// value, so the skill is handed 100 here and never 150. Breaking this
-	// skill's own clamp changes nothing a test can see; it is kept against a
+	// value, so `TopUp` is handed 100 here and never 150. Breaking `TopUp`'s
+	// own clamp changes nothing a test can see; it is kept against a
 	// replicated value, which does not pass through `PreAttributeChange`.
 	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), 150.0f);
 	const float PastFull = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
