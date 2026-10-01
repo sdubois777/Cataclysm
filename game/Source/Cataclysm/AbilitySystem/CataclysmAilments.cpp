@@ -53,6 +53,19 @@ static TAutoConsoleVariable<int32> CVarRandomDotPick(
 		 "at random."),
 	ECVF_Default);
 
+/**
+ * Pins which debuff an enchantment row's random debuff applies, by its place in
+ * `UCataclysmAilments::RandomDebuffPool`. Issue #1833 group E part 1. -1, the
+ * default, picks each equally likely; a test pins it so it can say which debuff
+ * it expects.
+ */
+static TAutoConsoleVariable<int32> CVarRandomDebuffPick(
+	TEXT("Cataclysm.RandomDebuffPick"),
+	-1,
+	TEXT("Pins the debuff a random debuff applies, by its place in the pool: "
+		 "0 Madness, 1 Cripple, 2 Weaken, 3 Shred, 4 Stun. -1 picks at random."),
+	ECVF_Default);
+
 namespace
 {
 	using Combat = UCataclysmCombatAttributeSet;
@@ -302,6 +315,49 @@ const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDamageOverTime(
 		: nullptr;
 }
 
+TArray<const FCataclysmAilmentKind*> UCataclysmAilments::RandomDebuffPool()
+{
+	// BY NAME, in the order the cvar's help gives.
+	TArray<const FCataclysmAilmentKind*> Pool;
+	for (const TCHAR* Name : {TEXT("Madness"), TEXT("Cripple"), TEXT("Weaken"),
+							  TEXT("Shred"), TEXT("Stun")})
+	{
+		if (const FCataclysmAilmentKind* Kind = KindNamed(Name))
+		{
+			Pool.Add(Kind);
+		}
+	}
+	return Pool;
+}
+
+const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDebuff(
+	AActor* Instigator, AActor* Target, float DealtToHealth)
+{
+	const TArray<const FCataclysmAilmentKind*> Pool = RandomDebuffPool();
+	if (Pool.IsEmpty() || !Instigator || !Target)
+	{
+		return nullptr;
+	}
+	const int32 Pinned = CVarRandomDebuffPick.GetValueOnAnyThread();
+	const FCataclysmAilmentKind& Kind = *Pool[Pool.IsValidIndex(Pinned)
+		? Pinned
+		: FMath::RandRange(0, Pool.Num() - 1)];
+
+	// A STUN IS NOT APPLIED BY `Apply`, which leaves it to the pool of a landed
+	// blow. Its row's 0.75 seconds is what a stun at 100% chance lasts, and
+	// `ApplyStun` is the one place its three rules are kept.
+	if (Kind.Shape == EShape::Stun)
+	{
+		const FCataclysmStatusEffectNumbers Row =
+			UCataclysmSkillEffects::StatusEffectNumbers(Kind.StatusRow, Kind.Ailment);
+		return UCataclysmSkillEffects::ApplyStun(Instigator, Target,
+				   Row.DurationSeconds, DealtToHealth, /*bStunIsDesigned=*/false)
+			? &Kind
+			: nullptr;
+	}
+	return Apply(Instigator, Target, Kind, /*Magnitude=*/1.0f) ? &Kind : nullptr;
+}
+
 int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 										   AActor* Defender, float DealtToHealth,
 										   bool bIsBlunt)
@@ -493,7 +549,8 @@ namespace
 
 bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 							   const FCataclysmAilmentKind& Kind, float Magnitude,
-							   const UGameplayAbility* Skill, FName DamageType)
+							   const UGameplayAbility* Skill, FName DamageType,
+							   float Seconds)
 {
 	if (Kind.Shape == EShape::Stun)
 	{
@@ -578,9 +635,14 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		// so it uses `StrongerThenLongerOnAStat` above and the same
 		// `CapThenExtend` rule. Which of the two an effect wants is decided by
 		// whether a reader exists, not by the shape of its number.
+		//
+		// A STATED DURATION REPLACES THE ROW'S, and the strength stays the
+		// row's. Issue #1833 group E part 1: "a 2-4 second slow" is Cripple's
+		// own slow for those seconds, a judgement recorded in
+		// `docs/DECISIONS.md`.
 		return UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
 			Tag,
-			Row.DurationSeconds * Split.Longer
+			(Seconds > 0.0f ? Seconds : Row.DurationSeconds) * Split.Longer
 				* AppliedDurationMultiplier(Instigator, Skill),
 			Split.Strength);
 	}

@@ -1224,6 +1224,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// write, the floating number, the leech and everything else that asks
 			// what the blow dealt.
 			const FCataclysmDamageResult& Outcome = Resolved;
+			// WHETHER THIS IS THE ATTACKER'S FIRST BLOW TO GET THROUGH, from the
+			// record below, carried to the announcement. Issue #1833 group E part 1.
+			bool bFirstFromAttacker = false;
 
 			// RECORDED ON THE CHARACTER, SO THE BLOW'S SENDER CAN LEARN WHAT
 			// BECAME OF IT. Issue #1156. Everything above this line happens
@@ -1343,7 +1346,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Cast<UCataclysmAbilitySystemComponent>(
 							GetOwningAbilitySystemComponent()))
 				{
-					Struck->NoteStruckBy(
+					bFirstFromAttacker = Struck->NoteStruckBy(
 						UCataclysmTargeting::AbilitySystemOf(
 							UCataclysmCombatEvents::AttackerOf(
 								Data.EffectSpec.GetContext())),
@@ -1540,7 +1543,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// first. `NoteBlow` builds nothing when nothing listens.
 			UCataclysmCombatEvents::NoteBlow(
 				Data, Hit, Outcome, AssetTags,
-				/*bLethal=*/bWouldKill && !bHeldBySigil);
+				/*bLethal=*/bWouldKill && !bHeldBySigil, bFirstFromAttacker);
 
 			if (ToHealth > 0.0f)
 			{

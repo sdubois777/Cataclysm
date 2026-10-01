@@ -2480,6 +2480,132 @@ class TestGadgetDestroyedAndResourceConsumed:
         assert not {"gadget_destroyed", "resource_consumed"} & set(gen.HIT_FIRED_EVENTS)
 
 
+class TestApplyStatusAndItsEvents:
+    """A status applied to the other character of an event, a chance or for
+    stated seconds, named in the Ailment column; and the event `first_hit_dealt`.
+    Issue #1833 group E part 1, ruled 2026-10-01: "Retaliation damage has a
+    20%-40% chance to stagger the attacker" and "Retaliation damage applies a 2-4
+    second slow to the attacker"."""
+
+    STAGGER_WORDS = "Retaliation damage has a 20%-40% chance to stagger the attacker"
+    STAGGER = gen.row_name("Positive", STAGGER_WORDS[:48])
+    SLOW_WORDS = "Retaliation damage applies a 2-4 second slow to the attacker"
+    SLOW = gen.row_name("Positive", SLOW_WORDS[:48])
+    GADGET_WORDS = "Gadgets apply a 1-2 second stagger to enemies they hit, once every 5 seconds"
+    GADGET = gen.row_name("Positive", GADGET_WORDS[:48])
+    OVER_WORDS = "Retaliation damage has a 120% chance to stagger the attacker"
+    OVER = gen.row_name("Positive", OVER_WORDS[:48])
+    LONG_WORDS = "Retaliation damage applies a 12 second slow to the attacker"
+    LONG = gen.row_name("Positive", LONG_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [STAGGER_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [SLOW_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         None, None, None, None],
+        [GADGET_WORDS, "Generic", 4, "Type.Deployable", None,
+         None, None, None, None],
+        [OVER_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         None, None, None, None],
+        [LONG_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "status.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def stagger(self, tmp_path, changes):
+        values = {"Enchantment": self.STAGGER, "Effect": self.STAGGER_WORDS,
+                  "Action": "apply_status", "Action Event": "retaliation_dealt",
+                  "Ailment": "Stagger", "Value Low": 20, "Value High": 40}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def slow(self, tmp_path, changes):
+        values = {"Enchantment": self.SLOW, "Effect": self.SLOW_WORDS,
+                  "Action": "apply_status_seconds", "Action Event": "retaliation_dealt",
+                  "Ailment": "Cripple", "Value Low": 2, "Value High": 4}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_chance_row_is_carried_through_with_its_status(self, tmp_path):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["Ailment"]) == (
+            "apply_status", "retaliation_dealt", 20.0, 40.0, "", "Stagger")
+
+    def test_a_seconds_row_is_carried_through_with_its_status(self, tmp_path):
+        out = gen.enchantment_effects(self.slow(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["Ailment"]) == ("apply_status_seconds", 2.0, 4.0, "Cripple")
+
+    def test_retaliation_is_hit_fired_so_a_status_takes_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_a_stated_trigger_cooldown_is_kept(self, tmp_path):
+        out = gen.enchantment_effects(self.slow(tmp_path, {
+            "Enchantment": self.GADGET, "Effect": self.GADGET_WORDS,
+            "Action Event": "deployable_hit", "Ailment": "Stagger",
+            "Value Low": 1, "Value High": 2, "Trigger Cooldown": 5}))
+        assert out[0]["TriggerCooldown"] == 5.0
+
+    @pytest.mark.parametrize("status", ["Bleed", "Cripple", "Random Debuff"])
+    def test_a_chance_row_may_name_an_ailment_or_the_random_debuff(self, tmp_path, status):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": status}))
+        assert out[0]["Ailment"] == status
+
+    def test_the_first_hit_is_an_event_a_status_may_hang_on(self, tmp_path):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {"Action Event": "first_hit_dealt"}))
+        assert out[0]["ActionEvent"] == "first_hit_dealt"
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_the_first_hit_is_an_event_the_game_fires_and_a_hit(self):
+        assert "first_hit_dealt" in gen.ACTION_ONLY_EVENTS
+        assert "first_hit_dealt" in gen.HIT_FIRED_EVENTS
+
+    def test_a_status_row_with_no_status_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": None}))
+
+    def test_a_status_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": "Frostbite"}))
+
+    def test_a_stun_is_refused_because_only_the_random_debuff_reaches_it(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": "Stun"}))
+
+    def test_seconds_for_a_status_whose_duration_cannot_be_stated_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.slow(tmp_path, {"Ailment": "Bleed"}))
+
+    def test_a_status_on_an_event_naming_nobody_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only an event naming"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Action Event": "block"}))
+
+    def test_a_chance_past_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.enchantment_effects(self.stagger(tmp_path, {
+                "Enchantment": self.OVER, "Effect": self.OVER_WORDS,
+                "Value Low": 120, "Value High": 120}))
+
+    def test_seconds_past_the_bound_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 10"):
+            gen.enchantment_effects(self.slow(tmp_path, {
+                "Enchantment": self.LONG, "Effect": self.LONG_WORDS,
+                "Value Low": 12, "Value High": 12}))
+
+    def test_a_status_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Fraction Of": "maximum"}))
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
