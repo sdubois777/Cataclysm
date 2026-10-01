@@ -152,6 +152,36 @@ placed under a creature by hand to be eaten. **That creatures walk to loot in pl
 Two Python checks: the row still says "actively seek out", "consume dropped items", "denying players their rewards" and
 "stronger with each item eaten"; and its setter writes its own key of the damage map.
 
+**A FAULT AND A TEST FOUND BY GUARD PROOF Pa, 2026-09-30, fixed in the window as the coordinating session ruled.**
+`FamishedBeastsARungChangeKeepsTheDropsShare` printed 1440 where it expected 1200: the drops' fifth went on twice. A
+diagnostic run, never committed, printed:
+
+```
+RUNG_DIAG before: eater max=1200.000 rung=0 | fasting max=1000.000 rung=0
+RUNG_DIAG after: eater max=1440.000 rung=1 drops=2 | fasting max=1000.000 rung=1
+RUNG_DIAG placed: class=CataclysmBruteCharacter own=549.000 with_share=658.800 after_rung_change=1015.650
+```
+
+**The assumption.** After a rung change this rule's fresh path takes nothing off before putting its share back,
+because the rung change rewrote the maximum. `ApplyStartingAttributes` rewrites it only when the creature has a
+starting maximum, set by `SetHealth`. A floor creature has one: the placed Brute's 549 became 1015.65, its new rung's
+figure with the share gone. The test's Imps, made by `SpawnImpWithHealth`, had none, so their maximum stayed and the
+share went on again. Three other rules make the same assumption and are right for the same reason: Carrion Feast's
+feeder branch in `PutTheHealthSharesBack`, Soul Harvest's `ApplySoulHarvestFigures` and Nothing Is Forgotten's
+`ApplyNothingIsForgottenFigures`.
+
+**The sweep of every creature play spawns**, for whether it has a starting maximum before a rung change can reach it:
+`SpawnPlacedCreature` through `ApplyDesignedStats` (every floor creature and every rule that spawns through it), the
+rule-made floor sources, phantasms, carcass feeders and the sandbox's spawns all call `SetHealth`; Subjugate spawns
+nothing. **Call the Damned's Imps did not**, and Volatile Evolution and Famished Beasts reach every creature in the
+world, so a called Imp that ate and then mutated took the share twice, and mutated without its new rung's health. The
+called Imp now gets `SetHealth` with the maximum it arrived with, so its health in play does not change; the test
+`Cataclysm.Gatekeeper.ACalledImpHasAStartingMaximumSoARungChangeRewritesIt` checks it. A creature restored from a save
+has none either, but restoring creatures has no caller in play; the coordinating session opens an issue for it.
+
+**The test now makes its Imps as play does**, with `SetHealth`. **Proof Pa is recorded as not a proof and is not
+rerun**; the fix is a commit on top of `feat/famished-beasts-2`, and Pb and Pc ran there.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one editor window

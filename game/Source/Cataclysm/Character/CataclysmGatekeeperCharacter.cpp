@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
 #include "Animation/AnimSequence.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmImpCharacter.h"
@@ -547,6 +549,16 @@ void ACataclysmGatekeeperCharacter::UseEnemyAbility(
 			if (!Imp)
 			{
 				continue;
+			}
+
+			// A STARTING MAXIMUM, AS EVERY OTHER CREATURE PLAY SPAWNS HAS ONE: the maximum it arrived with, so its
+			// health in play does not change. Without it a rung change left its maximum where it was -- Volatile
+			// Evolution raised its rung without its rung's health -- and a rule that puts its health share back after
+			// a rung change put it on twice. Found by the sweep of every creature spawn that Famished Beasts' proof Pa
+			// started, 2026-09-30.
+			if (const UAbilitySystemComponent* Abilities = Imp->GetAbilitySystemComponent())
+			{
+				Imp->SetHealth(Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
 			}
 
 			CalledImps.Add(Imp);

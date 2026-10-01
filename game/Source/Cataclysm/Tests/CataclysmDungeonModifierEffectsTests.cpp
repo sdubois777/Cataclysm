@@ -37923,6 +37923,11 @@ bool FCataclysmFamishedBeastsRungTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// MADE AS PLAY MAKES A CREATURE, WITH A STARTING MAXIMUM, so the rung change below rewrites the maximum as it does in
+	// play. `SpawnImpWithHealth` writes the attribute only, and a rung change then left the maximum where it was; a
+	// diagnostic run on 2026-09-30 showed it, and showed a floor creature's maximum rewritten.
+	Eater->SetHealth(1000.0f);
+	Fasting->SetHealth(1000.0f);
 	ADropAt(World, Eater->GetActorLocation(), false);
 	Beat(Mode, 1);
 	ADropAt(World, Eater->GetActorLocation(), false);
