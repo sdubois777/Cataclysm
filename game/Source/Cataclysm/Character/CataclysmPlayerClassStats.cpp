@@ -416,10 +416,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmVitalAttributeSet where a blow takes its chance. Issue
 		// #1833: "Your critical strike chance cannot exceed 30%-50%".
 		TEXT("max_crit_chance"),
-		// The share of its maximum the energy shield regenerates to, read in
-		// UCataclysmRegeneration::ApplyStep. Issue #1833: "Your energy shield
-		// cannot recharge above 50% of its maximum".
-		TEXT("energy_shield_recharge_ceiling"),
+		// The share of its maximum the energy shield may not regenerate into,
+		// read in UCataclysmRegeneration::ApplyStep. Issue #1833: "Your energy
+		// shield cannot recharge above 50% of its maximum".
+		TEXT("energy_shield_recharge_ceiling_reduction"),
 		// The share of a kill's experience granted, read by
 		// ACataclysmPlayerState::ExperienceAfterGain. Issue #1833: "Kills no
 		// longer generate any experience".

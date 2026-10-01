@@ -131,13 +131,14 @@ public:
 	static const TCHAR* ManaRegenRestoresShieldStat;
 
 	/**
-	 * The share of its maximum the energy shield may regenerate to, as a
-	 * percentage over a base of 100. Issue #1833: "Your energy shield cannot
-	 * recharge above 50% of its maximum" is flat -50. Read in the regeneration
-	 * step alone; no attribute, so it is in
-	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 * How many percentage points of its maximum the energy shield may NOT
+	 * regenerate into; the shield regenerates to what is left of 100. Issue
+	 * #1833: "Your energy shield cannot recharge above 50% of its maximum" is
+	 * flat 50, the shape `healing_ceiling_reduction` has, so nothing reaching
+	 * it means no ceiling. Read in the regeneration step alone; no attribute,
+	 * so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
 	 */
-	static const TCHAR* EnergyShieldRechargeCeilingStat;
+	static const TCHAR* EnergyShieldRechargeCeilingReductionStat;
 
 	/**
 	 * What share of its usual rate an energy shield recharges at during the

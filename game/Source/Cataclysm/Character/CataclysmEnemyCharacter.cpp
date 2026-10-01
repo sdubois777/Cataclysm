@@ -323,14 +323,13 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		{
 			ACataclysmPlayerState* State =
 				Watching->GetPlayerState<ACataclysmPlayerState>();
+			// LESS WHAT THE PLAYER'S OWN STATS HOLD BACK. Issue #1833: "Kills no
+			// longer generate any experience". `GrantExperience` stays the first
+			// thing inside the gate, which a Python test reads as text.
 			if (State && bPays)
 			{
-				const int32 Score = UCataclysmEnemyScore::ScoreFor(
-					UCataclysmEnemyScore::FloorIn(World), RarityStep);
-
-				// LESS WHAT THE PLAYER'S OWN STATS HOLD BACK. Issue #1833: "Kills
-				// no longer generate any experience".
-				State->GrantExperience(State->ExperienceAfterGain(Score));
+				State->GrantExperience(State->ExperienceAfterGain(UCataclysmEnemyScore::ScoreFor(
+					UCataclysmEnemyScore::FloorIn(World), RarityStep)));
 			}
 
 			// AND A KILL CLEARS WHAT THE KILLER OWES. Issue #997. The
