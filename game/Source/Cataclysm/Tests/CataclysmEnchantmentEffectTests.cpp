@@ -10289,15 +10289,19 @@ bool FCataclysmFloorTimeRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorsClearedRowTest,
-	"Cataclysm.Enchantments.TheFloorsClearedRowRaisesTheArmorTheSheetShows",
+	"Cataclysm.Enchantments.TheFloorsClearedRowRaisesTheArmorABlowReads",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * "Your armor is increased by 1%-2% for every dungeon floor cleared this run",
- * worn at the top on a helm granting 200 armour: two clears raise the Armor
- * ATTRIBUTE, which the character sheet reads, to what a blow asks for. Issue
- * #1833: a blow reads armour live, and the refresh a clear makes is for the
- * sheet alone, ruled 2026-09-30.
+ * worn at the top on a helm granting 200 armour: two clears add 4 points to
+ * armour's increases, and the armour a blow asks for rises with them. Issue
+ * #1833, `armor` scaled by `floors_cleared`.
+ *
+ * THE BLOW'S FIGURE AND NOT THE SHEET'S, ruled 2026-09-30 after this test's first
+ * run. The character sheet reads the Armor attribute, and
+ * `UCataclysmPlayerClassStats::ApplyTo` resolves each stat with no state, so no
+ * refresh can put a state-scaled row on the sheet: a known limit.
  */
 bool FCataclysmFloorsClearedRowTest::RunTest(const FString&)
 {
@@ -10314,17 +10318,23 @@ bool FCataclysmFloorsClearedRowTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const FGameplayAttribute Armor = UCataclysmCombatAttributeSet::GetArmorAttribute();
-	const float Before = Wearing.ASC->GetNumericAttribute(Armor);
+	const FName Armor(TEXT("armor"));
+	FCataclysmStatBreakdown Before;
+	if (!TestTrue(TEXT("armour has a stat line"),
+				  Wearing.ASC->StatBreakdownForSkill(Armor, FGameplayTagContainer(), Before)))
+	{
+		return false;
+	}
 
 	Wearing.State->NoteFloorCleared();
 	Wearing.State->NoteFloorCleared();
 
-	const float After = Wearing.ASC->GetNumericAttribute(Armor);
-	const float Live = Wearing.ASC->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(), After);
-	TestTrue(*FString::Printf(TEXT("the sheet's armour rose with two clears: %.2f to %.2f"), Before, After),
-			 After > Before + 1.0f);
-	TestEqual(TEXT("and it is what a blow reads"), After, Live, 0.01f);
+	FCataclysmStatBreakdown After;
+	Wearing.ASC->StatBreakdownForSkill(Armor, FGameplayTagContainer(), After);
+	TestEqual(TEXT("two clears at 2% a floor: 4 more points of increase"),
+			  After.SumOfIncreases - Before.SumOfIncreases, 4.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("and the armour a blow reads rose: %.2f to %.2f"), Before.Final, After.Final),
+			 After.Final > Before.Final + 1.0f);
 	return true;
 }
 

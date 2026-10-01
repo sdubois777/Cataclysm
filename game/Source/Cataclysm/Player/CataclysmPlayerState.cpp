@@ -230,14 +230,6 @@ float ACataclysmPlayerState::SecondsOnFloor(float WorldSeconds) const
 void ACataclysmPlayerState::NoteFloorCleared()
 {
 	FloorsClearedThisRun = FloorsClearedThisRun < MAX_int32 ? FloorsClearedThisRun + 1 : FloorsClearedThisRun;
-
-	// FOR THE SHEET ONLY: the Armor attribute a row scaled by this count moves
-	// is written by a refresh, and a blow already reads the live figure.
-	const ACataclysmPlayerCharacter* Mine = GetPawn<ACataclysmPlayerCharacter>();
-	if (UCataclysmEquipmentComponent* Gear = Mine ? Mine->GetEquipment() : nullptr)
-	{
-		Gear->RefreshAttributes(GetCataclysmAbilitySystemComponent());
-	}
 }
 
 void ACataclysmPlayerState::NoteKill()

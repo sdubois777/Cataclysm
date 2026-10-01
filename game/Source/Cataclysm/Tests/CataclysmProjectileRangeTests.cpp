@@ -16,6 +16,7 @@
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
+#include "Tests/CataclysmTestWorld.h"
 
 /**
  * Projectile speed, a skill's range, and a gadget's attack range. Issue #1833,
@@ -248,7 +249,14 @@ bool FCataclysmGadgetRangeTest::RunTest(const FString&)
 {
 	using namespace CataclysmProjectileRangeTest;
 
-	UWorld* World = UWorld::CreateWorld(EWorldType::Game, /*bInformEngineOfWorld=*/false);
+	// A WORLD THAT HAS BEGUN PLAY, so a summoned minion has its attribute sets
+	// before its health is written. The first run of this test used a bare
+	// world and failed on an ensure in ACataclysmMinion::Spawn.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FCaster Plain(World);

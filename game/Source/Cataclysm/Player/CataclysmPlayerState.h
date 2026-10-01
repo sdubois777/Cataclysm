@@ -204,10 +204,12 @@ public:
 	 * "Your armor is increased by 1%-2% for every dungeon floor cleared this
 	 * run". "This run" is since the session began, as for the kills.
 	 *
-	 * AND IT REFRESHES THE CHARACTER'S ATTRIBUTES, FOR THE CHARACTER SHEET
-	 * ONLY. A blow asks for armour through the stat pipeline each time, so a
-	 * row scaled by this count reaches play at once; the sheet reads the Armor
-	 * attribute, which is written only by a refresh. Ruled 2026-09-30.
+	 * NOTHING IS REFRESHED HERE. A blow asks for armour through the stat
+	 * pipeline each time, so a row scaled by this count reaches play at once.
+	 * The character sheet reads the Armor attribute, and a refresh cannot put a
+	 * state-scaled row there: `UCataclysmPlayerClassStats::ApplyTo` resolves each
+	 * stat with no state. A known limit, ruled 2026-09-30; the sheet shows the
+	 * unscaled armour, as it does for every state-scaled stat but maximum health.
 	 */
 	void NoteFloorCleared();
 
