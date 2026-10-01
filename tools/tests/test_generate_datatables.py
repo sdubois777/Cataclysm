@@ -1840,7 +1840,7 @@ class TestScaleStepHigh:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High"]
+              "Condition Value High", "Trigger Cooldown"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -2046,7 +2046,7 @@ class TestTriggerCooldownAndRandomDot:
         [BLOCK_WORDS, "Generic", 4, "Stat.Defense.Block", None,
          None, None, None, None],
     ]
-    HEADER = TestScaleStepHigh.HEADER + ["Trigger Cooldown"]
+    HEADER = TestScaleStepHigh.HEADER
 
     def book(self, tmp_path, values, header=None):
         header = header or self.HEADER
@@ -2074,9 +2074,10 @@ class TestTriggerCooldownAndRandomDot:
         out = gen.enchantment_effects(self.heal(tmp_path, {}))
         assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
 
-    def test_a_sheet_without_the_column_gives_the_same_default(self, tmp_path):
-        out = gen.enchantment_effects(self.heal(tmp_path, {}, TestScaleStepHigh.HEADER))
-        assert out[0]["TriggerCooldown"] == 0.25
+    def test_a_sheet_without_the_column_is_refused(self, tmp_path):
+        header = [h for h in self.HEADER if h != "Trigger Cooldown"]
+        with pytest.raises(gen.DataError, match="'Trigger Cooldown' column"):
+            gen.enchantment_effects(self.heal(tmp_path, {}, header))
 
     def test_an_explicit_nought_is_none(self, tmp_path):
         out = gen.enchantment_effects(self.heal(tmp_path, {"Trigger Cooldown": 0}))
@@ -2168,7 +2169,7 @@ class TestEnchantmentEffects:
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
-              "Condition Value High"]
+              "Condition Value High", "Trigger Cooldown"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 

@@ -260,6 +260,11 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # Issue #1833, every Nth. An action row has no stat, so its ACTION is the
     # key here, which the two readers below use in its place.
     "nth_attack_no_damage": {"no": 100.0},
+    # "APPLY" AND "APPLIES" ARE 100 ON `apply_random_dot`, whose value is a
+    # chance: "Critical strikes apply a random DoT to the target" applies one
+    # every time. Issue #1833 group D. One word for each of its two rows'
+    # sentences, so each is needed by a row.
+    "apply_random_dot": {"apply": 100.0, "applies": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -523,8 +528,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 412 over 334: four rows on four enchantments.
 #: AND 421 OVER 342 SINCE THE SCALES,
 #: issue #1833, from 416 over 338: five rows on four enchantments.
-AUTHORED_ROWS = 421
-AUTHORED_ENCHANTMENTS = 342
+#: AND 423 OVER 344 SINCE THE RANDOM DAMAGE OVER TIME,
+#: issue #1833 group D, from 421 over 342: two rows on two enchantments.
+AUTHORED_ROWS = 423
+AUTHORED_ENCHANTMENTS = 344
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

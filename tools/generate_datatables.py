@@ -1629,13 +1629,10 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: while the design workbook is with another session.
 #: THEY LEFT with the four condition rows, and the table is empty again.
 #: TRIGGER COOLDOWN JOINED ON 2026-09-30 for issue #1833 group D, built ahead
-#: of its rows while the design workbook is with another session, and leaves
-#: with them. Absent, every row takes the default the column's empty cell does.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Trigger Cooldown": "#1833",
-    },
-}
+#: of its rows while the design workbook is with another session.
+#: IT LEFT with the two random damage over time rows, and the table is empty
+#: again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):

@@ -351,7 +351,7 @@ Positive_Poison_effects_you_apply_deal_30_60_increased#1,Positive_Poison_effects
 Positive_Bleed_stacks_you_apply_deal_30_60_increased_da#1,Positive_Bleed_stacks_you_apply_deal_30_60_increased_da,dot_damage,increased,30.0,60.0,Keyword.DoT.Bleed,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
 Positive_Poison_stacks_you_apply_have_30_60_increased_d#1,Positive_Poison_stacks_you_apply_have_30_60_increased_d,dot_duration,increased,30.0,60.0,Keyword.DoT.Poison,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
 Positive_Your_first_hit_against_each_enemy_in_a_combat_ig#1,Positive_Your_first_hit_against_each_enemy_in_a_combat_ig,penetration,flat,100.0,100.0,,target_not_yet_struck_by_you,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
-Negative_Every_hit_you_take_deals_an_additional_5_10_of#1,Negative_Every_hit_you_take_deals_an_additional_5_10_of,,,-5.0,-10.0,,,0.0,,0.0,health,hit_taken,maximum,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25
+Negative_Every_hit_you_take_deals_an_additional_5_10_of#1,Negative_Every_hit_you_take_deals_an_additional_5_10_of,,,-5.0,-10.0,,,0.0,,0.0,health,hit_taken,maximum,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
 Positive_Energy_shield_regeneration_begins_immediately_af#1,Positive_Energy_shield_regeneration_begins_immediately_af,shield_recharge_has_no_delay,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
 Negative_Your_minions_have_20_50_less_hp#1,Negative_Your_minions_have_20_50_less_hp,minion_health,more,-20.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
 Positive_Using_your_ultimate_ability_resets_all_other_ski#1,Positive_Using_your_ultimate_ability_resets_all_other_ski,,,100.0,100.0,Slot.Ultimate,,0.0,,0.0,cooldown_reset_others,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
@@ -420,3 +420,5 @@ Positive_Your_armor_is_increased_by_1_2_for_every_dunge#1,Positive_Your_armor_is
 Positive_Your_retaliation_damage_is_increased_by_2_4_fo#1,Positive_Your_retaliation_damage_is_increased_by_2_4_fo,retaliation,increased,2.0,4.0,,,0.0,armor,100.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
 Positive_For_every_unique_Cataclysm_boss_defeated_gain_5#1,Positive_For_every_unique_Cataclysm_boss_defeated_gain_5,attack_damage,more,5.0,10.0,,,0.0,cataclysm_bosses_defeated,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
 Positive_For_every_unique_Cataclysm_boss_defeated_gain_5#2,Positive_For_every_unique_Cataclysm_boss_defeated_gain_5,spell_damage,more,5.0,10.0,,,0.0,cataclysm_bosses_defeated,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0
+Positive_Critical_strikes_apply_a_random_DoT_to_the_targe#1,Positive_Critical_strikes_apply_a_random_DoT_to_the_targe,,,100.0,100.0,,,0.0,,0.0,apply_random_dot,critical_strike,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25
+Positive_Your_retaliation_damage_also_applies_a_random_Do#1,Positive_Your_retaliation_damage_also_applies_a_random_Do,,,100.0,100.0,,,0.0,,0.0,apply_random_dot,retaliation_dealt,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25
