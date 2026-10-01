@@ -702,7 +702,7 @@ Run in the window of 2026-09-30, on `feat/seven-stack-2` moved onto development 
 
 The window's builds caught two faults, one in its first build and one in a proof's build, and its proofs and a scan found five tests that could not pass, four by proofs and one by the scan; each is described in the entry it belongs to, and each was fixed in the window as the coordinating session ruled.
 
-This change's guard proofs, with the commit each ran at and the tests the run named:
+This change's guard proofs, each with its registered prefix, as printed:
 
 - **Pa PROVED**: `RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor` failed with the break in; passed restored.
 - **Pb PROVED**: the same test failed with the break in; passed restored.
