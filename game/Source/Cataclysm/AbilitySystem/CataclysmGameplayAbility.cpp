@@ -504,6 +504,16 @@ void UCataclysmGameplayAbility::ApplyCost(
 		AbilitySystem->ApplyModToAttribute(
 			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
 			EGameplayModOp::Additive, -Fervour);
+
+		// A CLASS-RESOURCE COST PAID IS A RESOURCE CONSUMED, once per payment
+		// whatever its size. Issue #1833 group D part 5, ruled 2026-10-01. The mana
+		// below is not: mana is every class's pool, and counting it would fire on
+		// every cast.
+		if (UCataclysmAbilitySystemComponent* Paying =
+				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			Paying->NoteResourceConsumed(Fervour, &SkillTagsForStats());
+		}
 	}
 
 	const float Cost = ManaCostFor(AbilitySystem);

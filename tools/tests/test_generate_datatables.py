@@ -2411,6 +2411,75 @@ class TestRemainingDamageAndTheAilmentColumn:
             gen.enchantment_effects(self.death(tmp_path, {"Fraction Of": "maximum"}))
 
 
+class TestGadgetDestroyedAndResourceConsumed:
+    """Two events and the rows they carry. Issue #1833 group D part 5, ruled
+    2026-10-01: "When any of your gadgets is destroyed, all remaining gadgets gain
+    30%-50% increased damage for 5 seconds", "Consuming a resource stack or charge
+    grants 5%-10% increased damage for 3 seconds" and "Each resource or charge
+    consumed restores 1%-3% of your maximum HP"."""
+
+    GADGET_WORDS = ("When any of your gadgets is destroyed, all remaining gadgets gain "
+                    "30%-50% increased damage for 5 seconds")
+    GADGET = gen.row_name("Positive", GADGET_WORDS[:48])
+    HEAL_WORDS = "Each resource or charge consumed restores 1%-3% of your maximum HP"
+    HEAL = gen.row_name("Positive", HEAL_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [GADGET_WORDS, "Generic", 4, "Type.Deployable", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [HEAL_WORDS, "Generic", 4, "Stat.Defense.Life", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "gadget_resource.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def gadget(self, tmp_path, changes):
+        values = {"Enchantment": self.GADGET, "Effect": self.GADGET_WORDS,
+                  "Stat": "attack_damage", "Value Kind": "increased",
+                  "Value Low": 30, "Value High": 50, "Required Tags": "Type.Deployable",
+                  "Scale": "own_stacks", "Scale Step": 1,
+                  "Action Event": "gadget_destroyed", "Stack Seconds": 5,
+                  "Scale Max Steps": 1}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def heal(self, tmp_path, changes):
+        values = {"Enchantment": self.HEAL, "Effect": self.HEAL_WORDS,
+                  "Action": "health", "Action Event": "resource_consumed",
+                  "Value Low": 1, "Value High": 3}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_an_own_stack_on_a_gadget_destroyed_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.gadget(tmp_path, {}))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["RequiredTags"],
+                out[0]["StackSeconds"], out[0]["ScaleMaxSteps"]) == (
+            "own_stacks", "gadget_destroyed", "Type.Deployable", 5.0, 1)
+
+    def test_a_gadget_destroyed_is_not_hit_fired_so_takes_no_default_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "gadget_destroyed"}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_heal_on_a_resource_consumed_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "health", "resource_consumed", 1.0, 3.0, "maximum", 0.0)
+
+    def test_both_events_are_ones_an_action_row_may_name(self):
+        assert {"gadget_destroyed", "resource_consumed"} <= gen.action_events()
+
+    def test_neither_event_is_hit_fired(self):
+        assert not {"gadget_destroyed", "resource_consumed"} & set(gen.HIT_FIRED_EVENTS)
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
