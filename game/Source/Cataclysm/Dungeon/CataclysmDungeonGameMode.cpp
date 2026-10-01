@@ -7853,6 +7853,13 @@ void ACataclysmDungeonGameMode::StepPlayersFollowers()
 			{
 				SetRuleResistance(Thrall, TrialOfEnduranceResistanceSource, 0.0f, 1.0f);
 			}
+			// INFERNAL BEACONS' STACKS, given while it was hostile. The beacons' sweep acts
+			// only on creatures hostile to the player, so it never puts this back itself.
+			if (!FMath::IsNearlyEqual(
+					Thrall->DamageMultiplierFrom(ACataclysmEnemyCharacter::InfernalBeaconsDamageSource), 1.0f))
+			{
+				Thrall->SetInfernalBeaconsDamageMultiplier(1.0f);
+			}
 			// THE PLAYER'S CONTAGION STACKS FROM ITS HOSTILE TOUCHES END TOO: the
 			// row means the enemy that applied them, and the only other way to
 			// clear them would be to kill the player's own thrall.
