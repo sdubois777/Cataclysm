@@ -2,45 +2,64 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-30 — Living Pyre's health return stops at the healing ceiling, because every heal of health now asks one function where it must stop
+## 2026-09-30 — Living Pyre heals through the same function as every other heal, so the healing ceiling holds on it and its returned health removes Fervour; Wrung Out no longer charges at the ceiling
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (the new
-`UCataclysmRegeneration::HealthHealingCeiling`, which `TopUp` now asks),
-`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmAuraSkill::NoteBlowTaken` asks it
-too) and `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (one test). Issue
-[#1607](https://github.com/sdubois777/Cataclysm/issues/1607), ruled by the coordinating session on 2026-09-30.
+`UCataclysmRegeneration::HealthHealingCeiling`, which `TopUp` asks),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmAuraSkill::NoteBlowTaken` now
+heals through `TopUp`), `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp` (Wrung Out's check before
+it charges), `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (one test and one assertion) and
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (one test). Issues
+[#1607](https://github.com/sdubois777/Cataclysm/issues/1607) and
+[#1608](https://github.com/sdubois777/Cataclysm/issues/1608), ruled by the coordinating session on 2026-09-30.
 
 ### WHAT CHANGES IN PLAY
 
-**A character who cannot be healed above part of its maximum health now cannot be healed above it by Living
-Pyre either.** Point of No Return reads "You cannot be healed above 50% of your maximum health", and the
-enchantment rows that say "cannot be healed above" 60% or 75% write the same stat. Until this change the Fist
-Ultimate Living Pyre, which "returns health equal to 25% of the damage that hit dealt", healed past that
-ceiling, up to the maximum less what is reserved. A holder already above the ceiling gains nothing from a blow
-and is not pulled down to it.
+Three things change.
 
-### THE RULING
+1. **The healing ceiling now holds on Living Pyre.** Point of No Return reads "You cannot be healed above 50%
+   of your maximum health", and the enchantment rows that say "cannot be healed above" 60% or 75% write the
+   same stat. Until this change the Fist Ultimate Living Pyre, which "returns health equal to 25% of the
+   damage that hit dealt", healed past that ceiling, up to the maximum less what is reserved. A holder
+   already above the ceiling gains nothing from a blow and is not pulled down to it.
+2. **Health returned by Living Pyre now removes Fervour**, at the class's "Fervour lost to healing" rate,
+   like every other heal. For the Masochist that is one Fervour per 1% of maximum health returned. The
+   design's rule, "Healing removes Fervour at the same rate", names no source. Until this change the Pyre's
+   heal removed none, because it did not go through `TopUp`, which is where healing removes Fervour (issue
+   #954).
+3. **Wrung Out no longer charges for a heal that cannot happen.** "Killing an enemy spends 5 Fervour to
+   restore 1% of your maximum health per point" refused to charge only at full health. A player at the
+   healing ceiling, or with health reserved and at the unreserved maximum, paid five Fervour and was healed
+   by nothing. It now refuses when health is already as high as healing may bring it. The code's own comment
+   already said a restoration that restores nothing should cost nothing.
 
-"One function answers 'the most health this character may be healed to' (the healing ceiling, then
-reservation), used by both TopUp and Living Pyre's NoteBlowTaken." That function is `HealthHealingCeiling`:
-maximum health, times the share a caller allows (1 for every heal of health today), less the healing ceiling's
-reduction, and never above `UnreservedMaximumHealth`. `TopUp`'s health branch computed exactly this inline and
-now calls it, so no heal that already went through `TopUp` changes by a single number.
+### THE RULINGS
 
-**Issue [#1608](https://github.com/sdubois777/Cataclysm/issues/1608) is the two-route problem this closes for
-the ceiling.** It recorded that health was restored by two routes, `TopUp` and Living Pyre, and that each
-rule about healing had to be written into both. The ceiling is now written once. **Two rules are still written
-at both sites, and this change does not move them:** the received-healing reduction
-(`HealingReceivedReduction`, which `NoteBlowTaken` applies itself) and the held-swing forbid, which only `TopUp`
-applies. Living Pyre also does not empty Fervour for its healing, because it does not go through `TopUp`.
-Neither of the last two was ruled onto this skill.
+- "One function answers 'the most health this character may be healed to' (the healing ceiling, then
+  reservation)." That function is `HealthHealingCeiling`: maximum health, times the share a caller allows (1
+  for every heal of health today), less the healing ceiling's reduction, and never above
+  `UnreservedMaximumHealth`. `TopUp`'s health branch computed exactly this inline and now calls it, so no
+  heal that already went through `TopUp` changes by a single number.
+- On issue #1608: route Living Pyre's heal through `TopUp` itself, "so the healing-received reduction and the
+  held-swing forbid come with it". Then the ruling on the one part of `TopUp` that changes play, its Fervour
+  removal: "YES. The Pyre's returned health removes Fervour like every other heal ... a per-caller skip
+  switch would recreate the two-route problem #1608 describes."
+- On Wrung Out: "FOLD IT IN. It is the same 'most health this character may be healed to' question."
+
+**This closes issue #1608, the two-route problem.** It recorded that health was restored by two routes,
+`TopUp` and Living Pyre, so each rule about healing had to be written into both. Living Pyre now calls
+`TopUp`. Its own copy of the received-healing reduction is deleted, and every rule `TopUp` applies reaches
+it. Of those rules, the held-swing forbid comes with the route but never refuses the Pyre: only the
+Greatsword's The Whole Weight sets it, and a character holds one weapon. The Pyre passes no healing tags,
+as leech passes none, so no passive node is scoped to its heal.
 
 ### THE SWEEP FOR EVERY OTHER HEAL, 2026-09-30, AT `development` fce1ab9b
 
 The ruling asked for every other heal that stops at the unreserved maximum without the ceiling. **There was
-none besides Living Pyre.** Every other heal of a player's health goes through `TopUp` and so already read
+none besides Living Pyre.** Every other heal of a player's health already went through `TopUp` and so read
 the ceiling: health regeneration, life leech, potions, the pool actions, Wrung Out's restoration on a kill,
-Long Hold, and the Medic's pulse.
+Long Hold, and the Medic's pulse. Long Hold has the same full-health check as Wrung Out had, but it charges
+nothing, so at the ceiling it does nothing and costs nothing. It is left as it is.
 
 | Writes health directly | Reads the ceiling? | Why |
 | :-- | :-- | :-- |
@@ -54,11 +73,18 @@ history and stays as written.** Its table's Living Pyre row, "no, #1607", is the
 
 ### HOW IT IS CHECKED
 
-`Cataclysm.Skills.TheLivingPyreStopsAtTheHealingCeiling`: a holder with the ceiling reduced by 50, at 49,990
-of 100,000 health, takes a blow dealing 400; the Pyre returns 10, not 100, and health stops at 50,000. At
-60,000 a second blow returns nothing and leaves health at 60,000. The existing
-`Cataclysm.Skills.TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes` is the control: with no ceiling, the
-same blow still returns 100 and stops at the full 100,000.
+- `Cataclysm.Skills.TheLivingPyreStopsAtTheHealingCeiling`, new. A holder with the ceiling reduced by 50 is
+  at 49,990 of 100,000 health and takes a blow dealing 400. The Pyre returns 10, not 100, and health stops
+  at 50,000. At 60,000, a second blow returns nothing and leaves health at 60,000.
+- `Cataclysm.Skills.TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes`, one assertion added. With no
+  ceiling, the same blow still returns 100. With the Masochist's rate of one Fervour per 1% of maximum health
+  restored, the 100 returned (0.1% of 100,000) takes Fervour from 40 to 39.9.
+- `Cataclysm.Passives.WrungOutSpendsNothingAtTheHealingCeiling`, new. A real Ravager holding Wrung Out, at
+  half health with the ceiling at half, kills an enemy. It keeps all 50 Fervour, and its health does not
+  change.
+
+**On the owner's play-check list**, added by the coordinating session: Living Pyre on a Masochist, and
+whether its Fervour loss feels right.
 
 **Not built or run when this was written.** The build machine was held by another session; the run table
 follows when the window runs.

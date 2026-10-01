@@ -232,9 +232,11 @@ public:
 	 * No Return, and the enchantments that say "cannot be healed above"), and
 	 * never above what reservation leaves (issue #1833).
 	 *
-	 * EVERY HEAL ASKS THIS ONE FUNCTION, which is what issue #1608 lacked: health
-	 * was restored by two routes, `TopUp` and Living Pyre, and the ceiling sat on
-	 * one. A full refill on a new life is not healing and does not ask it.
+	 * `TopUp` ASKS IT FOR EVERY HEAL OF HEALTH, and every heal of a player's
+	 * health goes through `TopUp`; Living Pyre's was the last that did not, until
+	 * issue #1608. A caller that must know whether healing could do anything
+	 * before paying for it asks it too: Wrung Out, issue #1607. A full refill on
+	 * a new life is not healing and does not ask it.
 	 */
 	static float HealthHealingCeiling(const UAbilitySystemComponent& AbilitySystem,
 									  float CeilingShare = 1.0f);
