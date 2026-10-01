@@ -123,6 +123,8 @@ window B merged, with no conflict; window B and D3 share no file.
 
 Every broken file's hash was the same after its proof.
 
+---
+
 ## 2026-09-30 — Blood Price: every choice at a floor object costs 10% of current health and leaves a bleed of 0.25% of maximum health a second for the rest of the dungeon, at most ten
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, which choices
