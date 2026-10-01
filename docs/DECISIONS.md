@@ -75,7 +75,7 @@ both games give monsters and loot together, where this row says "either ... or";
 
 ### Tests
 
-Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `PandorasBox`:
+Five automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `PandorasBox`:
 
 - `PandorasBoxFiguresBoxesOddsRewardAndWaves`: three, one, even odds with 49.9 letting out the waves and 50 giving the
   reward, the Boss rung, three waves of four at 6 m.
@@ -90,9 +90,22 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.`, all named from `Pa
 - `PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother`: roll pinned at 25: no reward; four "Chaos Spawn", raised
   and paying; no second wave while the first stands; each wave killed brings the next, the panel counting; no fourth.
   Each creature is brought to one health before it is killed, since its rung is drawn.
+- `PandorasBoxASpawnThePlayerTakesLeavesItsWave`: the waves rolled; one taken loses "Chaos Spawn" and three stand,
+  without it; when the three die the second wave comes, with the thrall alive.
 
 One Python check: the row still says "random chests", " either ", " or ", "powerful rewards", "unleash waves" and
 "chaos-spawned enemies".
+
+### A player's thrall, ruled 2026-09-30
+
+Added when Group 2 moved onto development `fce1ab9b`, after issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202) let a player keep a thrall from floor to
+floor (pull request [#2185](https://github.com/sdubois777/Cataclysm/pull/2185)). **A creature of a wave the player takes is no longer a Chaos Spawn**: "Chaos Spawn" leaves
+its bar and `ChaosSpawnStanding()` leaves it out, through the two questions Battlefield Relics' entry names.
+
+**Judgement of this change, under the owner's delegation:** the next wave comes when the wave's other creatures are dead,
+without waiting for the one the player took. The ruling named the label and the count; the wave step reads its own list,
+so without this a thrall kept alive would hold the box's next wave back for as long as it lived. It follows the ruling
+for a Horde wave in the same change, that a thrall "does not stop ... a Horde wave from finishing".
 
 ### Not yet run
 

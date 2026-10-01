@@ -8561,7 +8561,8 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::ChaosSpawnStanding(
 		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Waves.Standing)
 		{
 			ACataclysmEnemyCharacter* Spawn = One.Get();
-			if (IsValid(Spawn) && !UCataclysmSkillEffects::IsDead(Spawn))
+			// NOT ONE THE PLAYER TOOK: a thrall has left the rule. Issue #1202, ruled 2026-09-30.
+			if (IsValid(Spawn) && !UCataclysmSkillEffects::IsDead(Spawn) && !DungeonGameModeIsAPlayersFollower(Spawn))
 			{
 				Standing.Add(Spawn);
 			}
@@ -8677,7 +8678,10 @@ void ACataclysmDungeonGameMode::StepPandorasBox()
 		const bool bAllDead = !Waves.Standing.ContainsByPredicate(
 			[](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One)
 			{
-				return IsValid(One.Get()) && !UCataclysmSkillEffects::IsDead(One.Get());
+				// A SPAWN THE PLAYER TOOK IS NOT STANDING IN ITS WAVE, or the next wave would wait on the player's own
+				// thrall: a judgement of this change, as the Horde wave's ruling of 2026-09-30 has it (issue #1202).
+				return IsValid(One.Get()) && !UCataclysmSkillEffects::IsDead(One.Get())
+					&& !DungeonGameModeIsAPlayersFollower(One.Get());
 			});
 		if (!bAllDead)
 		{
