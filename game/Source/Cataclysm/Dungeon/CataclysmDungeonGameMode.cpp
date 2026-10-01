@@ -88,6 +88,27 @@ namespace
 		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 		return Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
 	}
+
+	/**
+	 * Tell the first player's worn rows that a dungeon floor has started. Issue
+	 * #1833 group D part 2, ruled 2026-09-30: called after the floor's rules
+	 * reach the player in `StartPlay` and `GoToFloor`, and not on leaving the
+	 * dungeon, which also applies the rules and starts no floor. A Horde wave is
+	 * not a floor start. The first floor's `GoToFloor` runs before there is a
+	 * pawn, so it reaches nobody and `StartPlay`'s call is the one that counts.
+	 */
+	void DungeonGameModeRaiseFloorStart(UWorld* World)
+	{
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		ACataclysmPlayerCharacter* Player =
+			Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+		if (UCataclysmAbilitySystemComponent* Acting = Player
+				? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent())
+				: nullptr)
+		{
+			Acting->ActOnEvent(FName(TEXT("floor_start")));
+		}
+	}
 }
 
 namespace
@@ -1175,6 +1196,7 @@ void ACataclysmDungeonGameMode::StartPlay()
 	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
 	// Issue #41.
 	ApplyFloorRulesToPlayer();
+	DungeonGameModeRaiseFloorStart(GetWorld());
 
 	// AND A DEATH ANYWHERE ON THE FLOOR REACHES THE NIHIL'S EMBRACE'S CLEANSE.
 	// Issue #41, slice 2.
@@ -17539,6 +17561,7 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	EchoesThisFloor.Reset();
 
 	ApplyFloorRulesToPlayer();
+	DungeonGameModeRaiseFloorStart(GetWorld());
 
 	return true;
 }

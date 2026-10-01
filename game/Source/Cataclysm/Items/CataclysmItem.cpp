@@ -1123,6 +1123,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				Stack.StackCap = Effect->ScaleMaxSteps;
 				// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
 				Stack.EverySeconds = Effect->EverySeconds;
+				// AND THE THRESHOLD ITS EVENT CROSSES, AND A COOLDOWN ITS SENTENCE
+				// STATES. Issue #1833 group D part 2, ruled 2026-09-30: "When your
+				// health falls below 25%, you enter a 'Demonic Rage' ... (5 minute
+				// cd)". The generator allows an explicit cooldown on an own stack
+				// and writes none by default.
+				Stack.EventValue = Effect->EventValue;
+				Stack.TriggerCooldownSeconds = Effect->TriggerCooldown;
+				Stack.TriggerKey = FName(*FString::Printf(TEXT("%s:%s"),
+					*Stack.StackKey.ToString(), *Effect->ActionEvent));
 				// A COUNT OF HITS IN A ROW IS SCOPED BY THE ROW'S TAGS, ruled
 				// 2026-09-24: "each consecutive melee hit" counts melee hits
 				// only. An own stack's tags scope its stat and not its grant, the
@@ -1291,6 +1300,12 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.TriggerCooldownSeconds = Effect->TriggerCooldown;
 					Action.TriggerKey = FName(*FString::Printf(TEXT("%s:%s:%s"),
 						*Effect->Enchantment, *Effect->Action, *Effect->ActionEvent));
+					// AND THE THRESHOLD ITS EVENT CROSSES, and whether it lowers
+					// health to a share of its maximum. Issue #1833 group D part 2.
+					Action.EventValue = Effect->EventValue;
+					Action.bHealthCap = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::HealthCappedAtAction,
+						ESearchCase::IgnoreCase);
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

@@ -3717,6 +3717,23 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FName TriggerKey;
+
+	/**
+	 * The threshold `health_falls_below` crosses for this row, in percent of
+	 * maximum health, or 0. Issue #1833 group D part 2. Copied from the row's
+	 * `EventValue`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EventValue = 0.0f;
+
+	/**
+	 * Set, this action LOWERS HEALTH TO A SHARE OF ITS MAXIMUM and never raises
+	 * it: health becomes the lower of what it is and `Percent` of the maximum.
+	 * Issue #1833 group D part 2, ruled 2026-09-30, for "You start every dungeon
+	 * floor at 30%-50% of your maximum HP" on `floor_start`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bHealthCap = false;
 };
 
 /**
