@@ -11035,6 +11035,30 @@ int32 ACataclysmDungeonGameMode::InfernalSealPiecesNeeded() const
 	return UCataclysmDungeonModifierEffects::InfernalSealsPiecesNeeded(InfernalSealBearers.Num());
 }
 
+int32 ACataclysmDungeonGameMode::LightforgedWallsStanding() const
+{
+	// EVERY CREATURE THE FLOOR PLACED THAT STILL STANDS: not one raised by a rule, by either mark, nor one that cannot be
+	// hurt, nor the player's follower, so no creature the player can never kill holds the stairs. Not
+	// `FloorIsCleared`, which the Reaper and a Blood Bond's elite hold false for good (issue #2194).
+	int32 Standing = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !Enemy->bRaisedByARule
+			&& !CreaturesRaisedByARule.Contains(Enemy.Get()) && !Enemy->bCannotBeHurt
+			&& !DungeonGameModeIsAPlayersFollower(Enemy))
+		{
+			++Standing;
+		}
+	}
+	return Standing;
+}
+
+bool ACataclysmDungeonGameMode::LightforgedWallsSealTheStairs() const
+{
+	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::LightforgedWallsKey))
+		&& !FloorBrief.bWaveWalksIn && !IsOnTheLastFloor() && LightforgedWallsStanding() > 0;
+}
+
 bool ACataclysmDungeonGameMode::InfernalSealsSealTheStairs() const
 {
 	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::InfernalSealsKey))
@@ -11059,6 +11083,10 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	if (SanctionedPassageSealsTheStairs())
 	{
 		Sealing.Add(FName(Effects::SanctionedPassageKey));
+	}
+	if (LightforgedWallsSealTheStairs())
+	{
+		Sealing.Add(FName(Effects::LightforgedWallsKey));
 	}
 	return Sealing;
 }
@@ -11896,6 +11924,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bInfernalSeals = !InfernalSealBearers.IsEmpty();
 	// AND SANCTIONED PASSAGE, WHILE ITS GATE STANDS OR A CREATURE IT CALLED HAS NOT HAD ITS SIGHT BACK. #1820, #41.
 	const bool bSanctionedPassage = DivineGateNow() != nullptr || !DivineGateCalled.IsEmpty();
+	// AND LIGHTFORGED WALLS, ON EVERY FLOOR CARRYING IT, for the panel's count. Issues #1820 and #41.
+	const bool bLightforgedWalls =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::LightforgedWallsKey));
 	// AND WINGS OF THE HOST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
 	// and #41.
 	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
@@ -12068,7 +12099,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPactOfTemptation
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
-		&& !bInfernalSeals && !bSanctionedPassage)
+		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls)
 	{
 		return;
 	}
@@ -12265,6 +12296,18 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bSanctionedPassage)
 	{
 		StepSanctionedPassage(Player);
+	}
+
+	// AND LIGHTFORGED WALLS' COUNT OF THE STANDING, shown when it changed. The seal itself is asked when the stairs are
+	// taken. Issues #1820 and #41.
+	if (bLightforgedWalls)
+	{
+		const int32 WallsStanding = LightforgedWallsStanding();
+		if (WallsStanding != LightforgedWallsPanelCount)
+		{
+			LightforgedWallsPanelCount = WallsStanding;
+			RefreshFloorModifierPanel();
+		}
 	}
 
 	// AND WINGS OF THE HOST, WHICH PLACES ZONES. Issues #1820 and #41.
@@ -16188,6 +16231,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 													FMath::FloorToInt(DivineGateSeconds), PassageSeconds)
 								  : FString::Printf(TEXT("sanctioned passage: channel %d s at the Divine Gate"),
 													PassageSeconds));
+	}
+
+	// AND HOW MANY OF THE CREATURES THE FLOOR PLACED STILL STAND BEFORE LIGHTFORGED WALLS OPENS. Issues #1820 and #41.
+	const FName WallsRow(Effects::LightforgedWallsKey);
+	if (FloorBrief.Modifiers.Contains(WallsRow))
+	{
+		Counting.Add(WallsRow, FloorBrief.bWaveWalksIn
+								? FString(TEXT("lightforged walls: no stairs on a Horde floor"))
+								: LightforgedWallsSealTheStairs()
+								? FString::Printf(TEXT("lightforged walls: %d still standing"), LightforgedWallsStanding())
+								: FString(TEXT("lightforged walls: open")));
 	}
 
 	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.

@@ -42678,4 +42678,234 @@ bool FCataclysmPassageHordeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Celestial_Lightforged_Walls. Issues #1820 and #41. Partly built, ruled 2026-10-01: the stairs stay sealed while any
+// creature the floor placed stands -- not raised by a rule, able to be hurt, not the player's follower. "Sections" are
+// not built. A Horde dungeon has no stairs.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName WallsRow(UCataclysmDungeonModifierEffects::LightforgedWallsKey);
+
+	/** A dungeon carrying these rows, on floor 2 of several with its own creatures cleared and its stairs. */
+	ACataclysmDungeonGameMode* AWallsFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+										   const TArray<FName>& Rows = {WallsRow})
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("it has stairs"), Mode->Stairs.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for Lightforged Walls, or a plain answer when it says nothing. */
+	FString WallsPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const FString* Line = Mode->LiveCountsForTheFloor().Find(WallsRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsFiguresAndTheRowPartly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	TestTrue(TEXT("the row has a rule"), Effects::KeysWithARule().Contains(WallsRow));
+	TestEqual(TEXT("partly built: \"sections\" are not"), static_cast<int32>(Effects::BuiltStateOf(WallsRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSealedTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsSealedWhileAPlacedCreatureStands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSealedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWallsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// NONE STANDING: OPEN.
+	TestEqual(TEXT("an empty floor is open"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: open")));
+	TestFalse(TEXT("nothing seals it"), Mode->LightforgedWallsSealTheStairs());
+
+	// THREE PLACED, ONE OF THEM TAKEN AS A THRALL, WHICH DOES NOT HOLD THE STAIRS.
+	ACataclysmEnemyCharacter* A = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* B = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Taken = PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: A"), A) || !TestNotNull(TEXT("B"), B) || !TestNotNull(TEXT("and a third"), Taken)
+		|| !TestTrue(TEXT("the player takes the third"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("two still stand"), Mode->LightforgedWallsStanding(), 2);
+	TestEqual(TEXT("the panel"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: 2 still standing")));
+	TestTrue(TEXT("the walls seal the stairs"), Mode->StairsSealedBy() == TArray<FName>({WallsRow}));
+	TestEqual(TEXT("which lead nowhere"), TakeTheStairs(*this, Mode), 2);
+	TestTrue(TEXT("and watch for the player again"), Mode->Stairs->IsWatching());
+
+	// ONE SLAIN BY THE PLAYER: STILL SEALED.
+	if (!ThePlayerKills(*this, Player, A))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("one still stands"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: 1 still standing")));
+	TestEqual(TEXT("one is enough to seal"), TakeTheStairs(*this, Mode), 2);
+
+	// THE LAST BY ANOTHER CREATURE'S BLOW: "slain" is any death, so none stands and the stairs open.
+	if (!ACreatureKills(*this, World, B))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("none stands"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: open")));
+	TestTrue(TEXT("nothing seals the stairs"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("and they lead down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsUnheldTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsUnheldTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// WITH THE REAPER, WHICH CANNOT BE HURT AND IS RAISED BY A RULE, and which `FloorIsCleared` counts (issue #2194).
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWallsFloor(*this, World, Player, {WallsRow, TheReaperRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::TheReaperDelaySeconds));
+	ACataclysmEnemyCharacter* Reaper = Mode->TheReaperOnTheFloor();
+	if (!TestNotNull(TEXT("set-up: the Reaper came"), Reaper))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the floor is never cleared with the Reaper on it"), Mode->FloorIsCleared());
+	TestEqual(TEXT("but the Reaper does not hold the walls"), Mode->LightforgedWallsStanding(), 0);
+	TestEqual(TEXT("open"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: open")));
+
+	// ONE THAT CANNOT BE HURT, AS A BLOOD BOND MAKES ITS ELITE, AND ONE RAISED BY A RULE, AS EVERY RULE MARKS ITS
+	// ARRIVALS: each set by its one mark, so each part of the filter is shown alone.
+	ACataclysmEnemyCharacter* Unhurt = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Arrival = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: one to make unhurt"), Unhurt) || !TestNotNull(TEXT("and an arrival"), Arrival))
+	{
+		return false;
+	}
+	Unhurt->bCannotBeHurt = true;
+	Arrival->bRaisedByARule = true;
+	Beat(Mode, 1);
+	TestEqual(TEXT("neither holds the walls"), Mode->LightforgedWallsStanding(), 0);
+	TestTrue(TEXT("nothing seals the stairs"), Mode->StairsSealedBy().IsEmpty());
+
+	// AN ORDINARY CREATURE DOES, AND ITS DEATH OPENS THEM.
+	ACataclysmEnemyCharacter* Placed = PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: an ordinary creature"), Placed))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("it holds them"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: 1 still standing")));
+	TestEqual(TEXT("so the stairs lead nowhere"), TakeTheStairs(*this, Mode), 2);
+	if (!ThePlayerKills(*this, Player, Placed))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("slain, they open with the Reaper still on the floor"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsHordeTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsDoesNothingOnAHordeArena",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode) || !TestTrue(TEXT("a player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {WallsRow};
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	// A HORDE DUNGEON HAS NO STAIRS, so nothing is sealed, however many creatures stand.
+	TestNull(TEXT("it has no stairs"), Mode->Stairs.Get());
+	if (!TestNotNull(TEXT("a creature placed on it"), PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("so one stands"), Mode->LightforgedWallsStanding() > 0);
+	TestFalse(TEXT("but nothing seals"), Mode->LightforgedWallsSealTheStairs());
+	TestTrue(TEXT("by any row"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("the panel says so"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: no stairs on a Horde floor")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

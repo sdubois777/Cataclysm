@@ -2024,6 +2024,14 @@ public:
 	float DivineGateSecondsChannelled() const { return DivineGateSeconds; }
 	bool SanctionedPassageSealsTheStairs() const;
 
+	/**
+	 * Lightforged Walls, for the panel and tests: how many creatures the floor placed still stand -- in the floor's
+	 * creatures, not raised by a rule, able to be hurt and not the player's follower -- and whether they seal the
+	 * stairs. Issues #1820 and #41.
+	 */
+	int32 LightforgedWallsStanding() const;
+	bool LightforgedWallsSealTheStairs() const;
+
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
 
@@ -3999,6 +4007,9 @@ private:
 	float DivineGateSeconds = 0.0f;
 	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> DivineGateCalled;
 	int32 DivineGatePanelKey = -1;
+
+	/** Lightforged Walls: the count of the standing the panel last showed. Issues #1820 and #41. */
+	int32 LightforgedWallsPanelCount = -1;
 
 	/**
 	 * Unstable Portal: its rolls on this floor and the last outcome. Both go at the stairs.

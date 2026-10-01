@@ -3763,6 +3763,22 @@ def test_sanctioned_passage_row_still_names_a_ten_second_channel_at_divine_gates
             "SanctionedPassageKey in CataclysmDungeonModifierEffects.h. " + words)
 
 
+def test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names_sections():
+    """The phrases Lightforged Walls' readings rest on.
+
+    "Radiant barriers seal sections until all enemies in the area are slain, forcing full clears." ALL ENEMIES ... ARE
+    SLAIN and FORCING FULL CLEARS are what is built, read as every creature the floor placed; SECTIONS is what is not,
+    and why `BuiltStateOf` answers Partly. If any changes, the reading built on it must be revisited; see
+    LightforgedWallsKey in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Celestial_Lightforged_Walls"]["Description"])
+    lower = words.lower()
+    for phrase in ("seal sections", "until all enemies in the area are slain", "forcing full clears"):
+        assert phrase in lower, (
+            f"Celestial_Lightforged_Walls no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "LightforgedWallsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
 def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
     """The row's own figure and scope, and the half that grants nothing today.
 
