@@ -144,6 +144,24 @@ and the player's team. No skip was added to the sweep, as ruled.
 `PactOfTemptationDamageSource` back to 1 on each thrall, so a creature taken after a Pact of Greed no longer keeps the
 curse's 10% more damage on the player's side.
 
+### A known defect: the floor-start health cap reads the maximum without the Pact of Wrath's curse
+
+Found by reading, 2026-10-01, when this row moved onto the health-threshold enchantments (pull request
+[#2189](https://github.com/sdubois777/Cataclysm/pull/2189)); recorded as a defect, not as design, in issue
+[#2190](https://github.com/sdubois777/Cataclysm/issues/2190). That change added the row "You start every dungeon floor at
+30%-50% of your maximum HP", acted on by `DungeonGameModeRaiseFloorStart` as the last call of `GoToFloor`: it lowers
+health to that share of the maximum it reads at that moment, and never raises it. The call before it,
+`ApplyFloorRulesToPlayer`, replaces the player's floor modifiers wholesale, which takes this row's buff and curses off
+until the next beat writes them again (`bPactWritten`). So the cap reads a maximum without the Pact of Wrath's 10% less
+maximum health, and the curse lowers the maximum a beat later without moving current health. With a maximum of 1000, one
+Pact of Wrath and a 30% cap, health is lowered to 300, the maximum then becomes 900, and the floor starts at a third of
+it rather than 30%. The cap is not undone and not applied twice; only its share is read against the wrong maximum.
+
+**Ruled by the coordinating session on 2026-10-01:** this row is not changed for it. The fix is to raise the floor
+start after every per-floor rule that changes maximum health has been written, built as its own change under #2190,
+which also checks other rules of the same shape and runs, rather than reads, what happens to health above a lowered
+maximum.
+
 ### Not yet run
 
 The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in Group 2's second
