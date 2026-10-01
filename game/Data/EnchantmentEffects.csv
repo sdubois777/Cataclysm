@@ -427,3 +427,5 @@ Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#1,Positive_Demon_King_s_Re
 Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#2,Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your,attack_damage,more,100.0,100.0,,,0.0,own_stacks,1.0,,health_falls_below,,1,10.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,300.0,25.0
 Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#3,Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your,spell_damage,more,100.0,100.0,,,0.0,own_stacks,1.0,,health_falls_below,,1,10.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,300.0,25.0
 Negative_You_start_every_dungeon_floor_at_30_50_of_your#1,Negative_You_start_every_dungeon_floor_at_30_50_of_your,,,30.0,50.0,,,0.0,,0.0,health_capped_at,floor_start,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0
+Positive_Divine_Retribution_6_Piece_Bonus_When_your_en#1,Positive_Divine_Retribution_6_Piece_Bonus_When_your_en,,,100.0,100.0,,,0.0,,0.0,smite_nearby,energy_shield_broken,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0
+Negative_On_death_all_nearby_enemies_are_healed_for_10_2#1,Negative_On_death_all_nearby_enemies_are_healed_for_10_2,,,10.0,20.0,,,0.0,,0.0,heal_nearby_enemies,player_death,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0
