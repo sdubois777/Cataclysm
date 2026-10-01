@@ -840,8 +840,17 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 					GetGameTimeSinceCreation());
 			}
 		}
-		const float Damage = Own
-			* SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags);
+		// AND THE MINION'S OWN BUFFS, SINCE ISSUE #1771, ruled 2026-09-30. A
+		// minion's hits are its own, so a buff written onto its own ability
+		// system -- an aura's ally bonus is the one writer today -- reaches its
+		// blow, through the one reader of that list, with the minion's type
+		// tags as the blow's. The summoner's multiplier above reads the
+		// summoner's stat lines, a different list, so nothing is counted twice.
+		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
+			UCataclysmTargeting::AbilitySystemOf(this),
+			Own * SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
+			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
 		// THE MINION IS THE INSTIGATOR OF ITS OWN BLOW, SINCE ISSUE #1515. It
 		// was the summoner until 2026-09-17, which is why everything read off
@@ -1043,11 +1052,18 @@ void ACataclysmMinion::Explode()
 			// swing gives above: an explosion is the minion's, not its
 			// summoner's, and the summoner's own numbers must not be what the
 			// blow is resolved against.
+			//
+			// AND THE MINION'S OWN BUFFS, as its swing reads them. Issue #1771,
+			// ruled 2026-09-30: an explosion is a hit the minion deals.
+			const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+				UCataclysmTargeting::AbilitySystemOf(this), Scaled, TypeTags,
+				/*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+				/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 			float Dealt = 0.0f;
 			UCataclysmSkillEffects::ApplyDirectDamage(
-				this, Target, Scaled,
+				this, Target, Landed,
 				MinionDelivery(this, /*bIsArea=*/true));
-			Dealt = Scaled;
+			Dealt = Landed;
 			// Designed, for the reason the melee attack above records.
 			//
 			// AND NOT TESTED FOR EVASION, DELIBERATELY. An explosion is area
@@ -1115,9 +1131,19 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 	FCataclysmHitDelivery Delivery = MinionDelivery(Lost, /*bIsArea=*/true);
 	Delivery.bCannotBeRetaliatedAgainst = true;
 
+	// AND THE DYING CREATURE'S OWN BUFFS. Issue #1771, ruled 2026-09-30: the
+	// blast is a hit it deals. A minion's type tags stand for the blow's; a
+	// thrall has none, so only its unscoped buffs apply.
+	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Lost);
+	const FGameplayTagContainer LostTags =
+		AsMinion ? AsMinion->TypeTags : FGameplayTagContainer();
 	for (AActor* Target : Caught)
 	{
-		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Damage, Delivery);
+		const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+			Its, Damage, LostTags, /*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
+			/*bTargetIsStaggered=*/false, Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Landed, Delivery);
 	}
 	return Caught.Num();
 }

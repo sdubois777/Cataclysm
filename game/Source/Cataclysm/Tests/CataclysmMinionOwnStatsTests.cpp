@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -496,6 +497,97 @@ bool FCataclysmTypelessMinionTest::RunTest(const FString&)
 				   "damage of its own and takes none of its summoner's"),
 			  Dealt, 0.0f, 0.001f);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionOwnBuffsTest,
+	"Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1771, ruled 2026-09-30. A minion's hits are its own (the owner's
+ * ruling of 2026-09-17), so a buff written onto the minion's own ability
+ * system -- an aura's ally bonus is the one writer today -- reaches its blow.
+ * Until then the blow went straight to `ApplyDirectDamage` and never through
+ * `ModifiedDamage`, the only reader of that list.
+ *
+ * AND A FIRE-SCOPED BUFF STILL DOES NOTHING, which is the Conflagration aura's
+ * own case: "increased fire damage" needs a fire blow, and no minion type
+ * deals fire damage. That half is right as worded and is the control here.
+ */
+bool FCataclysmMinionOwnBuffsTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionOwnStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, /*AttackDamage=*/1000.0f);
+	FScopedFighter Target(World, /*AttackDamage=*/0.0f);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(1 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Imp));
+	if (!TestNotNull(TEXT("the imp has this project's ability system"), Its))
+	{
+		return false;
+	}
+
+	const float Before = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float Plain = Before - Target.Health();
+	if (!TestTrue(TEXT("an unbuffed blow lands"), Plain > 0.0f))
+	{
+		return false;
+	}
+
+	// AN UNSCOPED BUFF, AS AN ALLY BUFF WITH NO ELEMENT WOULD WRITE IT.
+	FCataclysmStatModifier Buff;
+	Buff.Bucket = ECataclysmStatBucket::Increased;
+	Buff.Source = ECataclysmModifierSource::SkillBuff;
+	Buff.Value = 50.0f;
+	const int32 Handle = Its->AddStatModifier(Buff);
+	if (!TestTrue(TEXT("the buff was accepted"), Handle != 0))
+	{
+		return false;
+	}
+
+	const float BeforeBuffed = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float Buffed = BeforeBuffed - Target.Health();
+	TestEqual(TEXT("50% increased on the imp's own ability system makes its blow half again"),
+			  Buffed, Plain * 1.5f, 0.01f);
+
+	// THE CONTROL: THE SAME BUFF SCOPED TO FIRE, as Conflagration writes it.
+	Its->RemoveStatModifier(Handle);
+	// THE AURA'S OWN SCOPE: Conflagration's row is Element.Demonic -- its
+	// "hellfire" is the Demonic element; there is no Element.Fire.
+	const FGameplayTag Fire = UCataclysmDamageCalculation::ElementTagFor(FName(TEXT("Demonic")));
+	if (!TestTrue(TEXT("the Demonic element tag exists"), Fire.IsValid()))
+	{
+		return false;
+	}
+	FCataclysmStatModifier FireOnly = Buff;
+	FireOnly.RequiredTags.AddTag(Fire);
+	Its->AddStatModifier(FireOnly);
+
+	const float BeforeFire = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float WithFireBuff = BeforeFire - Target.Health();
+	TestEqual(TEXT("and a Demonic-only buff leaves an imp's blow, which carries no element, as it was"),
+			  WithFireBuff, Plain, 0.01f);
 	return true;
 }
 

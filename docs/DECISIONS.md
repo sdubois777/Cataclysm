@@ -2,6 +2,285 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-30 — The two Fervour clamps that no test noticed keep the stored base at or under the maximum; both stay, and two tests now show why
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp` (the comment on `Move`'s clamp),
+`game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.cpp` (the comment on the clamp in
+`PostGameplayEffectExecute`) and `game/Source/Cataclysm/Tests/CataclysmFervourTests.cpp` (two tests). No
+game behaviour changes. Issue [#1036](https://github.com/sdubois777/Cataclysm/issues/1036).
+
+### WHAT #1036 ASKED
+
+Three places clamp the Fervour pool: `PreAttributeChange`, `PostGameplayEffectExecute` and
+`UCataclysmFervour::Move`. Guard proofs on 2026-08-27 removed each of the last two and no test failed, so the
+issue asked whether they do anything: either find a route that skips `PreAttributeChange`, or delete them.
+
+### WHAT WAS READ IN THE ENGINE, UE 5.8 GAMEPLAYABILITIES SOURCE, 2026-09-30
+
+- **Every write of the CURRENT value reaches `PreAttributeChange`**, with or without an aggregator.
+  `SetAttributeBaseValue` (GameplayEffect.cpp about 4001-4040) either sets the aggregator's base, whose dirty
+  callback `OnAttributeAggregatorDirty` (about 3452) calls `InternalUpdateNumericalAttribute` (about 3949),
+  or calls that directly; that calls `SetNumericAttribute_Internal` (AbilitySystemComponent.cpp about 480),
+  then `SetNumericValueChecked`, then `PreAttributeChange` (AttributeSet.cpp about 82 and 95). So no route
+  skips the clamp on the current value. The comment on `Move` saying it depended on an aggregator was wrong.
+- **The STORED BASE is not clamped there.** `SetAttributeBaseValue` calls `PreAttributeBaseChange`, which
+  this set does not override, and stores the base as given (about 4013) before clamping the current value.
+- **`ApplyModToAttribute` adds to that base** (4155-4161). `Move` writes through it, and so does an instant
+  gameplay effect.
+
+### WHAT THE TWO CLAMPS ACTUALLY DO
+
+They keep the stored base at or under the maximum. Without `Move`'s, a gain at a full pool would raise the
+base above the maximum while the bar still read full, and the next spend would come off that hidden excess
+and leave the bar where it was. The clamp in `PostGameplayEffectExecute` does the same for an instant effect,
+by writing the pool back through its setter, which resets the base. **That part is inferred from the code
+above; the two tests below are what measure it.**
+
+**Why the 2026-08-27 proofs saw nothing:** every test then read only the current value after one write. A
+spend after a gain at a full pool is what reads the base.
+
+### RULED 2026-09-30
+
+Keep both clamps, correct their comments to say what they do, and add the tests. Clamping the base in a new
+`PreAttributeBaseChange` was considered and not chosen: it would have to be right for every case in which an
+infinite effect is live on the pool, which was not read.
+
+### TESTS
+
+- `Cataclysm.Fervour.AGainAtAFullPoolIsNotBankedForTheNextSpend`: at a full pool, a gain moves nothing, and a
+  spend after it takes the bar down by the whole spend. The gain and the spend are measured first, so the test
+  does not depend on the generator's rates.
+- `Cataclysm.Fervour.AnEffectAtAFullPoolIsNotBankedForTheNextSpend`: an instant effect adding 50 to a full
+  pool leaves it full, and an effect taking 10 after it takes the bar down by 10.
+
+
+### THE WINDOW'S RUN, FOR THE WHOLE STACK OF THREE
+
+This change was built and tested in one window with the two below it, stacked on `development` 3e14cfca: a
+player's followers across floors (issue #1202, head 2a423b4f), a minion's hits reading its own buffs (issue
+#1771, head e06409db), and this one, then two later #1202 commits and the window's fixes, to the top
+fa919c2d. **The #1202 and #1771 entries carry no run table of their own; this one is theirs as well.** Run
+2026-09-30 in the jovial-bouman worktree, which has built modules.
+
+**The first whole suite failed, and the window was stopped.** At 88cdc542 it printed "2914 tests performed,
+2911 succeeded, 3 failed": a Horde test whose player character did not spawn, the contagion-stacks test
+(the follower reset sat inside a function that returns early), and the minion buff test (it asked for an
+`Element.Fire` tag that does not exist). The three were fixed in fa919c2d under the coordinating session's
+ruling, the three groups rerun, and the whole suite run again.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 88cdc542 | Build: Succeeded - 31 actions, 28 files compiled |
+| First whole suite | 88cdc542 | 2914 tests performed, 2911 succeeded, 3 failed |
+| Rebuild after the fixes | fa919c2d | Build: Succeeded - 6 actions, 3 files compiled |
+| Group reruns | fa919c2d | DungeonModifierEffects 480/480, MinionStats 5/5, DungeonMode 33/33 |
+| Second whole suite | fa919c2d | 2914 tests performed, 2914 succeeded, 0 failed; declared 2914, gap 0 (registered 2897 + 17) |
+| Python of record | fa919c2d | 5579 passed, 8 skipped in 443.87s; JUnit tests=5587 failures=0 errors=0 skipped=8 |
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| #1202 a: a player's thrall is swept with the floor | 2a423b4f | PROVED: with the break in: 9 tests performed, 8 succeeded, 1 failed: AThrallAndAnImpComeDownWithThePlayerAndAGadgetDoesNot \| restored: 9 tests performed, 9 succeeded, 0 failed |
+| #1202 b: nothing moves the followers to the new floor | 2a423b4f | the same, the same test |
+| #1202 c: a gadget is kept at a floor change | 2a423b4f | the same, the same test |
+| #1771 a: the minion's swing reads no buffs of its own | e06409db | **NOT A PROOF.** With the break in the test failed for the right reason (330.75 expected, 220.5 dealt), and with it restored it failed too, on the `Element.Fire` tag: the proof was planned at e06409db, below the commit that corrected the test. Recorded as printed, not rerun, by ruling |
+| #1771 b: the minion's explosion reads no buffs of its own | e06409db | PROVED: with the break in: 17 tests performed, 16 succeeded, 1 failed: AMinionsExplosionAndSharedRuinReadTheBuffsOnItsOwnAbilitySystem \| restored: 17 tests performed, 17 succeeded, 0 failed |
+| #1036 a: `Move` no longer clamps the number it writes | fa919c2d | PROVED: with the break in: 19 tests performed, 18 succeeded, 1 failed: AGainAtAFullPoolIsNotBankedForTheNextSpend \| restored: 19 tests performed, 19 succeeded, 0 failed |
+| #1036 b: `PostGameplayEffectExecute` no longer writes the pool back | fa919c2d | PROVED: with the break in: 19 tests performed, 18 succeeded, 1 failed: AnEffectAtAFullPoolIsNotBankedForTheNextSpend \| restored: 19 tests performed, 19 succeeded, 0 failed |
+
+**Six proved and one not a proof.** So #1771 rests on one proof, the explosion and Shared Ruin path; the
+swing's own `ModifiedDamage` call is checked by its test, which passes in the whole suite, but not proved by
+a break.
+
+---
+
+## 2026-09-30 — A minion's blow reads the buffs on its own ability system; Conflagration's fire bonus still gives a minion nothing, because no minion deals fire damage
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (`ACataclysmMinion::AttackTarget`)
+and `game/Source/Cataclysm/Tests/CataclysmMinionOwnStatsTests.cpp` (one test). Issue
+[#1771](https://github.com/sdubois777/Cataclysm/issues/1771).
+
+### WHAT #1771 SAID, AND WHAT WAS STILL TRUE
+
+The issue said a minion's blow names its summoner as the source, so the Conflagration aura's ally bonus,
+written onto the minion, was never read. **The first half had gone stale**: since the owner's ruling of
+2026-09-17 a minion's blow names the minion. **The conclusion still held, for two separate reasons:**
+
+1. **The wiring.** A runtime buff written by `UCataclysmAbilitySystemComponent::AddStatModifier` is read
+   in exactly one place, `UCataclysmSkillEffects::ModifiedDamage`. A minion's blow went straight to
+   `ApplyDirectDamage` and never through it, so any buff on a minion's own ability system was ignored.
+   A thrall's attack goes through `ApplyHit`, which does call it.
+2. **The element.** Conflagration's ally bonus is "increased fire damage", written with the aura's element
+   as a required tag, and that element is `Element.Demonic`: the aura's "hellfire" is the Demonic element,
+   and no `Element.Fire` exists. No minion type carries any element tag -- none of the Imp, Mote, Bolt
+   Turret, Ballista and Spike Trap rows in `game/Data/MinionTypes.csv` names one -- so none deals Demonic
+   damage.
+
+### WHAT CHANGED, RULED 2026-09-30
+
+- **(1) is fixed.** A minion's blow now passes through `ModifiedDamage` with the minion's own ability
+  system and its type tags, after the summoner's multiplier, as a minion's hits are its own.
+- **(2) is left as worded.** Conflagration's bonus still gives a minion nothing, because no minion's blow
+  carries `Element.Demonic`. It will reach a minion that deals Demonic damage, if one is ever added.
+
+### WHAT ELSE THIS COULD REACH, CHECKED
+
+- **Every writer of a runtime buff**, in code outside the tests: the Conflagration aura's ally step
+  (`UCataclysmAuraSkill::HelpAlliesInside`), which does reach minions, and the self-buff skill
+  (`UCataclysmSelfBuffSkill::GrantIncrease`), which writes only on its caster. A stat line is written only
+  by `UCataclysmPlayerClassStats::ApplyTo`, for the player character and its equipment, never a minion.
+- **Nothing is counted twice.** The summoner's multiplier (`SummonerMultiplierAgainst`) reads the
+  summoner's recorded stat lines, a different list from the minion's runtime buffs.
+- **`ModifiedDamage` does nothing else to a blow**: with an empty runtime list it returns the damage
+  unchanged, and otherwise it applies only that list. So a minion with no buff hits exactly as before.
+- **The explosion and the Shared Ruin blast read them too**, ruled the same day: they are hits the
+  minion deals. The explosion passes through the same call with the minion's type tags; the Shared Ruin
+  blast passes through it with the dying creature's own ability system, and with a minion's type tags or,
+  for a thrall, none.
+
+### TESTS
+
+- `Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem`: an imp's blow with 50% increased
+  written on its own ability system is half again as large; the same buff scoped to fire leaves it as it
+  was. The buff is scoped to `Element.Demonic`, the aura's own; the test first asked for an
+  `Element.Fire` tag, which does not exist, and the window's whole suite found it.
+- `Cataclysm.MinionDeath.AMinionsExplosionAndSharedRuinReadTheBuffsOnItsOwnAbilitySystem`: an imp with
+  50% increased explodes for half again as much as a plain one, and its Shared Ruin blast is half again
+  as large too. It is in the command tests rather than beside the first, because an area blast finds
+  its targets by collision and that file's creatures have it.
+- **Proved by one break, not two.** The window's run, recorded in the entry "The two Fervour clamps that no test
+  noticed..." above, proved the explosion and Shared Ruin path. The swing's own `ModifiedDamage` call is checked
+  by its test, which passes in the whole suite, but its proof was NOT A PROOF: it was planned below the commit
+  that corrected the test.
+
+---
+
+## 2026-09-30 — A player's thralls and summoned creatures go down the stairs with the player, gadgets stay with the floor, and leaving the dungeon ends them all
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorContents.cpp` and `.h` (`ClearTheFloor` takes
+`bCarryFollowers`), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` and `.h`
+(`BringFollowersTo`, `EndEveryPlayersFollowers`, and the floor change, `ClearFloorEnemies` and
+`LeaveEmpireDungeon` calling them), and `game/Source/Cataclysm/Tests/CataclysmDungeonStairsTests.cpp`
+(two tests). Issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202).
+
+### WHAT WAS WRONG
+
+- **A thrall was destroyed at every floor change, which the design forbids.** Subjugate's row,
+  `Demonic_Staff_Ultimate` in `game/Data/WeaponSkills.csv`, says the target is taken "permanently":
+  "it is restored to full health, fights for you until it dies". The skill table in
+  `docs/Cataclysm_GDD_v2.md` says the same: "it is taken permanently". But a thrall is a taken
+  `ACataclysmEnemyCharacter`, and both `UCataclysmFloorContents::ClearTheFloor` and
+  `ACataclysmDungeonGameMode::ClearFloorEnemies` destroyed every creature of that class when the player
+  took the stairs. **That was a bug**, ruled so on 2026-09-30.
+- **A summoned imp or a deployed gadget stood at its old coordinates on the new floor.** Every floor is
+  built at the same world position and `ACataclysmMinion` is not an enemy, so neither sweep reached one;
+  it stood wherever it had been in the last fight, which on the new floor could be inside rock.
+- **Issue #1202 said nothing sets a minion's life span. That is no longer true:**
+  `ACataclysmMinion::Spawn` sets one, the Duration its row states or 20 seconds.
+
+### WHAT CHANGED, RULED 2026-09-30
+
+| What the player commands | At a floor change | Why |
+| :-- | :-- | :-- |
+| A thrall | Goes down with the player | The design: "taken permanently", "fights for you until it dies" |
+| A summoned creature (an imp) | Goes down with the player, keeping what is left of its lifespan and its Fervour reserve | The genre, below |
+| A deployed gadget | Destroyed with the floor | **A judgement, not the design's:** a gadget stays where it was put rather than following its deployer (`Cataclysm.AI.ADeployedBallistaStaysPutRatherThanFollowingItsDeployer`), and the spot it was put on no longer exists |
+
+- **Carried followers are placed around the player** at the new floor's entrance: eight spots a metre
+  and a half out, keeping only those on walkable floor, or the entrance itself if none is. A follower
+  that was mid-attack needs nothing more; its controller chooses again on its next decision.
+- **Only a creature a player commands is carried.** A creature another creature commands is cleared as
+  before, and so is every enemy nobody took.
+- **A save restoring a floor clears exactly as it did.** `ClearTheFloor`'s new argument defaults to the
+  old behaviour, and only the floor change passes it.
+- **Horde waves are untouched.** A new wave keeps the arena (`bSameArenaAsLastFloor`), and in that case
+  neither sweep runs and the player is not moved, so nothing here is reached.
+- **Leaving the dungeon ends every thrall, imp and gadget a player commands**, ruled the same day: the
+  run is over. `LeaveEmpireDungeon`, where a run ends whether the dungeon was cleared or left, now
+  destroys them. It did not before: the level does not change when a run ends, so they outlived it.
+  Their Fervour reserves end with them, because the reserve is read from what is commanded.
+
+### WHAT THE GENRE SETTLES, AND WHAT IT DOES NOT
+
+- **Path of Exile**, the developers' own post on X, read 2026-09-30
+  (https://x.com/pathofexile/status/2030084086396768331): temporary minions that follow the player
+  "will now persist with you through area transitions" between combat areas. Permanent ones already did.
+- **Last Epoch**, a community reply and not a developer
+  (https://steamcommunity.com/app/899770/discussions/0/4338725580146807878/): minions "do not despawn";
+  they appear at the map entrance and run to the player.
+- **Diablo 4**: only reports of minions failing to follow, which imply they are meant to. No primary
+  source was read.
+- So the research settles that followers cross a zone change. It says nothing about stationary gadgets,
+  which is why that row is labelled a judgement.
+
+### A PLAYER'S THRALL IS NOT ONE OF THE FLOOR'S CREATURES TO FOUR DUNGEON RULES, RULED 2026-09-30
+
+The dungeon modifiers merged as #1820 put state on creatures, and three of them reached a player's thrall,
+read on `development` 230f5079 before this was written: `StepVision` walks every
+`ACataclysmEnemyCharacter` with no side check, so a thrall beyond sight was hidden and, under The Blackest
+Shadow, an Invisible Stalker with twice the damage and half again the attack speed; `StepShadowyEnemies`
+shrouded a thrall in the floor's list, and one no longer in any floor's list after the stairs stayed
+shrouded; and a Grim Totem's cleanse left a thrall near it at 25% less damage for good. A player's imp is
+not an enemy class and was never touched. **Now a creature a player commands is skipped by all four**, and
+one taken while it carried the hide, the stalker or the shroud is put back. The player's own cleanse, the
+locust sight and Reality Twister put nothing on creatures and needed nothing.
+
+### AND TO THE FOUR RULES THAT CAME AFTER, RULED THE SAME DAY
+
+Read on `development` 32982485, after #2182 merged:
+
+- **The Plaguebearer** gave its growing damage bonus to every creature in the floor's list, a thrall included,
+  and nothing took it off one carried past the stairs. A thrall is now skipped. **A taken Plaguebearer counts as
+  fallen**: its stacks clear as at its death, and it stops fleeing the player. The floor panel says "the
+  plaguebearer is taken" rather than "is dead", because it is alive and fighting for the player.
+- **Morale Break** panicked every creature of a fallen leader's pack, so a thrall could flee, escape and come
+  back hostile with reinforcements. A thrall is now skipped.
+- **Famished Beasts** sent every creature, a thrall included, to eat the player's drops. A thrall is now skipped.
+  **What a creature gained by eating before it was taken, it keeps: a judgement**, because it now fights for
+  the player and nothing exists that undoes the strengthening.
+- **Contagious Touch**: a thrall adds no stacks if it touches the player, and the player's blow on their own
+  thrall brings no retaliation.
+
+**Holding a thrall no longer stops a floor counting as cleared**, ruled the same day. A thrall taken on a
+floor stays in that floor's list until the stairs, and `LivingFloorEnemies` counted it, so `FloorIsCleared`
+never held while the player kept it: no clear time was recorded and the Trial of Endurance could not be
+passed. The same held for a Horde arena's wave, whose next wave comes when `WaveStillAlive` falls to its
+threshold. Both counts now skip a creature a player commands. The Trial's own doubling when it runs out
+already acts only on creatures hostile to the player; one doubled before it was taken is put back below.
+
+**One step on every beat puts a thrall back from all of them**, `StepPlayersFollowers`: for every creature a
+player commands it sets the Grim Totem and Plaguebearer multipliers to 1, ends any panic and flight and takes
+it out of the panicked lists, stops it seeking drops, sets the contagion stacks it applied while hostile to
+0, and takes off the Trial of Endurance's damage doubling and rule resistance. **Why one unconditional step rather than a part of each rule:** the rules' own steps run only on floors that
+carry them, and walk only the floor's list, so a thrall carried to another floor would never be reached. The
+fog, The Blackest Shadow and Shadowy Enemies keep their own sets and are put back inside `StepVision` and
+`StepShadowyEnemies`.
+
+**It first ran in the wrong place, and the window's whole suite found it.** It was written at the end of
+`StepFloorRulesThatChange`, which returns early on a floor carrying none of the rules it lists. Contagious
+Touch is not among them, so on a floor with only that rule, or with none, the reset never ran, and a carried
+thrall kept its contagion stacks. The Grim Totem and Plaguebearer tests passed only because their rules were
+in that function's set. It is now called from the beat itself, straight after that function.
+
+### TESTS
+
+- Three for the cleared counts: a floor whose last creature is taken counts as cleared and passes the Trial of
+  Endurance; a creature the Trial doubled is put back once taken; and, in `Cataclysm.DungeonMode.`, a creature
+  taken from a Horde wave is not counted as still standing in it.
+- Six more in `Cataclysm.DungeonModifierEffects.`, one per rule: a taken creature loses the Plaguebearer's
+  bonus; a taken Plaguebearer counts as fallen; a taken creature stops panicking; a taken creature eats no more
+  drops and keeps what it gained; a taken toucher's stacks end and it adds none; and a blow on a thrall brings
+  no retaliation. The Grim Totem test also checks that a creature cleansed while hostile and taken afterwards is
+  put back a beat later.
+- Two in `Cataclysm.DungeonModifierEffects.`: an imp beyond the light, hidden, a stalker and shrouded,
+  loses all three once the player takes it, while one nobody took keeps them; and a cleansed totem weakens
+  a creature nobody took and not a player's thrall standing as near.
+- Two new tests in `Cataclysm.DungeonStairs.`: a thrall and an imp come down with the player, stand
+within two metres of it on walkable floor, and are still commanded, while a turret and an enemy nobody
+took are gone; and leaving the dungeon ends a thrall, an imp and a turret, leaving nothing commanded
+and no Fervour held back.
+
+---
+
 ## 2026-09-30 — A row may scale with seconds on the floor, floors cleared this run, armour or unique bosses defeated
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (four scales

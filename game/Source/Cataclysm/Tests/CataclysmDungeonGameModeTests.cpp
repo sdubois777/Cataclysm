@@ -16,6 +16,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Player/CataclysmPlayerState.h"
@@ -3031,6 +3032,64 @@ bool FCataclysmFloorChoosesOneMedicTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("populating again leaves the floor with one medic"),
 			  MedicsAfterMore, 1);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeThrallLeavesTheWaveTest,
+	"Cataclysm.DungeonMode.AThrallTakenFromAWaveIsNotCountedAsStillStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. In a Horde arena the next wave comes when the
+ * current one is down to its threshold; a creature the player took from it is
+ * not standing in it, or holding a thrall would stop the arena.
+ */
+bool FCataclysmDungeonModeThrallLeavesTheWaveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
+		|| !TestTrue(TEXT("the first wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
+	{
+		return false;
+	}
+	const int32 FirstWave = Mode->WaveSpawned;
+	// ALWAYS SPAWNED: the arena's middle is occupied, and the test needs only a
+	// commander, not a place to stand.
+	FActorSpawnParameters Always;
+	Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmPlayerCharacter* Player = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator, Always);
+	if (!TestTrue(FString::Printf(TEXT("set-up: a wave of %d"), FirstWave), FirstWave > 0)
+		|| !TestNotNull(TEXT("a player character"), Player)
+		|| !TestEqual(TEXT("set-up: the whole wave stands"), Mode->WaveStillAlive(), FirstWave))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Taken = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		if (IsValid(Enemy) && !Enemy->IsBoss() && !Enemy->bCannotBeHurt)
+		{
+			Taken = Enemy.Get();
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: a creature of the wave the player can take"), Taken) || !TestTrue(TEXT("the player takes one of the wave"), UCataclysmCommand::Subjugate(Player, Taken)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the wave counts one fewer standing"), Mode->WaveStillAlive(), FirstWave - 1);
 	return true;
 }
 

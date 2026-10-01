@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Dungeon/CataclysmFloorContents.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "Character/CataclysmPlayerCharacter.h"
 
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmProjectile.h"
@@ -49,11 +52,44 @@ namespace
 	}
 }
 
-int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World)
+int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers)
 {
 	int32 Destroyed = 0;
 
-	Destroyed += FloorContentsDestroyEvery<ACataclysmEnemyCharacter>(World);
+	if (bCarryFollowers)
+	{
+		// A PLAYER'S THRALLS STAY AND A PLAYER'S GADGETS GO. Issue #1202, ruled
+		// 2026-09-30; the header says why each. Gathered first, destroyed after,
+		// for the reason `FloorContentsDestroyEvery` gives.
+		TArray<AActor*> Doomed;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			if (IsValid(*It)
+				&& !Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(*It)))
+			{
+				Doomed.Add(*It);
+			}
+		}
+		for (TActorIterator<ACataclysmMinion> It(&World); It; ++It)
+		{
+			if (IsValid(*It) && It->IsDeployable())
+			{
+				Doomed.Add(*It);
+			}
+		}
+		for (AActor* Actor : Doomed)
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+				++Destroyed;
+			}
+		}
+	}
+	else
+	{
+		Destroyed += FloorContentsDestroyEvery<ACataclysmEnemyCharacter>(World);
+	}
 	Destroyed += FloorContentsDestroyEvery<ACataclysmDroppedItem>(World);
 
 	// AND THE THREE THINGS SECTION 6 OF THE SAVE DESIGN SAYS ARE NOT RESTORED. A

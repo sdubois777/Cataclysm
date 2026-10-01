@@ -253,23 +253,21 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
 	const float Before = AbilitySystem->GetNumericAttribute(Pool);
 
-	// CLAMPED HERE RATHER THAN LEFT TO THE ATTRIBUTE SET, which is what
-	// `UCataclysmRegeneration::TopUp` does with the health, mana and shield
-	// pools and for the same reason. `ApplyModToAttribute` writes a base value,
-	// and whether that reaches `PreAttributeChange` depends on whether an
-	// aggregator exists for the attribute, which depends on whether any gameplay
-	// effect happens to be modifying it. A rule that holds only sometimes is not
-	// a rule, so the clamp is applied to the number before it is written.
+	// CLAMPED HERE BECAUSE IT KEEPS THE STORED BASE AT OR UNDER THE MAXIMUM.
+	// Issue #1036, read in the UE 5.8 GameplayAbilities source on 2026-09-30:
+	// `ApplyModToAttribute` (GameplayEffect.cpp 4155-4161) adds the change to
+	// the BASE and hands it to `SetAttributeBaseValue` (about 4001-4013), which
+	// stores it as given and only then clamps the CURRENT value in
+	// `PreAttributeChange`. Every current-value write reaches that clamp, with
+	// or without an aggregator; the base is never clamped there. So without
+	// this, a gain at a full pool raised the base above the maximum while the
+	// bar read full, and the next spend came off the hidden excess.
 	//
-	// THAT ARGUMENT IS UNTESTED, AND THE PARAGRAPH ABOVE IS KEPT ONLY BECAUSE IT
-	// MAY STILL BE RIGHT. Issue #1036. A guard proof on 2026-08-27 removed this
-	// clamp, compiled, and ran every test under `Cataclysm.Fervour`: none
-	// failed, including `ItStopsAtTheMaximumAndAtZero`, which goes through this
-	// function. The reason is the `return` at the end -- it answers the change
-	// this function can MEASURE rather than the change it asked for, so the
-	// attribute set's own clamp makes the answer right with this one gone. No
-	// test creates the situation the paragraph above describes, so nothing here
-	// establishes that this clamp is needed.
+	// A GUARD PROOF ON 2026-08-27 REMOVED THIS AND NOTHING FAILED, because
+	// every test then read only the current value after one write, and the
+	// `return` below measures the current value.
+	// `Cataclysm.Fervour.AGainAtAFullPoolIsNotBankedForTheNextSpend` reads a
+	// spend after a gain.
 	//
 	// ONE OF THREE PLACES THAT CLAMP THE POOL, the other two being
 	// `PreAttributeChange` and `PostGameplayEffectExecute` in
