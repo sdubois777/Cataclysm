@@ -1723,6 +1723,71 @@ public:
 	static const TCHAR* BloodGatesKey;
 
 	/**
+	 * The row where the stairs are locked by a seal whose pieces the floor's strongest creatures hold. Issues #1820
+	 * and #41.
+	 *
+	 * "The door on each floor is locked by a particular seal. The seals are held by powerful enemies on each floor and
+	 * the player must collect all 4 pieces of the seal in order to unlock the door to the next floor."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
+	 * - THE BEARERS ARE THE FLOOR'S FOUR HIGHEST-RUNG CREATURES, chosen from its own population as March of Progress
+	 *   chooses its Commander (ties keep the earlier), each below the Elite rung raised to it; one above Elite, a Boss,
+	 *   keeps its rung. "Powerful" names no rung this game has.
+	 * - A PIECE IS GIVEN ON THE BEARER'S DEATH, whoever kills it; "collect" is read as that, not as a pickup.
+	 * - NEVER MORE PIECES THAN BEARERS: a floor with fewer than four creatures the rule can choose needs that many.
+	 * - NO SOFT LOCK: a bearer the player can no longer kill gives its piece too -- one taken as a thrall (issue #1202),
+	 *   one gone from the world without its death heard (a Morale Break escapee is destroyed when it flees), and one
+	 *   made unable to be hurt (a Blood Bond can fall on a bearer). Checked on the beat.
+	 * - THE LAST FLOOR IS NOT SEALED, as Blood Gates rules: its way out leads out, not to a next floor.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS (`GoToFloor` places none when `bWaveWalksIn`), so this row does nothing there.
+	 */
+	static const TCHAR* InfernalSealsKey;
+
+	/**
+	 * The row where the way down is sealed until the player channels at a Divine Gate, and every creature comes while
+	 * it lasts. Issues #1820 and #41.
+	 *
+	 * "Divine gates require a 10s channel to open; enemies surge toward the gate during the unlock."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
+	 * - THE GATE IS A FLOOR OBJECT, "Divine Gate", on a cell beside the exit by `ExitAltarWorld`, so it never shares a
+	 *   cell with another exit altar. Its one choice, "Channel", begins the channel; the stairs stay sealed while the
+	 *   gate stands, and it goes when the channel completes.
+	 * - THE CHANNEL COUNTS ONLY WHILE THE PLAYER IS WITHIN `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm` OF
+	 *   THE GATE, the 2026-09-11 "nearby" reach. Stepping away PAUSES it and keeps its progress. TAKING DAMAGE DOES NOT
+	 *   INTERRUPT IT.
+	 * - "ENEMIES SURGE TOWARD THE GATE": while the channel lasts every creature of the floor notices the player from
+	 *   `TheReaperSightMultiplier` times its own sight, as Plague Convergence's arrivals do, and each is given its own
+	 *   sight back when the channel ends.
+	 * - NO GATE, NO SEAL: a floor that could not place one is not sealed, so nothing can lock the player in.
+	 * - THE LAST FLOOR IS NOT SEALED, as Blood Gates rules: its way out leads out, not to a next floor.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS (`GoToFloor` places none when `bWaveWalksIn`), so this row does nothing there.
+	 */
+	static const TCHAR* SanctionedPassageKey;
+
+	/**
+	 * The row where the way down is sealed until every creature the floor placed is slain. Issues #1820 and #41.
+	 *
+	 * "Radiant barriers seal sections until all enemies in the area are slain, forcing full clears."
+	 *
+	 * `Partly` BUILT, AND THE MISSING HALF IS "SECTIONS": nothing divides a floor into areas a barrier could close, and
+	 * nothing changes a floor's layout during play. What is built is the floor-wide reading: the stairs are the one
+	 * barrier, and the floor the one area.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
+	 * - "ALL ENEMIES" IS EVERY CREATURE THE FLOOR PLACED: one in the floor's creatures that was not raised by a rule,
+	 *   can be hurt, and is not the player's follower. So the Reaper, a Blood Bond's elite, and every rule's arrivals
+	 *   never hold the stairs, and nothing can lock the player in. NOT `FloorIsCleared`, which never counts a floor with
+	 *   the Reaper or a Blood Bond elite as cleared: issue #2194.
+	 * - THE LAST FLOOR IS NOT SEALED, as Blood Gates rules: its way out leads out.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS (`GoToFloor` places none when `bWaveWalksIn`), so this row does nothing there.
+	 */
+	static const TCHAR* LightforgedWallsKey;
+
+	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
 	 * Issues #1820 and #41.
 	 *
@@ -5204,6 +5269,18 @@ public:
 	 */
 	static constexpr int32 BloodGatesSlainPercent = 50;
 
+	/** Infernal Seals' pieces, and so its bearers. STATED BY THE ROW: "all 4 pieces". */
+	static constexpr int32 InfernalSealsPieces = 4;
+
+	/** The rung a bearer is raised to when it is below it: Elite. A judgement; see `InfernalSealsKey`. */
+	static constexpr int32 InfernalSealsBearerRung = 1;
+
+	/** Sanctioned Passage's channel, in seconds within reach of the gate. STATED BY THE ROW: "a 10s channel". */
+	static constexpr float SanctionedPassageChannelSeconds = 10.0f;
+
+	/** Sanctioned Passage: the gate's one choice. */
+	static constexpr const TCHAR* SanctionedPassageChannel = TEXT("Channel");
+
 	static_assert(
 		BloodGatesSlainPercent > 0 && BloodGatesSlainPercent < 100,
 		"Stairs that open with nothing slain are not sealed, and stairs that need every "
@@ -6849,6 +6926,9 @@ public:
 
 	/** Whether the stairs are open: `Slain` has reached `BloodGatesOpenAt(Placed)`. */
 	static bool BloodGatesAreOpen(int32 Slain, int32 Placed);
+
+	/** How many of Infernal Seals' pieces open the stairs: all four, or every bearer when fewer could be chosen. */
+	static int32 InfernalSealsPiecesNeeded(int32 BearersChosen);
 
 	/**
 	 * Whether a crescendo is due: `DirgeResonanceEverySeconds` of the floor's beat have

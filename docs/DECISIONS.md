@@ -2,6 +2,336 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Lightforged Walls: the way down stays sealed until every creature the floor placed is slain; partly built, because nothing divides a floor into sections
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, and the row
+answered `Partly`), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the count of the creatures
+still standing, the row added to `StairsSealedBy`, the floor panel line and the beat that refreshes it), the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Partly applied, by design: "sections" are not built.** The Unreal compile, the automation tests and the three guard
+proofs were run in the exit-lock windows of 2026-10-01; the figures are at the end of this entry.
+
+### The row
+
+`Celestial_Lightforged_Walls` in `game/Data/DungeonModifiers.csv`: "Radiant barriers seal sections until all enemies in
+the area are slain, forcing full clears."
+
+### What the rule does
+
+On a floor carrying the row, the stairs refuse the player while any creature the floor placed still stands, and watch
+for the player again after a refusal, as Blood Gates' do. The floor panel says `lightforged walls: N still standing`
+while sealed and `lightforged walls: open` after. The stairs ask `StairsSealedBy()`, so with another sealing row on the
+floor they open only when both release.
+
+**`BuiltStateOf` answers `Partly`, and the missing half is "sections".** Nothing divides a floor into areas a barrier
+could close, and nothing changes a floor's layout during play. What is built is the floor-wide reading: the stairs are
+the one barrier and the floor the one area. The owner keeps the design over the code, so the floor-wide clear is not
+called the row.
+
+**It does nothing on a Horde dungeon.** A Horde dungeon has no stairs (GoToFloor places none when bWaveWalksIn), so this
+row does nothing there, and the panel says `lightforged walls: no stairs on a Horde floor`.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01. These are judgements, not readings the row
+settles:**
+
+- **"All enemies" is every creature the floor placed**: one in the floor's creatures that was not raised by a rule (by
+  either of the two marks a rule leaves), can be hurt, and is not the player's follower. "Slain" is any death, whoever
+  killed it. So the Reaper, a Blood Bond's elite and every rule's arrivals never hold the stairs, and nothing can lock
+  the player in.
+- **Not `FloorIsCleared`.** It never counts a floor with the Reaper or a Blood Bond's elite as cleared, which is issue
+  [#2194](https://github.com/sdubois777/Cataclysm/issues/2194). Built on it, this row would seal such a floor for good.
+- **The last floor is not sealed**, as Blood Gates rules: its way out leads out of the dungeon.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `LightforgedWallsFiguresAndTheRowPartly`: the row has a rule and is `Partly` built.
+- `LightforgedWallsSealedWhileAPlacedCreatureStands`: open with none; a thrall does not hold the stairs; refused with two
+  and with one standing; the last, killed by another creature, opens them.
+- `LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt`: with the Reaper on the floor, which `FloorIsCleared` never
+  counts as cleared, the walls are open; a creature that cannot be hurt and one raised by a rule, each by its one mark,
+  hold nothing; an ordinary creature holds them, and its death opens them with the Reaper still there.
+- `LightforgedWallsDoesNothingOnAHordeArena`.
+
+One Python check, `test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names_sections`, pins the
+three phrases the rulings rest on, "seal sections" among them.
+
+### The windows of 2026-10-01
+
+Run on `feat/lightforged-walls-2`, the top of the exit-lock chain, on development `b3eea92a`. The third window is the run of record:
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `167f0a8e` | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `167f0a8e` | "Tests: 3029 tests performed, 3029 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3029 tests in the tree at 167f0a8e; 3029 performed, gap 0; every declared test was reported by the run." |
+| Python, `167f0a8e`, started with no CI run in progress | "5641 passed, 8 skipped in 322.66s (0:05:22)"; JUnit: 5649 tests, 0 failures, 0 errors, 8 skipped |
+
+The commit above `167f0a8e` that writes these figures changes this file only.
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after:
+
+- **Pa PROVED**, the seal never applied: "with the break in: 4 tests performed, 2 succeeded, 2 failed:
+  LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt, LightforgedWallsSealedWhileAPlacedCreatureStands | restored:
+  4 tests performed, 4 succeeded, 0 failed".
+- **Pb PROVED**, the can-be-hurt filter removed: "with the break in: 4 tests performed, 3 succeeded, 1 failed:
+  LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt | restored: 4 tests performed, 4 succeeded, 0 failed".
+- **Pc PROVED**, both raised-by-a-rule marks removed from the count: "with the break in: 4 tests performed, 3 succeeded, 1
+  failed: LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt | restored: 4 tests performed, 4 succeeded, 0
+  failed".
+
+---
+
+## 2026-10-01 — Sanctioned Passage: a Divine Gate seals the way down until the player channels at it for 10 seconds, and every creature comes while the channel lasts
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, the channel's
+seconds and its choice), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the gate placed at each
+floor's start beside the exit, the choice, the beat that counts the channel and calls the creatures, the floor panel line,
+and the row added to `StairsSealedBy`), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the automation tests and the three guard proofs were run in the exit-lock windows of 2026-10-01; the figures are at the end of this entry.
+
+### The row
+
+`Celestial_Sanctioned_Passage` in `game/Data/DungeonModifiers.csv`: "Divine gates require a 10s channel to open; enemies
+surge toward the gate during the unlock."
+
+### What the rule does
+
+On every floor carrying the row but the dungeon's last, a floor object named "Divine Gate" stands at the exit, or beside
+it when another exit altar is there: `ExitAltarWorld` gives cells in the order Blood Altar, Forced Tithes, Pact of
+Temptation, then the gate, so no two share a cell. It offers one choice, "Channel". While the gate stands the stairs are
+sealed, through `StairsSealedBy()`, so they open only when every other sealing row has released as well.
+
+Choosing "Channel" begins the channel, once; the choice is then shown spent. From then, each beat the player stands
+within 5 m of the gate adds a beat's time, and at 10 seconds the gate goes and the stairs open. While the channel lasts
+every creature of the floor notices the player from `TheReaperSightMultiplier` times its own sight, as Plague
+Convergence's arrivals do; a creature that arrives during the channel is called on the next beat, and a player's thrall
+is not called. When the channel completes, or the floor ends, each creature it called is given its own sight back.
+The floor panel says
+`sanctioned passage: channel 10 s at the Divine Gate` before the choice, `sanctioned passage: channelling N of 10 s`
+during it, and `sanctioned passage: open` after.
+
+**A choice at the gate costs Blood Price**, on a floor carrying that row as well, since Blood Price prices every choice
+at a floor object but a tithe paid (`BloodPriceIsAsked`). It costs once: the choice cannot be made a second time.
+
+**It does nothing on a Horde dungeon.** A Horde dungeon has no stairs (GoToFloor places none when bWaveWalksIn), so this
+row does nothing there: no gate is placed, and the panel says `sanctioned passage: no stairs on a Horde floor`.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01. These are judgements, not readings the row
+settles:**
+
+- **The channel counts only while the player is within 5 m of the gate**,
+  `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`, the 2026-09-11 "nearby" reach, and not a new constant.
+  **Stepping away pauses it and keeps its progress**, as War Banner's hold does. **Taking damage does not interrupt
+  it**: nothing in the channel listens for damage.
+- **"Enemies surge toward the gate" is every creature noticing the player while the channel lasts.** The player is at
+  the gate while it counts, so a creature that comes for the player comes to the gate.
+- **The creatures stay called while the channel is paused.** From the first "Channel" until the gate opens or the floor
+  ends, each called creature keeps its raised sight, with the player out of reach and the progress kept: the creatures
+  have been called. The calling runs every beat of the channel whether or not the player is within reach; only the
+  count asks the reach.
+- **No gate, no seal.** The stairs are sealed only while a gate stands, so a floor that could not place one is open,
+  and nothing a creature does can hold the seal: the channel is the player's alone.
+- **The last floor is not sealed**, as Blood Gates rules: its way out leads out of the dungeon, and the row seals the
+  way to a next floor.
+
+**A judgement of this change, not a ruling:** the gate goes when its channel completes, as a Tithe Altar goes when its
+tithe is paid, so the panel and the absence of the gate both say the way is open.
+
+### Tests
+
+Six automation tests, all in `Cataclysm.DungeonModifierEffects.`. The registration named five; the sixth, the Horde
+test, follows the ruling that all three exit-lock rows do nothing on a Horde dungeon, as Infernal Seals' does:
+
+- `SanctionedPassageFiguresAndTheRowBuilt`: 10 seconds, the "Channel" key, the 5 m reach, and the row built.
+- `SanctionedPassageADivineGateStandsBesideTheExitOfferingChannel`: with Forced Tithes on the same floor, one gate, on a
+  walkable cell beside the exit and not on the altar's, offering "Channel"; the panel; the stairs refused.
+- `SanctionedPassageTheStairsOpenAfterTenSecondsChannelled`: standing at the gate without choosing counts nothing; the
+  choice cannot be made twice; sealed at 9.75 seconds, open at 10.
+- `SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt`: five seconds kept across five seconds just beyond
+  the reach, with a called creature's sight still raised; a creature's blow lands on the player and the channel goes on
+  to open the gate.
+- `SanctionedPassageEveryCreatureComesWhileItChannels`: a creature 40 m off does not notice the player before the
+  channel and does during it; one arriving during it is called, a thrall is not; both have their own sight back after.
+- `SanctionedPassageDoesNothingOnAHordeArena`.
+
+One Python check, `test_sanctioned_passage_row_still_names_a_ten_second_channel_at_divine_gates`, pins the three phrases
+the rulings rest on.
+
+### The windows of 2026-10-01
+
+Run on `feat/lightforged-walls-2`, the top of the exit-lock chain, on development `b3eea92a`. The third window is the run of record:
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `167f0a8e` | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `167f0a8e` | "Tests: 3029 tests performed, 3029 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3029 tests in the tree at 167f0a8e; 3029 performed, gap 0; every declared test was reported by the run." |
+| Python, `167f0a8e`, started with no CI run in progress | "5641 passed, 8 skipped in 322.66s (0:05:22)"; JUnit: 5649 tests, 0 failures, 0 errors, 8 skipped |
+
+The commit above `167f0a8e` that writes these figures changes this file only.
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after:
+
+- **Pa PROVED**, the channel's time not counted: "with the break in: 6 tests performed, 3 succeeded, 3 failed:
+  SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt, SanctionedPassageEveryCreatureComesWhileItChannels,
+  SanctionedPassageTheStairsOpenAfterTenSecondsChannelled | restored: 6 tests performed, 6 succeeded, 0 failed".
+- **Pb PROVED**, the progress reset when the player steps away: "with the break in: 6 tests performed, 5 succeeded, 1
+  failed: SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt | restored: 6 tests performed, 6 succeeded, 0
+  failed".
+- **Pc PROVED**, the creatures not called: "with the break in: 6 tests performed, 4 succeeded, 2 failed:
+  SanctionedPassageAwayPausesAndKeepsProgressAndAHitDoesNotStopIt, SanctionedPassageEveryCreatureComesWhileItChannels |
+  restored: 6 tests performed, 6 succeeded, 0 failed". The first of the two is the paused-sight assertion, as ruled.
+
+---
+
+## 2026-10-01 — Infernal Seals: the floor's four strongest creatures each bear a piece of the seal, and the stairs open with the last piece
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures
+and the pieces needed), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the bearers chosen at
+each floor's population, the step that gives the pieces, the floor panel line, and `StairsSealedBy`, which the stairs
+handler now asks), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (`bIsASealBearer`),
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Seal Bearer" under a bearer's bar), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the automation tests and the three guard proofs were run in the exit-lock windows of 2026-10-01; the figures are at the end of this entry.
+
+### The row
+
+`Demonic_Infernal_Seals` in `game/Data/DungeonModifiers.csv`: "The door on each floor is locked by a particular seal.
+The seals are held by powerful enemies on each floor and the player must collect all 4 pieces of the seal in order to
+unlock the door to the next floor."
+
+### What the rule does
+
+When a floor carrying the row is populated, its four creatures of the highest rarity rung bear the seal: they are
+chosen after every other population rule, ties going to the creature placed first, and one below the Elite rung is
+raised to Elite. "Seal Bearer" is shown under each bearer's bar. A bearer gives its piece when it dies, whoever kills
+it, when the player takes it as a thrall, when it is gone from the world without its death being heard, and when it can
+no longer be hurt. The stairs refuse the player until every piece is given, and watch for the player again after a
+refusal, as Blood Gates' do. The floor panel says `infernal seals: N of M pieces` while sealed and `infernal seals:
+open` after.
+
+**The stairs now ask one question, `StairsSealedBy()`,** which names every row sealing them: Blood Gates while its
+count is short, Infernal Seals while a piece is missing. The stairs open only when it is empty, so two sealing rules on
+one floor each have to release. Celestial_Sanctioned_Passage and Celestial_Lightforged_Walls are added to it in the two
+changes that follow this one.
+
+**It does nothing on a Horde dungeon.** A Horde dungeon has no stairs (GoToFloor places none when bWaveWalksIn), so this
+row does nothing there: no bearer is chosen, and the panel says `infernal seals: no stairs on a Horde floor`.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01. These are judgements, not readings the row
+settles:**
+
+- **"Powerful enemies" is the highest rungs, raised to Elite when below it.** The row does not say which creatures, nor
+  that they must be of a rung; the floor's strongest is the plainest reading, and raising the weaker to Elite makes a
+  bearer visibly one of the powerful. A Boss or a Legendary keeps its own rung.
+- **The piece is given on the bearer's death,** not when the player picks something up. The row says "collect", and no
+  item is dropped; the panel count is the collection.
+- **Never more pieces than bearers.** A floor with three creatures that can bear needs three pieces, and a floor with
+  none is open. "All 4" is the most a floor asks.
+- **Every way a bearer leaves the fight gives its piece,** so the floor cannot be left with no way down: a bearer taken
+  as a thrall (issue [#1202](https://github.com/sdubois777/Cataclysm/issues/1202)), one gone without its death being
+  heard, and one made unable to be hurt would otherwise hold the stairs shut for good.
+- **A creature cannot bear if it dies unpaid, was raised by a rule, cannot be hurt or is the player's follower,** for
+  the same reason: the player could never take its piece.
+- **The last floor is not sealed.** Its stairs lead out of the dungeon, and the row locks "the door to the next floor".
+
+### Tests
+
+Seven automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `InfernalSealsFiguresAndTheRowBuilt`: four pieces, the Elite rung, the pieces needed clamped to the bearers, and the
+  row in the list of rows with a rule.
+- `InfernalSealsTheFourHighestCreaturesBearTheSealAtTheEliteRung`: of six creatures, a Boss and a Legendary bear at
+  their own rungs and the first two Commons bear raised to Elite; the label shows on a bearer only.
+- `InfernalSealsTheStairsOpenWithTheLastPiece`: refused at none and at three; the fourth, killed by another creature,
+  opens them.
+- `InfernalSealsAFloorWithFewerCreaturesNeedsFewerPieces`: an empty floor is open; two creatures need two pieces.
+- `InfernalSealsABearerTakenGoneOrMadeUnhurtGivesItsPiece`: one taken as a thrall, one destroyed and one made unable to
+  be hurt each give a piece.
+- `TwoRulesSealTheStairsAndOpenOnlyWhenBothRelease`: with Blood Gates on the same floor, Blood Gates opens at two
+  slain while the seal holds the stairs, and both released open them.
+- `InfernalSealsDoesNothingOnAHordeArena`.
+
+One Python check, `test_infernal_seals_row_still_names_four_pieces_held_by_powerful_enemies`, pins the four phrases the
+rulings rest on.
+
+**Blood Gates is the regression check for the shared question**, since its refusal moved into `StairsSealedBy()`. Its
+seven tests must pass unchanged: `TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor`,
+`ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`, `OnceNoUnmarkedCreatureStandsTheStairsAreOpen`,
+`AMarkedCreatureIsNeitherPlacedNorSlainForTheGate`, `TheLastFloorsWayOutIsNotSealed`,
+`APortalWardenDoesNotSealOpenBloodGatesAgain` and `ATrickOrTreatPairDoesNotResealOpenBloodGates`.
+
+### The windows of 2026-10-01
+
+Run on `feat/lightforged-walls-2`, the top of the exit-lock chain, on development `b3eea92a`. The third window is the run of record:
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `167f0a8e` | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `167f0a8e` | "Tests: 3029 tests performed, 3029 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3029 tests in the tree at 167f0a8e; 3029 performed, gap 0; every declared test was reported by the run." |
+| Python, `167f0a8e`, started with no CI run in progress | "5641 passed, 8 skipped in 322.66s (0:05:22)"; JUnit: 5649 tests, 0 failures, 0 errors, 8 skipped |
+
+The commit above `167f0a8e` that writes these figures changes this file only.
+
+Two earlier windows built the chain and stopped at this row's first proof, Pa, as the next paragraphs record: the first
+at `5798502b` ("Build: Succeeded - 32 actions, 29 files compiled") and the second at `6d27d288` ("Build: Succeeded - 4
+actions, 1 file compiled: Module.Cataclysm.26.cpp"). Nothing after Pa ran in either.
+
+**Blood Gates' seven tests, the regression check for `StairsSealedBy()`**, each have one `Result={Success}` line in the
+third window's whole-suite log, which has 3029 such lines and no `Result={Fail}` line:
+`TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor`, `ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`,
+`OnceNoUnmarkedCreatureStandsTheStairsAreOpen`, `AMarkedCreatureIsNeitherPlacedNorSlainForTheGate`,
+`TheLastFloorsWayOutIsNotSealed`, `APortalWardenDoesNotSealOpenBloodGatesAgain` and
+`ATrickOrTreatPairDoesNotResealOpenBloodGates`.
+
+**Guard proof Pa, run in the first window on 2026-10-01 at `5798502b`, was NOT A PROOF**: five of this row's tests failed
+with the file restored, from two faults in the tests and not in the rule. Every panel helper of the three exit-lock
+rows took a pointer into the map `LiveCountsForTheFloor` returns, which is gone by the next line, so each panel
+assertion read freed memory; and a one-blow kill failed at random, in a different test in each half. The helpers now
+keep the map in a local, and every kill in the three rows' tests goes through `MakeAOneBlowKillReliable` and says, when
+the blow does not kill, the victim's rung, health, armour, the blow, and whether a sigil or a rule holds it.
+**Pa stays NOT A PROOF with those causes. Pa2, the same break at the new top, is a fourth run of this row's proofs**,
+allowed by the coordinating session because Pa failed on test faults rather than on a fair test.
+
+**Pa2, run in the second window at `6d27d288`, was also NOT A PROOF**, from a third test fault. The kill diagnostic
+printed, four times, a bearer at the Elite rung with health "100.0 of 100.0 (100.0 before)", no armour, no modifiers,
+not in a sigil and able to be hurt, after a blow `ApplyHit` reported as 57600 sent. Choosing the bearers raises a
+Common to Elite through `SetRarityStep`, which re-applies the starting attributes and so writes back the Imp's designed
+25% evasion over the zero `PlaceCreatureAtRung` had set; `ApplyHit` returns the figure sent, not what landed (issue
+#1156), so a dodged blow still reports its damage. **That evasion was the cause is inferred from the code, not
+printed**: the diagnostic did not yet read evasion. The tests now zero every placed creature's evasion after the
+bearers are chosen, and **a set-up assertion that each reads 0 is the check**; the diagnostic now prints evasion too. In
+play the raised bearer keeps its designed evasion, which is correct. In Pa2's half with the break in, two of the three
+predicted tests failed at their predicted assertions; the third, `InfernalSealsTheStairsOpenWithTheLastPiece`, failed
+earlier, on a dodged kill. **Pa2 stays NOT A PROOF with that cause, and Pa3, the same break, is a fifth run of this
+row's proofs, the last the coordinating session allows.**
+
+**Pa3 PROVED**, the piece not given, in the third window: "with the break in: 6 tests performed, 3 succeeded, 3 failed:
+InfernalSealsABearerTakenGoneOrMadeUnhurtGivesItsPiece, InfernalSealsAFloorWithFewerCreaturesNeedsFewerPieces,
+InfernalSealsTheStairsOpenWithTheLastPiece | restored: 6 tests performed, 6 succeeded, 0 failed", its anchor matched once
+and the source hash the same before and after. The other two, run once each in the third window, the same:
+
+- **Pb PROVED**, `StairsSealedBy()` keeping only the first rule: "with the break in: 1 tests performed, 0 succeeded, 1
+  failed: TwoRulesSealTheStairsAndOpenOnlyWhenBothRelease | restored: 1 tests performed, 1 succeeded, 0 failed".
+- **Pc PROVED**, the release of a bearer gone without its death removed: "with the break in: 6 tests performed, 5
+  succeeded, 1 failed: InfernalSealsABearerTakenGoneOrMadeUnhurtGivesItsPiece | restored: 6 tests performed, 6
+  succeeded, 0 failed".
+
+---
+
 ## 2026-10-01 — A death deals the remaining damage of the player's own damage over time on the enemies within 5 m, and a critical strike deals 20%-40% of a target's Necrosis; an Ailment column
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`DamageOverTimeTicksLeft`,
@@ -251,9 +581,22 @@ group rather than the whole suite.
 `AnEchoRepeatsTheAbilityItsCreatureLastUsed`, `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`,
 `AWingsOfTheHostFeatherIsCelestial`, `ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter`,
 `ItLeavesWastingSicknessAndVoidParasite`, `ContagiousTouchASwingDealsNothingAndAddsAStack` and
-`ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`. All nine **pass with the clamp; reading pending**: whether each
-measures a stated amount, has only a lower bound a clamp-sized loss would also meet, or measures nothing against the
-maximum is to be read after this window.
+`ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`. All nine **pass with the clamp**, and none has Raw Sewage's shape. Read after
+the window, read-only, at `b9dadb76`, and recorded by the coordinating session on
+[#2193](https://github.com/sdubois777/Cataclysm/issues/2193):
+
+- **(a) measures a stated amount against a maximum the test checks:** `ADivineWrathBeamBurnsAFifthOfMaximumHealthAsCelestial`;
+  `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`, measured before its floor change, with an upper bound;
+  `ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter`, bounded both ways; and
+  `ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`, measured before its floor change, with an upper bound per pulse.
+- **(b) has only a lower bound a clamp-sized loss would also meet:** none.
+- **(c) measures nothing against the maximum** (comparisons with values read after the change, equalities, or stack
+  counts): `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`, `AnEchoRepeatsTheAbilityItsCreatureLastUsed`,
+  `AWingsOfTheHostFeatherIsCelestial`, `ItLeavesWastingSicknessAndVoidParasite`, and
+  `ContagiousTouchASwingDealsNothingAndAddsAStack`, which gives the health again after the floor change.
+
+So no test needs tightening. The sweep that found the nine over-reported floor changes: it matched `GoToFloor` in helper
+code that follows some test bodies.
 
 **The six-curse case, measured in Pa's two runs:** with the code as it stands, six Pacts of Wrath took the maximum from
 510 to 204 and the 50% cap left health at 102, half the cursed maximum; with the write-back removed, the cap read 510 and

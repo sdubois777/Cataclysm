@@ -112,6 +112,10 @@ const TCHAR* UCataclysmDungeonModifierEffects::SufferingAuraKey =
 const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 	TEXT("Demonic_Blood_Gates");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_Infernal_Seals");
+const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Celestial_Sanctioned_Passage");
+const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
+
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
 
@@ -723,6 +727,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DeadRisingKey)
 		|| RowKey == FName(SufferingAuraKey)
 		|| RowKey == FName(BloodGatesKey)
+		|| RowKey == FName(InfernalSealsKey)
+		|| RowKey == FName(SanctionedPassageKey)
 		|| RowKey == FName(DirgeResonanceKey)
 		|| RowKey == FName(ScarcityKey)
 		|| RowKey == FName(ChaoticLootKey)
@@ -822,7 +828,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(RealityRiftsKey)
 		// WARZONE CONTROL POINTS. The points are captured and held and give their strength; "summoning allied
 		// soldiers" and "opening shortcuts" do nothing. Issues #1820 and #41.
-		|| RowKey == FName(WarzoneControlPointsKey))
+		|| RowKey == FName(WarzoneControlPointsKey)
+		// LIGHTFORGED WALLS. The stairs stay sealed until every creature the floor placed is slain; "sections" do
+		// nothing, because nothing divides a floor into areas a barrier could close. Issues #1820 and #41.
+		|| RowKey == FName(LightforgedWallsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -967,6 +976,9 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DeadRisingKey),
 		FName(SufferingAuraKey),
 		FName(BloodGatesKey),
+		FName(InfernalSealsKey),
+		FName(SanctionedPassageKey),
+		FName(LightforgedWallsKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
@@ -2774,6 +2786,12 @@ int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
 	}
 	return static_cast<int32>(
 		(static_cast<int64>(Placed) * BloodGatesSlainPercent + 99) / 100);
+}
+
+int32 UCataclysmDungeonModifierEffects::InfernalSealsPiecesNeeded(int32 BearersChosen)
+{
+	// NEVER MORE PIECES THAN BEARERS, as ruled: asking for more than exist would leave stairs that never open.
+	return FMath::Clamp(BearersChosen, 0, InfernalSealsPieces);
 }
 
 bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)
