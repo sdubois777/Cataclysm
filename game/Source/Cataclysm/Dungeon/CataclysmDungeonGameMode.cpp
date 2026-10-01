@@ -1203,7 +1203,7 @@ void ACataclysmDungeonGameMode::StartPlay()
 	// AND THE FIRST FLOOR'S MODIFIERS REACH THE PLAYER, for the same reason the
 	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
 	// Issue #41.
-	ApplyFloorRulesToPlayer();
+	ApplyFloorRulesKeepingHealth();
 	DungeonGameModeRaiseFloorStart(GetWorld());
 
 	// AND A DEATH ANYWHERE ON THE FLOOR REACHES THE NIHIL'S EMBRACE'S CLEANSE.
@@ -7840,6 +7840,84 @@ void ACataclysmDungeonGameMode::PutTheHealthSharesBack(ACataclysmEnemyCharacter*
 	}
 }
 
+void ACataclysmDungeonGameMode::ApplyFloorRulesKeepingHealth()
+{
+	// THE ONE WAY EVERY CALLER APPLIES THE FLOOR'S RULES TO THE PLAYER: `StartPlay`, `GoToFloor` and
+	// `LeaveEmpireDungeon`. Issue #2190, ruled by the coordinating session on 2026-10-01.
+	//
+	// WHY THE HEALTH IS READ FIRST AND PUT BACK. `ApplyFloorRulesToPlayer` replaces the floor modifiers wholesale, so a
+	// rule written on the beat is off the player until `WriteTheMaximumHealthRulesBack` puts it on again. For a rule
+	// that RAISES the maximum -- Chaos Touched's more maximum health -- the maximum falls in between, and
+	// `UCataclysmVitalAttributeSet::PostAttributeChange` lowers health to it; the maximum then rises again and health
+	// does not. So a full player would lose that share on every floor change. Health is restored to the lower of what
+	// it was and the maximum the rules leave: a floor change costs health only where the new maximum is lower than the
+	// health held, which is the clamp's own rule applied once, to the maximum the floor actually has. It never raises
+	// health above what it was, and a dead player stays at nothing.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float HealthBefore = AbilitySystem ? AbilitySystem->GetNumericAttribute(Health) : 0.0f;
+
+	ApplyFloorRulesToPlayer();
+	WriteTheMaximumHealthRulesBack();
+
+	if (AbilitySystem)
+	{
+		const float Kept = FMath::Min(
+			HealthBefore, AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+		if (AbilitySystem->GetNumericAttribute(Health) < Kept)
+		{
+			AbilitySystem->SetNumericAttributeBase(Health, Kept);
+		}
+	}
+}
+
+void ACataclysmDungeonGameMode::WriteTheMaximumHealthRulesBack()
+{
+	// THE RULES THAT LAST THE DUNGEON AND TAKE OR GIVE MAXIMUM HEALTH, WRITTEN BACK BEFORE THE FLOOR STARTS. Issue
+	// #2190, ruled by the coordinating session on 2026-10-01. `ApplyFloorRulesToPlayer` replaces the player's floor
+	// modifiers wholesale, which takes these four off until a beat writes them again, and `floor_start` -- "You start
+	// every dungeon floor at 30%-50% of your maximum HP" -- read the maximum in between: a Pact of Wrath's 10% less, a
+	// Starvation Curse's or Wasting Sickness's stacks and Chaos Touched's more or less were not on it, so a cursed player
+	// started above the share and a Touched one below it. Each step is called under the guard the beat calls it under,
+	// and each writes only what differs from what it last applied, so the beat after this changes nothing.
+	//
+	// A LIST, AND WHAT KEEPS IT WHOLE: a rule added later that writes maximum health on the beat must be called here
+	// too. `tools/tests/test_maximum_health_rules_are_written_before_the_floor_start.py` reads every maximum-health
+	// field `ApplyChangingFloorEffects` writes, follows each to the applied state it reads and the step that writes that
+	// state, and fails when such a step is missing from this function.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	if (!Player || !AbilitySystem)
+	{
+		return;
+	}
+	if (FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::WastingSicknessKey)))
+	{
+		StepWastingSickness(Player, AbilitySystem);
+	}
+	if (StarvationCurseMovementStacks != StarvationCurseMovementApplied
+		|| StarvationCurseHealthStacks != StarvationCurseHealthApplied)
+	{
+		StepStarvationCurse(Player, AbilitySystem);
+	}
+	if (ChaosTouchedStacks != ChaosTouchedApplied)
+	{
+		StepChaosTouched(Player, AbilitySystem);
+	}
+	if (FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::PactOfTemptationKey))
+		|| PactsTaken > 0 || PactBuffNow != INDEX_NONE || PactBuffApplied != INDEX_NONE)
+	{
+		StepPactOfTemptation(Player, AbilitySystem);
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPlayersFollowers()
 {
 	// EVERY VALUE A FLOOR RULE PUTS ON A CREATURE, PUT BACK ON EACH THRALL A PLAYER
@@ -11064,7 +11142,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// this takes Starvation's and Dehydration's share back off the player's
 	// maximums, gives back the resistance The Nihil's Embrace had taken, stops
 	// Forced March counting, and hides the floor panel. Issue #41, slice 2.
-	ApplyFloorRulesToPlayer();
+	ApplyFloorRulesKeepingHealth();
 }
 
 TArray<FName> ACataclysmDungeonGameMode::ChooseModifiers(float& OutScore) const
@@ -18290,7 +18368,7 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	EchoesFromLastFloor = MoveTemp(EchoesThisFloor);
 	EchoesThisFloor.Reset();
 
-	ApplyFloorRulesToPlayer();
+	ApplyFloorRulesKeepingHealth();
 	DungeonGameModeRaiseFloorStart(GetWorld());
 
 	return true;

@@ -992,6 +992,44 @@ CATACLYSM_TEST(FCataclysmAttributeRoundingTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmLoweredMaximumLowersHealthTest,
+	"Cataclysm.Attributes.LoweringMaximumHealthLowersHealthAboveIt")
+{
+	// Issue #2190, ruled 2026-10-01: health above its maximum is a fault, so a lowered maximum lowers health above it,
+	// by a write to the base and by an effect alike; raising the maximum raises nothing; health below a lowered maximum
+	// stays where it is.
+	UWorld* World = CataclysmAttributeTest::MakeWorld();
+	{
+		const CataclysmAttributeTest::FScopedFullCharacter Fixture(World);
+		const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Fixture.AbilitySystem->SetNumericAttributeBase(MaxHealth, 1000.0f);
+		Fixture.AbilitySystem->SetNumericAttributeBase(Health, 1000.0f);
+		if (!TestEqual(TEXT("set-up: full at 1000"), Fixture.Vitals->GetHealth(), 1000.0f, 0.01f))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		Fixture.AbilitySystem->SetNumericAttributeBase(MaxHealth, 500.0f);
+		TestEqual(TEXT("a maximum written down to 500 takes health down to it"), Fixture.Vitals->GetHealth(),
+				  500.0f, 0.01f);
+
+		Fixture.AbilitySystem->SetNumericAttributeBase(MaxHealth, 2000.0f);
+		TestEqual(TEXT("a maximum raised to 2000 raises nothing"), Fixture.Vitals->GetHealth(), 500.0f, 0.01f);
+
+		Fixture.Add(MaxHealth, -1700.0f);
+		TestEqual(TEXT("set-up: an effect takes the maximum to 300"), Fixture.Vitals->GetMaxHealth(), 300.0f, 0.01f);
+		TestEqual(TEXT("and health comes down to it the same way"), Fixture.Vitals->GetHealth(), 300.0f, 0.01f);
+
+		Fixture.AbilitySystem->SetNumericAttributeBase(Health, 100.0f);
+		Fixture.AbilitySystem->SetNumericAttributeBase(MaxHealth, 200.0f);
+		TestEqual(TEXT("health below a lowered maximum stays where it is"), Fixture.Vitals->GetHealth(), 100.0f, 0.01f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_AUTOMATION_TESTS

@@ -30899,11 +30899,24 @@ bool FCataclysmSewageBurnTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// THE FLOOR CHANGE REFRESHES THE ATTRIBUTES, which puts the hand-written hundred thousand back to the player's own
+	// maximum, so it is written again after a beat, as the set-up wrote it. Issue #2190: until the clamp, health sat
+	// above the refreshed maximum and the first burn's write clamped it down, a loss of tens of thousands that passed
+	// the lower bound below by accident. The upper bound is what makes a loss of that size fail.
+	Beat(Mode, 1);
+	if (!GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
 	Before = HealthOf(Player.Character);
 	Beat(Mode, BeatsFor(2.0f));
 	Lost = Before - HealthOf(Player.Character);
+	TestEqual(TEXT("the maximum is still the test's hundred thousand after the burn"),
+			  Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), HealthForTypedDamage, 0.01f);
 	TestEqual(TEXT("the stacks are still two"), Mode->RawSewageStacksHeld(), 2);
 	TestTrue(FString::Printf(TEXT("and still burn (%.1f lost)"), Lost), Lost >= PerSecond - 0.5f);
+	TestTrue(FString::Printf(TEXT("once a second there too, no more (%.1f lost, %.1f a second)"), Lost, PerSecond),
+			 Lost <= 2.0f * PerSecond + 0.5f);
 	TestTrue(TEXT("and the disease keyword is still held"),
 			 Player.AbilitySystem->HasMatchingGameplayTag(SewageDiseaseTag()));
 	return true;
@@ -41484,6 +41497,427 @@ bool FCataclysmBloodPriceDungeonTest::RunTest(const FString& Parameters)
 	Beat(Mode, 1);
 	TestEqual(TEXT("leaving the dungeon ends it"), Mode->BloodPriceStacksHeld(), 0);
 	TestFalse(TEXT("and the keyword"), Player.AbilitySystem->HasMatchingGameplayTag(BleedingTag()));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #2190: the floor-start cap reads the maximum after every dungeon-long rule that changes it is written back.
+// "You start every dungeon floor at 30%-50% of your maximum HP" is raised as `floor_start` at the end of `GoToFloor`;
+// `ApplyFloorRulesToPlayer` takes four rules off until a beat writes them again, and `WriteTheMaximumHealthRulesBack`
+// now writes them before the raise. Each test reads the cap against the maximum the floor starts with, and a beat later
+// reads the maximum again: the same, so the rule was on it when the cap read it and was not applied twice.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** A benefit row with no effect in play, to carry the cap's drawback on an item: the enchantment tests' choice. */
+	const TCHAR* FloorStartCapBenefit = TEXT("Positive_Your_ultimate_ability_is_converted_into_a_placea");
+
+	/**
+	 * Wears "You start every dungeon floor at 30%-50% of your maximum HP" on a helm and returns the share it rolled, or
+	 * -1. Worn before any rule's stacks are taken, since wearing refreshes the attributes.
+	 */
+	float WearTheFloorStartCap(FAutomationTestBase& Test, const FPossessedPlayer& Player)
+	{
+		UCataclysmEquipmentComponent* Equipment = Player.Character->GetEquipment();
+		if (!Test.TestNotNull(TEXT("set-up: the player's equipment"), Equipment))
+		{
+			return -1.0f;
+		}
+		FCataclysmItem Helm;
+		Helm.Base = FName(TEXT("Head_Helm"));
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(FloorStartCapBenefit);
+		Rolled.Negative = FName(TEXT("Negative_You_start_every_dungeon_floor_at_30_50_of_your"));
+		Helm.Enchantments.Add(Rolled);
+		Helm.EnchantmentCount = 1;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(Player.AbilitySystem);
+		float Share = -1.0f;
+		for (const FCataclysmPoolAction& Action : Player.AbilitySystem->GetPoolActions())
+		{
+			if (Action.bHealthCap)
+			{
+				Share = Action.Percent;
+			}
+		}
+		Test.TestTrue(*FString::Printf(TEXT("set-up: the worn row gave a cap between 30 and 50: %.2f"), Share),
+					  Share >= 30.0f && Share <= 50.0f);
+		return Share;
+	}
+
+	/** Health written to the maximum as it stands. */
+	void FillThePlayer(const FPossessedPlayer& Player)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+													  MaximumHealthOf(Player));
+	}
+
+	/**
+	 * Straight after a floor change of a full player: health is the cap's share of the maximum the floor starts with and
+	 * not above it; and a beat later the maximum is the same, so the rules were on it when the cap read it and were not
+	 * applied a second time.
+	 */
+	void TheCapReadTheMaximumTheBeatKeeps(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+										  const FPossessedPlayer& Player, float Share)
+	{
+		const float AtTheStart = MaximumHealthOf(Player);
+		Test.TestEqual(TEXT("health is the cap's share of the maximum the floor starts with"), HealthOf(Player),
+					   AtTheStart * Share / 100.0f, 0.5f);
+		Test.TestTrue(TEXT("and is not above that maximum"), HealthOf(Player) <= AtTheStart + 0.01f);
+		Beat(Mode, 1);
+		Test.TestEqual(TEXT("a beat later the maximum is the one the cap read: written once, not twice"),
+					   MaximumHealthOf(Player), AtTheStart, 0.01f);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapAfterWrathTest,
+	"Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterThePactOfWrath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapAfterWrathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Share = WearTheFloorStartCap(*this, Player);
+	if (Share < 0.0f)
+	{
+		return false;
+	}
+	const float Unruled = MaximumHealthOf(Player);
+	FillThePlayer(Player);
+	if (!TakeThePact(*this, Mode, WrathKey))
+	{
+		return false;
+	}
+	// THE CLAMP, THROUGH A REFRESH: the curse lowers the maximum of a full player, and health comes down with it.
+	TestTrue(TEXT("the curse lowered the maximum"), MaximumHealthOf(Player) < Unruled - 1.0f);
+	TestEqual(TEXT("and a full player's health came down with it"), HealthOf(Player), MaximumHealthOf(Player), 0.01f);
+
+	FillThePlayer(Player);
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the curse is on the maximum the floor starts with"), MaximumHealthOf(Player) < Unruled - 1.0f);
+	TheCapReadTheMaximumTheBeatKeeps(*this, Mode, Player, Share);
+	TestEqual(TEXT("one curse on maximum health, not two"), PactRulesOn(Player, TEXT("max_health")),
+			  -Effects::PactWrathMaxHealthLessPercent, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapAfterSixWrathsTest,
+	"Cataclysm.HealthThreshold.SixPactsOfWrathAndTheFloorStartCapLeaveHealthAtOrBelowItsMaximum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapAfterSixWrathsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT("0,1,2"));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APactFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Share = WearTheFloorStartCap(*this, Player);
+	if (Share < 0.0f)
+	{
+		return false;
+	}
+	const float Unruled = MaximumHealthOf(Player);
+
+	// A PACT OF WRATH ON EACH OF FLOORS 2 TO 7, health never above its maximum along the way.
+	for (int32 Floor = 2; Floor <= 7; ++Floor)
+	{
+		FillThePlayer(Player);
+		if (!TakeThePact(*this, Mode, WrathKey))
+		{
+			return false;
+		}
+		TestTrue(*FString::Printf(TEXT("floor %d: health is not above its maximum after the curse"), Floor),
+				 HealthOf(Player) <= MaximumHealthOf(Player) + 0.01f);
+		if (Floor < 7 && !TheNextPactFloor(*this, Mode, Floor + 1))
+		{
+			return false;
+		}
+	}
+	if (!TestEqual(TEXT("set-up: six curses on maximum health"), PactRulesOn(Player, TEXT("max_health")),
+				   -6.0f * Effects::PactWrathMaxHealthLessPercent, 0.001f))
+	{
+		return false;
+	}
+
+	// FLOOR 8, FULL: THE CAP READS THE SIX-TIMES-CURSED MAXIMUM.
+	FillThePlayer(Player);
+	if (!TestTrue(TEXT("floor 8 was reached"), Mode->GoToFloor(8)))
+	{
+		return false;
+	}
+	UE_LOG(LogTemp, Display, TEXT("Six Pacts of Wrath: maximum %.1f of %.1f unruled, health %.1f, share %.2f"),
+		   MaximumHealthOf(Player), Unruled, HealthOf(Player), Share);
+	TestTrue(TEXT("the six curses are on the maximum the floor starts with"),
+			 MaximumHealthOf(Player) < Unruled - 1.0f);
+	TheCapReadTheMaximumTheBeatKeeps(*this, Mode, Player, Share);
+	TestEqual(TEXT("six curses, not twelve"), PactRulesOn(Player, TEXT("max_health")),
+			  -6.0f * Effects::PactWrathMaxHealthLessPercent, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapAfterStarvationTest,
+	"Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterTheStarvationCurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapAfterStarvationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Share = WearTheFloorStartCap(*this, Player);
+	if (Share < 0.0f)
+	{
+		return false;
+	}
+	const float Unruled = MaximumHealthOf(Player);
+	Mode->DungeonModifiers = {StarvationCurse};
+	if (!TheCurseFloor(*this, Mode, 2, CurseLowersHealth)
+		|| !TestEqual(TEXT("set-up: one stack of less maximum health"), Mode->StarvationCurseHealthStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	FillThePlayer(Player);
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.StarvationCurseRoll"), CurseLowersHealth);
+		if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("floor 3 added its stack: two"), Mode->StarvationCurseHealthStacksHeld(), 2);
+	TestTrue(TEXT("the stacks are on the maximum the floor starts with"), MaximumHealthOf(Player) < Unruled - 1.0f);
+	TheCapReadTheMaximumTheBeatKeeps(*this, Mode, Player, Share);
+	TestEqual(TEXT("the same two stacks a beat later"), Mode->StarvationCurseHealthStacksHeld(), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapAfterSicknessTest,
+	"Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterWastingSickness",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapAfterSicknessTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Share = WearTheFloorStartCap(*this, Player);
+	if (Share < 0.0f)
+	{
+		return false;
+	}
+	const float Unruled = MaximumHealthOf(Player);
+
+	// A STACK FROM A REAL BLOW, the roll pinned so every landed blow inflicts one, as Wasting Sickness's tests do.
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	Mode->DungeonModifiers = {WastingSickness};
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable)
+		|| !TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("set-up: a creature that can hit"), Enemy)
+		|| !TestTrue(TEXT("set-up: its blow landed"), UCataclysmSkillEffects::ApplyHit(Enemy, Player.Character, 50.0f) > 0.0f))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("set-up: a stack of sickness is held"), Mode->WastingSicknessStacksHeld() >= 1))
+	{
+		return false;
+	}
+
+	FillThePlayer(Player);
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	const int32 Stacks = Mode->WastingSicknessStacksHeld();
+	TestTrue(TEXT("the sickness is on the maximum the floor starts with"), MaximumHealthOf(Player) < Unruled - 1.0f);
+	TheCapReadTheMaximumTheBeatKeeps(*this, Mode, Player, Share);
+	TestEqual(TEXT("the same stacks a beat later"), Mode->WastingSicknessStacksHeld(), Stacks);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapAfterTouchTest,
+	"Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterChaosTouched",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapAfterTouchTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Share = WearTheFloorStartCap(*this, Player);
+	if (Share < 0.0f)
+	{
+		return false;
+	}
+	const float Unruled = MaximumHealthOf(Player);
+
+	// MORE MAXIMUM HEALTH, the draw pinned to 0: the case where the cap read too small a maximum.
+	Mode->DungeonModifiers = {ChaosTouched};
+	if (!TheTouchedFloor(*this, Mode, 2, TEXT("0"))
+		|| !TestTrue(TEXT("set-up: the touch raised the maximum"), MaximumHealthOf(Player) > Unruled + 1.0f))
+	{
+		return false;
+	}
+
+	FillThePlayer(Player);
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.ChaosTouchedRoll"), TEXT("0"));
+		if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return false;
+		}
+	}
+	TestTrue(TEXT("the touches are on the maximum the floor starts with"), MaximumHealthOf(Player) > Unruled + 1.0f);
+	TheCapReadTheMaximumTheBeatKeeps(*this, Mode, Player, Share);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTouchedKeepsFullTest,
+	"Cataclysm.HealthThreshold.AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2190, ruled 2026-10-01. Chaos Touched's more maximum health is taken off by the floor's rules and written back;
+ * between the two the clamp lowers health to the lower maximum, and `ApplyFloorRulesKeepingHealth` puts it back. Read
+ * against the stated figure the touched maximum had before the change, so a floor change that left the maximum low, or
+ * left health at the low figure, both fail. No cap row is worn. The next floor keeps the row, with its draw pinned to
+ * more speed; see the comment at the floor change.
+ */
+bool FCataclysmTouchedKeepsFullTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Unruled = MaximumHealthOf(Player);
+	Mode->DungeonModifiers = {ChaosTouched};
+	if (!TheTouchedFloor(*this, Mode, 2, TEXT("0")))
+	{
+		return false;
+	}
+	const float Touched = MaximumHealthOf(Player);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the touch raised the maximum, %.1f to %.1f"), Unruled, Touched),
+				  Touched > Unruled + 1.0f))
+	{
+		return false;
+	}
+	FillThePlayer(Player);
+
+	// FLOOR 3 KEEPS THE ROW, ITS DRAW PINNED TO MORE SPEED, so the touch held is written back and the new one adds no
+	// health. NOT A FLOOR WITHOUT ROWS: a brief carrying none is the player out of the dungeon, which ends every touch
+	// in `ApplyFloorRulesToPlayer` -- the first run of this test, in #2190's window, did that and read 510.
+	const int32 HealthStacks = Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore);
+	const int32 SpeedStacks = Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedSpeedMore);
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.ChaosTouchedRoll"), TEXT("12.5"));
+		if (!TestNotNull(TEXT("the draw can be pinned"), Pinned.Variable)
+			|| !TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("floor 3 added one touch, of more speed"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedSpeedMore),
+			  SpeedStacks + 1);
+	TestEqual(TEXT("and the more-health touch held is kept"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore),
+			  HealthStacks);
+	TestEqual(TEXT("the maximum is the touched one"), MaximumHealthOf(Player), Touched, 0.01f);
+	TestEqual(*FString::Printf(TEXT("and health is still the full touched %.1f, not the untouched %.1f"), Touched,
+							   Unruled),
+			  HealthOf(Player), Touched, 0.01f);
 	return true;
 }
 

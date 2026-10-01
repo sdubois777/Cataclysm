@@ -2,6 +2,160 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — The floor-start health cap reads the maximum after every dungeon-long rule that changes it, and a lowered maximum lowers the health above it
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`ApplyFloorRulesKeepingHealth`,
+`WriteTheMaximumHealthRulesBack`, and the three callers of the floor's rules); `game/Source/Cataclysm/AbilitySystem/
+CataclysmVitalAttributeSet.h` and `.cpp` (`PostAttributeChange`); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and `CataclysmAttributeSetTests.cpp`; and
+`tools/tests/test_maximum_health_rules_are_written_before_the_floor_start.py`. Issue
+[#2190](https://github.com/sdubois777/Cataclysm/issues/2190), found while moving Pact of Temptation onto the
+health-threshold enchantments ([#2189](https://github.com/sdubois777/Cataclysm/pull/2189)); Pact's entry records it as a
+known defect. **Applied. They were done in the window of 2026-10-01; the figures are at the end of this entry.**
+
+### What was wrong
+
+"You start every dungeon floor at 30%-50% of your maximum HP" is `health_capped_at` on `floor_start`, raised as the last
+call of `GoToFloor` and `StartPlay`; it lowers health to that share of the maximum it reads, and never raises it. The
+call before it, `ApplyFloorRulesToPlayer`, replaces the player's floor modifiers wholesale, which takes off every rule a
+beat writes until the next beat writes it again. So the cap read a maximum without them. With one Pact of Wrath, a
+maximum of 1000 and a 30% cap, health went to 300, the curse came back a beat later and took the maximum to 900, and the
+floor started at a third rather than 30%.
+
+### The rules that write maximum health on the beat, read on 2026-10-01
+
+Every field of `FCataclysmPlayerFloorEffects` that changes maximum health, followed to what writes it:
+
+| Rule | Field | Taken off by the floor's rules, written back by |
+| :-- | :-- | :-- |
+| Pact of Temptation, the Pact of Wrath's curse | `PactMaxHealthLessPercent` | `bPactWritten`, `StepPactOfTemptation` |
+| Starvation Curse | `CurseMaxHealthLessPercent` | `StarvationCurseHealthApplied`, `StepStarvationCurse` |
+| Wasting Sickness | `SicknessMaxHealthLessPercent` | `WastingSicknessStacksApplied`, `StepWastingSickness` |
+| Chaos Touched, more and less | `TouchedMaxHealthMorePercent`, `TouchedMaxHealthLessPercent` | `ChaosTouchedApplied`, `StepChaosTouched` |
+
+Chaos Touched's more is the reverse case: the cap read too SMALL a maximum, and the player started below the share. The
+floor's own rows (`MaxHealthLessPercent`, Starvation) are applied inside `ApplyFloorRulesToPlayer` and were never late.
+Two rules named as candidates are not maximum-health rules for the player: Blood Debt writes damage only, and Nothing Is
+Forgotten writes the final boss's maximum health.
+
+### What changed, ruled by the coordinating session on 2026-10-01
+
+- **The four are written back before the floor starts, in the same call.** `WriteTheMaximumHealthRulesBack` calls each
+  rule's step under the guard the beat calls it under; each step writes only what differs from what it last applied, so
+  the beat after changes nothing. `floor_start` is still raised inside `GoToFloor` and `StartPlay`, so the
+  health-threshold entry's ruling 4 stands and nobody sees full health first. Raising it on the next beat instead was
+  refused: a quarter of a second at full health on every floor, and the health-threshold tests that read the cap straight
+  after `GoToFloor` would have had to change.
+- **The list is kept whole by a test** that reads it from the code: every maximum-health field
+  `ApplyChangingFloorEffects` fills is followed to the applied state it reads and the step that writes that state, and the
+  step must be called in `WriteTheMaximumHealthRulesBack`.
+- **A lowered maximum lowers the health above it**, in `UCataclysmVitalAttributeSet::PostAttributeChange`, which the
+  engine calls after every write to an attribute's current value, by a base write or by an effect. Health only, to the
+  maximum only -- not the healing ceiling, not what a reservation leaves -- and raising the maximum raises nothing.
+  **A judgement under the owner's delegation, labelled as one:** health above its maximum is a fault, because the next
+  write of any size clamps it and reads as a large hit. Measured before the change, in Group 2's window B: a refresh
+  that lowered the maximum left health above it until the next write. Issue #1757's ruling that a lowered ceiling does not
+  take shield or mana away is a different case and stands.
+- **Every caller of the floor's rules goes through one function,** `ApplyFloorRulesKeepingHealth`: `StartPlay`,
+  `GoToFloor` and `LeaveEmpireDungeon`, the only three. It reads the player's health, applies the rules, writes the four
+  back, and restores health to the lower of what it was and the maximum they leave. Without the restore the clamp would
+  take Chaos Touched's more off a full player on every floor change: the rules lower the maximum, health follows it down,
+  and the write-back raises the maximum but not health. Leaving the dungeon uses it too, and raises no `floor_start`,
+  since leaving starts no floor. A second test fails when any function but this one calls `ApplyFloorRulesToPlayer`.
+
+### The research
+
+The project asks for a shipped game's answer before a mechanic. On 2026-10-01: `poedb.tw/us/Life` and
+`poe2db.tw/us/Life` were read and say nothing on what current life does when maximum life falls; `www.poewiki.net/wiki/Life`
+returned a bot-protection page; a search found only a player forum thread
+(`www.pathofexile.com/forum/view-thread/382125`), read, which does not say either. **Nothing fetched settles it**, so the
+clamp rests on the judgement above and not on a source.
+
+### Tests
+
+Seven automation tests:
+
+- `Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterThePactOfWrath`: a full player's health comes down with
+  the curse's maximum; after the floor change the curse is on the maximum, health is the cap's share of it, a beat later
+  the maximum is the same, and one curse is held, not two.
+- `Cataclysm.HealthThreshold.SixPactsOfWrathAndTheFloorStartCapLeaveHealthAtOrBelowItsMaximum`: six curses on floors 2
+  to 7, health never above its maximum; on floor 8 the cap reads the six-times-cursed maximum, and six curses are held.
+- `Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterTheStarvationCurse`: two stacks of less maximum health;
+  the same two a beat later.
+- `Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterWastingSickness`: a stack from a real blow; the same
+  stacks a beat later.
+- `Cataclysm.HealthThreshold.AFloorStartCapReadsTheMaximumAfterChaosTouched`: more maximum health on the maximum the
+  floor starts with.
+- `Cataclysm.HealthThreshold.AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull`: no cap row; a full player touched with
+  more health is still at that stated figure after a floor change, on a floor that keeps the row with its draw pinned to
+  more speed: one speed touch added, the health touch kept.
+
+**A test fault found by guard proof Pa, 2026-10-01.** Pa printed NOT A PROOF: with the files restored, this test read a
+maximum of 510 where it expected the touched 561. Its first version went to floor 3 with no rows at all, and a brief
+carrying none is the player out of the dungeon: `ApplyFloorRulesToPlayer` ends every touch there, correctly. The other
+nine tests Pa selected passed restored. Fixed in the test only, as the coordinating session ruled; **Pa stays NOT A
+PROOF with this cause, and Pa2, the same break against the fixed test, is a fourth proof run,** allowed because Pa found
+a fault in its own test rather than failing a fair one.
+
+**A test the clamp exposed, found by the whole suite of the window, 2026-10-01.** At `616eda14` the suite printed
+"3003 tests performed, 3002 succeeded, 1 failed: RawSewageBurnsEachSecondAndOnTheNextFloor", "Expected 'and still burn
+(8.8 lost)' to be true". That test writes a maximum of a hundred thousand by hand, and its floor change refreshes the
+attributes back to the player's own 510. Until the clamp, health sat above that maximum and the first burn's write
+clamped it down, a loss of tens of thousands that passed the test's lower bound by accident; it passed only because health
+sat above its maximum, the fault this entry removes. Fixed in the test only, as the coordinating session ruled: the
+hundred thousand is written again after the floor change and checked after the burn, and the loss has an upper bound as
+well as a lower one, so a loss of that size fails. By the project's rule a test-only fix after the whole suite reruns its
+group rather than the whole suite.
+
+**Tests that set the hundred thousand by hand and then change floor, found by a sweep:** besides Raw Sewage's,
+`ADivineWrathBeamBurnsAFifthOfMaximumHealthAsCelestial`, `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`,
+`AnEchoRepeatsTheAbilityItsCreatureLastUsed`, `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`,
+`AWingsOfTheHostFeatherIsCelestial`, `ASwarmOfLocustsBurnsThePlayerItCoversOutsideAShelter`,
+`ItLeavesWastingSicknessAndVoidParasite`, `ContagiousTouchASwingDealsNothingAndAddsAStack` and
+`ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`. All nine **pass with the clamp; reading pending**: whether each
+measures a stated amount, has only a lower bound a clamp-sized loss would also meet, or measures nothing against the
+maximum is to be read after this window.
+
+**The six-curse case, measured in Pa's two runs:** with the code as it stands, six Pacts of Wrath took the maximum from
+510 to 204 and the 50% cap left health at 102, half the cursed maximum; with the write-back removed, the cap read 510 and
+left 204.
+- `Cataclysm.Attributes.LoweringMaximumHealthLowersHealthAboveIt`: by a base write and by an effect; a raise raises
+  nothing; health below a lowered maximum stays.
+
+Two Python checks, in `tools/tests/test_maximum_health_rules_are_written_before_the_floor_start.py`: the list is whole,
+and every caller goes through `ApplyFloorRulesKeepingHealth`.
+
+### The window of 2026-10-01
+
+Run on `fix/floor-start-cap-order-2`, moved onto development `b1ac2a92`. The pull request comes from its head.
+
+| Run | Printed |
+| :-- | :-- |
+| Build, `c2eb9e06` | "Build: Succeeded - 32 actions, 29 files compiled" |
+| Build, `616eda14` (the keep-health test fixed) | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp" |
+| Unreal, whole suite, `616eda14` | "Tests: 3003 tests performed, 3002 succeeded, 1 failed: RawSewageBurnsEachSecondAndOnTheNextFloor. 40 skipped part of what they check"; "Declared: 3003 tests in the tree at 616eda14; 3003 performed, gap 0" -- the one failure is the test this change exposed, above |
+| Raw Sewage's group, `4ed6d375` (its test fixed) | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp"; "Tests: 3 tests performed, 3 succeeded, 0 failed" -- a test-only fix after the whole suite reruns its group, by the project's rule |
+| Python, `4ed6d375` | "5624 passed, 8 skipped in 330.22s"; JUnit: 5632 tests, 0 failures, 0 errors, 8 skipped |
+
+The guard proofs, each with its anchor matched once and the source hash the same before and after:
+
+- **Pa NOT A PROOF** at `c2eb9e06`: with the break in, "10 tests performed, 4 succeeded, 6 failed", the six predicted;
+  restored, `AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull` failed as well -- the test fault above.
+- **Pa2 PROVED** at `616eda14`, the same break against the fixed test: "with the break in: 10 tests performed, 4
+  succeeded, 6 failed" -- `AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull`, `AFloorStartCapReadsTheMaximumAfterChaosTouched`,
+  `AFloorStartCapReadsTheMaximumAfterThePactOfWrath`, `AFloorStartCapReadsTheMaximumAfterTheStarvationCurse`,
+  `AFloorStartCapReadsTheMaximumAfterWastingSickness` and `SixPactsOfWrathAndTheFloorStartCapLeaveHealthAtOrBelowItsMaximum`;
+  "restored: 10 tests performed, 10 succeeded, 0 failed".
+- **Pb PROVED** at `616eda14`, the clamp removed: `LoweringMaximumHealthLowersHealthAboveIt` failed with the break in;
+  passed restored.
+- **Pc PROVED** at `616eda14`, the health restore removed: `AFloorChangeKeepsAPlayerTouchedWithMoreHealthFull` failed with
+  the break in; passed restored.
+- **The two Python checks** were each shown failing on their own break, with `tools/prove_guard.py` in a copy of the
+  commit: a step dropped from `WriteTheMaximumHealthRulesBack` failed the first, a caller going round
+  `ApplyFloorRulesKeepingHealth` the second; both passed restored.
+
+---
+
 ## 2026-10-01 — A broken energy shield smites the enemies within 5 m, and a death heals them; Divine Retribution's 6-piece bonus and "On death all nearby enemies are healed" work in play
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
