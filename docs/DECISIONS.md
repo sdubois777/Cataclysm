@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — A creature the player commands has a green health bar, and minion damage stays off damage over time
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (a green fill and the function
+that chooses it), `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the bar over a creature and the bar in
+the panel for the creature under the cursor), `game/Source/Cataclysm/Tests/CataclysmCombatOverlayTests.cpp`
+(one test, and the green in the two colour lists) and `docs/Cataclysm_GDD_v2.md` (the health bar's sentence in
+section XIII). Issue [#1715](https://github.com/sdubois777/Cataclysm/issues/1715), whose last unbuilt ruling
+this is. Ruled by the coordinating session on 2026-10-02 under the owner's delegation.
+
+### THE GREEN BAR
+
+**The owner ruled on 2026-09-13**, in the entry of that day on Subjugate, that a taken enemy's bar should
+"turn their healthbar green so you know it's yours". That entry left it unbuilt because "it is not established
+that there is a bar to colour". **There is one now**: `ACataclysmHUD::DrawOverheadBars` draws a bar over every
+hurt creature, and until this change every one was the health red, `#C0392B`, the player's own thralls
+included.
+
+- **A creature the local player commands is filled `#3FA34D`**, a mid green, 6.0:1 against the bar's
+  near-black backing. It is not Pestilence's `#B4E84A`, which is a damage type's primary, for the reason the
+  shield bar's blue is not Death's.
+- **Both bars a creature has change**: the one over it, and the one in the panel for the creature under the
+  cursor. The player's own health on the frame does not; it is not a creature the player commands.
+- **`UCataclysmCombatOverlay::HealthFillHexFor`** chooses, asking `UCataclysmCommand::CommanderOf`, which
+  answers a thrall's owner and a summoned minion's summoner.
+- **A judgement: everything the player commands, not only thralls.** The owner said it of a thrall. The reason
+  he gave, "so you know it's yours", holds for a summoned minion too, and a red bar on the player's own imp has
+  the same problem.
+- **Co-op is not built, and this decides nothing for it.** Today another commander's creature is red to this
+  player, which the test pins, because only the local player's own followers are green. **Recommended when co-op
+  is built:** another player's followers get a third fill, distinct from both, because red says "enemy" and the
+  green says "yours". Not built.
+
+### MINION DAMAGE STAYS OFF DAMAGE OVER TIME
+
+**A judgement, ruled by the coordinating session on 2026-10-02 under the owner's delegation, rather than asked.**
+Minion damage multiplies the direct blows of a minion and, since the entry above, of a thrall. It does not
+multiply the damage over time, ground or explosions either of them causes.
+
+**The owner's own ruling decides it.** On 2026-08-25 he ruled that "increased damage" on a passive node means
+attack damage and spell damage, not damage over time (issues
+[#958](https://github.com/sdubois777/Cataclysm/issues/958) and
+[#964](https://github.com/sdubois777/Cataclysm/issues/964)). Minion damage is an increase to damage, so it
+follows the same line. A row that wants a minion's damage over time stronger will say so by name, and a stat for
+it is built when such a row asks.
+
+**What the genre showed, fetched on 2026-10-02:**
+
+- **Last Epoch has a separate stat for it.** The affix "Damage Over Time for Minions" reads "Minion Damage Over
+  Time - increased", on swords, axes and two-handed spears (lastepoch.tunklab.com).
+- **On whether plain minion damage also covers it there**, a community member on the Last Epoch forum, not marked
+  as developer staff, wrote that "your minions' ignite start at base and is increased by minion damage nodes".
+  That is a player's statement, not the game's text.
+- **Path of Exile was not established.** poedb.tw's minion pages give the modifier's text, "Minions deal 15%
+  increased Damage", and say nothing either way about damage over time. The Path of Exile wikis refused the fetch.
+
+**The routes that therefore stay unscaled by minion damage**, for a minion and a thrall alike:
+
+| Route | How it is priced instead |
+| :-- | :-- |
+| A minion's burn from its swing or its explosion | a flat row figure, not scaled by the instigator |
+| A thrall's burn, ailment, Hellfire Aura or bleed on a critical strike | once at application, from the thrall's own damage over time stats |
+| Ground a thrall sets burning: the Hellhound's fire lane, the Gatekeeper's burning ground | the thrall's attack damage when it is laid |
+| Infernal Brand's explosion | the thrall's raw attack damage times five |
+| Thorns of Glass retaliation | the retaliation code |
+| Shared Ruin's blast | a share of the dying follower's maximum health |
+| Chorus repeating the commander's skill | a share of the commander's figure |
+
+### HOW IT IS CHECKED
+
+`Cataclysm.Overlay.ACreatureThePlayerCommandsHasAGreenHealthBar`: the player's thrall and its summoned minion
+are green. An unowned creature is red, and so is another commander's thrall, which is green to its own
+commander. With no local player nothing is anybody's. The two fills differ. The green is added to both colour
+lists in `CataclysmCombatOverlayTests.cpp`: it must not be the telegraph red, and it must parse to something
+visible.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-02 in the jovial-bouman worktree, on feat/followers-health-bar-green-2 on `development` 8662b9f4.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 69527c83 | Build: Succeeded - 32 actions, 29 files compiled |
+| Python of record | 69527c83 | 5690 passed, 8 skipped in 328.75s; JUnit tests=5698 failures=0 errors=0 skipped=8 |
+| Whole suite | 69527c83 | 3108 tests performed, 3107 succeeded, 1 failed: ACreatureThePlayerCommandsHasAGreenHealthBar |
+| Rebuild after the test fix | 188b20ad | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp |
+| Group rerun | 188b20ad | Cataclysm.Overlay.: 31 tests performed, 31 succeeded, 0 failed |
+| tools/tests after the fix | 188b20ad | 3873 passed, 8 skipped in 44.94s; JUnit tests=3881 failures=0 errors=0 skipped=8 |
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| P1: a commanded creature's fill is the health red | 188b20ad | PROVED: with the break in: 31 tests performed, 30 succeeded, 1 failed: ACreatureThePlayerCommandsHasAGreenHealthBar \| restored: 31 tests performed, 31 succeeded, 0 failed |
+
+**The whole suite failed this change's own test, and the fault was the test.** Its one failed assertion was
+"Expected 'an imp' to be not null": `ACataclysmMinion::Spawn` refuses a lifetime of zero, and the test passed
+zero. Nothing was coloured before it stopped. The coordinating session ruled the one-line fix, a lifetime of
+thirty seconds as the other imp tests pass, then a rebuild, the group rerun and tools/tests in place of a second
+whole suite. **The suite of record is the whole suite at 69527c83 together with the group rerun at 188b20ad.**
+
+**The test's colour assertions are shown to run by the proof**, not by the passing rerun, because the engine's log
+does not count the assertions a passing test reached. With the break in, its kept log holds three failed
+assertions, the three that expect green: the player's thrall, the player's summoned minion, and another
+commander's thrall to that commander. Each was `C0392B` where `3FA34D` was expected.
+
+---
+
 ## 2026-10-02 — Five Ravager nodes that say "on melee hit" now roll their Cripple and Weaken chances on melee hits only
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet, rows 218 to 223),

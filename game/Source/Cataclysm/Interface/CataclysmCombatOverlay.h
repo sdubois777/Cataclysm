@@ -152,6 +152,30 @@ public:
 	static const TCHAR* HealthFillHex;
 
 	/**
+	 * Health, on a creature the local player commands: a thrall or a summoned minion.
+	 * Issue #1715. The owner's ruling of 2026-09-13: "turn their healthbar green so you
+	 * know it's yours".
+	 *
+	 * NOT PESTILENCE'S #B4E84A. That yellow-green is a damage type's primary, and a bar
+	 * over a creature is a surface of its own, the same reason the shield's blue is not
+	 * Death's. A mid green, 6.0:1 against the bar's near-black backing.
+	 */
+	static const TCHAR* FollowerHealthFillHex;
+
+	/**
+	 * Which health fill a creature's bar is drawn in: `FollowerHealthFillHex` when the
+	 * local player commands it, `HealthFillHex` otherwise. Issue #1715.
+	 *
+	 * EVERYTHING THE PLAYER COMMANDS, A JUDGEMENT ruled by the coordinating session on
+	 * 2026-10-02 under the owner's delegation: the owner said it of a thrall, and the
+	 * reason he gave, "so you know it's yours", holds for a summoned minion too.
+	 *
+	 * ASKED BY `UCataclysmCommand::CommanderOf`, which answers a thrall's owner and a
+	 * minion's summoner.
+	 */
+	static const TCHAR* HealthFillHexFor(const AActor* Creature, const AActor* LocalPlayerPawn);
+
+	/**
 	 * The reserved part of the player's health bar: the right-hand end, from the
 	 * most health it may hold to its maximum. Issue #1833, ruled 2026-09-30, "a
 	 * system needs a visible part". A much darker shade of the fill, so the bar

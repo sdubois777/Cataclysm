@@ -4,7 +4,9 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -389,6 +391,7 @@ bool FCataclysmOverlayAvoidsTheTelegraphRed::RunTest(const FString&)
 	const FNamedColour All[] = {
 		{ TEXT("the bar backing"), UCataclysmCombatOverlay::BarBackingHex },
 		{ TEXT("the health bar"), UCataclysmCombatOverlay::HealthFillHex },
+		{ TEXT("a follower's health bar"), UCataclysmCombatOverlay::FollowerHealthFillHex },
 		{ TEXT("the shield bar"), UCataclysmCombatOverlay::ShieldFillHex },
 		{ TEXT("the mana bar"), UCataclysmCombatOverlay::ManaFillHex },
 		{ TEXT("a number that reached health"),
@@ -402,7 +405,7 @@ bool FCataclysmOverlayAvoidsTheTelegraphRed::RunTest(const FString&)
 	};
 
 	TestEqual(TEXT("every colour this class declares is in the list above"),
-		static_cast<int32>(UE_ARRAY_COUNT(All)), 8);
+		static_cast<int32>(UE_ARRAY_COUNT(All)), 9);
 
 	for (const FNamedColour& Entry : All)
 	{
@@ -518,6 +521,7 @@ bool FCataclysmOverlayColoursAllParse::RunTest(const FString&)
 	struct FNamedColour { const TCHAR* What; const TCHAR* Hex; };
 	const FNamedColour All[] = {
 		{ TEXT("the health fill"), UCataclysmCombatOverlay::HealthFillHex },
+		{ TEXT("a follower's health fill"), UCataclysmCombatOverlay::FollowerHealthFillHex },
 		{ TEXT("the shield fill"), UCataclysmCombatOverlay::ShieldFillHex },
 		{ TEXT("a number that reached health"),
 		  UCataclysmCombatOverlay::ReachedHealthHex },
@@ -1238,6 +1242,72 @@ bool FCataclysmOverlayNeverMarksAHitThatDidNothing::RunTest(const FString&)
 	TestFalse(TEXT("nor is one blocked to nothing"),
 		UCataclysmCombatOverlay::ColourFor(BlockedToNothing).Equals(CritColour));
 
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayFollowersAreGreen,
+	"Cataclysm.Overlay.ACreatureThePlayerCommandsHasAGreenHealthBar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's ruling of 2026-09-13 on Subjugate: "turn their healthbar green so you know
+ * it's yours". Extended to everything the player commands, as a judgement, on
+ * 2026-10-02. Issue #1715.
+ *
+ * A THRALL, A SUMMONED MINION, AN UNOWNED CREATURE, ANOTHER COMMANDER'S CREATURE AND THE
+ * PLAYER ITSELF, so the green cannot be passing for a rule that colours everything, or
+ * everything owned.
+ */
+bool FCataclysmOverlayFollowersAreGreen::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Player = World->SpawnActor<AActor>();
+	AActor* Someone = World->SpawnActor<AActor>();
+	ACataclysmEnemyCharacter* Thrall = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(0.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Unowned = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Theirs = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(1000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Player, FVector(1500.0f, 0.0f, 0.0f), /*Lifetime=*/30.0f, /*bBurns=*/false);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("someone else"), Someone)
+		|| !TestNotNull(TEXT("a creature to take"), Thrall)
+		|| !TestNotNull(TEXT("an unowned creature"), Unowned)
+		|| !TestNotNull(TEXT("another's creature"), Theirs) || !TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	Thrall->SetHealth(100.0f);
+	Theirs->SetHealth(100.0f);
+	if (!TestTrue(TEXT("the player takes the thrall"), UCataclysmCommand::Subjugate(Player, Thrall))
+		|| !TestTrue(TEXT("someone else takes theirs"), UCataclysmCommand::Subjugate(Someone, Theirs)))
+	{
+		return false;
+	}
+
+	const FString Green(UCataclysmCombatOverlay::FollowerHealthFillHex);
+	const FString Red(UCataclysmCombatOverlay::HealthFillHex);
+	TestEqual(TEXT("the player's thrall is green"),
+			  FString(UCataclysmCombatOverlay::HealthFillHexFor(Thrall, Player)), Green);
+	TestEqual(TEXT("the player's summoned minion is green"),
+			  FString(UCataclysmCombatOverlay::HealthFillHexFor(Imp, Player)), Green);
+	TestEqual(TEXT("an unowned creature is red"),
+			  FString(UCataclysmCombatOverlay::HealthFillHexFor(Unowned, Player)), Red);
+	TestEqual(TEXT("another commander's creature is red to this player"),
+			  FString(UCataclysmCombatOverlay::HealthFillHexFor(Theirs, Player)), Red);
+	TestEqual(TEXT("and green to its own commander"),
+			  FString(UCataclysmCombatOverlay::HealthFillHexFor(Theirs, Someone)), Green);
+	TestEqual(TEXT("with no local player, nothing is anybody's"),
+			  FString(UCataclysmCombatOverlay::HealthFillHexFor(Thrall, nullptr)), Red);
+	TestNotEqual(TEXT("and the two fills differ"), Green, Red);
 	return true;
 }
 
