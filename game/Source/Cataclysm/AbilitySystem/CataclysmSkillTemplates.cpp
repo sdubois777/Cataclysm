@@ -3492,28 +3492,52 @@ bool UCataclysmSummonSkill::Possess()
 		return false;
 	}
 
-	// ONE ENEMY, WITHIN THE ROW'S RANGE. Subjugate states `MaxTargets=1` and
-	// "an enemy up to 15 meters away", so this is the same search every other
-	// single-target skill makes.
+	// ONE ENEMY, WITHIN THE ROW'S RANGE OF THE CASTER, THE ONE NEAREST WHERE THE
+	// PLAYER IS POINTING. Issue #1529. Subjugate states `MaxTargets=1` and "an
+	// enemy up to 15 meters away".
+	//
+	// THE DEBUFF TEMPLATE'S RULE, COPIED. `UCataclysmDebuffSkill::ActivateAbility`
+	// gives the reasons: a small circle at the aim point took nobody when the
+	// cursor was a metre off an enemy, and with no cursor at all the aim ran out
+	// to the full range and found empty ground. Range bounds who can be reached
+	// and the cursor only decides which of those is taken. This searched a
+	// three metre circle at the aim point until 2026-10-02, so a cast at ground
+	// beside an enemy took nobody.
+	//
+	// THE GENRE AGREES ON WHAT, NOT ON HOW. Diablo 2's Conversion and Path of
+	// Exile's Dominating Blow both act on the enemy the player's own attack
+	// hits; this game aims at the ground under the cursor, so "the enemy
+	// pointed at" is turned into "the enemy nearest the cursor". A judgement,
+	// ruled by the coordinating session; `docs/DECISIONS.md` has the sources.
 	TArray<AActor*> Targets = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Self, AimedPointWithin(ScaledRangeCm()), ScaledRadiusCm(),
-		FMath::Max(1, Params.MaxTargets));
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRangeCm());
+
+	const FVector Aim = AimPoint();
+	Targets.Sort([&Aim](const AActor& A, const AActor& B)
+	{
+		return FVector::DistSquared(A.GetActorLocation(), Aim)
+			 < FVector::DistSquared(B.GetActorLocation(), Aim);
+	});
+
+	const int32 Cap = FMath::Max(1, Params.MaxTargets);
+	if (Targets.Num() > Cap)
+	{
+		Targets.SetNum(Cap);
+	}
 
 	if (Targets.IsEmpty())
 	{
-		// Nothing where the player pointed. The skill was spent, which is the
-		// same answer every other aimed skill gives for a miss.
+		// Nobody within range. The skill was spent, which is the same answer
+		// every other aimed skill gives for a miss.
 		//
-		// IT NAMES THE SIZE OF THE SPHERE IT SEARCHED, WHICH IS THE WHOLE POINT
-		// OF THE LINE. Issue #1519 was a row that stated no `Radius`, so this
-		// search ran at zero and could only ever find something standing exactly
-		// on the aimed point. A miss and a radius of zero are the same silence
-		// without the number, and telling them apart took a play log, eleven
-		// casts and a reading of the damage lines either side.
+		// IT NAMES THE SIZE OF WHAT IT SEARCHED, WHICH IS THE WHOLE POINT OF THE
+		// LINE. Issue #1519 was a search that ran at a size of zero and could
+		// take nobody, and a miss and a search of no size are the same silence
+		// without the number. Since issue #1529 the size is the range.
 		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' found nothing within %.0fcm of the point it was aimed at, "
-				 "%.0fcm out, so it took nobody."),
-			*SkillName, ScaledRadiusCm(), ScaledRangeCm());
+			TEXT("'%s' found no enemy within %.0fcm of the caster, so it took "
+				 "nobody."),
+			*SkillName, ScaledRangeCm());
 		return false;
 	}
 

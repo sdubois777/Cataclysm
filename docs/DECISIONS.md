@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — Subjugate takes the enemy nearest the cursor within its range, as the curse skills do
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmSummonSkill::Possess`,
+its search and its miss line), `tools/generate_datatables.py` (`shape_searches_with_the_radius` and the table above
+it), `tools/tests/test_a_targeted_skill_states_a_radius.py` (two tests turned round),
+`game/Source/Cataclysm/Tests/CataclysmSkillShapeTests.cpp` (the radius test no longer checks Subjugate),
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` (one new test, and three test rows that no longer state a
+radius) and, in the workbook turn after this is written, Subjugate's row in `docs/All_Things_Cataclysm.xlsx`.
+Issue [#1529](https://github.com/sdubois777/Cataclysm/issues/1529). Ruled by the coordinating session on
+2026-10-02 under the owner's delegation, labelled a judgement and not taken to the owner.
+
+### What was wrong
+
+Subjugate, the Staff's Demonic Ultimate: "Drive your will into an enemy up to 15 meters away". `Possess` searched a
+sphere of the row's `Radius`, three metres, centred on the point the player aimed at. A cast at the ground a few
+metres beside an enemy took nobody, and spent the skill.
+
+### What it does now
+
+**It searches the row's `Range` around the caster and takes the enemy nearest the cursor.** That is
+`UCataclysmDebuffSkill::ActivateAbility`'s rule, copied. Its own comment records that it began as a small circle at
+the aim point and was changed because a cursor a metre off an enemy took nobody. Everything after the pick is
+unchanged: the 300% blow and its burn, the health threshold read after the blow, the room in the Fervour pool, and
+the refusal of a boss.
+
+### The genre check
+
+Fetched 2026-10-02, and fetched again before this entry was written.
+
+- **Diablo 2, Conversion** ([diablo2.io](https://diablo2.io/skills/conversion-t4033.html)): "A successful attack has a
+  chance to convert the target to fight evil." It "will not work on Super Unique Monsters, Champions, and Bosses."
+- **Path of Exile, Dominating Blow** ([poedb](https://poedb.tw/us/Dominating_Blow)): "Attacks enemies with a melee
+  strike, applying a debuff for a short duration." A non-unique enemy that dies with the debuff becomes a Sentinel
+  of Dominance.
+- **Path of Exile, Raise Spectre** ([poedb](https://poedb.tw/us/Raise_Spectre)): holding the corpse targeting toggle
+  "makes it easier to choose a corpse to raise".
+- **Last Epoch**: no skill found that takes an enemy permanently, so it is not a source.
+
+**What the research settles:** a permanent take-over acts on the enemy the player's own attack points at, and the
+games help the player aim it. None searches a fixed circle around a point on the ground.
+
+**What it does not settle, and is a judgement:** this game aims at the ground under the cursor rather than at a
+clicked monster, so "the enemy pointed at" has to become a rule. The rule chosen is the one this game's curse
+skills already use, so one skill is not aimed differently from its neighbours.
+
+### What followed from the radius no longer being read
+
+**Issue #1519 had made the radius required for Subjugate**, because the old search read it and a missing one took
+nobody. Each check it added now describes a figure nothing reads, so each changes with this:
+
+- `shape_searches_with_the_radius` answers False for a Summon, possessing or not.
+- `test_subjugate_states_a_radius_greater_than_zero` became `test_subjugate_is_not_asked_for_a_radius`, and
+  `test_it_refuses_a_summon_that_possesses_and_states_no_radius` became
+  `test_it_leaves_alone_a_summon_that_possesses_and_states_no_radius`.
+- `Cataclysm.SkillShape.EveryShapeThatSearchesWithItsRadiusStatesOne` asserted by name that Subjugate was checked,
+  and now asserts by name that it is not. Without Subjugate the generator's rule finds 45 shipped rows that search
+  with their radius, against the test's floor of thirty.
+
+**The row's `Radius=3` is removed in the workbook turn after this entry is written.** The coordinating session
+ruled that the change is complete only when nothing states an unread figure. Until that turn the figure stays in
+`game/Data/WeaponSkills.csv`, read by nothing, and the sentences in the generator and its test that count thirteen
+rows stating no radius stay true.
+
+**Not built or run when this was written.** The run table follows when the window runs.
+
+---
+
 ## 2026-10-02 — A creature the player commands has a green health bar, and minion damage stays off damage over time
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (a green fill and the function

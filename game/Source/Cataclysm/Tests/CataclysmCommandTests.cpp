@@ -298,26 +298,21 @@ bool FCataclysmSubjugateTakesTheWeakTest::RunTest(const FString&)
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	// THIS ROW IS WRITTEN HERE AND IS NOT THE SHIPPED ONE, WHICH IS WHY THIS
-	// TEST PASSED THROUGHOUT ISSUE #1519. `Radius=15` appears in no row of
-	// `game/Data/WeaponSkills.csv`; the real Subjugate stated no radius at all
-	// for seven days, searched a sphere of no size and took nobody, and this
-	// test went on passing because it supplies its own.
+	// THIS ROW IS WRITTEN HERE AND IS NOT THE SHIPPED ONE. What this test is
+	// for is the mechanism -- the blow, the threshold, the taking -- and
+	// pinning the shipped figures here would make it fail every time one of
+	// them was tuned.
 	//
-	// IT IS STILL WRITTEN HERE ON PURPOSE. What this test is for is the
-	// mechanism -- the blow, the threshold, the taking -- and it needs a target
-	// it can reliably find. A headless run has no cursor, so `AimedPointWithin`
-	// returns the full range in the caster's facing direction and the search
-	// lands fifteen metres ahead of a creature standing at three. A radius wide
-	// enough to reach back covers that, and pinning the shipped figure here
-	// instead would make this test fail every time the number was tuned.
-	//
-	// THE SHIPPED ROW IS CHECKED BY
-	// `Cataclysm.SkillShape.EveryShapeThatSearchesWithItsRadiusStatesOne`, which
-	// reads the DataTable and states a radius of nothing is a skill that finds
-	// nobody. Two tests, because the mechanism and the data failed separately.
+	// IT STATES NO RADIUS, BECAUSE NOTHING READS ONE. Since issue #1529
+	// `Possess` searches its `Range` around the caster and takes the enemy
+	// nearest the cursor; a headless run has no cursor, so that is the enemy
+	// nearest the caster. Until then this row carried `Radius=15`, a figure in
+	// no shipped row, so the old sphere fifteen metres ahead could reach back
+	// to a creature standing at three -- which is also why this test passed
+	// throughout issue #1519. Which enemy is taken is checked by
+	// `Cataclysm.Command.SubjugateTakesTheEnemyNearestTheCursorWithinItsRange`.
 	const TCHAR* const Row =
-		TEXT("Range=15; MaxTargets=1; Radius=15; Burn=1; Possess=1; "
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
 			 "FervourReserve=30; HealthThresholdPercent=50");
 
 	// THE CONTROL FIRST, ON A HEALTHY CREATURE, AND ON ITS OWN CASTER. A skill
@@ -380,6 +375,58 @@ bool FCataclysmSubjugateTakesTheWeakTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugatePicksByCursorTest,
+	"Cataclysm.Command.SubjugateTakesTheEnemyNearestTheCursorWithinItsRange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Subjugate takes the enemy nearest where the player points, from those within
+ * its range of the caster. Issue #1529.
+ *
+ * THE SHIPPED ROW'S SHAPE, `Radius=3` INCLUDED, because the old rule read it:
+ * a three metre sphere at the aimed point. A headless run has no cursor, so the
+ * aim is the caster itself and the nearest enemy to it is the one pointed at.
+ * The old search ran fifteen metres out along the caster's facing instead.
+ *
+ * TWO CREATURES ON THAT LINE, AND ONLY THE OLD RULE REACHES THE FAR ONE. The
+ * near one, at three metres, is wounded and the blow takes it. The far one, at
+ * thirteen, is healthy and inside the old sphere: the old rule hit it and took
+ * nobody.
+ */
+bool FCataclysmSubjugatePicksByCursorTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Radius=3; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	FScopedCreature Near(World, FVector(3 * M, 0, 0));
+	FScopedCreature Far(World, FVector(13 * M, 0, 0));
+	Near.SetHealthTo(520.0f);
+
+	UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Subjugate."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Skill));
+	TestTrue(TEXT("and takes an enemy"), Skill->bTookIt);
+	TestTrue(TEXT("the one nearest where it was pointed"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Contains(Near.Actor));
+	TestEqual(TEXT("and the one further along is not hit at all"),
+		Far.Health(), 1000.0f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDominionRaisesTheThresholdTest,
 	"Cataclysm.Command.DominionTakesAnEnemyTheOrdinaryThresholdWouldRefuse",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -424,11 +471,10 @@ bool FCataclysmDominionRaisesTheThresholdTest::RunTest(const FString&)
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	// THE SHIPPED THRESHOLD, WRITTEN HERE FOR THE REASON THE TEST ABOVE GIVES:
-	// this row supplies a radius the real one does not, so that a headless run
-	// can find its target at all.
+	// THE SHIPPED THRESHOLD, IN A ROW WRITTEN HERE FOR THE REASON THE TEST
+	// ABOVE GIVES.
 	const TCHAR* const Row =
-		TEXT("Range=15; MaxTargets=1; Radius=15; Burn=1; Possess=1; "
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
 			 "FervourReserve=30; HealthThresholdPercent=50");
 
 	// SIXTY PER CENT OF A CREATURE'S THOUSAND: above the ordinary half and
@@ -753,7 +799,7 @@ bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	const TCHAR* const Row =
-		TEXT("Range=15; MaxTargets=1; Radius=15; Burn=1; Possess=1; "
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
 			 "FervourReserve=30; HealthThresholdPercent=50");
 
 	constexpr float PoolThatFitsOnlyTheReducedReserve = 25.0f;
