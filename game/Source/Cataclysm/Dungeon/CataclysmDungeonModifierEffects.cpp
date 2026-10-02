@@ -826,8 +826,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
 		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
 		|| RowKey == FName(RealityRiftsKey)
-		// WARZONE CONTROL POINTS. The points are captured and held and give their strength; "summoning allied
-		// soldiers" and "opening shortcuts" do nothing. Issues #1820 and #41.
+		// WARZONE CONTROL POINTS. The points are captured and held, give their strength and bring allied soldiers;
+		// "opening shortcuts" does nothing. Issues #1820 and #41.
 		|| RowKey == FName(WarzoneControlPointsKey)
 		// LIGHTFORGED WALLS. The stairs stay sealed until every creature the floor placed is slain; "sections" do
 		// nothing, because nothing divides a floor into areas a barrier could close. Issues #1820 and #41.
