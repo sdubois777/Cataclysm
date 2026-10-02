@@ -115,6 +115,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_Infernal_Seals");
 const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Celestial_Sanctioned_Passage");
 const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
+const TCHAR* UCataclysmDungeonModifierEffects::HeavensQuakeKey = TEXT("Celestial_Heaven_s_Quake");
+const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Cryptquake");
 
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
@@ -792,6 +794,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(InfernalRainKey)
 		// SINGULARITY WELLS, BUILT SINCE ITS WELLS PULL THE PLAYER AND TURN PROJECTILES, 2026-10-01. Issue #1605.
 		|| RowKey == FName(SingularityWellsKey)
+		// HEAVEN'S QUAKE AND CRYPTQUAKE, BUILT 2026-10-02 ON THE RUNTIME FLOOR OBSTACLE: pillars and pits that close
+		// cells during play. Issues #1820 and #41.
+		|| RowKey == FName(HeavensQuakeKey)
+		|| RowKey == FName(CryptquakeKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -970,6 +976,8 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfernalSealsKey),
 		FName(SanctionedPassageKey),
 		FName(LightforgedWallsKey),
+		FName(HeavensQuakeKey),
+		FName(CryptquakeKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),

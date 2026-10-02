@@ -2,6 +2,270 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — Runtime floor obstacles: Heaven's Quake raises pillars and Cryptquake collapses pits during play, both rows built
+
+**Affects:** new `game/Source/Cataclysm/Dungeon/CataclysmFloorObstacle.h` and `.cpp` (`ACataclysmFloorObstacle`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonFloor.h` and `.cpp` (`BlockCell`, `UnblockCell`, `BlockedCells`);
+`game/Source/Cataclysm/Dungeon/CataclysmFloorPlan.h` and `.cpp` (`CataclysmFloorCanBlock`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (both keys, the figures, both rows
+answered `Built`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`CellsTheFloorHolds`, the
+placement, warnings, raising, the swarm, `EndTheFloorObstacles` in `GoToFloor`, the beat and the panel lines);
+`game/Source/Cataclysm/Dungeon/CataclysmFloorContents.cpp` (a save's restore sweeps obstacles); the automation tests
+in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp`; and two checks in
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and
+the three guard proofs ran on 2026-10-02; the figures are at the end of this entry.
+
+### The rows
+
+`Celestial_Heaven_s_Quake`: "Radiant pillars crash through the ceiling, creating impassable terrain and forcing reroutes
+mid-combat."
+
+`Death_Cryptquake`: "Sections of the floor collapse into pits of bones, forcing new routes and spawning skeletal swarms
+from below."
+
+Until this change nothing could change a floor's layout during play: a floor is built once
+(`ACataclysmDungeonFloor::Build`), and its navigation mesh is generated from that geometry.
+
+### What the research settles, and what it does not
+
+Researched 2026-10-02, from pages this tool can read:
+
+- **Diablo IV's Waller elite affix**, [maxroll.gg/d4/resources/elites-affixes](https://maxroll.gg/d4/resources/elites-affixes):
+  "Walls in U shape to hinder player movement. Part of the wall is breakable by players. Walls block player
+  projectiles." Duration 7 seconds, cooldown 12 seconds. **The one shipped precedent found for terrain that blocks
+  movement mid-fight, and it is temporary.** The same page's Gilded affix "Summons stationary golden pillars that
+  explode in an area after a few seconds".
+- **No shipped dungeon modifier that changes a floor's layout for the rest of the floor was found.**
+- **Unreal's own guidance**, [Overview of how to modify the Navigation Mesh](https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-how-to-modify-the-navigation-mesh-in-unreal-engine):
+  "the NavArea_Null applies an infinite cost which causes the Navigation Mesh to not be generated in the affected
+  area", and a navigation modifier "is simply changing the existing Navigation Mesh". [Optimizing Navigation Mesh
+  Generation Speed](https://dev.epicgames.com/documentation/en-us/unreal-engine/optimizing-navigation-mesh-generation-speed-in-unreal-engine)
+  says a dynamic obstacle is "less costly than generating the full Navigation Tile". Neither gives a figure; the
+  measurement below is ours.
+
+So the research settles the SHAPE of the engine side and offers one gameplay precedent, which is temporary. **How long
+these obstacles last, how often and how many are judgements**, below.
+
+### How the obstacle closes a cell: measured first
+
+**The measurement**, on 2026-10-02, by a temporary editor-module test that was never committed (the test file's hash
+matched before and after): real generated floors of all three layouts, each with a real bounds volume and a
+synchronous navigation build; 1, 3, 6 and 12 obstacles placed at once on interior cells that keep the floor
+connected; three ways of closing a cell:
+
+- **A**, instances added to the floor's own `Walls` component and `FNavigationSystem::UpdateComponentData`;
+- **B**, a separate actor whose mesh is navigation geometry;
+- **C**, a separate actor whose mesh only collides, with a `UNavModifierComponent` of `UNavArea_Null` over the cell.
+
+**CAVEAT: these are editor test-world timings.** They compare A, B and C with each other; they do not budget a frame
+in a packaged game. The navigation was ticked at 1/60 s with a 1/60 s sleep between ticks; every case finished. The
+twelve-obstacle line of each layout:
+
+| Layout | Method | ticks until done | longest tick, ms | most tasks | blocked cells still on the mesh | path either side of the first obstacle |
+|---|---|---|---|---|---|---|
+| Halls | A | 3 | 1.92 | 25 | 12 of 12 | 800 → 1049 cm, closest 237 cm |
+| Halls | B | 3 | 1.95 | 24 | 12 of 12 | 800 → 1049 cm, closest 237 cm |
+| Halls | C | 4 | 0.17 | 34 | 0 of 12 | 800 → 1078 cm, closest 248 cm |
+| Caverns | A | 3 | 2.68 | 21 | 12 of 12 | 800 → 1036 cm, closest 228 cm |
+| Caverns | B | 3 | 2.74 | 18 | 12 of 12 | 800 → 1036 cm, closest 228 cm |
+| Caverns | C | 4 | 0.16 | 33 | 0 of 12 | 800 → 1060 cm, closest 238 cm |
+| Arena | A | 3 | 1.06 | 25 | 12 of 12 | 800 → 1050 cm, closest 240 cm |
+| Arena | B | 3 | 1.08 | 25 | 12 of 12 | 800 → 1050 cm, closest 240 cm |
+| Arena | C | 3 | 0.20 | 25 | 0 of 12 | 800 → 1070 cm, closest 249 cm |
+
+At one obstacle every method finished in 3 ticks, with a longest tick of 0.04 to 0.57 ms. **All three reroute.** **A
+does not dirty the whole floor**, which was said, unmeasured, before the measurement: its task count grows with the
+obstacles as B's does. **A and B leave every blocked cell on the navigation mesh**, most likely as unreachable walkable
+polygons on the 400 cm blocks' tops (a reading, not confirmed); **C leaves none**, with the smallest main-thread tick.
+
+**C was chosen, ruled by the coordinating session on 2026-10-02.** One detail the engine fixes: a navigation modifier
+sizes itself only from components that affect navigation (`UNavModifierComponent::CalculateBounds` requires
+`CanEverAffectNavigation()`), and nothing the obstacle draws does, on purpose. So its box is `FailsafeExtent`: half the
+obstacle's width each way and half the wall height. The engine's cheaper `bIsDynamicObstacle` is a field of a mesh
+ASSET's navigation collision, so setting it would change every use of the shared engine cube, the floor's walls
+included.
+
+### Pillars, pits, shots and the Warden's charge
+
+- **A pillar** is the engine cube at the obstacle's width and the wall height (400 cm), profile **"BlockAll"**: it stops
+  movement and shots.
+- **A pit** is a dark plate at floor level with no collision, plus a box of the full wall height with the engine's
+  **"InvisibleWall"** profile (`BaseEngine.ini`: WorldStatic, Visibility ignored, everything else blocked). It stops
+  movement; a shot, which finds walls with a Visibility trace (`ACataclysmProjectile::TraceStep`), flies over it. A
+  click on a pit reaches the floor beneath, and click-to-move there is refused by the navigation mesh.
+- **The Abyssal Warden's charge stops at a pit's edge, and nothing lands on one**: `StepCharge` sweeps for WorldStatic
+  objects with a sphere at body height and stops at the first, and `SetChargeStepHeight`'s floor trace is not reached
+  past a stop. **On the condition that the blocker is of the full wall height**, because the charge's own comment says
+  anything shorter than its sphere passes underneath. Ruled 2026-10-02.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-02, each a labelled judgement:**
+
+- **Both last the floor, under a cap.** The rows say "terrain" and "collapse", which read as lasting; this mechanism
+  must also serve later permanent rows (Warzone's shortcuts, Reality Rifts' hidden areas); and the reachability rule is
+  what stops them adding up to a cut floor. Waller, the temporary precedent, is a monster's affix that boxes a player
+  in for a moment; these rows change the dungeon.
+- **Heaven's Quake: a pillar every 6 seconds**, `HeavensQuakeSecondsBetween`, on a cell 600 to 1200 cm from the player
+  (`FloorObstacleNearestCm`, `FloorObstacleFurthestCm`), after a 1 second warning (`FloorObstacleWarningSeconds`), up
+  to **6 a floor** (`HeavensQuakeMostPillars`). Near the player because "mid-combat" reads that way, as Infernal Rain's
+  "combat zones" do. Kept near Infernal Rain's cadence (5 s, cap 3) and Singularity Wells' (8 s, cap 3); the cap is
+  higher because these last the floor, and six one-cell pillars is under 1% of a Halls floor's walkable cells.
+- **Cryptquake: a section every 10 seconds**, `CryptquakeSecondsBetween`, in the same band and after the same warning,
+  up to **3 a floor** (`CryptquakeMostSections`). **A section is two cells by two** (`CryptquakeSectionSide`), all four
+  passing the placement rule or the section is skipped.
+- **The swarm is 3 creatures of the floor's own kinds** (`CryptquakeCreaturesPerSection`), **at Common**
+  (`CryptquakeCreatureRung`), **raised by a rule**, arriving beside the pit through `BringCreaturesNear`. Both rows are in
+  `UCataclysmDungeonModifierEffects::KeysWithARule`, which the first whole suite showed was missing:
+  `EveryRowWithSomethingBuiltIsInTheRuleList` failed for both, an existing guard doing its job. No skeleton
+  creature exists; one waits for its own work. Raised by a rule, the swarm never holds the floor uncleared nor
+  Lightforged Walls shut: `IsOneOfTheFloorsOwnStanding` refuses the mark, and both `LivingFloorEnemies` and
+  `LightforgedWallsStanding` count through it.
+- **No damage.** A cell anyone stands in is never chosen, and a warning whose cells the player or a creature walks onto
+  is cancelled.
+- **Pillars stop shots; pits do not.**
+
+### The placement rule, the plan and the cells the floor holds
+
+**One rule, `CataclysmFloorCanBlock`, for every floor.** It refuses a cell that is not walkable, the entrance, the exit,
+the player's own cell, or a cell the floor still holds a use for; and it refuses any set of cells whose closing would
+leave a walkable cell unreachable from the player's cell, by the same breadth-first search as
+`CataclysmFloorDistancesFrom`, on a copy of the plan. On an ordinary floor that includes the exit; **a Horde arena has
+no stairs**, and there it includes the rim the waves arrive on.
+
+**The obstacle closes its cells in the floor plan** (`ACataclysmDungeonFloor::BlockCell`), so every rule that picks a
+cell from the plan -- the game mode reads it 42 times, through `NecroticBloomWaveCells`, `FloorSourceCells`,
+`EternalChorusCells`, `ConvergenceArrivalCells` and others, and every `Populate` -- passes a pillar or a pit by with no
+change. The ground block stays; the obstacle's own collision and modifier are what block.
+
+**A read of everything that keeps a cell from the plan for later**, done before writing, because changing the plan
+mid-floor makes a kept cell stale. No minimap or drawn map exists, the HUD and `CataclysmEmpire` read no plan, and
+`CataclysmMeasureFloor` and the distance arrays are only ever locals. But `SpawnPlacedCreature` puts a creature on
+whatever cell it is handed, and these keep cells for later: a Horde wave still arriving (`WaveStillToArrive`); Morale
+Break's returning pack (`FMoraleBreakGroup::Middle`); Reality Rifts' cells, which the player is teleported to; Infested
+Veins' regrowth; Divine Resurgence's graves; and the zones redrawn at kept cells -- Warzone's points, the locust
+shelters, the shadow lights, the Void Parasite's light, Raw Sewage's marks and the Infection Bloom's patches. **Rather
+than change each of those users, the placement rule refuses all of their cells**: `CellsTheFloorHolds` gathers them,
+and also asks the world for every living pawn, floor object, ground zone and the stairs. **A list added later that
+keeps cells for later belongs there too**, which its comment says. The floor's own geometry and navigation mesh still
+say "floor" under an obstacle, which needs nothing.
+
+**A Python pin holds that last sentence**, ruled by the coordinating session on 2026-10-02, because a test placing
+today's sources cannot notice a list added tomorrow. `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py`
+reads the game mode's header and requires every member that keeps a cell or a position -- a `FIntPoint`, a container of
+them, a container of a struct carrying one, or a TArray or TSet of `FVector` or of a struct with a `Location`, `Where`,
+`At`, `Point` or `Middle` field -- to be read by `CellsTheFloorHolds` or named in its `HARMLESS` list with a reason.
+Positions are counted as well as cells, wider than the ruling asked, so that Luxury Hoarders, which keeps positions,
+can be in the list at all. Writing it found three more kept places, now held: `ArrivingPackSites` and every creature's
+`PackMiddleCell`, which a Morale Break group's middle is taken from, and `InfernalRainFalls`, where a falling fireball
+will leave a patch. Named harmless, each with its reason in the file:
+
+| Member | Why it needs no holding |
+|---|---|
+| `LuxuryHoards` | read only by the floor panel's count |
+| `PlagueHarbingerTrails` | where a Harbinger last laid a patch; it lays new ones only where it walks, and it cannot walk into an obstacle |
+| `PandorasBoxWaves` | a box's own position, already held through the floor object standing there; its waves arrive through `BringCreaturesNear`, which reads the plan |
+
+**The pin was shown failing**, with `tools/prove_guard.py`: with `Held.Append(LocustShelterCells);` removed from
+`CellsTheFloorHolds`, it printed "PROVED: 1 failed in 0.09s | restored: 1 passed in 0.06s", the named failure
+`test_every_kept_cell_is_held_from_obstacles_or_named_harmless`.
+
+**At a floor change, and at each Horde wave**, `EndTheFloorObstacles` removes every obstacle and warning and gives
+their cells back, in `GoToFloor` before the next floor or wave is populated, so a wave is placed on the arena's whole
+plan. `UnblockCell` touches only cells `BlockCell` closed since the floor was built, so a rebuilt floor's rock is never
+carved.
+
+### Consequences, stated rather than changed
+
+- **A CONSEQUENCE STATED AT REGISTRATION DOES NOT ARISE.** It said a later Horde wave would be populated from a plan
+  missing up to 18 blocked cells, and that was accepted. But each wave's obstacles are removed, and their cells given
+  back, before the next wave is populated, so every wave is placed on the arena's whole plan. Said here so the earlier
+  statement is not read as the behaviour.
+- **Obstacles are not saved.** A save taken mid-floor reloads the floor without them, as with zones today; a save's
+  restore sweeps them (`UCataclysmFloorContents::ClearTheFloor`).
+- **A ground zone's cell is held**, so a pillar never lands on an Infernal Rain patch or a Singularity Well while it
+  stands.
+- **NEAR A FLOOR'S ENTRANCE, CRYPTQUAKE MAY STOP SHORT OF THREE SECTIONS, by design of the placement rule.** Measured
+  2026-10-02 by a readout never committed, after the first whole suite failed `CryptquakeStopsAtThreeSections`: with the
+  player at floor 2's entrance, of 44 square corners near the band only 2 had all four cells walkable, none passed the
+  rule once the held cells were counted, and 1 passed on the plan alone. A two by two section in a corridor two cells
+  wide cuts it, and is refused. So on a floor of two-cell corridors a player who stays near the entrance may see one or
+  two collapses, not three; one who moves into open floor gives the rule room. Ruled to stand as it is; the test now
+  stands the player in the floor's most open area, since it is about the cap.
+
+### Tests
+
+Thirteen new automation tests.
+
+In the editor module, on a real navigation mesh, built on `CataclysmDungeonNavigationTests.cpp`'s `FNavigableFloor`:
+
+- `Cataclysm.DungeonFloor.ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound`: a pillar and a two by
+  two pit on a real floor; no covered cell projects onto the mesh; the path between the cells either side still exists,
+  is longer, and keeps more than half the obstacle's width from its middle.
+- `Cataclysm.DungeonFloor.ARemovedObstacleGivesItsCellsBackToTheNavigationMesh`.
+
+In `Cataclysm.DungeonModifierEffects.`, on floors the game mode builds:
+
+- `FloorObstaclePlacementRefusesACellThatWouldCutTheFloor`: plan only; a corridor's middle refused; an open cell and a
+  two by two leaving a ring allowed; the entrance, the exit, the player's cell, a held cell, rock and nothing refused.
+- `FloorObstacleAPitStopsMovementButNotAShotAndAPillarStopsBoth`: a warning stops nothing; a pawn's sweep is stopped by
+  both; a Visibility trace by the pillar only.
+- `HeavensQuakeFiguresAndTheRowBuilt` and `CryptquakeFiguresAndTheRowBuilt`.
+- `HeavensQuakeWarnsThenRaisesAPillarNearThePlayer`: nothing before 6 s; a warning in the band; raised a second later,
+  its cell rock in the plan; the panel.
+- `HeavensQuakeCancelsAPillarThePlayerStepsUnder`.
+- `HeavensQuakeStopsAtSixPillarsAndNeverCutsTheFloor`: in the floor's most open area, six and no more after twice the
+  cap's cadences; no walkable cell cut off from the player; the entrance and exit walkable.
+- `CryptquakeCollapsesATwoByTwoSectionAndBringsThreeRaisedCreaturesBesideIt`: four cells rock; three creatures, raised
+  by a rule, Common, none in the pit; `LivingFloorEnemies` and `LightforgedWallsStanding` 0; the panel.
+- `CryptquakeStopsAtThreeSections`: in the floor's most open area, three and no more; its failure message says how many
+  squares near the player the rule still allowed.
+- `RuntimeObstaclesEndWithTheFloorAndWithEachHordeWave`: none on the next floor, the count started again, no cell of the
+  new plan blocked; on a Horde arena, the pillar's cell walkable again on the next wave.
+- `FloorObstacleRefusesEveryCellTheFloorStillHoldsAUseFor`: the entrance, the exit, every Warzone point, every rift cell
+  and every creature's cell are held, and a warning on a rift's cell is refused.
+
+Two Python checks, `test_heavens_quake_row_still_says_impassable_terrain_and_reroutes` and
+`test_cryptquake_row_still_says_pits_of_bones_and_swarms`, pin the phrases the rulings rest on; a third,
+`test_every_kept_cell_is_held_from_obstacles_or_named_harmless`, is the pin above.
+
+### Run
+
+On 2026-10-02, with the build machine, on `feat/runtime-floor-obstacles-2` on development `ac66f60f`. Every figure below
+is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Build, at `d648de08`, the branch's first compile | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Proof Pa, the navigation modifier not registered | PROVED: 1 test performed, 1 failed, `ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound`; restored 1 of 1 |
+| Proof Pb, the reachability check removed | PROVED: 1 test performed, 1 failed, `FloorObstaclePlacementRefusesACellThatWouldCutTheFloor`; restored 1 of 1 |
+| Proof Pc, the pit's blocker made "BlockAll" | PROVED: 1 test performed, 1 failed, `FloorObstacleAPitStopsMovementButNotAShotAndAPillarStopsBoth`; restored 1 of 1 |
+| Whole suite, at `d648de08` | `3099 tests performed, 3097 succeeded, 2 failed`: `EveryRowWithSomethingBuiltIsInTheRuleList` (both rows missing from `KeysWithARule`) and `CryptquakeStopsAtThreeSections` (2 sections, no room near the entrance); declared 3099, gap 0 |
+| Python, at `d648de08`, started with no workflow in progress | `5680 passed, 8 skipped` (JUnit 5,688, 0 failures, 0 errors) |
+| Readout of `CryptquakeStopsAtThreeSections`, never committed | the counts under "Consequences" above; the test file restored byte for byte |
+| Build, at `62aa8da3`, after both rows were listed and the test moved to open floor | `Build: Succeeded - 7 actions, 4 files compiled` |
+| Whole suite again, at `62aa8da3`, because game code changed | `3099 tests performed, 3099 succeeded, 0 failed`; declared 3099, gap 0; 40 skipped part of what they check |
+| `tools/tests`, at `62aa8da3` | `3863 passed, 8 skipped` |
+
+**BOTH CAP TESTS DRAW FROM UNSEEDED RANDOMNESS.** `ChooseObstacleCells` picks each try's angle and distance with
+`FMath::FRandRange`, the engine's global random, not the floor's stream, and `BringCreaturesNear` places the swarm the
+same way; so each run of `CryptquakeStopsAtThreeSections` and `HeavensQuakeStopsAtSixPillarsAndNeverCutsTheFloor`
+places differently. After the second suite each was run 5 more times on the same binaries, with no change: 5 of 5
+each, so 6 runs of 6 each with the suite. **That rules out a frequent failure and does not rule out a rare one.** Both
+now stand the player in the floor's most open area, the Heaven's Quake one since a test-only change ruled on
+2026-10-02, which removes the one exposure found (no room near an entrance) rather than measuring it. The choice was
+not seeded for the tests' sake, by the same ruling. After that change, at `00ea910e`, the Heaven's Quake cap test was
+run 3 times: the first build printed `Build: Succeeded - 4 actions, 1 file compiled`, and each run
+`1 tests performed, 1 succeeded, 0 failed`.
+
+**The Python of record is the run at `d648de08`**: no Python file changed after it and the collected count is the same,
+by the coordinating session's ruling. All three proofs came out as predicted; no proof was run again, since none of
+their tests or anchored lines changed.
+
+---
+
 ## 2026-10-02 — A subjugated enemy takes its commander's minion damage and minion health, as the owner ruled it should
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp` (two helpers moved in, one

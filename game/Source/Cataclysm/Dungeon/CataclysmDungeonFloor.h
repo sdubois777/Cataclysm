@@ -107,6 +107,26 @@ public:
 	/** The plan this was built from. Empty until `Build` is called. */
 	const FCataclysmFloorPlan& GetPlan() const { return Plan; }
 
+	/**
+	 * Turn a walkable cell Solid in the plan, for an obstacle a rule raised on it during play. Issues #1820 and #41.
+	 *
+	 * THE PLAN ONLY. The ground block stays and no wall is added: the obstacle standing on the cell is what blocks
+	 * movement and the navigation mesh (`ACataclysmFloorObstacle`). What this changes is every rule that chooses a
+	 * cell from the plan, which then passes the cell by without being told about obstacles.
+	 *
+	 * @return false for a cell that was not walkable, which is left as it was
+	 */
+	bool BlockCell(FIntPoint Cell);
+
+	/**
+	 * Walkable again, for an obstacle removed. Only a cell `BlockCell` closed: a rebuilt floor has none, so a cell
+	 * an old obstacle names is never carved into the new plan's rock.
+	 */
+	void UnblockCell(FIntPoint Cell);
+
+	/** The cells `BlockCell` has closed since the floor was built. */
+	const TArray<FIntPoint>& BlockedCells() const { return Blocked; }
+
 	/** Whether `Build` has run and produced ground to stand on. */
 	bool IsBuilt() const;
 
@@ -198,4 +218,7 @@ public:
 private:
 	/** The plan the geometry was built from. */
 	FCataclysmFloorPlan Plan;
+
+	/** See `BlockedCells`. Emptied by `Build`, with the plan it belonged to. */
+	TArray<FIntPoint> Blocked;
 };
