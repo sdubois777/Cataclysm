@@ -1713,7 +1713,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Cast<UCataclysmAbilitySystemComponent>(
 							GetOwningAbilitySystemComponent()))
 				{
-					Cataclysm->NoteBlocked();
+					// WITH THE ATTACKER AND WHAT THE BLOCK REMOVED, since issue
+					// #1833 group E part 3: "Reflect 20%-100% of damage blocked".
+					Cataclysm->NoteBlocked(
+						UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
+						Outcome.DamageBlocked);
 				}
 			}
 

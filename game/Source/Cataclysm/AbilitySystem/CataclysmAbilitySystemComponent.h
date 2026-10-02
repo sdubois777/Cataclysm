@@ -765,6 +765,15 @@ public:
 	static const TCHAR* DamageImmunityAction;
 
 	/**
+	 * The action that reflects a share of the damage a block removed, and the
+	 * nearby action scaled by armour. Issue #1833 group E part 3, ruled
+	 * 2026-10-02. `tools/generate_datatables.py` holds the same names in
+	 * `REFLECT_BLOCKED_ACTION` and `NEARBY_ACTIONS`.
+	 */
+	static const TCHAR* ReflectBlockedAction;
+	static const TCHAR* SmiteNearbyByArmourAction;
+
+	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
 	 * of 2026-09-11 under the owner's delegation, recorded in
 	 * `docs/DECISIONS.md`: "nearby" or "close range" with no number is 5 m. Ruled
@@ -2209,8 +2218,19 @@ public:
 	 * when the hit removed health or energy shield; a block that reduced the
 	 * blow to nothing opens this window and not that one, because the row says
 	 * "blocking an attack" and says nothing about what got through.
+	 *
+	 * This form carries nobody and nothing; the one below is what a resolved blow
+	 * calls.
 	 */
 	void NoteBlocked();
+
+	/**
+	 * The same, naming the attacker whose blow was blocked and what the block
+	 * removed from it, which `block` then carries as its other character and its
+	 * amount. Issue #1833 group E part 3: "Reflect 20%-100% of damage blocked
+	 * back at attackers".
+	 */
+	void NoteBlocked(const AActor* Attacker, float DamageBlocked);
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceBlocked() const;
@@ -2882,6 +2902,16 @@ protected:
 	 * Issue #1833 group D part 3. See `ECataclysmNearbyAction`.
 	 */
 	void ActOnNearby(const FCataclysmPoolAction& Action);
+
+	/**
+	 * Count one event for an action with an "every Nth" count in a window, and
+	 * answer whether it is the Nth inside that window; if it is, the count starts
+	 * again. True at once for an action with no count. Issue #1833 group E part 3.
+	 */
+	bool CountedToNth(const FCataclysmPoolAction& Action);
+
+	/** The times of the events each windowed count holds, by trigger key. */
+	TMap<FName, TArray<float>> EventCountTimes;
 
 	/**
 	 * Apply a status action's status to `Other`, the other character of its

@@ -671,9 +671,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// rolled, because `FRandRange` can return 100 itself. Issue #2201: the
 			// block roll above and the other percentage rolls still compare
 			// strictly and wait on that issue's shared fix.
+			// AND WHAT IT REMOVED, which the block event carries. Issue #1833
+			// group E part 3.
+			const float BeforeBlock = Damage;
 			Damage *= NegationChance >= 100.0f || NegationRoll < NegationChance
 				? 0.0f
 				: 1.0f - BlockShareOf(Defender, BlowOf(Hit)) / 100.0f;
+			Result.DamageBlocked = BeforeBlock - Damage;
 		}
 	}
 

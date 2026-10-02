@@ -1367,6 +1367,24 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bDamageImmunity = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::DamageImmunityAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
+					// armour, and whether it counts to an Nth event in a window.
+					// Issue #1833 group E part 3. Stack Seconds is the window.
+					Action.bReflectBlocked = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ReflectBlockedAction,
+						ESearchCase::IgnoreCase);
+					if (Effect->Action.Equals(
+							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
+							ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteByArmour;
+					}
+					if (Action.Nearby != ECataclysmNearbyAction::None && Effect->EveryNth > 1)
+					{
+						Action.EveryNth = Effect->EveryNth;
+						Action.CountWindowSeconds =
+							UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
+					}
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.
