@@ -12,8 +12,8 @@ tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
 **Applied; the row stays partly built**, because "opening shortcuts" waits on doors and on changing a floor's layout
-during play. The Unreal compile, the automation tests and the three guard proofs have NOT run yet; the figures are added
-at the end of this entry when they have.
+during play. The Unreal compile, the automation tests and the three guard proofs ran on 2026-10-02; the figures are
+at the end of this entry.
 
 ### The row
 
@@ -79,10 +79,19 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.` and named `War
 One Python check, `test_warzone_row_still_names_allied_soldiers_and_shortcuts`, pins the three phrases the rulings rest
 on. The Warzone tests already in the file run as the regression check.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the `Subjugate` call removed; Pb, the
-count raised; Pc, both removals at the floor change taken out.
+One window on 2026-10-02, with the build machine, on `feat/warzone-allied-soldiers-3` at `fa617450` on development
+`ebac6c1f`. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Proof Pa: the `Subjugate` call removed | PROVED: 4 tests performed, 1 failed, `WarzoneAlliesACapturedPointBringsTwoOnThePlayersSide`; restored 4 of 4 |
+| Proof Pb: the count raised | PROVED: 4 tests performed, 1 failed, `WarzoneAlliesFiguresAndTheRowStaysPartly`; restored 4 of 4 |
+| Proof Pc: both removals at the floor change taken out | PROVED: 4 tests performed, 1 failed, `WarzoneAlliesEndWithTheFloor`; restored 4 of 4 |
+| Whole suite | `3062 tests performed, 3062 succeeded, 0 failed`; declared 3062, gap 0; 40 skipped part of what they check |
+| Python, started with no workflow in progress | `5666 passed, 8 skipped` (JUnit 5,674, 0 failures, 0 errors) |
 
 ---
 
