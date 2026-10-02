@@ -107,7 +107,28 @@ Three tests in `Cataclysm.MinionGear.`, each on a real creature taken with `UCat
 **The minion's own readings are regressions here**, since the two helpers moved: the eight
 `Cataclysm.MinionGear.` and five `Cataclysm.MinionStats.` tests that existed before must pass unchanged.
 
-**Not built or run when this was written.** The run table follows when the window runs.
+### THE WINDOW'S RUN
+
+Run 2026-10-02 in the jovial-bouman worktree, at feat/thralls-take-minion-stats-2 20409944 on `development`
+e2419a6e.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 20409944 | Build: Succeeded - 32 actions, 29 files compiled |
+| Whole suite | 20409944 | 3086 tests performed, 3086 succeeded, 0 failed; declared 3086, gap 0 (registered 3083 + 3) |
+| Python of record | 20409944 | 5677 passed, 8 skipped in 314.25s; JUnit tests=5685 failures=0 errors=0 skipped=8 |
+
+**The minion's own readings held through the move.** The eight `Cataclysm.MinionGear.` and five
+`Cataclysm.MinionStats.` tests that existed before this change passed in the whole suite, unchanged.
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| P1: `ApplyHit` no longer multiplies by `ThrallDamageMultiplierAgainst` | 20409944 | PROVED: with the break in: 11 tests performed, 9 succeeded, 2 failed: AThrallHitsHarderForItsCommandersIncreasedMinionDamage, AThrallHitsHarderOnlyAgainstAnEnemyItsCommanderDamagedInTheLastTwoSeconds \| restored: 11 tests performed, 11 succeeded, 0 failed |
+| P2: maximum health no longer includes `CommanderHealthMultiplier` | 20409944 | PROVED: with the break in: 11 tests performed, 10 succeeded, 1 failed: AThrallTakenIsToughenedForItsCommandersMinionHealthAndKeepsItWhenItsRungRises \| restored: 11 tests performed, 11 succeeded, 0 failed |
+
+**Each failure was the assertion its test exists for**, read from the broken runs' kept logs. Under P1 the
+thrall's blow stayed at 100 where 125 and 145 were expected. Under P2 its maximum stayed at 1000 where 1500 was
+expected, and at 1850 where 2775 was expected after the rung was raised.
 
 ---
 
