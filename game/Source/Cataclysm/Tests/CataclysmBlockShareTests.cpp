@@ -434,7 +434,10 @@ CATACLYSM_TEST(FCataclysmShieldRechargedTest,
 		Ceilinged.Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100.0f);
 		Ceilinged.Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 10.0f);
 		Ceilinged.Set(UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(), 100.0f);
-		Ceilinged.Line(UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat, 50.0f);
+		// FLAT 50 ON A BASE OF 0, the shape the shipped row has: the regeneration
+		// step reads the ceiling with `StatAppliedTo`, which ignores a recorded base
+		// on purpose and applies only the modifiers to the figure it is handed.
+		Ceilinged.Line(UCataclysmRegeneration::EnergyShieldRechargeCeilingReductionStat, 0.0f, 50.0f);
 		const FEventCount CeilingRecharged(Ceilinged.AbilitySystem, TEXT("energy_shield_recharged"));
 		UCataclysmRegeneration::ApplyStep(Ceilinged.Actor, 2.0f, 100.0f);
 		TestEqual(TEXT("set-up: the ceiling held the shield at half"),
