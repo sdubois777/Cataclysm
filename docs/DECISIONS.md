@@ -60,10 +60,15 @@ which is why the Gatekeeper's own figures, set through those setters in `ApplyDe
 `ApplyDesignedStats` and the end of `SpawnPlacedCreature` nothing else touches the creature, so no rule's later change
 can be undone by it. **So the whole re-apply was chosen**, not adding only the modifier's own effect.
 
-**A known consequence: the reality counts toward a later rarity re-draw.** `DrawModifiersForRarity` draws only the
-shortfall between the rows a rung wants and the rows carried. A creature raised a rung after it was placed -- by
-Volatile Evolution, for one -- draws one row fewer than it would have, because the reality is already one of its rows.
-That is the same arithmetic any carried row gets, and it is stated rather than changed.
+**The reality does not count toward a later rarity re-draw.** `DrawModifiersForRarity` draws only the shortfall
+between the rows a rung wants and the rows carried, and every rule that raises a creature's rung -- Volatile Evolution,
+Blood-Forged Champions, Epidemic's Plague Lord, Royal Guard and the Demon Prince -- calls it after the raise. Counted
+as an ordinary row, the reality would make such a creature draw one row fewer. **Ruled by the coordinating session on
+2026-10-02, under the owner's delegation, a judgement:** the reality is the floor's trait and not the creature's own
+draw, so a re-draw draws as if it were not there. The game mode records the row it gave in
+`ACataclysmEnemyCharacter::FloorRealityRow`, only when it adds it, and the shortfall leaves that one row out of the
+count. A creature that already carried the same row as its own draw is given nothing and has nothing recorded, so its
+row still counts. **Affects** also `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`.
 
 ### Tests
 
@@ -88,8 +93,9 @@ That is the same arithmetic any carried row gets, and it is stated rather than c
 - `Cataclysm.DungeonModifierEffects.UnstableDimensionsImposesNoRealityOnTheFirstFloor`, with the panel line "unstable
   dimensions: no new reality on the first floor".
 - `Cataclysm.DungeonModifierEffects.UnstableDimensionsGivesEveryCreatureOfALaterFloorItsReality`: on floor 2 every
-  creature carries the reality, none twice, and the panel says "unstable dimensions: every creature is" and the row's
-  name.
+  creature carries the reality, none twice; a creature carrying only the reality, raised to the first rung that
+  carries a row, draws that rung's whole count beside it; and the panel says "unstable dimensions: every creature is"
+  and the row's name.
 - `Cataclysm.DungeonModifierEffects.UnstableDimensionsGivesASecondHordeWaveItsReality`: wave 1 has none; every creature
   of wave 2, once all of it has arrived, carries it.
 

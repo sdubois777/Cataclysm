@@ -43968,6 +43968,31 @@ bool FCataclysmUnstableEveryCreatureTest::RunTest(const FString& Parameters)
 			  Standing);
 	TestFalse(TEXT("and none carries it twice"), bAnyTwice);
 
+	// AND IT DOES NOT FILL A RUNG. A creature carrying only the reality, raised to the first rung that carries a row of
+	// its own, draws that rung's whole count beside it, as Volatile Evolution raises one. Ruled 2026-10-01.
+	ACataclysmEnemyCharacter* OnlyTheReality = nullptr;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		if (IsValid(Creature) && Creature->ModifierRows.Num() == 1 && Creature->ModifierRows[0] == Reality)
+		{
+			OnlyTheReality = Creature;
+			break;
+		}
+	}
+	int32 Rung = 1;
+	while (Rung < 10 && UCataclysmEnemyModifiers::CountForRarityStep(Rung) < 1)
+	{
+		++Rung;
+	}
+	if (TestNotNull(TEXT("set-up: a creature carries only the reality"), OnlyTheReality))
+	{
+		OnlyTheReality->SetRarityStep(Rung);
+		OnlyTheReality->DrawModifiersForRarity();
+		TestEqual(FString::Printf(TEXT("raised to rung %d it carries the rung's rows and the reality"), Rung),
+				  OnlyTheReality->ModifierRows.Num(), UCataclysmEnemyModifiers::CountForRarityStep(Rung) + 1);
+		TestTrue(TEXT("the reality among them"), OnlyTheReality->ModifierRows.Contains(Reality));
+	}
+
 	// THE PANEL NAMES IT BY ITS MODIFIER NAME.
 	const FCataclysmEnemyModifierRow* Row =
 		UCataclysmEnemyModifiers::FindRow(UCataclysmEnemyModifiers::LoadEnemyModifierTable(), Reality);

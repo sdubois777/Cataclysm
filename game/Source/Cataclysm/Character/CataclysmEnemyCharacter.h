@@ -396,6 +396,13 @@ public:
 	TArray<FName> ModifierRows;
 
 	/**
+	 * THE ONE ROW OF `ModifierRows` THE FLOOR GAVE, NOT THE CREATURE'S OWN DRAW: Unstable Dimensions' reality, set by
+	 * the game mode only when it adds that row. `DrawModifiersForRarity` leaves it out of the count a rung wants, so a
+	 * creature raised a rung later draws as if the reality were not there. Ruled 2026-10-01. `NAME_None` for none.
+	 */
+	FName FloorRealityRow = NAME_None;
+
+	/**
 	 * The first rung of the ladder that is a boss.
 	 *
 	 * 4 IS "Boss", AND THE TWO RUNGS FROM IT UP ARE THE BOSSES: Boss and
