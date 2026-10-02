@@ -493,6 +493,19 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 			LastAction = ECataclysmBrainAction::Charging;
 			return LastAction;
 		}
+
+		// AND THE CHANNEL BEFORE AN INFERNO CHARGE, WHICH STANDS. Issue #1560.
+		// The row: "Channel for 2 seconds, then dash". The creature neither
+		// walks nor attacks while its lane is drawn, the same commitment a
+		// wind-up makes; `UCataclysmEnemyModifiers::TimedStep` runs the count
+		// and sets the charge off.
+		if (Charger->IsChannellingInfernoCharge())
+		{
+			StopMovement();
+
+			LastAction = ECataclysmBrainAction::WindingUp;
+			return LastAction;
+		}
 	}
 
 	// A WIND-UP ALREADY RUNNING OUTRANKS EVERYTHING, including looking for a

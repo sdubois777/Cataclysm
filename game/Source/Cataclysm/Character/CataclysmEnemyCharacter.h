@@ -891,6 +891,28 @@ public:
 	float SecondsSinceSacrifice = 0.0f;
 	float SecondsSinceSigil = 0.0f;
 	float SecondsSinceInfernoCharge = 0.0f;
+
+	/**
+	 * Inferno Charge's channel: the seconds still to stand before the charge,
+	 * zero when not channelling, and the lane fixed when the channel began.
+	 * Issue #1560.
+	 *
+	 * THE MARKER AND THE PATH ARE HELD WEAKLY because each one destroys itself
+	 * when its own time is up. The path is read by tests, which have nothing
+	 * else to look at, as the Hellhound's `LastLaneLeftBurning` is.
+	 */
+	float InfernoChannelSecondsLeft = 0.0f;
+	FVector InfernoChargeFrom = FVector::ZeroVector;
+	FVector InfernoChargeTo = FVector::ZeroVector;
+	TWeakObjectPtr<class ACataclysmTelegraphMarker> InfernoChargeMarker;
+	TWeakObjectPtr<class ACataclysmGroundZone> LastInfernoPathLeftBurning;
+
+	/** Whether this creature is standing in Inferno Charge's channel now. */
+	bool IsChannellingInfernoCharge() const
+	{
+		return InfernoChannelSecondsLeft > 0.0f;
+	}
+
 	float SigilSecondsLeft = 0.0f;
 	FVector SigilCentre = FVector::ZeroVector;
 	float CharmLastAppliedAt = -1.0f;

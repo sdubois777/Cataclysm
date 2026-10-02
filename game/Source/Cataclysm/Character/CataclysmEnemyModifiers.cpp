@@ -7,12 +7,15 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "EngineUtils.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
@@ -907,38 +910,132 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	}
 
 	// -- Inferno Charge -------------------------------------------------
+	// A CHANNEL THE CREATURE MAY NO LONGER FINISH IS ABANDONED, rather than
+	// left counting nowhere. The brain stands a channelling creature still, so
+	// a channel frozen by the gate below would stand it still for good.
+	if (Enemy->IsChannellingInfernoCharge()
+		&& (!Carries(Enemy->ModifierRows, InfernoChargeRow)
+			|| Enemy->TakesNoHostileAction()))
+	{
+		Enemy->InfernoChannelSecondsLeft = 0.0f;
+		if (ACataclysmTelegraphMarker* Marker = Enemy->InfernoChargeMarker.Get())
+		{
+			Marker->Dismiss();
+		}
+		Enemy->InfernoChargeMarker = nullptr;
+	}
+
 	// AND A MEDIC NEVER CHARGES. Issue #1680, the same reading: a creature
 	// that dashes at the player and deals damage on arrival is threatening.
 	if (Carries(Enemy->ModifierRows, InfernoChargeRow) && !Enemy->IsCharging()
 		&& !Enemy->TakesNoHostileAction())
 	{
-		Enemy->SecondsSinceInfernoCharge += StepSeconds;
-		if (Enemy->SecondsSinceInfernoCharge >= InfernoChargeIntervalSeconds)
+		if (Enemy->IsChannellingInfernoCharge())
 		{
-			const TArray<AActor*> Ahead =
-				UCataclysmTargeting::FindEnemiesInSphere(
-					World, Enemy, Enemy->GetActorLocation(),
-					/*RadiusCm=*/2000.0f, /*MaxTargets=*/1);
-
-			// NOTHING TO CHARGE MEANS THE TIMER KEEPS RUNNING, so the creature
-			// charges as soon as somebody comes into range rather than waiting
-			// another twelve seconds after they do.
-			if (!Ahead.IsEmpty() && Ahead[0])
+			// THE CHANNEL RUNS OUT, THEN THE CHARGE SETS OFF. Issue #1560. The
+			// row: "Channel for 2 seconds, then dash towards the player".
+			Enemy->InfernoChannelSecondsLeft -= StepSeconds;
+			if (Enemy->InfernoChannelSecondsLeft <= KINDA_SMALL_NUMBER)
 			{
-				Enemy->SecondsSinceInfernoCharge = 0.0f;
+				Enemy->InfernoChannelSecondsLeft = 0.0f;
+				if (ACataclysmTelegraphMarker* Marker =
+						Enemy->InfernoChargeMarker.Get())
+				{
+					Marker->Dismiss();
+				}
+				Enemy->InfernoChargeMarker = nullptr;
 
 				// THE CHARGE EVERY CREATURE ALREADY HAS. `BeginCharge` is on the
 				// base class and the Hellhound's own charge goes through it, so
-				// the lane, the damage, the shove and the telegraph are one
-				// implementation a player has already learned to read.
-				Enemy->BeginCharge(Ahead[0]->GetActorLocation(),
+				// the lane, the damage and the shove are one implementation a
+				// player has already learned to read.
+				//
+				// TO THE POINT FIXED WHEN THE CHANNEL BEGAN, not where the player
+				// is now: a player who walked out of the drawn lane is not
+				// followed, which is what the two seconds buy.
+				Enemy->BeginCharge(Enemy->InfernoChargeTo,
 								   InfernoChargeSpeedCmPerSecond,
 								   InfernoChargeHalfWidthCm,
 								   InfernoChargeDamagePercent);
+
+				// AND THE PATH BURNS, ONLY IF THE CHARGE REALLY SET OFF. A
+				// creature standing in a pit is refused the charge, and a path
+				// of fire where nothing ran would be a lie on the floor.
+				//
+				// LAID NOW, ALONG THE WHOLE RUN, AND PRICED ONCE, for the
+				// reasons the Hellhound's `UseEnemyAbility` gives at length: a
+				// patch appearing only on arrival burns nobody who stood in it
+				// during the run, and a patch outlives the blow that left it.
+				// It burns the player and nobody on the creature's own side.
+				if (Enemy->IsCharging())
+				{
+					const float PerSecond =
+						UCataclysmSkillEffects::WeaponDamageOf(
+							UCataclysmTargeting::AbilitySystemOf(Enemy))
+						* InfernoPathPercent / 100.0f;
+					Enemy->LastInfernoPathLeftBurning =
+						ACataclysmGroundZone::SpawnAlong(
+							Enemy, Enemy->InfernoChargeFrom,
+							Enemy->InfernoChargeTo, InfernoChargeHalfWidthCm,
+							InfernoPathSeconds, PerSecond,
+							/*bBurnsEveryone=*/false);
+				}
 				++Acted;
 
 				UE_LOG(LogCataclysm, Log, TEXT("%s began an Inferno Charge."),
 					   *Enemy->GetName());
+			}
+		}
+		else
+		{
+			Enemy->SecondsSinceInfernoCharge += StepSeconds;
+
+			// NOT WHILE ITS OWN ABILITY IS WINDING UP. The brain stands the
+			// creature still for the channel above everything else it does, so
+			// a channel begun mid wind-up would hold that wind-up past the
+			// marker it drew. The timer keeps running and the channel begins
+			// after it.
+			const ACataclysmEnemyController* Brain =
+				Cast<ACataclysmEnemyController>(Enemy->GetController());
+			const bool bWindingUp = Brain && Brain->WindingUpAbility >= 0;
+
+			if (!bWindingUp
+				&& Enemy->SecondsSinceInfernoCharge
+					   >= InfernoChargeIntervalSeconds - InfernoChannelSeconds)
+			{
+				const TArray<AActor*> Ahead =
+					UCataclysmTargeting::FindEnemiesInSphere(
+						World, Enemy, Enemy->GetActorLocation(),
+						/*RadiusCm=*/2000.0f, /*MaxTargets=*/1);
+
+				// NOTHING TO CHARGE MEANS THE TIMER KEEPS RUNNING, so the
+				// creature channels as soon as somebody comes into range rather
+				// than waiting another twelve seconds after they do.
+				if (!Ahead.IsEmpty() && Ahead[0])
+				{
+					// ZERO, AND NOT COUNTED DURING THE CHANNEL, so it is still
+					// zero when the charge sets off and the next one is twelve
+					// seconds after this one, as it was before the channel.
+					Enemy->SecondsSinceInfernoCharge = 0.0f;
+					Enemy->InfernoChannelSecondsLeft = InfernoChannelSeconds;
+
+					// THE LANE IS FIXED NOW AND DRAWN ON THE FLOOR, from the
+					// creature's feet to the player's, through the one function
+					// every enemy marker goes through. See
+					// `ACataclysmEnemyController::FloorUnder`.
+					Enemy->InfernoChargeFrom = ACataclysmEnemyController::FloorUnder(
+						Enemy, Enemy->GetActorLocation());
+					Enemy->InfernoChargeTo = ACataclysmEnemyController::FloorUnder(
+						Enemy, Ahead[0]->GetActorLocation());
+					Enemy->InfernoChargeMarker = ACataclysmTelegraphMarker::ShowLine(
+						Enemy, Enemy->InfernoChargeFrom, Enemy->InfernoChargeTo,
+						InfernoChargeHalfWidthCm, InfernoChannelSeconds);
+					++Acted;
+
+					UE_LOG(LogCataclysm, Log,
+						   TEXT("%s began channelling an Inferno Charge."),
+						   *Enemy->GetName());
+				}
 			}
 		}
 	}
