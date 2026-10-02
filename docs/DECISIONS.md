@@ -102,6 +102,30 @@ defender-side scope by ailment (`damage_over_time_taken` and `DurationOn` read n
   cooldown starts only when the status was applied, as a random damage over time's does, so a chance that failed or a
   blow too small to carry an ailment starts none.
 
+### THE RUN
+
+E1 is commits `546512ff` (engine), `1657f9ec` (engine tests), `a94eab0c` (the status roll pin and the row tests),
+`d931e274` (this entry), `99511630` (rows) and `305f13ee` (asset), on development `6d8e2345`, pushed as
+`feat/apply-status-on-event-2`. It was written on `629b263d` and moved after #2198 merged; the one conflict was this log's
+first entry, resolved with `tools/resolve_decisions_log.py`.
+
+| Step | Result |
+| :-- | :-- |
+| Rehearsals on `git archive` copies, at `341e2dc3` | without rows "11 failed, 5649 passed, 13 skipped", JUnit 5673: the 11 tests that need a git directory; with rows "13 failed": those, the stale asset hash, and `test_the_built_ahead_list_holds_nothing_a_row_now_names`, which was not predicted. `target_carries_void_splinter` was still listed as built ahead of its row, and the rows commit removes it |
+| Compile-only scans, `99511630` | sweep 0 candidates over 13 files; check 7 read 74 definitions, none flagged; check 6 0 candidates; two engine-name hits (`Instigator`, `Name`, each a pattern `CataclysmAilments.cpp` already compiles) and three access candidates, all read and explained |
+| Build 1, `99511630` | "Succeeded - 32 actions, 29 files compiled" |
+| `Cataclysm.ApplyStatus.` | "8 tests performed, 8 succeeded, 0 failed"; no "was ignored", no ensure |
+| Proof A, the hit notice's first-blow flag written false | PROVED: test 1 alone failed, as predicted; restored 8 of 8. **Its failed-assertion count was NOT MEASURED (predicted 5): the run with the break in was read by a runner that kept no log, and the restored run overwrote it.** Accepted as it stands by the coordinating session |
+| Proof B, the gate's amount made 1e9 | PROVED: the 3 predicted tests, 4 failed assertions as predicted; restored 8 of 8 |
+| Proof C, Cripple's stated seconds ignored | PROVED: the 1 predicted test, 1 failed assertion as predicted ("'for the stated 2 seconds' to be 2.000000, but it was 4.000000"); restored 8 of 8 |
+| Python of record, `d931e274` | "5665 passed, 8 skipped in 314.07s"; JUnit 5673 (5654 + 19), 0 failures |
+| Asset rebuild, `305f13ee` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` (437 to 447 rows) |
+| Row tests, `Cataclysm.Enchantments.` | "184 tests performed, 184 succeeded, 0 failed"; the seven new row tests each Result={Success}; no "was ignored", no failed assertion, no ensure |
+| Whole suite, `305f13ee` | "3056 tests performed, 3056 succeeded, 0 failed"; 3056 declared, gap 0, as registered (3041 + 15); no "was ignored", no failed assertion, no ensure |
+| Python at the head, `305f13ee` | "5665 passed, 8 skipped in 307.44s"; JUnit 5673, 0 failures |
+
+Every broken file's hash was the same after its proof.
+
 ---
 
 ## 2026-10-01 — A floor is cleared when its own creatures are dead: the Reaper, a Blood Bond's elite and every rule's arrivals no longer hold it uncleared
