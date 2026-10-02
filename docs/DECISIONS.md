@@ -135,6 +135,35 @@ own, and so is how the reflected amount lands.
 - The generator now reads Stack Seconds on a nearby action as the window of its count, requires one when Every Nth is
   stated, and refuses Stack Seconds on a nearby action with no count, which it used to drop without a word.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-02 in the elastic-burnell worktree, on feat/block-reflect-and-shockwave-2 on `development` cd5961e3.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 16e94223 | Build: Succeeded - 35 actions, 30 files compiled |
+| The four engine tests | 16e94223 | Cataclysm.BlockReflect.: 4 tests performed, 4 succeeded, 0 failed |
+| Proof A: the reflect pays `0.0f` | 16e94223 | PROVED: with the break in: 4 tests performed, 2 succeeded, 2 failed: AReflectIsNotRetaliatedAgainstAndNoIncreaseScalesIt, AReflectPaysItsShareOfWhatTheBlockRemovedToTheAttacker \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Proof B: the reflect may be retaliated against | 16e94223 | PROVED: with the break in: 4 tests performed, 3 succeeded, 1 failed: AReflectIsNotRetaliatedAgainstAndNoIncreaseScalesIt \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Proof C: `CountedToNth` taken out of the nearby branch | 16e94223 | PROVED: with the break in: 4 tests performed, 3 succeeded, 1 failed: ThreeBlocksInsideThreeSecondsSmiteOnceAndTheCountStartsAgain \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Python of record | c0cc3c34 | 5690 passed, 8 skipped in 315.25s; JUnit tests=5698 failures=0 errors=0 skipped=8 |
+| The asset, regenerated with the editor | 3dad0a1c | 2 files changed: `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 452 to 455; both committed, nothing else |
+| The row tests | 3dad0a1c | Cataclysm.Enchantments.: 192 tests performed, 192 succeeded, 0 failed |
+| Whole suite | 3dad0a1c | 3107 tests performed, 3107 succeeded, 0 failed; declared 3107, gap 0 |
+| Final Python | 3dad0a1c | 5690 passed, 8 skipped in 311.93s; JUnit tests=5698 failures=0 errors=0 skipped=8 |
+
+Each proof kept its broken run's log. **Proofs A and C failed exactly the assertions predicted**, three and seven.
+
+**Proof B failed two assertions where one was predicted.** Its test is named for the guard, so the coordinating
+session ruled it proved on that test with the measured count. The predicted one is "and the defender lost only
+what the blocked blow left: nothing came back", 75 against 25: with the break in, the attacker's retaliation
+answered the reflect and the defender lost that too. The second is "the attacker took exactly what the block
+removed, unscaled", 50 against 25. **That was not a second fault**: the attacker did take the 50 the first block
+removed. The retaliation was itself a blow the defender blocked, and it rewrote the damage result the test's blow
+hands back, which is where the test reads both expected figures. **The test reads its expected figures from a
+result a later blow can overwrite.** That happens only while the guard is broken, because with it in place no
+later blow lands, but a reader changing this test should know it.
+
 ---
 
 ## 2026-10-02 — Runtime floor obstacles: Heaven's Quake raises pillars and Cryptquake collapses pits during play, both rows built
