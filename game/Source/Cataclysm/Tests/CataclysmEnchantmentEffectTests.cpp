@@ -12243,4 +12243,169 @@ bool FCataclysmRechargeNovaRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmBlockPartTwoRowTest
+{
+	/** A creature of the monsters' side 3 m from `Near`, with no armour, evasion, block or resistance. */
+	ACataclysmEnemyCharacter* CreatureBeside(UWorld* World, const AActor* Near)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(
+			Near->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(100000.0f);
+			Made->SetArmour(0.0f);
+			UAbilitySystemComponent* Its = Made->GetAbilitySystemComponent();
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+		}
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReflectRowTest,
+	"Cataclysm.Enchantments.TheReflectRowPaysAllOfWhatABlockRemovedToTheAttacker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Reflect 20%-100% of damage blocked back at attackers". Issue #1833 group E
+ * part 3: `reflect_blocked` 20 to 100 on `block`. WORN at the top of its roll,
+ * 100: a real blocked blow costs the attacker exactly what the block removed.
+ */
+bool FCataclysmReflectRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	FBlockFight Fight(World, TEXT("Positive_Reflect_20_100_of_damage_blocked_back_at_attac"));
+	WriteLines(Fight.Wearer.AbilitySystem, {}, {{BlockChance, 100.0f}});
+	Fight.Attacker.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	Fight.Attacker.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Before = Fight.Attacker.AbilitySystem->GetNumericAttribute(Health);
+	FCataclysmDamageResult Result;
+	UCataclysmSkillEffects::ApplyHit(Fight.Attacker.Actor, Fight.Wearer.Actor, 100.0f,
+		FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the blow was blocked and removed %.1f"), Result.DamageBlocked),
+			Result.bBlocked && Result.DamageBlocked > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the attacker lost all of what the block removed. If nothing, DT_EnchantmentEffects may be "
+				   "older than the rows: run tools/generate_datatable_assets.py"),
+		Before - Fight.Attacker.AbilitySystem->GetNumericAttribute(Health), Result.DamageBlocked, 0.5f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlockShockwaveRowTest,
+	"Cataclysm.Enchantments.TheShockwaveRowSmitesOnTheThirdBlockInsideThreeSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 3 blocks in quick succession triggers a shockwave dealing 100%-200%
+ * weapon damage to nearby enemies". Issue #1833 group E part 3: `smite_nearby`
+ * 100 to 200 on `block`, Every Nth 3, Stack Seconds 3. WORN: the first two real
+ * blocks smite nothing, and the third smites a creature three metres away.
+ */
+bool FCataclysmBlockShockwaveRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	using namespace CataclysmBlockPartTwoRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	FBlockFight Fight(World, TEXT("Positive_Every_3_blocks_in_quick_succession_triggers_a_sh"));
+	WriteLines(Fight.Wearer.AbilitySystem, {},
+		{{BlockChance, 100.0f}, {FName(TEXT("attack_damage")), 100.0f}});
+	Fight.Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	ACataclysmEnemyCharacter* Creature = CreatureBeside(World, Fight.Wearer.Actor);
+	if (!TestNotNull(TEXT("a creature three metres away"), Creature))
+	{
+		return false;
+	}
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Creature);
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const auto Smitten = [&]()
+	{
+		const float Before = Its->GetNumericAttribute(Health);
+		bool bBlocked = false;
+		BlowOn(World, Fight.Wearer, Fight.Attacker, &bBlocked);
+		if (!bBlocked)
+		{
+			AddError(TEXT("a blow was not blocked"));
+		}
+		// PAST THE ROW'S QUARTER SECOND, so the count, not the cooldown, decides.
+		World->TimeSeconds += 0.3f;
+		return Its->GetNumericAttribute(Health) < Before;
+	};
+	TestFalse(TEXT("block 1 smites nothing"), Smitten());
+	TestFalse(TEXT("block 2 smites nothing"), Smitten());
+	TestTrue(TEXT("block 3 smites the creature. If not, DT_EnchantmentEffects may be older than the rows: "
+				  "run tools/generate_datatable_assets.py"),
+		Smitten());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArmourNovaRowTest,
+	"Cataclysm.Enchantments.TheArmourNovaRowHitsNearbyForFourTimesTheWearersArmour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Blocking attacks deals 200%-400% of your armor as damage to nearby enemies".
+ * Issue #1833 group E part 3: `smite_nearby_by_armor` 200 to 400 on `block`.
+ * WORN at the top of its roll, 400, by a wearer with 1000 armour: a real block
+ * costs a creature three metres away, with no mitigation, 4000.
+ */
+bool FCataclysmArmourNovaRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	using namespace CataclysmBlockPartTwoRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	FBlockFight Fight(World, TEXT("Positive_Blocking_attacks_deals_200_400_of_your_armor_a"));
+	WriteLines(Fight.Wearer.AbilitySystem, {}, {{BlockChance, 100.0f}, {FName(TEXT("armor")), 1000.0f}});
+	Fight.Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 1000.0f);
+	ACataclysmEnemyCharacter* Creature = CreatureBeside(World, Fight.Wearer.Actor);
+	if (!TestNotNull(TEXT("a creature three metres away"), Creature))
+	{
+		return false;
+	}
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Creature);
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Before = Its->GetNumericAttribute(Health);
+	bool bBlocked = false;
+	BlowOn(World, Fight.Wearer, Fight.Attacker, &bBlocked);
+	if (!TestTrue(TEXT("set-up: the blow was blocked"), bBlocked))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the creature lost 400% of the wearer's 1000 armour. If nothing, DT_EnchantmentEffects may "
+				   "be older than the rows: run tools/generate_datatable_assets.py"),
+		Before - Its->GetNumericAttribute(Health), 4000.0f, 0.5f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
