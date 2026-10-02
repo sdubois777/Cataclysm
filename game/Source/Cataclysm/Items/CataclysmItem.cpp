@@ -1362,6 +1362,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
 					}
+					// AND WHETHER IT OPENS THE WEARER'S NO-DAMAGE WINDOW. Issue
+					// #1833 group E part 2. The value is the seconds.
+					Action.bDamageImmunity = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::DamageImmunityAction,
+						ESearchCase::IgnoreCase);
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

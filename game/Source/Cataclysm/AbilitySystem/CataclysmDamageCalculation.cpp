@@ -11,6 +11,7 @@
 #include "Player/CataclysmGameMode.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
+#include "HAL/IConsoleManager.h"
 
 // The two stats saying what share of a hit a character takes. Issue #1026.
 // `UCataclysmPlayerClassStats` names both, in two maps, so a literal here and a
@@ -19,6 +20,22 @@ const TCHAR* UCataclysmDamageCalculation::DamageTakenStat =
 	TEXT("damage_taken");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenStat =
 	TEXT("damage_over_time_taken");
+const TCHAR* UCataclysmDamageCalculation::BlockDamageReductionStat =
+	TEXT("block_damage_reduction");
+const TCHAR* UCataclysmDamageCalculation::BlockNegationChanceStat =
+	TEXT("block_negation_chance");
+
+/**
+ * Pins the roll a block makes against its chance to negate the whole hit, 0 to
+ * 100, for tests. Negative, the default, rolls for real. Issue #1833 group E
+ * part 2.
+ */
+static TAutoConsoleVariable<float> CVarBlockNegationRoll(
+	TEXT("Cataclysm.BlockNegationRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a block makes against its chance to negate all of a hit. "
+		 "Negative rolls for real."),
+	ECVF_Default);
+
 const TCHAR* UCataclysmDamageCalculation::NonCriticalDamageStat =
 	TEXT("non_critical_damage");
 const TCHAR* UCataclysmDamageCalculation::ProjectileLaterHitDamageStat =
@@ -178,6 +195,16 @@ namespace
 
 		return Total;
 	}
+}
+
+float UCataclysmDamageCalculation::BlockShareOf(const UAbilitySystemComponent* Defender,
+												const FCataclysmBlowContext& Blow)
+{
+	// ASKED THROUGH THE PIPELINE ON ITS ENGINE-SUPPLIED BASE, so a worn row adds
+	// its points and a creature, which carries no stat line, reads the base.
+	return FMath::Clamp(DefenderStat(Defender, BlockDamageReductionStat,
+									 BlockDamageReduction, Blow),
+						0.0f, MaxBlockDamageReduction);
 }
 
 FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
@@ -621,15 +648,27 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// block melee attacks" -- and that row needs BOTH this and the evasion
 		// step, which is why the two are separate commits for one sentence.
 		//
-		// THE SHARE A BLOCK REMOVES IS NOT TOUCHED HERE. `BlockDamageReduction`
-		// is a compile-time constant and stays one; "You block for 65%-75% of
-		// damage instead of the normal 50%" is a different change and is not
-		// part of this branch.
+		// THE SHARE A BLOCK REMOVES IS A DEFENDER STAT since issue #1833 group E
+		// part 2, ruled 2026-10-02: "You block for 65%-75% of damage instead of
+		// the normal 50%". `BlockShareOf` reads it on its base of
+		// `BlockDamageReduction` and caps it at `MaxBlockDamageReduction`.
+		//
+		// AND A BLOCK MAY REMOVE ALL OF IT, on a second roll: "Blocking an attack
+		// has a 20%-40% chance to fully negate all damage". Inside the block, so
+		// it covers exactly what a block covers; a damage over time tick reaches
+		// this step today, and the owner's held question on blocking damage over
+		// time decides both.
 		if (Roll < DefenderStat(Defender, TEXT("block_chance"),
 								Combat->GetBlockChance(), BlowOf(Hit)))
 		{
 			Result.bBlocked = true;
-			Damage *= 1.0f - BlockDamageReduction / 100.0f;
+			const float Pinned = CVarBlockNegationRoll.GetValueOnAnyThread();
+			const float NegationRoll =
+				Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+			Damage *= NegationRoll < DefenderStat(Defender, BlockNegationChanceStat,
+												  0.0f, BlowOf(Hit))
+				? 0.0f
+				: 1.0f - BlockShareOf(Defender, BlowOf(Hit)) / 100.0f;
 		}
 	}
 

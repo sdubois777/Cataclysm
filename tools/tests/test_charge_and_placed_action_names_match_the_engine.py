@@ -59,6 +59,8 @@ CONSTANTS = {
     "ApplyStatusSecondsAction": "apply_status_seconds",
     "StaggerStatus": "Stagger",
     "RandomDebuffStatus": "Random Debuff",
+    # AND THE NO-DAMAGE WINDOW, since issue #1833 group E part 2.
+    "DamageImmunityAction": "damage_immunity",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -149,6 +151,11 @@ def test_the_generator_accepts_exactly_the_status_names_the_engine_has() -> None
     names = engine_names()
     assert set(gen.APPLY_STATUS_ACTIONS) == {names["ApplyStatusAction"],
                                              names["ApplyStatusSecondsAction"]}
+
+
+def test_the_generator_accepts_exactly_the_damage_immunity_name_the_engine_has() -> None:
+    """Issue #1833 group E part 2."""
+    assert gen.DAMAGE_IMMUNITY_ACTION == engine_names()["DamageImmunityAction"]
 
 
 def test_every_status_a_row_may_name_is_one_the_engine_applies() -> None:
