@@ -77,7 +77,33 @@ commander. With no local player nothing is anybody's. The two fills differ. The 
 lists in `CataclysmCombatOverlayTests.cpp`: it must not be the telegraph red, and it must parse to something
 visible.
 
-**Not built or run when this was written.** The run table follows when the window runs.
+### THE WINDOW'S RUN
+
+Run 2026-10-02 in the jovial-bouman worktree, on feat/followers-health-bar-green-2 on `development` 8662b9f4.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 69527c83 | Build: Succeeded - 32 actions, 29 files compiled |
+| Python of record | 69527c83 | 5690 passed, 8 skipped in 328.75s; JUnit tests=5698 failures=0 errors=0 skipped=8 |
+| Whole suite | 69527c83 | 3108 tests performed, 3107 succeeded, 1 failed: ACreatureThePlayerCommandsHasAGreenHealthBar |
+| Rebuild after the test fix | 188b20ad | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp |
+| Group rerun | 188b20ad | Cataclysm.Overlay.: 31 tests performed, 31 succeeded, 0 failed |
+| tools/tests after the fix | 188b20ad | 3873 passed, 8 skipped in 44.94s; JUnit tests=3881 failures=0 errors=0 skipped=8 |
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| P1: a commanded creature's fill is the health red | 188b20ad | PROVED: with the break in: 31 tests performed, 30 succeeded, 1 failed: ACreatureThePlayerCommandsHasAGreenHealthBar \| restored: 31 tests performed, 31 succeeded, 0 failed |
+
+**The whole suite failed this change's own test, and the fault was the test.** Its one failed assertion was
+"Expected 'an imp' to be not null": `ACataclysmMinion::Spawn` refuses a lifetime of zero, and the test passed
+zero. Nothing was coloured before it stopped. The coordinating session ruled the one-line fix, a lifetime of
+thirty seconds as the other imp tests pass, then a rebuild, the group rerun and tools/tests in place of a second
+whole suite. **The suite of record is the whole suite at 69527c83 together with the group rerun at 188b20ad.**
+
+**The test's colour assertions are shown to run by the proof**, not by the passing rerun, because the engine's log
+does not count the assertions a passing test reached. With the break in, its kept log holds three failed
+assertions, the three that expect green: the player's thrall, the player's summoned minion, and another
+commander's thrall to that commander. Each was `C0392B` where `3FA34D` was expected.
 
 ---
 
