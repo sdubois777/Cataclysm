@@ -9511,9 +9511,17 @@ namespace CataclysmPlainRowTest
 	 * development b1e1e4b6 with the rule `IsPlain` states: Masochist 59, Ravager
 	 * 56, Ritualist 63. A row may be added; a filter that silently skipped rows
 	 * would read fewer, and that is what the floor is for.
+	 *
+	 * THE RAVAGER'S FELL TO 51 ON 2026-10-02, ON PURPOSE. Issue #944 gave the six
+	 * Ravager rows that say "on melee hit" -- Wearing Blows' two, Hobbling Blows,
+	 * Blunting Blows, Hamstring and Take the Edge Off -- `Type.Melee`, and a row with
+	 * a required tag is not plain by `IsPlain` below. Measured from the CSV with that
+	 * rule: 57 plain Ravager rows on development 7428484a, 51 after. The six are
+	 * checked instead by
+	 * `Cataclysm.Passives.TheRavagersOnMeleeHitChancesRollOnAMeleeBlowAndNotOnASpell`.
 	 */
 	constexpr int32 FewestMasochist = 59;
-	constexpr int32 FewestRavager = 56;
+	constexpr int32 FewestRavager = 51;
 	constexpr int32 FewestRitualist = 63;
 
 	/**
