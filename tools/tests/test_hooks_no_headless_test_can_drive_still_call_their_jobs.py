@@ -92,6 +92,11 @@ HOOKS = {
                 "A Second Self choosing the character's longest-held minion "
                 "or thrall and giving it the character's maximum health and "
                 "spell damage, issue #1515",
+            "UCataclysmSharedBuffs::Step":
+                "the allies near a character being given the More damage its "
+                "running buffs grant it, and 'Nearby allies gain 10-20% more "
+                "damage', and having it taken back when they leave or the buff "
+                "ends, issue #1833 group E part 4a",
             "UCataclysmEnemyModifiers::AuraStep":
                 "the burning aura a creature carrying the Hellfire Aura "
                 "enemy modifier lays on whoever stands within six metres, "
