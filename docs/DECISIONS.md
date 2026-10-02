@@ -11,8 +11,8 @@ given in `SpawnPlacedCreature`, and the floor panel's line), `game/Source/Catacl
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and two failure messages in
 `tools/tests/test_dungeon_subtype_floor_rules_are_the_design.py`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-**Applied.** The Unreal compile, the automation tests and the three guard proofs have NOT run yet; the figures are
-added at the end of this entry when they have.
+**Applied.** The Unreal compile, the automation tests and the three guard proofs ran on 2026-10-02; the figures are at
+the end of this entry.
 
 ### The row, and what was wrong
 
@@ -125,10 +125,27 @@ words must be revisited.
 every floor of a dungeon carrying it one extra modifier"; both now say it gives every creature of a later floor one
 Generic enemy modifier. The assertions are unchanged.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, floor 1 no longer exempt; Pb, the
-reality no longer given in `SpawnPlacedCreature`; Pd, the reality counted toward a creature's rung shortfall again.
+One window on 2026-10-02, with the build machine, on `fix/unstable-dimensions-gives-every-creature-a-modifier-2` on
+development `c38ba624`, and one rerun. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard
+proof printed.
+
+| Step | Printed |
+|---|---|
+| Build, at `bc8e145a`, the branch's first compile | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Proof Pa, floor 1 no longer exempt | PROVED: 3 tests performed, 2 failed, `UnstableDimensionsGivesASecondHordeWaveItsReality` and `UnstableDimensionsImposesNoRealityOnTheFirstFloor`; restored 3 of 3 |
+| Proof Pb, the reality no longer given in `SpawnPlacedCreature` | PROVED: 3 tests performed, 2 failed, `UnstableDimensionsGivesASecondHordeWaveItsReality` and `UnstableDimensionsGivesEveryCreatureOfALaterFloorItsReality`; restored 3 of 3 |
+| Proof Pd, the reality counted toward a creature's rung shortfall again | PROVED: 3 tests performed, 1 failed, `UnstableDimensionsGivesEveryCreatureOfALaterFloorItsReality`; restored 3 of 3 |
+| Whole suite, at `bc8e145a` | `3073 tests performed, 3072 succeeded, 1 failed`: `ThePanelMarksTheOnesThatDoNothing`, named under "Tests" as missed when the branch was written; declared 3073, gap 0 |
+| Python, at `bc8e145a`, started with no workflow in progress | `5668 passed, 8 skipped` (JUnit 5,676, 0 failures, 0 errors) |
+| Build, at `358e836b`, after the panel test's example became Insanity Bursts | `Build: Succeeded - 4 actions, 1 file compiled` |
+| `ThePanelMarksTheOnesThatDoNothing`, by its own name as prefix | `1 tests performed, 1 succeeded, 0 failed` |
+| `tools/tests`, at `358e836b` | `3851 passed, 8 skipped` |
+
+**The suite of record** is the whole suite at `bc8e145a`, `3073 tests performed, 3072 succeeded`, and the one test that
+failed there, rerun at `358e836b` after a test-only change; no whole suite was run again, by the coordinating session's
+ruling. All three proofs came out as predicted.
 
 **Pd replaced the registered Pc**, which drew the reality from the dungeon's rows instead of the floor's final list, as
 ruled by the coordinating session on 2026-10-02, to keep three proofs. **The reason:** the shortfall line is one piece
