@@ -76,6 +76,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: maximum mana added to a skill's cost.
 #: Issue #1833 group E part 3 added one more on 2026-10-02, the wearer's armour
 #: an armour nova strikes with.
+#: Issue #1833 group E part 4a added three more on 2026-10-02, the two reaches
+#: and the More damage `UCataclysmSharedBuffs::Step` gives allies.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -167,6 +169,15 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.cpp',
+     'FName(UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat), NoTags, 0.0f'):
+        '"Nearby allies gain 10-20% more damage", read in a regeneration step on the wearer with no blow, target or skill in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.cpp',
+     'FName(UCataclysmAbilitySystemComponent::SelfBuffSharedWithinMetresStat), NoTags, 0.0f'):
+        "how far a running self buff's More damage reaches allies, read in the same step; a reach belongs to the wearer and not to one skill; issue #1833",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.cpp',
+     'FName(UCataclysmAbilitySystemComponent::SupportBuffSharedWithinMetresStat), NoTags, 0.0f'):
+        "how far a Support skill's More damage reaches allies, read in the same step for the same reason; issue #1833",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
         "the wearer's own armour, which an armour nova strikes nearby enemies "

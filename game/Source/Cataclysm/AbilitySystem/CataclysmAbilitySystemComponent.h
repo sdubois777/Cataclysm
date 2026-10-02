@@ -57,6 +57,35 @@ struct FCataclysmWhatDeathEnded
 };
 
 /**
+ * One copy of a buff this character has given an ally, held so it can be taken
+ * back. Issue #1833 group E part 4a: `UCataclysmSharedBuffs::Step` keeps the
+ * list on the giver's component.
+ *
+ * KEYED BY A WEAK POINTER TO THE ALLY, so an ally that has gone leaves an entry
+ * the next step drops rather than a pointer to freed memory.
+ */
+struct FCataclysmSharedBuffCopy
+{
+	/** Who carries it. */
+	TWeakObjectPtr<AActor> Ally;
+
+	/** The running self buff it copies, or none for the nearby-allies row. */
+	TWeakObjectPtr<const UObject> Buff;
+
+	/** True for "Nearby allies gain 10-20% more damage", which copies no buff. */
+	bool bNearbyRow = false;
+
+	/** The buff's scope, or an invalid tag for a copy that reaches everything. */
+	FGameplayTag Scope;
+
+	/** The handle the ally's `AddStatModifier` returned. */
+	int32 Handle = 0;
+
+	/** The More damage it grants, so a moved value is noticed. */
+	float Value = 0.0f;
+};
+
+/**
  * Raised by `UCataclysmAbilitySystemComponent::ActOnEvent` for every event, with
  * the event's name. Issue #1821.
  */
@@ -2154,6 +2183,29 @@ public:
 	 * not. Death ends self buffs for everybody and auras for nobody else.
 	 */
 	static const TCHAR* AurasEndAtDeathStat;
+
+	/**
+	 * The three stats that give allies this character's damage buffs. Issue
+	 * #1833 group E part 4a, ruled 2026-10-02. Read by
+	 * `UCataclysmSharedBuffs::Step`; none has a gameplay attribute. Two are a
+	 * reach in metres, the third a More damage in points.
+	 */
+	static const TCHAR* SelfBuffSharedWithinMetresStat;
+	static const TCHAR* SupportBuffSharedWithinMetresStat;
+	static const TCHAR* NearbyAlliesMoreDamageStat;
+
+	/**
+	 * The copies of this character's buffs its allies carry now. Written only by
+	 * `UCataclysmSharedBuffs`, and public so tests can count them.
+	 */
+	TArray<FCataclysmSharedBuffCopy> SharedBuffCopies;
+
+	/**
+	 * TAKES BACK EVERY COPY OF THIS CHARACTER'S BUFFS ITS ALLIES CARRY, so none
+	 * outlives the character that gave it. Issue #1833 group E part 4a. Neither
+	 * this class nor `UAbilitySystemComponent` overrode it before.
+	 */
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/**
 	 * Record that this character has just taken damage of a Cataclysm type

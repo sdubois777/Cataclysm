@@ -326,6 +326,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// full circle, read by UCataclysmStrikeSkill::ArcDegrees. A flag: Every
 		// Swing Lands' second row sets it to one. Issue #1515.
 		TEXT("melee_arc_full_circle"),
+		// The three rows that give allies this character's damage buffs, read by
+		// UCataclysmSharedBuffs::Step on the regeneration step: how far a running
+		// self buff's More damage reaches, how far a Support skill's reaches, and
+		// the More damage every ally within 5 m gains. Issue #1833 group E part 4a.
+		TEXT("self_buff_shared_within_metres"),
+		TEXT("support_buff_shared_within_metres"),
+		TEXT("nearby_allies_more_damage"),
 		// How far a Ritualist's minions draw nearby enemies off their summoner,
 		// and how many minions that takes. Both read by
 		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil
