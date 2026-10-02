@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -332,6 +333,9 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 		SecondsLeft -= ThisStep;
 
 		const FVector Previous = GetActorLocation();
+
+		// A PULLING ZONE TURNS THE FLIGHT FIRST, so this sub-step already travels the turned way. Singularity Wells.
+		TurnTowardAPull(Previous, ThisStep);
 
 		// THE SPEED IS ACROSS THE GROUND, AND IT IS THE SAME AT EVERY POINT OF
 		// THE FLIGHT. Issue #465. That is the whole of what makes this
@@ -728,6 +732,47 @@ void ACataclysmProjectile::GlancesOnward(int32 InBounces, float InReachCm,
 	BouncesLeft = FMath::Max(0, InBounces);
 	BounceReachCm = FMath::Max(0.0f, InReachCm);
 	BounceDamagePercentPer = InDamagePercentPer;
+}
+
+void ACataclysmProjectile::TurnTowardAPull(const FVector& At, float Seconds)
+{
+	// A LOBBED SHOT IS NOT TURNED: it is aimed at a point and must land there. Infernal Rain's fireball makes its patch
+	// where it was aimed, and a Brute's rock lands on its marker; bent by a well, either would land somewhere else.
+	// Ruled by the coordinating session, 2026-10-01.
+	if (FlightSeconds > 0.0f)
+	{
+		return;
+	}
+
+	// THE REGISTER, NOT THE WORLD: three zones at most are read, whatever else is on the floor.
+	const UWorld* World = GetWorld();
+	const ACataclysmGroundZone* Nearest = nullptr;
+	float NearestCm = 0.0f;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : ACataclysmGroundZone::ProjectilePullZones())
+	{
+		const ACataclysmGroundZone* Zone = One.Get();
+		if (!IsValid(Zone) || Zone->GetWorld() != World || !Zone->Covers(At))
+		{
+			continue;
+		}
+		const float Cm = FVector::Dist2D(At, Zone->GetActorLocation());
+		if (!Nearest || Cm < NearestCm)
+		{
+			Nearest = Zone;
+			NearestCm = Cm;
+		}
+	}
+	if (!Nearest || NearestCm <= KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+	// ON THE GROUND PLANE, AS THE FLIGHT IS: the heading turns toward the centre by at most the zone's figure.
+	const FVector Toward = (Nearest->GetActorLocation() - At).GetSafeNormal2D();
+	const float Heading = FMath::Atan2(Direction.Y, Direction.X);
+	const float Wanted = FMath::Atan2(Toward.Y, Toward.X);
+	const float Most = FMath::DegreesToRadians(Nearest->ProjectilePullDegreesPerSecond()) * Seconds;
+	const float Turned = Heading + FMath::Clamp(FMath::FindDeltaAngleRadians(Heading, Wanted), -Most, Most);
+	Direction = FVector(FMath::Cos(Turned), FMath::Sin(Turned), 0.0f);
 }
 
 bool ACataclysmProjectile::GlanceOnwardFrom(const FVector& At)

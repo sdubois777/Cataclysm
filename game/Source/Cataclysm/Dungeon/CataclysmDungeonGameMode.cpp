@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -72,6 +73,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/DateTime.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "UObject/Class.h"
@@ -11608,11 +11610,34 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 		return !Patch.IsValid();
 	});
 
+	// THE FIREBALLS STILL FALLING: EACH LANDS AS ITS PATCH ON THE BEAT ITS FALL ENDS, the ball removed as the patch
+	// appears. Issue #1699, ruled 2026-10-01.
+	for (int32 Index = InfernalRainFalls.Num() - 1; Index >= 0; --Index)
+	{
+		FInfernalRainFall& Fall = InfernalRainFalls[Index];
+		Fall.SecondsLeft -= SecondsBetweenWaveChecks;
+		if (Fall.SecondsLeft > KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+		if (ACataclysmProjectile* Ball = Fall.Ball.Get())
+		{
+			Ball->Destroy();
+		}
+		ACataclysmGroundZone* Landed = PlaceAnInfernalRainPatch(World, Fall.Where, Fall.DamagePerSecond, Fall.PatchType);
+		InfernalRainFalls.RemoveAt(Index);
+		if (Landed)
+		{
+			InfernalRainPatches.Add(Landed);
+		}
+	}
+
 	// THE ONE PLACE THIS CLOCK MOVES. See the field's comment: a second writer is
 	// the fault that was repaired in the creature auras earlier today.
 	InfernalRainSecondsSinceLastPatch += SecondsBetweenWaveChecks;
+	// A FIREBALL STILL FALLING COUNTS AGAINST THE CAP AS THE PATCH IT WILL BE.
 	if (!UCataclysmDungeonModifierEffects::InfernalRainPatchIsDue(
-			InfernalRainSecondsSinceLastPatch, InfernalRainPatches.Num()))
+			InfernalRainSecondsSinceLastPatch, InfernalRainPatches.Num() + InfernalRainFalls.Num()))
 	{
 		return;
 	}
@@ -11696,25 +11721,136 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	{
 		return;
 	}
+
+	// A FIREBALL FALLS, AND THE PATCH COMES WHERE IT LANDS. Issue #1699, ruled 2026-10-01. Lobbed from beyond the
+	// landing point, on the far side from the player, and above it, for `InfernalRainFireballFallSeconds`. IT DEALS
+	// NOTHING: the patch does. ITS COLOUR IS THE ROW'S TYPE, through an `Element.` tag, because the floor's hazard
+	// source has no damage type of its own (issue #1924) and there is no Fire element among the eight; so the ball
+	// and the patch it leaves are the same colour. IT PASSES THROUGH whatever it meets, so the patch lands where it
+	// was aimed.
+	using Effects = UCataclysmDungeonModifierEffects;
+	const FVector Beyond = (Where - Centre).GetSafeNormal2D();
+	const FVector From = Where + Beyond * Effects::InfernalRainFireballFromSideCm
+		+ FVector(0.0f, 0.0f, Effects::InfernalRainFireballFromHeightCm);
+	FGameplayTagContainer ElementTags;
+	const FGameplayTag Element = FGameplayTag::RequestGameplayTag(
+		FName(*(FString(TEXT("Element.")) + Row->CataclysmType)), /*ErrorIfNotFound=*/false);
+	if (Element.IsValid())
+	{
+		ElementTags.AddTag(Element);
+	}
+	FInfernalRainFall Fall;
+	Fall.Where = Where;
+	Fall.SecondsLeft = Effects::InfernalRainFireballFallSeconds;
+	Fall.DamagePerSecond = PerSecond;
+	Fall.PatchType = FName(*Row->CataclysmType);
+	Fall.Ball = ACataclysmProjectile::Fire(Source, From, Where, Effects::InfernalRainFireballRadiusCm, /*InSpeed=*/0.0f,
+										   /*InPierce=*/1000, /*bInReturns=*/false, /*InDamagePercent=*/0.0f, ElementTags,
+										   /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
+										   Effects::InfernalRainFireballFallSeconds);
+	InfernalRainFalls.Add(Fall);
+	InfernalRainSecondsSinceLastPatch = 0.0f;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::PlaceASingularityWellAt(const FVector& Where, float DamagePerSecond)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable(), FName(Effects::SingularityWellsKey));
+	if (!World || !Row)
+	{
+		return nullptr;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return nullptr;
+	}
+	// IT LASTS THE FLOOR, WHICH THE ROW NEITHER STATES NOR CONTRADICTS.
+	// `SpawnForTheFloor` exists for the hazard rows of issue #1605 that state no
+	// duration, and "pulsing void orbs" reads as a feature of the floor rather
+	// than a passing strike. The cap of three is what keeps that from becoming a
+	// floor that is slow everywhere.
+	//
+	// START AND END THE SAME POINT MAKES IT ROUND, which is how `Spawn` builds a
+	// circle too: a segment of no length is a circle at that point.
+	// TYPED BY ITS ROW, ON THE WELL ITSELF. Issue #1924.
+	ACataclysmGroundZone* Well = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Where, Where, Effects::SingularityWellsRadiusCm, DamagePerSecond,
+		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/NAME_None,
+		FName(*Row->CataclysmType));
+	if (!Well)
+	{
+		return nullptr;
+	}
+	// WELLS THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM. Issue #2074.
+	Well->BurnsOnceASecondAs = FName(Effects::SingularityWellsKey);
+	// AND IT TURNS EVERY PROJECTILE INSIDE IT TOWARD ITS CENTRE, the row's "pull ... projectiles". Ruled 2026-10-01.
+	Well->SetProjectilePull(Effects::SingularityWellsProjectileTurnDegreesPerSecond);
+	SingularityWells.Add(Well);
+	return Well;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where,
+																		  float DamagePerSecond, FName PatchType)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return nullptr;
+	}
 	// TYPED BY ITS ROW, ON THE PATCH ITSELF. Issue #1924.
 	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
 		Source, Where, UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
-		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, PerSecond,
-		FName(*Row->CataclysmType));
+		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, DamagePerSecond, PatchType);
 	if (Patch)
 	{
 		// PATCHES THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM. Issue #2074.
 		Patch->BurnsOnceASecondAs = FName(UCataclysmDungeonModifierEffects::InfernalRainKey);
 	}
-	if (!Patch)
-	{
-		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
-		// rather than waiting a whole cadence for a patch that never existed.
-		return;
-	}
+	return Patch;
+}
 
-	InfernalRainPatches.Add(Patch);
-	InfernalRainSecondsSinceLastPatch = 0.0f;
+TArray<ACataclysmProjectile*> ACataclysmDungeonGameMode::InfernalRainFireballsFalling() const
+{
+	TArray<ACataclysmProjectile*> Falling;
+	for (const FInfernalRainFall& Fall : InfernalRainFalls)
+	{
+		if (ACataclysmProjectile* Ball = Fall.Ball.Get())
+		{
+			Falling.Add(Ball);
+		}
+	}
+	return Falling;
+}
+
+TArray<FVector> ACataclysmDungeonGameMode::InfernalRainLandingPoints() const
+{
+	TArray<FVector> Points;
+	for (const FInfernalRainFall& Fall : InfernalRainFalls)
+	{
+		Points.Add(Fall.Where);
+	}
+	return Points;
+}
+
+TArray<ACataclysmGroundZone*> ACataclysmDungeonGameMode::InfernalRainPatchesNow() const
+{
+	TArray<ACataclysmGroundZone*> Patches;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : InfernalRainPatches)
+	{
+		if (ACataclysmGroundZone* Patch = One.Get())
+		{
+			Patches.Add(Patch);
+		}
+	}
+	return Patches;
 }
 
 void ACataclysmDungeonGameMode::StepSingularityWells(
@@ -11764,6 +11900,43 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 	{
 		SingularityWellsSlowApplied = Wanted;
 		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	// AND THE PULL, ruled 2026-10-01: toward the centre of the NEAREST well covering the player, once however many
+	// overlap, a beat's worth of `SingularityWellsPullCmPerSecond`, never past the centre. SWEPT, so a wall between
+	// stops it, and MOVED DIRECTLY rather than through `UCataclysmSkillEffects::ApplyPull`, whose diminishing-returns
+	// rule would halve each beat's pull within five seconds. The player only: the row says "players".
+	//
+	// THROUGH THE MOVEMENT COMPONENT'S `SafeMoveUpdatedComponent`, NOT A PLAIN SWEPT `SetActorLocation`. A character
+	// stood on the floor at its standing height touches the floor's ground, and a plain swept move that starts
+	// touching it is stopped before it begins: measured 2026-10-02, gap 0, start penetrating, 0 cm moved, the same
+	// move started 5 cm higher going the whole way. `SafeMoveUpdatedComponent` resolves the start penetration and
+	// retries, and a wall still stops the retried sweep.
+	const ACataclysmGroundZone* Pulling = nullptr;
+	float PullingCm = 0.0f;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Well : SingularityWells)
+	{
+		if (!Well.IsValid() || !Well->Covers(Feet))
+		{
+			continue;
+		}
+		const float Cm = FVector::Dist2D(Feet, Well->GetActorLocation());
+		if (!Pulling || Cm < PullingCm)
+		{
+			Pulling = Well.Get();
+			PullingCm = Cm;
+		}
+	}
+	if (Pulling && PullingCm > KINDA_SMALL_NUMBER)
+	{
+		FVector Toward = Pulling->GetActorLocation() - Feet;
+		Toward.Z = 0.0f;
+		const float Drawn = FMath::Min(PullingCm, Effects::SingularityWellsPullCmPerSecond * SecondsBetweenWaveChecks);
+		if (UCharacterMovementComponent* Movement = Player->GetCharacterMovement())
+		{
+			FHitResult Hit;
+			Movement->SafeMoveUpdatedComponent(Toward / PullingCm * Drawn, Player->GetActorQuat(), /*bSweep=*/true, Hit);
+		}
 	}
 
 	// AND NOW WHETHER TO PLACE ANOTHER. The cap is asked inside the predicate,
@@ -11823,37 +11996,13 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 						Centre.Y + Away * FMath::Sin(Angle),
 						Centre.Z);
 
-	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
-	if (!Source)
-	{
-		return;
-	}
-	// IT LASTS THE FLOOR, WHICH THE ROW NEITHER STATES NOR CONTRADICTS.
-	// `SpawnForTheFloor` exists for the hazard rows of issue #1605 that state no
-	// duration, and "pulsing void orbs" reads as a feature of the floor rather
-	// than a passing strike. The cap of three is what keeps that from becoming a
-	// floor that is slow everywhere.
-	//
-	// START AND END THE SAME POINT MAKES IT ROUND, which is how `Spawn` builds a
-	// circle too: a segment of no length is a circle at that point.
-	// TYPED BY ITS ROW, ON THE WELL ITSELF. Issue #1924.
-	ACataclysmGroundZone* Well = ACataclysmGroundZone::SpawnForTheFloor(
-		Source, Where, Where, Effects::SingularityWellsRadiusCm, PerSecond,
-		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/NAME_None,
-		FName(*Row->CataclysmType));
-	if (Well)
-	{
-		// WELLS THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM. Issue #2074.
-		Well->BurnsOnceASecondAs = FName(Effects::SingularityWellsKey);
-	}
-	if (!Well)
+	// PLACED AS A TEST PLACES ONE, through `PlaceASingularityWellAt`.
+	if (!PlaceASingularityWellAt(Where, PerSecond))
 	{
 		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
 		// rather than waiting a whole cadence for a well that never existed.
 		return;
 	}
-
-	SingularityWells.Add(Well);
 	SingularityWellsSecondsSinceLastWell = 0.0f;
 }
 
@@ -18084,6 +18233,15 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// them against the cap and stop the rain entirely.
 		InfernalRainSecondsSinceLastPatch = 0.0f;
 		InfernalRainPatches.Empty();
+		// AND THE FIREBALLS STILL FALLING, which land on no floor. Issue #1699.
+		for (const FInfernalRainFall& Fall : InfernalRainFalls)
+		{
+			if (ACataclysmProjectile* Ball = Fall.Ball.Get())
+			{
+				Ball->Destroy();
+			}
+		}
+		InfernalRainFalls.Empty();
 
 		// AND SINGULARITY WELLS FORGETS ITS CLOCK, ITS WELLS AND ITS SLOW. Issues
 		// #1605 and #41. The clock so the first well of a floor does not arrive on

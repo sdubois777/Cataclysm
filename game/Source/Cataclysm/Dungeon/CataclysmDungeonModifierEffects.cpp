@@ -787,7 +787,11 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ObsidianSarcophagiKey)
 		// REALITY TWISTER. Its row is drawn onto each floor by `FCataclysmDungeonFloorRules::ModifiersFor`, rule 4.
 		// Issues #1820 and #41.
-		|| RowKey == FName(FCataclysmDungeonFloorRules::RealityTwisterKey))
+		|| RowKey == FName(FCataclysmDungeonFloorRules::RealityTwisterKey)
+		// INFERNAL RAIN, BUILT SINCE ITS FIREBALL FALLS, 2026-10-01. Issue #1699.
+		|| RowKey == FName(InfernalRainKey)
+		// SINGULARITY WELLS, BUILT SINCE ITS WELLS PULL THE PLAYER AND TURN PROJECTILES, 2026-10-01. Issue #1605.
+		|| RowKey == FName(SingularityWellsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -803,22 +807,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// has been cleared. Question 3 of the modifier plan asks the owner which it
 	// should draw.
 	//
-	// INFERNAL RAIN. Its burning ground is built, typed off its own row and timed
-	// to the ten seconds the row states; nothing draws a fireball falling into
-	// it, so "fireballs rain" is not what a player sees. Issue #1699. Saying
-	// `Built` here would put a wrong answer on the floor panel, which is the one
-	// place the project tells the player what is finished -- the same reason the
-	// Field Medic was held at `Partly` until #1680.
-	//
-	// SINGULARITY WELLS. Its orbs are placed, they deal void damage read off the
-	// row's own type, and standing in one slows the player by the 40% the row
-	// states. **Nothing pulls**, and the row names the pull before anything else,
-	// so this cannot be `Built`. Pulling the player and pulling a projectile are
-	// two further pieces of work; the key's comment in the header says what each
-	// needs and why neither is a line or two.
+	// INFERNAL RAIN AND SINGULARITY WELLS WERE HERE UNTIL 2026-10-01, for the fireball and the pull; both are built
+	// now and answer above. Issue #1699 and issue #1605.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
-		|| RowKey == FName(InfernalRainKey)
-		|| RowKey == FName(SingularityWellsKey)
 		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
 		// Issues #1820 and #41.

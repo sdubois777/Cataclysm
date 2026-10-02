@@ -441,8 +441,29 @@ void ACataclysmGroundZone::LifeSpanExpired()
 	Super::LifeSpanExpired();
 }
 
+TArray<TWeakObjectPtr<ACataclysmGroundZone>> ACataclysmGroundZone::PullZones;
+
+void ACataclysmGroundZone::SetProjectilePull(float DegreesPerSecond)
+{
+	ProjectilePullDegrees = FMath::Max(0.0f, DegreesPerSecond);
+	PullZones.RemoveAll([this](const TWeakObjectPtr<ACataclysmGroundZone>& Zone)
+	{
+		return !Zone.IsValid() || Zone.Get() == this;
+	});
+	if (ProjectilePullDegrees > 0.0f)
+	{
+		PullZones.Add(this);
+	}
+}
+
 void ACataclysmGroundZone::EndPlay(const EEndPlayReason::Type Reason)
 {
+	// OUT OF THE PULL REGISTER, and any entry already gone with it, so the register never grows past what stands.
+	PullZones.RemoveAll([this](const TWeakObjectPtr<ACataclysmGroundZone>& Zone)
+	{
+		return !Zone.IsValid() || Zone.Get() == this;
+	});
+
 	// A PATCH THAT FINISHED ITS OWN LIFE LEAVES ITS DRAWINGS ALONE, which is
 	// the whole of the recorded decision to spawn them detached: the fire burns
 	// out rather than vanishing at the instant the actor goes.
