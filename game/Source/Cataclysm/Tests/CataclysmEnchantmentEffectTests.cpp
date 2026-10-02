@@ -11896,4 +11896,351 @@ bool FCataclysmVoidSplinterTargetRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmBlockRowTest
+{
+	/**
+	 * The stat lines a blow reads, written after the refresh: each worn line named
+	 * in `Keep` copied as it is, and the lines in `Bases` at those bases. A refresh
+	 * may leave a line at base 0 that a reader asks before the attribute, which is
+	 * why a block chance is written here and not only as an attribute.
+	 */
+	void WriteLines(UCataclysmAbilitySystemComponent* System, TArray<FName> Keep,
+		TMap<FName, float> Bases)
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		for (const FName& Stat : Keep)
+		{
+			if (const FCataclysmStatInputs* Worn = System->GetStatInputs(Stat))
+			{
+				Lines.Add(Stat, *Worn);
+			}
+		}
+		for (const TPair<FName, float>& Base : Bases)
+		{
+			Lines.FindOrAdd(Base.Key).Base = Base.Value;
+		}
+		System->SetStatInputs(MoveTemp(Lines));
+	}
+
+	/** What one blow of a thousand-strong attacker took from the wearer. */
+	float BlowOn(UWorld* World, CataclysmEnchantmentEffectTest::FWearer& Wearer,
+		CataclysmEnchantmentEffectTest::FWearer& Attacker, bool* bOutBlocked = nullptr)
+	{
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Before = Wearer.AbilitySystem->GetNumericAttribute(Health);
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Wearer.Actor, 100.0f,
+			FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
+		if (bOutBlocked)
+		{
+			*bOutBlocked = Result.bBlocked;
+		}
+		return Before - Wearer.AbilitySystem->GetNumericAttribute(Health);
+	}
+
+	/** A wearer of one helm, with a hundred thousand health, and a thousand-strong attacker. */
+	struct FBlockFight
+	{
+		FBlockFight(UWorld* World, const TCHAR* Enchantment)
+			: Wearer(World), Attacker(World)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer.Equipment->Equip(Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+				Removed, AlsoRemoved, Slot);
+			Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+			Wearer.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+			Wearer.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+			Attacker.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1000.0f);
+		}
+		CataclysmEnchantmentEffectTest::FWearer Wearer;
+		CataclysmEnchantmentEffectTest::FWearer Attacker;
+	};
+
+	const FName BlockChance(TEXT("block_chance"));
+	const FName BlockShare(TEXT("block_damage_reduction"));
+	const FName Negation(TEXT("block_negation_chance"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlockShareRowTest,
+	"Cataclysm.Enchantments.TheBlockShareRowMakesABlockRemoveSeventyFivePercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You block for 65%-75% of damage instead of the normal 50%". Issue #1833 group
+ * E part 2: `block_damage_reduction` flat 15 to 25 on its base of 50. WORN at the
+ * top of its roll: the share is 75, and a real blocked blow keeps a quarter of
+ * the same blow unblocked.
+ */
+bool FCataclysmBlockShareRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	FBlockFight Fight(World, TEXT("Positive_You_block_for_65_75_of_damage_instead_of_the_n"));
+	WriteLines(Fight.Wearer.AbilitySystem, {BlockShare}, {{BlockChance, 100.0f}});
+	TestEqual(TEXT("the worn share is 75. If it is 50, DT_EnchantmentEffects may be older than the "
+				   "rows: run tools/generate_datatable_assets.py"),
+		UCataclysmDamageCalculation::BlockShareOf(Fight.Wearer.AbilitySystem, FCataclysmBlowContext()),
+		75.0f, 0.001f);
+
+	float Full = 0.0f;
+	{
+		const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+		Full = BlowOn(World, Fight.Wearer, Fight.Attacker);
+	}
+	if (!TestTrue(*FString::Printf(TEXT("set-up: an unblocked blow took %.1f"), Full), Full > 0.0f))
+	{
+		return false;
+	}
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	bool bBlocked = false;
+	TestEqual(TEXT("a blocked blow keeps a quarter"), BlowOn(World, Fight.Wearer, Fight.Attacker, &bBlocked),
+		Full * 0.25f, 0.5f);
+	TestTrue(TEXT("and was blocked"), bBlocked);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlockNegationRowTest,
+	"Cataclysm.Enchantments.TheNegationRowNegatesABlockedBlowUnderItsRolledChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Blocking an attack has a 20%-40% chance to fully negate all damage". Issue
+ * #1833 group E part 2: `block_negation_chance` flat 20 to 40. WORN at the top of
+ * its roll, 40: a blocked blow whose negation roll is 39 keeps nothing, and one
+ * whose roll is 41 keeps the ordinary half.
+ */
+bool FCataclysmBlockNegationRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	FBlockFight Fight(World, TEXT("Positive_Blocking_an_attack_has_a_20_40_chance_to_fully"));
+	WriteLines(Fight.Wearer.AbilitySystem, {Negation}, {{BlockChance, 100.0f}});
+
+	float Full = 0.0f;
+	{
+		const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+		Full = BlowOn(World, Fight.Wearer, Fight.Attacker);
+	}
+	if (!TestTrue(*FString::Printf(TEXT("set-up: an unblocked blow took %.1f"), Full), Full > 0.0f))
+	{
+		return false;
+	}
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	{
+		const FPinned Under(TEXT("Cataclysm.BlockNegationRoll"), 39.0f);
+		TestEqual(TEXT("a roll of 39, under 40, negates the blocked blow. If not, DT_EnchantmentEffects "
+					   "may be older than the rows: run tools/generate_datatable_assets.py"),
+			BlowOn(World, Fight.Wearer, Fight.Attacker), 0.0f, 0.001f);
+	}
+	{
+		const FPinned Over(TEXT("Cataclysm.BlockNegationRoll"), 41.0f);
+		TestEqual(TEXT("a roll of 41 keeps the ordinary half"),
+			BlowOn(World, Fight.Wearer, Fight.Attacker), Full * 0.5f, 0.5f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsecutiveBlockRowTest,
+	"Cataclysm.Enchantments.TheConsecutiveBlockRowAddsTenPointsPerBlockUpToEightyFive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Consecutive blocks within 3 seconds each block 5%-10% more damage". Issue
+ * #1833 group E part 2: own stacks of `block_damage_reduction` flat 5 to 10 on
+ * `block`, 3 s, cap 7. WORN at the top of its roll, 10: five blocked blows in a
+ * row keep 50%, 40%, 30%, 20% and then 15%, the 85 cap; 3.5 seconds later the
+ * stacks are gone and a block keeps half again.
+ */
+bool FCataclysmConsecutiveBlockRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	FBlockFight Fight(World, TEXT("Positive_Consecutive_blocks_within_3_seconds_each_block_5"));
+	WriteLines(Fight.Wearer.AbilitySystem, {BlockShare},
+		{{BlockChance, 100.0f}, {BlockShare, UCataclysmDamageCalculation::BlockDamageReduction}});
+
+	float Full = 0.0f;
+	{
+		const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+		Full = BlowOn(World, Fight.Wearer, Fight.Attacker);
+	}
+	if (!TestTrue(*FString::Printf(TEXT("set-up: an unblocked blow took %.1f"), Full), Full > 0.0f))
+	{
+		return false;
+	}
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	const float Kept[] = {0.50f, 0.40f, 0.30f, 0.20f, 0.15f};
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("block %d keeps %.0f%%. If every block keeps half, "
+				"DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+				Index + 1, Kept[Index] * 100.0f),
+			BlowOn(World, Fight.Wearer, Fight.Attacker), Full * Kept[Index], 0.5f);
+	}
+	World->TimeSeconds += 3.5f;
+	TestEqual(TEXT("3.5 seconds later the stacks are gone and a block keeps half"),
+		BlowOn(World, Fight.Wearer, Fight.Attacker), Full * 0.5f, 0.5f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArchonsAegisSixRowTest,
+	"Cataclysm.Enchantments.ArchonsAegisSixPiecesMakeABlockOpenThreeSecondsOfImmunityOnceInTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Archon's Aegis (6-Piece Bonus): When you block an attack, you become immune to
+ * all damage for 3 seconds. (10s cd)". Issue #1833 group E part 2:
+ * `damage_immunity` 3 on `block`, Trigger Cooldown 10. Six pieces: a real block
+ * opens the window, the next blow takes nothing, a block four seconds on opens
+ * nothing, and one eleven seconds on opens it again. Five pieces open nothing.
+ */
+bool FCataclysmArchonsAegisSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	const TCHAR* Aegis = TEXT("Positive_Archon_s_Aegis_6_Piece_Bonus_When_you_block_a");
+	for (const int32 Pieces : {5, 6})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+		FWearer Wearer(World);
+		WearSet(Wearer, Aegis, Pieces);
+		SetHealth(Wearer.AbilitySystem, 100000.0f, 100000.0f);
+		WriteLines(Wearer.AbilitySystem, {}, {{BlockChance, 100.0f}});
+		FWearer Attacker(World);
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1000.0f);
+
+		bool bBlocked = false;
+		const float First = BlowOn(World, Wearer, Attacker, &bBlocked);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %d pieces: the first blow was blocked and landed %.1f"),
+				Pieces, First), bBlocked && First > 0.0f))
+		{
+			return false;
+		}
+		if (Pieces < 6)
+		{
+			TestFalse(TEXT("five pieces: the block opened nothing"), Wearer.AbilitySystem->IsDamageImmune());
+			continue;
+		}
+		TestTrue(TEXT("six pieces: the block opened the window. If not, DT_EnchantmentEffects may be "
+					  "older than the rows: run tools/generate_datatable_assets.py"),
+			Wearer.AbilitySystem->IsDamageImmune());
+		TestEqual(TEXT("so the next blow takes nothing"), BlowOn(World, Wearer, Attacker), 0.0f, 0.001f);
+		World->TimeSeconds += 4.0f;
+		TestTrue(TEXT("four seconds on, a blocked blow lands"), BlowOn(World, Wearer, Attacker) > 0.0f);
+		TestFalse(TEXT("and opens nothing: ten seconds have not passed"), Wearer.AbilitySystem->IsDamageImmune());
+		World->TimeSeconds += 7.0f;
+		BlowOn(World, Wearer, Attacker);
+		TestTrue(TEXT("eleven seconds on a block opens it again"), Wearer.AbilitySystem->IsDamageImmune());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRechargeNovaRowTest,
+	"Cataclysm.Enchantments.TheRechargeNovaRowSmitesNearbyEnemiesWhenRegenerationFillsTheShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When your energy shield fully recharges, release a nova dealing 50%-100%
+ * weapon damage to nearby enemies". Issue #1833 group E part 2: `smite_nearby`
+ * 50 to 100 on `energy_shield_recharged`. WORN at the top of its roll: a
+ * regeneration step that leaves the shield below its maximum smites nothing, and
+ * the step that fills it smites an enemy three metres away.
+ */
+bool FCataclysmRechargeNovaRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	using namespace CataclysmBlockRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(Carrying(TEXT("Head_Helm"),
+		TEXT("Positive_When_your_energy_shield_fully_recharges_release"), DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+	SetHealth(Wearer.AbilitySystem, 1000.0f, 1000.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 40.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(), 100.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 200.0f);
+	WriteLines(Wearer.AbilitySystem, {},
+		{{FName(UCataclysmRegeneration::EnergyShieldRegenStat), 100.0f}, {FName(TEXT("attack_damage")), 200.0f}});
+
+	ACataclysmEnemyCharacter* Near = World->SpawnActor<ACataclysmEnemyCharacter>(
+		Wearer.Actor->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("an enemy three metres away"), Near))
+	{
+		return false;
+	}
+	Near->SetHealth(10000.0f);
+	const UAbilitySystemComponent* NearSystem = UCataclysmTargeting::AbilitySystemOf(Near);
+	if (!TestNotNull(TEXT("the enemy's ability system"), NearSystem))
+	{
+		return false;
+	}
+	const float Before = HealthOf(NearSystem);
+
+	UCataclysmRegeneration::ApplyStep(Wearer.Actor, /*SecondsInStep=*/0.25f, /*SecondsSinceLastDamage=*/100.0f);
+	const float Partly = Wearer.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	if (!TestTrue(*FString::Printf(TEXT("set-up: a quarter second refilled part of the shield: %.1f"), Partly),
+			Partly > 40.0f && Partly < 100.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a step that leaves it below its maximum smites nothing"), HealthOf(NearSystem), Before, 0.01f);
+
+	UCataclysmRegeneration::ApplyStep(Wearer.Actor, 1.0f, 100.0f);
+	TestEqual(TEXT("set-up: a second filled it"),
+		Wearer.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()), 100.0f, 0.01f);
+	TestTrue(*FString::Printf(TEXT("the step that fills it smites the enemy nearby: %.2f to %.2f. If not, "
+			"DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+			Before, HealthOf(NearSystem)),
+		HealthOf(NearSystem) < Before);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
