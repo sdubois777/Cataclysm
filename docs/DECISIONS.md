@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — A running self buff's More damage reaches allies within 8 m, or 15 m for a Support skill, and a standing 10-20% More reaches every ally within 5 m
+
+**Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.h` and `.cpp`
+(`UCataclysmSharedBuffs::Step` and `TakeBackAll`), `CataclysmAbilitySystemComponent.h` and `.cpp`
+(`FCataclysmSharedBuffCopy`, the three stat names, `SharedBuffCopies`, a new `EndPlay`),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one call in the regeneration step),
+`CataclysmPlayerClassStats.cpp` (three names on `StatsWithNoAttribute`), the new
+`game/Source/Cataclysm/Tests/CataclysmSharedBuffsTests.cpp` (seven tests), three probes in
+`CataclysmStatExemptionTests.cpp`, three row tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (the step joins the
+regeneration hook's pinned jobs), `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`docs/All_Things_Cataclysm.xlsx`,
+`docs/README.md`, `game/Data/EnchantmentEffects.csv` and its asset. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group E part 4a.
+
+### THE RESEARCH, fetched 2026-10-02
+
+| Game | What reaches allies | How much | Source |
+| :-- | :-- | :-- | :-- |
+| Diablo IV | War Cry: "increasing your damage dealt by 7.5%[x] for 4. seconds. Nearby allies gain half of War Cry's effects." | half the caster's | diablo4.wiki.fextralife.com/War+Cry |
+| Path of Exile | an aura affects "you and your allies"; a support gem makes one affect allies only. A modifier reads "15% reduced effect of Non-Curse Auras from your Skills on your Minions", so minions are among the allies an aura reaches | the aura's effect | poedb.tw/us/Aura and /us/Generosity_Support; poewiki.net refused the fetch |
+
+**What it settles:** a buff on the caster reaching allies near it is an established shape, and minions count as
+allies. **What it does not settle,** each a judgement below: how much reaches them (Diablo IV gives half; these
+sentences say "applies it", so the whole), whether the bonus keeps its scope, and when it is taken back.
+
+### WHAT WAS RULED, 2026-10-02, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **A copy is the More damage a running self buff grants its caster, with its scope, and nothing else.**
+   `GrantedIncrease` and `GrantedScope`, from `UCataclysmSelfBuffSkill::GrantIncrease`. Status tags, immunities
+   and a buff's own machinery are not copied: they act on the caster and are not stats.
+2. **It reaches allies through the route the aura's ally bonus already uses**: a modifier written onto each ally's
+   own ability system (`AddStatModifier`) and taken back when it leaves (issue #1771). So it reaches every ally,
+   a minion, a thrall or another player, and not only a minion's damage.
+3. **"Nearby allies gain 10-20% more damage" is an unscoped More on every ally within 5 m**, the radius every
+   "nearby" row reads, while the item is worn. The wearer is not an ally of itself.
+4. **One check on the wearer serves all three rows, every quarter second, on the regeneration step**, in place of
+   a one-second timer: a body walking in or out of reach is a quarter of a second late at worst. A copy is given
+   on arrival, its value changed in place when the buff's moves (Butcher's Heat grows per kill), and taken back
+   when the ally leaves, dies or is gone, when the buff ends, when the stat is gone, when the wearer is dead, and
+   when the wearer's ability system ends play.
+5. **The reach is the larger of the two that apply.** The 8 m reach applies to any running self buff; the 15 m
+   reach only to one in the Support slot.
+
+### WHAT IT DOES IN PLAY TODAY, AND WHAT IT DOES NOT
+
+**The 8 m and 15 m rows raise no character's damage in play today.** Every built buff that grants More damage --
+Unbroken, Butcher's Heat, Burning Wrath and Held Fast -- is scoped to `Element.Demonic`, and a copy keeps that
+scope (judgement 1). Two kinds of ally could carry it:
+
+- **Another player** would gain it on Demonic skills. Co-operative play is Phase 2 in the design document, so no
+  other player exists yet.
+- **A minion or thrall** carries the copy and gains nothing, because no minion's blow carries an element.
+  `Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem` already shows a Demonic-only buff
+  leaving an imp's blow unchanged; that is Conflagration's case too. A minion will gain it once a minion's blow
+  carries an element.
+
+**What is built** is the copy, its reach and its take-back, each shown in `Cataclysm.SharedBuffs.` with a buff
+granted in the test with no element, which a minion's blow does read.
+
+**Five of the nine built Support buffs grant no More damage, and these two rows give their allies nothing:**
+Ashen Edge, Slipstream, Martyr's Ember, Coil of Embers and Groundbreaker.
+
+**"Nearby allies gain 10-20% more damage" raises a minion's blow today**: it is unscoped.
+`Cataclysm.Enchantments.TheNearbyAlliesRowRaisesAnImpsBlowByTwentyPerCent` shows a worn row taking an imp's blow
+of 100 to 120.
+
+### WHAT IS NOT IN THIS PART
+
+- **"Your aura also applies its effect to all allies within range"** moved to part 4b. Neither built aura grants
+  its caster a stat: Conflagration's one benefit already reaches allies, and Living Pyre's "MoreDamagePer" raises
+  its own pulse damage, not its caster's. Part 4b gives allies inside Living Pyre's ring its immunities.
+- **"Summoned minions inherit 10%-25% of your armor and resistances"** stays blocked: no minion armour or
+  resistance stat exists.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Your support ability affects all allies within 15 meters instead of just yourself | `support_buff_shared_within_metres` flat 15 |
+| Applying a buff to yourself also applies it to all allies within 8 meters | `self_buff_shared_within_metres` flat 8 |
+| Nearby allies gain 10-20% more damage | `nearby_allies_more_damage` flat 10 to 20 |
+
+EnchantmentEffects 455 to 458, over 371 to 374. The three stats have no gameplay attribute; each has a probe in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. They need no generator change.
+
+---
+
 ## 2026-10-02 — Five Ravager nodes that say "on melee hit" now roll their Cripple and Weaken chances on melee hits only
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet, rows 218 to 223),
