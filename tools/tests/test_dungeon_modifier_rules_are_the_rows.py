@@ -4993,3 +4993,34 @@ def test_blood_price_row_still_names_the_interactions_the_price_and_the_bleed():
         assert phrase in lower, (
             f"Demonic_Blood_Price no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "BloodPriceKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_heavens_quake_row_still_says_impassable_terrain_and_reroutes():
+    """The phrases Heaven's Quake's readings rest on.
+
+    "Radiant pillars crash through the ceiling, creating impassable terrain and forcing reroutes mid-combat."
+    PILLARS is what is raised; IMPASSABLE TERRAIN is why a pillar lasts the floor and blocks movement, the navigation
+    mesh and shots; MID-COMBAT is why it falls near the player. See HeavensQuakeKey in
+    CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Celestial_Heaven_s_Quake"]["Description"])
+    lower = words.lower()
+    for phrase in ("radiant pillars", "impassable terrain", "forcing reroutes mid-combat"):
+        assert phrase in lower, (
+            f"Celestial_Heaven_s_Quake no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "HeavensQuakeKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_cryptquake_row_still_says_pits_of_bones_and_swarms():
+    """The phrases Cryptquake's readings rest on.
+
+    "Sections of the floor collapse into pits of bones, forcing new routes and spawning skeletal swarms from below."
+    SECTIONS is why a collapse is two cells by two; PITS is why it stops movement and not a shot; SPAWNING ... SWARMS
+    is the three creatures it brings. See CryptquakeKey in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Death_Cryptquake"]["Description"])
+    lower = words.lower()
+    for phrase in ("sections of the floor collapse into pits", "forcing new routes", "spawning skeletal swarms"):
+        assert phrase in lower, (
+            f"Death_Cryptquake no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "CryptquakeKey in CataclysmDungeonModifierEffects.h. " + words)
