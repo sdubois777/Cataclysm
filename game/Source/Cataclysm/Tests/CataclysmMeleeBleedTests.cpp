@@ -96,6 +96,14 @@ namespace CataclysmMeleeBleedTest
 
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
+			// TEN THOUSAND, SO THE MUTILATOR'S BLOW OF 1,500 TAKES A TENTH OF IT.
+			// Issue #1565: the bleed needs the blow to have taken a tenth of the
+			// target's maximum health, the owner's rule for an ailment that is not
+			// the skill's own. This was a million until then, where the same blow
+			// took 0.15%. No defender here takes more than two blows, 1,000 and
+			// 1,500, so none comes near death.
+			//
+			// THE REST OF THIS NOTE WAS WRITTEN FOR A MILLION AND STILL HOLDS:
 			// LARGE ENOUGH THAT NOTHING BELOW EVER APPROACHES DEATH, and large
 			// enough that the floor `Resolve` puts on the health step never
 			// interferes: it ends with `Min(Damage, Health)`, so a defender with
@@ -108,9 +116,9 @@ namespace CataclysmMeleeBleedTest
 			// figures that land on the grid, or use a smaller pool the way
 			// CataclysmMinionGearTests.cpp does. Issue #1728.
 			AbilitySystem->SetNumericAttributeBase(
-				Vital::GetMaxHealthAttribute(), 1'000'000.0f);
+				Vital::GetMaxHealthAttribute(), 10'000.0f);
 			AbilitySystem->SetNumericAttributeBase(
-				Vital::GetHealthAttribute(), 1'000'000.0f);
+				Vital::GetHealthAttribute(), 10'000.0f);
 		}
 
 		~FScopedFighter()
@@ -629,6 +637,88 @@ CATACLYSM_MELEE_BLEED_TEST(FCataclysmBleedChanceIsClampedTest,
 		Character.SetBleedOnCritChance(40.0f);
 		TestEqual(TEXT("while the node's own forty is untouched"),
 			Character.BleedOnCritChance(), 40.0f, 0.001f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_MELEE_BLEED_TEST(FCataclysmScratchDoesNotBleedTest,
+	"Cataclysm.MeleeBleed.AMeleeCriticalStrikeTakingLessThanATenthOfMaximumHealthAppliesNothing")
+{
+	// ISSUE #1565, RULED 2026-10-01. The owner's rule of 2026-09-02 (#917): an
+	// ailment that does not come from the skill's own row needs the blow to have
+	// taken a tenth of the target's maximum health. The mutilator's blow is 1,500.
+	// Against 16,000 that is 9.4%, and against 14,000 it is 10.7%. Neither is the
+	// exact boundary, where a float comparison says nothing about the rule.
+	using namespace CataclysmMeleeBleedTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedFighter Attacker(World);
+		const FScopedFighter Scratched(World);
+		const FScopedFighter Cut(World);
+		MakeAMutilator(Attacker);
+		Scratched.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 16'000.0f);
+		Scratched.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 16'000.0f);
+		Cut.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 14'000.0f);
+		Cut.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 14'000.0f);
+
+		const CataclysmTestWorld::FScopedCritRoll AlwaysCrits(0.0f);
+		Effects::ApplyHit(Attacker.Actor, Scratched.Actor, 100.0f, MeleeSkillTags());
+		const float Taken = 16'000.0f
+			- Scratched.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		TestTrue(TEXT("the blow reached health, but less than a tenth of 16,000"),
+			Taken > 0.0f && Taken < 1'600.0f);
+		TestFalse(TEXT("so a melee critical strike that scratches applies no Bleeding"),
+			Scratched.IsBleeding());
+
+		// THE CONTROL: THE SAME BLOW, A TENTH OR MORE OF A SMALLER MAXIMUM.
+		Effects::ApplyHit(Attacker.Actor, Cut.Actor, 100.0f, MeleeSkillTags());
+		TestTrue(TEXT("while the same blow taking more than a tenth of 14,000 does"),
+			Cut.IsBleeding());
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_MELEE_BLEED_TEST(FCataclysmKillingCritDoesNotBleedTest,
+	"Cataclysm.MeleeBleed.AKillingMeleeCriticalStrikeLeavesNoBleedingOnTheCorpse")
+{
+	// ISSUE #1565, RULED 2026-10-01: "A blow that killed applies nothing", the
+	// rule the gear roll already follows. Until #1565 a killing melee critical
+	// strike could leave Bleeding on what it killed, because applying damage
+	// over time does not refuse a dead target.
+	using namespace CataclysmMeleeBleedTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedFighter Attacker(World);
+		const FScopedFighter Defender(World);
+		MakeAMutilator(Attacker);
+
+		// A THOUSAND HEALTH OF FOURTEEN THOUSAND, so the blow of 1,500 is more
+		// than a tenth of the maximum and is also lethal: only the death refuses it.
+		Defender.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 14'000.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1'000.0f);
+
+		const CataclysmTestWorld::FScopedCritRoll AlwaysCrits(0.0f);
+		Effects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f, MeleeSkillTags());
+
+		TestEqual(TEXT("the blow killed the defender"),
+			Defender.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()), 0.0f, 0.01f);
+		TestFalse(TEXT("and left no Bleeding on the corpse"), Defender.IsBleeding());
 	}
 
 	World->DestroyWorld(false);
