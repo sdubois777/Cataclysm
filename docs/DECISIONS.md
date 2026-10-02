@@ -2,6 +2,69 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — Inferno Charge channels for two seconds with its lane drawn, then charges and leaves its path burning
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (the channel, the path, two
+new figures and a wider lane), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the channel's count,
+its fixed lane, its marker and the path, kept on the creature), `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`
+(the brain stands a channelling creature still) and `game/Source/Cataclysm/Tests/CataclysmEnemyModifierTests.cpp`
+(one test). Issue [#1560](https://github.com/sdubois777/Cataclysm/issues/1560). Ruled by the coordinating session
+on 2026-10-02 under the owner's delegation.
+
+### What was wrong
+
+The row, `Demonic_Inferno_Charge`: "Channel for 2 seconds, then dash towards the player at rapid speeds. Deals AoE
+damage on hit and leave a lingering DoT over the path traveled." The creature charged the moment its twelve second
+timer was up. `InfernoChannelSeconds = 2.0f` was declared and read by nothing, no lane was drawn before the charge,
+and nothing burned on the path afterwards.
+
+### What it does now
+
+- **The channel is the last two seconds of the twelve.** At ten seconds, with somebody within twenty metres, the
+  creature begins to channel: it stands, the lane it will run is drawn on the floor from its feet to the player's,
+  and two seconds later it charges down that lane. A charge therefore still sets off every twelve seconds, as the
+  2026-09-05 entry "The remaining six Demonic enemy modifiers, and a debuff that stacks" set, and the two tests
+  that already stepped twelve seconds and expected a charge are unchanged. **A judgement**: the row gives the two
+  seconds and not where they fall.
+- **The lane is fixed when the channel begins and does not follow the player.** That is the general telegraph rule
+  every enemy wind-up keeps; a player who walks out of the drawn lane is not charged.
+- **The brain stands the creature still for the channel**, as it does for a wind-up, and reports `WindingUp`. It
+  does not begin a channel while its own ability is winding up; the timer keeps running and the channel begins
+  after. A channel the creature may no longer finish -- it loses the row, or becomes a creature that takes no
+  hostile action -- is abandoned and its marker taken away.
+- **The path burns, copied from the Hellhound's lane** (`ACataclysmHellhoundCharacter::UseEnemyAbility`): laid when
+  the charge sets off, along the whole lane, a quarter of a hit per second for four seconds, priced once off the
+  creature's attack damage, burning the player and nobody on the creature's own side. It is of the creature's own
+  damage type, as the Hellhound's is, because the row names none. It is laid only if the charge really set off; a
+  creature standing in a pit is refused the charge and leaves no path. **A judgement**, ruled as a copy of the
+  Hellhound's lane.
+
+### The lane is one metre either side, raised from 90 centimetres
+
+**The drawn lane needed it.** `ACataclysmTelegraphMarker::ShowLine` draws nothing narrower than
+`SmallestUsefulRadiusCm`, 100 centimetres. That is the design's rule that a marker smaller than a metre "is smaller
+than the creature standing in it, so there is nowhere to walk", pinned to the simulation by
+`tools/tests/test_telegraph_markers.py`. At the 2026-09-05 judgement of 90 the channel would have drawn nothing,
+and a warning the player cannot see is not a warning.
+
+**Option A of three, labelled a judgement.** The coordinating session chose 100, the smallest width that draws,
+over the Hellhound's 150 (two-thirds wider) and over keeping 90 with no marker. The charge's hit lane, the drawn
+lane and the burning path are the one constant `InfernoChargeHalfWidthCm`, so all three moved together.
+
+**Where the old figure was stated, searched before changing it:** `tools/`, `sim/`, `docs/Cataclysm_GDD_v2.md` and
+the 2026-09-05 entry. Nothing states 90 for this lane. The 2026-09-05 entry says only that "the width" is a
+judgement, which is still true.
+
+### Not changed
+
+**The 2026-09-05 entry says the telegraph was one implementation a player had already learned to read.** No lane
+was drawn for this modifier until this change. That entry is merged and is left as written; this entry is the
+correction.
+
+**Not built or run when this was written.** The run table follows when the window runs.
+
+---
+
 ## 2026-10-02 — A creature the player commands has a green health bar, and minion damage stays off damage over time
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (a green fill and the function
