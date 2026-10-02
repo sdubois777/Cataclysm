@@ -15,7 +15,7 @@ in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
 `game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp`; and two checks in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
 and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and
-the three guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+the three guard proofs ran on 2026-10-02; the figures are at the end of this entry.
 
 ### The rows
 
@@ -231,11 +231,27 @@ Two Python checks, `test_heavens_quake_row_still_says_impassable_terrain_and_rer
 `test_cryptquake_row_still_says_pits_of_bones_and_swarms`, pin the phrases the rulings rest on; a third,
 `test_every_kept_cell_is_held_from_obstacles_or_named_harmless`, is the pin above.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the obstacle's navigation modifier not
-registered; Pb, `CataclysmFloorCanBlock`'s reachability check removed; Pc, the pit's blocker profile "InvisibleWall"
-changed to "BlockAll".
+On 2026-10-02, with the build machine, on `feat/runtime-floor-obstacles-2` on development `ac66f60f`. Every figure below
+is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Build, at `d648de08`, the branch's first compile | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Proof Pa, the navigation modifier not registered | PROVED: 1 test performed, 1 failed, `ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound`; restored 1 of 1 |
+| Proof Pb, the reachability check removed | PROVED: 1 test performed, 1 failed, `FloorObstaclePlacementRefusesACellThatWouldCutTheFloor`; restored 1 of 1 |
+| Proof Pc, the pit's blocker made "BlockAll" | PROVED: 1 test performed, 1 failed, `FloorObstacleAPitStopsMovementButNotAShotAndAPillarStopsBoth`; restored 1 of 1 |
+| Whole suite, at `d648de08` | `3099 tests performed, 3097 succeeded, 2 failed`: `EveryRowWithSomethingBuiltIsInTheRuleList` (both rows missing from `KeysWithARule`) and `CryptquakeStopsAtThreeSections` (2 sections, no room near the entrance); declared 3099, gap 0 |
+| Python, at `d648de08`, started with no workflow in progress | `5680 passed, 8 skipped` (JUnit 5,688, 0 failures, 0 errors) |
+| Readout of `CryptquakeStopsAtThreeSections`, never committed | the counts under "Consequences" above; the test file restored byte for byte |
+| Build, at `62aa8da3`, after both rows were listed and the test moved to open floor | `Build: Succeeded - 7 actions, 4 files compiled` |
+| Whole suite again, at `62aa8da3`, because game code changed | `3099 tests performed, 3099 succeeded, 0 failed`; declared 3099, gap 0; 40 skipped part of what they check |
+| `tools/tests`, at `62aa8da3` | `3863 passed, 8 skipped` |
+
+**The Python of record is the run at `d648de08`**: no Python file changed after it and the collected count is the same,
+by the coordinating session's ruling. All three proofs came out as predicted; no proof was run again, since none of
+their tests or anchored lines changed.
 
 ---
 
