@@ -446,6 +446,20 @@ public:
 	void ApplyStartingAttributes();
 
 	/**
+	 * Multiplies this creature's maximum health from now on, and fills it. Issue #1715:
+	 * a thrall takes its commander's minion health, set by `UCataclysmCommand::Subjugate`.
+	 *
+	 * IN THE PRODUCT `ApplyStartingAttributes` WRITES, so a later rewrite of the creature's
+	 * figures -- a rule raising its rung -- keeps it rather than dropping it.
+	 *
+	 * @param NewMultiplier  1.0 for none; below zero is read as zero
+	 */
+	void SetCommanderHealthMultiplier(float NewMultiplier);
+
+	/** See `SetCommanderHealthMultiplier`. */
+	float GetCommanderHealthMultiplier() const { return CommanderHealthMultiplier; }
+
+	/**
 	 * Makes this creature an illusion, or stops it being one.
 	 *
 	 * SAFE BEFORE OR AFTER `BeginPlay`, like `SetAttackDamage` and for the same
@@ -1873,6 +1887,10 @@ protected:
 	/** What SetHealth was last asked for. Zero means the attribute set's own default. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float StartingMaxHealth = 0.0f;
+
+	/** See `SetCommanderHealthMultiplier`. One until the creature is taken. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float CommanderHealthMultiplier = 1.0f;
 
 	/**
 	 * What SetAttackDamage was last asked for. Zero means it deals nothing.

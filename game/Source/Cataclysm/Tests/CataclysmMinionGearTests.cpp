@@ -5,6 +5,9 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -812,6 +815,231 @@ bool FCataclysmMinionGearStruckRecordTimeTest::RunTest(const FString&)
 			  Enemy.AbilitySystem->SecondsSinceStruckBy(You.AbilitySystem), 0.0f,
 			  0.001f);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A subjugated enemy is a minion for minion damage and minion health. Issue #1715.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmThrallGearTest
+{
+	using namespace CataclysmMinionGearTest;
+
+	/** A creature's own health and attack damage before anyone takes it. */
+	constexpr float ThrallHealth = 1'000.0f;
+	constexpr float ThrallAttackDamage = 100.0f;
+
+	/** A creature at Common, with its own figures, that nobody commands yet. */
+	ACataclysmEnemyCharacter* Creature(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetHealth(ThrallHealth);
+			Made->SetAttackDamage(ThrallAttackDamage);
+		}
+		return Made;
+	}
+
+	/** What one blow from `Striker` at 100% of its weapon took from `Target`. */
+	float BlowFrom(AActor* Striker, const FScopedFighter& Target)
+	{
+		const float Before = Target.Health();
+		UCataclysmSkillEffects::ApplyHit(Striker, Target.Actor, 100.0f);
+		return Before - Target.Health();
+	}
+
+	float MaxHealthOfCreature(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature);
+		return System ? System->GetNumericAttribute(Vital::GetMaxHealthAttribute()) : -1.0f;
+	}
+
+	float HealthOfCreature(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature);
+		return System ? System->GetNumericAttribute(Vital::GetHealthAttribute()) : -1.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallGearDamageTest,
+	"Cataclysm.MinionGear.AThrallHitsHarderForItsCommandersIncreasedMinionDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's ruling of 2026-09-13: the enemy Subjugate takes "should be considered a
+ * minion", so minion gear scales it. Issue #1715.
+ *
+ * THE SAME BLOW, MEASURED BEFORE THE TAKE, so the figure compared is what this creature
+ * deals rather than one typed here. Never a critical strike, so two blows are comparable.
+ *
+ * TWO CONTROLS. An unowned creature beside it is unchanged by the same gear, so the
+ * gear does not reach every creature. And the commander's own blow is unchanged, so
+ * minion damage is not a bonus to the one wearing it.
+ */
+bool FCataclysmThrallGearDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Commander(World, SummonerWeapon);
+	FScopedFighter Target(World, /*AttackDamage=*/0.0f);
+	ACataclysmEnemyCharacter* Thrall = Creature(World, FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Unowned = Creature(World, FVector(5.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a creature to take"), Thrall)
+		|| !TestNotNull(TEXT("a creature nobody takes"), Unowned))
+	{
+		return false;
+	}
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const float Own = BlowFrom(Thrall, Target);
+	const float CommandersOwn = BlowFrom(Commander.Actor, Target);
+	if (!TestTrue(TEXT("the creature's own blow takes health"), Own > 0.0f)
+		|| !TestTrue(TEXT("Subjugate takes it"),
+					 UCataclysmCommand::Subjugate(Commander.Actor, Thrall)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("taken, with no minion damage, it hits as it did"),
+			  BlowFrom(Thrall, Target), Own, 0.01f);
+
+	// GRANTED AFTER THE TAKE, so this is read at the blow and not fixed when it was taken.
+	GrantMinionStat(Commander.Actor, TEXT("minion_damage"), DamageIncreasePercent);
+
+	TestEqual(TEXT("its blow takes 25% more for its commander's 25% increased minion damage"),
+			  BlowFrom(Thrall, Target), Own * (1.0f + DamageIncreasePercent / 100.0f), 0.01f);
+	TestEqual(TEXT("an unowned creature's blow is unchanged by that gear"),
+			  BlowFrom(Unowned, Target), Own, 0.01f);
+	TestEqual(TEXT("and so is the commander's own"),
+			  BlowFrom(Commander.Actor, Target), CommandersOwn, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallGearHealthTest,
+	"Cataclysm.MinionGear.AThrallTakenIsToughenedForItsCommandersMinionHealthAndKeepsItWhenItsRungRises",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Minion health at the take, healed to full, and kept through a rewrite of the creature's
+ * figures. Issue #1715.
+ *
+ * A RUNG RAISED AFTER THE TAKE IS WHAT WOULD DROP A BONUS WRITTEN ONTO THE ATTRIBUTE:
+ * `SetRarityStep` rewrites maximum health from the creature's own figures. The bonus is
+ * one of those figures, so the rung multiplies it rather than replacing it.
+ *
+ * THE CONTROL: a commander with no minion health takes a creature at its own maximum.
+ */
+bool FCataclysmThrallGearHealthTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Commander(World, SummonerWeapon);
+	FScopedFighter Plain(World, SummonerWeapon);
+	ACataclysmEnemyCharacter* Thrall = Creature(World, FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Other = Creature(World, FVector(5.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a creature to take"), Thrall)
+		|| !TestNotNull(TEXT("a second creature"), Other))
+	{
+		return false;
+	}
+	GrantMinionStat(Commander.Actor, TEXT("minion_health"), HealthIncreasePercent);
+
+	// WOUNDED FIRST, as Subjugate's targets are, so "and at full" is a heal and not the start.
+	Thrall->GetAbilitySystemComponent()->SetNumericAttributeBase(Vital::GetHealthAttribute(), 200.0f);
+	if (!TestTrue(TEXT("Subjugate takes it"), UCataclysmCommand::Subjugate(Commander.Actor, Thrall)))
+	{
+		return false;
+	}
+
+	const float Toughened = ThrallHealth * (1.0f + HealthIncreasePercent / 100.0f);
+	TestEqual(TEXT("its maximum health is 50% more for its commander's 50% increased minion health"),
+			  MaxHealthOfCreature(Thrall), Toughened, 0.01f);
+	TestEqual(TEXT("and it is at full"), HealthOfCreature(Thrall), Toughened, 0.01f);
+
+	// A RULE RAISES ITS RUNG AFTER THE TAKE.
+	float HealthScale = 1.0f;
+	float DamageScale = 1.0f;
+	float ArmourScale = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(
+		UCataclysmEnemyRarity::LoadEnemyRarityTable(), /*Step=*/1,
+		HealthScale, DamageScale, ArmourScale);
+	if (!TestTrue(TEXT("a rung above Common has more health"), HealthScale > 1.0f))
+	{
+		return false;
+	}
+	Thrall->SetRarityStep(1);
+	TestEqual(TEXT("raised a rung, it keeps the bonus: its own health times the rung times 1.5"),
+			  MaxHealthOfCreature(Thrall), ThrallHealth * HealthScale * 1.5f, 0.05f);
+
+	// THE CONTROL.
+	if (!TestTrue(TEXT("a commander with no minion health takes the second"),
+				  UCataclysmCommand::Subjugate(Plain.Actor, Other)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("which keeps its own maximum"), MaxHealthOfCreature(Other), ThrallHealth, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallGearDamagedByYouTest,
+	"Cataclysm.MinionGear.AThrallHitsHarderOnlyAgainstAnEnemyItsCommanderDamagedInTheLastTwoSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Set Upon and The Third Pact's first option, which ask about the enemy struck, reach a
+ * thrall's blow, because it is read at the blow against its target. Issue #1715. The same
+ * figures as the minion's test above: 16% increased and 25% more are 1.45.
+ */
+bool FCataclysmThrallGearDamagedByYouTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Commander(World, SummonerWeapon);
+	FScopedFighter Struck(World, /*AttackDamage=*/0.0f);
+	FScopedFighter Untouched(World, /*AttackDamage=*/0.0f);
+	ACataclysmEnemyCharacter* Thrall = Creature(World, FVector(0.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a creature to take"), Thrall))
+	{
+		return false;
+	}
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const float Own = BlowFrom(Thrall, Untouched);
+	if (!TestTrue(TEXT("Subjugate takes it"), UCataclysmCommand::Subjugate(Commander.Actor, Thrall)))
+	{
+		return false;
+	}
+	GrantDamagedByYouRows(Commander.Actor, 16.0f, 25.0f);
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Commander.Actor, Struck.Actor, 1.0f);
+	TestEqual(TEXT("against an enemy its commander just damaged: 16% increased and 25% more"),
+			  BlowFrom(Thrall, Struck), Own * 1.16f * 1.25f, 0.01f);
+	TestEqual(TEXT("against one its commander never damaged: its own figure"),
+			  BlowFrom(Thrall, Untouched), Own, 0.01f);
 	return true;
 }
 

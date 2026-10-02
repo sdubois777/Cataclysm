@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
 // For announcing a death to whatever listens. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCurseSpread.h"
 // For a line of creatures run through by one spear, which comes apart when any
 // one of them dies. The Spear's Skewer is the only thing that binds one.
@@ -854,7 +855,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
 			// Issue #1833, timed grants. One for every other blow.
 			* FMath::Max(0.0f, Delivery.DamageMultiplierSpent)
-			* Kept,
+			* Kept
+			* UCataclysmCommand::ThrallDamageMultiplierAgainst(Instigator, Target),
 		SkillTags,
 		Delivery.SkillHealthCostPercent,
 		Delivery.MetresMovedBeforeBlow,

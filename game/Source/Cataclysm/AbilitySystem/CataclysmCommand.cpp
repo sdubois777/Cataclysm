@@ -572,6 +572,141 @@ float UCataclysmCommand::AttackIntervalScaleFor(const AActor* Follower,
 	return Scale;
 }
 
+/**
+ * What a summoner's gear and passives do to one of its minions' own figures,
+ * as a multiplier. 1.25 is twenty-five per cent more. Issue #898.
+ *
+ * A MODIFIER THAT NAMES MINIONS IS NOT A FOURTH CHANNEL. The decision of
+ * 2026-08-06 lists three channels and then says, in the next sentence,
+ * "Everything else is blocked unless a modifier names minions", and the
+ * owner's reversal it records has three parts of which the third is "minion
+ * affixes exist on gear on top of that". `minion_damage` and `minion_health`
+ * are the case that qualifier exists for. `AttackTarget` used to quote the
+ * three-channel sentence without it, which read as forbidding this.
+ *
+ * THE INCREASES AND NOT THE STAT'S VALUE. Neither stat has a base and neither
+ * can have one -- a minion's damage and health come from its own row in
+ * `game/Data/MinionTypes.csv`, raised by its summoner's level -- so asking
+ * for the value would return zero however much gear was worn.
+ * `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` reads the
+ * buckets without the base, which is what this needs.
+ *
+ * A SUM RATHER THAN A SEPARATE MULTIPLIER, AND THE DESIGN REQUIRES IT. The
+ * same entry says "an attribute's contribution and an affix's contribution
+ * add. They cannot multiply each other", and gives the reason: every
+ * catastrophic minion scaling failure in the survey behind that decision was
+ * multiplicative. The increases are still SUMMED before they multiply, so
+ * when the attribute channel is built it lands in the same bucket and adds.
+ *
+ * AND A "MORE" OR "LESS" ROW MULTIPLIES ON TOP, SINCE ISSUE #1833'S SMALL
+ * ENGINE HALVES. "Your minions have 20%-50% less hp" is a More row, and
+ * until then `IncreasesForStat` read the increases only, so it did nothing.
+ * `minion_damage` already honoured the More bucket through
+ * `SummonerMultiplierAgainst` below; this is the same reading with no
+ * target. It reaches `minion_duration` and `minion_explosion_damage` too,
+ * and on 2026-09-25 no row gave either a More, so nothing that existed
+ * changed.
+ *
+ * A REDUCTION IS KEPT AND ONLY THE RESULT IS FLOORED. Ten rows of
+ * `game/Data/PassiveEffects.csv` already carry a negative value, so a node
+ * reducing minion damage is a thing the data can express. Clamping the
+ * increases at zero would discard a designed drawback in silence; flooring
+ * the multiplier only stops a figure below -100% turning into negative
+ * damage or negative health.
+ *
+ * ASKED WITH THE MINION'S OWN TYPE TAGS, since issue #1833's deployable
+ * Part 1, for the reason `MinionAttackSpeedFor` above records: the four minion
+ * affix rows carry no scope tags and apply to every minion, and a row scoped
+ * to `Type.Deployable` now reaches a machine and not an imp.
+ */
+float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
+											 const FGameplayTagContainer& MinionTags)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Summoner));
+	if (!Theirs)
+	{
+		// NO STAT LINE, WHICH IS ORDINARY RATHER THAN A FAULT: an enemy
+		// summoner is never given one, and a player's is empty until the
+		// first refresh. Nothing recorded means nothing added.
+		return 1.0f;
+	}
+
+	// THE INCREASES FLOORED AT ZERO, THEN THE MORE MULTIPLIER, which is
+	// what `MultiplierForStatAgainst` answers. No target: these figures
+	// are read when the minion is made or when it dies, not against
+	// anything it is striking.
+	// AND WITH THE MINION'S OWN TYPE TAGS, since deployable Part 1, so a row
+	// scoped to `Type.Deployable` reaches a machine and not an imp.
+	// Measured 2026-09-25: no minion row in the enchantment or passive
+	// sheets carried required tags before, so none changes.
+	return Theirs->MultiplierForStatAgainst(
+		FName(Stat), MinionTags, /*Target=*/nullptr);
+}
+
+/**
+ * `SummonerMultiplierFor` against the character a minion is striking, with
+ * the "more" bucket. Issue #1515, Set Upon and Set the Pack On, whose rows
+ * ask about the enemy struck. Only minion damage asks this: health and
+ * duration are settled at the summoning, with no enemy in hand.
+ *
+ * ON THE SUMMONER'S COMPONENT AND NEVER THE MINION'S, which is what keeps
+ * `seconds_after_summon` holding here: a minion's own clock is never
+ * stamped by a summon.
+ *
+ * A "MORE" ROW IS A SEPARATE MULTIPLIER, WHICH THE COMMENT ABOVE SAYS THE
+ * DESIGN FORBIDS, AND IT DOES NOT CONTRADICT IT. That rule is that an
+ * attribute's increases and an affix's increases add; they still do, in
+ * the one sum. Set the Pack On is a capstone option whose sentence says
+ * "more", and no shipped row put "more" on minion damage before it,
+ * measured 2026-09-23.
+ */
+float UCataclysmCommand::SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
+												 const AActor* Target,
+												 const FGameplayTagContainer& MinionTags)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Summoner));
+	if (!Theirs)
+	{
+		// NO STAT LINE, for the reason `SummonerMultiplierFor` gives.
+		return 1.0f;
+	}
+
+	return Theirs->MultiplierForStatAgainst(FName(Stat), MinionTags, Target);
+}
+
+/**
+ * A thrall's blow takes its commander's minion damage. Issue #1715.
+ *
+ * THE OWNER'S RULING OF 2026-09-13, recorded in `docs/DECISIONS.md` that day: the enemy
+ * Subjugate takes "should be considered a minion", so minion gear scales it.
+ *
+ * READ AT THE BLOW AND AGAINST ITS TARGET, as a summoned minion's swing reads it in
+ * `ACataclysmMinion::AttackTarget`, so a row asking about the enemy struck -- Set Upon, and
+ * The Third Pact's first option -- reaches a thrall too, and a change to the commander's
+ * gear or passives reaches it at its next blow.
+ *
+ * NO TYPE TAGS. A thrall is a taken creature and carries none of `MinionTypes.csv`'s; every
+ * row granting minion damage on 2026-10-02 carried no required tag, so each reaches it.
+ *
+ * ONE FOR EVERYTHING THAT IS NOT A THRALL: a player, an unowned creature, and a summoned
+ * minion, whose blow reads minion damage itself and does not come through `ApplyHit`.
+ */
+float UCataclysmCommand::ThrallDamageMultiplierAgainst(const AActor* Striker, const AActor* Target)
+{
+	if (!Striker || Striker->IsA<ACataclysmMinion>())
+	{
+		return 1.0f;
+	}
+	const AActor* Commander = CommanderOf(Striker);
+	return Commander
+		? SummonerMultiplierAgainst(Commander, TEXT("minion_damage"), Target, FGameplayTagContainer())
+		: 1.0f;
+}
+
 int32 UCataclysmCommand::ThrallCountOf(const AActor* Commander)
 {
 	int32 Taken = 0;
@@ -746,6 +881,19 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 		Taken->CommandedSinceSeconds = World->GetTimeSeconds();
 	}
 	Taken->bIsSecondSelf = false;
+
+	// AND ITS COMMANDER'S MINION HEALTH, ONCE, AT THE TAKE. Issue #1715: "considered a
+	// minion", ruled 2026-09-13. Through the creature's own figures rather than a write to
+	// the attribute, because `ApplyStartingAttributes` rewrites maximum health from them
+	// whenever anything sets a creature's figures, and a rung raised later would drop it.
+	// Fixed at the take, as a summoned minion's health is fixed at its summoning; the
+	// owner's "minions update live rather than snapshotting" is recorded and not built.
+	// No type tags, for the reason `ThrallDamageMultiplierAgainst` gives.
+	if (ACataclysmEnemyCharacter* AsCreature = Cast<ACataclysmEnemyCharacter>(Taken))
+	{
+		AsCreature->SetCommanderHealthMultiplier(SummonerMultiplierFor(
+			Commander, TEXT("minion_health"), FGameplayTagContainer()));
+	}
 
 	// AND IT IS HEALED TO FULL, ONCE, AT THE MOMENT IT IS TAKEN. The project
 	// owner's ruling: "it should heal to full, and the enemy you take over should
