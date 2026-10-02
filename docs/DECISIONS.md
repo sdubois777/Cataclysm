@@ -117,7 +117,9 @@ included.
   up to **3 a floor** (`CryptquakeMostSections`). **A section is two cells by two** (`CryptquakeSectionSide`), all four
   passing the placement rule or the section is skipped.
 - **The swarm is 3 creatures of the floor's own kinds** (`CryptquakeCreaturesPerSection`), **at Common**
-  (`CryptquakeCreatureRung`), **raised by a rule**, arriving beside the pit through `BringCreaturesNear`. No skeleton
+  (`CryptquakeCreatureRung`), **raised by a rule**, arriving beside the pit through `BringCreaturesNear`. Both rows are in
+  `UCataclysmDungeonModifierEffects::KeysWithARule`, which the first whole suite showed was missing:
+  `EveryRowWithSomethingBuiltIsInTheRuleList` failed for both, an existing guard doing its job. No skeleton
   creature exists; one waits for its own work. Raised by a rule, the swarm never holds the floor uncleared nor
   Lightforged Walls shut: `IsOneOfTheFloorsOwnStanding` refuses the mark, and both `LivingFloorEnemies` and
   `LightforgedWallsStanding` count through it.
@@ -185,6 +187,13 @@ carved.
   restore sweeps them (`UCataclysmFloorContents::ClearTheFloor`).
 - **A ground zone's cell is held**, so a pillar never lands on an Infernal Rain patch or a Singularity Well while it
   stands.
+- **NEAR A FLOOR'S ENTRANCE, CRYPTQUAKE MAY STOP SHORT OF THREE SECTIONS, by design of the placement rule.** Measured
+  2026-10-02 by a readout never committed, after the first whole suite failed `CryptquakeStopsAtThreeSections`: with the
+  player at floor 2's entrance, of 44 square corners near the band only 2 had all four cells walkable, none passed the
+  rule once the held cells were counted, and 1 passed on the plan alone. A two by two section in a corridor two cells
+  wide cuts it, and is refused. So on a floor of two-cell corridors a player who stays near the entrance may see one or
+  two collapses, not three; one who moves into open floor gives the rule room. Ruled to stand as it is; the test now
+  stands the player in the floor's most open area, since it is about the cap.
 
 ### Tests
 
@@ -211,7 +220,8 @@ In `Cataclysm.DungeonModifierEffects.`, on floors the game mode builds:
   cut off from the player; the entrance and exit walkable.
 - `CryptquakeCollapsesATwoByTwoSectionAndBringsThreeRaisedCreaturesBesideIt`: four cells rock; three creatures, raised
   by a rule, Common, none in the pit; `LivingFloorEnemies` and `LightforgedWallsStanding` 0; the panel.
-- `CryptquakeStopsAtThreeSections`.
+- `CryptquakeStopsAtThreeSections`: in the floor's most open area, three and no more; its failure message says how many
+  squares near the player the rule still allowed.
 - `RuntimeObstaclesEndWithTheFloorAndWithEachHordeWave`: none on the next floor, the count started again, no cell of the
   new plan blocked; on a Horde arena, the pillar's cell walkable again on the next wave.
 - `FloorObstacleRefusesEveryCellTheFloorStillHoldsAUseFor`: the entrance, the exit, every Warzone point, every rift cell

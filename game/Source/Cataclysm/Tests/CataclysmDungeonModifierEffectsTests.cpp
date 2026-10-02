@@ -44147,6 +44147,66 @@ namespace CataclysmDungeonModifierEffectsTest
 		return CutOff;
 	}
 
+	/**
+	 * The floor cell with the widest square of walkable cells around it, and that half-width in cells. A floor of
+	 * two-cell corridors has little room near its entrance for a two by two section; see the Cryptquake cap test.
+	 */
+	FIntPoint MostOpenCell(const FCataclysmFloorPlan& Plan, int32& OutRadius)
+	{
+		FIntPoint Best(-1, -1);
+		OutRadius = -1;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			const FIntPoint Cell = Plan.CellAt(Index);
+			int32 Radius = -1;
+			for (int32 Try = 0; Try <= 6; ++Try)
+			{
+				bool bOpen = true;
+				for (int32 Y = -Try; Y <= Try && bOpen; ++Y)
+				{
+					for (int32 X = -Try; X <= Try && bOpen; ++X)
+					{
+						bOpen = Plan.IsFloor(Cell + FIntPoint(X, Y));
+					}
+				}
+				if (!bOpen)
+				{
+					break;
+				}
+				Radius = Try;
+			}
+			if (Radius > OutRadius)
+			{
+				OutRadius = Radius;
+				Best = Cell;
+			}
+		}
+		return Best;
+	}
+
+	/** Two by two squares near the player, as the rule chooses them, that the placement rule still allows. */
+	int32 SectionsStillAllowed(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		const FVector Feet = Player.Character->GetActorLocation();
+		const FIntPoint From = Mode->CurrentFloor->CellOfWorld(Feet);
+		const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+		const double Slack = FCataclysmFloorGenerator::CellSizeCm * 0.7072;
+		int32 Allowed = 0;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			const FIntPoint Corner = Plan.CellAt(Index);
+			const double Away = FVector::Dist2D(Mode->CurrentFloor->WorldOfCell(Corner), Feet);
+			if (Away < Effects::FloorObstacleNearestCm - Slack || Away > Effects::FloorObstacleFurthestCm + Slack)
+			{
+				continue;
+			}
+			Allowed += CataclysmFloorCanBlock(Plan, ObstacleBlock(Corner, 2, 2), From, Held) ? 1 : 0;
+		}
+		return Allowed;
+	}
+
 	/** A dungeon game mode on floor 2 carrying these rows, with its creatures cleared so nothing stands in the way. */
 	ACataclysmDungeonGameMode* AnObstacleFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
 											   const TArray<FName>& Rows)
@@ -44520,8 +44580,22 @@ bool FCataclysmCryptquakeCapTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// IN THE FLOOR'S MOST OPEN AREA, NOT AT ITS ENTRANCE. Measured 2026-10-02 by a readout never committed: at floor 2's
+	// entrance, of 44 square corners near the band only 2 had all four cells walkable, and none passed the rule once
+	// the held cells were counted, so the rule rightly stopped at one or two sections. That is what the rule does near
+	// an entrance on a floor of two-cell corridors; this test is about the cap, so it gives the cap room.
+	int32 Open = -1;
+	const FIntPoint Middle = MostOpenCell(Mode->CurrentFloor->GetPlan(), Open);
+	if (!TestTrue(FString::Printf(TEXT("set-up: an open area %d cells each way"), Open), Open >= 4))
+	{
+		return false;
+	}
+	StandThePlayerAt(Player, CellAtThePlayersHeight(Mode, Player, Middle));
+
 	Beat(Mode, BeatsFor(Effects::CryptquakeSecondsBetween) * Effects::CryptquakeMostSections * 2 + 80);
-	TestEqual(TEXT("three sections and no more"), Mode->CryptquakeSectionsCollapsed(), Effects::CryptquakeMostSections);
+	TestEqual(FString::Printf(TEXT("three sections and no more (%d squares near the player still allowed)"),
+							  SectionsStillAllowed(Mode, Player)),
+			  Mode->CryptquakeSectionsCollapsed(), Effects::CryptquakeMostSections);
 	TestEqual(TEXT("three pits standing"), Mode->FloorObstaclesNow().Num(), Effects::CryptquakeMostSections);
 	TestEqual(TEXT("and no walkable cell is cut off from the player"), CellsCutOffFromThePlayer(Mode, Player), 0);
 	return true;

@@ -976,6 +976,8 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfernalSealsKey),
 		FName(SanctionedPassageKey),
 		FName(LightforgedWallsKey),
+		FName(HeavensQuakeKey),
+		FName(CryptquakeKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
