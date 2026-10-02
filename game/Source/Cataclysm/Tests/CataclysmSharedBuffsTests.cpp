@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
@@ -285,6 +286,10 @@ CATACLYSM_SHARED_BUFFS_TEST(FCataclysmSharedReachesTest,
 	{
 		return false;
 	}
+	// MANA FOR BOTH CASTS. A Support skill costs 25 and a Special 40 in
+	// SkillSlots.csv; a fresh player cannot pay for the second after the first.
+	SystemOf(Wearer)->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 10000.0f);
+	SystemOf(Wearer)->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 10000.0f);
 	UCataclysmSelfBuffSkill* Support = Buff(Wearer, ECataclysmAbilitySlot::Support, MoreDamageBuff, TEXT(""));
 	if (!TestTrue(TEXT("set-up: the Support buff runs"), Support && Support->IsActive()))
 	{
@@ -305,8 +310,8 @@ CATACLYSM_SHARED_BUFFS_TEST(FCataclysmSharedReachesTest,
 	// A SPECIAL-SLOT BUFF IS NOT A SUPPORT ABILITY.
 	SystemOf(Wearer)->CancelAbilityHandle(Support->GetCurrentAbilitySpecHandle());
 	UCataclysmSelfBuffSkill* Special = Buff(Wearer, ECataclysmAbilitySlot::Special, MoreDamageBuff, TEXT(""));
-	if (!TestTrue(TEXT("set-up: the Special buff runs and grants 4% More"),
-			Special && Special->IsActive() && FMath::IsNearlyEqual(Special->GrantedIncrease, 4.0f)))
+	if (!TestTrue(TEXT("set-up: the Special buff runs"), Special && Special->IsActive())
+		|| !TestEqual(TEXT("set-up: and grants 4% More"), Special->GrantedIncrease, 4.0f, 0.001f))
 	{
 		return false;
 	}
@@ -470,7 +475,9 @@ CATACLYSM_SHARED_BUFFS_TEST(FCataclysmSharedDeathTest,
 	TestEqual(TEXT("a dead wearer holds no copy"), SystemOf(Wearer)->SharedBuffCopies.Num(), 0);
 	TestEqual(TEXT("and the ally that stayed carries nothing"), ModifiersOn(Stays), 0);
 
-	// AND A WEARER LEAVING PLAY, through its ability system's EndPlay.
+	// AND A WEARER LEAVING PLAY, through its character's EndPlay. A player's
+	// ability system belongs to its player state, so it is the character's
+	// ending that must take the copies back.
 	// TWENTY METRES OFF, so nothing of the first wearer's arrangement is nearby.
 	ACataclysmPlayerCharacter* Second = SpawnWearer(World, FVector(20 * M, 0, 0));
 	ACataclysmEnemyCharacter* Beside = Creature(World, 23.0f, ECataclysmTeam::Players);
