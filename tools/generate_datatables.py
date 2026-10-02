@@ -4400,9 +4400,9 @@ COMPLEMENT_RANGE_ENCHANTMENTS = frozenset({
 #: set gives. `tools/tests/test_enchantment_effects_match_the_row_text.py`
 #: checks that every name here is still needed.
 #:
-#: EMPTY UNTIL ITS ROW IS WRITTEN, because the check that every name here is
-#: still needed fails on a name with no row.
-BASE_PLUS_RANGE_ENCHANTMENTS: dict[str, float] = {}
+BASE_PLUS_RANGE_ENCHANTMENTS: dict[str, float] = {
+    "Positive_You_block_for_65_75_of_damage_instead_of_the_n": 50.0,
+}
 
 #: The scales that read a Scale Offset: how much of the reading is not counted.
 #: Issue #1686. Only the class point sentences state a threshold ("above 100",
