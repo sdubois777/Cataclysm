@@ -2,6 +2,49 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — Five Ravager nodes that say "on melee hit" now roll their Cripple and Weaken chances on melee hits only
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet, rows 218 to 223),
+`game/Data/PassiveEffects.csv` (regenerated: those six lines and no others),
+`tools/tests/test_passive_effects_match_the_node_text.py` (one test) and
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (one test). Issue
+[#944](https://github.com/sdubois777/Cataclysm/issues/944), the melee part, ruled by the coordinating session on
+2026-10-02 under the owner's delegation.
+
+### WHAT CHANGES IN PLAY
+
+Wearing Blows ("+2% chance to Cripple and +2% chance to Weaken on melee hit per point"), Hobbling Blows, Blunting
+Blows, Hamstring and Take the Edge Off each grant a chance "on melee hit". **Their six rows required no tag, so
+each chance rolled on every hit**, a spell's and a projectile's included. Each now requires `Type.Melee`, so the
+chance rolls only on a melee skill's hit.
+
+**Nothing new was built for it.** The chance is asked with the skill's tags by `UCataclysmAilments::ChancesFor`,
+and the Ravager's keystone Attrition already granted the same two stats with `Type.Melee`. The six rows were
+written in #1721 without the tag, and no decision to leave it off was recorded.
+
+### WHY THIS IS NOT THE SCOPE-TAG RULING
+
+**Issue [#1620](https://github.com/sdubois777/Cataclysm/issues/1620) recorded an owner ruling not to honour a
+melee scope**, and that ruling does not apply here. It covers the descriptive `Scope.*` label column on
+enchantment rows, whose own words do not say melee. These six rows say "on melee hit" in their own text, and the
+project holds a row to its text.
+
+### HOW IT IS CHECKED
+
+- **`test_a_chance_on_melee_hit_is_scoped_to_melee`**, in Python: every row granting `cripple_chance` or
+  `weaken_chance` on a node whose own text says "melee" requires `Type.Melee`. That is the six rows and
+  Attrition's two. Other rows on melee nodes are left out, and the test says why: their stats are melee by what
+  reads them.
+- **`Cataclysm.Passives.TheRavagersOnMeleeHitChancesRollOnAMeleeBlowAndNotOnASpell`**, in Unreal: the six rows
+  in the built asset each require `Type.Melee`. On a real Ravager with six points of Hobbling Blows and the roll
+  pinned at nought, a melee blow Cripples and a spell's blow does not. Both blows take over a tenth of the
+  target's maximum health, so the threshold is not what stops the spell.
+
+**Not built or run when this was written.** The DataTable asset is regenerated from the workbook in this
+change's window, and the run table follows.
+
+---
+
 ## 2026-10-02 — The block share is a stat capped at 85%, a block may negate all of a hit, Archon's Aegis's block opens the no-damage window, and a recharged shield releases a nova
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (`BlockDamageReductionStat`,
