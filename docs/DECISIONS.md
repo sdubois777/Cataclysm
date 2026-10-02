@@ -42,7 +42,13 @@ does not settle:** a cap for this game. The 85 below is a judgement.
    block, so it covers exactly what a block covers. **From the code:** the block step of
    `UCataclysmDamageCalculation::Resolve` has no damage over time test, where the evasion step has one, so blocks, and now
    negation, apply to ticks today. The owner's held question on blocking damage over time decides both; the coordinating
-   session added Last Epoch's "it does not apply to DoTs" to that question as evidence.
+   session added Last Epoch's "it does not apply to DoTs" to that question as evidence. **A chance of 100 always
+   negates**: the roll is `FMath::FRandRange(0, 100)`, which can be exactly 100 (`FRand` divides by its own maximum, so it
+   returns 1.0 itself), so the negation is compared as `Chance >= 100 || Roll < Chance`, the shape the status action
+   and the random damage over time already use. **The block roll beside it still compares strictly**, so a 100% block
+   chance fails about once in 32,768 blows, as evasion, critical strikes, ailments and the other percentage rolls do;
+   issue [#2201](https://github.com/sdubois777/Cataclysm/issues/2201) fixes them together with one shared helper, and E2
+   does not touch them.
 4. **LABELLED JUDGEMENT: "each block 5%-10% more damage" adds percentage points to the same stat**, as own stacks of
    `block_damage_reduction` flat on `block`, for 3 seconds, with no cap of their own: the 85 cap bounds them. The
    generator requires an own stack to state a cap, so the row states 7, the smallest that never binds before the 85

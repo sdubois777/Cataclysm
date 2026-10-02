@@ -237,8 +237,10 @@ CATACLYSM_TEST(FCataclysmBlockNegationTest,
 	using namespace CataclysmBlockShareTest;
 	// A DEFENDER CARRYING A NEGATION CHANCE OF 100. A blow that is not blocked
 	// keeps all of itself, because the negation is rolled only inside a block; a
-	// blocked blow, its negation roll at 0, keeps nothing; and the same blow with
-	// the negation roll at 100 keeps the ordinary half.
+	// blocked blow keeps nothing on a negation roll of 0, AND ON A ROLL OF EXACTLY
+	// 100, because a chance of 100 is compared as at most (issue #2201: the roll
+	// can be 100 itself). A defender carrying 50 keeps nothing on a roll of 40 and
+	// the ordinary half on a roll of 60.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -249,8 +251,11 @@ CATACLYSM_TEST(FCataclysmBlockNegationTest,
 	{
 		const FFighter Attacker(World, 100.0f);
 		const FFighter Defender(World, 0.0f);
+		const FFighter Halfway(World, 0.0f);
 		Defender.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
 		Defender.Line(UCataclysmDamageCalculation::BlockNegationChanceStat, 100.0f);
+		Halfway.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
+		Halfway.Line(UCataclysmDamageCalculation::BlockNegationChanceStat, 50.0f);
 		float Full = 0.0f;
 		{
 			const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
@@ -270,9 +275,18 @@ CATACLYSM_TEST(FCataclysmBlockNegationTest,
 				TestTrue(TEXT("and the blow was blocked"), bBlocked);
 			}
 			{
-				const FPinned DoesNotNegate(TEXT("Cataclysm.BlockNegationRoll"), 100.0f);
-				TestEqual(TEXT("a block whose negation roll fails keeps half"),
-					Blow(Attacker, Defender), Full * 0.5f, 0.5f);
+				const FPinned TopOfTheRoll(TEXT("Cataclysm.BlockNegationRoll"), 100.0f);
+				TestEqual(TEXT("a chance of 100 negates on a roll of exactly 100 too"),
+					Blow(Attacker, Defender), 0.0f, 0.001f);
+			}
+			{
+				const FPinned Under(TEXT("Cataclysm.BlockNegationRoll"), 40.0f);
+				TestEqual(TEXT("a chance of 50 negates on a roll of 40"), Blow(Attacker, Halfway), 0.0f, 0.001f);
+			}
+			{
+				const FPinned Over(TEXT("Cataclysm.BlockNegationRoll"), 60.0f);
+				TestEqual(TEXT("and keeps the ordinary half on a roll of 60"),
+					Blow(Attacker, Halfway), Full * 0.5f, 0.5f);
 			}
 		}
 	}

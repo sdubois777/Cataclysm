@@ -665,8 +665,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			const float Pinned = CVarBlockNegationRoll.GetValueOnAnyThread();
 			const float NegationRoll =
 				Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
-			Damage *= NegationRoll < DefenderStat(Defender, BlockNegationChanceStat,
-												  0.0f, BlowOf(Hit))
+			const float NegationChance =
+				DefenderStat(Defender, BlockNegationChanceStat, 0.0f, BlowOf(Hit));
+			// A CHANCE OF 100 ALWAYS NEGATES, compared as at most rather than
+			// rolled, because `FRandRange` can return 100 itself. Issue #2201: the
+			// block roll above and the other percentage rolls still compare
+			// strictly and wait on that issue's shared fix.
+			Damage *= NegationChance >= 100.0f || NegationRoll < NegationChance
 				? 0.0f
 				: 1.0f - BlockShareOf(Defender, BlowOf(Hit)) / 100.0f;
 		}
