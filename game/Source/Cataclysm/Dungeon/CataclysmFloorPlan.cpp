@@ -48,6 +48,35 @@ int32 FCataclysmFloorPlan::OrthogonalNeighbours(FIntPoint Cell) const
 	return Count;
 }
 
+bool CataclysmFloorCanBlock(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells, FIntPoint From,
+							const TSet<FIntPoint>& Held)
+{
+	if (Cells.IsEmpty() || !Plan.IsFloor(From))
+	{
+		return false;
+	}
+	FCataclysmFloorPlan Closed = Plan;
+	for (const FIntPoint& Cell : Cells)
+	{
+		if (!Plan.IsFloor(Cell) || Cell == Plan.Entrance || Cell == Plan.Exit || Cell == From || Held.Contains(Cell))
+		{
+			return false;
+		}
+		Closed.Cells[Closed.IndexOf(Cell)] = ECataclysmFloorCell::Solid;
+	}
+
+	// EVERY WALKABLE CELL LEFT, REACHED FROM WHERE THE PLAYER STANDS.
+	const TArray<int32> Distance = CataclysmFloorDistancesFrom(Closed, From);
+	for (int32 Index = 0; Index < Closed.Cells.Num(); ++Index)
+	{
+		if (Closed.Cells[Index] == ECataclysmFloorCell::Floor && Distance[Index] == INDEX_NONE)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 TArray<int32> CataclysmFloorDistancesFrom(const FCataclysmFloorPlan& Plan, FIntPoint Start)
 {
 	TArray<int32> Distance;
