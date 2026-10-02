@@ -10597,7 +10597,8 @@ bool FCataclysmInfernalRainTypedTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	Beat(Mode, BeatsFor(Effects::InfernalRainSecondsBetweenPatches) + 1);
+	// THE CADENCE AND THE FIREBALL'S FALL: a patch is placed where its fireball lands, not when it is drawn.
+	Beat(Mode, BeatsFor(Effects::InfernalRainSecondsBetweenPatches) + BeatsFor(Effects::InfernalRainFireballFallSeconds) + 1);
 	ACataclysmGroundZone* Patch = TheOnlyCircle(World);
 	if (!TestNotNull(TEXT("one patch fell"), Patch))
 	{
@@ -25694,8 +25695,9 @@ bool FCataclysmTwoPatchesOnceTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
+	// TWO CADENCES AND THE SECOND FIREBALL'S FALL: a patch is placed where its fireball lands, not when it is drawn.
 	ACataclysmDungeonGameMode* Mode = AFloorOfZones(*this, World, Player, {InfernalRain},
-		BeatsFor(Effects::InfernalRainSecondsBetweenPatches) * 2 + 2);
+		BeatsFor(Effects::InfernalRainSecondsBetweenPatches) * 2 + BeatsFor(Effects::InfernalRainFireballFallSeconds) + 2);
 	const TArray<ACataclysmGroundZone*> Patches = Mode ? ZonesIn(World) : TArray<ACataclysmGroundZone*>();
 	if (!TestTrue(TEXT("two cadences left at least two patches"), Patches.Num() >= 2)
 		|| !TestEqual(TEXT("each patch is marked as the row's"), Patches[0]->BurnsOnceASecondAs,
@@ -25835,8 +25837,9 @@ bool FCataclysmNoKindStacksTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
+	// TWO CADENCES AND THE SECOND FIREBALL'S FALL: a patch is placed where its fireball lands, not when it is drawn.
 	ACataclysmDungeonGameMode* Mode = AFloorOfZones(*this, World, Player, {InfernalRain},
-		BeatsFor(Effects::InfernalRainSecondsBetweenPatches) * 2 + 2);
+		BeatsFor(Effects::InfernalRainSecondsBetweenPatches) * 2 + BeatsFor(Effects::InfernalRainFireballFallSeconds) + 2);
 	const TArray<ACataclysmGroundZone*> Patches = Mode ? ZonesIn(World) : TArray<ACataclysmGroundZone*>();
 	if (!TestTrue(TEXT("two cadences left at least two patches"), Patches.Num() >= 2)
 		|| !TwoZonesOnOneSpot(*this, World, Player, Patches[0], Patches[1]))

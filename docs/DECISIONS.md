@@ -109,10 +109,18 @@ Seven new automation tests, all in `Cataclysm.DungeonModifierEffects.`:
   and is Demonic; no patch a beat before it lands; then one, where it was aimed, of the fireball's damage type, and the
   ball gone.
 
-**Three existing assertions change on purpose:** the controls in `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack` that said Infernal
+**Six existing tests change on purpose:** the controls in `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack` that said Infernal
 Rain and Singularity Wells are partly built now say both are built, as their own comments said they would be revisited;
-and `AFloorCarryingInfernalRainDropsTypedPatches` now finds a fireball on the due beat and its patch three beats later.
-The other Infernal Rain and Singularity Wells tests run as the regression check.
+`AFloorCarryingInfernalRainDropsTypedPatches` now finds a fireball on the due beat and its patch three beats later; and
+`AnInfernalRainPatchMeetsDemonicResistanceAndNotVoid`, `TwoOverlappingInfernalRainPatchesBurnAPlayerOncePerSecond` and
+`OverlappingZonesWithNoFloorKindStillEachBurn` each wait `BeatsFor(InfernalRainFireballFallSeconds)` beats longer, so
+the patch they read has landed. **Those three were missed when the branch was written** and failed the first whole
+suite, at `ced51e49`, each reading no patch or one too few; ruled a test-only change by the coordinating session on
+2026-10-02. The other four tests that read `InfernalRainSecondsBetweenPatches` need nothing: the cadence test and
+`OnAFloorOfTwoTypesEachZoneMeetsOnlyItsOwnResistance` wait for no fireball (the second waits Singularity Wells' 8
+seconds, past the patch's 5.75), and `AFloorCarryingInfernalRainDropsTypedPatches` and
+`InfernalRainAFireballFallsAndItsPatchIsPlacedWhereItLands` already wait for the fall. The other Infernal Rain and
+Singularity Wells tests run as the regression check.
 
 Two Python checks, `test_singularity_wells_row_still_says_pulling_orbs_pull_players_and_projectiles` and
 `test_infernal_rain_row_still_says_fireballs_rain_leaving_burning_ground`, pin the phrases the rulings rest on.
