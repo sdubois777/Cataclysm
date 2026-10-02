@@ -5806,6 +5806,14 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 				HoldWhere(It->GetActorLocation());
 			}
 		}
+		// AND EACH CREATURE'S PACK MIDDLE, which becomes a Morale Break group's middle, where its fled return.
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It) && It->PackMiddleCell != FIntPoint(-1, -1))
+			{
+				Held.Add(It->PackMiddleCell);
+			}
+		}
 		for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
 		{
 			if (IsValid(*It))
@@ -5834,9 +5842,14 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 	{
 		Held.Add(Waiting.Cell);
 	}
+	Held.Append(ArrivingPackSites);
 	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
 	{
 		Held.Add(Group.Middle);
+	}
+	for (const FInfernalRainFall& Fall : InfernalRainFalls)
+	{
+		HoldWhere(Fall.Where);
 	}
 	Held.Append(RealityRiftCells);
 	for (const FInfestedVein& Vein : InfestedVeins)
