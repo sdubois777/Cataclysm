@@ -82,7 +82,9 @@ the amount blocked), "every 3 blocks in quick succession", and "200%-400% of you
 
 - **The character sheet's block line now shows the character's own share**, where it showed the constant 50.
 - **Two rolls can be pinned for tests**: `Cataclysm.BlockRoll`, which the real damage path now passes where it passed -1,
-  and `Cataclysm.BlockNegationRoll`.
+  and `Cataclysm.BlockNegationRoll`. **Both default to -1, and -1 rolls for real**: `Resolve` uses a roll only when it is
+  0 or above, and otherwise draws `FMath::FRandRange(0, 100)` as it always did, so play is unchanged. Measured
+  2026-10-02 with `git grep`: nothing outside `game/Source/Cataclysm/Tests/` sets either, and no config file names them.
 - `block_damage_reduction` and `block_negation_chance` are on `StatsWithNoAttribute()` with probes, and
   `block_damage_reduction` is in `STATS_WITH_AN_ASKER` with a scaled probe, because own stacks scale it.
 
