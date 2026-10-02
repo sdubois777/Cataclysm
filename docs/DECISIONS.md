@@ -2,6 +2,77 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — Five Ravager nodes that say "on melee hit" now roll their Cripple and Weaken chances on melee hits only
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet, rows 218 to 223),
+`game/Data/PassiveEffects.csv` (regenerated: those six lines and no others),
+`tools/tests/test_passive_effects_match_the_node_text.py` (one test) and
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (one test). Issue
+[#944](https://github.com/sdubois777/Cataclysm/issues/944), the melee part, ruled by the coordinating session on
+2026-10-02 under the owner's delegation.
+
+### WHAT CHANGES IN PLAY
+
+Wearing Blows ("+2% chance to Cripple and +2% chance to Weaken on melee hit per point"), Hobbling Blows, Blunting
+Blows, Hamstring and Take the Edge Off each grant a chance "on melee hit". **Their six rows required no tag, so
+each chance rolled on every hit**, a spell's and a projectile's included. Each now requires `Type.Melee`, so the
+chance rolls only on a melee skill's hit.
+
+**Nothing new was built for it.** The chance is asked with the skill's tags by `UCataclysmAilments::ChancesFor`,
+and the Ravager's keystone Attrition already granted the same two stats with `Type.Melee`. The six rows were
+written in #1721 without the tag, and no decision to leave it off was recorded.
+
+### WHY THIS IS NOT THE SCOPE-TAG RULING
+
+**Issue [#1620](https://github.com/sdubois777/Cataclysm/issues/1620) recorded an owner ruling not to honour a
+melee scope**, and that ruling does not apply here. It covers the descriptive `Scope.*` label column on
+enchantment rows, whose own words do not say melee. These six rows say "on melee hit" in their own text, and the
+project holds a row to its text.
+
+### HOW IT IS CHECKED
+
+- **`test_a_chance_on_melee_hit_is_scoped_to_melee`**, in Python: every row granting `cripple_chance` or
+  `weaken_chance` on a node whose own text says "melee" requires `Type.Melee`. That is the six rows and
+  Attrition's two. Other rows on melee nodes are left out, and the test says why: their stats are melee by what
+  reads them.
+- **`Cataclysm.Passives.TheRavagersOnMeleeHitChancesRollOnAMeleeBlowAndNotOnASpell`**, in Unreal: the six rows
+  in the built asset each require `Type.Melee`. On a real Ravager with six points of Hobbling Blows and the roll
+  pinned at nought, a melee blow Cripples and a spell's blow does not. Both blows take over a tenth of the
+  target's maximum health, so the threshold is not what stops the spell.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-02 in the jovial-bouman worktree, on fix/ravager-melee-hit-tags-2 on `development` 7428484a.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | ab3e0d25 | Build: Succeeded - 35 actions, 30 files compiled |
+| The Unreal test against the old asset | ab3e0d25 | 1 tests performed, 0 succeeded, 1 failed: TheRavagersOnMeleeHitChancesRollOnAMeleeBlowAndNotOnASpell |
+| The asset, regenerated with the editor | eb0cc543 | 2 files changed: `DT_PassiveEffects.uasset` and DT_PassiveEffects' hash in `datatable_asset_sources.json`; both committed, nothing else |
+| The same test against the new asset | eb0cc543 | 1 tests performed, 1 succeeded, 0 failed |
+| Python of record | eb0cc543 | 5681 passed, 8 skipped in 321.60s; JUnit tests=5689 failures=0 errors=0 skipped=8 |
+| Whole suite | eb0cc543 | 3100 tests performed, 3099 succeeded, 1 failed: EveryPlainDemonicRowReachesARealPlayerAtItsFigureTimesThePoints |
+| Rebuild after the floor fix | 3d81dfa5 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.28.cpp |
+| Group rerun | 3d81dfa5 | Cataclysm.PlainRows.: 1 tests performed, 1 succeeded, 0 failed; Masochist 59, Ravager 51, Ritualist 64 plain rows checked |
+
+**The Unreal test's run against the old asset is the Unreal half of the proof.** Its kept log holds seven
+failed assertions, exactly those predicted: each of the six rows "is for melee hits only" was "" where
+`Type.Melee` was expected, and "and does not make a spell's blow Cripple" was true. **The Python half** is
+`test_a_chance_on_melee_hit_is_scoped_to_melee` through `prove_guard`, with `Type.Melee` taken off one row
+of the CSV: `PROVED: 1 failed, 22 passed in 1.02s | restored: 23 passed in 0.87s`.
+
+**The whole suite failed one test, on a pin this change moves and that was not predicted.**
+`Cataclysm.PlainRows.EveryPlainDemonicRowReachesARealPlayerAtItsFigureTimesThePoints` checks every Demonic
+row with no condition, scale, required tag or option, and holds a floor of how many each tree has. A row
+with a required tag is not plain by its own rule, so the six rows left the set. Counted from the CSV with
+that rule: 57 plain Ravager rows on 7428484a, 51 after. The test read 51 against a floor of 56. The
+coordinating session ruled the floor down to 51, test only, with the reason beside it, in 3d81dfa5. The
+floor still fails a filter that silently skips rows. **The suite of record is the whole suite above at
+eb0cc543 together with the group rerun at 3d81dfa5**, as the coordinating session ruled; no second whole
+suite was run.
+
+---
+
 ## 2026-10-02 — Runtime floor obstacles: Heaven's Quake raises pillars and Cryptquake collapses pits during play, both rows built
 
 **Affects:** new `game/Source/Cataclysm/Dungeon/CataclysmFloorObstacle.h` and `.cpp` (`ACataclysmFloorObstacle`);
