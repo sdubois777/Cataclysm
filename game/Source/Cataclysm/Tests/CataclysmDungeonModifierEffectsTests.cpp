@@ -2062,7 +2062,9 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	const FName UnstableDimensions(FCataclysmDungeonFloorRules::UnstableDimensionsKey);
+	// THE PARTLY BUILT EXAMPLE WAS UNSTABLE DIMENSIONS UNTIL 2026-10-01, when its reality became an enemy modifier on
+	// every creature and the row was built; Insanity Bursts, which waits on co-op, is the example now.
+	const FName PartlyBuilt(UCataclysmDungeonModifierEffects::InsanityBurstsKey);
 	const FName NotARow(TEXT("Not_A_Row"));
 
 	// THE UNBUILT CONTROL WAS THE EDICT OF SILENCE UNTIL THAT ROW WAS BUILT, and
@@ -2081,7 +2083,7 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 	const FName BlockedByARule(TEXT("Chaos_Echo_Chamber"));
 
 	const TArray<FCataclysmFloorModifierLine> Lines =
-		Layout::LinesFor({Starvation, BlockedByARule, UnstableDimensions, NotARow},
+		Layout::LinesFor({Starvation, BlockedByARule, PartlyBuilt, NotARow},
 						 Table);
 	if (!TestEqual(TEXT("one line per modifier"), Lines.Num(), 4))
 	{

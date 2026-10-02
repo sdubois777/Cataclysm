@@ -84,6 +84,28 @@ row still counts. **Affects** also `game/Source/Cataclysm/Character/CataclysmEne
   Unstable Dimensions has a reality unless it is floor 1, and one that did not has none.
 - The control in `Cataclysm.DungeonModifierEffects`' built-state test that said Unstable Dimensions is partly built now
   says it is built, and Insanity Bursts, which waits on co-op, takes its place as the partly built control.
+- `Cataclysm.DungeonModifierEffects.ThePanelMarksTheOnesThatDoNothing` hands the floor panel a partly built row and
+  asserts its line says "partly built". That row was Unstable Dimensions and is now Insanity Bursts. **It was missed
+  when the branch was written** and failed the first whole suite, at `bc8e145a`; ruled a test-only change by the
+  coordinating session on 2026-10-02. It is the second time a row moving to `Built` broke a test that used it as its
+  partly built example; the Field Medic's control was the first.
+
+**Tests that use a partly built row as their example**, grepped on 2026-10-02 for every key in `BuiltStateOf`'s partly
+list and every test expecting `ECataclysmModifierBuilt::Partly` or the panel's "partly built", so that whoever builds
+the next of these rows knows which tests to change. All are in `Cataclysm.DungeonModifierEffects.`:
+
+| Row | Test that expects it to be partly built |
+|---|---|
+| Insanity Bursts | `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack` (the partly built control) and `ThePanelMarksTheOnesThatDoNothing` (the panel's partly built example) |
+| Lightforged Walls | `LightforgedWallsFiguresAndTheRowPartly` |
+| Warzone Control Points | `WarzoneAlliesFiguresAndTheRowStaysPartly` |
+| Reality Rifts | none |
+
+Two Python checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`,
+`test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names_sections` and
+`test_warzone_row_still_names_allied_soldiers_and_shortcuts`, name the phrase their row's `Partly` rests on in their
+documentation; they read the row's text, not the built state, so building the row does not fail them, but their
+words must be revisited.
 
 **New:**
 
