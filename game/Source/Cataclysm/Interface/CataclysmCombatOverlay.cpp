@@ -58,6 +58,7 @@ namespace
 
 const TCHAR* UCataclysmCombatOverlay::BarBackingHex = TEXT("0A0F12");
 const TCHAR* UCataclysmCombatOverlay::HealthFillHex = TEXT("C0392B");
+const TCHAR* UCataclysmCombatOverlay::FollowerHealthFillHex = TEXT("3FA34D");
 const TCHAR* UCataclysmCombatOverlay::HealthReservedHex = TEXT("4A1712");
 const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
@@ -140,6 +141,16 @@ namespace
 			? AbilitySystem->GetSet<UCataclysmVitalAttributeSet>()
 			: nullptr;
 	}
+}
+
+const TCHAR* UCataclysmCombatOverlay::HealthFillHexFor(const AActor* Creature,
+														const AActor* LocalPlayerPawn)
+{
+	// THE LOCAL PLAYER'S AND NOBODY ELSE'S. With no local pawn, nothing is anybody's here.
+	return Creature && LocalPlayerPawn
+			&& UCataclysmCommand::CommanderOf(Creature) == LocalPlayerPawn
+		? FollowerHealthFillHex
+		: HealthFillHex;
 }
 
 FLinearColor UCataclysmCombatOverlay::ColourFromHex(const TCHAR* Hex)
