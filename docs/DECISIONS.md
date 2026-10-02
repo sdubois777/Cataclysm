@@ -35,6 +35,11 @@ in the minion's own code.
   filled. So Yoke, Held Fast, Brood, Hardy Stock and The First Pact's first option reach a thrall.
 - **Nothing changes for a summoned minion, a player, or an unowned creature.** The minion's two readings were
   moved into `UCataclysmCommand` unchanged, so the thrall's code and the minion's code share them.
+- **Warzone Control Points' allied soldiers get the same.** `ACataclysmDungeonGameMode::BringWarzoneAllies`
+  takes each soldier onto the player's side with `UCataclysmCommand::Subjugate`, so each is a thrall in the sense
+  this entry uses. It takes its commander's minion health when it arrives and minion damage on each blow. That
+  follows from the ruling that a subjugated creature is a minion, rather than being decided here. A player who
+  has spent no points on minion damage or minion health gets exactly the soldiers they got before.
 
 ### HOW EACH IS BUILT
 
