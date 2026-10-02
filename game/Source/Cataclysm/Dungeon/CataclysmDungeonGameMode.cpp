@@ -5777,9 +5777,9 @@ TArray<ACataclysmFloorObstacle*> ACataclysmDungeonGameMode::FloorObstaclesNow() 
 FIntPoint ACataclysmDungeonGameMode::ThePlayersCell() const
 {
 	const UWorld* World = GetWorld();
-	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
-	const APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
-	return (Pawn && CurrentFloor) ? CurrentFloor->CellOfWorld(Pawn->GetActorLocation()) : FIntPoint(-1, -1);
+	const APlayerController* FirstController = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* PlayersPawn = FirstController ? FirstController->GetPawn() : nullptr;
+	return (PlayersPawn && CurrentFloor) ? CurrentFloor->CellOfWorld(PlayersPawn->GetActorLocation()) : FIntPoint(-1, -1);
 }
 
 TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
