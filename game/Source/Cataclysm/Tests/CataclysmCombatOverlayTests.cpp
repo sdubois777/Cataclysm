@@ -1277,7 +1277,7 @@ bool FCataclysmOverlayFollowersAreGreen::RunTest(const FString&)
 	ACataclysmEnemyCharacter* Theirs = World->SpawnActor<ACataclysmEnemyCharacter>(
 		FVector(1000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
-		Player, FVector(1500.0f, 0.0f, 0.0f), /*Lifetime=*/0.0f, /*bBurns=*/false);
+		Player, FVector(1500.0f, 0.0f, 0.0f), /*Lifetime=*/30.0f, /*bBurns=*/false);
 	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("someone else"), Someone)
 		|| !TestNotNull(TEXT("a creature to take"), Thrall)
 		|| !TestNotNull(TEXT("an unowned creature"), Unowned)
