@@ -87,6 +87,20 @@ static TAutoConsoleVariable<float> CVarCritRoll(
 		 "critically strikes; 100 never does."),
 	ECVF_Default);
 
+/**
+ * Pins the block roll, 0-100, for tests, the same shape as `Cataclysm.CritRoll`
+ * above. -1, the default, rolls normally. 0 blocks whenever the defender has any
+ * chance to; 100 never blocks. Issue #1833 group E part 2: a row that acts on a
+ * block can only be tested through a real block if the block is certain, and a
+ * chance of 100 can still miss on a roll of exactly 100.
+ */
+static TAutoConsoleVariable<float> CVarBlockRoll(
+	TEXT("Cataclysm.BlockRoll"),
+	-1.0f,
+	TEXT("Pins the block roll, 0-100. -1 rolls normally. 0 blocks whenever there "
+		 "is any chance to; 100 never blocks."),
+	ECVF_Default);
+
 namespace
 {
 	/**
@@ -1041,7 +1055,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				UCataclysmDamageCalculation::Resolve(
 					Hit, GetOwningAbilitySystemComponent(),
 					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()),
-					/*EvasionRoll=*/-1.0f, /*BlockRoll=*/-1.0f,
+					/*EvasionRoll=*/-1.0f, CVarBlockRoll.GetValueOnAnyThread(),
 					CVarCritRoll.GetValueOnAnyThread());
 
 			// A CONTAGIOUS TOUCH KEEPS ONLY WHETHER IT WAS EVADED. Issues #1820 and #41. The row: "Enemies no longer
@@ -1170,7 +1184,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Cast<UCataclysmAbilitySystemComponent>(
 						GetOwningAbilitySystemComponent()))
 			{
-				if (Guarded->IsImmuneAfterLethalHit())
+				if (Guarded->IsDamageImmune())
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;
@@ -1199,7 +1213,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// `NotifyHealthChanged`. A damage over time tick is saved too: the
 				// sentence is about health falling, not about a hit. After Nothing
 				// Stops It, which saves first and spends nothing of this.
-				if (!Guarded->IsImmuneAfterLethalHit() && GetHealth() > 1.0f
+				if (!Guarded->IsDamageImmune() && GetHealth() > 1.0f
 					&& GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
 					&& Guarded->SavesLethalBlowByCrossing(GetHealth() / GetMaxHealth() * 100.0f))
 				{

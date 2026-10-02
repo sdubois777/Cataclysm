@@ -492,6 +492,32 @@ public:
 	static const TCHAR* NonCriticalDamageStat;
 
 	/**
+	 * The share of a blocked hit that a block removes, in per cent, on the
+	 * DEFENDER. Issue #1833 group E part 2, ruled 2026-10-02: "You block for
+	 * 65%-75% of damage instead of the normal 50%" is flat 15 to 25 on a base of
+	 * `BlockDamageReduction`, supplied by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`. Read through
+	 * `BlockShareOf`, which caps it at `MaxBlockDamageReduction`.
+	 */
+	static const TCHAR* BlockDamageReductionStat;
+
+	/**
+	 * The chance, in per cent, that a block removes ALL of the hit rather than
+	 * its share, on the DEFENDER. Issue #1833 group E part 2: "Blocking an attack
+	 * has a 20%-40% chance to fully negate all damage". Rolled inside the block,
+	 * so it covers whatever a block covers.
+	 */
+	static const TCHAR* BlockNegationChanceStat;
+
+	/**
+	 * The share a block removes from `Defender`'s hit: `BlockDamageReductionStat`
+	 * asked with the blow, `BlockDamageReduction` for a defender with no stat
+	 * line, held between 0 and `MaxBlockDamageReduction`.
+	 */
+	static float BlockShareOf(const UAbilitySystemComponent* Defender,
+							  const FCataclysmBlowContext& Blow);
+
+	/**
 	 * What share of its damage a projectile's landed contact keeps after its
 	 * first, as a percentage. Issue #1686: "Projectiles deal 20%-35% less
 	 * damage on each subsequent hit after the first" is a `more` row on it.
@@ -612,8 +638,20 @@ public:
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;
 
-	/** A successful block removes this share of the hit. */
+	/**
+	 * A successful block removes this share of the hit, and the base of
+	 * `BlockDamageReductionStat`.
+	 */
 	static constexpr float BlockDamageReduction = 50.0f;
+
+	/**
+	 * The most a block may remove, 85 per cent. LABELLED JUDGEMENT of 2026-10-02,
+	 * issue #1833 group E part 2, after Last Epoch, the one game of the three
+	 * researched whose block removes a share and states a cap: "Block
+	 * Effectiveness caps at 85% Damage Reduction" (maxroll.gg). Held below all of
+	 * a hit so "a chance to fully negate all damage" keeps a meaning.
+	 */
+	static constexpr float MaxBlockDamageReduction = 85.0f;
 
 	/** Slashing against health, and magic against energy shield. */
 	static constexpr float SubtypeBonus = 10.0f;
