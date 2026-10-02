@@ -2201,13 +2201,6 @@ public:
 	TArray<FCataclysmSharedBuffCopy> SharedBuffCopies;
 
 	/**
-	 * TAKES BACK EVERY COPY OF THIS CHARACTER'S BUFFS ITS ALLIES CARRY, so none
-	 * outlives the character that gave it. Issue #1833 group E part 4a. Neither
-	 * this class nor `UAbilitySystemComponent` overrode it before.
-	 */
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-	/**
 	 * Record that this character has just taken damage of a Cataclysm type
 	 * other than its own. Issue #975.
 	 *

@@ -56,7 +56,7 @@ public:
 
 	/**
 	 * Take back every copy `Wearer` has given. Called by a dead wearer's step
-	 * and when its ability system ends play, so no copy outlives its giver.
+	 * and when the wearer's character ends play, so no copy outlives its giver.
 	 *
 	 * @return how many were taken back.
 	 */

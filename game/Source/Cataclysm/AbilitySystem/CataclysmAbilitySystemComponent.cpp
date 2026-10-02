@@ -20,7 +20,6 @@
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
-#include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "Player/CataclysmPlayerState.h"
 // For AbilitySystemOf, which `WithTargetState` uses to read the health of the
 // character being hit. Issue #1515. An actor with no ability system is the
@@ -52,14 +51,6 @@
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
 	SetIsReplicatedByDefault(true);
-}
-
-void UCataclysmAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	// NO COPY OF THIS CHARACTER'S BUFFS OUTLIVES IT. Issue #1833 group E part
-	// 4a: an ally carrying one would otherwise keep it for good.
-	UCataclysmSharedBuffs::TakeBackAll(this);
-	Super::EndPlay(EndPlayReason);
 }
 
 int32 UCataclysmAbilitySystemComponent::DisplacementsInWindow() const

@@ -98,6 +98,13 @@ void ACataclysmCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(RegenerationTimer);
 	}
 
+	// AND NO COPY OF THIS CHARACTER'S BUFFS OUTLIVES IT. Issue #1833 group E part
+	// 4a. Here, on the character whose step gives them, and not on its ability
+	// system: a player's ability system belongs to its player state, which
+	// outlives the character, so an ending there never came for a player.
+	UCataclysmSharedBuffs::TakeBackAll(Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(this)));
+
 	Super::EndPlay(EndPlayReason);
 }
 
