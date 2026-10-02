@@ -73,6 +73,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/DateTime.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "UObject/Class.h"
@@ -11903,9 +11904,14 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 
 	// AND THE PULL, ruled 2026-10-01: toward the centre of the NEAREST well covering the player, once however many
 	// overlap, a beat's worth of `SingularityWellsPullCmPerSecond`, never past the centre. SWEPT, so a wall between
-	// stops it, and SET DIRECTLY rather than through `UCataclysmSkillEffects::ApplyPull`, whose diminishing-returns
-	// rule would halve each beat's pull within five seconds -- the way `ACataclysmTether::Check` moves its ends. The
-	// player only: the row says "players".
+	// stops it, and MOVED DIRECTLY rather than through `UCataclysmSkillEffects::ApplyPull`, whose diminishing-returns
+	// rule would halve each beat's pull within five seconds. The player only: the row says "players".
+	//
+	// THROUGH THE MOVEMENT COMPONENT'S `SafeMoveUpdatedComponent`, NOT A PLAIN SWEPT `SetActorLocation`. A character
+	// stood on the floor at its standing height touches the floor's ground, and a plain swept move that starts
+	// touching it is stopped before it begins: measured 2026-10-02, gap 0, start penetrating, 0 cm moved, the same
+	// move started 5 cm higher going the whole way. `SafeMoveUpdatedComponent` resolves the start penetration and
+	// retries, and a wall still stops the retried sweep.
 	const ACataclysmGroundZone* Pulling = nullptr;
 	float PullingCm = 0.0f;
 	for (const TWeakObjectPtr<ACataclysmGroundZone>& Well : SingularityWells)
@@ -11926,7 +11932,11 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 		FVector Toward = Pulling->GetActorLocation() - Feet;
 		Toward.Z = 0.0f;
 		const float Drawn = FMath::Min(PullingCm, Effects::SingularityWellsPullCmPerSecond * SecondsBetweenWaveChecks);
-		Player->SetActorLocation(Feet + Toward / PullingCm * Drawn, /*bSweep=*/true);
+		if (UCharacterMovementComponent* Movement = Player->GetCharacterMovement())
+		{
+			FHitResult Hit;
+			Movement->SafeMoveUpdatedComponent(Toward / PullingCm * Drawn, Player->GetActorQuat(), /*bSweep=*/true, Hit);
+		}
 	}
 
 	// AND NOW WHETHER TO PLACE ANOTHER. The cap is asked inside the predicate,

@@ -56,9 +56,11 @@ judgements.
   centre in 2.5 seconds, near Last Epoch's Black Hole drawing over its radius within its 2.75 seconds. Diablo III's 15
   yards in 2 seconds is a player's skill against monsters, far stronger, and is not the model for a hazard against the
   player.
-- **By a swept `SetActorLocation`**, as `ACataclysmTether::Check` moves its ends, **not
+- **By a swept move through the player's movement component, `SafeMoveUpdatedComponent`, not
   `UCataclysmSkillEffects::ApplyPull`**, whose diminishing-returns rule halves every displacement inside a five-second
-  window, so a pulsing pull would fade within about a second. Swept, so a wall stops it. **It never draws the player
+  window, so a pulsing pull would fade within about a second. Swept, so a wall stops it. **Not a plain swept
+  `SetActorLocation`, as first written** after `ACataclysmTether::Check`: see "Why the player is moved through its
+  movement component" below. **It never draws the player
   past the centre**, it pulls **once however many wells overlap**, toward the nearest, and it pulls **players only**:
   the row says "players".
 - **A projectile inside a well turns toward its centre, up to 120 degrees a second**,
@@ -115,10 +117,29 @@ The other Infernal Rain and Singularity Wells tests run as the regression check.
 Two Python checks, `test_singularity_wells_row_still_says_pulling_orbs_pull_players_and_projectiles` and
 `test_infernal_rain_row_still_says_fireballs_rain_leaving_burning_ground`, pin the phrases the rulings rest on.
 
+### Why the player is moved through its movement component
+
+The first window, on 2026-10-02 at `6b1e8a83`, stopped at proof Pa, **NOT A PROOF**: the three tests of the player's
+pull failed with the files restored as well as broken, each reading 0 cm drawn. The pull then used a plain swept
+`SetActorLocation`. **The cause, measured** by one instrumented run of `Cataclysm.DungeonModifierEffects.SingularityWells`
+whose readout was never committed: the player's capsule half height is 96, `GoToFloor` stands it at Z 96, and the top
+of the floor's `Ground` component is Z 0, so the capsule touches the floor with a gap of 0. Every plain swept move from
+there -- toward a well's centre, and sideways on open floor away from any well as the control -- reported a blocking
+hit on `Ground`, starting penetrating, at time 0, and moved 0 cm. The same sideways move started 5 cm higher moved the
+whole 30 cm. **So the player is moved through `UCharacterMovementComponent::SafeMoveUpdatedComponent`**, which resolves
+a sweep that starts penetrating and retries it; a wall still stops the retried sweep. Ruled by the coordinating session
+on 2026-10-02 under the owner's delegation, a judgement; raising the standing height instead was rejected, because it
+would move every placement on the floor.
+
+`ACataclysmTether::Check`, the precedent the pull first copied, is not evidence either way: its test,
+`Cataclysm.Skills.ATetherDragsTwoEnemiesBackWithinItsLength`, drags two fighters in a world with no floor. Every other
+plain swept move of a character is listed for one issue on the class and is not changed here.
+
 ### Not yet run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, the player's move removed; Pb, the pull
-sent through `UCataclysmSkillEffects::ApplyPull` instead; Pc, the projectile's turn removed.
+The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa2, the player's move removed (Pa again,
+at the new head); Pb, the pull sent through `UCataclysmSkillEffects::ApplyPull` instead; Pc, the projectile's turn
+removed.
 
 ---
 
