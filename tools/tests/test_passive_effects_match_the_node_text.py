@@ -3411,3 +3411,37 @@ def test_every_demonic_at_n_points_clause_has_a_row_from_n_points(effects, nodes
                 missing.append(f"{name} says 'At {n} points:' and no row applies "
                                f"from {n} points")
     assert not missing, missing
+
+#: The chances that roll on a hit and are asked WITH THE SKILL'S TAGS, through
+#: `UCataclysmAilments::ChancesFor`. A row granting one of them reaches only the
+#: skills its `RequiredTags` names, so that column is what scopes it. Issue #944.
+#:
+#: NOT EVERY ROW WHOSE NODE SAYS "MELEE". `bleed_on_crit_chance` is read off the
+#: attribute and the code itself asks whether the blow was melee, and the
+#: Onslaught and Every Swing Lands stats are melee by what reads them. Those
+#: carry no tag and need none, so they are outside this list.
+TAG_SCOPED_CHANCE_STATS = {"cripple_chance", "weaken_chance"}
+
+
+def test_a_chance_on_melee_hit_is_scoped_to_melee(effects, nodes):
+    """Issue #944. Six Ravager rows said "on melee hit" and required no tag, so
+    their Cripple and Weaken chances rolled on spells and projectiles too.
+    Attrition's two rows already carried `Type.Melee`; now every such row must.
+    """
+    checked = []
+    wrong = []
+    for row in effects:
+        if row["Stat"] not in TAG_SCOPED_CHANCE_STATS:
+            continue
+        node = nodes[row["Node"]]
+        option = row.get("Option") or "0"
+        text = (node["Description"] if option in ("", "0")
+                else node[f"Option{option}Description"])
+        if not re.search(r"\bmelee\b", text, re.IGNORECASE):
+            continue
+        checked.append(row["Name"])
+        if row["RequiredTags"] != "Type.Melee":
+            wrong.append(f"{row['Name']} ({row['Stat']}) requires {row['RequiredTags']!r}")
+    assert len(checked) == 8, (
+        f"expected the six on-melee-hit rows and Attrition's two, found {checked}")
+    assert not wrong, "a chance on a melee hit is not scoped to melee:\n" + "\n".join(wrong)

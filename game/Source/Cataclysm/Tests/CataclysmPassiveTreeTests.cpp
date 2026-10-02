@@ -15257,6 +15257,122 @@ bool FCataclysmPassiveAttritionOnARealCharacterTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------
+// The five "on melee hit" chance nodes, from their rows. Issue #944.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveOnMeleeHitChancesTest,
+	"Cataclysm.Passives.TheRavagersOnMeleeHitChancesRollOnAMeleeBlowAndNotOnASpell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Wearing Blows, Hobbling Blows, Blunting Blows, Hamstring and Take the Edge Off, each
+ * "+N% chance to Cripple" or "to Weaken" "on melee hit per point". Issue #944.
+ *
+ * UNTIL #944 THEIR SIX ROWS REQUIRED NO TAG, so each chance rolled on every hit, a spell's
+ * and a projectile's included. Each row now requires `Type.Melee`, as Attrition's two rows
+ * above already did, and the chance is asked with the skill's tags.
+ *
+ * READ FROM THE BUILT ASSET, so this fails until the DataTable is regenerated from the
+ * workbook. Then one node, Hobbling Blows, is proved in play on a real Ravager: with the
+ * roll pinned at nought, any chance above nothing lands, so a melee blow Cripples and a
+ * spell's blow from the same character does not.
+ */
+bool FCataclysmPassiveOnMeleeHitChancesTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmEnemiesStruckRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// EVERY ONE OF THE SIX ROWS, AS BUILT.
+	const TCHAR* const Nodes[] = {
+		TEXT("Ravager_basic_spine_007"), TEXT("Ravager_basic_c_stem0"),
+		TEXT("Ravager_basic_c_stem1"), TEXT("Ravager_basic_c_a0"), TEXT("Ravager_basic_c_b0"),
+	};
+	int32 Rows = 0;
+	for (const TCHAR* Node : Nodes)
+	{
+		for (const FCataclysmPassiveEffectRow* Row :
+				 UCataclysmPassiveTree::EffectsFor(Player.EffectTable, FName(Node)))
+		{
+			++Rows;
+			TestEqual(*FString::Printf(TEXT("%s's %s is for melee hits only"), Node, *Row->Stat),
+					  Row->RequiredTags, FString(TEXT("Type.Melee")));
+		}
+	}
+	TestEqual(TEXT("the five nodes carry six rows"), Rows, 6);
+
+	const FName Hobbling(TEXT("Ravager_basic_c_stem0"));
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Hobbling, 6);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	// A WEAPON'S WORTH OF DAMAGE, AFTER THE REFRESH. A test player has none.
+	Player.AbilitySystem->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), 1000.0f);
+
+	const FGameplayTagContainer Melee = MeleeTags();
+	const FGameplayTagContainer Spell(UCataclysmSkillEffects::SpellTag());
+	const FCataclysmAilmentKind* Cripple = UCataclysmAilments::KindNamed(TEXT("Cripple"));
+	if (!TestEqual(TEXT("the melee tag exists"), Melee.Num(), 1)
+		|| !TestEqual(TEXT("and the spell tag"), Spell.Num(), 1)
+		|| !TestNotNull(TEXT("Cripple is an ailment"), Cripple))
+	{
+		return false;
+	}
+
+	// ONE BLOW AT A FRESH ENEMY THE BLOW TAKES WELL OVER A TENTH OF.
+	constexpr float Pool = 4000.0f;
+	const auto Crippled = [&](const FGameplayTagContainer& Tags, float& OutTaken)
+	{
+		ACataclysmEnemyCharacter* Enemy = SpawnUndefendedEnemy(World);
+		UAbilitySystemComponent* EnemySystem = Enemy ? Enemy->GetAbilitySystemComponent() : nullptr;
+		if (!EnemySystem)
+		{
+			AddError(TEXT("An enemy could not be spawned."));
+			return false;
+		}
+		EnemySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), Pool);
+		EnemySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Pool);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, /*DamagePercent=*/100.0f, Tags);
+		OutTaken = Pool - EnemySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		const bool bCrippled = EnemySystem->HasMatchingGameplayTag(
+			FGameplayTag::RequestGameplayTag(FName(Cripple->TagName)));
+		Enemy->Destroy();
+		return bCrippled;
+	};
+
+	// THE BOTTOM OF THE ROLL: any chance above nothing lands.
+	const CataclysmTestWorld::FScopedAilmentRoll AtTheBottom(0.0f);
+
+	float Taken = 0.0f;
+	TestTrue(TEXT("Hobbling Blows makes a melee blow Cripple"), Crippled(Melee, Taken));
+	TestTrue(*FString::Printf(TEXT("a blow over a tenth: %.1f of %.0f"), Taken, Pool),
+			 Taken >= Pool / 10.0f);
+	TestFalse(TEXT("and does not make a spell's blow Cripple"), Crippled(Spell, Taken));
+	TestTrue(*FString::Printf(TEXT("though that blow is over a tenth too: %.1f"), Taken),
+			 Taken >= Pool / 10.0f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Kept Longer, from its row. Issue #1515.
 // ---------------------------------------------------------------------------
 
