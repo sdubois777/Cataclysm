@@ -99,10 +99,11 @@ namespace
 	 * at 30, Summon Imp at 10, and three deployables at 5 -- so the keystone
 	 * takes a thrall's to 25, an imp's to 5, and a deployable's to the floor.
 	 *
-	 * ONLY A THRALL'S RESERVE IS READ TODAY. Subjugate's check for room is the
-	 * one caller. Nothing reads what an imp or a deployable reserves, so for
-	 * those the reduction changes nothing until something does, and no test
-	 * can show it.
+	 * A THRALL'S AND AN IMP'S RESERVES ARE READ TODAY, A DEPLOYABLE'S IS NOT.
+	 * Subjugate's check for room and Summon Imp's -- the imp's since issue
+	 * #2172 -- are the callers. Nothing reads what a deployable reserves, which
+	 * is issue #1934's remaining half, so for those the reduction changes
+	 * nothing until something does, and no test can show it.
 	 *
 	 * AND ONLY WHERE THE ROW STATES A RESERVE ABOVE ZERO. A stat that adjusts a
 	 * designed figure must not bring the figure into existence: zero means "this
