@@ -559,8 +559,10 @@ JUDGED_NUMBERS = {
 #: issue #1833 group E part 2, from 447 over 363: five rows on five enchantments.
 #: AND 455 OVER 371 SINCE THE REFLECT, THE BLOCK COUNT AND THE ARMOUR NOVA,
 #: issue #1833 group E part 3, from 452 over 368: three rows on three enchantments.
-AUTHORED_ROWS = 455
-AUTHORED_ENCHANTMENTS = 371
+#: AND 458 OVER 374 SINCE THE BUFFS SHARED WITH ALLIES,
+#: issue #1833 group E part 4a, from 455 over 371: three rows on three enchantments.
+AUTHORED_ROWS = 458
+AUTHORED_ENCHANTMENTS = 374
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
