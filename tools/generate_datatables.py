@@ -6771,6 +6771,12 @@ def stats_with_no_attribute() -> set[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-10-02 FOR "Consecutive blocks within 3 seconds each block 5%-10%
+    # more damage", issue #1833 group E part 2, a row scaled by its own stacks.
+    # `UCataclysmDamageCalculation::BlockShareOf` asks it through `StatForSkill`
+    # on every blocked blow; `ProbeScaledBlockDamageReduction` measures that with
+    # the scale the row carries.
+    "block_damage_reduction",
     # ADDED 2026-09-30 FOR THE DEMON KING'S REGALIA'S 6-PIECE, issue #1833 group D
     # part 2: "becoming immune to all crowd control ... for 10 seconds", a row
     # scaled by its own stacks. `HeldSecondsAfterCrowdControlResistance` in
