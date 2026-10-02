@@ -106,8 +106,12 @@ Generic enemy modifier. The assertions are unchanged.
 ### Not yet run
 
 The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa, floor 1 no longer exempt; Pb, the
-reality no longer given in `SpawnPlacedCreature`; Pc, the reality drawn from the dungeon's rows instead of the floor's
-final list.
+reality no longer given in `SpawnPlacedCreature`; Pd, the reality counted toward a creature's rung shortfall again.
+
+**Pd replaced the registered Pc**, which drew the reality from the dungeon's rows instead of the floor's final list, as
+ruled by the coordinating session on 2026-10-02, to keep three proofs. **The reason:** the shortfall line is one piece
+of arithmetic that nothing else would notice breaking, while the ordering after Reality Twister keeps its own test,
+`UnstableDimensionsAddedByRealityTwisterStillImposesAReality`, in the whole suite, which still runs unbroken.
 
 ---
 
