@@ -439,11 +439,30 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 								  FGameplayTagContainer(), 0.0f),
 							  0.0f, 100.0f) / 100.0f
 		: 1.0f;
+	// AND WHETHER THIS STEP FILLS IT. Issue #1833 group E part 2: "When your
+	// energy shield fully recharges, release a nova". Below its maximum before
+	// the step and at it after; a ceiling below the maximum means the shield
+	// never fully recharges, a labelled judgement of 2026-10-02. A recharge only
+	// runs after the wait with no damage taken, so one fill is one event.
+	const float ShieldMaximum = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute());
+	const float ShieldBefore = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
 	TopUp(*AbilitySystem,
 		  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
 		  GainPerStep(ShieldRate, SecondsInStep), FGameplayTagContainer(),
 		  RechargeCeilingShare);
+	if (ShieldMaximum > 0.0f && ShieldBefore < ShieldMaximum
+		&& AbilitySystem->GetNumericAttribute(
+			   UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()) >= ShieldMaximum)
+	{
+		if (UCataclysmAbilitySystemComponent* Recharged =
+				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			Recharged->NoteEnergyShieldRecharged();
+		}
+	}
 
 	// AND THE RATE IS KEPT, for the minions sharing this shield. Issue #1515,
 	// Shared Blood: their shields refill at the same share of their maximum.

@@ -3822,6 +3822,65 @@ namespace CataclysmStatExemptionTest
 			Commanding < Clean);
 	}
 
+	/**
+	 * `block_damage_reduction`, scaled by own stacks, read by
+	 * `UCataclysmDamageCalculation::BlockShareOf` at the block step. Issue #1833
+	 * group E part 2, "Consecutive blocks within 3 seconds each block 5%-10% more
+	 * damage". Two defenders carry the line at its base of 50 with 10 flat per own
+	 * stack; one holds a stack. A blocked hit of 100 keeps 50 on the one and 40 on
+	 * the other.
+	 */
+	void ProbeScaledBlockDamageReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(TEXT("Probe:block_damage_reduction"));
+		const auto Prepare = [&Key](FScopedFighter& Defender)
+		{
+			FCataclysmStatModifier PerStack;
+			PerStack.Bucket = ECataclysmStatBucket::Flat;
+			PerStack.Source = ECataclysmModifierSource::Enchantment;
+			PerStack.Value = 10.0f;
+			PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+			PerStack.ScaleStep = 1.0f;
+			PerStack.ScaleMaxSteps = 7;
+			PerStack.StackKey = Key;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line =
+				Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::BlockDamageReductionStat));
+			Line.Base = UCataclysmDamageCalculation::BlockDamageReduction;
+			Line.Modifiers = {PerStack};
+			Defender.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+			Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 100.0f);
+		};
+		FScopedFighter Clean(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Stacked(World, /*AttackDamage=*/0.0f);
+		Prepare(Clean);
+		Prepare(Stacked);
+		Cast<UCataclysmAbilitySystemComponent>(Stacked.AbilitySystem)
+			->GrantOwnStack(Key, /*WindowSeconds=*/3.0f, /*Cap=*/7);
+
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		const auto Kept = [&Blow](FScopedFighter& Defender)
+		{
+			const FCataclysmDamageResult Result = UCataclysmDamageCalculation::Resolve(
+				Blow, Defender.AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/100.0f,
+				/*BlockRoll=*/0.0f);
+			return Result.bBlocked ? Result.DealtToHealth : -1.0f;
+		};
+		const float KeptClean = Kept(Clean);
+		const float KeptStacked = Kept(Stacked);
+		Test.TestEqual(TEXT("a block with no stack keeps half"), KeptClean, 50.0f, 0.01f);
+		Test.TestEqual(TEXT("block_damage_reduction is asked for, so a block holding one "
+							"stack of ten keeps forty"), KeptStacked, 40.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -3846,6 +3905,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
 			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
 			{TEXT("evasion"),                    &ProbeScaledEvasion},
+			{TEXT("block_damage_reduction"),     &ProbeScaledBlockDamageReduction},
 			{TEXT("resistance_cap"),             &ProbeScaledResistanceCap},
 		};
 		return Made;
@@ -4313,6 +4373,120 @@ namespace CataclysmStatExemptionTest
 					   Skill->ManaCostFor(Fighter.AbilitySystem), Before + 200.0f, 0.01f);
 	}
 
+	/** Pins one console variable at the console's priority until it goes out of scope. */
+	struct FPinnedRoll
+	{
+		FPinnedRoll(const TCHAR* Name, float Value)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		~FPinnedRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	/**
+	 * What one blow from an attacker of a thousand takes from `Defender`, which
+	 * blocks every blow: the block roll and the critical strike roll are pinned,
+	 * and the defender's block chance is 100.
+	 */
+	float BlockedBlowOn(FAutomationTestBase& Test, UWorld* World, FScopedFighter& Defender,
+		TMap<FName, FCataclysmStatInputs>&& DefenderLines)
+	{
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 100.0f);
+		if (DefenderLines.Num() > 0)
+		{
+			Cast<UCataclysmAbilitySystemComponent>(Defender.AbilitySystem)
+				->SetStatInputs(MoveTemp(DefenderLines));
+		}
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
+		Test.TestTrue(TEXT("the blow was blocked and did not critically strike"),
+			Result.bBlocked && !Result.bWasCritical);
+		return Result.DealtToHealth;
+	}
+
+	/**
+	 * `block_damage_reduction` is read by `UCataclysmDamageCalculation::Resolve`
+	 * at the block step, through `BlockShareOf`. Issue #1833 group E part 2. A
+	 * defender carrying it at its base of 50 plus 25 keeps a quarter of a blocked
+	 * blow, half what a plain defender keeps.
+	 */
+	void ProbeBlockDamageReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 0.0f);
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Carrying(World, /*AttackDamage=*/0.0f);
+		FCataclysmStatModifier More;
+		More.Bucket = ECataclysmStatBucket::Flat;
+		More.Source = ECataclysmModifierSource::Enchantment;
+		More.Value = 25.0f;
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Line =
+			Lines.FindOrAdd(FName(UCataclysmDamageCalculation::BlockDamageReductionStat));
+		Line.Base = UCataclysmDamageCalculation::BlockDamageReduction;
+		Line.Modifiers = {More};
+
+		const float Kept = BlockedBlowOn(Test, World, Plain, {});
+		const float KeptCarrying = BlockedBlowOn(Test, World, Carrying, MoveTemp(Lines));
+		if (!Test.TestTrue(TEXT("the plain blocked blow landed"), Kept > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a block removing 75 keeps half what a block removing 50 keeps"),
+			KeptCarrying, Kept * 0.5f, 0.01f);
+	}
+
+	/**
+	 * `block_negation_chance` is read by `UCataclysmDamageCalculation::Resolve`
+	 * inside the block step. Issue #1833 group E part 2. A defender carrying 100
+	 * of it keeps nothing of a blocked blow, with the negation roll pinned at 0.
+	 */
+	void ProbeBlockNegationChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 0.0f);
+		const FPinnedRoll Negation(TEXT("Cataclysm.BlockNegationRoll"), 0.0f);
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Carrying(World, /*AttackDamage=*/0.0f);
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(UCataclysmDamageCalculation::BlockNegationChanceStat)).Base = 100.0f;
+
+		const float Kept = BlockedBlowOn(Test, World, Plain, {});
+		const float KeptCarrying = BlockedBlowOn(Test, World, Carrying, MoveTemp(Lines));
+		Test.TestTrue(*FString::Printf(TEXT("the plain blocked blow kept something: %.1f"), Kept),
+			Kept > 0.0f);
+		Test.TestEqual(TEXT("the carrying defender kept nothing"), KeptCarrying, 0.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4339,6 +4513,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("enemies_cannot_move_away_within_metres"), &ProbeNowhereToRun},
 			{TEXT("moving_into_enemy_pushes_aside"), &ProbeShoulderThrough},
 			{TEXT("knockback_suppressed"), &ProbeSetStance},
+			{TEXT("block_damage_reduction"), &ProbeBlockDamageReduction},
+			{TEXT("block_negation_chance"), &ProbeBlockNegationChance},
 			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
 			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},

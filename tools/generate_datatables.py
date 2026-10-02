@@ -4389,6 +4389,21 @@ COMPLEMENT_RANGE_ENCHANTMENTS = frozenset({
     "Negative_Your_critical_strike_chance_cannot_exceed_30_50",
 })
 
+#: Enchantments whose sentence states its range as the stat's BASE PLUS the
+#: row's value, and that base. Issue #1833 group E part 2, ruled 2026-10-02:
+#: "You block for 65%-75% of damage instead of the normal 50%" is
+#: `block_damage_reduction` flat 15 to 25 on the base of 50 that
+#: `UCataclysmPlayerClassStats::EngineSuppliedBases` states. The item text and
+#: the value are both taken by position in the range, so at the lowest roll the
+#: text reads 65% and the value 15 makes 65; the two agree at every roll, as a
+#: complement range's do. Keyed by enchantment, for the reason the complement
+#: set gives. `tools/tests/test_enchantment_effects_match_the_row_text.py`
+#: checks that every name here is still needed.
+#:
+BASE_PLUS_RANGE_ENCHANTMENTS: dict[str, float] = {
+    "Positive_You_block_for_65_75_of_damage_instead_of_the_n": 50.0,
+}
+
 #: The scales that read a Scale Offset: how much of the reading is not counted.
 #: Issue #1686. Only the class point sentences state a threshold ("above 100",
 #: "above 50"), and the engine's `ValidateModifier` refuses an offset on any
@@ -4835,6 +4850,8 @@ HIT_FIRED_EVENTS = (
     # A BLOW BREAKING THE ENERGY SHIELD. Issue #1833 group D part 3, ruled
     # 2026-10-01: a hit causes it, so it takes the default.
     "energy_shield_broken",
+    # NOT `energy_shield_recharged`, issue #1833 group E part 2: no hit causes a
+    # recharge, which waits until no damage has been taken for a while.
     # THE WEARER'S FIRST BLOW TO GET THROUGH TO AN ENEMY. Issue #1833 group E
     # part 1, ruled 2026-10-01: a hit dealt, so it takes the default.
     "first_hit_dealt",
@@ -4970,6 +4987,16 @@ APPLY_STATUSES_FOR_SECONDS = (
 #: The longest a stated status may last. A sanity bound, as the clocks' is.
 MAX_STATUS_SECONDS = 10.0
 
+#: The action that OPENS THE WEARER'S NO-DAMAGE WINDOW for its value in seconds,
+#: above 0 and up to `MAX_DAMAGE_IMMUNITY_SECONDS`. Issue #1833 group E part 2,
+#: ruled 2026-10-02: "When you block an attack, you become immune to all damage
+#: for 3 seconds. (10s cd)". `UCataclysmAbilitySystemComponent::DamageImmunityAction`
+#: holds the same name.
+DAMAGE_IMMUNITY_ACTION = "damage_immunity"
+
+#: The longest no-damage window a row may open. A sanity bound.
+MAX_DAMAGE_IMMUNITY_SECONDS = 10.0
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -4979,7 +5006,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
     return (action in POOL_ACTIONS or action in COOLDOWN_RESET_ACTIONS
             or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION
             or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS
-            or action in REMAINING_DAMAGE_ACTIONS or action in APPLY_STATUS_ACTIONS)
+            or action in REMAINING_DAMAGE_ACTIONS or action in APPLY_STATUS_ACTIONS
+            or action == DAMAGE_IMMUNITY_ACTION)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -5078,6 +5106,12 @@ ACTION_ONLY_EVENTS = (
     # 2026-10-01. Mana is not a resource here, and the Fervour mechanics' own
     # spends raise nothing.
     "resource_consumed",
+    # THE ENERGY SHIELD FILLED BY REGENERATION, raised by
+    # `UCataclysmAbilitySystemComponent::NoteEnergyShieldRecharged` from
+    # `UCataclysmRegeneration::ApplyStep` when a step takes the shield from below
+    # its maximum to it. Issue #1833 group E part 2: "When your energy shield
+    # fully recharges, release a nova".
+    "energy_shield_recharged",
     # THE WEARER'S FIRST BLOW TO GET THROUGH TO AN ENEMY, raised by the player
     # character beside `hit_dealt` with the same tags, the target and what
     # reached its health. Issue #1833 group E part 1, ruled 2026-10-01: "Your
@@ -5176,6 +5210,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_apply_status_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
         return
+    if action == DAMAGE_IMMUNITY_ACTION:
+        _check_damage_immunity_action(index, who, action, event, fraction_of,
+                                      kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -5189,7 +5227,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {HEALTH_CAP_ACTION}; or a nearby action, "
             f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
-            f"{', '.join(APPLY_STATUS_ACTIONS)}.")
+            f"{', '.join(APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}.")
 
     known = granting_events()
     if not event:
@@ -5383,6 +5421,31 @@ def _check_apply_status_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} applies a status and "
                 f"states {column} {written!r}. Its value is a chance or seconds "
                 f"and nothing else, so the column must be empty.")
+
+
+def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
+                                  fraction_of: str, kind: str, raw,
+                                  headers: dict[str, int]) -> None:
+    """Everything a no-damage window row must say, and everything it must not.
+    Issue #1833 group E part 2. An event is required, because the window opens
+    AT something; the seconds are checked where the value is read. A fraction, a
+    value kind and a scale each mean nothing here, so each is refused rather
+    than dropped.
+    """
+    known = action_events()
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} opens a no-damage window on "
+            f"the event {event or '(none)'!r}, which the game does not fire. "
+            f"Known: {', '.join(sorted(known))}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} opens a no-damage window "
+                f"and states {column} {written!r}. Its value is seconds and "
+                f"nothing else, so the column must be empty.")
 
 
 def _check_nth_action(index: int, who: str, action: str, event: str,
@@ -5647,7 +5710,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action != HEALTH_CAP_ACTION \
                     and action not in NEARBY_ACTIONS \
                     and action not in REMAINING_DAMAGE_ACTIONS \
-                    and action not in APPLY_STATUS_ACTIONS:
+                    and action not in APPLY_STATUS_ACTIONS \
+                    and action != DAMAGE_IMMUNITY_ACTION:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5682,6 +5746,11 @@ def enchantment_effects(book) -> list[dict]:
             shown = ((100.0 - abs(low), 100.0 - abs(high))
                      if name in COMPLEMENT_RANGE_ENCHANTMENTS and low < 0
                      else (abs(low), abs(high)))
+            # OR ITS BASE PLUS THE VALUE, FOR THE FEW NAMED. See
+            # `BASE_PLUS_RANGE_ENCHANTMENTS`: each end the base plus the value.
+            if name in BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
+                base = BASE_PLUS_RANGE_ENCHANTMENTS[name]
+                shown = (base + low, base + high)
             if (low < 0) != (high < 0) or shown not in stated:
                 written = ", ".join(f"{a:g} to {b:g}" for a, b in stated)
                 raise DataError(
@@ -5786,6 +5855,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} acts on the "
                     f"characters nearby at {low:g} to {high:g} per cent. "
                     f"{action} takes above 0 and up to {bound:g}.")
+
+        # A NO-DAMAGE WINDOW'S VALUE IS SECONDS, above 0 and up to the bound.
+        # Issue #1833 group E part 2.
+        if action == DAMAGE_IMMUNITY_ACTION:
+            if not (0 < low <= MAX_DAMAGE_IMMUNITY_SECONDS
+                    and 0 < high <= MAX_DAMAGE_IMMUNITY_SECONDS):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} opens a no-damage "
+                    f"window of {low:g} to {high:g} seconds. It lasts above 0 and "
+                    f"up to {MAX_DAMAGE_IMMUNITY_SECONDS:g}.")
 
         # A STATUS ACTION'S VALUE IS A CHANCE, above 0 and up to 100, or SECONDS,
         # above 0 and up to the bound. Issue #1833 group E part 1. Neither has
@@ -6513,6 +6592,13 @@ ENGINE_SUPPLIED_BASES = {
         "UCataclysmDamageCalculation::NormalNonCriticalDamage, put on the "
         "character by UCataclysmPlayerClassStats::EngineSuppliedBases",
 
+    # AND THE SHARE A BLOCK REMOVES, at 50. Issue #1833 group E part 2, ruled
+    # 2026-10-02: "You block for 65%-75% of damage instead of the normal 50%" is
+    # a `flat` row of 15 to 25 on it.
+    "block_damage_reduction":
+        "UCataclysmDamageCalculation::BlockDamageReduction, put on the "
+        "character by UCataclysmPlayerClassStats::EngineSuppliedBases",
+
     # AND WHAT SHARE A PROJECTILE'S LANDED CONTACTS AFTER ITS FIRST KEEP, at
     # 100. Issue #1686: "Projectiles deal 20%-35% less damage on each
     # subsequent hit after the first" is a `more` row on it.
@@ -6685,6 +6771,12 @@ def stats_with_no_attribute() -> set[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-10-02 FOR "Consecutive blocks within 3 seconds each block 5%-10%
+    # more damage", issue #1833 group E part 2, a row scaled by its own stacks.
+    # `UCataclysmDamageCalculation::BlockShareOf` asks it through `StatForSkill`
+    # on every blocked blow; `ProbeScaledBlockDamageReduction` measures that with
+    # the scale the row carries.
+    "block_damage_reduction",
     # ADDED 2026-09-30 FOR THE DEMON KING'S REGALIA'S 6-PIECE, issue #1833 group D
     # part 2: "becoming immune to all crowd control ... for 10 seconds", a row
     # scaled by its own stacks. `HeldSecondsAfterCrowdControlResistance` in

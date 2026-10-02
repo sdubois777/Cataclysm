@@ -283,6 +283,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Set Stance's "cannot be knocked back", above zero meaning held, read
 		// by UCataclysmSkillEffects::ApplyKnockback. Issue #1755.
 		TEXT("knockback_suppressed"),
+		// The block's two figures, read in UCataclysmDamageCalculation::Resolve
+		// at the block step: the share a block removes, on a base of 50 that
+		// `EngineSuppliedBases` states, and the chance it removes all of the hit.
+		// Issue #1833 group E part 2.
+		TEXT("block_damage_reduction"),
+		TEXT("block_negation_chance"),
 		// The three Famine rows on potions, written by the dungeon floor rules and
 		// read by UCataclysmPotions: Hard Mode's flag, Recession's share off
 		// every kill, and Diminishing Returns' share off each drink. Issue #806.
@@ -1206,6 +1212,13 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			// player lands would be multiplied by zero.
 			{FName(UCataclysmDamageCalculation::NonCriticalDamageStat),
 			 UCataclysmDamageCalculation::NormalNonCriticalDamage},
+
+			// AND THE SHARE A BLOCK REMOVES, at the 50 a block has always
+			// removed. Issue #1833 group E part 2, ruled 2026-10-02: "You block
+			// for 65%-75% of damage instead of the normal 50%" adds its points to
+			// this base. Capped where it is read, in `BlockShareOf`.
+			{FName(UCataclysmDamageCalculation::BlockDamageReductionStat),
+			 UCataclysmDamageCalculation::BlockDamageReduction},
 
 			// AND WHAT SHARE A PROJECTILE'S LATER CONTACT KEEPS, at 100. Issue
 			// #1686, for the same reason as the entry above: its one row is a

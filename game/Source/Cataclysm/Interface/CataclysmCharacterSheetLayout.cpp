@@ -483,8 +483,11 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 	{
 		return FCataclysmStatLine(
 			Name, Percent(ReadStat(ASC, Stat)),
+			// THE CHARACTER'S OWN SHARE, since issue #1833 group E part 2 made it a
+			// stat: 50 unless a worn row raises it, and never above 85.
 			FString::Printf(TEXT("A block removes %s of a hit, not all of it."),
-							*Percent(UCataclysmDamageCalculation::BlockDamageReduction)));
+							*Percent(UCataclysmDamageCalculation::BlockShareOf(
+								ASC, FCataclysmBlowContext()))));
 	}
 
 	if (Stat == TEXT("damage_reduction"))

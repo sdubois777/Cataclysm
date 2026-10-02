@@ -757,6 +757,14 @@ public:
 	static const TCHAR* RandomDebuffStatus;
 
 	/**
+	 * The action that opens the wearer's no-damage window for its value in
+	 * seconds. Issue #1833 group E part 2, ruled 2026-10-02.
+	 * `tools/generate_datatables.py` holds the same name in
+	 * `DAMAGE_IMMUNITY_ACTION`. See `FCataclysmPoolAction::bDamageImmunity`.
+	 */
+	static const TCHAR* DamageImmunityAction;
+
+	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
 	 * of 2026-09-11 under the owner's delegation, recorded in
 	 * `docs/DECISIONS.md`: "nearby" or "close range" with no number is 5 m. Ruled
@@ -772,6 +780,15 @@ public:
 	 * that empties it does not.
 	 */
 	void NoteEnergyShieldBroken();
+
+	/**
+	 * Raise `energy_shield_recharged`: regeneration has just taken the energy
+	 * shield from below its maximum to its maximum. Issue #1833 group E part 2:
+	 * "When your energy shield fully recharges, release a nova". Called from
+	 * `UCataclysmRegeneration::ApplyStep` and nowhere else, so leech, a potion
+	 * or a heal that fills the shield is no recharge.
+	 */
+	void NoteEnergyShieldRecharged();
 
 	/**
 	 * Raise `player_death`. Issue #1833 group D part 3. Called once per death
@@ -1768,8 +1785,23 @@ public:
 	 */
 	void NoteLethalHitSurvived(float IntervalSeconds, float ImmuneSeconds);
 
-	/** Whether the no-damage window after a survived hit is still open. */
-	bool IsImmuneAfterLethalHit() const;
+	/**
+	 * Whether this character's no-damage window is open: all damage, ticks
+	 * included, emptied in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+	 * Opened by a survived lethal hit and, since issue #1833 group E part 2, by
+	 * `GrantDamageImmunity`. Named `IsImmuneAfterLethalHit` until then.
+	 */
+	bool IsDamageImmune() const;
+
+	/**
+	 * Open the no-damage window for `Seconds` from now, or keep it open to its
+	 * later end if it already runs longer. Issue #1833 group E part 2, ruled
+	 * 2026-10-02: "Archon's Aegis (6-Piece Bonus): When you block an attack, you
+	 * become immune to all damage for 3 seconds. (10s cd)". The same window a
+	 * survived lethal hit opens, because the two mean the same thing: all
+	 * damage, until a time.
+	 */
+	void GrantDamageImmunity(float Seconds);
 
 	/** When a lethal hit may next be survived, in world seconds. For tests. */
 	float LethalHitSurvivalAllowedAt() const
@@ -3203,7 +3235,7 @@ protected:
 	TMap<TWeakObjectPtr<const AActor>, float> ShoulderedThroughUntil;
 
 	/** Until when, in world seconds, this character takes no damage. -1 is not. */
-	float ImmuneAfterLethalHitUntilSeconds = -1.0f;
+	float DamageImmuneUntilSeconds = -1.0f;
 
 	/** When Sacrificial Ward may next spend a minion. -1 is never yet. */
 	float ShieldWardNextAllowedSeconds = -1.0f;

@@ -2,6 +2,127 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — The block share is a stat capped at 85%, a block may negate all of a hit, Archon's Aegis's block opens the no-damage window, and a recharged shield releases a nova
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (`BlockDamageReductionStat`,
+`BlockNegationChanceStat`, `MaxBlockDamageReduction`, `BlockShareOf`, the block step, `Cataclysm.BlockNegationRoll`),
+`CataclysmPlayerClassStats.cpp` (`StatsWithNoAttribute`, `EngineSuppliedBases`), `CataclysmAbilitySystemComponent.h`
+and `.cpp` (`DamageImmunityAction`, `GrantDamageImmunity`, the renamed `DamageImmuneUntilSeconds` and `IsDamageImmune`,
+`NoteEnergyShieldRecharged`, the immunity branch of `ActOnEvent`), `CataclysmStatPipeline.h`
+(`FCataclysmPoolAction::bDamageImmunity`), `CataclysmVitalAttributeSet.cpp` (`Cataclysm.BlockRoll`),
+`CataclysmRegeneration.cpp`, `CataclysmItem.cpp`, `CataclysmCharacterSheetLayout.cpp`, `tools/generate_datatables.py`, the
+new `game/Source/Cataclysm/Tests/CataclysmBlockShareTests.cpp` (five tests), five row tests in
+`CataclysmEnchantmentEffectTests.cpp`, three probes in `CataclysmStatExemptionTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`, `docs/README.md`,
+`game/Data/EnchantmentEffects.csv` and its asset. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833),
+group E part 2.
+
+### THE RESEARCH, fetched 2026-10-02
+
+| Game | What a block does | Cap | Damage over time | Source |
+| :-- | :-- | :-- | :-- | :-- |
+| Last Epoch | block chance, then Block Effectiveness reduces the hit, by a formula of effectiveness and area level | "Block Effectiveness caps at 85% Damage Reduction." A separate "Less Damage Taken From Block" is "multiplicative with Block Effectiveness" | "Similar to Armor, it does not apply to DoTs." | maxroll.gg/last-epoch/resources/defenses-explained, a guide site; the Last Epoch wiki cannot be read by the tools used |
+| Path of Exile 2 | "Blocking completely prevents the damage of an incoming Hit." | the CHANCE is capped: the Warbringer's Turtle Charm gives "Maximum Block chance is 75%" and "You take 20% of damage from Blocked Hits". **The default maximum of 50% is from a web-search summary only**: the guide page refused the fetch | not stated | poe2db.tw/us/Block and /us/Warbringer, game text |
+| Diablo IV | "By default, you reduce 15% of the damage from any blocked hit", raised by a shield's Blocked Damage Reduction | block chance "goes up to 100%"; no cap on the reduction stated | not stated | game8.co/games/Diablo-4/archives/478834, a guide site |
+
+**What it settles:** all three keep a block's share and its chance as two numbers, as this game already does. **What it
+does not settle:** a cap for this game. The 85 below is a judgement.
+
+### WHAT WAS RULED, 2026-10-02, UNDER THE OWNER'S DELEGATION
+
+1. **The share a block removes is the defender stat `block_damage_reduction`**, on a base of 50 supplied by
+   `UCataclysmPlayerClassStats::EngineSuppliedBases` (the constant `BlockDamageReduction` it always was). "You block for
+   65%-75% of damage instead of the normal 50%" is flat 15 to 25 on it; the row-text check and the generator read the
+   sentence's 65-75 as the base plus the value (`BASE_PLUS_RANGE_ENCHANTMENTS`). A creature carries no stat line and reads
+   the base.
+2. **LABELLED JUDGEMENT: the share is capped at 85 (`MaxBlockDamageReduction`)**, after Last Epoch, the one share-based
+   block researched that states a cap. Held below a whole hit so "a chance to fully negate all damage" keeps a meaning.
+3. **"Blocking an attack has a 20%-40% chance to fully negate all damage" is `block_negation_chance`**, rolled inside the
+   block, so it covers exactly what a block covers. **From the code:** the block step of
+   `UCataclysmDamageCalculation::Resolve` has no damage over time test, where the evasion step has one, so blocks, and now
+   negation, apply to ticks today. The owner's held question on blocking damage over time decides both; the coordinating
+   session added Last Epoch's "it does not apply to DoTs" to that question as evidence. **A chance of 100 always
+   negates**: the roll is `FMath::FRandRange(0, 100)`, which can be exactly 100 (`FRand` divides by its own maximum, so it
+   returns 1.0 itself), so the negation is compared as `Chance >= 100 || Roll < Chance`, the shape the status action
+   and the random damage over time already use. **The block roll beside it still compares strictly**, so a 100% block
+   chance fails about once in 32,768 blows, as evasion, critical strikes, ailments and the other percentage rolls do;
+   issue [#2201](https://github.com/sdubois777/Cataclysm/issues/2201) fixes them together with one shared helper, and E2
+   does not touch them.
+4. **LABELLED JUDGEMENT: "each block 5%-10% more damage" adds percentage points to the same stat**, as own stacks of
+   `block_damage_reduction` flat on `block`, for 3 seconds, with no cap of their own: the 85 cap bounds them. The
+   generator requires an own stack to state a cap, so the row states 7, the smallest that never binds before the 85
+   does (50 + 5 x 7 = 85 at the lowest roll). Rejected: a multiplicative "less damage taken from block", Last Epoch's
+   second stat, a new stat for one row.
+5. **Archon's Aegis's 6-piece opens the existing no-damage window.** The window a survived lethal hit opens empties ALL
+   damage, ticks included, until a world time (the ruling of 2026-09-23: "no damage" means all), and "immune to all
+   damage for 3 seconds" means the same, so it is reused, not copied. `GrantDamageImmunity(Seconds)` keeps the later of
+   the two ends. Reusing it changes nothing that exists: the lethal-hit save cannot fire inside an open window, because
+   the immunity check runs first. **Its names said "after lethal hit", and 9 references were renamed** to
+   `DamageImmuneUntilSeconds` and `IsDamageImmune`, measured 2026-10-02 with `git grep` over `game/Source` and
+   `tools/tests` (5 in `CataclysmAbilitySystemComponent.cpp`, 2 in its header, 2 in `CataclysmVitalAttributeSet.cpp`;
+   none in a test). The row is `damage_immunity` 3 on `block`, Trigger Cooldown 10.
+6. **"When your energy shield fully recharges" is `energy_shield_recharged`**, raised in `UCataclysmRegeneration::ApplyStep`
+   when a step takes the shield from below its maximum to its maximum. **LABELLED JUDGEMENTS:** only regeneration
+   recharges (leech, a potion or a heal that fills the shield is no recharge), and a recharge ceiling below the maximum
+   means the shield never fully recharges. A recharge runs only after the wait with no damage taken, so one fill is one
+   event; the row is no hit and takes no default cooldown. The nova is `smite_nearby` 50 to 100.
+
+**Held for the owner** (added to the held questions by the coordinating session): "100% of your block value is added to
+your retaliation damage", because a block removes a share, not an amount; which bonus Divine Retribution's 10-piece makes
+"permanent for the rest of the dungeon"; and whether a multi-projectile firing system should exist, for "+1-4
+projectiles". **Left for block part 2:** reflecting blocked damage (the block event would have to carry the attacker and
+the amount blocked), "every 3 blocks in quick succession", and "200%-400% of your armor as damage to nearby enemies".
+
+### WHAT WAS BUILT
+
+- **The rows** (EnchantmentEffects 447 to 452, over 363 to 368):
+
+  | Sentence | Row |
+  | :-- | :-- |
+  | You block for 65%-75% of damage instead of the normal 50% | `block_damage_reduction` flat 15 to 25 |
+  | Blocking an attack has a 20%-40% chance to fully negate all damage | `block_negation_chance` flat 20 to 40 |
+  | Consecutive blocks within 3 seconds each block 5%-10% more damage | own stacks of `block_damage_reduction` flat 5 to 10 on `block`, 3 s, cap 7 |
+  | Archon's Aegis (6-Piece Bonus): When you block an attack, you become immune to all damage for 3 seconds. (10s cd) | `damage_immunity` 3 on `block`, Trigger Cooldown 10 |
+  | When your energy shield fully recharges, release a nova dealing 50%-100% weapon damage to nearby enemies | `smite_nearby` 50 to 100 on `energy_shield_recharged` |
+
+- **The character sheet's block line now shows the character's own share**, where it showed the constant 50.
+- **Two rolls can be pinned for tests**: `Cataclysm.BlockRoll`, which the real damage path now passes where it passed -1,
+  and `Cataclysm.BlockNegationRoll`. **Both default to -1, and -1 rolls for real**: `Resolve` uses a roll only when it is
+  0 or above, and otherwise draws `FMath::FRandRange(0, 100)` as it always did, so play is unchanged. Measured
+  2026-10-02 with `git grep`: nothing outside `game/Source/Cataclysm/Tests/` sets either, and no config file names them.
+- `block_damage_reduction` and `block_negation_chance` are on `StatsWithNoAttribute()` with probes, and
+  `block_damage_reduction` is in `STATS_WITH_AN_ASKER` with a scaled probe, because own stacks scale it.
+
+### THE RUN
+
+E2 is commits `6ee11486` (engine), `8885adbe` (engine tests), `2f724919` (the asker and its scaled probe), `31af8905`
+(row tests), `ffd815f6` (this entry), `1d8763af` (rows), `c682f2bd` (the rolls' default, docs only), `e08b5e0b` (the
+negation guarded), `40a33fe2` (the ceiling test's set-up) and `2ffdaf0d` (asset), on development `9e6a83d2`, pushed as
+`feat/block-share-and-recharge-nova-2`. It was written on `946d1fb3` and moved when its turn came; the one conflict was
+this log's first entry, resolved with `tools/resolve_decisions_log.py`.
+
+| Step | Result |
+| :-- | :-- |
+| Rehearsals on `git archive` copies, at `ee1cdd0b` | without rows "11 failed, 5658 passed, 13 skipped", JUnit 5682: the 11 tests that need a git directory; with rows "12 failed": those and the stale asset hash, as predicted |
+| Compile-only scans, `e08b5e0b` | sweep 0 candidates over 14 files; check 7 read 181 definitions, none flagged; check 6 0 candidates; `check_resolved_cpp` on the 14 changed C++ files, 0 complaints; one engine-name hit (`World`, a line the file already has 60 times) and five access candidates, all read and explained |
+| Build 1, `e08b5e0b` | "Succeeded - 32 actions, 29 files compiled" |
+| `Cataclysm.BlockShare.`, first run | **"5 tests performed, 4 succeeded, 1 failed": NOT AS PREDICTED.** The ceiling half of the recharge test: its set-up wrote the recharge ceiling as a stat line of base 50, and the regeneration step reads that stat with `StatAppliedTo`, which ignores a recorded base on purpose, so the ceiling read as none. A fault in the test, not in the engine; stopped and asked |
+| The ceiling written as flat 50 on base 0, the shipped row's shape, `40a33fe2` | build "4 actions, 1 file compiled"; the group "5 tests performed, 5 succeeded, 0 failed", 0 ensures |
+| Proof A, the 85 cap removed | PROVED: the predicted test, 2 failed assertions as predicted; restored 5 of 5 |
+| Proof B, the negation removed | PROVED: the predicted test, 3 failed assertions as predicted, at rolls of 0, exactly 100 and 40; restored 5 of 5 |
+| Proof C, the immunity action opening nothing | PROVED: the predicted test, 3 failed assertions as predicted; restored 5 of 5 |
+| Asset rebuild, `2ffdaf0d` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` (447 to 452 rows) |
+| Row tests, `Cataclysm.Enchantments.` | "189 tests performed, 189 succeeded, 0 failed"; the five new row tests each Result={Success}; no "was ignored", no failed assertion, no ensure |
+| Whole suite, `2ffdaf0d` | "3083 tests performed, 3083 succeeded, 0 failed"; 3083 declared, gap 0, as registered (3073 + 10); no "was ignored", no failed assertion, no ensure |
+| Python of record, `ffd815f6` | "5677 passed, 8 skipped in 310.73s"; JUnit 5685 (5676 + 9), 0 failures |
+| Python at the head, `2ffdaf0d` | "5677 passed, 8 skipped in 308.34s"; JUnit 5685, 0 failures |
+
+Every broken file's hash was the same after its proof, and each proof's broken run was kept, so every assertion count
+above was measured.
+
+---
+
 ## 2026-10-01 — Unstable Dimensions corrected: from floor 2, every creature of a floor carries one Generic enemy modifier, the floor's "new reality", instead of the floor gaining a dungeon row
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (`EveryCreatureModifier`, rule 3 of

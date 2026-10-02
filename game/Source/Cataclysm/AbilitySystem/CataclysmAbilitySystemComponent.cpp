@@ -1855,7 +1855,7 @@ void UCataclysmAbilitySystemComponent::NoteLethalHitSurvived(float IntervalSecon
 
 	const float Now = World->GetTimeSeconds();
 	LethalHitSurvivalNextAllowedSeconds = Now + IntervalSeconds;
-	ImmuneAfterLethalHitUntilSeconds =
+	DamageImmuneUntilSeconds =
 		ImmuneSeconds > 0.0f ? Now + ImmuneSeconds : -1.0f;
 }
 
@@ -1918,11 +1918,23 @@ void UCataclysmAbilitySystemComponent::NoteMinionSpentForShield(float IntervalSe
 	ShieldWardNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
 }
 
-bool UCataclysmAbilitySystemComponent::IsImmuneAfterLethalHit() const
+void UCataclysmAbilitySystemComponent::GrantDamageImmunity(float Seconds)
 {
 	const UWorld* World = GetWorld();
-	return World && ImmuneAfterLethalHitUntilSeconds >= 0.0f
-		&& World->GetTimeSeconds() < ImmuneAfterLethalHitUntilSeconds;
+	if (!World || Seconds <= 0.0f)
+	{
+		return;
+	}
+	// THE LATER OF THE TWO ENDS, so a short window never cuts a longer one short.
+	DamageImmuneUntilSeconds =
+		FMath::Max(DamageImmuneUntilSeconds, World->GetTimeSeconds() + Seconds);
+}
+
+bool UCataclysmAbilitySystemComponent::IsDamageImmune() const
+{
+	const UWorld* World = GetWorld();
+	return World && DamageImmuneUntilSeconds >= 0.0f
+		&& World->GetTimeSeconds() < DamageImmuneUntilSeconds;
 }
 
 void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
@@ -2365,7 +2377,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	MinionDeathReplacementNextAllowedSeconds = -1.0f;
 	MinionExplosionReplacementNextAllowedSeconds = -1.0f;
 	LethalHitSurvivalNextAllowedSeconds = -1.0f;
-	ImmuneAfterLethalHitUntilSeconds = -1.0f;
+	DamageImmuneUntilSeconds = -1.0f;
 	ShieldWardNextAllowedSeconds = -1.0f;
 
 	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
@@ -2491,6 +2503,11 @@ float UCataclysmAbilitySystemComponent::SecondsSinceBasicAttackUsed() const
 void UCataclysmAbilitySystemComponent::NoteEnergyShieldBroken()
 {
 	ActOnEvent(FName(TEXT("energy_shield_broken")));
+}
+
+void UCataclysmAbilitySystemComponent::NoteEnergyShieldRecharged()
+{
+	ActOnEvent(FName(TEXT("energy_shield_recharged")));
 }
 
 void UCataclysmAbilitySystemComponent::NotePlayerDeath()
@@ -3257,6 +3274,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusSecondsAction =
 	TEXT("apply_status_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
+const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 
 namespace
 {
@@ -4218,6 +4236,20 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						Self, const_cast<AActor*>(EventTarget), Action.Percent,
 						Action.Ailment, /*bEndEach=*/false);
 				}
+				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// THE WEARER'S NO-DAMAGE WINDOW, for the row's seconds. Issue #1833 group
+		// E part 2, ruled 2026-10-02. Landed only, once per row per event, and
+		// its cooldown starts when it opens: "(10s cd)".
+		if (Action.bDamageImmunity)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				GrantDamageImmunity(Action.Percent);
 				NoteTriggerFired(Action);
 			}
 			continue;

@@ -3851,6 +3851,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FString StatusName;
+
+	/**
+	 * Set, this action opens the wearer's no-damage window for `Percent` seconds
+	 * instead of moving a pool. Issue #1833 group E part 2, ruled 2026-10-02:
+	 * "When you block an attack, you become immune to all damage for 3 seconds".
+	 * See `UCataclysmAbilitySystemComponent::GrantDamageImmunity`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bDamageImmunity = false;
 };
 
 /**

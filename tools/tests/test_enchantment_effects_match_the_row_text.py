@@ -555,8 +555,10 @@ JUDGED_NUMBERS = {
 #: issue #1833 group D part 5, from 432 over 351: five rows on three enchantments.
 #: AND 447 OVER 363 SINCE THE STATUS ACTIONS AND TWO PLAIN-DATA ROWS,
 #: issue #1833 group E part 1, from 437 over 354: ten rows on nine enchantments.
-AUTHORED_ROWS = 447
-AUTHORED_ENCHANTMENTS = 363
+#: AND 452 OVER 368 SINCE THE BLOCK SHARE AND THE RECHARGE NOVA,
+#: issue #1833 group E part 2, from 447 over 363: five rows on five enchantments.
+AUTHORED_ROWS = 452
+AUTHORED_ENCHANTMENTS = 368
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -795,6 +797,12 @@ def test_a_range_is_one_the_words_state(effects, enchantments):
         shown = ((100.0 - abs(low), 100.0 - abs(high))
                  if row["Enchantment"] in gen.COMPLEMENT_RANGE_ENCHANTMENTS
                  and low < 0 else (abs(low), abs(high)))
+        # OR ITS BASE PLUS THE VALUE, FOR THE ENCHANTMENTS THE GENERATOR NAMES.
+        # Issue #1833 group E part 2: "You block for 65%-75% of damage instead
+        # of the normal 50%" is 15 to 25 on a base of 50.
+        if row["Enchantment"] in gen.BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
+            base = gen.BASE_PLUS_RANGE_ENCHANTMENTS[row["Enchantment"]]
+            shown = (base + low, base + high)
         if ((low < 0) != (high < 0)
                 or shown not in gen.enchantment_ranges(text)):
             wrong.append(f"{row['Name']}: {low:g} to {high:g} against {text!r}")
@@ -1116,6 +1124,24 @@ def test_every_complement_range_enchantment_is_still_needed(effects, enchantment
         assert needing, (
             f"no row of {name} states its range as a complement, so it should "
             f"leave COMPLEMENT_RANGE_ENCHANTMENTS")
+
+
+def test_every_base_plus_range_enchantment_is_still_needed(effects, enchantments):
+    """The same argument for the generator's `BASE_PLUS_RANGE_ENCHANTMENTS`:
+    each must still have a row whose range its sentence states only as the base
+    plus the value. Issue #1833 group E part 2."""
+    for name, base in sorted(gen.BASE_PLUS_RANGE_ENCHANTMENTS.items()):
+        needing = []
+        for r in effects:
+            if r["Enchantment"] != name:
+                continue
+            low, high = float(r["ValueLow"]), float(r["ValueHigh"])
+            stated = gen.enchantment_ranges(words_of(r, enchantments))
+            if (abs(low), abs(high)) not in stated and (base + low, base + high) in stated:
+                needing.append(r["Name"])
+        assert needing, (
+            f"no row of {name} states its range as the base {base:g} plus the "
+            f"value, so it should leave BASE_PLUS_RANGE_ENCHANTMENTS")
 
 
 def test_the_complement_list_holds_what_it_is_measured_to_hold():

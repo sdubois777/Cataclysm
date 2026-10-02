@@ -2606,6 +2606,90 @@ class TestApplyStatusAndItsEvents:
         with pytest.raises(gen.DataError, match="must be empty"):
             gen.enchantment_effects(self.stagger(tmp_path, {"Fraction Of": "maximum"}))
 
+class TestDamageImmunityAndTheShieldRecharge:
+    """A no-damage window opened for a row's seconds, and the event of the
+    energy shield filled by regeneration. Issue #1833 group E part 2, ruled
+    2026-10-02: "Archon's Aegis (6-Piece Bonus): When you block an attack, you
+    become immune to all damage for 3 seconds. (10s cd)" and "When your energy
+    shield fully recharges, release a nova dealing 50%-100% weapon damage to
+    nearby enemies"."""
+
+    IMMUNE_WORDS = ("Archon's Aegis (6-Piece Bonus): When you block an attack, you "
+                    "become immune to all damage for 3 seconds. (10s cd)")
+    IMMUNE = gen.row_name("Positive", IMMUNE_WORDS[:48])
+    NOVA_WORDS = ("When your energy shield fully recharges, release a nova dealing "
+                  "50%-100% weapon damage to nearby enemies")
+    NOVA = gen.row_name("Positive", NOVA_WORDS[:48])
+    LONG_WORDS = "When you block an attack, you become immune to all damage for 12 seconds"
+    LONG = gen.row_name("Positive", LONG_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [IMMUNE_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [NOVA_WORDS, "Generic", 4, "Keyword.Shield", None,
+         None, None, None, None],
+        [LONG_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "immunity.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def immune(self, tmp_path, changes):
+        values = {"Enchantment": self.IMMUNE, "Effect": self.IMMUNE_WORDS,
+                  "Action": "damage_immunity", "Action Event": "block",
+                  "Value Low": 3, "Trigger Cooldown": 10}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_an_immunity_row_is_carried_through_with_its_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.immune(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "damage_immunity", "block", 3.0, "", 10.0)
+
+    def test_an_immunity_row_on_a_block_takes_the_quarter_second_when_it_states_none(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.immune(tmp_path, {"Trigger Cooldown": None}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_an_immunity_row_on_an_event_the_game_does_not_fire_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="does not fire"):
+            gen.enchantment_effects(self.immune(tmp_path, {"Action Event": "parried"}))
+
+    def test_an_immunity_past_the_bound_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 10"):
+            gen.enchantment_effects(self.immune(tmp_path, {
+                "Enchantment": self.LONG, "Effect": self.LONG_WORDS,
+                "Value Low": 12, "Trigger Cooldown": None}))
+
+    def test_an_immunity_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.immune(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_the_shield_recharge_is_an_event_a_nova_may_hang_on(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.NOVA, "Effect": self.NOVA_WORDS,
+            "Action": "smite_nearby", "Action Event": "energy_shield_recharged",
+            "Value Low": 50, "Value High": 100}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"]) == ("smite_nearby", "energy_shield_recharged", 50.0, 100.0)
+
+    def test_the_shield_recharge_is_fired_by_the_game_and_is_no_hit(self, tmp_path):
+        assert "energy_shield_recharged" in gen.ACTION_ONLY_EVENTS
+        assert "energy_shield_recharged" not in gen.HIT_FIRED_EVENTS
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.NOVA, "Effect": self.NOVA_WORDS,
+            "Action": "smite_nearby", "Action Event": "energy_shield_recharged",
+            "Value Low": 50, "Value High": 100}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
