@@ -98,8 +98,9 @@
  *   is real and is covered, but a debuff that has a number to apply has no
  *   route to apply it. A self buff now does; see the buff tests at the end.
  *
- *   Martyr's Ember's store. It needs a damage-taken hook that does not exist.
- *   Issue #192.
+ *   (Martyr's Ember's store was listed here until 2026-10-02. It is built and
+ *   tested: Cataclysm.Skills.MartyrsEmberStoresDamageTakenAndSpendsItOnBlowsLanded
+ *   and the two after it. Issue #192.)
  */
 
 namespace CataclysmSkillTest

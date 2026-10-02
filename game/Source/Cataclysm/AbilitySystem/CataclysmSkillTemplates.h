@@ -694,10 +694,11 @@ private:
  * scoped to the skill's own Element tag so it reaches Demonic skills and no
  * others. Issue #166.
  *
- * MARTYR'S EMBER IS STILL ONLY A DURATION. "Store 40% of all damage you take and
- * spend it as bonus fire damage on your hits" needs a damage-taken hook and a
- * store that drains as it is spent, neither of which the stat modifier route
- * above provides. Issue #192.
+ * MARTYR'S EMBER DOES NOT GO THROUGH THAT ROUTE. "Store 40% of all damage you
+ * take and spend it as bonus fire damage on your hits" is a store rather than a
+ * number, so it is kept on this class: `NoteBlowTaken` adds to it and
+ * `NoteBlowLanded` spends it. Built for issue #1162, which closed issue #192;
+ * `docs/DECISIONS.md`, 2026-09-02, records how it holds and spends.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmSelfBuffSkill : public UCataclysmSkillTemplate
