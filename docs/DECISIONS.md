@@ -2,6 +2,70 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — A block names its attacker and what it removed: a reflect pays a share back as retaliation does, three blocks in three seconds release a shockwave, and a block may strike nearby enemies by armour
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`
+(`FCataclysmDamageResult::DamageBlocked`), `CataclysmAbilitySystemComponent.h` and `.cpp` (`ReflectBlockedAction`,
+`SmiteNearbyByArmourAction`, `NoteBlocked(Attacker, DamageBlocked)` beside the bare `NoteBlocked`, `CountedToNth`, the
+reflect branch of `ActOnEvent`, the armour branch of `ActOnNearby`), `CataclysmStatPipeline.h`
+(`ECataclysmNearbyAction::SmiteByArmour`, `FCataclysmPoolAction::bReflectBlocked` and `CountWindowSeconds`),
+`CataclysmVitalAttributeSet.cpp`, `CataclysmItem.cpp`, `tools/generate_datatables.py`, the new
+`game/Source/Cataclysm/Tests/CataclysmBlockReflectTests.cpp` (four tests), three row tests in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`, `docs/README.md`,
+`game/Data/EnchantmentEffects.csv` and its asset. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833),
+group E part 3.
+
+### THE RESEARCH, fetched 2026-10-02
+
+| Game | What hits the attacker back | Its size | What it ignores or what triggers it | Source |
+| :-- | :-- | :-- | :-- | :-- |
+| Last Epoch | "X% Damage Reflected" | a share of the damage taken. **That the share is of the damage after the player's own mitigation is from a web-search summary only**: the page fetched does not say | "Reflect Damage does not Hit and instead directly reduces Health and Ward"; it "ignores all enemy mitigations except for more/less/increased Damage Taken Modifiers"; it "does not apply Ailments or Leech Health"; it "cannot be scaled by regular Modifiers" | maxroll.gg/last-epoch/build-guides/reflect-shaman-guide, its FAQ, a guide site |
+| Path of Exile 2 | Thorns | flat: "(10-15) to (20-25) Physical Thorns damage" | an item line "Thorns damage is triggered by all Hits" implies a narrower default; nothing on blocking | pathofexile2.wiki.fextralife.com/Crown_of_the_Pale_King_Cultist_Crown, item text |
+| Diablo IV | Thorns | flat, scaled by the main attribute | "Deals damage to attackers when hit by direct attacks Excludes attacks that are entirety damage over time"; nothing on blocking | diablo4.wiki.fextralife.com/Thorns |
+
+**What it settles:** only Last Epoch returns a SHARE of damage, which is the shape of "Reflect 20%-100% of damage
+blocked". **What it does not settle:** none of the three ties a reflect to a block, so "of damage blocked" is this game's
+own, and so is how the reflected amount lands.
+
+### WHAT WAS RULED, 2026-10-02, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **"Damage blocked" is what the block removed from the blow**, before armour and resistance: its share, or all of it
+   on a negation. The damage result records it (`DamageBlocked`), and `block` now carries it as its amount and the
+   attacker as its other character. No row on `block` read either before, measured 2026-10-02: the eight block rows
+   carry no condition and none takes a fraction of its event's amount. The bare `NoteBlocked()` stays, for the callers
+   that name nobody.
+2. **A reflect lands as this game's retaliation does**, through `ApplyDirectDamage`: it meets the attacker's armour and
+   resistance, it cannot be retaliated against, it cannot critically strike or leech, and no increase of the wearer's
+   scales it. One kind of returned damage, not two; Last Epoch's reflect, which ignores the attacker's mitigation, was
+   the alternative and was rejected for that reason.
+3. **"Blocking attacks deals 200%-400% of your armor as damage to nearby enemies" is a nearby blow of the wearer's armour
+   times the share**, on each enemy within 5 metres, meeting each one's mitigation as a blow does
+   (`smite_nearby_by_armor`). The armour is the wearer's own, asked as a blow asks it.
+4. **"Every 3 blocks in quick succession" is 3 blocks within 3 seconds**, matching the consecutive-blocks row, then
+   `smite_nearby`; the count starts again once it acts. Built as Every Nth with Stack Seconds as the window, a count
+   any nearby action may now carry: only events inside the window count, so it is the last three that must fall within
+   it.
+
+"Block value" stays held for the owner, as before.
+
+### WHAT WAS BUILT
+
+- **The rows** (EnchantmentEffects 452 to 455, over 368 to 371), each taking the quarter-second trigger cooldown every
+  action on `block` takes:
+
+  | Sentence | Row |
+  | :-- | :-- |
+  | Reflect 20%-100% of damage blocked back at attackers | `reflect_blocked` 20 to 100 on `block` |
+  | Every 3 blocks in quick succession triggers a shockwave dealing 100%-200% weapon damage to nearby enemies | `smite_nearby` 100 to 200 on `block`, Every Nth 3, Stack Seconds 3 |
+  | Blocking attacks deals 200%-400% of your armor as damage to nearby enemies | `smite_nearby_by_armor` 200 to 400 on `block` |
+
+- The generator now reads Stack Seconds on a nearby action as the window of its count, requires one when Every Nth is
+  stated, and refuses Stack Seconds on a nearby action with no count, which it used to drop without a word.
+
+---
+
 ## 2026-10-02 — The block share is a stat capped at 85%, a block may negate all of a hit, Archon's Aegis's block opens the no-damage window, and a recharged shield releases a nova
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (`BlockDamageReductionStat`,
