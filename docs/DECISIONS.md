@@ -216,8 +216,8 @@ In `Cataclysm.DungeonModifierEffects.`, on floors the game mode builds:
 - `HeavensQuakeWarnsThenRaisesAPillarNearThePlayer`: nothing before 6 s; a warning in the band; raised a second later,
   its cell rock in the plan; the panel.
 - `HeavensQuakeCancelsAPillarThePlayerStepsUnder`.
-- `HeavensQuakeStopsAtSixPillarsAndNeverCutsTheFloor`: six and no more after twice the cap's cadences; no walkable cell
-  cut off from the player; the entrance and exit walkable.
+- `HeavensQuakeStopsAtSixPillarsAndNeverCutsTheFloor`: in the floor's most open area, six and no more after twice the
+  cap's cadences; no walkable cell cut off from the player; the entrance and exit walkable.
 - `CryptquakeCollapsesATwoByTwoSectionAndBringsThreeRaisedCreaturesBesideIt`: four cells rock; three creatures, raised
   by a rule, Common, none in the pit; `LivingFloorEnemies` and `LightforgedWallsStanding` 0; the panel.
 - `CryptquakeStopsAtThreeSections`: in the floor's most open area, three and no more; its failure message says how many
@@ -248,6 +248,15 @@ is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
 | Build, at `62aa8da3`, after both rows were listed and the test moved to open floor | `Build: Succeeded - 7 actions, 4 files compiled` |
 | Whole suite again, at `62aa8da3`, because game code changed | `3099 tests performed, 3099 succeeded, 0 failed`; declared 3099, gap 0; 40 skipped part of what they check |
 | `tools/tests`, at `62aa8da3` | `3863 passed, 8 skipped` |
+
+**BOTH CAP TESTS DRAW FROM UNSEEDED RANDOMNESS.** `ChooseObstacleCells` picks each try's angle and distance with
+`FMath::FRandRange`, the engine's global random, not the floor's stream, and `BringCreaturesNear` places the swarm the
+same way; so each run of `CryptquakeStopsAtThreeSections` and `HeavensQuakeStopsAtSixPillarsAndNeverCutsTheFloor`
+places differently. After the second suite each was run 5 more times on the same binaries, with no change: 5 of 5
+each, so 6 runs of 6 each with the suite. **That rules out a frequent failure and does not rule out a rare one.** Both
+now stand the player in the floor's most open area, the Heaven's Quake one since a test-only change ruled on
+2026-10-02, which removes the one exposure found (no room near an entrance) rather than measuring it. The choice was
+not seeded for the tests' sake, by the same ruling.
 
 **The Python of record is the run at `d648de08`**: no Python file changed after it and the collected count is the same,
 by the coordinating session's ruling. All three proofs came out as predicted; no proof was run again, since none of

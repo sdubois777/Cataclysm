@@ -44466,6 +44466,16 @@ bool FCataclysmHeavensQuakeCapTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// IN THE FLOOR'S MOST OPEN AREA, as the Cryptquake cap test is: the cell choice is unseeded, and near a floor's
+	// entrance the rule can rightly run out of room, which would read as the cap failing.
+	int32 Open = -1;
+	const FIntPoint Middle = MostOpenCell(Mode->CurrentFloor->GetPlan(), Open);
+	if (!TestTrue(FString::Printf(TEXT("set-up: an open area %d cells each way"), Open), Open >= 4))
+	{
+		return false;
+	}
+	StandThePlayerAt(Player, CellAtThePlayersHeight(Mode, Player, Middle));
+
 	// TWICE THE CAP'S WORTH OF CADENCES, and a margin for beats that found no cell.
 	Beat(Mode, BeatsFor(Effects::HeavensQuakeSecondsBetween) * Effects::HeavensQuakeMostPillars * 2 + 80);
 	TestEqual(TEXT("six pillars and no more"), Mode->HeavensQuakePillarsRaised(), Effects::HeavensQuakeMostPillars);
