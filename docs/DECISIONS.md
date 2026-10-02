@@ -46,7 +46,28 @@ threshold.
 - **`AKillingMeleeCriticalStrikeLeavesNoBleedingOnTheCorpse`:** a defender at 1,000 of 14,000 health is
   killed by the blow and is left with no Bleeding.
 
-**Not built or run when this was written.** The run table follows when the window runs.
+### THE WINDOW'S RUN
+
+Run 2026-10-02 in the jovial-bouman worktree, at fix/mutilation-bleed-threshold-2 948de6ab on `development`
+946d1fb3.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 948de6ab | Build: Succeeded - 32 actions, 29 files compiled |
+| Whole suite | 948de6ab | 3058 tests performed, 3058 succeeded, 0 failed; declared 3058, gap 0 (registered 3056 + 2) |
+| Python of record | 948de6ab | 5665 passed, 8 skipped in 320.98s; JUnit tests=5673 failures=0 errors=0 skipped=8 |
+
+| Proof: what was broken | At | As printed |
+| :-- | :-- | :-- |
+| P1: the roll asks only that the blow reached health, as before #1565 | 948de6ab | PROVED: with the break in: 11 tests performed, 9 succeeded, 2 failed: AKillingMeleeCriticalStrikeLeavesNoBleedingOnTheCorpse, AMeleeCriticalStrikeTakingLessThanATenthOfMaximumHealthAppliesNothing \| restored: 11 tests performed, 11 succeeded, 0 failed |
+
+**The two failures were the two assertions the tests were written for**, read from the broken run's kept log:
+"and left no Bleeding on the corpse" and "so a melee critical strike that scratches applies no Bleeding".
+
+**One proof, not two.** A second, breaking the "still alive" half of `BlowCanCarryAnAilment`, was not run.
+That function has four callers, and the tests its break would fail could not be counted by name beforehand.
+The corpse half is still covered: P1 restores the old condition, which has no "still alive" term, and the
+killing-blow test failed under it.
 
 ---
 
