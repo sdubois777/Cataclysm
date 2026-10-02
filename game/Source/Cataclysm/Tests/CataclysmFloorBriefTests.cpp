@@ -1617,105 +1617,67 @@ bool FCataclysmFloorBriefWaveKeepsPromisesTest::RunTest(const FString& Parameter
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableTest,
-	"Cataclysm.FloorBrief.UnstableDimensionsGivesEveryFloorOneMoreModifier",
+	"Cataclysm.FloorBrief.UnstableDimensionsGivesEveryLaterFloorOneGenericEnemyModifier",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmFloorBriefUnstableTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmFloorBriefTest;
 
-	// **THE PROOF THAT THE SEAM IS NOT ONLY FOR SUB-TYPES.**
-	// `Chaos_Unstable_Dimensions` in `game/Data/DungeonModifiers.csv`: "Every
-	// time you clear a floor, the very fabric of the dungeon warps. A new
-	// 'reality' is imposed, granting a new, random modifier to all enemies on
-	// the next floor."
-	//
-	// IT USES THE SAME FIELD VOLATILE USES AND DOES SOMETHING ELSE WITH IT. The
-	// sub-type replaces a floor's modifiers; this adds one to them.
+	// `Chaos_Unstable_Dimensions` in `game/Data/DungeonModifiers.csv`: "Every time you clear a floor, the very fabric
+	// of the dungeon warps. A new 'reality' is imposed, granting a new, random modifier to all enemies on the next
+	// floor." CORRECTED 2026-10-01, as ruled: the reality is a GENERIC ENEMY modifier for every creature of the floor,
+	// in `EveryCreatureModifier`, and none on floor 1. Until then this test asserted one more DUNGEON row on every
+	// floor, which was the rule this replaced.
 	FCataclysmDungeonIdentity Warping = Dungeon(ECataclysmDungeonSubType::None);
-	Warping.ModifierPool.Add(
-		Make(FCataclysmDungeonFloorRules::UnstableDimensionsKey,
-			 ECataclysmType::Chaos, 10.0f));
-	Warping.Modifiers.Add(
-		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
+	Warping.ModifierPool.Add(Make(FCataclysmDungeonFloorRules::UnstableDimensionsKey, ECataclysmType::Chaos, 10.0f));
+	Warping.Modifiers.Add(FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
 	Warping.ModifierScore += 10.0f;
 
-	// THE CONTROL IS THE SAME DUNGEON WITHOUT THAT ONE ROW, so the only thing
-	// that differs between them is the modifier under test.
-	const FCataclysmDungeonIdentity Steady =
-		Dungeon(ECataclysmDungeonSubType::None);
+	// THE CONTROL IS THE SAME DUNGEON WITHOUT THAT ONE ROW.
+	const FCataclysmDungeonIdentity Steady = Dungeon(ECataclysmDungeonSubType::None);
 
-	TSet<FString> Extras;
-
+	TSet<FName> Realities;
 	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
 	{
-		const FCataclysmFloorBrief Warped =
-			FCataclysmDungeonFloorRules::BriefFor(Warping, Floor);
-		const FCataclysmFloorBrief Plain =
-			FCataclysmDungeonFloorRules::BriefFor(Steady, Floor);
+		const FCataclysmFloorBrief Warped = FCataclysmDungeonFloorRules::BriefFor(Warping, Floor);
+		const FCataclysmFloorBrief Plain = FCataclysmDungeonFloorRules::BriefFor(Steady, Floor);
 
-		TestEqual(FString::Printf(
-					  TEXT("floor %d carries one more than the dungeon drew"),
-					  Floor),
-				  Warped.Modifiers.Num(), Warping.Modifiers.Num() + 1);
+		// NO DUNGEON ROW IS ADDED, AND THE SCORE IS THE DUNGEON'S: a stronger creature, not more of them.
+		TestEqual(FString::Printf(TEXT("floor %d carries exactly the dungeon's rows"), Floor), Warped.Modifiers.Num(),
+				  Warping.Modifiers.Num());
+		TestEqual(FString::Printf(TEXT("floor %d is worth the dungeon's danger"), Floor), Warped.ModifierScore,
+				  Warping.ModifierScore, 0.001f);
+		TestTrue(FString::Printf(TEXT("the control has no reality on floor %d"), Floor),
+				 Plain.EveryCreatureModifier.IsNone());
 
-		TestEqual(FString::Printf(
-					  TEXT("and the same dungeon without it carries exactly what "
-						   "it drew on floor %d"), Floor),
-				  Plain.Modifiers.Num(), Steady.Modifiers.Num());
-
-		// EVERY ONE THE DUNGEON DREW IS STILL THERE. It adds rather than
-		// replaces, which is the whole difference from the Volatile sub-type.
-		for (const FName Key : Warping.Modifiers)
+		if (Floor == 1)
 		{
-			TestTrue(FString::Printf(
-						 TEXT("floor %d still carries %s"), Floor, *Key.ToString()),
-					 Warped.Modifiers.Contains(Key));
+			TestTrue(TEXT("floor 1 has no reality: no floor has been cleared"), Warped.EveryCreatureModifier.IsNone());
+			continue;
 		}
-
-		// AND NEVER A SECOND COPY OF ONE THE FLOOR ALREADY HAS.
-		TSet<FName> Distinct(Warped.Modifiers);
-		TestEqual(FString::Printf(TEXT("floor %d carries no modifier twice"), Floor),
-				  Distinct.Num(), Warped.Modifiers.Num());
-
-		// AND THE SCORE FOLLOWS THE EXTRA ONE.
-		float Danger = 0.0f;
-		for (const FName Key : Warped.Modifiers)
+		if (!TestFalse(FString::Printf(TEXT("floor %d has a reality"), Floor), Warped.EveryCreatureModifier.IsNone()))
 		{
-			for (const FCataclysmDungeonModifier& Modifier : Warping.ModifierPool)
-			{
-				if (Modifier.RowKey == Key)
-				{
-					Danger += Modifier.Danger;
-				}
-			}
+			continue;
 		}
-		TestEqual(FString::Printf(
-					  TEXT("floor %d is worth the danger of all five"), Floor),
-				  Warped.ModifierScore, Danger);
-
-		for (const FName Key : Warped.Modifiers)
-		{
-			if (!Warping.Modifiers.Contains(Key))
-			{
-				Extras.Add(Key.ToString());
-			}
-		}
+		TestTrue(FString::Printf(TEXT("floor %d's reality is a Generic enemy modifier (%s)"), Floor,
+								 *Warped.EveryCreatureModifier.ToString()),
+				 Warped.EveryCreatureModifier.ToString().StartsWith(TEXT("Generic_")));
+		TestFalse(FString::Printf(TEXT("and not a dungeon row on floor %d"), Floor),
+				  Warped.Modifiers.Contains(Warped.EveryCreatureModifier));
+		TestEqual(FString::Printf(TEXT("floor %d draws the same reality again"), Floor),
+				  FCataclysmDungeonFloorRules::BriefFor(Warping, Floor).EveryCreatureModifier,
+				  Warped.EveryCreatureModifier);
+		Realities.Add(Warped.EveryCreatureModifier);
 	}
 
-	// **"A NEW RANDOM MODIFIER" MEANS THE EXTRA CHANGES.** One extra repeated on
-	// all twenty floors would satisfy every check above and would not be what
-	// the row says.
-	TestTrue(FString::Printf(
-				 TEXT("twenty floors drew %d different extra modifiers, which is "
-					  "more than five"), Extras.Num()),
-			 Extras.Num() > 5);
-
+	// "A NEW, RANDOM MODIFIER" MEANS IT CHANGES: nineteen floors draw more than three of the ten Generic rows.
+	TestTrue(FString::Printf(TEXT("nineteen floors drew %d different realities"), Realities.Num()), Realities.Num() > 3);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableComposesTest,
-	"Cataclysm.FloorBrief.AVolatileDungeonGetsTheExtraOnTheFloorsThatDrewIt",
+	"Cataclysm.FloorBrief.AVolatileDungeonImposesARealityOnTheFloorsThatDrewIt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmFloorBriefUnstableComposesTest::RunTest(const FString& Parameters)
@@ -1724,8 +1686,10 @@ bool FCataclysmFloorBriefUnstableComposesTest::RunTest(const FString& Parameters
 
 	// **TWO RULES ON ONE FIELD, AND NEITHER IS WRITTEN IN TERMS OF THE OTHER.**
 	// A Volatile dungeon re-draws its modifiers for every floor, so whether it
-	// is carrying Unstable Dimensions is a per-floor fact. The extra has to
-	// follow the re-draw rather than the dungeon.
+	// is carrying Unstable Dimensions is a per-floor fact. Its reality has to
+	// follow the re-draw rather than the dungeon. Until 2026-10-01 the rule
+	// added a dungeon row and this test counted Drawn + 1; it now adds no row,
+	// and a floor after the first that drew it imposes a reality.
 	FCataclysmDungeonIdentity Changing =
 		Dungeon(ECataclysmDungeonSubType::Volatile);
 	Changing.ModifierPool.Add(
@@ -1747,29 +1711,37 @@ bool FCataclysmFloorBriefUnstableComposesTest::RunTest(const FString& Parameters
 		const FCataclysmFloorBrief Brief =
 			FCataclysmDungeonFloorRules::BriefFor(Changing, Floor);
 
+		// NEITHER BRANCH ADDS A ROW: the re-draw is the whole list either way.
+		if (Brief.Modifiers.Num() != Drawn)
+		{
+			AddError(FString::Printf(
+				TEXT("floor %d carries %d modifiers, not the %d the re-draw "
+					 "asked for"),
+				Floor, Brief.Modifiers.Num(), Drawn));
+			return false;
+		}
 		if (Brief.Modifiers.Contains(Warp))
 		{
 			++FloorsWithTheWarp;
-			if (Brief.Modifiers.Num() != Drawn + 1)
+			if (Brief.EveryCreatureModifier.IsNone() != (Floor == 1))
 			{
 				AddError(FString::Printf(
-					TEXT("floor %d re-drew Unstable Dimensions and carries %d "
-						 "modifiers, not the %d that is the re-draw plus its "
-						 "extra"),
-					Floor, Brief.Modifiers.Num(), Drawn + 1));
+					TEXT("floor %d re-drew Unstable Dimensions and its reality "
+						 "is %s, where a floor after the first has one and "
+						 "floor 1 none"),
+					Floor, *Brief.EveryCreatureModifier.ToString()));
 				return false;
 			}
 		}
 		else
 		{
 			++FloorsWithout;
-			if (Brief.Modifiers.Num() != Drawn)
+			if (!Brief.EveryCreatureModifier.IsNone())
 			{
 				AddError(FString::Printf(
 					TEXT("floor %d did not re-draw Unstable Dimensions and "
-						 "carries %d modifiers, not the %d the re-draw asked "
-						 "for"),
-					Floor, Brief.Modifiers.Num(), Drawn));
+						 "still imposes %s"),
+					Floor, *Brief.EveryCreatureModifier.ToString()));
 				return false;
 			}
 		}
@@ -2441,6 +2413,42 @@ bool FCataclysmFloorBriefTwisterPoolTest::RunTest(const FString& Parameters)
 
 	Mode->LeaveEmpireDungeon();
 	TestEqual(TEXT("leaving empties it"), Mode->DungeonEveryBuiltModifier.Num(), 0);
+	return true;
+}
+
+// THE REALITY IS DRAWN AFTER REALITY TWISTER. Corrected 2026-10-01; below the Reality Twister helpers it uses.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableTwistedTest,
+	"Cataclysm.FloorBrief.UnstableDimensionsAddedByRealityTwisterStillImposesAReality",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefUnstableTwistedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// REALITY TWISTER CAN DRAW ONLY UNSTABLE DIMENSIONS HERE: every other built row is already in force. Ruled
+	// 2026-10-01: the reality is drawn after Reality Twister, from the floor's final list, so this one works -- the
+	// reverse of the earlier judgement that an Unstable Dimensions Reality Twister draws "adds nothing on that floor",
+	// which held only while Unstable Dimensions added a dungeon row before Reality Twister drew.
+	FCataclysmDungeonIdentity Twisted = Dungeon(ECataclysmDungeonSubType::None);
+	Twisted.Modifiers.Add(TwisterRow().RowKey);
+	Twisted.ModifierScore += TwisterRow().Danger;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Twisted.EveryBuiltModifier.Add(Twisted.ModifierPool[Index]);
+	}
+	Twisted.EveryBuiltModifier.Add(Make(FCataclysmDungeonFloorRules::UnstableDimensionsKey, ECataclysmType::Chaos, 10.0f));
+	Twisted.EveryBuiltModifier.Add(TwisterRow());
+
+	const FCataclysmFloorBrief First = FCataclysmDungeonFloorRules::BriefFor(Twisted, 1);
+	TestEqual(TEXT("floor 1 is twisted to Unstable Dimensions"), First.TwistedIn,
+			  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
+	TestTrue(TEXT("but floor 1 has no reality"), First.EveryCreatureModifier.IsNone());
+
+	const FCataclysmFloorBrief Second = FCataclysmDungeonFloorRules::BriefFor(Twisted, 2);
+	TestEqual(TEXT("floor 2 is twisted to Unstable Dimensions"), Second.TwistedIn,
+			  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
+	TestTrue(FString::Printf(TEXT("and it imposes a Generic reality (%s)"), *Second.EveryCreatureModifier.ToString()),
+			 Second.EveryCreatureModifier.ToString().StartsWith(TEXT("Generic_")));
 	return true;
 }
 

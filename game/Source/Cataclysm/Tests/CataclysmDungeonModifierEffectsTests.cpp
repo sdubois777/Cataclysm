@@ -2834,11 +2834,16 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 
 	// AND A CONTROL IN EACH DIRECTION, so "built" is not simply what this
-	// returns for everything. Two rows are partly built and one has no rule at
-	// all. This sentence said "one row" until Infernal Rain became the second.
-	TestEqual(TEXT("Unstable Dimensions is still only partly built"),
+	// returns for everything. Unstable Dimensions was the partly built control
+	// until 2026-10-01, when its reality became an enemy modifier on every
+	// creature; Insanity Bursts, which waits on co-op, is the control now.
+	TestEqual(TEXT("Unstable Dimensions is built: its reality is an enemy modifier"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
 				  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	TestEqual(TEXT("Insanity Bursts is still only partly built"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
+				  FName(UCataclysmDungeonModifierEffects::InsanityBurstsKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
 	// INFERNAL RAIN IS THE SECOND, AND THIS LINE IS WRITTEN TO BE REVISITED the
@@ -43250,6 +43255,201 @@ bool FCataclysmTrialWithReaperTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("and it did not run out"), Mode->TrialOfEnduranceRanOut());
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TrialRow),
 			  FString(TEXT("trial of endurance: cleared in time")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Unstable_Dimensions, corrected 2026-10-01: every creature placed on a floor after the first carries the floor's
+// one Generic enemy modifier, and floor 1 has none.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName UnstableRow(FCataclysmDungeonFloorRules::UnstableDimensionsKey);
+
+	/** What the floor panel says for Unstable Dimensions, or a plain answer when it says nothing. */
+	FString UnstablePanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(UnstableRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** How many of the floor's creatures carry this row, and whether any carries it twice. */
+	int32 CreaturesCarrying(ACataclysmDungeonGameMode* Mode, FName Row, bool& bAnyTwice)
+	{
+		int32 Carrying = 0;
+		bAnyTwice = false;
+		for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			if (!IsValid(Creature))
+			{
+				continue;
+			}
+			int32 Copies = 0;
+			for (const FName& Carried : Creature->ModifierRows)
+			{
+				Copies += Carried == Row ? 1 : 0;
+			}
+			Carrying += Copies > 0 ? 1 : 0;
+			bAnyTwice = bAnyTwice || Copies > 1;
+		}
+		return Carrying;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnstableFirstFloorTest,
+	"Cataclysm.DungeonModifierEffects.UnstableDimensionsImposesNoRealityOnTheFirstFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUnstableFirstFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {UnstableRow};
+	if (!TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("floor 1 carries the row"), Mode->FloorBrief.Modifiers.Contains(UnstableRow));
+	TestTrue(TEXT("but has no reality: no floor has been cleared"), Mode->FloorBrief.EveryCreatureModifier.IsNone());
+	TestEqual(TEXT("the panel says so"), UnstablePanelLine(Mode),
+			  FString(TEXT("unstable dimensions: no new reality on the first floor")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnstableEveryCreatureTest,
+	"Cataclysm.DungeonModifierEffects.UnstableDimensionsGivesEveryCreatureOfALaterFloorItsReality",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUnstableEveryCreatureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {UnstableRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const FName Reality = Mode->FloorBrief.EveryCreatureModifier;
+	if (!TestFalse(TEXT("floor 2 has a reality"), Reality.IsNone()))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("a Generic enemy modifier (%s)"), *Reality.ToString()),
+			 Reality.ToString().StartsWith(TEXT("Generic_")));
+
+	// EVERY CREATURE THE FLOOR PLACED CARRIES IT, AND NONE CARRIES IT TWICE.
+	int32 Standing = 0;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		Standing += IsValid(Creature) ? 1 : 0;
+	}
+	if (!TestTrue(TEXT("set-up: the floor placed creatures"), Standing > 0))
+	{
+		return false;
+	}
+	bool bAnyTwice = false;
+	TestEqual(FString::Printf(TEXT("all %d creatures carry it"), Standing), CreaturesCarrying(Mode, Reality, bAnyTwice),
+			  Standing);
+	TestFalse(TEXT("and none carries it twice"), bAnyTwice);
+
+	// THE PANEL NAMES IT BY ITS MODIFIER NAME.
+	const FCataclysmEnemyModifierRow* Row =
+		UCataclysmEnemyModifiers::FindRow(UCataclysmEnemyModifiers::LoadEnemyModifierTable(), Reality);
+	if (TestNotNull(TEXT("the reality is a row of the table"), Row))
+	{
+		TestEqual(TEXT("the panel"), UnstablePanelLine(Mode),
+				  FString::Printf(TEXT("unstable dimensions: every creature is %s"), *Row->ModifierName));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnstableHordeTest,
+	"Cataclysm.DungeonModifierEffects.UnstableDimensionsGivesASecondHordeWaveItsReality",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUnstableHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {UnstableRow};
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("wave 1 was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("wave 1 has no reality"), Mode->FloorBrief.EveryCreatureModifier.IsNone());
+
+	// WAVE 2, AND EVERY CREATURE OF IT ONCE ALL OF IT HAS ARRIVED.
+	if (!TestTrue(TEXT("wave 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const FName Reality = Mode->FloorBrief.EveryCreatureModifier;
+	if (!TestFalse(TEXT("wave 2 has a reality"), Reality.IsNone()))
+	{
+		return false;
+	}
+	for (int32 Frame = 0; Frame <= 1000 && Mode->CreaturesStillArriving() > 0; ++Frame)
+	{
+		Mode->Tick(1.0f / 60.0f);
+	}
+	TestEqual(TEXT("set-up: the wave has all arrived"), Mode->CreaturesStillArriving(), 0);
+	int32 OfTheWave = 0;
+	int32 Carrying = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->CurrentWave)
+	{
+		if (IsValid(Creature))
+		{
+			++OfTheWave;
+			Carrying += Creature->ModifierRows.Contains(Reality) ? 1 : 0;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: the wave placed creatures"), OfTheWave > 0))
+	{
+		return false;
+	}
+	TestEqual(FString::Printf(TEXT("all %d of wave 2 carry it"), OfTheWave), Carrying, OfTheWave);
 	return true;
 }
 

@@ -787,7 +787,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ObsidianSarcophagiKey)
 		// REALITY TWISTER. Its row is drawn onto each floor by `FCataclysmDungeonFloorRules::ModifiersFor`, rule 4.
 		// Issues #1820 and #41.
-		|| RowKey == FName(FCataclysmDungeonFloorRules::RealityTwisterKey))
+		|| RowKey == FName(FCataclysmDungeonFloorRules::RealityTwisterKey)
+		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
+		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -797,11 +800,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// three, because a comment counting the thing under it goes wrong without
 	// being touched. Count the arms rather than reading a number here.
 	//
-	// UNSTABLE DIMENSIONS. Its rule draws another dungeon modifier onto the
-	// floor, where the row asks for "a new, random modifier to all enemies on the
-	// next floor", and it adds that modifier on floor 1 as well, where no floor
-	// has been cleared. Question 3 of the modifier plan asks the owner which it
-	// should draw.
+	// UNSTABLE DIMENSIONS WAS HERE UNTIL 2026-10-01, when its reality became an enemy modifier on every creature and
+	// none on floor 1; it is built and answers above.
 	//
 	// INFERNAL RAIN. Its burning ground is built, typed off its own row and timed
 	// to the ten seconds the row states; nothing draws a fireball falling into
@@ -816,8 +816,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// so this cannot be `Built`. Pulling the player and pulling a projectile are
 	// two further pieces of work; the key's comment in the header says what each
 	// needs and why neither is a line or two.
-	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
-		|| RowKey == FName(InfernalRainKey)
+	if (RowKey == FName(InfernalRainKey)
 		|| RowKey == FName(SingularityWellsKey)
 		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
