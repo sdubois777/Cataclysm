@@ -791,7 +791,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// INFERNAL RAIN, BUILT SINCE ITS FIREBALL FALLS, 2026-10-01. Issue #1699.
 		|| RowKey == FName(InfernalRainKey)
 		// SINGULARITY WELLS, BUILT SINCE ITS WELLS PULL THE PLAYER AND TURN PROJECTILES, 2026-10-01. Issue #1605.
-		|| RowKey == FName(SingularityWellsKey))
+		|| RowKey == FName(SingularityWellsKey)
+		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
+		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -801,19 +804,16 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// three, because a comment counting the thing under it goes wrong without
 	// being touched. Count the arms rather than reading a number here.
 	//
-	// UNSTABLE DIMENSIONS. Its rule draws another dungeon modifier onto the
-	// floor, where the row asks for "a new, random modifier to all enemies on the
-	// next floor", and it adds that modifier on floor 1 as well, where no floor
-	// has been cleared. Question 3 of the modifier plan asks the owner which it
-	// should draw.
+	// UNSTABLE DIMENSIONS WAS HERE UNTIL 2026-10-01, when its reality became an enemy modifier on every creature and
+	// none on floor 1; it is built and answers above.
 	//
 	// INFERNAL RAIN AND SINGULARITY WELLS WERE HERE UNTIL 2026-10-01, for the fireball and the pull; both are built
 	// now and answer above. Issue #1699 and issue #1605.
-	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
+	if (
 		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
 		// Issues #1820 and #41.
-		|| RowKey == FName(InsanityBurstsKey)
+		RowKey == FName(InsanityBurstsKey)
 		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
 		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
 		|| RowKey == FName(RealityRiftsKey)

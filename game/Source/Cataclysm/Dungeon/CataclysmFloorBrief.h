@@ -138,6 +138,13 @@ struct CATACLYSM_API FCataclysmFloorBrief
 	FName TwistedIn = NAME_None;
 
 	/**
+	 * Unstable Dimensions' new reality on this floor: the Generic enemy modifier every creature placed here is given, or
+	 * none -- on floor 1, on a floor not carrying the row, or when the enemy-modifier table will not load. NOT in
+	 * `Modifiers`, which are dungeon rows; this is a creature's. Ruled 2026-10-01; see `ModifiersFor`'s rule 3.
+	 */
+	FName EveryCreatureModifier = NAME_None;
+
+	/**
 	 * Whether a boss stands at this floor's exit.
 	 *
 	 * TRUE ON THE LAST FLOOR OF EVERY DUNGEON, which is the design's universal
@@ -433,13 +440,18 @@ public:
 	 *      itself drew, `UCataclysmDungeonModifierRules::CountFor`, so a
 	 *      Volatile dungeon is not carrying more modifiers than a plain one at
 	 *      the same tier; it is carrying different ones on every floor.
-	 *   3. **A floor carrying Unstable Dimensions draws one more of its own.**
+	 *   3. **A floor carrying Unstable Dimensions imposes a new reality on its creatures.**
 	 *      `Chaos_Unstable_Dimensions` in `game/Data/DungeonModifiers.csv`:
 	 *      "Every time you clear a floor, the very fabric of the dungeon warps.
 	 *      A new 'reality' is imposed, granting a new, random modifier to all
-	 *      enemies on the next floor." Applied after rule 2, so a Volatile
-	 *      dungeon that re-draws Unstable Dimensions onto a floor gets the extra
-	 *      on that floor and one that does not, does not.
+	 *      enemies on the next floor." CORRECTED 2026-10-01, as ruled: the reality
+	 *      is one GENERIC ENEMY modifier, given to every creature placed on the
+	 *      floor -- not a dungeon row added to the floor, which is what this rule
+	 *      did until then -- and NONE ON FLOOR 1, where no floor has been cleared.
+	 *      It is drawn LAST, after rule 4, from the floor's final list, so an
+	 *      Unstable Dimensions that Reality Twister adds imposes a reality too, and
+	 *      a Volatile floor that re-drew the row does. It adds nothing to the score.
+	 *      Answered through `OutEveryCreatureModifier`.
 	 *
 	 * **THE DRAW IS SEEDED FROM THE FLOOR AND NOT FROM THE RUN.** Its stream
 	 * comes from the dungeon's seed and the floor number, so the same floor of
@@ -460,17 +472,19 @@ public:
 	 * @param OutModifiers   the row keys in force on this floor
 	 * @param OutScore       the sum of their danger scores
 	 * @param OutTwistedIn   when given, the row Reality Twister added, or none
+	 * @param OutEveryCreatureModifier when given, Unstable Dimensions' new reality, or none
 	 */
 	static void ModifiersFor(const FCataclysmDungeonIdentity& Dungeon,
 							 int32 FloorNumber,
 							 TArray<FName>& OutModifiers,
 							 float& OutScore,
-							 FName* OutTwistedIn = nullptr);
+							 FName* OutTwistedIn = nullptr,
+							 FName* OutEveryCreatureModifier = nullptr);
 
 	// ----------------------------------------------------------------------
 
 	/**
-	 * The row key of the dungeon modifier that adds one more modifier per floor.
+	 * The row key of the dungeon modifier that gives every creature of a floor after the first one more enemy modifier.
 	 *
 	 * A ROW KEY AND NOT A NEW ENUM, because the 117 modifiers are data and one
 	 * of them behaving differently does not make it a different kind of thing.

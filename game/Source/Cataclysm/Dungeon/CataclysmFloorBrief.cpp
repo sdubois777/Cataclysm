@@ -2,6 +2,7 @@
 
 #include "Dungeon/CataclysmFloorBrief.h"
 
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Math/RandomStream.h"
 
@@ -164,7 +165,7 @@ int32 FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(int32 WaveSpawned)
 
 void FCataclysmDungeonFloorRules::ModifiersFor(
 	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber,
-	TArray<FName>& OutModifiers, float& OutScore, FName* OutTwistedIn)
+	TArray<FName>& OutModifiers, float& OutScore, FName* OutTwistedIn, FName* OutEveryCreatureModifier)
 {
 	// RULE 1. An ordinary dungeon's floor carries the dungeon's own modifiers,
 	// and so does every floor of a dungeon whose pools were never filled.
@@ -174,18 +175,22 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 	{
 		*OutTwistedIn = NAME_None;
 	}
-
-	if (Dungeon.ModifierPool.Num() == 0 && Dungeon.EveryBuiltModifier.Num() == 0)
+	if (OutEveryCreatureModifier)
 	{
-		return;
+		*OutEveryCreatureModifier = NAME_None;
 	}
 
 	FRandomStream Stream =
 		CataclysmFloorBriefStreamFor(Dungeon.DungeonSeed, FloorNumber);
 
+	// RULES 2 AND 4 DRAW DUNGEON ROWS, SO A DUNGEON WHOSE POOLS WERE NEVER FILLED SKIPS THEM; rule 3 draws an enemy
+	// modifier from its own table and still runs. Until 2026-10-01 this was a `return`, when rule 3 drew a dungeon row
+	// too.
+	const bool bAnyDungeonPool = Dungeon.ModifierPool.Num() > 0 || Dungeon.EveryBuiltModifier.Num() > 0;
+
 	// RULE 2. "Dungeon modifiers change every floor." The same number of them a
 	// dungeon of this tier and sub-type carries, drawn again for this floor.
-	if (Dungeon.SubType == ECataclysmDungeonSubType::Volatile)
+	if (bAnyDungeonPool && Dungeon.SubType == ECataclysmDungeonSubType::Volatile)
 	{
 		const int32 Count = UCataclysmDungeonModifierRules::CountFor(
 			Dungeon.DifficultyTier, Dungeon.SubType);
@@ -204,31 +209,7 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 		}
 	}
 
-	// RULE 3. "A new 'reality' is imposed, granting a new, random modifier to
-	// all enemies on the next floor."
-	//
-	// AFTER RULE 2 AND READING ITS RESULT, so a Volatile dungeon gets the extra
-	// on the floors whose re-draw actually landed Unstable Dimensions, and not
-	// on the ones it did not. The two rules share a field and neither is
-	// written in terms of the other.
-	if (OutModifiers.Contains(FName(UnstableDimensionsKey)))
-	{
-		// NOT ONE THIS FLOOR ALREADY CARRIES. Two copies of one environmental
-		// effect read to a player as one effect that is worse, which is the
-		// reasoning `UCataclysmDungeonModifierRules::Draw` records for the same
-		// rule inside a single draw.
-		const TArray<FCataclysmDungeonModifier> Left =
-			CataclysmFloorBriefPoolWithout(Dungeon.ModifierPool, OutModifiers);
-
-		const TArray<FCataclysmDungeonModifier> Extra =
-			UCataclysmDungeonModifierRules::Draw(Left, 1, Stream);
-
-		if (Extra.Num() > 0)
-		{
-			OutModifiers.Append(UCataclysmDungeonModifierRules::KeysOf(Extra));
-			OutScore += UCataclysmDungeonModifierRules::DangerOf(Extra);
-		}
-	}
+	// RULE 3, UNSTABLE DIMENSIONS, IS DRAWN LAST, BELOW, since 2026-10-01.
 
 	// RULE 4. REALITY TWISTER, AS THE OWNER DECIDED ON 2026-09-26: "Each floor, one
 	// random dungeon modifier from any Cataclysm is added, even one this dungeon
@@ -238,11 +219,11 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 	// a Cataclysm this run is not facing can be drawn. NEVER REALITY TWISTER ITSELF
 	// AND NEVER A ROW ALREADY IN FORCE, including rule 3's extra: this floor
 	// carries Reality Twister, so leaving out what it carries leaves out both.
-	// AFTER RULES 2 AND 3 AND READING THEIR RESULT, as rule 3 reads rule 2's, so a
-	// Volatile floor that drew this row is twisted and one that did not is not.
+	// AFTER RULE 2 AND READING ITS RESULT, so a Volatile floor that drew this row is
+	// twisted and one that did not is not.
 	// ON THE SAME STREAM, so a floor always draws the same row and the next floor
 	// draws again. ITS DANGER IS ADDED, so it counts toward this floor's creatures.
-	if (OutModifiers.Contains(FName(RealityTwisterKey)))
+	if (bAnyDungeonPool && OutModifiers.Contains(FName(RealityTwisterKey)))
 	{
 		const TArray<FCataclysmDungeonModifier> Left =
 			CataclysmFloorBriefPoolWithout(Dungeon.EveryBuiltModifier, OutModifiers);
@@ -258,6 +239,25 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 			{
 				*OutTwistedIn = Twisted[0].RowKey;
 			}
+		}
+	}
+
+	// RULE 3. "A new 'reality' is imposed, granting a new, random modifier to all enemies on the next floor." Corrected
+	// 2026-10-01, as ruled under the owner's delegation:
+	// - AN ENEMY MODIFIER, FROM THE GENERIC COLUMN ONLY: ten rows, all with behaviour, the same meaning on any creature.
+	//   Given to every creature the floor places, by `ACataclysmDungeonGameMode::SpawnPlacedCreature`.
+	// - NONE ON FLOOR 1, where no floor has been cleared; one on every floor from 2, a Horde wave included.
+	// - DRAWN LAST, from the floor's final list, so an Unstable Dimensions that Reality Twister added imposes a reality
+	//   too: the old judgement that it "adds nothing on that floor" held only while this rule added a dungeon row before
+	//   rule 4. On the floor's own stream, so a floor always draws the same reality.
+	// - IT ADDS NOTHING TO THE SCORE: a stronger creature, not more of them.
+	if (OutEveryCreatureModifier && FloorNumber > 1 && OutModifiers.Contains(FName(UnstableDimensionsKey)))
+	{
+		const TArray<FName> Reality = UCataclysmEnemyModifiers::Draw(
+			UCataclysmEnemyModifiers::LoadEnemyModifierTable(), FName(TEXT("Generic")), 1, Stream, TArray<FName>());
+		if (Reality.Num() > 0)
+		{
+			*OutEveryCreatureModifier = Reality[0];
 		}
 	}
 }
@@ -280,7 +280,8 @@ FCataclysmFloorBrief FCataclysmDungeonFloorRules::BriefFor(
 	Brief.bSameArenaAsLastFloor = SameArenaAsLastFloor(Dungeon, Floor);
 	Brief.CarvedAsFloorNumber = CarvedAsFloorNumber(Dungeon, Floor);
 	Brief.SightRadiusMultiplier = SightRadiusMultiplierFor(Dungeon, Floor);
-	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore, &Brief.TwistedIn);
+	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore, &Brief.TwistedIn,
+				 &Brief.EveryCreatureModifier);
 
 	return Brief;
 }

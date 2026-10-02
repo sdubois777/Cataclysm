@@ -337,8 +337,8 @@ class TestTheModifierBuiltThroughTheSameSeam:
         assert UNSTABLE_DIMENSIONS in rows, (
             f"game/Data/DungeonModifiers.csv has no {UNSTABLE_DIMENSIONS!r} "
             f"row. game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h names "
-            f"that row key in `UnstableDimensionsKey` and gives every floor of "
-            f"a dungeon carrying it one extra modifier. A renamed row makes the "
+            f"that row key in `UnstableDimensionsKey` and gives every creature "
+            f"of a later floor one Generic enemy modifier. A renamed row makes the "
             f"rule stop firing silently."
         )
 
@@ -364,7 +364,7 @@ class TestTheModifierBuiltThroughTheSameSeam:
         assert UNSTABLE_DIMENSIONS_MEANING in description, (
             f"the {UNSTABLE_DIMENSIONS} row now reads {description!r}. The rule "
             f"in game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.cpp gives "
-            f"every floor of a dungeon carrying it one extra modifier, which "
+            f"every creature of a later floor one Generic enemy modifier, which "
             f"only follows while the row says the new modifier applies "
             f"{UNSTABLE_DIMENSIONS_MEANING!r}."
         )

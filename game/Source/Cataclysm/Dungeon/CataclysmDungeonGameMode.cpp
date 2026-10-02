@@ -2058,6 +2058,21 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 		Enemy->SetIsAnIllusion(true);
 	}
 
+	// AND UNSTABLE DIMENSIONS' NEW REALITY: this floor's Generic enemy modifier, given to EVERY creature placed here --
+	// the population with its Gatekeeper, a Horde wave and the rules' arrivals that come through this function -- once,
+	// never a second copy. Ruled 2026-10-01. The fixtures eight rules spawn directly (a Chorus, a Spire, a Sarcophagus
+	// and the like) are not placed here and carry none. RE-APPLIED THROUGH `ApplyStartingAttributes`, which computes
+	// every figure afresh from the `Starting` figures, the rarity scale and the rows carried, as every setter already
+	// does, so the rarity is not applied twice; nothing has touched this creature since `ApplyDesignedStats` above, so
+	// nothing a rule sets later is undone. A thrall taken later keeps it. Marked as the floor's, so a rung raised later
+	// draws as if it were not there.
+	if (!FloorBrief.EveryCreatureModifier.IsNone() && !Enemy->ModifierRows.Contains(FloorBrief.EveryCreatureModifier))
+	{
+		Enemy->ModifierRows.Add(FloorBrief.EveryCreatureModifier);
+		Enemy->FloorRealityRow = FloorBrief.EveryCreatureModifier;
+		Enemy->ApplyStartingAttributes();
+	}
+
 	// PLACED AGAIN NOW ITS SIZE IS KNOWN. `Where` above was raised by the
 	// half height of the CLASS, which is the creature at Common. Since
 	// issue #849 a rarer creature is bigger, and ApplyDesignedStats is what
@@ -15547,6 +15562,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  RawSewageStacks, RawSewageStacks == 1 ? TEXT("") : TEXT("s"),
 							  Effects::RawSewagePercentPerSecond(RawSewageStacks))
 			: FString(TEXT("raw sewage: no disease stacks")));
+	}
+
+	// AND UNSTABLE DIMENSIONS: the reality every creature of this floor carries, by its name. Ruled 2026-10-01.
+	const FName Unstable(FCataclysmDungeonFloorRules::UnstableDimensionsKey);
+	if (FloorBrief.Modifiers.Contains(Unstable))
+	{
+		const FCataclysmEnemyModifierRow* Reality = FloorBrief.EveryCreatureModifier.IsNone() ? nullptr
+			: UCataclysmEnemyModifiers::FindRow(UCataclysmEnemyModifiers::LoadEnemyModifierTable(),
+												FloorBrief.EveryCreatureModifier);
+		Counting.Add(Unstable, FloorBrief.FloorNumber <= 1
+			? FString(TEXT("unstable dimensions: no new reality on the first floor"))
+			: Reality ? FString::Printf(TEXT("unstable dimensions: every creature is %s"), *Reality->ModifierName)
+			: FString(TEXT("unstable dimensions: no reality could be drawn")));
 	}
 
 	// AND REALITY TWISTER: the row it added to this floor, by its name. Issues #1820 and #41.

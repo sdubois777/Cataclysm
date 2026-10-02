@@ -2,6 +2,163 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-01 — Unstable Dimensions corrected: from floor 2, every creature of a floor carries one Generic enemy modifier, the floor's "new reality", instead of the floor gaining a dungeon row
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (`EveryCreatureModifier`, rule 3 of
+`ModifiersFor` rewritten and moved last), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (the reality
+given in `SpawnPlacedCreature`, and the floor panel's line), `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`
+(the row answered `Built`), the automation tests in `game/Source/Cataclysm/Tests/CataclysmFloorBriefTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and two failure messages in
+`tools/tests/test_dungeon_subtype_floor_rules_are_the_design.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the automation tests and the three guard proofs ran on 2026-10-02; the figures are at
+the end of this entry.
+
+### The row, and what was wrong
+
+`Chaos_Unstable_Dimensions`: "Every time you clear a floor, the very fabric of the dungeon warps. A new 'reality' is
+imposed, granting a new, random modifier to all enemies on the next floor."
+
+Until this change rule 3 of `FCataclysmDungeonFloorRules::ModifiersFor` drew one more DUNGEON row from the dungeon's
+pool for every floor, floor 1 included, and added its danger to the floor's score. The row says the modifier is
+granted "to all enemies", and that it follows a cleared floor. A dungeon row is not granted to enemies, and floor 1
+follows no cleared floor.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-10-01, each a labelled judgement:**
+
+- **The reality is one row of the GENERIC column of the enemy modifier table** (`UCataclysmEnemyModifiers::Draw` with
+  type `Generic`, the ten rows any creature can carry), not a dungeon row and not a row of the floor's Cataclysm.
+- **It is drawn after rule 4, Reality Twister, from the floor's final list.** So an Unstable Dimensions that Reality
+  Twister adds to a floor imposes a reality on that floor. **This reverses the judgement recorded in the entry "Reality
+  Twister: each floor gains one random row of any Cataclysm that does something in play"**, which said "an Unstable
+  Dimensions that Reality Twister draws adds nothing on that floor, because its rule has already run". That was true
+  only while Unstable Dimensions' rule added a dungeon row: Reality Twister had to read that row as one in force, so
+  Unstable Dimensions had to run first. The reality is not a dungeon row, Reality Twister has nothing of it to read,
+  and so it can run last. The other half of that judgement, "After Unstable Dimensions' extra, and reading it", no
+  longer has an extra to read.
+- **Every creature `SpawnPlacedCreature` places on that floor gets it, one copy**: the floor's population with its
+  Gatekeeper, each Horde wave, and the rules' arrivals that come through that function. A creature already carrying
+  that row is not given a second. **A thrall keeps what it had**: nothing is taken away when a creature changes side.
+  **A consequence of that scope, not ruled separately:** the fixtures eight rules spawn directly with `SpawnActor` --
+  `PlaceTheChoruses`, `PlaceTheBlooms`, `PlaceTheSpires`, `PlaceTheSarcophagi`, `PlaceTheBeacons`, `PlaceThePortals`,
+  `PlaceTheRift` and `PlaceTheBloom` -- are not placed by `SpawnPlacedCreature` and carry no reality.
+- **None on floor 1; one per floor from floor 2, drawn on the floor's own stream**, so a floor draws the same reality
+  every time it is built and the next floor draws again. **In a Horde dungeon each wave is a floor**, so each wave from
+  wave 2 has its own.
+- **Nothing is added to `ModifierScore`.** The floor's danger is the dungeon's; the reality makes its creatures
+  stronger, which the creatures themselves carry.
+
+### What was read before writing it
+
+**Re-applying the starting attributes after `ApplyDesignedStats` does not apply the rarity twice and resets nothing a
+rule set.** `ACataclysmEnemyCharacter::ApplyStartingAttributes` computes every figure afresh from the `Starting`
+figures, the rarity scale and the modifier rows carried ("A MULTIPLIER ON THE FRESHLY COMPUTED BASE, NEVER ON THE
+ATTRIBUTE"), and every setter -- `SetHealth`, `SetArmour`, `SetAttackDamage`, `SetRarityStep` -- already calls it again,
+which is why the Gatekeeper's own figures, set through those setters in `ApplyDesignedStats`, survive it. Between
+`ApplyDesignedStats` and the end of `SpawnPlacedCreature` nothing else touches the creature, so no rule's later change
+can be undone by it. **So the whole re-apply was chosen**, not adding only the modifier's own effect.
+
+**The reality does not count toward a later rarity re-draw.** `DrawModifiersForRarity` draws only the shortfall
+between the rows a rung wants and the rows carried, and every rule that raises a creature's rung -- Volatile Evolution,
+Blood-Forged Champions, Epidemic's Plague Lord, Royal Guard and the Demon Prince -- calls it after the raise. Counted
+as an ordinary row, the reality would make such a creature draw one row fewer. **Ruled by the coordinating session on
+2026-10-02, under the owner's delegation, a judgement:** the reality is the floor's trait and not the creature's own
+draw, so a re-draw draws as if it were not there. The game mode records the row it gave in
+`ACataclysmEnemyCharacter::FloorRealityRow`, only when it adds it, and the shortfall leaves that one row out of the
+count. A creature that already carried the same row as its own draw is given nothing and has nothing recorded, so its
+row still counts. **Affects** also `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`.
+
+### Tests
+
+**Rewritten, because they pinned the rule this replaces:**
+
+- `Cataclysm.FloorBrief.UnstableDimensionsGivesEveryFloorOneMoreModifier` becomes
+  `UnstableDimensionsGivesEveryLaterFloorOneGenericEnemyModifier`: over twenty floors the floor carries exactly the
+  dungeon's rows and its danger; floor 1 has no reality; every later floor has a `Generic_` row that is not a dungeon
+  row, the same when the floor is built again, and the nineteen draw more than three different rows; the same dungeon
+  without the row has none.
+- `Cataclysm.FloorBrief.AVolatileDungeonGetsTheExtraOnTheFloorsThatDrewIt` becomes
+  `AVolatileDungeonImposesARealityOnTheFloorsThatDrewIt`: every floor carries the re-draw and no more; one that re-drew
+  Unstable Dimensions has a reality unless it is floor 1, and one that did not has none.
+- The control in `Cataclysm.DungeonModifierEffects`' built-state test that said Unstable Dimensions is partly built now
+  says it is built, and Insanity Bursts, which waits on co-op, takes its place as the partly built control.
+- `Cataclysm.DungeonModifierEffects.ThePanelMarksTheOnesThatDoNothing` hands the floor panel a partly built row and
+  asserts its line says "partly built". That row was Unstable Dimensions and is now Insanity Bursts. **It was missed
+  when the branch was written** and failed the first whole suite, at `bc8e145a`; ruled a test-only change by the
+  coordinating session on 2026-10-02. It is the second time a row moving to `Built` broke a test that used it as its
+  partly built example; the Field Medic's control was the first.
+
+**Tests that use a partly built row as their example**, grepped on 2026-10-02 for every key in `BuiltStateOf`'s partly
+list and every test expecting `ECataclysmModifierBuilt::Partly` or the panel's "partly built", so that whoever builds
+the next of these rows knows which tests to change. All are in `Cataclysm.DungeonModifierEffects.`:
+
+| Row | Test that expects it to be partly built |
+|---|---|
+| Insanity Bursts | `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack` (the partly built control) and `ThePanelMarksTheOnesThatDoNothing` (the panel's partly built example) |
+| Lightforged Walls | `LightforgedWallsFiguresAndTheRowPartly` |
+| Warzone Control Points | `WarzoneAlliesFiguresAndTheRowStaysPartly` |
+| Reality Rifts | none |
+
+Two Python checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`,
+`test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names_sections` and
+`test_warzone_row_still_names_allied_soldiers_and_shortcuts`, name the phrase their row's `Partly` rests on in their
+documentation; they read the row's text, not the built state, so building the row does not fail them, but their
+words must be revisited.
+
+**One such check was found stale and corrected here, words only:** `test_singularity_wells_still_asks_for_a_pull_it_does_not_have`
+in the same file still said the pull was unbuilt and the row `Partly` after #2204 built both. It is renamed
+`test_singularity_wells_still_asks_for_the_pull_it_now_has`, and its documentation and two failure messages now say the
+row is `Built`; its two assertions are unchanged.
+
+**New:**
+
+- `Cataclysm.FloorBrief.UnstableDimensionsAddedByRealityTwisterStillImposesAReality`: a dungeon whose only row Reality
+  Twister can draw is Unstable Dimensions; floor 1 is twisted to it and has no reality, floor 2 is twisted to it and
+  has a `Generic_` reality. This is the reversal above, pinned.
+- `Cataclysm.DungeonModifierEffects.UnstableDimensionsImposesNoRealityOnTheFirstFloor`, with the panel line "unstable
+  dimensions: no new reality on the first floor".
+- `Cataclysm.DungeonModifierEffects.UnstableDimensionsGivesEveryCreatureOfALaterFloorItsReality`: on floor 2 every
+  creature carries the reality, none twice; a creature carrying only the reality, raised to the first rung that
+  carries a row, draws that rung's whole count beside it; and the panel says "unstable dimensions: every creature is"
+  and the row's name.
+- `Cataclysm.DungeonModifierEffects.UnstableDimensionsGivesASecondHordeWaveItsReality`: wave 1 has none; every creature
+  of wave 2, once all of it has arrived, carries it.
+
+**The Python check's failure messages** in `test_dungeon_subtype_floor_rules_are_the_design.py` said the rule "gives
+every floor of a dungeon carrying it one extra modifier"; both now say it gives every creature of a later floor one
+Generic enemy modifier. The assertions are unchanged.
+
+### Run
+
+One window on 2026-10-02, with the build machine, on `fix/unstable-dimensions-gives-every-creature-a-modifier-2` on
+development `c38ba624`, and one rerun. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard
+proof printed.
+
+| Step | Printed |
+|---|---|
+| Build, at `bc8e145a`, the branch's first compile | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Proof Pa, floor 1 no longer exempt | PROVED: 3 tests performed, 2 failed, `UnstableDimensionsGivesASecondHordeWaveItsReality` and `UnstableDimensionsImposesNoRealityOnTheFirstFloor`; restored 3 of 3 |
+| Proof Pb, the reality no longer given in `SpawnPlacedCreature` | PROVED: 3 tests performed, 2 failed, `UnstableDimensionsGivesASecondHordeWaveItsReality` and `UnstableDimensionsGivesEveryCreatureOfALaterFloorItsReality`; restored 3 of 3 |
+| Proof Pd, the reality counted toward a creature's rung shortfall again | PROVED: 3 tests performed, 1 failed, `UnstableDimensionsGivesEveryCreatureOfALaterFloorItsReality`; restored 3 of 3 |
+| Whole suite, at `bc8e145a` | `3073 tests performed, 3072 succeeded, 1 failed`: `ThePanelMarksTheOnesThatDoNothing`, named under "Tests" as missed when the branch was written; declared 3073, gap 0 |
+| Python, at `bc8e145a`, started with no workflow in progress | `5668 passed, 8 skipped` (JUnit 5,676, 0 failures, 0 errors) |
+| Build, at `358e836b`, after the panel test's example became Insanity Bursts | `Build: Succeeded - 4 actions, 1 file compiled` |
+| `ThePanelMarksTheOnesThatDoNothing`, by its own name as prefix | `1 tests performed, 1 succeeded, 0 failed` |
+| `tools/tests`, at `358e836b` | `3851 passed, 8 skipped` |
+
+**The suite of record** is the whole suite at `bc8e145a`, `3073 tests performed, 3072 succeeded`, and the one test that
+failed there, rerun at `358e836b` after a test-only change; no whole suite was run again, by the coordinating session's
+ruling. All three proofs came out as predicted.
+
+**Pd replaced the registered Pc**, which drew the reality from the dungeon's rows instead of the floor's final list, as
+ruled by the coordinating session on 2026-10-02, to keep three proofs. **The reason:** the shortfall line is one piece
+of arithmetic that nothing else would notice breaking, while the ordering after Reality Twister keeps its own test,
+`UnstableDimensionsAddedByRealityTwisterStillImposesAReality`, in the whole suite, which still runs unbroken.
+
+---
+
 ## 2026-10-01 — Singularity Wells pull the player and turn projectiles, and Infernal Rain's fireballs fall: both rows built
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`SetProjectilePull`, the register

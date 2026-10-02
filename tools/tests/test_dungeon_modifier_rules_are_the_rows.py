@@ -341,26 +341,27 @@ def test_singularity_wells_damage_is_void_and_comes_from_its_own_column():
     assert row["CataclysmType"] == "Void", row["CataclysmType"]
 
 
-def test_singularity_wells_still_asks_for_a_pull_it_does_not_have():
-    """The row asks for a pull, and that is why it is only partly built.
+def test_singularity_wells_still_asks_for_the_pull_it_now_has():
+    """The row asks for a pull on players and projectiles, and both are built.
 
-    THIS TEST IS A REMINDER, NOT A GUARD, and says so. The pull is unbuilt:
-    `UCataclysmSkillEffects::ApplyPull` cannot be used on a repeating beat because
-    the diminishing-returns rule halves every displacement inside a five second
-    window, and a projectile's direction is private and fixed at launch.
+    THIS TEST IS A REMINDER, NOT A GUARD, and says so. Until 2026-10-02 (#2204) the
+    pull was unbuilt and the row Partly, and this test was named for that. Both halves
+    are built now: `StepSingularityWells` draws the player through its movement
+    component, and `ACataclysmProjectile::Step` turns a projectile inside a well.
 
-    IF THE ROW EVER STOPS ASKING FOR A PULL, this fails — and the partly-built state
-    in `UCataclysmDungeonModifierEffects::BuiltStateOf` has to be revisited, because
-    the thing it is waiting for would no longer be wanted.
+    IF THE ROW EVER STOPS ASKING FOR A PULL, this fails — and the `Built` state in
+    `UCataclysmDungeonModifierEffects::BuiltStateOf` and the pull itself have to be
+    revisited, because the thing they do would no longer be wanted.
     """
     words = flat(rows()["Void_Singularity_Wells"]["Description"]).lower()
 
     assert "pull" in words, (
         "The Singularity Wells row no longer asks for a pull. Its built state is "
-        "Partly because the pull is missing; re-read BuiltStateOf.")
+        "Built because the pull is built; re-read BuiltStateOf and StepSingularityWells.")
     assert "projectiles" in words, (
         "The Singularity Wells row no longer mentions projectiles. The pull has two "
-        "halves and this was the second; re-read BuiltStateOf.")
+        "halves and this was the second, built in ACataclysmProjectile::Step; re-read "
+        "BuiltStateOf.")
 
 
 def test_infernal_rain_still_says_its_patches_last_ten_seconds():
