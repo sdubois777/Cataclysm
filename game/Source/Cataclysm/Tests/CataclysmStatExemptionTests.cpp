@@ -3822,6 +3822,65 @@ namespace CataclysmStatExemptionTest
 			Commanding < Clean);
 	}
 
+	/**
+	 * `block_damage_reduction`, scaled by own stacks, read by
+	 * `UCataclysmDamageCalculation::BlockShareOf` at the block step. Issue #1833
+	 * group E part 2, "Consecutive blocks within 3 seconds each block 5%-10% more
+	 * damage". Two defenders carry the line at its base of 50 with 10 flat per own
+	 * stack; one holds a stack. A blocked hit of 100 keeps 50 on the one and 40 on
+	 * the other.
+	 */
+	void ProbeScaledBlockDamageReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(TEXT("Probe:block_damage_reduction"));
+		const auto Prepare = [&Key](FScopedFighter& Defender)
+		{
+			FCataclysmStatModifier PerStack;
+			PerStack.Bucket = ECataclysmStatBucket::Flat;
+			PerStack.Source = ECataclysmModifierSource::Enchantment;
+			PerStack.Value = 10.0f;
+			PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+			PerStack.ScaleStep = 1.0f;
+			PerStack.ScaleMaxSteps = 7;
+			PerStack.StackKey = Key;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line =
+				Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::BlockDamageReductionStat));
+			Line.Base = UCataclysmDamageCalculation::BlockDamageReduction;
+			Line.Modifiers = {PerStack};
+			Defender.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+			Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 100.0f);
+		};
+		FScopedFighter Clean(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Stacked(World, /*AttackDamage=*/0.0f);
+		Prepare(Clean);
+		Prepare(Stacked);
+		Cast<UCataclysmAbilitySystemComponent>(Stacked.AbilitySystem)
+			->GrantOwnStack(Key, /*WindowSeconds=*/3.0f, /*Cap=*/7);
+
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		const auto Kept = [&Blow](FScopedFighter& Defender)
+		{
+			const FCataclysmDamageResult Result = UCataclysmDamageCalculation::Resolve(
+				Blow, Defender.AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/100.0f,
+				/*BlockRoll=*/0.0f);
+			return Result.bBlocked ? Result.DealtToHealth : -1.0f;
+		};
+		const float KeptClean = Kept(Clean);
+		const float KeptStacked = Kept(Stacked);
+		Test.TestEqual(TEXT("a block with no stack keeps half"), KeptClean, 50.0f, 0.01f);
+		Test.TestEqual(TEXT("block_damage_reduction is asked for, so a block holding one "
+							"stack of ten keeps forty"), KeptStacked, 40.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -3846,6 +3905,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
 			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
 			{TEXT("evasion"),                    &ProbeScaledEvasion},
+			{TEXT("block_damage_reduction"),     &ProbeScaledBlockDamageReduction},
 			{TEXT("resistance_cap"),             &ProbeScaledResistanceCap},
 		};
 		return Made;
