@@ -3004,13 +3004,16 @@ void UCataclysmAbilitySystemComponent::ReceivePlacedStack(FName Key,
 	Held.bCutsDamage = bCutsDamage;
 }
 
-void UCataclysmAbilitySystemComponent::NoteStruckBy(
+bool UCataclysmAbilitySystemComponent::NoteStruckBy(
 	const UAbilitySystemComponent* Striker, bool bCritical)
 {
 	if (!Striker)
 	{
-		return;
+		return false;
 	}
+	// ASKED BEFORE THE WRITE BELOW, so the answer is about the blows before this
+	// one. Issue #1833 group E part 1.
+	const bool bFirst = !StruckBy.Contains(Striker);
 	// WITH THE TIME, which Set Upon reads. Issue #1515. A later blow from the
 	// same striker overwrites it, so the entry is always the most recent.
 	const UWorld* World = GetWorld();
@@ -3019,6 +3022,7 @@ void UCataclysmAbilitySystemComponent::NoteStruckBy(
 	{
 		CriticallyStruckBy.Add(Striker);
 	}
+	return bFirst;
 }
 
 bool UCataclysmAbilitySystemComponent::WasStruckBy(
@@ -3248,6 +3252,11 @@ const TCHAR* UCataclysmAbilitySystemComponent::RemainingDamageNearbyAction =
 	TEXT("dot_remaining_nearby");
 const TCHAR* UCataclysmAbilitySystemComponent::RemainingDamageTargetAction =
 	TEXT("dot_remaining_target");
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusAction = TEXT("apply_status");
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusSecondsAction =
+	TEXT("apply_status_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
+const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
 
 namespace
 {
@@ -3440,6 +3449,16 @@ float UCataclysmAbilitySystemComponent::NextSpellCooldownSecondsHeld() const
 static TAutoConsoleVariable<float> CVarCooldownResetRoll(
 	TEXT("Cataclysm.CooldownResetRoll"), -1.0f,
 	TEXT("Pins the 0-100 roll a cooldown reset enchantment makes. Negative rolls for real."),
+	ECVF_Default);
+
+/**
+ * Pins the roll a status action makes against its chance, 0 to 100, for tests.
+ * Negative, the default, rolls for real. Issue #1833 group E part 1; the same
+ * shape as `Cataclysm.CooldownResetRoll` above.
+ */
+static TAutoConsoleVariable<float> CVarStatusRoll(
+	TEXT("Cataclysm.StatusRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a status enchantment makes against its chance. Negative rolls for real."),
 	ECVF_Default);
 
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
@@ -4203,6 +4222,34 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// A STATUS ON THE OTHER CHARACTER OF THE EVENT. Issue #1833 group E part
+		// 1, ruled 2026-10-01. Landed only, once per row per event, and only for
+		// an event naming that character. A chance row rolls its value; a
+		// seconds row always applies. The cooldown starts only when the status
+		// was applied, as a random damage over time's does below.
+		if (Action.ApplyStatus != ECataclysmApplyStatus::None)
+		{
+			AActor* Other = const_cast<AActor*>(EventTarget);
+			if (bLanded && Other && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				// THE CHANCE, where 100 is always. Compared as at most rather than
+				// rolled, because `FRandRange` can return 100 itself.
+				const float Pinned = CVarStatusRoll.GetValueOnAnyThread();
+				const bool bComesUp = Action.ApplyStatus == ECataclysmApplyStatus::Seconds
+					|| Action.Percent >= 100.0f
+					|| (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f))
+						< Action.Percent;
+				// APPLIED BY THE AVATAR, as a random damage over time is below.
+				AActor* Applier = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+				if (bComesUp && ApplyStatusOf(Action, Applier, Other, EventAmount))
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
 		// A RANDOM DAMAGE OVER TIME ON THE OTHER CHARACTER OF THE EVENT. Issue
 		// #1833 group D, ruled 2026-09-30. Landed only, once per row per event,
 		// only for an event naming that character and carrying what reached its
@@ -4304,6 +4351,53 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 		}
 	}
 	return true;
+}
+
+bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction& Action,
+	AActor* Applier, AActor* Other, float EventAmount)
+{
+	if (!Applier || !Other)
+	{
+		return false;
+	}
+	const bool bSeconds = Action.ApplyStatus == ECataclysmApplyStatus::Seconds;
+
+	// A STAGGER IS NOT AN AILMENT, and the owner's rule of #917 is not asked of
+	// it: no path that staggers asks it. `ApplyStagger` keeps its own health
+	// ceiling, and the target's debuff duration still applies. A chance row
+	// staggers for the normal second.
+	if (Action.StatusName.Equals(StaggerStatus, ESearchCase::IgnoreCase))
+	{
+		return UCataclysmSkillEffects::ApplyStagger(Applier, Other,
+			bSeconds ? Action.Percent : UCataclysmSkillEffects::StaggerSeconds);
+	}
+
+	// EVERY OTHER STATUS IS AN AILMENT A BLOW CARRIES, and the code classifies
+	// those one way: `RollOnLandedBlow` asks `BlowCanCarryAnAilment` before any
+	// of the eleven, Cripple and Stun included, and so does a random damage over
+	// time on an event. A tenth of the target's maximum health, and a target
+	// still alive.
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Other, EventAmount))
+	{
+		return false;
+	}
+	if (Action.StatusName.Equals(RandomDebuffStatus, ESearchCase::IgnoreCase))
+	{
+		return UCataclysmAilments::ApplyRandomDebuff(Applier, Other, EventAmount)
+			!= nullptr;
+	}
+	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(Action.StatusName);
+	if (!Kind)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("A status action names %s, which is not a status the game has."),
+			*Action.StatusName);
+		return false;
+	}
+	// AT THE NORMAL MAGNITUDE, because no sentence states one, and for the row's
+	// seconds in place of the status row's when it states them.
+	return UCataclysmAilments::Apply(Applier, Other, *Kind, /*Magnitude=*/1.0f,
+		/*Skill=*/nullptr, NAME_None, bSeconds ? Action.Percent : 0.0f);
 }
 
 void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& Action)

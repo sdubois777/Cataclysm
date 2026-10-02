@@ -964,8 +964,29 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	//
 	// AND WHO WAS STRUCK, which only a row counting hits in a row on one enemy
 	// reads. Issue #1833, phase 2.
+	//
+	// AND WHAT REACHED THEIR HEALTH, since issue #1833 group E part 1, ruled
+	// 2026-10-01: "Strike skills have a 15%-30% chance to apply a random debuff
+	// on hit" asks the owner's rule of #917, a tenth of maximum health. No row
+	// read the amount before, measured 2026-10-01: only `health_cost` lets a row
+	// take a fraction of its event's amount, and only `health_falls_below` rows
+	// state a threshold.
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
-					   /*EventAmount=*/0.0f, /*bLanded=*/true, Notice.Target);
+					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
+					   Notice.Target);
+
+	// THE ATTACKER'S FIRST BLOW TO GET THROUGH TO THIS TARGET is a third event.
+	// Issue #1833 group E part 1, ruled 2026-10-01: "Your first hit against each
+	// enemy has a 50%-100% chance to stagger them". It cannot be `hit_dealt`
+	// with `target_not_yet_struck_by_you`, because the target's record holds
+	// this blow before the blow is announced, so the condition is false on
+	// every hit by now. The answer was taken when the record was written.
+	if (Notice.bFirstFromAttacker)
+	{
+		Acting->ActOnEvent(FName(TEXT("first_hit_dealt")), Notice.SkillTags,
+						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
+						   Notice.Target);
+	}
 
 	// A CRITICAL STRIKE IS A KIND OF HIT, so it is a second event rather than a
 	// different one, and a row may want either. Fired after the hit so that a

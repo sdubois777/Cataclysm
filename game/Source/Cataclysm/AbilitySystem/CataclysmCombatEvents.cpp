@@ -115,7 +115,7 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 									  const FCataclysmIncomingHit& Hit,
 									  const FCataclysmDamageResult& Outcome,
 									  const FGameplayTagContainer& EffectTags,
-									  bool bLethal)
+									  bool bLethal, bool bFirstFromAttacker)
 {
 	UAbilitySystemComponent* TargetSystem = &Data.Target;
 
@@ -201,6 +201,7 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	Notice.bCritical = Outcome.bWasCritical;
 	Notice.bBlocked = Outcome.bBlocked;
 	Notice.bEvaded = Outcome.bEvaded;
+	Notice.bFirstFromAttacker = bFirstFromAttacker;
 	Notice.bDamageOverTime = Hit.bIsDamageOverTime;
 	Notice.bArea = Hit.bIsArea;
 	Notice.bIsMelee = Hit.bIsMelee;

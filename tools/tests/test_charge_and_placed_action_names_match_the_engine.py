@@ -53,7 +53,19 @@ CONSTANTS = {
     # AND THE TWO REMAINING DAMAGE ACTIONS, since issue #1833 group D part 4.
     "RemainingDamageNearbyAction": "dot_remaining_nearby",
     "RemainingDamageTargetAction": "dot_remaining_target",
+    # AND THE TWO STATUS ACTIONS AND THE TWO STATUSES THAT ARE NOT AILMENTS,
+    # since issue #1833 group E part 1.
+    "ApplyStatusAction": "apply_status",
+    "ApplyStatusSecondsAction": "apply_status_seconds",
+    "StaggerStatus": "Stagger",
+    "RandomDebuffStatus": "Random Debuff",
 }
+
+AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
+
+#: `{TEXT("Bleed"), TEXT("bleed_chance"),`, the first two fields of each kind
+#: `UCataclysmAilments::KindNamed` reads.
+AILMENT_KIND = re.compile(r'\{TEXT\("([A-Za-z ]+)"\),\s*TEXT\("[a-z_]+_chance"\)')
 
 
 def engine_names() -> dict[str, str]:
@@ -130,3 +142,23 @@ def test_the_generator_accepts_exactly_the_remaining_damage_names_the_engine_has
 def test_the_generator_accepts_exactly_the_random_dot_name_the_engine_has() -> None:
     """Issue #1833 group D."""
     assert gen.RANDOM_DOT_ACTION == engine_names()["ApplyRandomDotAction"]
+
+
+def test_the_generator_accepts_exactly_the_status_names_the_engine_has() -> None:
+    """Issue #1833 group E part 1."""
+    names = engine_names()
+    assert set(gen.APPLY_STATUS_ACTIONS) == {names["ApplyStatusAction"],
+                                             names["ApplyStatusSecondsAction"]}
+
+
+def test_every_status_a_row_may_name_is_one_the_engine_applies() -> None:
+    """Issue #1833 group E part 1. A status the generator accepts and the engine
+    cannot find logs a warning when it fires and applies nothing. Every name but
+    the two the component holds must be an ailment kind; Stun is one, and is
+    left to the random debuff because `UCataclysmAilments::Apply` refuses it."""
+    kinds = set(AILMENT_KIND.findall(AILMENTS_SOURCE.read_text(encoding="utf-8")))
+    assert len(kinds) == 11, f"read {sorted(kinds)} from {AILMENTS_SOURCE.name}"
+    names = engine_names()
+    named = {names["StaggerStatus"], names["RandomDebuffStatus"]}
+    assert set(gen.APPLY_STATUSES) - named == kinds - {"Stun"}
+    assert set(gen.APPLY_STATUSES_FOR_SECONDS) <= set(gen.APPLY_STATUSES)

@@ -79,6 +79,14 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bCritical = false;
 	bool bBlocked = false;
 	bool bEvaded = false;
+
+	/**
+	 * Whether this is the first blow of the attacker's to get through to the
+	 * target: `UCataclysmAbilitySystemComponent::NoteStruckBy`'s answer, which
+	 * is written before the blow is announced and so cannot be asked of the
+	 * target afterwards. Issue #1833 group E part 1, `first_hit_dealt`.
+	 */
+	bool bFirstFromAttacker = false;
 	bool bDamageOverTime = false;
 	bool bArea = false;
 
@@ -364,11 +372,14 @@ public:
 	 *                    gathered a second time on every blow
 	 * @param bLethal  whether this blow brings the target's health to zero, which
 	 *                 is the one case the last-blow record copies the tags for
+	 * @param bFirstFromAttacker  whether this is the attacker's first blow to get
+	 *                 through to the target. See `FCataclysmHitNotice`
 	 */
 	static void NoteBlow(const FGameplayEffectModCallbackData& Data,
 						 const FCataclysmIncomingHit& Hit,
 						 const FCataclysmDamageResult& Outcome,
-						 const FGameplayTagContainer& EffectTags, bool bLethal);
+						 const FGameplayTagContainer& EffectTags, bool bLethal,
+						 bool bFirstFromAttacker = false);
 
 	/**
 	 * Announces a death. Called by `UCataclysmSkillEffects::MarkDead`, the one

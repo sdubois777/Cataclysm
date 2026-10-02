@@ -274,6 +274,12 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # damage: "When you die, all active DoTs on nearby enemies instantly deal
     # their remaining damage" deals all of it. Issue #1833 group D part 4.
     "dot_remaining_nearby": {"remaining": 100.0},
+    # "ALWAYS" AND "APPLIES" ARE 100 ON `apply_status`, whose value is a chance:
+    # "Your critical strikes always cause bleeding" and "Your retaliation damage
+    # also applies a bleed stack to the attacker" apply it every time. Issue
+    # #1833 group E part 1. One word for each of its two rows' sentences, so
+    # each is needed by a row.
+    "apply_status": {"always": 100.0, "applies": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -547,8 +553,10 @@ JUDGED_NUMBERS = {
 #: issue #1833 group D part 4, from 430 over 349: two rows on two enchantments.
 #: AND 437 OVER 354 SINCE THE GADGET AND RESOURCE EVENTS,
 #: issue #1833 group D part 5, from 432 over 351: five rows on three enchantments.
-AUTHORED_ROWS = 437
-AUTHORED_ENCHANTMENTS = 354
+#: AND 447 OVER 363 SINCE THE STATUS ACTIONS AND TWO PLAIN-DATA ROWS,
+#: issue #1833 group E part 1, from 437 over 354: ten rows on nine enchantments.
+AUTHORED_ROWS = 447
+AUTHORED_ENCHANTMENTS = 363
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
