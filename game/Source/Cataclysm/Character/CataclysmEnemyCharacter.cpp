@@ -1488,7 +1488,8 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity()
 {
 	const int32 Wanted =
 		UCataclysmEnemyModifiers::CountForRarityStep(RarityStep);
-	const int32 Shortfall = Wanted - ModifierRows.Num();
+	// THE FLOOR'S REALITY IS NOT THE CREATURE'S OWN ROW, so it does not fill a rung. Ruled 2026-10-01.
+	const int32 Shortfall = Wanted - ModifierRows.Num() + (ModifierRows.Contains(FloorRealityRow) ? 1 : 0);
 	if (Shortfall <= 0)
 	{
 		// ALREADY HAS ENOUGH, OR MORE THAN ENOUGH. More than enough is a

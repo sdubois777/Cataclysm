@@ -2062,10 +2062,12 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 	// and the like) are not placed here and carry none. RE-APPLIED THROUGH `ApplyStartingAttributes`, which computes
 	// every figure afresh from the `Starting` figures, the rarity scale and the rows carried, as every setter already
 	// does, so the rarity is not applied twice; nothing has touched this creature since `ApplyDesignedStats` above, so
-	// nothing a rule sets later is undone. A thrall taken later keeps it.
+	// nothing a rule sets later is undone. A thrall taken later keeps it. Marked as the floor's, so a rung raised later
+	// draws as if it were not there.
 	if (!FloorBrief.EveryCreatureModifier.IsNone() && !Enemy->ModifierRows.Contains(FloorBrief.EveryCreatureModifier))
 	{
 		Enemy->ModifierRows.Add(FloorBrief.EveryCreatureModifier);
+		Enemy->FloorRealityRow = FloorBrief.EveryCreatureModifier;
 		Enemy->ApplyStartingAttributes();
 	}
 
