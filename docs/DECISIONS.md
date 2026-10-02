@@ -14,7 +14,7 @@ automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffects
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
 [#1605](https://github.com/sdubois777/Cataclysm/issues/1605), [#1699](https://github.com/sdubois777/Cataclysm/issues/1699)
 and [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation tests and
-the three guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+the three guard proofs ran on 2026-10-02; the figures are at the end of this entry.
 
 ### The rows
 
@@ -141,13 +141,39 @@ would move every placement on the floor.
 
 `ACataclysmTether::Check`, the precedent the pull first copied, is not evidence either way: its test,
 `Cataclysm.Skills.ATetherDragsTwoEnemiesBackWithinItsLength`, drags two fighters in a world with no floor. Every other
-plain swept move of a character is listed for one issue on the class and is not changed here.
+plain swept move of a character -- seven places, knockbacks and pulls, leaps, the tether among them -- is issue
+[#2203](https://github.com/sdubois777/Cataclysm/issues/2203) and is not changed here.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs: Pa2, the player's move removed (Pa again,
-at the new head); Pb, the pull sent through `UCataclysmSkillEffects::ApplyPull` instead; Pc, the projectile's turn
-removed.
+Three windows on 2026-10-02, with the build machine, on `feat/singularity-pull-and-infernal-fireballs-2` on development
+`f6ba1119`. Every figure below is what `pytest`, `python tools/unreal_build.py` or a guard proof printed.
+
+| Step | Printed |
+|---|---|
+| Build, at `6b1e8a83` | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Proof Pa, the player's move removed, at `6b1e8a83` | **NOT A PROOF**: the three pull tests failed with the files restored as well; the cause is in "Why the player is moved through its movement component" above |
+| Instrumented run, readout never committed | the measurements above; the file restored byte for byte |
+| Build, at `ced51e49` | `Build: Succeeded - 7 actions, 4 files compiled` |
+| Proof Pa2, the player's move removed | PROVED: 6 tests performed, 3 failed, `SingularityWellsDrawAPlayerInsideThirtyCentimetresABeatTowardTheCentre`, `SingularityWellsPullDoesNotCarryThePlayerThroughAWall` and `SingularityWellsPullHoldsThirtyABeatAndStopsAtTheCentre`; restored 6 of 6 |
+| Proof Pb, the pull sent through `UCataclysmSkillEffects::ApplyPull` | PROVED, **AGAINST ITS PREDICTION**: 6 tests performed, 3 failed, the same three, where one was predicted (`PullHoldsThirtyABeat...` at beat 2); restored 6 of 6 |
+| Proof Pc, the projectile's turn removed | PROVED: 6 tests performed, 1 failed, `SingularityWellsTurnAProjectileTowardTheirCentre`; restored 6 of 6 |
+| Whole suite, at `ced51e49` | `3069 tests performed, 3066 succeeded, 3 failed`: the three Infernal Rain tests named under "Tests", missed when the branch was written; declared 3069, gap 0 |
+| Python, at `ced51e49`, started with no workflow in progress | `5668 passed, 8 skipped` (JUnit 5,676, 0 failures, 0 errors) |
+| Build, at `5fe28a31`, after the three tests' waits were lengthened | `Build: Succeeded - 4 actions, 1 file compiled` |
+| The three, each by its own name as prefix | `1 tests performed, 1 succeeded, 0 failed`, three times |
+| `tools/tests`, at `5fe28a31` | `3851 passed, 8 skipped` |
+
+**The suite of record** is the whole suite at `ced51e49`, `3069 tests performed, 3066 succeeded`, and the three tests
+that failed there, rerun at `5fe28a31` after a test-only change; no whole suite was run again, by the coordinating
+session's ruling.
+
+**Why Pb failed more than was predicted.** It was registered to fail only where `ApplyPull`'s diminishing returns halve
+a second pull inside five seconds. Its run log shows the first beat drawing 0 cm as well: `ApplyPull` moves its target
+by a plain swept `AddActorWorldOffset`, which the floor blocks the same way it blocked the pull's first form. Pb still
+shows that the pull does not go through `ApplyPull`; the halving cannot be measured until issue
+[#2203](https://github.com/sdubois777/Cataclysm/issues/2203) is fixed. Ruled by the coordinating session on 2026-10-02:
+recorded as proved, against its prediction.
 
 ---
 
