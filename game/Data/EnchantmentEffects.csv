@@ -451,3 +451,6 @@ Positive_Blocking_an_attack_has_a_20_40_chance_to_fully#1,Positive_Blocking_an_a
 Positive_Consecutive_blocks_within_3_seconds_each_block_5#1,Positive_Consecutive_blocks_within_3_seconds_each_block_5,block_damage_reduction,flat,5.0,10.0,,,0.0,own_stacks,1.0,,block,,7,3.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Archon_s_Aegis_6_Piece_Bonus_When_you_block_a#1,Positive_Archon_s_Aegis_6_Piece_Bonus_When_you_block_a,,,3.0,3.0,,,0.0,,0.0,damage_immunity,block,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,10.0,0.0,
 Positive_When_your_energy_shield_fully_recharges_release#1,Positive_When_your_energy_shield_fully_recharges_release,,,50.0,100.0,,,0.0,,0.0,smite_nearby,energy_shield_recharged,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_Reflect_20_100_of_damage_blocked_back_at_attac#1,Positive_Reflect_20_100_of_damage_blocked_back_at_attac,,,20.0,100.0,,,0.0,,0.0,reflect_blocked,block,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0,
+Positive_Every_3_blocks_in_quick_succession_triggers_a_sh#1,Positive_Every_3_blocks_in_quick_succession_triggers_a_sh,,,100.0,200.0,,,0.0,,0.0,smite_nearby,block,,0,3.0,0.0,0.0,3,0.0,0.0,,0.0,0.0,0.25,0.0,
+Positive_Blocking_attacks_deals_200_400_of_your_armor_a#1,Positive_Blocking_attacks_deals_200_400_of_your_armor_a,,,200.0,400.0,,,0.0,,0.0,smite_nearby_by_armor,block,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0,
