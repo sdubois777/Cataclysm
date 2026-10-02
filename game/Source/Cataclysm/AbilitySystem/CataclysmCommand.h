@@ -236,6 +236,26 @@ public:
 	static int32 ThrallCountOf(const AActor* Commander);
 
 	/**
+	 * What a summoner's gear and passives do to one of its minions' own figures, as a
+	 * multiplier, with no target: health, range, duration, explosion damage. Moved here
+	 * from `CataclysmMinion.cpp` unchanged, for issue #1715, so a thrall reads it too; the
+	 * definition carries the reasoning.
+	 */
+	static float SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
+									   const FGameplayTagContainer& MinionTags);
+
+	/** `SummonerMultiplierFor` against the character a minion is striking. Moved with it. */
+	static float SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
+										   const AActor* Target,
+										   const FGameplayTagContainer& MinionTags);
+
+	/**
+	 * What a blow from `Striker` is multiplied by because a thrall struck it: its commander's
+	 * minion damage against `Target`. One for anything that is not a thrall. Issue #1715.
+	 */
+	static float ThrallDamageMultiplierAgainst(const AActor* Striker, const AActor* Target);
+
+	/**
 	 * Whether this character's resource pool has room to hold another thrall.
 	 *
 	 * THE STAFF'S SUBJUGATE: "holding a thrall reserves 30 Fervour, so your army
