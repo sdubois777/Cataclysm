@@ -712,7 +712,7 @@ void ACataclysmHUD::DrawOverheadBars()
 				OverheadBarWidthPx, OverheadBarHeightPx,
 				UCataclysmCombatOverlay::BarFractionFor(Health, MaxHealth),
 				UCataclysmCombatOverlay::ColourFromHex(
-					UCataclysmCombatOverlay::HealthFillHex),
+					UCataclysmCombatOverlay::HealthFillHexFor(Character, LocalPawn)),
 				1.0f);
 
 		// THE SHIELD ABOVE THE HEALTH, in the colour the player's own shield is
@@ -1063,7 +1063,7 @@ void ACataclysmHUD::DrawCreaturePanel()
 	// cannot be used instead: there is no grey that separates from both the
 	// panel and the health red.
 	DrawRect(UCataclysmCombatOverlay::ColourFromHex(
-				 UCataclysmCombatOverlay::HealthFillHex),
+				 UCataclysmCombatOverlay::HealthFillHexFor(Creature, GetOwningPawn())),
 			 InnerLeft, BarTop,
 			 InnerWidth * UCataclysmCombatOverlay::BarFractionFor(Health,
 																  MaxHealth),

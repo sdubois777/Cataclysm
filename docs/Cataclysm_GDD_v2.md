@@ -6668,7 +6668,11 @@ invisible.
 
 **A health bar over a creature, once it has been hurt.** Nothing is drawn over a
 creature at full health, over a dead one, or over the player's own character,
-whose health is on the frame instead. **Path of Exile does the same** even when
+whose health is on the frame instead. **A creature the player commands, a thrall
+or a summoned minion, has its bar filled green, `#3FA34D`**, so the player can
+see which are theirs; every other creature's is the health red. The owner ruled
+it for a thrall on 2026-09-13, and it was extended to every follower on
+2026-10-02. **Path of Exile does the same** even when
 its own "Show Mini Life Bars on Enemies" setting is switched on: a bar appears
 after an enemy has been damaged or moused over, and not before. Diablo 4 makes
 showing one always a state the player has to choose rather than the only
