@@ -5757,6 +5757,315 @@ void ACataclysmDungeonGameMode::EndTheWarzoneAllies()
 	WarzoneAllies.Reset();
 }
 
+// ---------------------------------------------------------------------------
+// The runtime floor obstacles: Heaven's Quake's pillars and Cryptquake's pits. Issues #1820 and #41. Ruled 2026-10-02.
+// ---------------------------------------------------------------------------
+
+TArray<ACataclysmFloorObstacle*> ACataclysmDungeonGameMode::FloorObstaclesNow() const
+{
+	TArray<ACataclysmFloorObstacle*> Standing;
+	for (const TWeakObjectPtr<ACataclysmFloorObstacle>& One : FloorObstacles)
+	{
+		if (ACataclysmFloorObstacle* Obstacle = One.Get(); IsValid(Obstacle))
+		{
+			Standing.Add(Obstacle);
+		}
+	}
+	return Standing;
+}
+
+FIntPoint ACataclysmDungeonGameMode::ThePlayersCell() const
+{
+	const UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+	return (Pawn && CurrentFloor) ? CurrentFloor->CellOfWorld(Pawn->GetActorLocation()) : FIntPoint(-1, -1);
+}
+
+TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
+{
+	TSet<FIntPoint> Held;
+	if (!CurrentFloor)
+	{
+		return Held;
+	}
+	const ACataclysmDungeonFloor& Floor = *CurrentFloor;
+	const auto HoldWhere = [&Held, &Floor](const FVector& Where) { Held.Add(Floor.CellOfWorld(Where)); };
+
+	Held.Add(Floor.GetPlan().Entrance);
+	Held.Add(Floor.GetPlan().Exit);
+
+	// WHAT STANDS ON THE FLOOR NOW, asked of the world rather than of any list: every living pawn -- creatures, rule
+	// fixtures, the player's followers and the player -- every floor object, every ground zone and the stairs.
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<APawn> It(World); It; ++It)
+		{
+			if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It))
+			{
+				HoldWhere(It->GetActorLocation());
+			}
+		}
+		for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				HoldWhere(It->GetActorLocation());
+			}
+		}
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				HoldWhere(It->GetActorLocation());
+			}
+		}
+		for (TActorIterator<ACataclysmDungeonStairs> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				HoldWhere(It->GetActorLocation());
+			}
+		}
+	}
+
+	// AND THE CELLS KEPT FOR LATER, which nothing standing marks. See the declaration for what each is.
+	for (const FCataclysmEnemyPlacement& Waiting : WaveStillToArrive)
+	{
+		Held.Add(Waiting.Cell);
+	}
+	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+	{
+		Held.Add(Group.Middle);
+	}
+	Held.Append(RealityRiftCells);
+	for (const FInfestedVein& Vein : InfestedVeins)
+	{
+		Held.Add(Vein.Cell);
+	}
+	for (const FDivineResurgenceGrave& Grave : DivineResurgenceGraves)
+	{
+		HoldWhere(Grave.Location);
+	}
+	Held.Append(WarzonePointCells);
+	Held.Append(LocustShelterCells);
+	Held.Append(ShadowLightCells);
+	if (VoidParasiteLightCell != FIntPoint(-1, -1))
+	{
+		Held.Add(VoidParasiteLightCell);
+	}
+	for (const FVector& Mark : RawSewageMarkPoints)
+	{
+		HoldWhere(Mark);
+	}
+	for (const FVector& Patch : InfectionBloomPatchPoints)
+	{
+		HoldWhere(Patch);
+	}
+	return Held;
+}
+
+TSet<FIntPoint> ACataclysmDungeonGameMode::CellsHeldOrWarned(const ACataclysmFloorObstacle* Except) const
+{
+	TSet<FIntPoint> Held = CellsTheFloorHolds();
+	for (const FFloorObstacleWarning& Warning : FloorObstacleWarnings)
+	{
+		if (const ACataclysmFloorObstacle* Pending = Warning.Obstacle.Get(); Pending && Pending != Except)
+		{
+			Held.Append(Pending->CoveredCells());
+		}
+	}
+	return Held;
+}
+
+bool ACataclysmDungeonGameMode::ChooseObstacleCells(const ACataclysmPlayerCharacter* Player, int32 Side,
+													TArray<FIntPoint>& Out) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	Out.Reset();
+	if (!CurrentFloor || !IsValid(Player) || Side < 1)
+	{
+		return false;
+	}
+	const TSet<FIntPoint> Held = CellsHeldOrWarned();
+	const FVector Centre = Player->GetActorLocation();
+	const FIntPoint From = CurrentFloor->CellOfWorld(Centre);
+
+	// A FEW TRIES IN THE BAND AND THEN NOTHING THIS BEAT. The rule's clock is not started again, so the next beat
+	// tries again; a floor with nowhere left to close simply places nothing.
+	for (int32 Try = 0; Try < Effects::FloorObstacleTriesABeat; ++Try)
+	{
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float Away = FMath::FRandRange(Effects::FloorObstacleNearestCm, Effects::FloorObstacleFurthestCm);
+		const FIntPoint Corner = CurrentFloor->CellOfWorld(
+			Centre + FVector(Away * FMath::Cos(Angle), Away * FMath::Sin(Angle), 0.0f));
+		TArray<FIntPoint> Cells;
+		for (int32 Y = 0; Y < Side; ++Y)
+		{
+			for (int32 X = 0; X < Side; ++X)
+			{
+				Cells.Add(Corner + FIntPoint(X, Y));
+			}
+		}
+		if (CataclysmFloorCanBlock(CurrentFloor->GetPlan(), Cells, From, Held))
+		{
+			Out = MoveTemp(Cells);
+			return true;
+		}
+	}
+	return false;
+}
+
+ACataclysmFloorObstacle* ACataclysmDungeonGameMode::WarnOfAnObstacle(const TArray<FIntPoint>& Cells,
+																	 ECataclysmObstacleKind Kind, FName RowKey)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor
+		|| !CataclysmFloorCanBlock(CurrentFloor->GetPlan(), Cells, ThePlayersCell(), CellsHeldOrWarned()))
+	{
+		return nullptr;
+	}
+	const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable(), RowKey);
+	ACataclysmFloorObstacle* Obstacle = ACataclysmFloorObstacle::Place(
+		World, *CurrentFloor, Cells, Kind, RowKey, Row ? FName(*Row->CataclysmType) : NAME_None);
+	if (!Obstacle)
+	{
+		return nullptr;
+	}
+	FloorObstacles.Add(Obstacle);
+	FFloorObstacleWarning Warning;
+	Warning.Obstacle = Obstacle;
+	Warning.SecondsLeft = Effects::FloorObstacleWarningSeconds;
+	FloorObstacleWarnings.Add(Warning);
+	return Obstacle;
+}
+
+void ACataclysmDungeonGameMode::RaiseOrCancel(ACataclysmFloorObstacle* Obstacle)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	if (!IsValid(Obstacle) || !CurrentFloor)
+	{
+		return;
+	}
+
+	// ASKED AGAIN, ruled 2026-10-02: the player or a creature may have walked onto the cells during the warning, and
+	// then nothing rises. Nothing is ever raised onto anyone, so the obstacle needs no damage and no push.
+	if (!CataclysmFloorCanBlock(CurrentFloor->GetPlan(), Obstacle->CoveredCells(), ThePlayersCell(),
+								CellsHeldOrWarned(Obstacle)))
+	{
+		FloorObstacles.RemoveAll([Obstacle](const TWeakObjectPtr<ACataclysmFloorObstacle>& One)
+		{
+			return One.Get() == Obstacle;
+		});
+		Obstacle->Destroy();
+		return;
+	}
+
+	Obstacle->Raise();
+	for (const FIntPoint& Cell : Obstacle->CoveredCells())
+	{
+		CurrentFloor->BlockCell(Cell);
+	}
+	if (Obstacle->ObstacleKind() == ECataclysmObstacleKind::Pillar)
+	{
+		++HeavensQuakePillars;
+		return;
+	}
+
+	// A PIT, AND THE SWARM FROM IT, beside it: `BringCreaturesNear` chooses walkable cells near a point, and the pit's
+	// own are Solid by now. Raised by a rule there, so the swarm never holds the floor uncleared.
+	++CryptquakeSections;
+	BringCreaturesNear(Obstacle->GetActorLocation(), Obstacle->HalfWidthCm() + FCataclysmFloorGenerator::CellSizeCm * 0.5f,
+					   Effects::CryptquakeCreaturesPerSection, Effects::CryptquakeCreatureRung,
+					   FloorBrief.SightRadiusMultiplier);
+}
+
+void ACataclysmDungeonGameMode::StepFloorObstacles(ACataclysmPlayerCharacter* Player, bool bHeavensQuake,
+												   bool bCryptquake)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	FloorObstacles.RemoveAll([](const TWeakObjectPtr<ACataclysmFloorObstacle>& One) { return !One.IsValid(); });
+
+	// THE WARNINGS FIRST, so one whose second is over rises before anything new is chosen beside it.
+	for (int32 Index = FloorObstacleWarnings.Num() - 1; Index >= 0; --Index)
+	{
+		FloorObstacleWarnings[Index].SecondsLeft -= SecondsBetweenWaveChecks;
+		if (FloorObstacleWarnings[Index].SecondsLeft > KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+		ACataclysmFloorObstacle* Due = FloorObstacleWarnings[Index].Obstacle.Get();
+		FloorObstacleWarnings.RemoveAt(Index);
+		RaiseOrCancel(Due);
+	}
+
+	// A WARNING COUNTS AGAINST THE CAP as the obstacle it will be.
+	const auto Pending = [this](ECataclysmObstacleKind Kind)
+	{
+		int32 Count = 0;
+		for (const FFloorObstacleWarning& Warning : FloorObstacleWarnings)
+		{
+			const ACataclysmFloorObstacle* One = Warning.Obstacle.Get();
+			Count += (One && One->ObstacleKind() == Kind) ? 1 : 0;
+		}
+		return Count;
+	};
+
+	TArray<FIntPoint> Cells;
+	if (bHeavensQuake)
+	{
+		HeavensQuakeSecondsSince += SecondsBetweenWaveChecks;
+		if (HeavensQuakeSecondsSince >= Effects::HeavensQuakeSecondsBetween - KINDA_SMALL_NUMBER
+			&& HeavensQuakePillars + Pending(ECataclysmObstacleKind::Pillar) < Effects::HeavensQuakeMostPillars
+			&& ChooseObstacleCells(Player, 1, Cells)
+			&& WarnOfAnObstacle(Cells, ECataclysmObstacleKind::Pillar, FName(Effects::HeavensQuakeKey)))
+		{
+			HeavensQuakeSecondsSince = 0.0f;
+		}
+	}
+	if (bCryptquake)
+	{
+		CryptquakeSecondsSince += SecondsBetweenWaveChecks;
+		if (CryptquakeSecondsSince >= Effects::CryptquakeSecondsBetween - KINDA_SMALL_NUMBER
+			&& CryptquakeSections + Pending(ECataclysmObstacleKind::Pit) < Effects::CryptquakeMostSections
+			&& ChooseObstacleCells(Player, Effects::CryptquakeSectionSide, Cells)
+			&& WarnOfAnObstacle(Cells, ECataclysmObstacleKind::Pit, FName(Effects::CryptquakeKey)))
+		{
+			CryptquakeSecondsSince = 0.0f;
+		}
+	}
+}
+
+void ACataclysmDungeonGameMode::EndTheFloorObstacles()
+{
+	// THE CELLS GIVEN BACK, then the actors gone. On a floor that was rebuilt the plan is new and `UnblockCell` touches
+	// nothing; on a Horde arena, which is kept between waves, this is what makes the cells walkable again.
+	for (const TWeakObjectPtr<ACataclysmFloorObstacle>& One : FloorObstacles)
+	{
+		ACataclysmFloorObstacle* Obstacle = One.Get();
+		if (!IsValid(Obstacle))
+		{
+			continue;
+		}
+		if (CurrentFloor && !Obstacle->IsWarning())
+		{
+			for (const FIntPoint& Cell : Obstacle->CoveredCells())
+			{
+				CurrentFloor->UnblockCell(Cell);
+			}
+		}
+		Obstacle->Destroy();
+	}
+	FloorObstacles.Empty();
+	FloorObstacleWarnings.Empty();
+	HeavensQuakeSecondsSince = 0.0f;
+	CryptquakeSecondsSince = 0.0f;
+	HeavensQuakePillars = 0;
+	CryptquakeSections = 0;
+}
+
 int32 ACataclysmDungeonGameMode::BringWarzoneAllies(const FVector& Point, ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -12042,6 +12351,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// Issues #1605 and #41. It does both: it places actors AND it moves a stat.
 	const bool bSingularityWells = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::SingularityWellsKey));
+	// AND THE RUNTIME FLOOR OBSTACLES, which place actors and close cells of the plan. Issues #1820 and #41.
+	const bool bHeavensQuake = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::HeavensQuakeKey));
+	const bool bCryptquake = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::CryptquakeKey));
 	// AND WITHERED GROUND, WHICH PLACES NOTHING HERE. Its patches are placed by
 	// a death; this beat only asks whether the player is standing on one.
 	// Issue #41.
@@ -12318,6 +12632,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
+		&& !bHeavensQuake && !bCryptquake && FloorObstacleWarnings.IsEmpty()
 		&& !bMindShatteringIllusions
 		&& !bRealityRifts
 		&& !bInsanityBursts
@@ -12396,6 +12711,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bSingularityWells)
 	{
 		StepSingularityWells(Player, AbilitySystem);
+	}
+
+	// AND THE PILLARS AND PITS, with the same reason to be late: they place actors. A warning still pending is run down
+	// even on a beat whose rule has gone, so nothing is left half raised.
+	if (bHeavensQuake || bCryptquake || !FloorObstacleWarnings.IsEmpty())
+	{
+		StepFloorObstacles(Player, bHeavensQuake, bCryptquake);
 	}
 
 	// AND JUDGMENT ZONES, LAST OF THE THREE THAT PLACE ACTORS. It is here for the reason
@@ -15562,6 +15884,20 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  RawSewageStacks, RawSewageStacks == 1 ? TEXT("") : TEXT("s"),
 							  Effects::RawSewagePercentPerSecond(RawSewageStacks))
 			: FString(TEXT("raw sewage: no disease stacks")));
+	}
+
+	// AND THE RUNTIME FLOOR OBSTACLES: how many of each rule's cap stand. Issues #1820 and #41.
+	const FName HeavensQuake(UCataclysmDungeonModifierEffects::HeavensQuakeKey);
+	if (FloorBrief.Modifiers.Contains(HeavensQuake))
+	{
+		Counting.Add(HeavensQuake, FString::Printf(TEXT("heaven's quake: %d of %d pillars"), HeavensQuakePillars,
+												   UCataclysmDungeonModifierEffects::HeavensQuakeMostPillars));
+	}
+	const FName Cryptquake(UCataclysmDungeonModifierEffects::CryptquakeKey);
+	if (FloorBrief.Modifiers.Contains(Cryptquake))
+	{
+		Counting.Add(Cryptquake, FString::Printf(TEXT("cryptquake: %d of %d sections"), CryptquakeSections,
+												 UCataclysmDungeonModifierEffects::CryptquakeMostSections));
 	}
 
 	// AND UNSTABLE DIMENSIONS: the reality every creature of this floor carries, by its name. Ruled 2026-10-01.
@@ -18900,6 +19236,10 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// WARZONE'S ALLIED SOLDIERS LAST THE FLOOR, so they are removed here, before `BringFollowersTo` below carries the
 	// player's followers to the new entrance -- a Horde arena's next wave included. Ruled 2026-10-01.
 	EndTheWarzoneAllies();
+
+	// AND THE PILLARS AND PITS LAST THE FLOOR, ruled 2026-10-02: removed, and their cells given back, BEFORE the next
+	// floor or Horde wave is populated, so a wave's creatures are placed on the arena's whole plan.
+	EndTheFloorObstacles();
 
 	PopulateFloor();
 

@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmTerrain.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
+#include "Dungeon/CataclysmFloorObstacle.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -133,6 +134,9 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 	// ownership does. Nothing depends on it -- both are destroyed in the same
 	// call and a zone whose owner has gone simply sweeps nothing.
 	Destroyed += FloorContentsDestroyEvery<ACataclysmFloorHazardSource>(World);
+	// AND A RULE'S PILLARS AND PITS, which close cells of the floor they stood on. Issues #1820 and #41. At a floor
+	// change the game mode removes them first, giving their cells back; this is what a save's restore reaches.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmFloorObstacle>(World);
 
 	return Destroyed;
 }

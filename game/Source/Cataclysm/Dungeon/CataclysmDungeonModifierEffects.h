@@ -1788,6 +1788,40 @@ public:
 	static const TCHAR* LightforgedWallsKey;
 
 	/**
+	 * `Celestial_Heaven_s_Quake`: "Radiant pillars crash through the ceiling, creating impassable terrain and forcing
+	 * reroutes mid-combat." Issues #1820 and #41.
+	 *
+	 * BUILT ON THE RUNTIME FLOOR OBSTACLE, `ACataclysmFloorObstacle`, which closes a cell during play with collision, a
+	 * navigation modifier and the floor plan. RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION,
+	 * 2026-10-02, each a labelled judgement:
+	 * - A PILLAR EVERY `HeavensQuakeSecondsBetween` on a cell `FloorObstacleNearestCm` to `FloorObstacleFurthestCm`
+	 *   from the player -- "mid-combat" read as near the player, as Infernal Rain's "combat zones" are -- after a
+	 *   warning of `FloorObstacleWarningSeconds` on the cell.
+	 * - PILLARS LAST THE FLOOR, up to `HeavensQuakeMostPillars`: the row says "terrain". Diablo IV's Waller, the one
+	 *   shipped precedent found, is temporary (7 s); this row is not, and `CataclysmFloorCanBlock` asking for every
+	 *   pillar is what stops them adding up to a cut floor.
+	 * - NO DAMAGE. A cell anyone stands in is never chosen, and one the player or a creature walks into during its
+	 *   warning is cancelled.
+	 * - SOLID TO SHOTS: a pillar stands in the way of a projectile as a wall does.
+	 */
+	static const TCHAR* HeavensQuakeKey;
+
+	/**
+	 * `Death_Cryptquake`: "Sections of the floor collapse into pits of bones, forcing new routes and spawning skeletal
+	 * swarms from below." Issues #1820 and #41.
+	 *
+	 * BUILT ON THE SAME RUNTIME FLOOR OBSTACLE as Heaven's Quake. RULED 2026-10-02, each a labelled judgement:
+	 * - A SECTION IS TWO CELLS BY TWO, all four passing the placement rule or the section is skipped, every
+	 *   `CryptquakeSecondsBetween`, in the same band and after the same warning, up to `CryptquakeMostSections`.
+	 * - A PIT STOPS MOVEMENT AND NOT A SHOT: a shot flies over a hole. Its blocker is the full wall height, so the
+	 *   Warden's charge, which looks for walls with a sphere at body height, stops at its edge.
+	 * - THE SWARM IS `CryptquakeCreaturesPerSection` OF THE FLOOR'S OWN KINDS, at Common, raised by a rule, arriving
+	 *   beside the pit. No skeleton creature exists; one waits for its own work. Raised by a rule, the swarm never holds
+	 *   the floor uncleared nor Lightforged Walls shut (`IsOneOfTheFloorsOwnStanding`).
+	 */
+	static const TCHAR* CryptquakeKey;
+
+	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
 	 * Issues #1820 and #41.
 	 *
@@ -5720,6 +5754,23 @@ public:
 	/** Warzone's allied soldiers a captured point brings, and their rung: Common. Judgements; see the key's comment. */
 	static constexpr int32 WarzoneAlliesPerPoint = 2;
 	static constexpr int32 WarzoneAllyRung = 0;
+
+	/**
+	 * The runtime floor obstacles' figures, Heaven's Quake's and Cryptquake's. Each a judgement ruled 2026-10-02; see
+	 * the keys' comments. The rows state no figure. Kept near Infernal Rain's (a patch every 5 s, cap 3) and Singularity
+	 * Wells' (8 s, cap 3), with higher caps for the pillars because they last the floor.
+	 */
+	static constexpr float FloorObstacleNearestCm = 600.0f;
+	static constexpr float FloorObstacleFurthestCm = 1200.0f;
+	static constexpr float FloorObstacleWarningSeconds = 1.0f;
+	static constexpr int32 FloorObstacleTriesABeat = 12;
+	static constexpr float HeavensQuakeSecondsBetween = 6.0f;
+	static constexpr int32 HeavensQuakeMostPillars = 6;
+	static constexpr float CryptquakeSecondsBetween = 10.0f;
+	static constexpr int32 CryptquakeMostSections = 3;
+	static constexpr int32 CryptquakeSectionSide = 2;
+	static constexpr int32 CryptquakeCreaturesPerSection = 3;
+	static constexpr int32 CryptquakeCreatureRung = 0;
 
 	/** The player's sight while a travelling swarm covers them, a play-test value. */
 	static constexpr float SwarmOfLocustsSightCm = 400.0f;

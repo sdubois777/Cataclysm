@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Player/CataclysmGameMode.h"
 #include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorObstacle.h"
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
 #include "Templates/SubclassOf.h"
@@ -2442,6 +2443,45 @@ public:
 	/** Warzone Control Points, for tests: the allied soldiers its captured points brought that still stand. */
 	TArray<ACataclysmEnemyCharacter*> WarzoneAlliesStanding() const;
 
+	/**
+	 * Heaven's Quake's pillars and Cryptquake's pits on this floor, standing or still a warning. Issues #1820 and #41.
+	 */
+	TArray<ACataclysmFloorObstacle*> FloorObstaclesNow() const;
+
+	/** How many of Heaven's Quake's pillars this floor has raised. Counts against `HeavensQuakeMostPillars`. */
+	int32 HeavensQuakePillarsRaised() const { return HeavensQuakePillars; }
+
+	/** How many of Cryptquake's sections this floor has collapsed. Counts against `CryptquakeMostSections`. */
+	int32 CryptquakeSectionsCollapsed() const { return CryptquakeSections; }
+
+	/**
+	 * Every cell this floor still holds a use for, which no obstacle may close (`CataclysmFloorCanBlock`'s `Held`).
+	 * Issues #1820 and #41.
+	 *
+	 * SOME OF THE GAME MODE KEEPS CELLS CHOSEN EARLIER AND USES THEM LATER WITHOUT ASKING THE PLAN AGAIN, and
+	 * `SpawnPlacedCreature` puts a creature on whatever cell it is handed. Closing one of those cells would put a
+	 * creature, the player or a zone into an obstacle. So they are refused here, not checked where they are used:
+	 * - the entrance and the exit, and every living creature, floor object, ground zone and the stairs, from the world;
+	 * - a Horde wave still arriving (`WaveStillToArrive`), and where Morale Break's fled return (`MoraleBreakGroups`);
+	 * - Reality Rifts' cells, which the player is teleported to; Infested Veins' cells, where a vein regrows; Divine
+	 *   Resurgence's graves, where the dead rise;
+	 * - the cells zones are redrawn on: Warzone's points, the locust shelters, the shadow lights, the Void Parasite's
+	 *   light, Raw Sewage's marks and the Infection Bloom's patches.
+	 * A LIST ADDED LATER THAT KEEPS CELLS FOR LATER USE BELONGS HERE TOO, or an obstacle can close one of its cells.
+	 * An obstacle still in its warning is NOT here: see `ChooseObstacleCells`.
+	 */
+	TSet<FIntPoint> CellsTheFloorHolds() const;
+
+	/**
+	 * Put the warning for an obstacle on these cells now, as the rule does on its cadence. Null when the placement
+	 * rule refuses them. Public for a test that must choose the cells.
+	 */
+	ACataclysmFloorObstacle* WarnOfAnObstacle(const TArray<FIntPoint>& Cells, ECataclysmObstacleKind Kind,
+											  FName RowKey);
+
+	/** Remove every obstacle and warning, give their cells back and start the rules' clocks again. */
+	void EndTheFloorObstacles();
+
 	/** Swarm of Locusts, for tests: this arena's shelters, drawn from its first beat. */
 	TArray<class ACataclysmGroundZone*> LocustSheltersNow() const;
 
@@ -3775,6 +3815,40 @@ private:
 		TWeakObjectPtr<class ACataclysmProjectile> Ball;
 	};
 	TArray<FInfernalRainFall> InfernalRainFalls;
+
+	/** The runtime floor obstacles. See `FloorObstaclesNow`. Issues #1820 and #41. */
+	TArray<TWeakObjectPtr<ACataclysmFloorObstacle>> FloorObstacles;
+
+	/** An obstacle still in its warning, and how long is left. */
+	struct FFloorObstacleWarning
+	{
+		TWeakObjectPtr<ACataclysmFloorObstacle> Obstacle;
+		float SecondsLeft = 0.0f;
+	};
+	TArray<FFloorObstacleWarning> FloorObstacleWarnings;
+
+	float HeavensQuakeSecondsSince = 0.0f;
+	float CryptquakeSecondsSince = 0.0f;
+	int32 HeavensQuakePillars = 0;
+	int32 CryptquakeSections = 0;
+
+	/** Heaven's Quake's and Cryptquake's beat: the warnings run down, then each rule places one when it is due. */
+	void StepFloorObstacles(class ACataclysmPlayerCharacter* Player, bool bHeavensQuake, bool bCryptquake);
+
+	/**
+	 * A square of cells `Side` across, in the band around the player, that the placement rule allows, or false.
+	 * `CellsTheFloorHolds` plus the cells of every warning still pending, so two warnings never share a cell.
+	 */
+	bool ChooseObstacleCells(const class ACataclysmPlayerCharacter* Player, int32 Side, TArray<FIntPoint>& Out) const;
+
+	/** `CellsTheFloorHolds` and the cells of every warning still pending but `Except`. */
+	TSet<FIntPoint> CellsHeldOrWarned(const ACataclysmFloorObstacle* Except = nullptr) const;
+
+	/** A warning whose second is over: raised, or cancelled when its cells are no longer allowed. */
+	void RaiseOrCancel(ACataclysmFloorObstacle* Obstacle);
+
+	/** The player's cell on this floor, or (-1, -1). */
+	FIntPoint ThePlayersCell() const;
 
 	/** Infernal Rain: a patch at this point, typed and burning once a second with the others; null if none came. */
 	class ACataclysmGroundZone* PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where, float DamagePerSecond,
