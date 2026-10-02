@@ -2462,12 +2462,16 @@ public:
 	 * `SpawnPlacedCreature` puts a creature on whatever cell it is handed. Closing one of those cells would put a
 	 * creature, the player or a zone into an obstacle. So they are refused here, not checked where they are used:
 	 * - the entrance and the exit, and every living creature, floor object, ground zone and the stairs, from the world;
-	 * - a Horde wave still arriving (`WaveStillToArrive`), and where Morale Break's fled return (`MoraleBreakGroups`);
+	 * - a Horde wave still arriving (`WaveStillToArrive`, `ArrivingPackSites`), and where Morale Break's fled return
+	 *   (`MoraleBreakGroups`, and every creature's `PackMiddleCell`, which a group's middle is taken from);
+	 * - where Infernal Rain's falling fireballs will land and leave a patch (`InfernalRainFalls`);
 	 * - Reality Rifts' cells, which the player is teleported to; Infested Veins' cells, where a vein regrows; Divine
 	 *   Resurgence's graves, where the dead rise;
 	 * - the cells zones are redrawn on: Warzone's points, the locust shelters, the shadow lights, the Void Parasite's
 	 *   light, Raw Sewage's marks and the Infection Bloom's patches.
 	 * A LIST ADDED LATER THAT KEEPS CELLS FOR LATER USE BELONGS HERE TOO, or an obstacle can close one of its cells.
+	 * `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py` fails until it is named here or, with a
+	 * reason, in that file's list of the harmless.
 	 * An obstacle still in its warning is NOT here: see `ChooseObstacleCells`.
 	 */
 	TSet<FIntPoint> CellsTheFloorHolds() const;
