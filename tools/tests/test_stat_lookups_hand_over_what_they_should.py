@@ -74,7 +74,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Issue #1833 group C part 3a added one more on 2026-09-30, the share of
 #: armour a critical strike ignores; part 3b one more, a share of the
 #: maximum mana added to a skill's cost.
-CALL_SITES = 63
+#: Issue #1833 group E part 3 added one more on 2026-10-02, the wearer's armour
+#: an armour nova strikes with.
+CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -165,6 +167,11 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
+        "the wearer's own armour, which an armour nova strikes nearby enemies "
+        'with when it blocks; no skill and no blow of its own is in hand, and the '
+        'blow it blocked belongs to the attacker; issue #1833',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(AurasEndAtDeathStat), FGameplayTagContainer(), GetNumericAttribute(Flag)'):
         'a flag read on the character that died, when its death is cleared, '

@@ -3396,6 +3396,13 @@ enum class ECataclysmNearbyAction : uint8
 	 * for 10%-20% of their maximum HP".
 	 */
 	HealEnemies UMETA(DisplayName = "Heal nearby enemies"),
+
+	/**
+	 * A blow of `Percent` of the wearer's armour on every enemy nearby, meeting
+	 * each one's mitigation as a blow does: "Blocking attacks deals 200%-400% of
+	 * your armor as damage to nearby enemies". Issue #1833 group E part 3.
+	 */
+	SmiteByArmour UMETA(DisplayName = "Smite nearby enemies by armour"),
 };
 
 /**
@@ -3860,6 +3867,25 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bDamageImmunity = false;
+
+	/**
+	 * Set, this action pays `Percent` of the damage its block removed back to the
+	 * attacker, as retaliation pays: through the attacker's armour and
+	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
+	 * group E part 3, ruled 2026-10-02.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bReflectBlocked = false;
+
+	/**
+	 * The window an "every Nth event" count runs in, in seconds, for an action
+	 * that is not one of the every-Nth kinds: it acts on the Nth of its events
+	 * inside the window, and the count starts again. Issue #1833 group E part 3,
+	 * ruled 2026-10-02: "Every 3 blocks in quick succession" is 3 within 3
+	 * seconds. Zero, with `EveryNth` of 0, is every event.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float CountWindowSeconds = 0.0f;
 };
 
 /**

@@ -2542,6 +2542,42 @@ void UCataclysmAbilitySystemComponent::NoteBlocked()
 	ActOnEvent(FName(TEXT("block")));
 }
 
+void UCataclysmAbilitySystemComponent::NoteBlocked(const AActor* Attacker, float DamageBlocked)
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastBlockAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("block")), /*EventTags=*/nullptr,
+			   /*EventAmount=*/FMath::Max(0.0f, DamageBlocked), /*bLanded=*/true, Attacker);
+}
+
+bool UCataclysmAbilitySystemComponent::CountedToNth(const FCataclysmPoolAction& Action)
+{
+	if (Action.EveryNth <= 1)
+	{
+		return true;
+	}
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	TArray<float>& Times = EventCountTimes.FindOrAdd(Action.TriggerKey);
+	// ONLY THE EVENTS INSIDE THE WINDOW COUNT, so "in quick succession" means
+	// the last N fell within it, however many came before.
+	Times.RemoveAll([Now, &Action](float At)
+	{
+		return Action.CountWindowSeconds > 0.0f && Now - At > Action.CountWindowSeconds;
+	});
+	Times.Add(Now);
+	if (Times.Num() < Action.EveryNth)
+	{
+		return false;
+	}
+	// AND THE COUNT STARTS AGAIN once it acts, ruled 2026-10-02.
+	Times.Reset();
+	return true;
+}
+
 float UCataclysmAbilitySystemComponent::SecondsSinceBlocked() const
 {
 	const UWorld* World = GetWorld();
@@ -3275,6 +3311,9 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusSecondsAction =
 const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
+const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
+const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
+	TEXT("smite_nearby_by_armor");
 
 namespace
 {
@@ -4198,8 +4237,11 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// make the smite depend on there being one.
 		if (Action.Nearby != ECataclysmNearbyAction::None)
 		{
+			// AND, FOR A ROW THAT COUNTS, ONLY ON THE Nth OF ITS EVENTS INSIDE ITS
+			// WINDOW. Issue #1833 group E part 3. Asked last, so only an event that
+			// could act is counted.
 			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey)
-				&& TriggerReady(Action))
+				&& TriggerReady(Action) && CountedToNth(Action))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				ActOnNearby(Action);
@@ -4236,6 +4278,31 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						Self, const_cast<AActor*>(EventTarget), Action.Percent,
 						Action.Ailment, /*bEndEach=*/false);
 				}
+				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// A SHARE OF WHAT A BLOCK REMOVED, PAID BACK TO THE ATTACKER. Issue #1833
+		// group E part 3, ruled 2026-10-02: as retaliation pays, through the
+		// attacker's armour and resistance, never retaliated against, never a
+		// critical strike or a leech, and scaled by none of the wearer's
+		// increases. Landed only, once per row per event, and only for a block
+		// that names its attacker and removed something.
+		if (Action.bReflectBlocked)
+		{
+			AActor* Attacker = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			const float Reflected = EventAmount * Action.Percent / 100.0f;
+			if (bLanded && Attacker && Self && Reflected > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				FCataclysmHitDelivery Delivery;
+				Delivery.bCannotBeRetaliatedAgainst = true;
+				Delivery.bCannotCriticallyStrike = true;
+				Delivery.bCarriesNoWeaponSubType = true;
+				Delivery.bCannotLeech = true;
+				UCataclysmSkillEffects::ApplyDirectDamage(Self, Attacker, Reflected, Delivery);
 				NoteTriggerFired(Action);
 			}
 			continue;
@@ -4459,6 +4526,21 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 			// 2026-09-11. ACT ON EVENT IS DEPTH ONE, so these hits fire none of
 			// the wearer's own `hit_dealt` or `critical_strike` rows.
 			UCataclysmSkillEffects::ApplyHit(Self, Other, Action.Percent);
+			continue;
+		}
+		if (Action.Nearby == ECataclysmNearbyAction::SmiteByArmour)
+		{
+			// A BLOW OF THE STATED SHARE OF THE WEARER'S ARMOUR, meeting each
+			// enemy's mitigation as a blow does. Issue #1833 group E part 3, ruled
+			// 2026-10-02. The armour is the wearer's own, asked as a blow asks it.
+			const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>();
+			const float Armour = StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
+				Combat ? Combat->GetArmor() : 0.0f);
+			const float Amount = Armour * Action.Percent / 100.0f;
+			if (Amount > 0.0f)
+			{
+				UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Amount);
+			}
 			continue;
 		}
 
