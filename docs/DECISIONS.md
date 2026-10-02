@@ -107,6 +107,11 @@ Two Python checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`,
 documentation; they read the row's text, not the built state, so building the row does not fail them, but their
 words must be revisited.
 
+**One such check was found stale and corrected here, words only:** `test_singularity_wells_still_asks_for_a_pull_it_does_not_have`
+in the same file still said the pull was unbuilt and the row `Partly` after #2204 built both. It is renamed
+`test_singularity_wells_still_asks_for_the_pull_it_now_has`, and its documentation and two failure messages now say the
+row is `Built`; its two assertions are unchanged.
+
 **New:**
 
 - `Cataclysm.FloorBrief.UnstableDimensionsAddedByRealityTwisterStillImposesAReality`: a dungeon whose only row Reality
