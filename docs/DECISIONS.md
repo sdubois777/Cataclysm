@@ -256,7 +256,9 @@ places differently. After the second suite each was run 5 more times on the same
 each, so 6 runs of 6 each with the suite. **That rules out a frequent failure and does not rule out a rare one.** Both
 now stand the player in the floor's most open area, the Heaven's Quake one since a test-only change ruled on
 2026-10-02, which removes the one exposure found (no room near an entrance) rather than measuring it. The choice was
-not seeded for the tests' sake, by the same ruling.
+not seeded for the tests' sake, by the same ruling. After that change, at `00ea910e`, the Heaven's Quake cap test was
+run 3 times: the first build printed `Build: Succeeded - 4 actions, 1 file compiled`, and each run
+`1 tests performed, 1 succeeded, 0 failed`.
 
 **The Python of record is the run at `d648de08`**: no Python file changed after it and the collected count is the same,
 by the coordinating session's ruling. All three proofs came out as predicted; no proof was run again, since none of
