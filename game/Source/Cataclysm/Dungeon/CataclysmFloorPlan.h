@@ -278,6 +278,21 @@ CATACLYSM_API TArray<int32> CataclysmFloorDistancesFrom(const FCataclysmFloorPla
 														FIntPoint Start);
 
 /**
+ * Whether these cells may be closed by an obstacle raised during play. Issues #1820 and #41.
+ *
+ * NO when any of them is not walkable, is the entrance or the exit, is `From` -- where the player stands -- or is one
+ * of `Held`, the cells the floor still has a use for (`ACataclysmDungeonGameMode::CellsTheFloorHolds`).
+ *
+ * AND NO WHEN CLOSING THEM WOULD STRAND ANY WALKABLE CELL: after closing, every walkable cell left must be reachable
+ * from `From`. That one rule serves every floor. On an ordinary floor it includes the exit; on a Horde arena, which has
+ * no stairs, it includes the rim the waves arrive on; and because it is asked again for every obstacle, obstacles
+ * that last the floor can never add up to a cut floor. The same breadth-first search as `CataclysmFloorDistancesFrom`,
+ * on a copy of the plan.
+ */
+CATACLYSM_API bool CataclysmFloorCanBlock(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells,
+										  FIntPoint From, const TSet<FIntPoint>& Held);
+
+/**
  * How far every cell is from the floor's rim, in cells, walking orthogonally.
  *
  * THE RIM IS EVERY WALKABLE CELL THAT TOUCHES SOMETHING THAT IS NOT FLOOR --

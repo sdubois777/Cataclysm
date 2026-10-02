@@ -144,6 +144,7 @@ int32 ACataclysmDungeonFloor::WallPiecesFor(const FCataclysmFloorPlan& InPlan)
 bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
 {
 	Plan = InPlan;
+	Blocked.Reset();
 
 	if (Ground)
 	{
@@ -237,6 +238,25 @@ bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
 	FNavigationSystem::UpdateComponentData(*Walls);
 
 	return IsBuilt();
+}
+
+bool ACataclysmDungeonFloor::BlockCell(FIntPoint Cell)
+{
+	if (!Plan.IsFloor(Cell))
+	{
+		return false;
+	}
+	Plan.Cells[Plan.IndexOf(Cell)] = ECataclysmFloorCell::Solid;
+	Blocked.Add(Cell);
+	return true;
+}
+
+void ACataclysmDungeonFloor::UnblockCell(FIntPoint Cell)
+{
+	if (Blocked.Remove(Cell) > 0)
+	{
+		Plan.Carve(Cell);
+	}
 }
 
 bool ACataclysmDungeonFloor::IsBuilt() const
