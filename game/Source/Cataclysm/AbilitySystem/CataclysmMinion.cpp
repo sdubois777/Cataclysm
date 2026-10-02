@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
@@ -126,115 +127,10 @@ namespace
 	}
 
 	/**
-	 * What a summoner's gear and passives do to one of its minions' own figures,
-	 * as a multiplier. 1.25 is twenty-five per cent more. Issue #898.
-	 *
-	 * A MODIFIER THAT NAMES MINIONS IS NOT A FOURTH CHANNEL. The decision of
-	 * 2026-08-06 lists three channels and then says, in the next sentence,
-	 * "Everything else is blocked unless a modifier names minions", and the
-	 * owner's reversal it records has three parts of which the third is "minion
-	 * affixes exist on gear on top of that". `minion_damage` and `minion_health`
-	 * are the case that qualifier exists for. `AttackTarget` used to quote the
-	 * three-channel sentence without it, which read as forbidding this.
-	 *
-	 * THE INCREASES AND NOT THE STAT'S VALUE. Neither stat has a base and neither
-	 * can have one -- a minion's damage and health come from its own row in
-	 * `game/Data/MinionTypes.csv`, raised by its summoner's level -- so asking
-	 * for the value would return zero however much gear was worn.
-	 * `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` reads the
-	 * buckets without the base, which is what this needs.
-	 *
-	 * A SUM RATHER THAN A SEPARATE MULTIPLIER, AND THE DESIGN REQUIRES IT. The
-	 * same entry says "an attribute's contribution and an affix's contribution
-	 * add. They cannot multiply each other", and gives the reason: every
-	 * catastrophic minion scaling failure in the survey behind that decision was
-	 * multiplicative. The increases are still SUMMED before they multiply, so
-	 * when the attribute channel is built it lands in the same bucket and adds.
-	 *
-	 * AND A "MORE" OR "LESS" ROW MULTIPLIES ON TOP, SINCE ISSUE #1833'S SMALL
-	 * ENGINE HALVES. "Your minions have 20%-50% less hp" is a More row, and
-	 * until then `IncreasesForStat` read the increases only, so it did nothing.
-	 * `minion_damage` already honoured the More bucket through
-	 * `SummonerMultiplierAgainst` below; this is the same reading with no
-	 * target. It reaches `minion_duration` and `minion_explosion_damage` too,
-	 * and on 2026-09-25 no row gave either a More, so nothing that existed
-	 * changed.
-	 *
-	 * A REDUCTION IS KEPT AND ONLY THE RESULT IS FLOORED. Ten rows of
-	 * `game/Data/PassiveEffects.csv` already carry a negative value, so a node
-	 * reducing minion damage is a thing the data can express. Clamping the
-	 * increases at zero would discard a designed drawback in silence; flooring
-	 * the multiplier only stops a figure below -100% turning into negative
-	 * damage or negative health.
-	 *
-	 * ASKED WITH THE MINION'S OWN TYPE TAGS, since issue #1833's deployable
-	 * Part 1, for the reason `CataclysmCommand.cpp` records: the four minion
-	 * affix rows carry no scope tags and apply to every minion, and a row scoped
-	 * to `Type.Deployable` now reaches a machine and not an imp.
-	 */
-	float SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
-								const FGameplayTagContainer& MinionTags)
-	{
-		const UCataclysmAbilitySystemComponent* Theirs =
-			Cast<UCataclysmAbilitySystemComponent>(
-				UCataclysmTargeting::AbilitySystemOf(Summoner));
-		if (!Theirs)
-		{
-			// NO STAT LINE, WHICH IS ORDINARY RATHER THAN A FAULT: an enemy
-			// summoner is never given one, and a player's is empty until the
-			// first refresh. Nothing recorded means nothing added.
-			return 1.0f;
-		}
-
-		// THE INCREASES FLOORED AT ZERO, THEN THE MORE MULTIPLIER, which is
-		// what `MultiplierForStatAgainst` answers. No target: these figures
-		// are read when the minion is made or when it dies, not against
-		// anything it is striking.
-		// AND WITH THE MINION'S OWN TYPE TAGS, since deployable Part 1, so a row
-		// scoped to `Type.Deployable` reaches a machine and not an imp.
-		// Measured 2026-09-25: no minion row in the enchantment or passive
-		// sheets carried required tags before, so none changes.
-		return Theirs->MultiplierForStatAgainst(
-			FName(Stat), MinionTags, /*Target=*/nullptr);
-	}
-
-	/**
-	 * `SummonerMultiplierFor` against the character a minion is striking, with
-	 * the "more" bucket. Issue #1515, Set Upon and Set the Pack On, whose rows
-	 * ask about the enemy struck. Only minion damage asks this: health and
-	 * duration are settled at the summoning, with no enemy in hand.
-	 *
-	 * ON THE SUMMONER'S COMPONENT AND NEVER THE MINION'S, which is what keeps
-	 * `seconds_after_summon` holding here: a minion's own clock is never
-	 * stamped by a summon.
-	 *
-	 * A "MORE" ROW IS A SEPARATE MULTIPLIER, WHICH THE COMMENT ABOVE SAYS THE
-	 * DESIGN FORBIDS, AND IT DOES NOT CONTRADICT IT. That rule is that an
-	 * attribute's increases and an affix's increases add; they still do, in
-	 * the one sum. Set the Pack On is a capstone option whose sentence says
-	 * "more", and no shipped row put "more" on minion damage before it,
-	 * measured 2026-09-23.
-	 */
-	float SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
-									const AActor* Target,
-									const FGameplayTagContainer& MinionTags)
-	{
-		const UCataclysmAbilitySystemComponent* Theirs =
-			Cast<UCataclysmAbilitySystemComponent>(
-				UCataclysmTargeting::AbilitySystemOf(Summoner));
-		if (!Theirs)
-		{
-			// NO STAT LINE, for the reason `SummonerMultiplierFor` gives.
-			return 1.0f;
-		}
-
-		return Theirs->MultiplierForStatAgainst(FName(Stat), MinionTags, Target);
-	}
-
-	/**
 	 * What one of the summoner's stats stands at, or nothing.
 	 *
-	 * THE SIBLING OF `SummonerMultiplierFor` ABOVE, and it reads a flag rather
+	 * THE SIBLING OF `UCataclysmCommand::SummonerMultiplierFor`, which lived
+	 * above this until issue #1715 moved it, and it reads a flag rather
 	 * than a multiplier: `minion_explodes_on_death` is a stat a passive row
 	 * sets to one, so what matters is whether it is above zero. Issue #1515.
 	 *
@@ -589,7 +485,7 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		// multiplier of nought or less keeps the stated figures, as duration's
 		// does.
 		const float RangeMultiplier =
-			SummonerMultiplierFor(InSummoner, TEXT("minion_range"), Minion->TypeTags);
+			UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_range"), Minion->TypeTags);
 		const float Lengthened = RangeMultiplier > 0.0f ? RangeMultiplier : 1.0f;
 		Minion->ReachCm = Type->ReachCm * Lengthened;
 		Minion->NoticeRadiusCm = Type->NoticeRadiusCm * Lengthened;
@@ -656,7 +552,7 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		// rather than adding a floor nobody chose.
 		const float OwnHealth =
 			RaisedByLevel(Type->BaseHealth, Type->HealthPerLevel, Level)
-			* SummonerMultiplierFor(InSummoner, TEXT("minion_health"), Minion->TypeTags);
+			* UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_health"), Minion->TypeTags);
 		if (Minion->AbilitySystemComponent && OwnHealth > 0.0f)
 		{
 			Minion->AbilitySystemComponent->SetNumericAttributeBase(
@@ -708,7 +604,7 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	// minion permanent. No shipped row reduces the duration; this says what
 	// would happen rather than leaving it to the engine's meaning of zero.
 	const float Duration =
-		Lifetime * SummonerMultiplierFor(InSummoner, TEXT("minion_duration"), Minion->TypeTags);
+		Lifetime * UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_duration"), Minion->TypeTags);
 	Minion->SetLifeSpan(Duration > 0.0f ? Duration : Lifetime);
 
 	return Minion;
@@ -848,7 +744,7 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// summoner's stat lines, a different list, so nothing is counted twice.
 		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
 			UCataclysmTargeting::AbilitySystemOf(this),
-			Own * SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
+			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
 			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
@@ -1046,7 +942,7 @@ void ACataclysmMinion::Explode()
 		// `CataclysmSkillTemplates.cpp` records for issues #910 and #340.
 		// This stat is the damage and only the damage.
 		const float Scaled = Damage
-			* SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags);
+			* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags);
 
 		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
 			GetWorld(), this, GetActorLocation(),

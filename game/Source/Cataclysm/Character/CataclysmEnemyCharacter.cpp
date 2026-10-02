@@ -1563,6 +1563,19 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity()
 	ApplyStartingAttributes();
 }
 
+void ACataclysmEnemyCharacter::SetCommanderHealthMultiplier(float NewMultiplier)
+{
+	const float Wanted = FMath::Max(0.0f, NewMultiplier);
+	// UNCHANGED, NOTHING WRITTEN, so a commander with no minion health takes a creature
+	// exactly as before #1715: `ApplyStartingAttributes` also rewrites every other figure.
+	if (Wanted == CommanderHealthMultiplier)
+	{
+		return;
+	}
+	CommanderHealthMultiplier = Wanted;
+	ApplyStartingAttributes();
+}
+
 void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 {
 	if (!AbilitySystemComponent)
@@ -1608,7 +1621,8 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 		// This function runs again every time a spawner sets anything, so a
 		// multiplier applied to the current value would compound on every call.
 		const float ScaledHealth = StartingMaxHealth * HealthScale
-			* UCataclysmEnemyModifiers::MaxHealthMultiplier(ModifierRows);
+			* UCataclysmEnemyModifiers::MaxHealthMultiplier(ModifierRows)
+			* CommanderHealthMultiplier;
 
 		// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental. The vital
 		// attribute set clamps health to the maximum in PreAttributeChange, so

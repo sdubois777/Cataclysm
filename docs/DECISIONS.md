@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — A subjugated enemy takes its commander's minion damage and minion health, as the owner ruled it should
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp` (two helpers moved in, one
+added, and Subjugate), `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (the helpers moved out),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (`ApplyHit`),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a health multiplier) and
+`game/Source/Cataclysm/Tests/CataclysmMinionGearTests.cpp` (three tests). Issue
+[#1715](https://github.com/sdubois777/Cataclysm/issues/1715), ruled by the coordinating session on 2026-10-02
+under the owner's delegation.
+
+### THE RULING THIS BUILDS
+
+**The owner's three rulings on Subjugate are recorded in the entry of 2026-09-13**, "A subjugated enemy is a
+minion, is healed to full when taken, and says so in its own description", in their own words: the enemy you
+take over "should be considered a minion", "it should heal to full", and "turn their healthbar green so you
+know it's yours". That entry built the heal and recorded the other two as not built. **This one builds the
+first for the two minion stats a thrall did not read**, `minion_damage` and `minion_health`. The green bar is
+still not built, and #1715 stays open for it.
+
+### WHAT CHANGES IN PLAY
+
+Fourteen rows of the Ritualist tree grant minion damage or minion health. Until this change a thrall read none
+of them, because a thrall is a taken creature and not an `ACataclysmMinion`, and the two stats were read only
+in the minion's own code.
+
+- **A thrall's blow is multiplied by its commander's minion damage**, read at the blow and against its target,
+  as a summoned minion's swing reads it. So Chained Will, Deeper Pact, Obedience, Long Servitude, Sharp Claws,
+  Numbers and The First Pact's first option reach a thrall. So do Set Upon and The Third Pact's first option,
+  which ask whether the commander damaged the target in the last two seconds.
+- **A thrall's maximum health is multiplied by its commander's minion health when it is taken**, and it is
+  filled. So Yoke, Held Fast, Brood, Hardy Stock and The First Pact's first option reach a thrall.
+- **Nothing changes for a summoned minion, a player, or an unowned creature.** The minion's two readings were
+  moved into `UCataclysmCommand` unchanged, so the thrall's code and the minion's code share them.
+
+### HOW EACH IS BUILT
+
+- **Damage, in `UCataclysmSkillEffects::ApplyHit`.** That function is where every direct creature blow is
+  dealt, with the creature itself as the attacker. `UCataclysmCommand::ThrallDamageMultiplierAgainst` answers
+  one unless the attacker is commanded and is not an `ACataclysmMinion`. A minion's own blow goes through
+  `ApplyDirectDamage` and reads minion damage itself, so it is not counted twice.
+  - **Read at the blow rather than fixed at the take**, because two of the rows ask about the enemy struck,
+    and a figure fixed at the take has no target to ask about.
+  - **With no type tags.** A thrall carries none of the minion types' tags, and on 2026-10-02 none of the
+    fourteen rows required a tag.
+- **Health, in the creature's own figures.** `ACataclysmEnemyCharacter::CommanderHealthMultiplier` is part of
+  the product `ApplyStartingAttributes` writes maximum health from, and `UCataclysmCommand::Subjugate` sets it.
+  - **Not a write to the attribute**, because `ApplyStartingAttributes` rewrites maximum health from the
+    creature's own figures whenever anything sets them. A rule that raised a thrall's rung later would have
+    dropped a bonus written straight onto the attribute.
+  - **Fixed at the take**, as a summoned minion's health is fixed at its summoning. The owner's ruling that
+    "minions update live rather than snapshotting", in the same 2026-09-13 entry, is recorded and not built,
+    and this change does not build it.
+  - **Nothing is rewritten for a commander with no minion health.** The multiplier stays one, and
+    `SetCommanderHealthMultiplier` writes nothing when the figure does not change.
+
+### WHAT A THRALL STILL MISSES
+
+**The damage half reaches every direct blow**: the basic swing, the charges, the Brute's Stomp, the Abyssal
+Warden's Molten Roar, the Gatekeeper's Dread Cleave, and every creature projectile's impact, because a
+projectile names its firer when it hits. **It does not reach damage that does not go through `ApplyHit`**,
+and this change does not widen to them:
+
+| How a thrall deals it | Why minion damage does not reach it |
+| :-- | :-- |
+| Ground it sets burning: the Hellhound's fire lane, the Gatekeeper's burning ground | priced from the thrall's attack damage when it is laid |
+| Damage over time: a projectile's burn, an ailment it rolls, Hellfire Aura, a bleed on a critical strike | worked out once at application from the thrall's own damage over time stats |
+| Infernal Brand's explosion | the thrall's raw attack damage times five |
+| Thorns of Glass retaliation | worked out by the retaliation code |
+| Shared Ruin's blast when it dies | a share of its maximum health |
+| Chorus repeating the commander's skill | a share of the commander's figure |
+
+**Shared Blood is the one minion-named node a thrall still misses.** The Ritualist's 50-point capstone, first
+option, gives minions an energy shield. `UCataclysmRegeneration::SharedBloodStep` refuses anything that is not
+an `ACataclysmMinion`, and it is not minion damage or minion health, so it was left out of this change.
+
+### A JUDGEMENT
+
+**A thrall does not explode under Every One Bursts or Volatile.** The keystone reads "with the radius and
+damage of the skill that brought it", and Subjugate's row states no explosion to copy. It is a reading made
+under the owner's delegation, not an owner ruling. The size of that explosion for a minion is an open design
+question of its own, [#1932](https://github.com/sdubois777/Cataclysm/issues/1932).
+
+### HOW IT IS CHECKED
+
+Three tests in `Cataclysm.MinionGear.`, each on a real creature taken with `UCataclysmCommand::Subjugate`:
+
+- `AThrallHitsHarderForItsCommandersIncreasedMinionDamage`: the creature's blow is measured before the take.
+  Taken, it hits the same. With 25% increased minion damage granted after the take, it hits 25% harder. An
+  unowned creature's blow, and the commander's own, are unchanged.
+- `AThrallTakenIsToughenedForItsCommandersMinionHealthAndKeepsItWhenItsRungRises`: with 50% increased minion
+  health, a wounded creature is taken at 1.5 times its maximum and at full. Raised a rung afterwards, its
+  maximum is its own health times the rung times 1.5. A creature taken by a commander with no minion health
+  keeps its own maximum.
+- `AThrallHitsHarderOnlyAgainstAnEnemyItsCommanderDamagedInTheLastTwoSeconds`: 16% increased and 25% more,
+  conditioned on the target, make 1.45 against an enemy the commander just damaged, and nothing against one
+  it never damaged.
+
+**The minion's own readings are regressions here**, since the two helpers moved: the eight
+`Cataclysm.MinionGear.` and five `Cataclysm.MinionStats.` tests that existed before must pass unchanged.
+
+**Not built or run when this was written.** The run table follows when the window runs.
+
+---
+
 ## 2026-10-01 — Mutilation Mastery's bleed needs the blow to take a tenth of the target's maximum health, and a killing blow leaves none
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the condition on the
