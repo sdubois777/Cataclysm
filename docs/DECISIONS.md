@@ -148,7 +148,27 @@ shelters, the shadow lights, the Void Parasite's light, Raw Sewage's marks and t
 than change each of those users, the placement rule refuses all of their cells**: `CellsTheFloorHolds` gathers them,
 and also asks the world for every living pawn, floor object, ground zone and the stairs. **A list added later that
 keeps cells for later belongs there too**, which its comment says. The floor's own geometry and navigation mesh still
-say "floor" under an obstacle, which needs nothing; Luxury Hoarders' list is read only by the panel.
+say "floor" under an obstacle, which needs nothing.
+
+**A Python pin holds that last sentence**, ruled by the coordinating session on 2026-10-02, because a test placing
+today's sources cannot notice a list added tomorrow. `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py`
+reads the game mode's header and requires every member that keeps a cell or a position -- a `FIntPoint`, a container of
+them, a container of a struct carrying one, or a TArray or TSet of `FVector` or of a struct with a `Location`, `Where`,
+`At`, `Point` or `Middle` field -- to be read by `CellsTheFloorHolds` or named in its `HARMLESS` list with a reason.
+Positions are counted as well as cells, wider than the ruling asked, so that Luxury Hoarders, which keeps positions,
+can be in the list at all. Writing it found three more kept places, now held: `ArrivingPackSites` and every creature's
+`PackMiddleCell`, which a Morale Break group's middle is taken from, and `InfernalRainFalls`, where a falling fireball
+will leave a patch. Named harmless, each with its reason in the file:
+
+| Member | Why it needs no holding |
+|---|---|
+| `LuxuryHoards` | read only by the floor panel's count |
+| `PlagueHarbingerTrails` | where a Harbinger last laid a patch; it lays new ones only where it walks, and it cannot walk into an obstacle |
+| `PandorasBoxWaves` | a box's own position, already held through the floor object standing there; its waves arrive through `BringCreaturesNear`, which reads the plan |
+
+**The pin was shown failing**, with `tools/prove_guard.py`: with `Held.Append(LocustShelterCells);` removed from
+`CellsTheFloorHolds`, it printed "PROVED: 1 failed in 0.09s | restored: 1 passed in 0.06s", the named failure
+`test_every_kept_cell_is_held_from_obstacles_or_named_harmless`.
 
 **At a floor change, and at each Horde wave**, `EndTheFloorObstacles` removes every obstacle and warning and gives
 their cells back, in `GoToFloor` before the next floor or wave is populated, so a wave is placed on the arena's whole
@@ -198,7 +218,8 @@ In `Cataclysm.DungeonModifierEffects.`, on floors the game mode builds:
   and every creature's cell are held, and a warning on a rift's cell is refused.
 
 Two Python checks, `test_heavens_quake_row_still_says_impassable_terrain_and_reroutes` and
-`test_cryptquake_row_still_says_pits_of_bones_and_swarms`, pin the phrases the rulings rest on.
+`test_cryptquake_row_still_says_pits_of_bones_and_swarms`, pin the phrases the rulings rest on; a third,
+`test_every_kept_cell_is_held_from_obstacles_or_named_harmless`, is the pin above.
 
 ### Not yet run
 
