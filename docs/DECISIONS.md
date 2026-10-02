@@ -94,6 +94,33 @@ the amount blocked), "every 3 blocks in quick succession", and "200%-400% of you
 - `block_damage_reduction` and `block_negation_chance` are on `StatsWithNoAttribute()` with probes, and
   `block_damage_reduction` is in `STATS_WITH_AN_ASKER` with a scaled probe, because own stacks scale it.
 
+### THE RUN
+
+E2 is commits `6ee11486` (engine), `8885adbe` (engine tests), `2f724919` (the asker and its scaled probe), `31af8905`
+(row tests), `ffd815f6` (this entry), `1d8763af` (rows), `c682f2bd` (the rolls' default, docs only), `e08b5e0b` (the
+negation guarded), `40a33fe2` (the ceiling test's set-up) and `2ffdaf0d` (asset), on development `9e6a83d2`, pushed as
+`feat/block-share-and-recharge-nova-2`. It was written on `946d1fb3` and moved when its turn came; the one conflict was
+this log's first entry, resolved with `tools/resolve_decisions_log.py`.
+
+| Step | Result |
+| :-- | :-- |
+| Rehearsals on `git archive` copies, at `ee1cdd0b` | without rows "11 failed, 5658 passed, 13 skipped", JUnit 5682: the 11 tests that need a git directory; with rows "12 failed": those and the stale asset hash, as predicted |
+| Compile-only scans, `e08b5e0b` | sweep 0 candidates over 14 files; check 7 read 181 definitions, none flagged; check 6 0 candidates; `check_resolved_cpp` on the 14 changed C++ files, 0 complaints; one engine-name hit (`World`, a line the file already has 60 times) and five access candidates, all read and explained |
+| Build 1, `e08b5e0b` | "Succeeded - 32 actions, 29 files compiled" |
+| `Cataclysm.BlockShare.`, first run | **"5 tests performed, 4 succeeded, 1 failed": NOT AS PREDICTED.** The ceiling half of the recharge test: its set-up wrote the recharge ceiling as a stat line of base 50, and the regeneration step reads that stat with `StatAppliedTo`, which ignores a recorded base on purpose, so the ceiling read as none. A fault in the test, not in the engine; stopped and asked |
+| The ceiling written as flat 50 on base 0, the shipped row's shape, `40a33fe2` | build "4 actions, 1 file compiled"; the group "5 tests performed, 5 succeeded, 0 failed", 0 ensures |
+| Proof A, the 85 cap removed | PROVED: the predicted test, 2 failed assertions as predicted; restored 5 of 5 |
+| Proof B, the negation removed | PROVED: the predicted test, 3 failed assertions as predicted, at rolls of 0, exactly 100 and 40; restored 5 of 5 |
+| Proof C, the immunity action opening nothing | PROVED: the predicted test, 3 failed assertions as predicted; restored 5 of 5 |
+| Asset rebuild, `2ffdaf0d` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` (447 to 452 rows) |
+| Row tests, `Cataclysm.Enchantments.` | "189 tests performed, 189 succeeded, 0 failed"; the five new row tests each Result={Success}; no "was ignored", no failed assertion, no ensure |
+| Whole suite, `2ffdaf0d` | "3083 tests performed, 3083 succeeded, 0 failed"; 3083 declared, gap 0, as registered (3073 + 10); no "was ignored", no failed assertion, no ensure |
+| Python of record, `ffd815f6` | "5677 passed, 8 skipped in 310.73s"; JUnit 5685 (5676 + 9), 0 failures |
+| Python at the head, `2ffdaf0d` | "5677 passed, 8 skipped in 308.34s"; JUnit 5685, 0 failures |
+
+Every broken file's hash was the same after its proof, and each proof's broken run was kept, so every assertion count
+above was measured.
+
 ---
 
 ## 2026-10-01 — Unstable Dimensions corrected: from floor 2, every creature of a floor carries one Generic enemy modifier, the floor's "new reality", instead of the floor gaining a dungeon row
