@@ -12,6 +12,8 @@
 #include "NavigationData.h"
 #include "NavigationSystem.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "AI/NavDataGenerator.h"
+#include "Dungeon/CataclysmFloorObstacle.h"
 
 /**
  * Whether a character can actually walk a generated dungeon floor.
@@ -401,6 +403,192 @@ bool FCataclysmFloorRockIsNotWalkableTest::RunTest(const FString& Parameters)
 		TEXT("no buried rock is on the navigation mesh; %d of %d cells are"),
 		WronglyWalkable, Buried), WronglyWalkable, 0);
 
+	TearDown(Setup);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The runtime floor obstacle on a real navigation mesh. Issues #1820 and #41. Method C as measured on 2026-10-02: the
+// obstacle's NavArea_Null modifier, not its geometry, takes its cells off the mesh.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonNavTest
+{
+	/** Tick the navigation system until it is not building, at most `MostTicks`; whether it finished. */
+	bool WaitForTheNavigationMesh(FNavigableFloor& Setup, int32 MostTicks = 600)
+	{
+		FNavDataGenerator* Generator = Setup.NavData->GetGenerator();
+		for (int32 Tick = 0; Tick < MostTicks; ++Tick)
+		{
+			Setup.Navigation->Tick(1.0f / 60.0f);
+			if (Tick >= 2 && !Setup.Navigation->IsNavigationBuildInProgress()
+				&& (!Generator || Generator->GetNumRemaningBuildTasks() == 0))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** A floor cell with every cell of a Side + 2 square around it walkable, or (-1, -1). */
+	FIntPoint OpenSquareCorner(const FCataclysmFloorPlan& Plan, int32 Side)
+	{
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			const FIntPoint Corner = Plan.CellAt(Index);
+			bool bOpen = true;
+			for (int32 Y = -1; Y <= Side && bOpen; ++Y)
+			{
+				for (int32 X = -1; X <= Side && bOpen; ++X)
+				{
+					const FIntPoint Cell = Corner + FIntPoint(X, Y);
+					bOpen = Plan.IsFloor(Cell) && Cell != Plan.Entrance && Cell != Plan.Exit;
+				}
+			}
+			if (bOpen)
+			{
+				return Corner;
+			}
+		}
+		return FIntPoint(-1, -1);
+	}
+
+	/** The length of a whole path between two points, and how close it comes to `Near`; -1 when there is none. */
+	double PathAround(FNavigableFloor& Setup, const FVector& From, const FVector& To, const FVector& Near,
+					  double& ClosestCm)
+	{
+		FPathFindingQuery Query(nullptr, *Setup.NavData, From, To);
+		Query.SetAllowPartialPaths(false);
+		const FPathFindingResult Result = Setup.Navigation->FindPathSync(Query);
+		ClosestCm = -1.0;
+		if (!Result.IsSuccessful() || !Result.Path.IsValid() || Result.Path->IsPartial())
+		{
+			return -1.0;
+		}
+		const TArray<FNavPathPoint>& Points = Result.Path->GetPathPoints();
+		ClosestCm = 1.0e9;
+		for (int32 Index = 1; Index < Points.Num(); ++Index)
+		{
+			const FVector A(Points[Index - 1].Location.X, Points[Index - 1].Location.Y, 0.0);
+			const FVector B(Points[Index].Location.X, Points[Index].Location.Y, 0.0);
+			ClosestCm = FMath::Min(ClosestCm, FMath::PointDistToSegment(FVector(Near.X, Near.Y, 0.0), A, B));
+		}
+		return Result.Path->GetLength();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmObstacleNavigationTest,
+	"Cataclysm.DungeonFloor.ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmObstacleNavigationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonNavTest;
+
+	for (const ECataclysmObstacleKind Kind : {ECataclysmObstacleKind::Pillar, ECataclysmObstacleKind::Pit})
+	{
+		const int32 Side = Kind == ECataclysmObstacleKind::Pillar ? 1 : 2;
+		const TCHAR* Name = Kind == ECataclysmObstacleKind::Pillar ? TEXT("pillar") : TEXT("pit");
+		FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
+		if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+		{
+			TearDown(Setup);
+			return false;
+		}
+		const FIntPoint Corner = OpenSquareCorner(Setup.Floor->GetPlan(), Side);
+		if (!TestTrue(FString::Printf(TEXT("set-up: an open square for a %s"), Name), Corner.X >= 0))
+		{
+			TearDown(Setup);
+			return false;
+		}
+		TArray<FIntPoint> Cells;
+		for (int32 Y = 0; Y < Side; ++Y)
+		{
+			for (int32 X = 0; X < Side; ++X)
+			{
+				Cells.Add(Corner + FIntPoint(X, Y));
+			}
+		}
+		const FVector West = Setup.Floor->WorldOfCell(Corner - FIntPoint(1, 0));
+		const FVector East = Setup.Floor->WorldOfCell(Corner + FIntPoint(Side, 0));
+		FVector Middle = FVector::ZeroVector;
+		for (const FIntPoint& Cell : Cells)
+		{
+			Middle += Setup.Floor->WorldOfCell(Cell);
+		}
+		Middle /= static_cast<double>(Cells.Num());
+		double ClosestBefore = 0.0;
+		const double Before = PathAround(Setup, West, East, Middle, ClosestBefore);
+
+		ACataclysmFloorObstacle* Obstacle =
+			ACataclysmFloorObstacle::Place(Setup.World, *Setup.Floor, Cells, Kind, NAME_None, NAME_None);
+		if (!TestNotNull(FString::Printf(TEXT("a %s was placed"), Name), Obstacle))
+		{
+			TearDown(Setup);
+			return false;
+		}
+		Obstacle->Raise();
+		TestTrue(FString::Printf(TEXT("the %s's mesh rebuild finished"), Name), WaitForTheNavigationMesh(Setup));
+
+		int32 StillOnTheMesh = 0;
+		for (const FIntPoint& Cell : Cells)
+		{
+			FNavLocation Landed;
+			StillOnTheMesh += Setup.Navigation->ProjectPointToNavigation(Setup.Floor->WorldOfCell(Cell), Landed,
+																		  CloseEnough) ? 1 : 0;
+		}
+		TestEqual(FString::Printf(TEXT("no cell under the %s is on the navigation mesh"), Name), StillOnTheMesh, 0);
+
+		double ClosestAfter = 0.0;
+		const double After = PathAround(Setup, West, East, Middle, ClosestAfter);
+		TestTrue(FString::Printf(TEXT("a %s: a path still goes from one side to the other"), Name), After > 0.0);
+		TestTrue(FString::Printf(TEXT("a %s: and it is longer, %.0f cm against %.0f"), Name, After, Before),
+				 After > Before + 100.0);
+		TestTrue(FString::Printf(TEXT("a %s: and keeps %.0f cm from its middle, more than half its width"), Name,
+								 ClosestAfter),
+				 ClosestAfter > Obstacle->HalfWidthCm());
+		TearDown(Setup);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmObstacleRemovedTest,
+	"Cataclysm.DungeonFloor.ARemovedObstacleGivesItsCellsBackToTheNavigationMesh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmObstacleRemovedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonNavTest;
+
+	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
+	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	const FIntPoint Cell = OpenSquareCorner(Setup.Floor->GetPlan(), 1);
+	if (!TestTrue(TEXT("set-up: an open cell"), Cell.X >= 0))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	ACataclysmFloorObstacle* Obstacle = ACataclysmFloorObstacle::Place(
+		Setup.World, *Setup.Floor, {Cell}, ECataclysmObstacleKind::Pillar, NAME_None, NAME_None);
+	if (!TestNotNull(TEXT("a pillar was placed"), Obstacle))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	Obstacle->Raise();
+	WaitForTheNavigationMesh(Setup);
+	FNavLocation Landed;
+	TestFalse(TEXT("set-up: the cell is off the mesh"),
+			  Setup.Navigation->ProjectPointToNavigation(Setup.Floor->WorldOfCell(Cell), Landed, CloseEnough));
+
+	Obstacle->Destroy();
+	TestTrue(TEXT("the rebuild after removing it finished"), WaitForTheNavigationMesh(Setup));
+	TestTrue(TEXT("the cell is on the navigation mesh again"),
+			 Setup.Navigation->ProjectPointToNavigation(Setup.Floor->WorldOfCell(Cell), Landed, CloseEnough));
 	TearDown(Setup);
 	return true;
 }

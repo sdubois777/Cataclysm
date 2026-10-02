@@ -44068,4 +44068,601 @@ bool FCataclysmUnstableHordeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The runtime floor obstacles: Celestial_Heaven_s_Quake's pillars and Death_Cryptquake's pits. Issues #1820 and #41.
+// Ruled 2026-10-02: method C as measured, the figures, both last the floor, no damage, pillars stop shots and pits do not,
+// the swarm is the floor's own kinds at Common raised by a rule, a section is two by two.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName HeavensQuakeRow(UCataclysmDungeonModifierEffects::HeavensQuakeKey);
+	const FName CryptquakeRow(UCataclysmDungeonModifierEffects::CryptquakeKey);
+
+	/** A plan of this size, all rock, with these cells carved and the entrance and exit where asked. */
+	FCataclysmFloorPlan ObstaclePlan(int32 Width, int32 Height, const TArray<FIntPoint>& Walkable, FIntPoint Entrance,
+									 FIntPoint Exit)
+	{
+		FCataclysmFloorPlan Plan;
+		Plan.Width = Width;
+		Plan.Height = Height;
+		Plan.Cells.Init(ECataclysmFloorCell::Solid, Width * Height);
+		for (const FIntPoint& Cell : Walkable)
+		{
+			Plan.Carve(Cell);
+		}
+		Plan.Entrance = Entrance;
+		Plan.Exit = Exit;
+		return Plan;
+	}
+
+	/** Every cell of a Width by Height block from Corner. */
+	TArray<FIntPoint> ObstacleBlock(FIntPoint Corner, int32 Width, int32 Height)
+	{
+		TArray<FIntPoint> Out;
+		for (int32 Y = 0; Y < Height; ++Y)
+		{
+			for (int32 X = 0; X < Width; ++X)
+			{
+				Out.Add(Corner + FIntPoint(X, Y));
+			}
+		}
+		return Out;
+	}
+
+	/** Beats until the floor holds a warning, at most `MostBeats`; the warning, or null. */
+	ACataclysmFloorObstacle* BeatUntilAWarning(ACataclysmDungeonGameMode* Mode, int32 MostBeats)
+	{
+		for (int32 Index = 0; Index < MostBeats; ++Index)
+		{
+			Beat(Mode, 1);
+			for (ACataclysmFloorObstacle* Obstacle : Mode->FloorObstaclesNow())
+			{
+				if (Obstacle->IsWarning())
+				{
+					return Obstacle;
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	/** The beats a warning lasts. */
+	int32 WarningBeats()
+	{
+		return BeatsFor(UCataclysmDungeonModifierEffects::FloorObstacleWarningSeconds);
+	}
+
+	/** Walkable cells the player's cell cannot reach on the plan as it stands. */
+	int32 CellsCutOffFromThePlayer(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		const TArray<int32> Distance =
+			CataclysmFloorDistancesFrom(Plan, Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation()));
+		int32 CutOff = 0;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			CutOff += (Plan.Cells[Index] == ECataclysmFloorCell::Floor && Distance[Index] == INDEX_NONE) ? 1 : 0;
+		}
+		return CutOff;
+	}
+
+	/** A dungeon game mode on floor 2 carrying these rows, with its creatures cleared so nothing stands in the way. */
+	ACataclysmDungeonGameMode* AnObstacleFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+											   const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmObstaclePlacementTest,
+	"Cataclysm.DungeonModifierEffects.FloorObstaclePlacementRefusesACellThatWouldCutTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmObstaclePlacementTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// A CORRIDOR FIVE CELLS LONG: closing its middle strands the far end, whoever stands at the near one.
+	const FCataclysmFloorPlan Corridor =
+		ObstaclePlan(5, 1, ObstacleBlock(FIntPoint(0, 0), 5, 1), FIntPoint(0, 0), FIntPoint(4, 0));
+	const TSet<FIntPoint> Nothing;
+	TestFalse(TEXT("the corridor's middle is refused: it strands the exit"),
+			  CataclysmFloorCanBlock(Corridor, {FIntPoint(2, 0)}, FIntPoint(1, 0), Nothing));
+
+	// A ROOM FOUR BY FOUR: the middle two by two leaves a ring, so it is allowed, and so is one cell of it.
+	const FCataclysmFloorPlan Room =
+		ObstaclePlan(4, 4, ObstacleBlock(FIntPoint(0, 0), 4, 4), FIntPoint(0, 0), FIntPoint(3, 3));
+	TestTrue(TEXT("one open cell is allowed"),
+			 CataclysmFloorCanBlock(Room, {FIntPoint(1, 1)}, FIntPoint(0, 1), Nothing));
+	TestTrue(TEXT("a two by two that leaves a ring is allowed"),
+			 CataclysmFloorCanBlock(Room, ObstacleBlock(FIntPoint(1, 1), 2, 2), FIntPoint(0, 1), Nothing));
+
+	// AND EACH REFUSAL BY ITSELF, on cells the ring would otherwise allow.
+	TestFalse(TEXT("the entrance is refused"), CataclysmFloorCanBlock(Room, {FIntPoint(0, 0)}, FIntPoint(0, 1), Nothing));
+	TestFalse(TEXT("the exit is refused"), CataclysmFloorCanBlock(Room, {FIntPoint(3, 3)}, FIntPoint(0, 1), Nothing));
+	TestFalse(TEXT("the player's own cell is refused"),
+			  CataclysmFloorCanBlock(Room, {FIntPoint(1, 1)}, FIntPoint(1, 1), Nothing));
+	TestFalse(TEXT("a cell the floor holds is refused"),
+			  CataclysmFloorCanBlock(Room, {FIntPoint(1, 1)}, FIntPoint(0, 1), TSet<FIntPoint>{FIntPoint(1, 1)}));
+	TestFalse(TEXT("rock is refused"), CataclysmFloorCanBlock(Corridor, {FIntPoint(2, 0) + FIntPoint(0, 1)},
+															  FIntPoint(1, 0), Nothing));
+	TestFalse(TEXT("nothing is refused"), CataclysmFloorCanBlock(Room, {}, FIntPoint(0, 1), Nothing));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmObstacleCollisionTest,
+	"Cataclysm.DungeonModifierEffects.FloorObstacleAPitStopsMovementButNotAShotAndAPillarStopsBoth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmObstacleCollisionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {});
+	if (!Mode)
+	{
+		return false;
+	}
+	const FIntPoint Cell = ThreeFloorCellsAlongX(Mode->CurrentFloor->GetPlan());
+	if (!TestTrue(TEXT("set-up: three floor cells along X"), Cell.X >= 0))
+	{
+		return false;
+	}
+
+	// ACROSS THE MIDDLE CELL, A METRE UP: a pawn's sweep for movement and a Visibility trace for a shot.
+	const FVector Up(0.0f, 0.0f, 100.0f);
+	const FVector From = Mode->CurrentFloor->WorldOfCell(Cell) + Up;
+	const FVector To = Mode->CurrentFloor->WorldOfCell(Cell + FIntPoint(2, 0)) + Up;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(ObstacleTest), /*bTraceComplex=*/false, Player.Character);
+
+	for (const ECataclysmObstacleKind Kind : {ECataclysmObstacleKind::Pillar, ECataclysmObstacleKind::Pit})
+	{
+		const TCHAR* Name = Kind == ECataclysmObstacleKind::Pillar ? TEXT("pillar") : TEXT("pit");
+		ACataclysmFloorObstacle* Obstacle = ACataclysmFloorObstacle::Place(
+			World, *Mode->CurrentFloor, {Cell + FIntPoint(1, 0)}, Kind, NAME_None, NAME_None);
+		if (!TestNotNull(FString::Printf(TEXT("a %s was placed"), Name), Obstacle))
+		{
+			return false;
+		}
+
+		// A WARNING STOPS NOTHING.
+		FHitResult Hit;
+		const bool bWarningStops = World->SweepSingleByChannel(Hit, From, To, FQuat::Identity, ECC_Pawn,
+			FCollisionShape::MakeCapsule(34.0f, 88.0f), Query) && Hit.GetActor() == Obstacle;
+		TestFalse(FString::Printf(TEXT("the %s's warning stops no one"), Name), bWarningStops);
+
+		Obstacle->Raise();
+		const bool bStopsMovement = World->SweepSingleByChannel(Hit, From, To, FQuat::Identity, ECC_Pawn,
+			FCollisionShape::MakeCapsule(34.0f, 88.0f), Query) && Hit.GetActor() == Obstacle;
+		TestTrue(FString::Printf(TEXT("a %s stops a pawn walking across it"), Name), bStopsMovement);
+
+		const bool bStopsAShot = World->LineTraceSingleByChannel(Hit, From, To, ECC_Visibility, Query)
+			&& Hit.GetActor() == Obstacle;
+		if (Kind == ECataclysmObstacleKind::Pillar)
+		{
+			TestTrue(TEXT("a pillar stops a shot"), bStopsAShot);
+		}
+		else
+		{
+			TestFalse(TEXT("a shot flies over a pit"), bStopsAShot);
+		}
+		TestNotNull(FString::Printf(TEXT("the %s carries its navigation block"), Name), Obstacle->NavigationBlock());
+		Obstacle->Destroy();
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavensQuakeFiguresTest,
+	"Cataclysm.DungeonModifierEffects.HeavensQuakeFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeavensQuakeFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a pillar every 6 s"), Effects::HeavensQuakeSecondsBetween, 6.0f, 0.001f);
+	TestEqual(TEXT("at least 600 cm from the player"), Effects::FloorObstacleNearestCm, 600.0f, 0.001f);
+	TestEqual(TEXT("at most 1200 cm"), Effects::FloorObstacleFurthestCm, 1200.0f, 0.001f);
+	TestEqual(TEXT("a 1 s warning"), Effects::FloorObstacleWarningSeconds, 1.0f, 0.001f);
+	TestEqual(TEXT("six pillars a floor"), Effects::HeavensQuakeMostPillars, 6);
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(HeavensQuakeRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavensQuakeRaisesTest,
+	"Cataclysm.DungeonModifierEffects.HeavensQuakeWarnsThenRaisesAPillarNearThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeavensQuakeRaisesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {HeavensQuakeRow});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// NOTHING BEFORE THE CADENCE.
+	Beat(Mode, BeatsFor(Effects::HeavensQuakeSecondsBetween) - 1);
+	TestEqual(TEXT("nothing before 6 s"), Mode->FloorObstaclesNow().Num(), 0);
+
+	ACataclysmFloorObstacle* Warning = BeatUntilAWarning(Mode, 40);
+	if (!TestNotNull(TEXT("a warning was placed"), Warning))
+	{
+		return false;
+	}
+	const FIntPoint Cell = Warning->CoveredCells()[0];
+	TestEqual(TEXT("one cell"), Warning->CoveredCells().Num(), 1);
+	TestEqual(TEXT("a pillar"), static_cast<int32>(Warning->ObstacleKind()), static_cast<int32>(ECataclysmObstacleKind::Pillar));
+	TestTrue(TEXT("its cell is still walkable during the warning"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+
+	// IN THE BAND, give or take the half diagonal of a cell, because the point chosen is snapped to its cell's centre.
+	const double Away = FVector::Dist2D(Warning->GetActorLocation(), Player.Character->GetActorLocation());
+	const double Slack = FCataclysmFloorGenerator::CellSizeCm * 0.7072;
+	TestTrue(FString::Printf(TEXT("%.0f cm from the player, in the band"), Away),
+			 Away >= Effects::FloorObstacleNearestCm - Slack && Away <= Effects::FloorObstacleFurthestCm + Slack);
+
+	// RAISED WHEN THE WARNING IS OVER.
+	Beat(Mode, WarningBeats());
+	TestFalse(TEXT("raised"), Warning->IsWarning());
+	TestFalse(TEXT("its cell is rock in the plan now"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+	TestEqual(TEXT("one pillar raised"), Mode->HeavensQuakePillarsRaised(), 1);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(HeavensQuakeRow),
+			  FString(TEXT("heaven's quake: 1 of 6 pillars")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavensQuakeCancelsTest,
+	"Cataclysm.DungeonModifierEffects.HeavensQuakeCancelsAPillarThePlayerStepsUnder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeavensQuakeCancelsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {HeavensQuakeRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObstacle* Warning =
+		BeatUntilAWarning(Mode, BeatsFor(Effects::HeavensQuakeSecondsBetween) + 40);
+	if (!TestNotNull(TEXT("a warning was placed"), Warning))
+	{
+		return false;
+	}
+	const FIntPoint Cell = Warning->CoveredCells()[0];
+
+	// THE PLAYER WALKS ONTO IT DURING ITS SECOND: nothing rises, ruled 2026-10-02.
+	StandThePlayerAt(Player, CellAtThePlayersHeight(Mode, Player, Cell));
+	Beat(Mode, WarningBeats());
+	TestFalse(TEXT("the warning is gone"), IsValid(Warning));
+	TestEqual(TEXT("no pillar raised"), Mode->HeavensQuakePillarsRaised(), 0);
+	TestTrue(TEXT("the cell is still walkable"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavensQuakeCapTest,
+	"Cataclysm.DungeonModifierEffects.HeavensQuakeStopsAtSixPillarsAndNeverCutsTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeavensQuakeCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {HeavensQuakeRow});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// TWICE THE CAP'S WORTH OF CADENCES, and a margin for beats that found no cell.
+	Beat(Mode, BeatsFor(Effects::HeavensQuakeSecondsBetween) * Effects::HeavensQuakeMostPillars * 2 + 80);
+	TestEqual(TEXT("six pillars and no more"), Mode->HeavensQuakePillarsRaised(), Effects::HeavensQuakeMostPillars);
+	TestEqual(TEXT("six standing"), Mode->FloorObstaclesNow().Num(), Effects::HeavensQuakeMostPillars);
+	TestEqual(TEXT("and no walkable cell is cut off from the player"), CellsCutOffFromThePlayer(Mode, Player), 0);
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	TestTrue(TEXT("the entrance is still walkable"), Plan.IsFloor(Plan.Entrance));
+	TestTrue(TEXT("and the exit"), Plan.IsFloor(Plan.Exit));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCryptquakeFiguresTest,
+	"Cataclysm.DungeonModifierEffects.CryptquakeFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCryptquakeFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a collapse every 10 s"), Effects::CryptquakeSecondsBetween, 10.0f, 0.001f);
+	TestEqual(TEXT("three sections a floor"), Effects::CryptquakeMostSections, 3);
+	TestEqual(TEXT("a section is two cells by two"), Effects::CryptquakeSectionSide, 2);
+	TestEqual(TEXT("three creatures from each"), Effects::CryptquakeCreaturesPerSection, 3);
+	TestEqual(TEXT("at Common"), Effects::CryptquakeCreatureRung, 0);
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(CryptquakeRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCryptquakeCollapsesTest,
+	"Cataclysm.DungeonModifierEffects.CryptquakeCollapsesATwoByTwoSectionAndBringsThreeRaisedCreaturesBesideIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCryptquakeCollapsesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {CryptquakeRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmFloorObstacle* Warning = BeatUntilAWarning(Mode, BeatsFor(Effects::CryptquakeSecondsBetween) + 40);
+	if (!TestNotNull(TEXT("a warning was placed"), Warning))
+	{
+		return false;
+	}
+	TestEqual(TEXT("four cells"), Warning->CoveredCells().Num(), 4);
+	TestEqual(TEXT("a pit"), static_cast<int32>(Warning->ObstacleKind()), static_cast<int32>(ECataclysmObstacleKind::Pit));
+	TestEqual(TEXT("no creature before the collapse"), Mode->FloorEnemies.Num(), 0);
+
+	Beat(Mode, WarningBeats());
+	TestFalse(TEXT("collapsed"), Warning->IsWarning());
+	for (const FIntPoint& Cell : Warning->CoveredCells())
+	{
+		TestFalse(FString::Printf(TEXT("cell %s is rock in the plan"), *Cell.ToString()),
+				  Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+	}
+	TestEqual(TEXT("one section"), Mode->CryptquakeSectionsCollapsed(), 1);
+
+	// THE SWARM: three, Common, raised by a rule, none in the pit, and holding nothing.
+	int32 Swarm = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+	{
+		if (!IsValid(Creature))
+		{
+			continue;
+		}
+		++Swarm;
+		TestTrue(TEXT("raised by a rule"), Creature->bRaisedByARule);
+		TestEqual(TEXT("at Common"), Creature->RarityStep, 0);
+		TestFalse(TEXT("not in the pit"),
+				  Warning->CoveredCells().Contains(Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation())));
+	}
+	TestEqual(TEXT("three creatures"), Swarm, Effects::CryptquakeCreaturesPerSection);
+	TestEqual(TEXT("which do not hold the floor uncleared"), Mode->LivingFloorEnemies(), 0);
+	TestEqual(TEXT("nor Lightforged Walls shut"), Mode->LightforgedWallsStanding(), 0);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CryptquakeRow),
+			  FString(TEXT("cryptquake: 1 of 3 sections")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCryptquakeCapTest,
+	"Cataclysm.DungeonModifierEffects.CryptquakeStopsAtThreeSections",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCryptquakeCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {CryptquakeRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CryptquakeSecondsBetween) * Effects::CryptquakeMostSections * 2 + 80);
+	TestEqual(TEXT("three sections and no more"), Mode->CryptquakeSectionsCollapsed(), Effects::CryptquakeMostSections);
+	TestEqual(TEXT("three pits standing"), Mode->FloorObstaclesNow().Num(), Effects::CryptquakeMostSections);
+	TestEqual(TEXT("and no walkable cell is cut off from the player"), CellsCutOffFromThePlayer(Mode, Player), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmObstaclesEndTest,
+	"Cataclysm.DungeonModifierEffects.RuntimeObstaclesEndWithTheFloorAndWithEachHordeWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmObstaclesEndTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {HeavensQuakeRow});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// AN ORDINARY FLOOR: a pillar, then the stairs.
+	ACataclysmFloorObstacle* Warning = BeatUntilAWarning(Mode, BeatsFor(Effects::HeavensQuakeSecondsBetween) + 40);
+	if (!TestNotNull(TEXT("a warning was placed"), Warning))
+	{
+		return false;
+	}
+	Beat(Mode, WarningBeats());
+	if (!TestEqual(TEXT("set-up: a pillar raised"), Mode->HeavensQuakePillarsRaised(), 1))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no obstacle on the next floor"), Mode->FloorObstaclesNow().Num(), 0);
+	TestEqual(TEXT("and the count starts again"), Mode->HeavensQuakePillarsRaised(), 0);
+	TestEqual(TEXT("and no cell of the new plan blocked"), Mode->CurrentFloor->BlockedCells().Num(), 0);
+
+	// A HORDE ARENA, WHICH IS KEPT BETWEEN WAVES: the pillar's cell must be walkable again on the next wave.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("wave 1 was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Warning = BeatUntilAWarning(Mode, BeatsFor(Effects::HeavensQuakeSecondsBetween) + 40);
+	if (!TestNotNull(TEXT("a warning on the arena"), Warning))
+	{
+		return false;
+	}
+	const FIntPoint Cell = Warning->CoveredCells()[0];
+	Beat(Mode, WarningBeats());
+	if (!TestFalse(TEXT("set-up: the arena cell is rock"), Mode->CurrentFloor->GetPlan().IsFloor(Cell)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("wave 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no obstacle on the next wave"), Mode->FloorObstaclesNow().Num(), 0);
+	TestTrue(TEXT("and the arena cell is walkable again"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmObstacleHeldCellsTest,
+	"Cataclysm.DungeonModifierEffects.FloorObstacleRefusesEveryCellTheFloorStillHoldsAUseFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmObstacleHeldCellsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// WARZONE'S POINTS AND REALITY RIFTS' CELLS: two of the lists the game mode keeps for later.
+	Mode->DungeonModifiers = {FName(Effects::WarzoneControlPointsKey), FName(Effects::RealityRiftsKey)};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	TestTrue(TEXT("the entrance"), Held.Contains(Plan.Entrance));
+	TestTrue(TEXT("the exit"), Held.Contains(Plan.Exit));
+	if (TestTrue(TEXT("set-up: the floor has Warzone points"), Mode->WarzonePointCellsNow().Num() > 0))
+	{
+		for (const FIntPoint& Point : Mode->WarzonePointCellsNow())
+		{
+			TestTrue(FString::Printf(TEXT("Warzone point %s"), *Point.ToString()), Held.Contains(Point));
+		}
+	}
+	if (TestTrue(TEXT("set-up: the floor has rifts"), Mode->RealityRiftCellsNow().Num() > 0))
+	{
+		for (const FIntPoint& Rift : Mode->RealityRiftCellsNow())
+		{
+			TestTrue(FString::Printf(TEXT("rift %s"), *Rift.ToString()), Held.Contains(Rift));
+		}
+	}
+	int32 Creatures = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+	{
+		if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+		{
+			++Creatures;
+			TestTrue(TEXT("a creature's cell"),
+					 Held.Contains(Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation())));
+		}
+	}
+	TestTrue(TEXT("set-up: the floor has creatures"), Creatures > 0);
+
+	// AND A WARNING ON A HELD CELL IS REFUSED.
+	if (Mode->RealityRiftCellsNow().Num() > 0)
+	{
+		TestNull(TEXT("an obstacle on a rift's cell is refused"),
+				 Mode->WarnOfAnObstacle({Mode->RealityRiftCellsNow()[0]}, ECataclysmObstacleKind::Pillar,
+										HeavensQuakeRow));
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
