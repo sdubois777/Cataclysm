@@ -546,11 +546,11 @@ namespace CataclysmSkillShapeTest
 	 * Each answer is a branch in `CataclysmSkillTemplates.cpp` that hands
 	 * `ScaledRadiusCm()` to a targeting search -- `UCataclysmStrikeSkill::
 	 * SwingOnce`, `UCataclysmProjectileSkill::Land`, `UCataclysmAuraSkill::
-	 * Pulse`, `UCataclysmMovementSkill::ActivateAbility` and
-	 * `UCataclysmSummonSkill::Possess`. The shapes that are absent read no
-	 * radius: a Debuff searches `Range` around the caster and sorts by the
-	 * cursor, a Deployable searches for nobody, and a SelfBuff guards its two
-	 * radius reads with `ScaledRadiusCm() > 0.0f`.
+	 * Pulse` and `UCataclysmMovementSkill::ActivateAbility`. The shapes that
+	 * are absent read no radius: a Debuff searches `Range` around the caster
+	 * and sorts by the cursor, a Summon that takes a creature does the same
+	 * since issue #1529, a Deployable searches for nobody, and a SelfBuff
+	 * guards its two radius reads with `ScaledRadiusCm() > 0.0f`.
 	 */
 	bool SearchesWithTheRadius(ECataclysmSkillShape Shape,
 							   const FCataclysmSkillShapeParams& Params)
@@ -568,11 +568,11 @@ namespace CataclysmSkillShapeTest
 		case ECataclysmSkillShape::Movement:
 			return Params.MovementMode != ECataclysmMovementMode::Flicker;
 
-		// A SUMMON ONLY SEARCHES WHEN IT IS TAKING A CREATURE RATHER THAN MAKING
-		// ONE. Summon Imp's radius is read by `Collapse`, which guards it.
-		case ECataclysmSkillShape::Summon:
-			return Params.bPossess;
-
+		// A SUMMON NEVER SEARCHES WITH ITS RADIUS. Summon Imp's radius is read
+		// by `Collapse`, which guards it, and since issue #1529 one that takes a
+		// creature searches its `Range` around the caster and takes the enemy
+		// nearest the cursor, the Debuff template's rule. Until then `Possess`
+		// searched a sphere of this radius at the aimed point.
 		default:
 			return false;
 		}
@@ -581,6 +581,10 @@ namespace CataclysmSkillShapeTest
 
 /**
  * Every row whose search reads the radius states one greater than zero.
+ *
+ * SUBJUGATE IS NOT ONE OF THEM SINCE ISSUE #1529, which made `Possess` search its
+ * `Range` around the caster rather than a sphere of its radius at the aimed
+ * point. What follows is why this test exists.
  *
  * ISSUE #1519. Subjugate, the Staff's Demonic Ultimate, stated `Range=15` and no
  * `Radius`. `FCataclysmSkillShapeParams::RadiusCm` defaults to zero, every
@@ -618,7 +622,7 @@ bool FCataclysmTargetedShapeStatesARadiusTest::RunTest(const FString&)
 	}
 
 	int32 Searching = 0;
-	bool bReachedSubjugate = false;
+	bool bSubjugateWasChecked = false;
 	TArray<FString> Problems;
 
 	Table->ForeachRow<FCataclysmWeaponSkillRow>(
@@ -643,7 +647,7 @@ bool FCataclysmTargetedShapeStatesARadiusTest::RunTest(const FString&)
 			++Searching;
 			if (RowName == FName(TEXT("Demonic_Staff_Ultimate")))
 			{
-				bReachedSubjugate = true;
+				bSubjugateWasChecked = true;
 			}
 
 			if (Params.RadiusCm <= 0.0f)
@@ -669,10 +673,12 @@ bool FCataclysmTargetedShapeStatesARadiusTest::RunTest(const FString&)
 		TEXT("At least thirty rows search with their radius (found %d)"),
 		Searching), Searching >= 30);
 
-	// AND IT HAS TO HAVE REACHED THE ROW THIS ISSUE WAS ABOUT, by name. Without
-	// this the test still passes if `bPossess` stops being read, because a
-	// Subjugate that is no longer classified as searching is simply skipped.
-	TestTrue(TEXT("Subjugate is one of the rows checked"), bReachedSubjugate);
+	// AND THE ROW THIS ISSUE WAS ABOUT IS NO LONGER ONE OF THEM. Issue #1529
+	// made `Possess` search its `Range`, so Subjugate reads no radius and is not
+	// asked for one. Asserted by name, so a helper that classified it as
+	// searching again says so here rather than demanding a radius it ignores.
+	TestFalse(TEXT("Subjugate is not one of the rows checked"),
+			  bSubjugateWasChecked);
 
 	return Problems.IsEmpty();
 }
