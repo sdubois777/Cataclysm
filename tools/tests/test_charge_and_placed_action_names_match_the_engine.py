@@ -61,6 +61,9 @@ CONSTANTS = {
     "RandomDebuffStatus": "Random Debuff",
     # AND THE NO-DAMAGE WINDOW, since issue #1833 group E part 2.
     "DamageImmunityAction": "damage_immunity",
+    # AND THE REFLECT AND THE ARMOUR NOVA, since issue #1833 group E part 3.
+    "ReflectBlockedAction": "reflect_blocked",
+    "SmiteNearbyByArmourAction": "smite_nearby_by_armor",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -131,7 +134,8 @@ def test_the_generator_accepts_exactly_the_nearby_names_the_engine_has() -> None
     """Issue #1833 group D part 3."""
     names = engine_names()
     assert set(gen.NEARBY_ACTIONS) == {names["SmiteNearbyAction"],
-                                       names["HealNearbyEnemiesAction"]}
+                                       names["HealNearbyEnemiesAction"],
+                                       names["SmiteNearbyByArmourAction"]}
 
 
 def test_the_generator_accepts_exactly_the_remaining_damage_names_the_engine_has() -> None:
@@ -151,6 +155,11 @@ def test_the_generator_accepts_exactly_the_status_names_the_engine_has() -> None
     names = engine_names()
     assert set(gen.APPLY_STATUS_ACTIONS) == {names["ApplyStatusAction"],
                                              names["ApplyStatusSecondsAction"]}
+
+
+def test_the_generator_accepts_exactly_the_reflect_name_the_engine_has() -> None:
+    """Issue #1833 group E part 3."""
+    assert gen.REFLECT_BLOCKED_ACTION == engine_names()["ReflectBlockedAction"]
 
 
 def test_the_generator_accepts_exactly_the_damage_immunity_name_the_engine_has() -> None:

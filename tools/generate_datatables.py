@@ -4888,6 +4888,11 @@ THRESHOLD_EVENT = "health_falls_below"
 NEARBY_ACTIONS = (
     "smite_nearby",
     "heal_nearby_enemies",
+    # A BLOW OF A SHARE OF THE WEARER'S ARMOUR on every enemy nearby, meeting
+    # each one's mitigation as a blow does. Issue #1833 group E part 3, ruled
+    # 2026-10-02: "Blocking attacks deals 200%-400% of your armor as damage to
+    # nearby enemies". `SmiteNearbyByArmourAction` holds the same name.
+    "smite_nearby_by_armor",
 )
 
 #: The largest share a nearby action may state: a smite of ten times weapon
@@ -4895,7 +4900,21 @@ NEARBY_ACTIONS = (
 MAX_NEARBY_PERCENT = {
     "smite_nearby": 1000.0,
     "heal_nearby_enemies": 100.0,
+    "smite_nearby_by_armor": 1000.0,
 }
+
+#: The action that PAYS A SHARE OF WHAT A BLOCK REMOVED BACK TO THE ATTACKER, as
+#: retaliation pays. Issue #1833 group E part 3, ruled 2026-10-02: "Reflect
+#: 20%-100% of damage blocked back at attackers". The value is the share, above
+#: 0 and up to 100, and only `block` carries what it needs.
+#: `UCataclysmAbilitySystemComponent::ReflectBlockedAction` holds the same name.
+REFLECT_BLOCKED_ACTION = "reflect_blocked"
+
+#: The events a reflect may hang on: the ones carrying the attacker and what
+#: the block removed. Issue #1833 group E part 3.
+REFLECT_BLOCKED_EVENTS = (
+    "block",
+)
 
 #: The actions that DEAL THE REMAINING DAMAGE of the wearer's own damage over
 #: time effects, as one instance each. Issue #1833 group D part 4, ruled
@@ -5007,7 +5026,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION
             or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS
             or action in REMAINING_DAMAGE_ACTIONS or action in APPLY_STATUS_ACTIONS
-            or action == DAMAGE_IMMUNITY_ACTION)
+            or action == DAMAGE_IMMUNITY_ACTION or action == REFLECT_BLOCKED_ACTION)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -5214,6 +5233,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_damage_immunity_action(index, who, action, event, fraction_of,
                                       kind, raw, headers)
         return
+    if action == REFLECT_BLOCKED_ACTION:
+        _check_reflect_blocked_action(index, who, action, event, fraction_of,
+                                      kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -5227,7 +5250,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {HEALTH_CAP_ACTION}; or a nearby action, "
             f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
-            f"{', '.join(APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}.")
+            f"{', '.join(APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
+            f"or {REFLECT_BLOCKED_ACTION}.")
 
     known = granting_events()
     if not event:
@@ -5421,6 +5445,31 @@ def _check_apply_status_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} applies a status and "
                 f"states {column} {written!r}. Its value is a chance or seconds "
                 f"and nothing else, so the column must be empty.")
+
+
+def _check_reflect_blocked_action(index: int, who: str, action: str, event: str,
+                                  fraction_of: str, kind: str, raw,
+                                  headers: dict[str, int]) -> None:
+    """Everything a reflect row must say, and everything it must not. Issue
+    #1833 group E part 3. The event must carry the attacker and what the block
+    removed; the share is checked where the value is read. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than
+    dropped.
+    """
+    if event not in REFLECT_BLOCKED_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} reflects blocked damage on "
+            f"the event {event or '(none)'!r}. Only an event carrying the "
+            f"attacker and what the block removed can: "
+            f"{', '.join(REFLECT_BLOCKED_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} reflects blocked damage "
+                f"and states {column} {written!r}. Its value is a share and "
+                f"nothing else, so the column must be empty.")
 
 
 def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
@@ -5711,7 +5760,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in NEARBY_ACTIONS \
                     and action not in REMAINING_DAMAGE_ACTIONS \
                     and action not in APPLY_STATUS_ACTIONS \
-                    and action != DAMAGE_IMMUNITY_ACTION:
+                    and action != DAMAGE_IMMUNITY_ACTION \
+                    and action != REFLECT_BLOCKED_ACTION:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5855,6 +5905,15 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} acts on the "
                     f"characters nearby at {low:g} to {high:g} per cent. "
                     f"{action} takes above 0 and up to {bound:g}.")
+
+        # A REFLECT'S VALUE IS A SHARE OF WHAT THE BLOCK REMOVED, above 0 and up
+        # to 100. Issue #1833 group E part 3.
+        if action == REFLECT_BLOCKED_ACTION:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} reflects {low:g} to "
+                    f"{high:g} per cent of what a block removed. It reflects above "
+                    f"0 and up to 100.")
 
         # A NO-DAMAGE WINDOW'S VALUE IS SECONDS, above 0 and up to the bound.
         # Issue #1833 group E part 2.
@@ -6067,11 +6126,40 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} is {action} and "
                     f"states Stack Seconds. A count has no window (ruled "
                     f"2026-09-24), so they would be dropped.")
+        elif action in NEARBY_ACTIONS and nth_text:
+            # A NEARBY ACTION ON THE Nth OF ITS EVENTS INSIDE A WINDOW. Issue
+            # #1833 group E part 3, ruled 2026-10-02: "Every 3 blocks in quick
+            # succession" is Every Nth 3 with Stack Seconds 3, and the count
+            # starts again once it acts. The window is required: "in quick
+            # succession" without one is no window at all.
+            nth = number(nth_text, "Every Nth", index)
+            if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts every "
+                    f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
+            every_nth = int(nth)
+            if not stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts {every_nth} "
+                    f"of its events and states no Stack Seconds for the window "
+                    f"they fall in.")
+            stack_seconds = number(stack_text, "Stack Seconds", index)
+            if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts its events in "
+                    f"a window of {stack_seconds:g} seconds. It is above 0 and up "
+                    f"to {MAX_STACK_SECONDS:g}.")
         elif nth_text:
             raise DataError(
                 f"Enchantment Effects row {index}: {name} states Every Nth and "
                 f"is not an every-Nth action, so it would be dropped. Those "
-                f"actions: {', '.join(NTH_ACTIONS)}.")
+                f"actions: {', '.join(NTH_ACTIONS)}; and a nearby action, "
+                f"{', '.join(NEARBY_ACTIONS)}, with a window in Stack Seconds.")
+        elif action in NEARBY_ACTIONS and stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is a nearby action and "
+                f"states Stack Seconds with no Every Nth, so they would be "
+                f"dropped.")
 
         # THE STEP'S HIGH END, WHEN THE STEP ROLLS WITH THE VALUE. Issue #1833,
         # the kill counter: "for every 100,000-500,000 kills" states the step

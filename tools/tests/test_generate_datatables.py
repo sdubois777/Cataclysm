@@ -2690,6 +2690,93 @@ class TestDamageImmunityAndTheShieldRecharge:
             "Value Low": 50, "Value High": 100}))
         assert out[0]["TriggerCooldown"] == 0.0
 
+class TestReflectAndTheBlockCount:
+    """A share of what a block removed paid back to the attacker, a nearby blow
+    scaled by armour, and a nearby action on the Nth of its events inside a
+    window. Issue #1833 group E part 3, ruled 2026-10-02: "Reflect 20%-100% of
+    damage blocked back at attackers", "Blocking attacks deals 200%-400% of your
+    armor as damage to nearby enemies" and "Every 3 blocks in quick succession
+    triggers a shockwave dealing 100%-200% weapon damage to nearby enemies"."""
+
+    REFLECT_WORDS = "Reflect 20%-100% of damage blocked back at attackers"
+    REFLECT = gen.row_name("Positive", REFLECT_WORDS[:48])
+    ARMOUR_WORDS = "Blocking attacks deals 200%-400% of your armor as damage to nearby enemies"
+    ARMOUR = gen.row_name("Positive", ARMOUR_WORDS[:48])
+    WAVE_WORDS = ("Every 3 blocks in quick succession triggers a shockwave dealing "
+                  "100%-200% weapon damage to nearby enemies")
+    WAVE = gen.row_name("Positive", WAVE_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [REFLECT_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [ARMOUR_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+        [WAVE_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "reflect.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def reflect(self, tmp_path, changes):
+        values = {"Enchantment": self.REFLECT, "Effect": self.REFLECT_WORDS,
+                  "Action": "reflect_blocked", "Action Event": "block",
+                  "Value Low": 20, "Value High": 100, "Trigger Cooldown": 0}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def wave(self, tmp_path, changes):
+        values = {"Enchantment": self.WAVE, "Effect": self.WAVE_WORDS,
+                  "Action": "smite_nearby", "Action Event": "block",
+                  "Value Low": 100, "Value High": 200, "Every Nth": 3, "Stack Seconds": 3}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_reflect_row_is_carried_through_with_no_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.reflect(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "reflect_blocked", "block", 20.0, 100.0, "", 0.0)
+
+    def test_a_reflect_on_an_event_carrying_no_block_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only an event carrying"):
+            gen.enchantment_effects(self.reflect(tmp_path, {"Action Event": "hit_taken"}))
+
+    def test_a_reflect_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.reflect(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_an_armour_nova_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.ARMOUR, "Effect": self.ARMOUR_WORDS,
+            "Action": "smite_nearby_by_armor", "Action Event": "block",
+            "Value Low": 200, "Value High": 400}))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "smite_nearby_by_armor", 200.0, 400.0)
+
+    def test_a_counted_nearby_row_carries_its_count_and_window(self, tmp_path):
+        out = gen.enchantment_effects(self.wave(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["EveryNth"], out[0]["StackSeconds"]) == (
+            "smite_nearby", 3, 3.0)
+
+    def test_a_counted_nearby_row_with_no_window_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds"):
+            gen.enchantment_effects(self.wave(tmp_path, {"Stack Seconds": None}))
+
+    def test_a_nearby_row_with_a_window_and_no_count_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Every Nth"):
+            gen.enchantment_effects(self.wave(tmp_path, {"Every Nth": None}))
+
+    def test_a_count_of_one_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="from 2"):
+            gen.enchantment_effects(self.wave(tmp_path, {"Every Nth": 1}))
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 

@@ -332,6 +332,15 @@ struct CATACLYSM_API FCataclysmDamageResult
 	bool bBlocked = false;
 
 	/**
+	 * What the block removed from the blow, before armour and resistance: its
+	 * share, or all of it when the block negated the hit. Zero when the blow was
+	 * not blocked. Issue #1833 group E part 3, ruled 2026-10-02: "Reflect 20%-100%
+	 * of damage blocked back at attackers" reflects a share of this.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float DamageBlocked = 0.0f;
+
+	/**
 	 * The hit landed as a critical strike and its damage above already carries
 	 * the multiplier.
 	 *
