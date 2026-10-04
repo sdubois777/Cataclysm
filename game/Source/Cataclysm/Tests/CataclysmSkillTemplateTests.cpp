@@ -18705,4 +18705,237 @@ bool FCataclysmEveryNthAttackTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmAuraImmunityTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** Living Pyre's own row. */
+	const TCHAR* const LivingPyre =
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; Immune=Stun, Slow, Displacement; "
+			 "MoreDamagePer=8; ScalingSource=HitTaken; HealthFromHitTaken=25");
+
+	/** Give `Who` the row's flag, as a worn row writes it. */
+	void WearTheRow(FScopedFighter& Who)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.FindOrAdd(FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat)).Base = 1.0f;
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** `Caster`'s imp, `Metres` along X from the origin. Owned by it, which makes it an ally. */
+	ACataclysmMinion* ImpOf(FScopedFighter& Caster, float Metres)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Caster.Actor, FVector(Metres * M, 0, 0), /*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+		if (Imp)
+		{
+			Imp->SetOwner(Caster.Actor);
+		}
+		return Imp;
+	}
+
+	UCataclysmAuraSkill* PyreOn(FScopedFighter& Caster)
+	{
+		Caster.GiveFervourForUltimates(1);
+		UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate, LivingPyre, TEXT("Living Pyre"),
+			TEXT("Element.Demonic"));
+		return Pyre && Activate(Caster, Pyre) ? Pyre : nullptr;
+	}
+
+	int32 GrantsOn(const AActor* Actor)
+	{
+		const UCataclysmAbilitySystemComponent* Its =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+		return Its ? Its->GrantedImmunities.Num() : -1;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraImmunityInsideTest,
+	"Cataclysm.AuraImmunity.AnImpInsideTheRingSharesThePyresImmunitiesAndOneOutsideDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your aura also applies its effect to all allies within range". Issue #1833
+ * group E part 4c. Living Pyre's ring is 4 m. An imp 2 m away refuses a stun and
+ * a shove, as the caster does, and can still be knocked down, as the caster can;
+ * an imp 10 m away is stunned and shoved.
+ */
+bool FCataclysmAuraImmunityInsideTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraImmunityTest;
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(0, 6 * M, 0));
+	WearTheRow(Caster);
+	ACataclysmMinion* Inside = ImpOf(Caster, 2.0f);
+	ACataclysmMinion* Outside = ImpOf(Caster, 10.0f);
+	UCataclysmAuraSkill* Pyre = PyreOn(Caster);
+	if (!TestNotNull(TEXT("an imp inside"), Inside) || !TestNotNull(TEXT("an imp outside"), Outside)
+		|| !TestNotNull(TEXT("the pyre runs"), Pyre))
+	{
+		return false;
+	}
+	TestFalse(TEXT("set-up: the imp inside is not immune before a pulse"),
+		UCataclysmSkillTemplate::IsImmuneTo(Inside, TEXT("Stun")));
+	Pyre->Pulse();
+
+	for (const TCHAR* Effect : {TEXT("Stun"), TEXT("Slow"), TEXT("Displacement")})
+	{
+		TestTrue(FString::Printf(TEXT("the imp inside is immune to %s"), Effect),
+			UCataclysmSkillTemplate::IsImmuneTo(Inside, Effect));
+		TestFalse(FString::Printf(TEXT("the imp outside is not immune to %s"), Effect),
+			UCataclysmSkillTemplate::IsImmuneTo(Outside, Effect));
+	}
+	TestFalse(TEXT("the imp inside can still be knocked down, which the row does not name"),
+		UCataclysmSkillTemplate::IsImmuneTo(Inside, TEXT("Knockdown")));
+
+	const FVector Stood = Inside->GetActorLocation();
+	TestFalse(TEXT("a stun aimed at the imp inside does not land"),
+		UCataclysmSkillEffects::ApplyStun(Enemy.Actor, Inside, /*DurationSeconds=*/2.0f,
+										  /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true));
+	TestFalse(TEXT("and a shove moves it nowhere"),
+		UCataclysmSkillEffects::ApplyKnockback(Enemy.Actor, Inside, 5.0f * M));
+	TestEqual(TEXT("so it stands where it stood"), Inside->GetActorLocation(), Stood);
+
+	TestTrue(TEXT("a shove moves the imp outside"),
+		UCataclysmSkillEffects::ApplyKnockback(Enemy.Actor, Outside, 5.0f * M));
+	TestTrue(TEXT("and a stun lands on it"),
+		UCataclysmSkillEffects::ApplyStun(Enemy.Actor, Outside, /*DurationSeconds=*/2.0f,
+										  /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraImmunityNeedsTheRowTest,
+	"Cataclysm.AuraImmunity.WithoutTheRowAnImpInsideSharesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraImmunityNeedsTheRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraImmunityTest;
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(0, 6 * M, 0));
+	ACataclysmMinion* Inside = ImpOf(Caster, 2.0f);
+	UCataclysmAuraSkill* Pyre = PyreOn(Caster);
+	if (!TestNotNull(TEXT("an imp inside"), Inside) || !TestNotNull(TEXT("the pyre runs"), Pyre))
+	{
+		return false;
+	}
+	Pyre->Pulse();
+	TestTrue(TEXT("set-up: the caster is immune to a stun"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Stun")));
+	TestEqual(TEXT("the imp inside holds no granted immunity"), GrantsOn(Inside), 0);
+	TestTrue(TEXT("and a stun lands on it"),
+		UCataclysmSkillEffects::ApplyStun(Enemy.Actor, Inside, /*DurationSeconds=*/2.0f,
+										  /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraImmunityTakenBackTest,
+	"Cataclysm.AuraImmunity.LeavingTheRingOrThePyreEndingTakesTheImmunitiesBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraImmunityTakenBackTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraImmunityTest;
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	WearTheRow(Caster);
+	ACataclysmMinion* Imp = ImpOf(Caster, 2.0f);
+	UCataclysmAuraSkill* Pyre = PyreOn(Caster);
+	if (!TestNotNull(TEXT("an imp"), Imp) || !TestNotNull(TEXT("the pyre runs"), Pyre))
+	{
+		return false;
+	}
+	Pyre->Pulse();
+	Pyre->Pulse();
+	TestEqual(TEXT("two pulses leave three grants on the imp, one for each kind"), GrantsOn(Imp), 3);
+	TestTrue(TEXT("and it is immune to a stun"), UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Stun")));
+
+	Imp->SetActorLocation(FVector(10 * M, 0, 0), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+	Pyre->Pulse();
+	TestEqual(TEXT("walked out, it holds no grant"), GrantsOn(Imp), 0);
+	TestFalse(TEXT("and is not immune to a stun"), UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Stun")));
+
+	Imp->SetActorLocation(FVector(2 * M, 0, 0), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+	Pyre->Pulse();
+	TestTrue(TEXT("walked back in, it is immune again"),
+		UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Displacement")));
+
+	Caster.AbilitySystem->CancelAbilityHandle(Pyre->GetCurrentAbilitySpecHandle());
+	TestEqual(TEXT("the pyre ended, so it holds no grant"), GrantsOn(Imp), 0);
+	TestFalse(TEXT("and is not immune"), UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Displacement")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGrantedImmunityLapsesTest,
+	"Cataclysm.AuraImmunity.AGrantLapsesWhenNothingRenewsItAndCrowdControlCoversEveryKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** The list itself: a grant lasts its seconds, one giver takes back only its own. */
+bool FCataclysmGrantedImmunityLapsesTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraImmunityTest;
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Held(World, FVector::ZeroVector);
+	FScopedFighter GiverA(World, FVector(3 * M, 0, 0));
+	FScopedFighter GiverB(World, FVector(6 * M, 0, 0));
+
+	Held.AbilitySystem->GrantImmunity(FName(TEXT("Stun")), GiverA.Actor, 2.0f);
+	Held.AbilitySystem->GrantImmunity(FName(TEXT("Stun")), GiverA.Actor, 2.0f);
+	TestEqual(TEXT("the same grant twice is one entry"), Held.AbilitySystem->GrantedImmunities.Num(), 1);
+	TestTrue(TEXT("it covers a stun"), UCataclysmSkillTemplate::IsImmuneTo(Held.Actor, TEXT("Stun")));
+	TestFalse(TEXT("and not a pin"), UCataclysmSkillTemplate::IsImmuneTo(Held.Actor, TEXT("Pin")));
+
+	Held.AbilitySystem->GrantImmunity(FName(TEXT("CrowdControl")), GiverB.Actor, 10.0f);
+	TestTrue(TEXT("a CrowdControl grant covers a pin"), UCataclysmSkillTemplate::IsImmuneTo(Held.Actor, TEXT("Pin")));
+	TestEqual(TEXT("one giver takes back only its own"),
+		Held.AbilitySystem->RevokeImmunitiesFrom(GiverB.Actor), 1);
+	TestFalse(TEXT("so a pin is not covered again"), UCataclysmSkillTemplate::IsImmuneTo(Held.Actor, TEXT("Pin")));
+	TestTrue(TEXT("and a stun still is"), UCataclysmSkillTemplate::IsImmuneTo(Held.Actor, TEXT("Stun")));
+
+	World->TimeSeconds += 2.1f;
+	TestFalse(TEXT("2.1 seconds on, the 2 second grant has lapsed"),
+		UCataclysmSkillTemplate::IsImmuneTo(Held.Actor, TEXT("Stun")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraWithNoImmunityTest,
+	"Cataclysm.AuraImmunity.AnAuraNamingNoImmunityGivesItsAlliesNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Conflagration names no immunity, so the row changes nothing for it. */
+bool FCataclysmAuraWithNoImmunityTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraImmunityTest;
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	WearTheRow(Caster);
+	ACataclysmMinion* Imp = ImpOf(Caster, 2.0f);
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura,
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; AllyIncreasedDamage=8"),
+		TEXT("Conflagration"), TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("an imp"), Imp) || !TestNotNull(TEXT("the aura"), Aura)
+		|| !TestTrue(TEXT("it activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+	Aura->Pulse();
+	TestEqual(TEXT("the imp inside holds no granted immunity"), GrantsOn(Imp), 0);
+	TestFalse(TEXT("and is not immune to a stun"), UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Stun")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
