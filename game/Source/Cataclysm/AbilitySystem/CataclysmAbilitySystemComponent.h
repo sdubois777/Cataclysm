@@ -87,6 +87,24 @@ struct FCataclysmSharedBuffCopy
 };
 
 /**
+ * One crowd-control immunity another character's skill has granted this one.
+ * Issue #1833 group E part 4c: an aura that makes its caster immune gives the
+ * same immunities to the allies inside it. `UCataclysmSkillTemplate::IsImmuneTo`
+ * reads the list, so every question about immunity sees it.
+ */
+struct FCataclysmGrantedImmunity
+{
+	/** The effect's name as a skill row writes it: `Stun`, `Slow`, `Displacement`. */
+	FName Kind;
+
+	/** What granted it, so that one giver can take back exactly its own. */
+	TWeakObjectPtr<const UObject> From;
+
+	/** World time it lapses at when nothing takes it back or renews it. */
+	float UntilSeconds = 0.0f;
+};
+
+/**
  * Raised by `UCataclysmAbilitySystemComponent::ActOnEvent` for every event, with
  * the event's name. Issue #1821.
  */
@@ -1808,6 +1826,36 @@ public:
 	 * them. A handle whose wait has ended is dropped the next time one is added.
 	 */
 	TArray<FTimerHandle> PendingResummons;
+
+	/**
+	 * The stat saying this character's aura gives the allies inside it the
+	 * immunities it gives its caster. Issue #1833 group E part 4c: "Your aura
+	 * also applies its effect to all allies within range". A flag: above zero or
+	 * not. No gameplay attribute.
+	 */
+	static const TCHAR* AuraSharesImmunitiesStat;
+
+	/**
+	 * The immunities other characters' skills have granted this one. Public so
+	 * tests can count them. A character with no abilities of its own -- a minion
+	 * -- can be immune only through this list.
+	 */
+	TArray<FCataclysmGrantedImmunity> GrantedImmunities;
+
+	/**
+	 * Grant `Kind` from `From` for `Seconds`, or renew it when `From` already
+	 * granted it. Lapsed entries are dropped here.
+	 */
+	void GrantImmunity(FName Kind, const UObject* From, float Seconds);
+
+	/** Take back everything `From` granted. @return how many were taken back. */
+	int32 RevokeImmunitiesFrom(const UObject* From);
+
+	/**
+	 * Whether a granted immunity that has not lapsed covers `Effect`. An entry
+	 * naming `CrowdControl` covers every effect, as it does in a skill's row.
+	 */
+	bool HasGrantedImmunityTo(const FString& Effect) const;
 
 	/**
 	 * End every wait above without summoning anything. This character's death
