@@ -44,6 +44,7 @@
 #include "Character/CataclysmTargetCandidates.h"
 #include "Engine/World.h"
 #include "GameplayTagContainer.h"
+#include "TimerManager.h"
 // For the one spelling of "attack_damage" that ApplyTo records the stat under.
 // Issue #958.
 #include "Items/CataclysmItem.h"
@@ -51,6 +52,22 @@
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
 	SetIsReplicatedByDefault(true);
+}
+
+int32 UCataclysmAbilitySystemComponent::ClearPendingResummons()
+{
+	int32 Running = 0;
+	if (const UWorld* World = GetWorld())
+	{
+		FTimerManager& Timers = World->GetTimerManager();
+		for (FTimerHandle& Handle : PendingResummons)
+		{
+			Running += Timers.IsTimerActive(Handle) ? 1 : 0;
+			Timers.ClearTimer(Handle);
+		}
+	}
+	PendingResummons.Reset();
+	return Running;
 }
 
 int32 UCataclysmAbilitySystemComponent::DisplacementsInWindow() const

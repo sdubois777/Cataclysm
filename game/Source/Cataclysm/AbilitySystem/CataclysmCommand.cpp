@@ -107,7 +107,10 @@ TArray<ACataclysmMinion*> UCataclysmCommand::MinionsOfTypeCommandedBy(
 	for (AActor* Follower : ThingsCommandedBy(Commander))
 	{
 		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
-		if (IsValid(Minion) && Minion->TypeName == TypeName)
+		// ONE RAISED OUTSIDE THE CAPS IS LEFT OUT. Issue #1833 group E part 4b:
+		// both callers are cap counts -- a summon skill's shared cap and the
+		// risen imps' -- and a necrosis-risen minion holds a place under neither.
+		if (IsValid(Minion) && Minion->TypeName == TypeName && !Minion->bOutsideSummonCaps)
 		{
 			Found.Add(Minion);
 		}

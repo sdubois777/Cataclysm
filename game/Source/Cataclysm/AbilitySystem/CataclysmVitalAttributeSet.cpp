@@ -2251,6 +2251,9 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	const FVector Where = Character->GetActorLocation();
 	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
 	const bool bExplodes = AsMinion && AsMinion->ExplodesOnDeath();
+	// AND THE SUMMON SKILL THAT MADE IT, for the re-summon below, read now for
+	// the same reason. Null for a deployable, a risen imp and a thrall.
+	UCataclysmSummonSkill* MadeBy = AsMinion ? AsMinion->SummonedBy.Get() : nullptr;
 
 	// AND SHARED RUIN'S BLAST, ALSO BEFORE THE DEATH IS HANDLED. Issue #1515.
 	// The dying creature deals it and its maximum health sets it, and an
@@ -2268,9 +2271,23 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	// too, which a hook inside `ACataclysmMinion::HandleDeath` would have
 	// missed: the owner's first wording of Press-Ganged was "a thrall that dies
 	// is replaced by an imp".
+	// AND WHEN NOTHING REPLACED IT AT ONCE, THE WAIT TO SUMMON IT AGAIN BEGINS.
+	// Issue #1833 group E part 4b: "When a minion dies it automatically
+	// re-summons after 3-6 seconds". Not both, or one loss would give two.
 	if (Commander)
 	{
-		UCataclysmSummonSkill::ReplaceLost(Commander, Character, Where, bExplodes);
+		if (!UCataclysmSummonSkill::ReplaceLost(Commander, Character, Where, bExplodes))
+		{
+			UCataclysmSummonSkill::ScheduleResummon(Commander, MadeBy);
+		}
+	}
+
+	// AND THE DEAD CHARACTER'S OWN WAITS END. Ruled 2026-10-02: a summoner's
+	// death clears them, so it gets nothing back from before it fell.
+	if (UCataclysmAbilitySystemComponent* Dead = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character)))
+	{
+		Dead->ClearPendingResummons();
 	}
 }
 

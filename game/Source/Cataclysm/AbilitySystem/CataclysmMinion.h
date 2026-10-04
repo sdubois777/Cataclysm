@@ -149,6 +149,16 @@ public:
 	float RisenAtSeconds = -1.0f;
 
 	/**
+	 * True for a minion that holds no place under any summon cap: one raised by
+	 * "Enemies killed by necrosis rise as temporary minions for 5-10 seconds".
+	 * Issue #1833 group E part 4b, ruled 2026-10-02: it is raised by the rule,
+	 * lasts only its seconds, and neither fills a cap nor is destroyed to make
+	 * room. `UCataclysmCommand::MinionsOfTypeCommandedBy`, which both cap counts
+	 * read, leaves it out.
+	 */
+	bool bOutsideSummonCaps = false;
+
+	/**
 	 * Its type row's Tags, such as `Type.Minion, Type.Deployable,
 	 * Minion.Machine`. Issue #1833, deployable Part 1. Empty for a minion with
 	 * no type row.
