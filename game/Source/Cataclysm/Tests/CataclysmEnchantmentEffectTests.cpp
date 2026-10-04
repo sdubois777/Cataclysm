@@ -32,6 +32,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -12582,6 +12583,93 @@ bool FCataclysmNearbyAlliesRowTest::RunTest(const FString&)
 	UCataclysmSharedBuffs::Step(Worn.Wearer->Actor);
 	TestEqual(*FString(TEXT("the imp's blow of 100 is 120.") + FString(StaleAsset)),
 		UCataclysmSkillEffects::ModifiedDamage(Its, 100.0f, FGameplayTagContainer()), 120.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisRiseRowTest,
+	"Cataclysm.Enchantments.TheNecrosisRiseRowRaisesAnImpForTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies killed by necrosis rise as temporary minions for 5-10 seconds". Issue
+ * #1833 group E part 4b: `necrosis_kill_raises_imp_seconds` flat 5 to 10. WORN
+ * at the top of its roll, 10: the rule, asked as the wearer's necrosis kill of a
+ * creature asks it, raises an imp that lasts 10 seconds. The call from a real
+ * player's handling of a death is `Cataclysm.NecrosisRise.`'s.
+ */
+bool FCataclysmNecrosisRiseRowTest::RunTest(const FString&)
+{
+	CataclysmSmallHalvesTest::FWorn Worn(TEXT("Positive_Enemies_killed_by_necrosis_rise_as_temporary_min"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Victim = Worn.World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Victim))
+	{
+		return false;
+	}
+	Victim->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	FGameplayTagContainer Killing;
+	Killing.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false));
+
+	const ACataclysmMinion* Imp = UCataclysmRisenImps::RiseOnNecrosisKill(
+		Worn.Wearer->Actor, Victim, Victim->GetActorLocation(), &Killing);
+	if (!TestNotNull(TEXT("an imp rises. If none, DT_EnchantmentEffects may be older than the rows: "
+						  "run tools/generate_datatable_assets.py"), Imp))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it lasts the 10 seconds the row rolled"), Imp->GetLifeSpan(), 10.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonRowTest,
+	"Cataclysm.Enchantments.TheResummonRowBringsALostImpBackAfterSixSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When a minion dies it automatically re-summons after 3-6 seconds". Issue
+ * #1833 group E part 4b: `minion_resummoned_after_seconds` flat 3 to 6. WORN at
+ * the top of its roll, 6: the wearer's summoned imp dies, nothing has come back
+ * at 5.9 seconds, and one imp has at 6.1.
+ */
+bool FCataclysmResummonRowTest::RunTest(const FString&)
+{
+	CataclysmSmallHalvesTest::FWorn Worn(TEXT("Positive_When_a_minion_dies_it_automatically_re_summons_a"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayAbilitySpecHandle Handle = Worn.ASC()->GiveAbilityInSlot(
+		UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Worn.Wearer->Actor);
+	FGameplayAbilitySpec* Spec = Handle.IsValid() ? Worn.ASC()->FindAbilitySpecFromHandle(Handle) : nullptr;
+	UCataclysmSummonSkill* Skill = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	Skill->SkillName = TEXT("Summon Imp");
+	Skill->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+	ACataclysmMinion* First = Skill->SummonOne();
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	UCataclysmTargeting::AbilitySystemOf(First)->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	TestEqual(TEXT("set-up: the imp died and nothing replaced it at once"), Skill->LivingMinionCount(), 0);
+	TestEqual(TEXT("one wait is started. If none, DT_EnchantmentEffects may be older than the rows: "
+				   "run tools/generate_datatable_assets.py"),
+		Worn.ASC()->PendingResummons.Num(), 1);
+
+	CataclysmTestWorld::RunClock(Worn.World, 5.9f);
+	TestEqual(TEXT("at 5.9 seconds nothing has come back"), Skill->LivingMinionCount(), 0);
+	CataclysmTestWorld::RunClock(Worn.World, 0.2f);
+	TestEqual(TEXT("at 6.1 seconds one imp has"), Skill->LivingMinionCount(), 1);
 	return true;
 }
 
