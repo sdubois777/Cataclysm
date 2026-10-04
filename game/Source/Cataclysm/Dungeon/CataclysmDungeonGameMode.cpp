@@ -16390,7 +16390,7 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	}
 
 	// AND SOUL CHAINS AND THE LABRYNTH: how many of their gates are open, or why the floor has none. Ruled 2026-10-04.
-	const auto GateLine = [this, &Counting](const TCHAR* Key, const TCHAR* Name, const TCHAR* Nothing)
+	const auto GateLine = [this, &Counting](const TCHAR* Key, const TCHAR* Label, const TCHAR* Nothing)
 	{
 		const FName RowKey(Key);
 		if (!FloorBrief.Modifiers.Contains(RowKey))
@@ -16404,9 +16404,9 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Gates += One.RowKey == RowKey ? 1 : 0;
 			Open += (One.RowKey == RowKey && One.bOpen) ? 1 : 0;
 		}
-		Counting.Add(RowKey, bGateRowsHaveNoShape ? FString::Printf(TEXT("%s: %s on a floor of this shape"), Name, Nothing)
-						 : Gates == 0 ? FString::Printf(TEXT("%s: %s on this floor"), Name, Nothing)
-						 : FString::Printf(TEXT("%s: %d of %d gates open"), Name, Open, Gates));
+		Counting.Add(RowKey, bGateRowsHaveNoShape ? FString::Printf(TEXT("%s: %s on a floor of this shape"), Label, Nothing)
+						 : Gates == 0 ? FString::Printf(TEXT("%s: %s on this floor"), Label, Nothing)
+						 : FString::Printf(TEXT("%s: %d of %d gates open"), Label, Open, Gates));
 	};
 	GateLine(UCataclysmDungeonModifierEffects::SoulChainsKey, TEXT("soul chains"), TEXT("no paths to bind"));
 	GateLine(UCataclysmDungeonModifierEffects::LabrynthKey, TEXT("the labrynth"), TEXT("no paths to turn"));
