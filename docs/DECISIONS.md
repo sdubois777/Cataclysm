@@ -40,8 +40,9 @@ Two merged entries in this file quote the old sentence, and the docstring of
 `test_burn_is_an_effect_the_player_can_apply` in `tools/tests/test_demonic_skills.py` describes the sheet before
 Burn became player-applied. All three are history and stay as written.
 
-**The workbook row was not edited when this was written.** It is edited in this change's workbook turn, and the
-run table follows.
+**The workbook row was edited on 2026-10-04**: the DoTs sheet, cell A4. The generator then changed one line of
+`game/Data/StatusEffects.csv`, the `DoT_Burn` row, and no other file. The DataTable asset is rebuilt in the window,
+and the run table follows.
 
 ---
 
