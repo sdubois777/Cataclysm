@@ -2,6 +2,199 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-04 — Gated shortcuts: Warzone's shortcuts and Soul Chains built, The Labrynth partly, on Halls floors
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.h` and `.cpp` (`FCataclysmFloorShortcut`,
+`FindShortcutBetween`, `FindShortcuts`, `CarveShortcut`, and `GenCarveConnection` now carving a list one function
+makes); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`SoulChainsKey`, `LabrynthKey`,
+the figures, Warzone and Soul Chains answered `Built`, The Labrynth `Partly`, both new keys in `KeysWithARule`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`PlanTheGatedShortcuts` in `BuildFloor`, the
+gates, Warzone's capture, Soul Chains' bearers and reward, The Labrynth's swap, the panel lines); the automation tests
+in `game/Source/Cataclysm/Tests/CataclysmFloorGeneratorTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and
+`tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have.
+
+### The rows
+
+`War_Warzone_Control_Points`: "...Holding these points provides strategic advantages, such as summoning allied soldiers,
+gaining access to powerful buffs, or opening shortcuts to progress deeper into the dungeon." **Until this change
+"opening shortcuts" did nothing and the row was partly built.**
+
+`Death_Soul_Chains`: "Certain sections of the dungeon are lined with ethereal chains that bind the souls of trapped
+adventurers. Players must release these souls by defeating specific enemies. Freeing the souls may grant rewards or
+open up new paths." **Until this change the row had no code.**
+
+`Chaos_The_Labrynth`: "Dungeon rooms rearrange themselves periodically. Players might find paths they already cleared
+are now blocked or redirected." **Until this change the row had no code.**
+
+### What the research settles, and what it does not
+
+Researched 2026-10-02: [maxroll.gg/d4/resources/general-dungeon-guide](https://maxroll.gg/d4/resources/general-dungeon-guide)
+lists Diablo IV dungeon objectives "Activate Gate Controls", "Activate the Levers" and "Defeat all enemies in the area".
+Search results describe Diablo IV doors sealed behind marked elites; **no page stating that could be fetched**, so it is
+not relied on. **No shipped modifier that rearranges a floor during a run was found.** So a gate an objective opens
+has precedent as a shape, and every figure below is a judgement.
+
+### Three measurements, which changed the design twice
+
+Each a temporary test, plan only, never committed, the test file's hash matching before and after, over the same sixty
+plans: three layouts, ten dungeon seeds, floors 1 and 10. **Counts on the plan, not timings in play.**
+
+**1. A gate on a detour the floor already has.** A gate must be a line of cells, because corridors are 2 to 4 cells
+wide (`LeastConnectionWidth`, `MostConnectionWidth`) and one cell cannot close one. Plans with any straight gate of
+width 1 to 4 that keeps every cell reachable and lengthens the entrance-to-exit walk by four cells or more:
+
+| Layout | by 4 or more | by 8 or more |
+|---|---|---|
+| Halls | 9 of 20 | 5 of 20 |
+| Caverns | 2 of 20 | 1 of 20 |
+| Arena | 0 of 20 | 0 of 20 |
+
+**So the floors are mostly tree-like, and a gate on an existing detour serves about half of Halls floors and almost
+no others.** The search took 42 to 1,099 ms a plan. Ruled 2026-10-02: carve a connection for the row and gate it.
+
+**2. A carved, gated shortcut toward the exit.** A corridor 2 cells across joining two walkable cells at most 12 apart,
+kept only if a gate of two new cells gives the walk back. Plans where one shortens the entrance-to-exit walk by ten
+cells or more: **Halls 9 of 20 (8 by twenty or more), Caverns 1 of 20, Arena 0** -- almost the same plans as (1); on
+every other plan no pair of cells gave any estimated saving. Where one exists it saves 12 to 68 cells through 4 to 15
+new cells. A reading, not measured: on the other floors the walk from entrance to exit is already as short as the grid
+allows, which no corridor can beat. Ruled 2026-10-02: a shortcut between any two places.
+
+**3. A carved, gated shortcut between any two places, saving ten cells or more**, searched from forty sampled cells,
+the best hundred checked for real:
+
+| Layout | plans with any | checked shortcuts, min / median | sharing no cell, min / median | a sampled point with one to the exit | to the exit or else the entrance |
+|---|---|---|---|---|---|
+| Halls | 20 of 20 | 33 / 99 | 2 / 4 | 35 of 200 | 76 of 200 |
+| Caverns | 6 of 20 | 0 / 0 | 0 / 0 | 8 of 200 | 15 of 200 |
+| Arena | 0 of 20 | 0 / 0 | 0 / 0 | 0 of 200 | 0 of 200 |
+
+The search took 9 to 52 ms a plan. The decision rule was set before this measurement: the rows run only on layouts
+whose median is at least one.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session, on 2026-10-02 and 2026-10-04, each a labelled judgement:**
+
+- **A path that can be opened is carved for the row and closed at once**, on floors carrying the row only, through the
+  generator's own carving, on the floor's seeded stream. "Opening shortcuts" and "open up new paths" describe a path
+  that exists and is closed, and other rules already change what a floor holds when they carry it. Adding loops to
+  every floor was refused, because it changes every floor for three rows; leaving the rows to do nothing where no
+  detour exists was refused, because that is most floors.
+- **HALLS FLOORS ONLY**, by the decision rule and measurement 3. On a Caverns floor the three rows place no gates and
+  the floor panel says so.
+- **NOTHING IN A HORDE ARENA**, as with the rows that lock the exit: there is no exit, and no shortcut exists there.
+- **A SHORTCUT SAVES AT LEAST 10 CELLS** (`ShortcutLeastSaving`), 40 metres of walking; its corridor is **2 cells
+  across** (`ShortcutWidth`, the generator's least width) and its ends **at most 12 cells apart**
+  (`ShortcutMostLength`). **A gate is two pillar obstacles on two new cells**: it blocks movement and shots.
+- **EVERYTHING IS CHOSEN WHEN THE FLOOR IS BUILT, ON ITS SEED**, never during play: the search costs tens of
+  milliseconds a floor.
+- **WARZONE: one shortcut for each point, opened when that point is captured**, at most 2 a floor. **Measured from the
+  point to the exit; if no such shortcut saves ten cells, from the point to the entrance; if none, the best shortcut
+  between any two places with one end within 8 cells of the point** (`WarzoneShortcutNearCells`), and the panel names
+  which. This replaced an earlier ruling of "chosen to shorten the way to the exit", for the reason measurement 3
+  gives: a point has a shortcut to the exit 35 times in 200.
+- **SOUL CHAINS: 2 gates** (`SoulChainsGates`), **each held by 2 bearers** (`SoulChainsBearersPerGate`) of the floor's
+  own creatures raised to Elite (`SoulChainsBearerRung`), chosen as Infernal Seals' bearers are. **A gate opens when
+  both are dead and gives one drop roll as an Elite kill's** (`SoulChainsRewardRung`), **one a gate, not one a bearer**,
+  through `UCataclysmDropSpawner::SpawnDropsFor`: no new reward kind. **"Sections ... lined with ... chains" is read as
+  the gated stretch**, which is why the row is `Built`; a sealed section waits on the owner.
+- **THE LABRYNTH: up to 4 gates** (`LabrynthMostGates`), **half closed when the floor begins; every 20 seconds**
+  (`LabrynthSecondsBetweenSwaps`) **one open gate closes and one closed gate opens**, never onto a cell the floor holds
+  (`CellsTheFloorHolds`) nor where closing would strand a cell. **It stays `Partly`, with "rooms rearrange" named as
+  missing**: the rooms do not move, and the owner keeps the design over the code, so an approximation is not called the
+  row.
+- **Warzone Control Points and Soul Chains are `Built`**, on Halls floors only, as said above.
+
+### How it is built
+
+- **The generator finds and carves.** `GenCarveConnection`, which every connection of a Halls floor is carved by, now
+  carves the cells `GenConnectionCells` lists, and the shortcut functions ask the same list which cells a corridor
+  would open, so the two cannot disagree about a connection's shape. A candidate is estimated from breadth-first
+  searches and the best are checked by carving on a copy: the saving must be real, and a gate of two new cells side by
+  side must exist whose closing gives the first walk back with every walkable cell reachable from the entrance.
+- **`BuildFloor` carves between generating the plan and building it** (`PlanTheGatedShortcuts`), so the blocks, the
+  walls and the navigation mesh are made with the corridors. Each shortcut is searched for with the earlier ones carved
+  and their gates closed, and none uses another's cells. The stream is
+  `FRandomStream(SeedForFloor(Plan.Seed, GatedShortcutSalt))`.
+- **Warzone's points are chosen before the floor is built, on that stream, on a Halls floor**, because a shortcut is
+  measured from its point: `SeededSourceCells` applies `FloorSourceCells`' two rules in cells. `PlaceTheControlPoints`
+  uses them. **A consequence, stated:** on a Halls floor Warzone's points are now the same for the same dungeon and
+  floor, where they were drawn afresh each visit; on other layouts they are drawn as before.
+- **The gates are placed after the last floor's actors are swept and before the floor is populated**
+  (`PlaceTheShortcutGates`, in `BuildFloor` and again in `GoToFloor`): their cells are blocked in the plan
+  (`BlockCell`), so no creature is placed on one, and two one-cell pillars stand on them, because the obstacle is a
+  square block and a gate is two cells in a line.
+- **A shortcut's corridor is held from pillars and pits** through `CellsHeldOrWarned`, not `CellsTheFloorHolds`: a gate
+  asks the second when it closes during play, and would refuse its own cells.
+
+### Consequences, stated rather than changed
+
+- **Which gates are open is not saved.** `BuildFloor` carves the same shortcuts for the same dungeon and floor and
+  puts every gate in its first state, so a floor built again from a save begins with them as a fresh floor does. How
+  a save's restore treats Soul Chains' bearers was not read for this change.
+- **A Soul Chains gate that no creature can be found to hold opens at once and gives nothing.**
+- **The Labrynth swaps nothing on a turn when no open gate can close**, so the number open never drifts.
+- **Warzone's shortcut clause is appended to its panel line** only once a shortcut is open, or on a floor whose shape
+  has none; a point with no shortcut at all opens nothing and the line says nothing more.
+
+### Tests
+
+Ten new automation tests.
+
+`Cataclysm.FloorGenerator.`, on plans:
+
+- `AGatedShortcutSavesTenCellsAndItsGateClosesIt`: ten Halls plans, each with at least two shortcuts; carving one saves
+  what it said, ten or more; its new cells were rock; no two share a cell; its gate is two new cells side by side whose
+  closing gives the first walk back and strands nothing; the same stream gives the same shortcuts; an Arena has none.
+- `AShortcutBetweenTwoCellsShortensThatWalkOrIsRefused`: the plan measured at 66 cells has a shortcut to the exit and
+  carving it saves what it said; a plan whose walk is as short as it can be has none; rock is no end for one.
+
+`Cataclysm.DungeonModifierEffects.`, on floors the game mode builds:
+
+- `GatedShortcutFiguresAndTheThreeRowsBuiltStates`.
+- `GatedShortcutsAreCarvedAndClosedWhenAHallsFloorIsBuilt`: two chained shortcuts; each corridor cell floor unless it
+  is the gate; one pillar on each gate cell; an obstacle in a corridor refused; the same floor built again carves the
+  same ones.
+- `WarzoneCapturingAPointOpensItsShortcut`: the points are the planned ones; a point's shortcut is closed before the
+  capture and open after it; the panel ends "; shortcut open:" and where it leads; the other point's stays shut.
+- `SoulChainsAGateOpensWhenBothItsBearersDieAndGivesOneDropRoll`: two bearers a gate, Elite or above, none holding two
+  gates; one dead leaves it shut and no roll; both dead opens it, its cells walkable, one roll; the other gate shut; no
+  second roll.
+- `TheLabrynthSwapsOneGateEveryTwentySeconds`: the odd gates begin open; nothing before 20 s; at 20 s one closed and
+  one opened, as many open as before, no walkable cell cut off.
+- `TheLabrynthNeverClosesAGateSomeoneStandsOn`: through five swaps.
+- `GateRowsPlaceNothingOnACavernsFloorOrInAHordeArenaAndThePanelSaysSo`, with a Halls floor after as the control.
+
+`Cataclysm.DungeonFloor.`, on a real navigation mesh:
+
+- `AShortcutsGateClosesItOnTheNavigationMeshAndOpeningItShortensThePath`.
+
+**Three existing assertions change on purpose.** `WarzoneAlliesFiguresAndTheRowStaysPartly` is renamed
+`WarzoneAlliesFiguresAndTheRowBuilt` and asserts `Built`; and two Warzone panel assertions, in
+`StandingInAControlPointForThirtySecondsCapturesIt` and `EachHeldControlPointGivesMoreDamageAndResistance`, now assert
+the line STARTS WITH its text, because a captured point's shortcut is named after it. With Warzone built, **the rows
+used by a test as its partly built example** are: Insanity Bursts (the Field Medic's control and the floor panel's
+example), Lightforged Walls (`LightforgedWallsFiguresAndTheRowPartly`) and The Labrynth
+(`GatedShortcutFiguresAndTheThreeRowsBuiltStates`).
+
+**Python.** Two new checks, `test_soul_chains_row_still_says_souls_are_released_by_defeating_enemies_and_open_new_paths`
+and `test_the_labrynth_row_still_says_rooms_rearrange_and_paths_are_blocked_or_redirected`, pin the phrases the
+rulings rest on. Warzone's phrase check now says its shortcuts are built. **The kept-cells pin follows a struct that
+carries a struct that carries a cell**: without that the game mode's list of shortcuts was invisible to it. It names
+`GatedShortcuts` harmless, with the reason given above.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-02 — A creature the player commands has a green health bar, and minion damage stays off damage over time
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (a green fill and the function

@@ -30,6 +30,9 @@ HARMLESS = {
                              "walks, and it cannot walk into an obstacle",
     "PandorasBoxWaves": "At is a box's own position, already held through the floor object standing there; its waves "
                         "arrive through BringCreaturesNear, which reads the plan",
+    "GatedShortcuts": "a shortcut's corridor is held from pillars and pits by CellsHeldOrWarned, which every obstacle "
+                      "placement asks; it is not in CellsTheFloorHolds because a gate asks that when it closes, and "
+                      "would then refuse its own cells",
 }
 
 POSITION_FIELD = re.compile(r"\bFVector\s+\w*(Location|Where|At|Point|Middle)\b")
@@ -53,10 +56,21 @@ def without_comments(text):
 def kept_members():
     """The game mode's members that keep a cell or a position, by name."""
     carriers = set()
+    bodies = {}
     for header in DUNGEON.glob("*.h"):
         for name, _, _, body in struct_blocks(header.read_text(encoding="utf-8")):
+            bodies[name] = body
             if re.search(r"\bFIntPoint\b", body) or POSITION_FIELD.search(body):
                 carriers.add(name)
+    # AND A STRUCT THAT CARRIES A CARRIER, to any depth: `FGatedShortcut` holds an `FCataclysmFloorShortcut`, which
+    # holds the cells. Without this the game mode's list of shortcuts was invisible to the check.
+    grew = True
+    while grew:
+        grew = False
+        for name, body in bodies.items():
+            if name not in carriers and any(re.search(rf"\b{carrier}\b", body) for carrier in carriers):
+                carriers.add(name)
+                grew = True
     text = HEADER.read_text(encoding="utf-8")
     outside, cursor = [], 0
     for _, start, end, _ in struct_blocks(text):
@@ -83,7 +97,8 @@ def test_every_kept_cell_is_held_from_obstacles_or_named_harmless():
     members = kept_members()
     # A POSITIVE CONTROL FIRST: lists known to keep cells and positions are found, so "nothing missing" below means
     # something rather than a search that found nothing at all.
-    for known in ("WaveStillToArrive", "RealityRiftCells", "VoidParasiteLightCell", "InfestedVeins", "LuxuryHoards"):
+    for known in ("WaveStillToArrive", "RealityRiftCells", "VoidParasiteLightCell", "InfestedVeins", "LuxuryHoards",
+                  "GatedShortcuts"):
         assert known in members, f"the search no longer finds {known}; it is blind and the check below proves nothing"
     body = holds_body()
     read = {name for name in members if re.search(rf"\b{name}\b", body)}

@@ -593,4 +593,79 @@ bool FCataclysmObstacleRemovedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A gated shortcut on a real navigation mesh. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShortcutNavigationTest,
+	"Cataclysm.DungeonFloor.AShortcutsGateClosesItOnTheNavigationMeshAndOpeningItShortensThePath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShortcutNavigationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonNavTest;
+
+	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
+	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	// A SHORTCUT CARVED INTO THE PLAN AND THE FLOOR BUILT AGAIN FROM IT, as the game mode builds a floor carrying a
+	// gate row.
+	FCataclysmFloorPlan Plan = Setup.Floor->GetPlan();
+	FRandomStream Stream(3);
+	const TArray<FCataclysmFloorShortcut> Found =
+		FCataclysmFloorGenerator::FindShortcuts(Plan, Stream, 1, TSet<FIntPoint>());
+	if (!TestEqual(TEXT("set-up: a shortcut on this floor"), Found.Num(), 1))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	const FCataclysmFloorShortcut Shortcut = Found[0];
+	FCataclysmFloorGenerator::CarveShortcut(Plan, Shortcut);
+	if (!TestTrue(TEXT("set-up: the floor built again with the corridor"), Setup.Floor->Build(Plan)))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	// THE GATE: two pillars, as `CloseTheGate` places them.
+	TArray<ACataclysmFloorObstacle*> Pillars;
+	for (const FIntPoint& Cell : Shortcut.Gate)
+	{
+		ACataclysmFloorObstacle* Pillar = ACataclysmFloorObstacle::Place(
+			Setup.World, *Setup.Floor, {Cell}, ECataclysmObstacleKind::Pillar, NAME_None, NAME_None);
+		if (TestNotNull(TEXT("a gate pillar was placed"), Pillar))
+		{
+			Pillar->Raise();
+			Pillars.Add(Pillar);
+		}
+	}
+	TestTrue(TEXT("the mesh rebuilt with the gate shut"), WaitForTheNavigationMesh(Setup));
+
+	const FVector From = Setup.Floor->WorldOfCell(Shortcut.A);
+	const FVector To = Setup.Floor->WorldOfCell(Shortcut.B);
+	const FVector Gate = (Setup.Floor->WorldOfCell(Shortcut.Gate[0]) + Setup.Floor->WorldOfCell(Shortcut.Gate[1])) * 0.5;
+	double Closest = 0.0;
+	const double Shut = PathAround(Setup, From, To, Gate, Closest);
+	TestTrue(TEXT("with the gate shut a path still joins the two ends, the long way"), Shut > 0.0);
+
+	for (ACataclysmFloorObstacle* Pillar : Pillars)
+	{
+		Pillar->Destroy();
+	}
+	TestTrue(TEXT("the mesh rebuilt with the gate open"), WaitForTheNavigationMesh(Setup));
+	const double Open = PathAround(Setup, From, To, Gate, Closest);
+	TestTrue(TEXT("with the gate open a path joins them"), Open > 0.0);
+
+	// AT LEAST HALF THE CELLS IT SAVES ON THE GRID, in centimetres: a navigation path cuts corners a cell walk cannot.
+	const double Least = Shortcut.Saving * 0.5 * FCataclysmFloorGenerator::CellSizeCm;
+	TestTrue(FString::Printf(TEXT("and it is shorter: %.0f cm against %.0f, by at least %.0f"), Open, Shut, Least),
+			 Shut - Open >= Least);
+	TearDown(Setup);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

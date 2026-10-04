@@ -5838,6 +5838,7 @@ void ACataclysmDungeonGameMode::ForgetTheGatedShortcuts()
 	bGateRowsHaveNoShape = false;
 	LabrynthSecondsSince = 0.0f;
 	SoulChainsRewardDrops = 0;
+	SoulChainsRewardRolls = 0;
 }
 
 void ACataclysmDungeonGameMode::PlanTheGatedShortcuts(FCataclysmFloorPlan& Plan)
@@ -6189,6 +6190,7 @@ void ACataclysmDungeonGameMode::StepGatedShortcuts()
 		FRandomStream Drops(CurrentFloor->GetPlan().Seed ^ (0x50C4 + One.Index));
 		SoulChainsRewardDrops += UCataclysmDropSpawner::SpawnDropsFor(World, Effects::SoulChainsRewardRung, MagicFind,
 																	  LootQuantity, Where, Drops);
+		++SoulChainsRewardRolls;
 		bChanged = true;
 	}
 
