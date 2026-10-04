@@ -286,15 +286,18 @@ namespace
 	 * The horizontal leg runs at A's row and the vertical leg at B's column, so
 	 * the two always cross and the connection is never in two pieces.
 	 */
-	void GenCarveConnection(FCataclysmFloorPlan& Plan, FIntPoint A, FIntPoint B, int32 Wide)
+	TArray<FIntPoint> GenConnectionCells(FIntPoint A, FIntPoint B, int32 Wide)
 	{
+		// THE ONE LIST OF A CONNECTION'S CELLS. `GenCarveConnection` carves it and the gated shortcuts ask it which
+		// cells a corridor would open, so the two cannot disagree about a connection's shape.
+		TArray<FIntPoint> Cells;
 		const int32 FirstX = FMath::Min(A.X, B.X);
 		const int32 LastX = FMath::Max(A.X, B.X);
 		for (int32 X = FirstX; X <= LastX; ++X)
 		{
 			for (int32 Offset = 0; Offset < Wide; ++Offset)
 			{
-				Plan.Carve(FIntPoint(X, A.Y + Offset));
+				Cells.AddUnique(FIntPoint(X, A.Y + Offset));
 			}
 		}
 
@@ -304,9 +307,126 @@ namespace
 		{
 			for (int32 Offset = 0; Offset < Wide; ++Offset)
 			{
-				Plan.Carve(FIntPoint(B.X + Offset, Y));
+				Cells.AddUnique(FIntPoint(B.X + Offset, Y));
 			}
 		}
+		return Cells;
+	}
+
+	void GenCarveConnection(FCataclysmFloorPlan& Plan, FIntPoint A, FIntPoint B, int32 Wide)
+	{
+		for (const FIntPoint& Cell : GenConnectionCells(A, B, Wide))
+		{
+			Plan.Carve(Cell);
+		}
+	}
+
+	/** Whether every walkable cell can be walked to from the entrance. */
+	bool GenEveryCellIsReachable(const FCataclysmFloorPlan& Plan)
+	{
+		const TArray<int32> Distance = CataclysmFloorDistancesFrom(Plan, Plan.Entrance);
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			if (Plan.Cells[Index] == ECataclysmFloorCell::Floor && Distance[Index] == INDEX_NONE)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Whether a corridor from A to B is a gated shortcut for the walk From -> To, which is `Base` cells today. Fills
+	 * `Out` when it is. See `FCataclysmFloorGenerator::FindShortcutBetween`.
+	 */
+	bool GenCheckShortcut(const FCataclysmFloorPlan& Plan, FIntPoint A, FIntPoint B, FIntPoint From, FIntPoint To,
+						  int32 Base, const TSet<FIntPoint>& Avoid, FCataclysmFloorShortcut& Out)
+	{
+		TArray<FIntPoint> NewCells;
+		for (const FIntPoint& Cell : GenConnectionCells(A, B, FCataclysmFloorGenerator::ShortcutWidth))
+		{
+			if (Plan.IndexOf(Cell) == INDEX_NONE)
+			{
+				// OFF THE GRID: a corridor that would run off the plan is not carved at all.
+				return false;
+			}
+			if (!Plan.IsFloor(Cell))
+			{
+				if (Avoid.Contains(Cell))
+				{
+					return false;
+				}
+				NewCells.Add(Cell);
+			}
+		}
+		if (NewCells.Num() < 2)
+		{
+			return false;
+		}
+
+		FCataclysmFloorPlan Carved = Plan;
+		for (const FIntPoint& Cell : NewCells)
+		{
+			Carved.Carve(Cell);
+		}
+		const int32 Saving = Base - CataclysmFloorDistancesFrom(Carved, From)[Carved.IndexOf(To)];
+		if (Saving < FCataclysmFloorGenerator::ShortcutLeastSaving)
+		{
+			return false;
+		}
+
+		// A GATE OF TWO NEW CELLS, SIDE BY SIDE, whose closing gives the first walk back and strands nothing.
+		for (const FIntPoint& Cell : NewCells)
+		{
+			for (const FIntPoint& Across : {FIntPoint(1, 0), FIntPoint(0, 1)})
+			{
+				const FIntPoint Other = Cell + Across;
+				if (!NewCells.Contains(Other))
+				{
+					continue;
+				}
+				FCataclysmFloorPlan Closed = Carved;
+				Closed.Cells[Closed.IndexOf(Cell)] = ECataclysmFloorCell::Solid;
+				Closed.Cells[Closed.IndexOf(Other)] = ECataclysmFloorCell::Solid;
+				if (CataclysmFloorDistancesFrom(Closed, From)[Closed.IndexOf(To)] == Base
+					&& GenEveryCellIsReachable(Closed))
+				{
+					Out.A = A;
+					Out.B = B;
+					Out.NewCells = NewCells;
+					Out.Gate = {Cell, Other};
+					Out.Saving = Saving;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** One end, the other, and what the two searches say the corridor would save. */
+	struct FGenShortcutCandidate
+	{
+		FIntPoint A;
+		FIntPoint B;
+		int32 Walk = 0;
+		int32 Estimate = 0;
+	};
+
+	/** Best estimate first; ties by the cells themselves, so the same plan always gives the same order. */
+	void GenSortShortcutCandidates(TArray<FGenShortcutCandidate>& Candidates)
+	{
+		Candidates.Sort([](const FGenShortcutCandidate& One, const FGenShortcutCandidate& Two)
+		{
+			if (One.Estimate != Two.Estimate)
+			{
+				return One.Estimate > Two.Estimate;
+			}
+			if (One.A != Two.A)
+			{
+				return One.A.Y != Two.A.Y ? One.A.Y < Two.A.Y : One.A.X < Two.A.X;
+			}
+			return One.B.Y != Two.B.Y ? One.B.Y < Two.B.Y : One.B.X < Two.B.X;
+		});
 	}
 
 	/** Large rectangular rooms joined by connections two cells across. */
@@ -666,6 +786,144 @@ int32 FCataclysmFloorGenerator::SeedForFloor(int32 DungeonSeed, int32 FloorNumbe
 	Mixed *= 0x846CA68Bu;
 	Mixed ^= Mixed >> 16;
 	return static_cast<int32>(Mixed & 0x7FFFFFFFu);
+}
+
+bool FCataclysmFloorGenerator::FindShortcutBetween(const FCataclysmFloorPlan& Plan, FIntPoint From, FIntPoint To,
+												   const TSet<FIntPoint>& Avoid, FCataclysmFloorShortcut& Out)
+{
+	if (!Plan.IsFloor(From) || !Plan.IsFloor(To))
+	{
+		return false;
+	}
+	const TArray<int32> FromStart = CataclysmFloorDistancesFrom(Plan, From);
+	const TArray<int32> FromEnd = CataclysmFloorDistancesFrom(Plan, To);
+	const int32 Base = FromStart[Plan.IndexOf(To)];
+	if (Base == INDEX_NONE)
+	{
+		return false;
+	}
+
+	// EVERY PAIR OF WALKABLE CELLS CLOSE ENOUGH TO JOIN, estimated from the two searches alone.
+	TArray<FGenShortcutCandidate> Candidates;
+	for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+	{
+		if (Plan.Cells[Index] != ECataclysmFloorCell::Floor || FromStart[Index] == INDEX_NONE)
+		{
+			continue;
+		}
+		const FIntPoint A = Plan.CellAt(Index);
+		for (int32 DY = -ShortcutMostLength; DY <= ShortcutMostLength; ++DY)
+		{
+			for (int32 DX = -ShortcutMostLength; DX <= ShortcutMostLength; ++DX)
+			{
+				const int32 Length = FMath::Abs(DX) + FMath::Abs(DY);
+				const FIntPoint B = A + FIntPoint(DX, DY);
+				if (Length < 3 || Length > ShortcutMostLength || !Plan.IsFloor(B))
+				{
+					continue;
+				}
+				const int32 Estimate = Base - (FromStart[Index] + Length + FromEnd[Plan.IndexOf(B)]);
+				if (Estimate >= ShortcutLeastSaving)
+				{
+					Candidates.Add({A, B, Base, Estimate});
+				}
+			}
+		}
+	}
+	GenSortShortcutCandidates(Candidates);
+	for (int32 Index = 0; Index < Candidates.Num() && Index < ShortcutMostChecked; ++Index)
+	{
+		if (GenCheckShortcut(Plan, Candidates[Index].A, Candidates[Index].B, From, To, Base, Avoid, Out))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+TArray<FCataclysmFloorShortcut> FCataclysmFloorGenerator::FindShortcuts(const FCataclysmFloorPlan& Plan,
+																		FRandomStream& Stream, int32 Most,
+																		const TSet<FIntPoint>& Avoid, FIntPoint Near,
+																		int32 NearCells)
+{
+	TArray<FCataclysmFloorShortcut> Found;
+	TArray<FIntPoint> Walkable;
+	for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+	{
+		if (Plan.Cells[Index] == ECataclysmFloorCell::Floor)
+		{
+			Walkable.Add(Plan.CellAt(Index));
+		}
+	}
+	if (Most <= 0 || Walkable.IsEmpty())
+	{
+		return Found;
+	}
+
+	// WHERE TO SEARCH FROM: near a cell when one is named, else cells drawn on the floor's own stream.
+	TArray<FIntPoint> Sources;
+	if (Plan.IsFloor(Near))
+	{
+		for (const FIntPoint& Cell : Walkable)
+		{
+			if (FMath::Abs(Cell.X - Near.X) + FMath::Abs(Cell.Y - Near.Y) <= NearCells)
+			{
+				Sources.Add(Cell);
+			}
+		}
+	}
+	else
+	{
+		for (int32 Index = 0; Index < ShortcutSources; ++Index)
+		{
+			Sources.AddUnique(Walkable[Stream.RandRange(0, Walkable.Num() - 1)]);
+		}
+	}
+
+	TArray<FGenShortcutCandidate> Candidates;
+	for (const FIntPoint& A : Sources)
+	{
+		const TArray<int32> FromA = CataclysmFloorDistancesFrom(Plan, A);
+		for (int32 DY = -ShortcutMostLength; DY <= ShortcutMostLength; ++DY)
+		{
+			for (int32 DX = -ShortcutMostLength; DX <= ShortcutMostLength; ++DX)
+			{
+				const int32 Length = FMath::Abs(DX) + FMath::Abs(DY);
+				const FIntPoint B = A + FIntPoint(DX, DY);
+				if (Length < 3 || Length > ShortcutMostLength || !Plan.IsFloor(B))
+				{
+					continue;
+				}
+				const int32 Walk = FromA[Plan.IndexOf(B)];
+				if (Walk != INDEX_NONE && Walk - Length >= ShortcutLeastSaving)
+				{
+					Candidates.Add({A, B, Walk, Walk - Length});
+				}
+			}
+		}
+	}
+	GenSortShortcutCandidates(Candidates);
+
+	TSet<FIntPoint> Used = Avoid;
+	for (int32 Index = 0; Index < Candidates.Num() && Index < ShortcutMostChecked && Found.Num() < Most; ++Index)
+	{
+		FCataclysmFloorShortcut One;
+		if (GenCheckShortcut(Plan, Candidates[Index].A, Candidates[Index].B, Candidates[Index].A, Candidates[Index].B,
+							 Candidates[Index].Walk, Used, One))
+		{
+			Used.Append(One.NewCells);
+			Found.Add(One);
+		}
+	}
+	return Found;
+}
+
+void FCataclysmFloorGenerator::CarveShortcut(FCataclysmFloorPlan& Plan, const FCataclysmFloorShortcut& Shortcut)
+{
+	if (Shortcut.IsValid())
+	{
+		GenCarveConnection(Plan, Shortcut.A, Shortcut.B, ShortcutWidth);
+	}
 }
 
 FCataclysmFloorPlan FCataclysmFloorGenerator::Generate(const FCataclysmFloorRequest& Request)
