@@ -927,6 +927,31 @@ bool FCataclysmNecrosisRiseOutsideCapsTest::RunTest(const FString&)
 	TestNull(TEXT("killing tags naming Bleed raise nothing"),
 		UCataclysmRisenImps::RiseOnNecrosisKill(
 			Holder.Actor, Victim.Actor, Victim.Actor->GetActorLocation(), &NotNecrosis));
+
+	// AND IT TAKES NO SUMMON IMP SLOT. A second character holds two imps and one
+	// risen by necrosis: Summon Imp still summons its third, and a summon at the
+	// cap destroys the oldest summoned imp, never the risen one.
+	FScopedCurser Summoner(World, FVector(0, 30 * M, 0));
+	HoldTheRow(Summoner.AbilitySystem, 5.0f);
+	UCataclysmSummonSkill* Skill = GrantSummonImp(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill) || !TestNotNull(TEXT("a first imp"), Skill->SummonOne())
+		|| !TestNotNull(TEXT("a second imp"), Skill->SummonOne()))
+	{
+		return false;
+	}
+	FScopedCreature Second(World, FVector(5 * M, 30 * M, 0));
+	ACataclysmMinion* AlsoRisen = UCataclysmRisenImps::RiseOnNecrosisKill(
+		Summoner.Actor, Second.Actor, Second.Actor->GetActorLocation(), &Killing);
+	if (!TestNotNull(TEXT("an imp rises beside two summoned"), AlsoRisen))
+	{
+		return false;
+	}
+	TestNotNull(TEXT("Summon Imp still summons its third"), Skill->SummonOne());
+	TestEqual(TEXT("three are under the cap"), Summoner.Imps().Num(), ImpCap);
+	TestNotNull(TEXT("and a summon at the cap goes through"), Skill->SummonOne());
+	TestEqual(TEXT("three are still under the cap"), Summoner.Imps().Num(), ImpCap);
+	TestTrue(TEXT("and the risen imp was not what it destroyed"),
+		IsValid(AlsoRisen) && !UCataclysmSkillEffects::IsDead(AlsoRisen));
 	return true;
 }
 
