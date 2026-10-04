@@ -2509,6 +2509,9 @@ public:
 	/** How many drops Soul Chains' freed gates have given on this floor. */
 	int32 SoulChainsRewardDropsSpawned() const { return SoulChainsRewardDrops; }
 
+	/** How many reward rolls Soul Chains has made on this floor: one for each gate its bearers' deaths opened. */
+	int32 SoulChainsRewardRollsMade() const { return SoulChainsRewardRolls; }
+
 	/** Warzone's points as chosen on the floor's seed before it was built, on a Halls floor. Empty elsewhere. */
 	const TArray<FIntPoint>& WarzonePlannedPointsNow() const { return WarzonePlannedPoints; }
 
@@ -3887,6 +3890,7 @@ private:
 	bool bGateRowsHaveNoShape = false;
 	float LabrynthSecondsSince = 0.0f;
 	int32 SoulChainsRewardDrops = 0;
+	int32 SoulChainsRewardRolls = 0;
 
 	/** The stream every gate choice of this floor is drawn on, seeded from the floor's plan. */
 	FRandomStream GatedShortcutStream;
