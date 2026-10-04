@@ -26,6 +26,8 @@
 #include "EngineUtils.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Misc/ScopeExit.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -675,6 +677,256 @@ bool FCataclysmRisenImpEvictedTest::RunTest(const FString&)
 			  Ritualist.Imps().Num(), ImpCap);
 	TestEqual(TEXT("so the skill's own list holds three"), Summon->LivingMinionCount(),
 			  ImpCap);
+	return true;
+}
+
+namespace CataclysmNecrosisRiseTest
+{
+	using namespace CataclysmRisenImpTest;
+
+	FGameplayTag Ailment(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	ACataclysmPlayerCharacter* SpawnPlayer(UWorld* World)
+	{
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerCharacter* Actor =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (State && Actor)
+		{
+			Actor->SetPlayerState(State);
+			Actor->OnRep_PlayerState();
+			return Actor;
+		}
+		return nullptr;
+	}
+
+	/** Give `Who` the row's stat at `Seconds`, as a worn row writes it. */
+	void HoldTheRow(UCataclysmAbilitySystemComponent* Who, float Seconds)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.FindOrAdd(FName(UCataclysmRisenImps::NecrosisRiseSecondsStat)).Base = Seconds;
+		Who->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/**
+	 * `Killer` lays `AilmentName` on a creature with 10 health at `Where` and one
+	 * tick of it runs, which kills. Returns the creature, or null when the
+	 * ailment could not be laid or did not tick.
+	 */
+	ACataclysmEnemyCharacter* KilledByATickOf(FAutomationTestBase& Test, UWorld* World,
+											  AActor* Killer, const TCHAR* AilmentName,
+											  const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Victim =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("a victim"), Victim))
+		{
+			return nullptr;
+		}
+		Victim->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Victim->SetHealth(10.0f);
+		UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Victim));
+		const FGameplayTag Tag = Ailment(AilmentName);
+		if (!Test.TestTrue(TEXT("set-up: the ailment is laid"),
+				Its && Tag.IsValid() && UCataclysmSkillEffects::ApplyDamageOverTime(
+					Killer, Victim, /*DamagePerTick=*/1000.0f, /*DurationSeconds=*/4.0f, Tag,
+					/*bScalesWithInstigator=*/false))
+			|| !Test.TestEqual(TEXT("set-up: one tick of it ran"),
+				Its->ExecutePeriodicEffectsGrantingForTests(Tag), 1)
+			|| !Test.TestTrue(TEXT("set-up: the tick killed the victim"),
+				UCataclysmSkillEffects::IsDead(Victim)))
+		{
+			return nullptr;
+		}
+		return Victim;
+	}
+
+	/** The one living minion in the world, or null when there is not exactly one. */
+	ACataclysmMinion* TheOnlyMinion(UWorld* World)
+	{
+		ACataclysmMinion* Found = nullptr;
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmMinion> It(World); It; ++It)
+		{
+			if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It))
+			{
+				Found = *It;
+				++Count;
+			}
+		}
+		return Count == 1 ? Found : nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisRiseTest,
+	"Cataclysm.NecrosisRise.AnEnemyAPlayersNecrosisTickKillsRisesAsAnImpForTheStatedSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies killed by necrosis rise as temporary minions for 5-10 seconds". Issue
+ * #1833 group E part 4b. A REAL PLAYER, because the rule is called from the
+ * player's own handling of a death: its necrosis tick kills a creature, and an
+ * imp stands where the creature fell, for the row's seconds, outside every cap.
+ */
+bool FCataclysmNecrosisRiseTest::RunTest(const FString&)
+{
+	using namespace CataclysmNecrosisRiseTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	UCataclysmAbilitySystemComponent* Mine = Player
+		? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)) : nullptr;
+	if (!TestNotNull(TEXT("a player"), Mine))
+	{
+		return false;
+	}
+	HoldTheRow(Mine, 10.0f);
+	TestTrue(TEXT("the row's stat is one the engine records"),
+		UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+			FString(UCataclysmRisenImps::NecrosisRiseSecondsStat)));
+	TestEqual(TEXT("set-up: no minion before the kill"), MinionsInTheWorld(World), 0);
+
+	const FVector Where(5 * M, 3 * M, 0);
+	const ACataclysmEnemyCharacter* Victim =
+		KilledByATickOf(*this, World, Player, TEXT("Keyword.DoT.Necrosis"), Where);
+	if (!Victim)
+	{
+		return false;
+	}
+	ACataclysmMinion* Imp = TheOnlyMinion(World);
+	if (!TestNotNull(TEXT("one imp rose"), Imp))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it is Summon Imp's kind"), Imp->TypeName, FString(TEXT("Imp")));
+	TestTrue(TEXT("it is the player's"), UCataclysmCommand::CommanderOf(Imp) == Player);
+	TestTrue(TEXT("it stands where the creature fell"),
+		FVector::Dist2D(Imp->GetActorLocation(), Victim->GetActorLocation()) < 1.0f);
+	TestEqual(TEXT("it lasts the row's 10 seconds"), Imp->GetLifeSpan(), 10.0f, 0.01f);
+	TestTrue(TEXT("and holds no place under a summon cap"), Imp->bOutsideSummonCaps);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisRiseOnlyNecrosisTest,
+	"Cataclysm.NecrosisRise.AKillThatIsNotNecrosisRaisesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** The same player holding the row: a Bleed tick's kill and a blow's kill raise nothing. */
+bool FCataclysmNecrosisRiseOnlyNecrosisTest::RunTest(const FString&)
+{
+	using namespace CataclysmNecrosisRiseTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	UCataclysmAbilitySystemComponent* Mine = Player
+		? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)) : nullptr;
+	if (!TestNotNull(TEXT("a player"), Mine))
+	{
+		return false;
+	}
+	HoldTheRow(Mine, 10.0f);
+
+	if (!KilledByATickOf(*this, World, Player, TEXT("Keyword.DoT.Bleed"), FVector(5 * M, 0, 0)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Bleed tick's kill raises nothing"), MinionsInTheWorld(World), 0);
+
+	FScopedCreature Struck(World, FVector(8 * M, 0, 0));
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Struck.Actor, 1000000.0f);
+	TestTrue(TEXT("set-up: a blow killed a creature"), UCataclysmSkillEffects::IsDead(Struck.Actor));
+	TestEqual(TEXT("a blow's kill raises nothing"), MinionsInTheWorld(World), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisRiseNeedsTheRowTest,
+	"Cataclysm.NecrosisRise.WithoutTheRowANecrosisKillRaisesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** A player without the row: its necrosis tick kills, and nothing rises. */
+bool FCataclysmNecrosisRiseNeedsTheRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNecrosisRiseTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	if (!TestNotNull(TEXT("a player"), Player)
+		|| !KilledByATickOf(*this, World, Player, TEXT("Keyword.DoT.Necrosis"), FVector(5 * M, 0, 0)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing rose"), MinionsInTheWorld(World), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisRiseOutsideCapsTest,
+	"Cataclysm.NecrosisRise.ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The rule asked directly, on a character already holding Summon Imp's cap of
+ * three: an imp still rises, the cap count stays at three, and a fourth summon
+ * is not what destroys it. A victim that was the character's own raises nothing.
+ */
+bool FCataclysmNecrosisRiseOutsideCapsTest::RunTest(const FString&)
+{
+	using namespace CataclysmNecrosisRiseTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCurser Holder(World, FVector::ZeroVector);
+	HoldTheRow(Holder.AbilitySystem, 5.0f);
+	GiveImps(Holder, ImpCap);
+	if (!TestEqual(TEXT("set-up: three imps are held"), Holder.Imps().Num(), ImpCap))
+	{
+		return false;
+	}
+	FGameplayTagContainer Killing;
+	Killing.AddTag(Ailment(TEXT("Keyword.DoT.Necrosis")));
+
+	// ITS OWN IMP AS THE VICTIM: not an enemy, so nothing rises.
+	TestNull(TEXT("a kill of the character's own imp raises nothing"),
+		UCataclysmRisenImps::RiseOnNecrosisKill(Holder.Actor, Holder.Imps()[0], FVector::ZeroVector, &Killing));
+
+	FScopedCreature Victim(World, FVector(5 * M, 0, 0));
+	ACataclysmMinion* Risen = UCataclysmRisenImps::RiseOnNecrosisKill(
+		Holder.Actor, Victim.Actor, Victim.Actor->GetActorLocation(), &Killing);
+	if (!TestNotNull(TEXT("an imp rises with the cap full"), Risen))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it lasts the row's 5 seconds"), Risen->GetLifeSpan(), 5.0f, 0.01f);
+	TestEqual(TEXT("the cap count is still three"), Holder.Imps().Num(), ImpCap);
+	TestEqual(TEXT("and four minions stand"), MinionsInTheWorld(World), ImpCap + 1);
+
+	FGameplayTagContainer NotNecrosis;
+	NotNecrosis.AddTag(Ailment(TEXT("Keyword.DoT.Bleed")));
+	TestNull(TEXT("killing tags naming Bleed raise nothing"),
+		UCataclysmRisenImps::RiseOnNecrosisKill(
+			Holder.Actor, Victim.Actor, Victim.Actor->GetActorLocation(), &NotNecrosis));
 	return true;
 }
 

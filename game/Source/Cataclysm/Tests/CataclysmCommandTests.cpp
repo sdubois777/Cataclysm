@@ -4266,4 +4266,306 @@ bool FCataclysmADirectMinionReservesNothingTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmResummonTest
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	/** The waits `Who` has running now. */
+	int32 WaitsRunning(const FScopedCaster& Who)
+	{
+		int32 Running = 0;
+		const FTimerManager& Timers = Who.Actor->GetWorld()->GetTimerManager();
+		for (const FTimerHandle& Handle : Who.AbilitySystem->PendingResummons)
+		{
+			Running += Timers.IsTimerActive(Handle) ? 1 : 0;
+		}
+		return Running;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonTest,
+	"Cataclysm.Resummon.ALostMinionIsSummonedAgainBesideItsSummonerAfterTheStatedSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When a minion dies it automatically re-summons after 3-6 seconds". Issue
+ * #1833 group E part 4b. With 4 seconds of it: nothing at once, nothing at 3.9 s,
+ * and at 4.1 s one imp of the skill's kind beside the summoner, not where the
+ * lost one died.
+ */
+bool FCataclysmResummonTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ResummonedAfterSecondsStat,
+						  ECataclysmStatBucket::Flat, 4.0f}});
+	TestTrue(TEXT("the stat is one the engine records"),
+		UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+			FString(UCataclysmSummonSkill::ResummonedAfterSecondsStat)));
+
+	const FVector Where(8 * M, 6 * M, 0);
+	ACataclysmMinion* First = SummonAt(Skill, Where);
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	TestEqual(TEXT("nothing replaces it at once"), Skill->LivingMinionCount(), 0);
+	TestEqual(TEXT("and one wait is running"), WaitsRunning(Summoner), 1);
+
+	CataclysmTestWorld::RunClock(World, 3.9f);
+	TestEqual(TEXT("at 3.9 seconds nothing has come back"), Skill->LivingMinionCount(), 0);
+
+	CataclysmTestWorld::RunClock(World, 0.2f);
+	ACataclysmMinion* Back = Newest(Skill);
+	if (!TestNotNull(TEXT("at 4.1 seconds a minion has come back"), Back))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one, counted by its skill"), Skill->LivingMinionCount(), 1);
+	TestEqual(TEXT("of the skill's own kind"), Back->TypeName, FString(TEXT("Imp")));
+	TestTrue(TEXT("made by the same summon skill"), Back->SummonedBy.Get() == Skill);
+	TestTrue(TEXT("beside the summoner"),
+		FVector::Dist2D(Back->GetActorLocation(), Summoner.Actor->GetActorLocation())
+			< 2.0 * UCataclysmSummonSkill::ResummonDistanceCm);
+	TestTrue(TEXT("and not where the lost one died"),
+		FVector::Dist2D(Back->GetActorLocation(), Where) > 5 * M);
+	TestEqual(TEXT("and no wait is left running"), WaitsRunning(Summoner), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonNeedsTheRowTest,
+	"Cataclysm.Resummon.WithoutTheRowALostMinionDoesNotComeBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResummonNeedsTheRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	ACataclysmMinion* First = SummonAt(Skill, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	TestEqual(TEXT("no wait is started"), Summoner.AbilitySystem->PendingResummons.Num(), 0);
+	CataclysmTestWorld::RunClock(World, 7.0f);
+	TestEqual(TEXT("and nothing has come back after 7 seconds"), Skill->LivingMinionCount(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonCapTest,
+	"Cataclysm.Resummon.NoRoomUnderTheCapWhenTheWaitEndsMeansNoMinionThenOrLater",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The cap of three is filled again during the wait: when the wait ends nothing
+ * comes back, and nothing does later when room opens. Cancelled, not put off.
+ */
+bool FCataclysmResummonCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ResummonedAfterSecondsStat,
+						  ECataclysmStatBucket::Flat, 4.0f}});
+	ACataclysmMinion* Lost = SummonAt(Skill, FVector(5 * M, 0, 0));
+	SummonAt(Skill, FVector(5 * M, 2 * M, 0));
+	SummonAt(Skill, FVector(5 * M, 4 * M, 0));
+	if (!TestNotNull(TEXT("an imp to lose"), Lost)
+		|| !TestEqual(TEXT("set-up: three are held"), Skill->LivingMinionCount(), 3))
+	{
+		return false;
+	}
+	Kill(Lost);
+	TestEqual(TEXT("set-up: one wait is running"), WaitsRunning(Summoner), 1);
+	ACataclysmMinion* Filler = SummonAt(Skill, FVector(5 * M, 6 * M, 0));
+	if (!TestNotNull(TEXT("a summon fills the cap again"), Filler)
+		|| !TestEqual(TEXT("set-up: three are held again"), Skill->LivingMinionCount(), 3))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 4.1f);
+	TestEqual(TEXT("the wait ended with the cap full, so three are held, not four"),
+		Skill->LivingMinionCount(), 3);
+
+	// ROOM OPENS WITHOUT A DEATH, so no new wait begins: the filler is removed.
+	Filler->Destroy();
+	TestEqual(TEXT("set-up: room has opened and no wait is running"), WaitsRunning(Summoner), 0);
+	CataclysmTestWorld::RunClock(World, 6.0f);
+	TestEqual(TEXT("and the first loss does not come back later when room opens"),
+		Skill->LivingMinionCount(), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonOnlySummonedTest,
+	"Cataclysm.Resummon.OnlyASummonSkillsMinionComesBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion no summon skill made -- which is what a risen imp and a deployable
+ * are -- starts no wait when it dies.
+ */
+bool FCataclysmResummonOnlySummonedTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ResummonedAfterSecondsStat,
+						  ECataclysmStatBucket::Flat, 4.0f}});
+	ACataclysmMinion* Raised = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(5 * M, 0, 0), 20.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("a summon skill"), Skill) || !TestNotNull(TEXT("a minion no skill made"), Raised))
+	{
+		return false;
+	}
+	Kill(Raised);
+	TestEqual(TEXT("its death starts no wait"), Summoner.AbilitySystem->PendingResummons.Num(), 0);
+	CataclysmTestWorld::RunClock(World, 4.1f);
+	TestEqual(TEXT("and nothing is summoned"), Skill->LivingMinionCount(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonNotTwiceTest,
+	"Cataclysm.Resummon.AMinionReplacedAtOnceByPressGangedStartsNoWait",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** One loss gives one minion: Press-Ganged replaces at once, so no wait begins. */
+bool FCataclysmResummonNotTwiceTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ReplacedOnDeathStat, ECataclysmStatBucket::Flat, 10.0f},
+						 {UCataclysmSummonSkill::ResummonedAfterSecondsStat, ECataclysmStatBucket::Flat, 4.0f}});
+	ACataclysmMinion* First = SummonAt(Skill, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	TestEqual(TEXT("Press-Ganged replaced it at once"), Skill->LivingMinionCount(), 1);
+	TestEqual(TEXT("so no wait is started"), Summoner.AbilitySystem->PendingResummons.Num(), 0);
+	CataclysmTestWorld::RunClock(World, 4.1f);
+	TestEqual(TEXT("and one minion is held after the wait would have ended, not two"),
+		Skill->LivingMinionCount(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonDeathClearsTest,
+	"Cataclysm.Resummon.ASummonersDeathEndsItsWaits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A summoner that dies during the wait gets nothing back. A CREATURE AS THE
+ * SUMMONER, because a death is handled for a character and the bare caster the
+ * other cases use is not one.
+ */
+bool FCataclysmResummonDeathClearsTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmEnemyCharacter* Summoner = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	UCataclysmAbilitySystemComponent* Theirs = Summoner
+		? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)) : nullptr;
+	if (!TestNotNull(TEXT("a summoner"), Theirs))
+	{
+		return false;
+	}
+	Summoner->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	Summoner->SetHealth(100000.0f);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.FindOrAdd(FName(UCataclysmSummonSkill::ResummonedAfterSecondsStat)).Base = 4.0f;
+	Theirs->SetStatInputs(MoveTemp(Stats));
+
+	const FGameplayAbilitySpecHandle Handle = Theirs->GiveAbilityInSlot(
+		UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/100, Summoner);
+	FGameplayAbilitySpec* Spec = Theirs->FindAbilitySpecFromHandle(Handle);
+	UCataclysmSummonSkill* Skill = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	Skill->SkillName = TEXT("Summon Imp");
+	Skill->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+
+	ACataclysmMinion* First = SummonAt(Skill, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	if (!TestEqual(TEXT("set-up: one wait is started"), Theirs->PendingResummons.Num(), 1))
+	{
+		return false;
+	}
+
+	Theirs->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	TestTrue(TEXT("set-up: the summoner died"), UCataclysmSkillEffects::IsDead(Summoner));
+	TestEqual(TEXT("its death ended the wait"), Theirs->PendingResummons.Num(), 0);
+	TestNull(TEXT("and a dead summoner is given nothing even when asked"),
+		UCataclysmSummonSkill::ResummonNow(Summoner, Skill));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
