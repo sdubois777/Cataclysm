@@ -340,6 +340,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// rule being held. Issue #1833 group E part 4b.
 		TEXT("necrosis_kill_raises_imp_seconds"),
 		TEXT("minion_resummoned_after_seconds"),
+		// Whether this character's aura gives the allies inside it the
+		// immunities it gives its caster, read by
+		// UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside on every pulse. A
+		// flag. Issue #1833 group E part 4c.
+		TEXT("aura_shares_immunities_with_allies"),
 		// How far a Ritualist's minions draw nearby enemies off their summoner,
 		// and how many minions that takes. Both read by
 		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil
