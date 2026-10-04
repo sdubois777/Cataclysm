@@ -4599,6 +4599,82 @@ namespace CataclysmStatExemptionTest
 			SharedMoreCarried(Test, Stat, 15.0f, 3.0f, false), 15.0f, 0.001f);
 	}
 
+	/**
+	 * `necrosis_kill_raises_imp_seconds` is read by
+	 * `UCataclysmRisenImps::RiseOnNecrosisKill`. Issue #1833 group E part 4b.
+	 * Asked with necrosis as what killed an enemy: nothing rises for a killer
+	 * without it, and an imp lasting 7 seconds for one carrying 7.
+	 */
+	void ProbeNecrosisRiseSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Killer(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Victim(World, /*AttackDamage=*/0.0f);
+		FGameplayTagContainer Killing;
+		Killing.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false));
+
+		Test.TestNull(TEXT("without the stat nothing rises"),
+			UCataclysmRisenImps::RiseOnNecrosisKill(
+				Killer.Actor, Victim.Actor, FVector(300.0f, 0.0f, 0.0f), &Killing));
+
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(UCataclysmRisenImps::NecrosisRiseSecondsStat)).Base = 7.0f;
+		Killer.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+		ACataclysmMinion* Risen = UCataclysmRisenImps::RiseOnNecrosisKill(
+			Killer.Actor, Victim.Actor, FVector(300.0f, 0.0f, 0.0f), &Killing);
+		if (!Test.TestNotNull(TEXT("with 7 of it an imp rises"), Risen))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("and lasts the 7 seconds"), Risen->GetLifeSpan(), 7.0f, 0.01f);
+	}
+
+	/**
+	 * `minion_resummoned_after_seconds` is read by
+	 * `UCataclysmSummonSkill::ScheduleResummon`. Issue #1833 group E part 4b. A
+	 * summoner without it starts no wait for a lost minion; one carrying 4 does.
+	 */
+	void ProbeResummonedAfterSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		const FGameplayAbilitySpecHandle Handle = Summoner.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1,
+			Summoner.Actor);
+		FGameplayAbilitySpec* Spec = Summoner.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmSummonSkill* Skill =
+			Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("a summon skill"), Skill))
+		{
+			return;
+		}
+
+		Test.TestFalse(TEXT("without the stat no wait is started"),
+			UCataclysmSummonSkill::ScheduleResummon(Summoner.Actor, Skill));
+		Test.TestEqual(TEXT("and none is held"), Summoner.AbilitySystem->PendingResummons.Num(), 0);
+
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(UCataclysmSummonSkill::ResummonedAfterSecondsStat)).Base = 4.0f;
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+		Test.TestTrue(TEXT("with 4 of it a wait is started"),
+			UCataclysmSummonSkill::ScheduleResummon(Summoner.Actor, Skill));
+		Test.TestEqual(TEXT("and one is held"), Summoner.AbilitySystem->PendingResummons.Num(), 1);
+		Summoner.AbilitySystem->ClearPendingResummons();
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4630,6 +4706,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("self_buff_shared_within_metres"), &ProbeSelfBuffShared},
 			{TEXT("support_buff_shared_within_metres"), &ProbeSupportBuffShared},
 			{TEXT("nearby_allies_more_damage"), &ProbeNearbyAlliesMoreDamage},
+			{TEXT("necrosis_kill_raises_imp_seconds"), &ProbeNecrosisRiseSeconds},
+			{TEXT("minion_resummoned_after_seconds"), &ProbeResummonedAfterSeconds},
 			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
 			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},
