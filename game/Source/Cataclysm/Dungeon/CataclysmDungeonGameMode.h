@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Player/CataclysmGameMode.h"
 #include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorObstacle.h"
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
@@ -2486,6 +2487,31 @@ public:
 	/** Remove every obstacle and warning, give their cells back and start the rules' clocks again. */
 	void EndTheFloorObstacles();
 
+	// ----------------------------------------------------------------------
+	// The gated shortcuts: Warzone's shortcuts, Soul Chains and The Labrynth. Issues #1820 and #41. Ruled 2026-10-04.
+	// ----------------------------------------------------------------------
+
+	/** The shortcuts this floor carved for a row, in the order the row uses them. Empty on a floor with none. */
+	TArray<FCataclysmFloorShortcut> GatedShortcutsOf(FName RowKey) const;
+
+	/** Whether a row's shortcut is open. False for one that does not exist. */
+	bool GatedShortcutIsOpen(FName RowKey, int32 Index) const;
+
+	/** What a row's shortcut leads to, as the floor panel says it: "to the exit", "to the entrance" or "nearby". */
+	FString GatedShortcutLeadsTo(FName RowKey, int32 Index) const;
+
+	/** True when the floor carries a gate row and its shape allows no gates: not Halls, or a Horde arena. */
+	bool GateRowsHaveNoShape() const { return bGateRowsHaveNoShape; }
+
+	/** The living creatures that hold a Soul Chains gate shut. */
+	TArray<ACataclysmEnemyCharacter*> SoulChainBearersNow(int32 Gate) const;
+
+	/** How many drops Soul Chains' freed gates have given on this floor. */
+	int32 SoulChainsRewardDropsSpawned() const { return SoulChainsRewardDrops; }
+
+	/** Warzone's points as chosen on the floor's seed before it was built, on a Halls floor. Empty elsewhere. */
+	const TArray<FIntPoint>& WarzonePlannedPointsNow() const { return WarzonePlannedPoints; }
+
 	/** Swarm of Locusts, for tests: this arena's shelters, drawn from its first beat. */
 	TArray<class ACataclysmGroundZone*> LocustSheltersNow() const;
 
@@ -3830,6 +3856,74 @@ private:
 		float SecondsLeft = 0.0f;
 	};
 	TArray<FFloorObstacleWarning> FloorObstacleWarnings;
+
+	/** What opening a shortcut brings closer, which the floor panel names for Warzone. */
+	enum class EShortcutLeadsTo : uint8
+	{
+		Anywhere,
+		Exit,
+		Entrance,
+		Nearby,
+	};
+
+	/** One shortcut this floor carved, the row that owns it, and its gate. */
+	struct FGatedShortcut
+	{
+		FCataclysmFloorShortcut Shortcut;
+		FName RowKey;
+		int32 Index = 0;
+		EShortcutLeadsTo LeadsTo = EShortcutLeadsTo::Anywhere;
+		bool bOpen = false;
+		TArray<TWeakObjectPtr<ACataclysmFloorObstacle>> GateActors;
+		/** Soul Chains only: who holds it shut, and whether anyone ever did. */
+		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Bearers;
+		bool bHadBearers = false;
+	};
+	TArray<FGatedShortcut> GatedShortcuts;
+
+	/** See `WarzonePlannedPointsNow`. */
+	TArray<FIntPoint> WarzonePlannedPoints;
+
+	bool bGateRowsHaveNoShape = false;
+	float LabrynthSecondsSince = 0.0f;
+	int32 SoulChainsRewardDrops = 0;
+
+	/** The stream every gate choice of this floor is drawn on, seeded from the floor's plan. */
+	FRandomStream GatedShortcutStream;
+
+	/** Added to the floor's seed for that stream, so it is not the stream the floor itself was carved on. */
+	static constexpr int32 GatedShortcutSalt = 0x6A7E;
+
+	/**
+	 * Called by `BuildFloor` between generating a plan and building it: forgets the last floor's shortcuts, and on a
+	 * Halls floor that is not a Horde arena finds and carves this floor's, row by row, each searched for with the
+	 * earlier ones' gates closed.
+	 */
+	void PlanTheGatedShortcuts(FCataclysmFloorPlan& Plan);
+
+	/** Destroy every gate and forget every shortcut. */
+	void ForgetTheGatedShortcuts();
+
+	/** Close every gate that should be closed: its cells blocked in the plan and its two pillars standing. */
+	void PlaceTheShortcutGates();
+
+	/** Close one gate. With `bAsk`, only when the placement rule allows its cells; false when it does not. */
+	bool CloseTheGate(FGatedShortcut& One, bool bAsk);
+
+	/** Open one gate: its pillars gone and its cells walkable. */
+	void OpenTheGate(FGatedShortcut& One);
+
+	/** Open a row's shortcut by its index, if it exists and is closed. */
+	void OpenTheShortcutOf(FName RowKey, int32 Index);
+
+	/** Soul Chains' bearers, chosen once the floor's creatures stand, as Infernal Seals' are. */
+	void ChooseTheSoulChainBearers();
+
+	/** The beat: a Soul Chains gate whose bearers are dead opens and pays; The Labrynth swaps a gate when due. */
+	void StepGatedShortcuts();
+
+	/** `FloorSourceCells`' two rules on a plan not built yet, drawn on a stream rather than the global random. */
+	static TArray<FIntPoint> SeededSourceCells(const FCataclysmFloorPlan& Plan, int32 Count, FRandomStream& Stream);
 
 	float HeavensQuakeSecondsSince = 0.0f;
 	float CryptquakeSecondsSince = 0.0f;
