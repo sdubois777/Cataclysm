@@ -4675,6 +4675,69 @@ namespace CataclysmStatExemptionTest
 		Summoner.AbilitySystem->ClearPendingResummons();
 	}
 
+	/**
+	 * `aura_shares_immunities_with_allies` is read by
+	 * `UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside`. Issue #1833 group E
+	 * part 4c. An ally 2 m from the caster of an aura naming `Immune=Stun` is
+	 * immune to a stun after a pulse when the caster carries the flag, and is
+	 * not when it does not.
+	 */
+	bool AllyIsImmuneAfterAPulse(FAutomationTestBase& Test, bool bWithTheFlag)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Caster(World, /*AttackDamage=*/0.0f);
+		Caster.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxManaAttribute(), 10000.0f);
+		Caster.AbilitySystem->SetNumericAttributeBase(Vital::GetManaAttribute(), 10000.0f);
+		ACataclysmEnemyCharacter* Ally = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(200.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("an ally"), Ally))
+		{
+			return false;
+		}
+		Ally->SetOwner(Caster.Actor);
+		if (bWithTheFlag)
+		{
+			TMap<FName, FCataclysmStatInputs> Lines;
+			Lines.FindOrAdd(FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat)).Base = 1.0f;
+			Caster.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+		}
+
+		const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura, /*Level=*/1, Caster.Actor);
+		FGameplayAbilitySpec* Spec = Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmAuraSkill* Aura = Spec ? Cast<UCataclysmAuraSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("an aura"), Aura))
+		{
+			return false;
+		}
+		Aura->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=4; Interval=1; Immune=Stun"));
+		if (!Test.TestTrue(TEXT("set-up: the aura activates"),
+				Caster.AbilitySystem->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)))
+		{
+			return false;
+		}
+		Aura->Pulse();
+		if (!Test.TestTrue(TEXT("set-up: the aura is still running after its pulse"), Aura->IsActive()))
+		{
+			return false;
+		}
+		return UCataclysmSkillTemplate::IsImmuneTo(Ally, TEXT("Stun"));
+	}
+
+	void ProbeAuraSharesImmunities(FAutomationTestBase& Test)
+	{
+		Test.TestFalse(TEXT("without the flag the ally inside is not immune"),
+			AllyIsImmuneAfterAPulse(Test, /*bWithTheFlag=*/false));
+		Test.TestTrue(TEXT("with it the ally inside is immune to what the aura names"),
+			AllyIsImmuneAfterAPulse(Test, /*bWithTheFlag=*/true));
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4708,6 +4771,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("nearby_allies_more_damage"), &ProbeNearbyAlliesMoreDamage},
 			{TEXT("necrosis_kill_raises_imp_seconds"), &ProbeNecrosisRiseSeconds},
 			{TEXT("minion_resummoned_after_seconds"), &ProbeResummonedAfterSeconds},
+			{TEXT("aura_shares_immunities_with_allies"), &ProbeAuraSharesImmunities},
 			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
 			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},
