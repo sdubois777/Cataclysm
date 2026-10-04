@@ -3366,6 +3366,56 @@ const TCHAR* UCataclysmSummonSkill::ReplacedOnDeathStat =
 	TEXT("minion_death_replaced_every_seconds");
 const TCHAR* UCataclysmSummonSkill::ReplacedOnExplosionStat =
 	TEXT("minion_explosion_replaced_every_seconds");
+const TCHAR* UCataclysmSummonSkill::ResummonedAfterSecondsStat =
+	TEXT("minion_resummoned_after_seconds");
+
+bool UCataclysmSummonSkill::ScheduleResummon(AActor* Commander, UCataclysmSummonSkill* Skill)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Commander));
+	UWorld* World = Commander ? Commander->GetWorld() : nullptr;
+	if (!Theirs || !World || !Skill || Skill->Params.bPossess
+		|| UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return false;
+	}
+	const float After = Theirs->StatForSkill(
+		FName(ResummonedAfterSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (After <= 0.0f)
+	{
+		return false;
+	}
+
+	FTimerManager& Timers = World->GetTimerManager();
+	Theirs->PendingResummons.RemoveAll(
+		[&Timers](const FTimerHandle& Handle) { return !Timers.IsTimerActive(Handle); });
+
+	// WEAK TO BOTH, so a summoner or a skill gone by the end of the wait leaves
+	// a wait that does nothing rather than one that reaches for freed memory.
+	const TWeakObjectPtr<AActor> WeakCommander(Commander);
+	const TWeakObjectPtr<UCataclysmSummonSkill> WeakSkill(Skill);
+	FTimerHandle Handle;
+	Timers.SetTimer(Handle, FTimerDelegate::CreateLambda([WeakCommander, WeakSkill]()
+	{
+		ResummonNow(WeakCommander.Get(), WeakSkill.Get());
+	}), After, /*bLoop=*/false);
+	Theirs->PendingResummons.Add(Handle);
+	return true;
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::ResummonNow(AActor* Commander,
+													 UCataclysmSummonSkill* Skill)
+{
+	if (!IsValid(Commander) || !IsValid(Skill) || UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return nullptr;
+	}
+	// `SummonReplacementAt` REFUSES AT THE CAP AND WHEN THE RESERVE HAS NO ROOM,
+	// which is the ruling: no room when the wait ends means no minion.
+	return Skill->SummonReplacementAt(
+		Commander->GetActorLocation() + Commander->GetActorForwardVector() * ResummonDistanceCm);
+}
 
 ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Location)
 {

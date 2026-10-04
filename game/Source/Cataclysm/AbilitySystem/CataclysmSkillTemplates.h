@@ -1516,6 +1516,42 @@ public:
 	static const TCHAR* ReplacedOnDeathStat;
 	static const TCHAR* ReplacedOnExplosionStat;
 
+	/**
+	 * How many seconds after a summoned minion dies it is summoned again, on its
+	 * summoner. Issue #1833 group E part 4b: "When a minion dies it automatically
+	 * re-summons after 3-6 seconds". Above zero IS the rule being held. No
+	 * gameplay attribute.
+	 */
+	static const TCHAR* ResummonedAfterSecondsStat;
+
+	/**
+	 * Start the wait for a minion `Skill` summoned and `Commander` has just lost.
+	 *
+	 * A WAIT, WHICH `ReplaceLost` IS NOT: Press-Ganged and Rekindled replace at
+	 * once and their stat is the least time between two replacements. Here the
+	 * stat is how long the summoner waits for one.
+	 *
+	 * ONLY A SUMMON SKILL'S MINION, ruled 2026-10-02: `Skill` is the lost
+	 * minion's `SummonedBy`, which a deployable, a risen imp and a thrall do not
+	 * have, so none of them comes back. Only a death reaches the caller: an
+	 * expiry and a cap eviction destroy a minion without one.
+	 *
+	 * @return whether a wait was started
+	 */
+	static bool ScheduleResummon(AActor* Commander, UCataclysmSummonSkill* Skill);
+
+	/**
+	 * What the wait does when it ends: summon `Skill`'s kind again BESIDE THE
+	 * SUMMONER, not where the lost one died, which may be among what killed it.
+	 * Nothing when the summoner is dead or gone, or its cap or reserve has no
+	 * room: the wait is then over, not put off. Public so a test can run it
+	 * where the timer would.
+	 */
+	static ACataclysmMinion* ResummonNow(AActor* Commander, UCataclysmSummonSkill* Skill);
+
+	/** How far in front of the summoner a re-summoned minion appears. */
+	static constexpr float ResummonDistanceCm = 150.0f;
+
 private:
 	void SpawnTick();
 	void Collapse();

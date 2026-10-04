@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
+#include "Engine/TimerHandle.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 // For what a blow resolved to, which this component records for the caller that
 // applied it. Issue #1156.
@@ -1799,6 +1800,23 @@ public:
 	 * summon cap refused leaves the clock as it was.
 	 */
 	void NoteMinionReplaced(bool bForExplosion, float IntervalSeconds);
+
+	/**
+	 * The waits running for minions this character lost and will summon again.
+	 * Issue #1833 group E part 4b. Written by
+	 * `UCataclysmSummonSkill::ScheduleResummon`, and public so tests can count
+	 * them. A handle whose wait has ended is dropped the next time one is added.
+	 */
+	TArray<FTimerHandle> PendingResummons;
+
+	/**
+	 * End every wait above without summoning anything. This character's death
+	 * calls it: ruled 2026-10-02, a death clears the waits, so a summoner that
+	 * stands back up gets nothing back from before it fell.
+	 *
+	 * @return how many waits were still running
+	 */
+	int32 ClearPendingResummons();
 
 	/**
 	 * The two figures of Nothing Stops It, the Final Onslaught's third option.
