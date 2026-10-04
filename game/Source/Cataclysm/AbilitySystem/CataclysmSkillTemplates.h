@@ -1817,6 +1817,27 @@ private:
 	/** Take the bonus back from every ally still carrying it. */
 	void StopHelpingEveryone();
 
+	/**
+	 * Give the allies standing inside the ring the immunities this aura's row
+	 * names for its caster, and take them back from any that have left. Issue
+	 * #1833 group E part 4c: "Your aura also applies its effect to all allies
+	 * within range", for a caster holding
+	 * `UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat`.
+	 *
+	 * EXACTLY THE ROW'S `Immune=` KINDS, ruled 2026-10-02. Living Pyre names
+	 * Stun, Slow and Displacement, so an ally inside can still be knocked down,
+	 * as its caster can. Health from hits taken is not shared: nothing writes
+	 * that onto an ally.
+	 *
+	 * EACH GRANT LASTS TWO PULSES AND IS RENEWED EVERY PULSE, so an aura that
+	 * stops pulsing without ending leaves nothing behind for long, while an
+	 * ally that leaves, or an aura that ends, has it taken back at once.
+	 */
+	void ShareImmunitiesWithAlliesInside();
+
+	/** Take every shared immunity back. */
+	void StopSharingImmunities();
+
 	bool bHeld = false;
 
 	/**
@@ -1841,6 +1862,9 @@ private:
 	 * from something that no longer exists.
 	 */
 	TMap<TWeakObjectPtr<AActor>, int32> HelpedAllies;
+
+	/** Every ally currently holding immunities this aura granted. Weak, as above. */
+	TArray<TWeakObjectPtr<AActor>> ImmuneAllies;
 
 	FTimerHandle PulseTimer;
 	FTimerHandle FinishTimer;

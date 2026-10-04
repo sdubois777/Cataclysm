@@ -54,6 +54,69 @@ UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 	SetIsReplicatedByDefault(true);
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat =
+	TEXT("aura_shares_immunities_with_allies");
+
+void UCataclysmAbilitySystemComponent::GrantImmunity(FName Kind, const UObject* From,
+													 float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Kind.IsNone() || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	GrantedImmunities.RemoveAll([Now](const FCataclysmGrantedImmunity& Held)
+	{
+		return Held.UntilSeconds <= Now;
+	});
+	for (FCataclysmGrantedImmunity& Held : GrantedImmunities)
+	{
+		if (Held.Kind == Kind && Held.From.Get() == From)
+		{
+			Held.UntilSeconds = Now + Seconds;
+			return;
+		}
+	}
+	FCataclysmGrantedImmunity Granted;
+	Granted.Kind = Kind;
+	Granted.From = From;
+	Granted.UntilSeconds = Now + Seconds;
+	GrantedImmunities.Add(Granted);
+}
+
+int32 UCataclysmAbilitySystemComponent::RevokeImmunitiesFrom(const UObject* From)
+{
+	return GrantedImmunities.RemoveAll([From](const FCataclysmGrantedImmunity& Held)
+	{
+		return Held.From.Get() == From;
+	});
+}
+
+bool UCataclysmAbilitySystemComponent::HasGrantedImmunityTo(const FString& Effect) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || Effect.IsEmpty())
+	{
+		return false;
+	}
+	const float Now = World->GetTimeSeconds();
+	for (const FCataclysmGrantedImmunity& Held : GrantedImmunities)
+	{
+		if (Held.UntilSeconds <= Now)
+		{
+			continue;
+		}
+		const FString Kind = Held.Kind.ToString();
+		if (Kind.Equals(Effect, ESearchCase::IgnoreCase)
+			|| Kind.Equals(TEXT("CrowdControl"), ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 int32 UCataclysmAbilitySystemComponent::ClearPendingResummons()
 {
 	int32 Running = 0;

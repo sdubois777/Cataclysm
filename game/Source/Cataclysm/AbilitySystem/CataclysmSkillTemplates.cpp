@@ -4154,6 +4154,9 @@ int32 UCataclysmAuraSkill::Pulse()
 	// and said so in its own header.
 	HelpAlliesInside();
 
+	// AND GIVEN ITS CASTER'S IMMUNITIES, when the caster wears the row for it.
+	ShareImmunitiesWithAlliesInside();
+
 	++Pulses;
 	return Inside.Num();
 }
@@ -4359,6 +4362,69 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 	}
 }
 
+void UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside()
+{
+	AActor* Self = Avatar();
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	if (!Self || !Mine || Params.Immune.IsEmpty()
+		|| Mine->StatForSkill(FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat),
+							  FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		StopSharingImmunities();
+		return;
+	}
+
+	TArray<FString> Kinds;
+	Params.Immune.ParseIntoArray(Kinds, TEXT(","));
+	const float Seconds = 2.0f * (Params.Interval > 0.0f ? Params.Interval : 1.0f);
+
+	TArray<TWeakObjectPtr<AActor>> Inside;
+	for (AActor* Ally : UCataclysmTargeting::FindAlliesInSphere(
+			 GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm()))
+	{
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Ally));
+		if (!IsValid(Ally) || !Theirs || UCataclysmSkillEffects::IsDead(Ally))
+		{
+			continue;
+		}
+		for (FString Kind : Kinds)
+		{
+			Kind.TrimStartAndEndInline();
+			Theirs->GrantImmunity(FName(*Kind), this, Seconds);
+		}
+		Inside.Add(Ally);
+	}
+
+	// TAKEN BACK FROM WHOEVER WALKED OUT, at this pulse and not when it lapses.
+	for (const TWeakObjectPtr<AActor>& Was : ImmuneAllies)
+	{
+		if (!Inside.Contains(Was))
+		{
+			if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Was.Get())))
+			{
+				Theirs->RevokeImmunitiesFrom(this);
+			}
+		}
+	}
+	ImmuneAllies = MoveTemp(Inside);
+}
+
+void UCataclysmAuraSkill::StopSharingImmunities()
+{
+	for (const TWeakObjectPtr<AActor>& Was : ImmuneAllies)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Was.Get())))
+		{
+			Theirs->RevokeImmunitiesFrom(this);
+		}
+	}
+	ImmuneAllies.Reset();
+}
+
 void UCataclysmAuraSkill::StopHelpingEveryone()
 {
 	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
@@ -4410,6 +4476,7 @@ void UCataclysmAuraSkill::EndAbility(
 	// which is the same argument `UCataclysmStrikeSkill::EndAbility` makes for
 	// taking the sword out of the ground here. Issue #1182.
 	StopHelpingEveryone();
+	StopSharingImmunities();
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);
