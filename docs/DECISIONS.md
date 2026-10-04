@@ -6,8 +6,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.h` and `.cpp`
 (`UCataclysmSharedBuffs::Step` and `TakeBackAll`), `CataclysmAbilitySystemComponent.h` and `.cpp`
-(`FCataclysmSharedBuffCopy`, the three stat names, `SharedBuffCopies`, a new `EndPlay`),
-`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one call in the regeneration step),
+(`FCataclysmSharedBuffCopy`, the three stat names, `SharedBuffCopies`),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one call in the regeneration step, and the
+take-back in `EndPlay`),
 `CataclysmPlayerClassStats.cpp` (three names on `StatsWithNoAttribute`), the new
 `game/Source/Cataclysm/Tests/CataclysmSharedBuffsTests.cpp` (seven tests), three probes in
 `CataclysmStatExemptionTests.cpp`, three row tests in `CataclysmEnchantmentEffectTests.cpp`,
@@ -43,7 +44,7 @@ sentences say "applies it", so the whole), whether the bonus keeps its scope, an
    a one-second timer: a body walking in or out of reach is a quarter of a second late at worst. A copy is given
    on arrival, its value changed in place when the buff's moves (Butcher's Heat grows per kill), and taken back
    when the ally leaves, dies or is gone, when the buff ends, when the stat is gone, when the wearer is dead, and
-   when the wearer's ability system ends play.
+   when the wearer's character ends play.
 5. **The reach is the larger of the two that apply.** The 8 m reach applies to any running self buff; the 15 m
    reach only to one in the Support slot.
 
@@ -88,6 +89,51 @@ of 100 to 120.
 
 EnchantmentEffects 455 to 458, over 371 to 374. The three stats have no gameplay attribute; each has a probe in
 `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. They need no generator change.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-02 and 2026-10-04 in the elastic-burnell worktree, on feat/allies-share-buffs-2 on `development`
+84ab7de4.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 29548fd6 | Build: Succeeded - 32 actions, 29 files compiled |
+| The seven engine tests, first run | 29548fd6 | Cataclysm.SharedBuffs.: 7 tests performed, 5 succeeded, 2 failed: ADeadWearerTakesEveryCopyBack, ASelfBuffAloneReachesEightMetresNotFifteen |
+| Rebuild after the two fixes | 97364b36 | Build: Succeeded - 32 actions, 29 files compiled |
+| The seven engine tests | 97364b36 | Cataclysm.SharedBuffs.: 7 tests performed, 7 succeeded, 0 failed |
+| The asset, regenerated with the editor | 7a6f91a6 | 2 files changed: `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 455 to 458; both committed, nothing else |
+| Whole suite | 7a6f91a6 | 3118 tests performed, 3118 succeeded, 0 failed; declared 3118, gap 0 |
+| Proof A: `AddStatModifier`'s handle replaced by `0`, so nothing is given | 7a6f91a6 | PROVED: with the break in: 7 tests performed, 1 succeeded, 6 failed: ACopyIsHeldOnceAndFollowsAChangedValue, ADeadWearerTakesEveryCopyBack, ASelfBuffAloneReachesEightMetresNotFifteen, ASupportBuffReachesAnAllyWithinFifteenMetresAndNotOneBeyond, NearbyAlliesGainUnscopedMoreWithinFiveMetresButNotTheWearer, TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds \| restored: 7 tests performed, 7 succeeded, 0 failed |
+| Proof B: the reach replaced by a kilometre | 7a6f91a6 | PROVED: with the break in: 7 tests performed, 4 succeeded, 3 failed: ASelfBuffAloneReachesEightMetresNotFifteen, ASupportBuffReachesAnAllyWithinFifteenMetresAndNotOneBeyond, TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds \| restored: 7 tests performed, 7 succeeded, 0 failed |
+| Proof C, first break: `TakeBack(Held);` replaced by `continue;` | 7a6f91a6 | NO MEASUREMENT: the build itself failed: Result: Failed, compiled CataclysmSharedBuffs.cpp, Module.Cataclysm.4.cpp |
+| Proof C: `TakeBack(Held);` replaced by `if (Held.Handle > 0) { continue; }` | 7a6f91a6 | PROVED: with the break in: 7 tests performed, 4 succeeded, 3 failed: ADeadWearerTakesEveryCopyBack, ASelfBuffAloneReachesEightMetresNotFifteen, TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds \| restored: 7 tests performed, 7 succeeded, 0 failed |
+| Python of record | 7a6f91a6 | 5691 passed, 8 skipped in 317.81s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+
+Each proof kept its broken run's log, and each failed exactly the assertions predicted: A eighteen in six tests,
+B four in three, C six in three. The three row tests and the three probes ran inside the whole suite and not as
+runs of their own.
+
+**The first run of the seven tests failed two, and neither was predicted.**
+
+- **`ADeadWearerTakesEveryCopyBack` found a fault in the engine.** "the second wearer left play, so the ally
+  carries nothing" read 1. The take-back at a wearer's end had been written on
+  `UCataclysmAbilitySystemComponent::EndPlay`, and a player's ability system belongs to its player state, which
+  outlives the character: removing a player character never ran it, and the ally kept its copy for good. The
+  coordinating session approved moving it to `ACataclysmCharacterBase::EndPlay`, on the actor whose step gives
+  the copies, and removing the override so there is one place. Commit d62a9c85.
+- **`ASelfBuffAloneReachesEightMetresNotFifteen` failed in its own set-up**, test only: "set-up: the Special buff
+  runs and grants 4% More". A Special skill costs 40 mana in `SkillSlots.csv` and the test had already spent 25
+  on a Support cast. The cause was inferred when it was reported; the test now gives the player 10000 mana and
+  checks "runs" and "grants 4%" apart, and it passed on the next run, which is what confirms it. Commit 97364b36.
+
+**Proof C's first break did not compile, so it measured nothing and is not a proof.** The compiler's message was
+not kept; the break left the two lines after it unreachable, which is the likely reason and is not confirmed.
+The break that replaced it behaves the same, because a held copy's handle is always above zero, and the proof
+script now prints a failed build's errors.
+
+**One Python failure was found in a dry run before anything was registered**:
+`test_the_jobs_are_pinned[ACataclysmCharacterBase::RegenerationStep]`, because the regeneration step's jobs are
+pinned and the new call was not listed. It is listed in the engine commit.
 
 ---
 
