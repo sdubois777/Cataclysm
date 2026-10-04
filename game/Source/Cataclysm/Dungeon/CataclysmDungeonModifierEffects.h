@@ -1823,6 +1823,44 @@ public:
 	static const TCHAR* CryptquakeKey;
 
 	/**
+	 * `Death_Soul_Chains`: "Certain sections of the dungeon are lined with ethereal chains that bind the souls of
+	 * trapped adventurers. Players must release these souls by defeating specific enemies. Freeing the souls may grant
+	 * rewards or open up new paths." Issues #1820 and #41.
+	 *
+	 * BUILT ON THE GATED SHORTCUT (`FCataclysmFloorShortcut`): a corridor the generator carves between two places far
+	 * apart to walk and close in space, closed at once by a gate of two pillar obstacles. Three measurements of
+	 * 2026-10-02 are why it is carved rather than found (docs/DECISIONS.md): natural detours exist on 9 of 20 Halls
+	 * plans, 2 of 20 Caverns and no Arena; a carved shortcut between any two places saving 10 cells exists on 20 of 20
+	 * Halls plans (median 99, at least 2 sharing no cell), a median of 0 on Caverns and none on Arena.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-04, each a labelled judgement:
+	 * - HALLS FLOORS ONLY, and never a Horde arena. Elsewhere the row places nothing and the panel says so.
+	 * - `SoulChainsGates` CHAINED GATES A FLOOR, each held by `SoulChainsBearersPerGate` of the floor's own creatures
+	 *   raised to `SoulChainsBearerRung`, Elite, chosen as Infernal Seals' bearers are. "SECTIONS ... LINED WITH
+	 *   CHAINS" IS READ AS THE GATED STRETCH, not a sealed region.
+	 * - A GATE OPENS WHEN BOTH ITS BEARERS ARE DEAD, "open up new paths", and gives ONE drop roll as a kill of
+	 *   `SoulChainsRewardRung` gives, "may grant rewards": one a gate, not one a bearer, through the existing loot
+	 *   path. A gate with no bearer to hold it opens at once and gives nothing.
+	 */
+	static const TCHAR* SoulChainsKey;
+
+	/**
+	 * `Chaos_The_Labrynth`: "Dungeon rooms rearrange themselves periodically. Players might find paths they already
+	 * cleared are now blocked or redirected." Issues #1820 and #41.
+	 *
+	 * `Partly` BUILT, AND THE MISSING HALF IS "ROOMS REARRANGE": the rooms do not move and the floor is not carved
+	 * again. What is built is an approximation on the gated shortcut (see `SoulChainsKey`), RULED 2026-10-04, each a
+	 * labelled judgement:
+	 * - HALLS FLOORS ONLY, and never a Horde arena.
+	 * - UP TO `LabrynthMostGates` GATED SHORTCUTS, half closed when the floor begins. EVERY
+	 *   `LabrynthSecondsBetweenSwaps` one open gate closes and one closed gate opens, so a path walked a moment ago is
+	 *   blocked and another has opened.
+	 * - A GATE NEVER CLOSES ONTO A CELL THE FLOOR HOLDS (`CellsTheFloorHolds`), nor one whose closing would strand a
+	 *   walkable cell; that turn another open gate is tried, and if none can close nothing swaps.
+	 */
+	static const TCHAR* LabrynthKey;
+
+	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
 	 * Issues #1820 and #41.
 	 *
@@ -2579,7 +2617,12 @@ public:
 	 *   removed at the floor change before the player's followers are carried, and with the hold on a Horde arena's next
 	 *   wave. No Fervour is reserved for them and no cap counts them; A Second Self may choose one. They are marked raised
 	 *   by a rule, so one is never the floor's own (issue #2194).
-	 * - NOT BUILT: "opening shortcuts", which waits on doors and on changing the floor's layout during play.
+	 * - "OPENING SHORTCUTS" IS BUILT SINCE 2026-10-04, ON HALLS FLOORS: each point has a corridor carved for it when
+	 *   the floor is built and closed by a gate, which capturing the point opens. It shortens the walk from the point
+	 *   to the exit; where no corridor can, to the entrance; where none can, it is the best shortcut between any two
+	 *   places with one end within `WarzoneShortcutNearCells` of the point. The floor panel says which. A Caverns
+	 *   floor or a Horde arena has no shortcuts, and the panel says so. See `SoulChainsKey` for the mechanism and its
+	 *   measurements. (Until then: "waits on doors and on changing the floor's layout during play".)
 	 */
 	static const TCHAR* WarzoneControlPointsKey;
 
@@ -5772,6 +5815,15 @@ public:
 	static constexpr int32 CryptquakeSectionSide = 2;
 	static constexpr int32 CryptquakeCreaturesPerSection = 3;
 	static constexpr int32 CryptquakeCreatureRung = 0;
+
+	/** The gated shortcuts' figures: Warzone's, Soul Chains' and The Labrynth's. Each ruled 2026-10-04; see the keys. */
+	static constexpr int32 WarzoneShortcutNearCells = 8;
+	static constexpr int32 SoulChainsGates = 2;
+	static constexpr int32 SoulChainsBearersPerGate = 2;
+	static constexpr int32 SoulChainsBearerRung = 1;
+	static constexpr int32 SoulChainsRewardRung = 1;
+	static constexpr int32 LabrynthMostGates = 4;
+	static constexpr float LabrynthSecondsBetweenSwaps = 20.0f;
 
 	/** The player's sight while a travelling swarm covers them, a play-test value. */
 	static constexpr float SwarmOfLocustsSightCm = 400.0f;
