@@ -943,11 +943,12 @@ public:
 	 *
 	 * THE POISON ROW CALLS ITSELF "A player-applied effect" AND THAT DESCRIBES
 	 * WHO USUALLY APPLIES IT RATHER THAN WHO MAY. `DoT_Burn`'s row opens with the
-	 * same sentence and then names two enemy modifiers that apply it to the
-	 * player -- Infernal Brand and Hellfire Aura -- and both of those are real
-	 * code in `CataclysmEnemyModifiers.cpp`, where line 492 calls `ApplyBurn`
-	 * with an enemy as the instigator. A sibling row already reads that way, so
-	 * this one may.
+	 * same sentence and then names an enemy modifier that applies it to the
+	 * player, Hellfire Aura, and that is real code:
+	 * `UCataclysmEnemyModifiers::AuraStep` calls `ApplyBurn` with an enemy as
+	 * the instigator. A sibling row already reads that way, so this one may.
+	 * The row named Infernal Brand as well until issue #1538; the brand applies
+	 * no Burn, so its name was dropped.
 	 *
 	 * THE POISON ROW ALSO NAMES "the Toxic Trail enemy modifier" AND NOTHING IN
 	 * `game/Source` IMPLEMENTS IT, so that sentence is not evidence of anything

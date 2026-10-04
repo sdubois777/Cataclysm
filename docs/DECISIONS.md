@@ -2,6 +2,49 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-04 — The Burn row names Hellfire Aura alone: Infernal Brand applies no Burn
+
+**Affects:** the Burn row of the DoTs sheet in `docs/All_Things_Cataclysm.xlsx` and what is generated from it,
+`game/Data/StatusEffects.csv` row `DoT_Burn` and its DataTable asset, and one comment in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`. Issue
+[#1538](https://github.com/sdubois777/Cataclysm/issues/1538).
+
+### The ruling, which is from 2026-09-14 and was recorded only on the issue
+
+The `DoT_Burn` row ended: "The Infernal Brand and Hellfire Aura enemy modifiers apply it to the player." Hellfire
+Aura does. Infernal Brand does not. The issue asked whether the brand should also apply Burn or the row should stop
+naming it.
+
+**The row stops naming it.** The coordinating session ruled on 2026-09-14, under the owner's delegation of that
+date: "drop Infernal Brand's name from the StatusEffects.csv DoT_Burn row; BrandOnHit's row promises only the
+explosion." The brand's own row, `Debuff_Infernal_Brand`, says "A stacking debuff that explodes at 5 stacks,
+dealing a large amount of fire damage to the player", and that is what it does. The game code does not change.
+
+### What the code does, read on 2026-10-04 at `development` 84ab7de4
+
+- `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.cpp` calls `UCataclysmSkillEffects::ApplyBurn` once, in
+  `UCataclysmEnemyModifiers::AuraStep`, for a creature carrying Hellfire Aura.
+- `UCataclysmEnemyModifiers::BrandOnHit` applies the brand's tag, counts stacks, and at five deals one blow through
+  `ApplyDirectDamage`. It applies no Burn.
+
+### What changes
+
+- **The row's last sentence** becomes "The Hellfire Aura enemy modifier applies it to the player."
+- **The comment above the Spore Clouds rule** in `CataclysmDungeonModifierEffects.h` argued from the Burn row naming
+  two enemy modifiers, "both of those are real code", and cited a line number that has since moved. It now names
+  the one modifier and the function that applies the Burn.
+
+### Not changed
+
+Two merged entries in this file quote the old sentence, and the docstring of
+`test_burn_is_an_effect_the_player_can_apply` in `tools/tests/test_demonic_skills.py` describes the sheet before
+Burn became player-applied. All three are history and stay as written.
+
+**The workbook row was not edited when this was written.** It is edited in this change's workbook turn, and the
+run table follows.
+
+---
+
 ## 2026-10-02 — Inferno Charge channels for two seconds with its lane drawn, then charges and leaves its path burning
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (the channel, the path, two
