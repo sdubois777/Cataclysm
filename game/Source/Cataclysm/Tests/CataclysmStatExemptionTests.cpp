@@ -18,6 +18,7 @@
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
+#include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
@@ -4487,6 +4488,117 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("the carrying defender kept nothing"), KeptCarrying, 0.0f, 0.001f);
 	}
 
+	/**
+	 * The More damage an ally `AllyMetres` along X from a player carrying
+	 * `Value` of `Stat` holds after one shared-buff step. With `bWithBuff`, the
+	 * player first casts an unscoped 4% More buff in the Support slot, with one
+	 * enemy burning 3 m away so it grants that 4%. Issue #1833 group E part 4a.
+	 */
+	float SharedMoreCarried(FAutomationTestBase& Test, const TCHAR* Stat, float Value,
+							float AllyMetres, bool bWithBuff)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return -1.0f;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Wearer = SpawnPotionHolder(World);
+		ACataclysmEnemyCharacter* Ally = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(AllyMetres * 100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		UCataclysmAbilitySystemComponent* Mine = Wearer
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Wearer)) : nullptr;
+		if (!Test.TestNotNull(TEXT("a wearer"), Mine) || !Test.TestNotNull(TEXT("an ally"), Ally))
+		{
+			return -1.0f;
+		}
+		Ally->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+
+		if (bWithBuff)
+		{
+			ACataclysmEnemyCharacter* Alight = World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector(-300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+			if (!Test.TestNotNull(TEXT("something to set alight"), Alight))
+			{
+				return -1.0f;
+			}
+			Alight->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Alight->SetHealth(100000.0f);
+			UCataclysmSkillEffects::ApplyBurn(Wearer, Alight, 100.0f,
+				/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+			const FGameplayAbilitySpecHandle Handle = Mine->GiveAbilityInSlot(
+				UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support, /*Level=*/100, Wearer);
+			FGameplayAbilitySpec* Spec = Mine->FindAbilitySpecFromHandle(Handle);
+			UCataclysmSelfBuffSkill* Buff = Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Test.TestNotNull(TEXT("a Support buff"), Buff))
+			{
+				return -1.0f;
+			}
+			Buff->SkillName = TEXT("Burning Wrath");
+			Buff->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"));
+			Mine->TryActivateAbility(Buff->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+			if (!Test.TestEqual(TEXT("set-up: the buff grants its caster 4% More"), Buff->GrantedIncrease, 4.0f))
+			{
+				return -1.0f;
+			}
+		}
+
+		if (Value != 0.0f)
+		{
+			TMap<FName, FCataclysmStatInputs> Lines;
+			Lines.FindOrAdd(FName(Stat)).Base = Value;
+			Mine->SetStatInputs(MoveTemp(Lines));
+		}
+		UCataclysmSharedBuffs::Step(Wearer);
+
+		float More = 0.0f;
+		if (const UCataclysmAbilitySystemComponent* Its =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Ally)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Its->GetStatModifiers())
+			{
+				More += Modifier.Bucket == ECataclysmStatBucket::More ? Modifier.Value : 0.0f;
+			}
+		}
+		return More;
+	}
+
+	/**
+	 * `self_buff_shared_within_metres` is read by `UCataclysmSharedBuffs::Step`.
+	 * Issue #1833 group E part 4a. With 8 of it, an ally 6 m from a player whose
+	 * buff grants 4% More carries that 4%; without it, nothing.
+	 */
+	void ProbeSelfBuffShared(FAutomationTestBase& Test)
+	{
+		const TCHAR* Stat = UCataclysmAbilitySystemComponent::SelfBuffSharedWithinMetresStat;
+		Test.TestEqual(TEXT("without the reach, the ally carries nothing"),
+			SharedMoreCarried(Test, Stat, 0.0f, 6.0f, true), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("with 8 m of it, the ally at 6 m carries the buff's 4%"),
+			SharedMoreCarried(Test, Stat, 8.0f, 6.0f, true), 4.0f, 0.001f);
+	}
+
+	/** The same for `support_buff_shared_within_metres`, at 15 m and an ally at 12 m. */
+	void ProbeSupportBuffShared(FAutomationTestBase& Test)
+	{
+		const TCHAR* Stat = UCataclysmAbilitySystemComponent::SupportBuffSharedWithinMetresStat;
+		Test.TestEqual(TEXT("without the reach, the ally carries nothing"),
+			SharedMoreCarried(Test, Stat, 0.0f, 12.0f, true), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("with 15 m of it, the ally at 12 m carries the Support buff's 4%"),
+			SharedMoreCarried(Test, Stat, 15.0f, 12.0f, true), 4.0f, 0.001f);
+	}
+
+	/** `nearby_allies_more_damage`: with 15 of it, an ally 3 m away carries 15% More. */
+	void ProbeNearbyAlliesMoreDamage(FAutomationTestBase& Test)
+	{
+		const TCHAR* Stat = UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat;
+		Test.TestEqual(TEXT("without it, the ally carries nothing"),
+			SharedMoreCarried(Test, Stat, 0.0f, 3.0f, false), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("with 15 of it, the ally at 3 m carries 15"),
+			SharedMoreCarried(Test, Stat, 15.0f, 3.0f, false), 15.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4515,6 +4627,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("knockback_suppressed"), &ProbeSetStance},
 			{TEXT("block_damage_reduction"), &ProbeBlockDamageReduction},
 			{TEXT("block_negation_chance"), &ProbeBlockNegationChance},
+			{TEXT("self_buff_shared_within_metres"), &ProbeSelfBuffShared},
+			{TEXT("support_buff_shared_within_metres"), &ProbeSupportBuffShared},
+			{TEXT("nearby_allies_more_damage"), &ProbeNearbyAlliesMoreDamage},
 			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
 			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},

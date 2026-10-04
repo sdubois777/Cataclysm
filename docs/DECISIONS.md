@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — A running self buff's More damage reaches allies within 8 m, or 15 m for a Support skill, and a standing 10-20% More reaches every ally within 5 m
+
+**Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.h` and `.cpp`
+(`UCataclysmSharedBuffs::Step` and `TakeBackAll`), `CataclysmAbilitySystemComponent.h` and `.cpp`
+(`FCataclysmSharedBuffCopy`, the three stat names, `SharedBuffCopies`),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one call in the regeneration step, and the
+take-back in `EndPlay`),
+`CataclysmPlayerClassStats.cpp` (three names on `StatsWithNoAttribute`), the new
+`game/Source/Cataclysm/Tests/CataclysmSharedBuffsTests.cpp` (seven tests), three probes in
+`CataclysmStatExemptionTests.cpp`, three row tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (the step joins the
+regeneration hook's pinned jobs), `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`docs/All_Things_Cataclysm.xlsx`,
+`docs/README.md`, `game/Data/EnchantmentEffects.csv` and its asset. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group E part 4a.
+
+### THE RESEARCH, fetched 2026-10-02
+
+| Game | What reaches allies | How much | Source |
+| :-- | :-- | :-- | :-- |
+| Diablo IV | War Cry: "increasing your damage dealt by 7.5%[x] for 4. seconds. Nearby allies gain half of War Cry's effects." | half the caster's | diablo4.wiki.fextralife.com/War+Cry |
+| Path of Exile | an aura affects "you and your allies"; a support gem makes one affect allies only. A modifier reads "15% reduced effect of Non-Curse Auras from your Skills on your Minions", so minions are among the allies an aura reaches | the aura's effect | poedb.tw/us/Aura and /us/Generosity_Support; poewiki.net refused the fetch |
+
+**What it settles:** a buff on the caster reaching allies near it is an established shape, and minions count as
+allies. **What it does not settle,** each a judgement below: how much reaches them (Diablo IV gives half; these
+sentences say "applies it", so the whole), whether the bonus keeps its scope, and when it is taken back.
+
+### WHAT WAS RULED, 2026-10-02, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **A copy is the More damage a running self buff grants its caster, with its scope, and nothing else.**
+   `GrantedIncrease` and `GrantedScope`, from `UCataclysmSelfBuffSkill::GrantIncrease`. Status tags, immunities
+   and a buff's own machinery are not copied: they act on the caster and are not stats.
+2. **It reaches allies through the route the aura's ally bonus already uses**: a modifier written onto each ally's
+   own ability system (`AddStatModifier`) and taken back when it leaves (issue #1771). So it reaches every ally,
+   a minion, a thrall or another player, and not only a minion's damage.
+3. **"Nearby allies gain 10-20% more damage" is an unscoped More on every ally within 5 m**, the radius every
+   "nearby" row reads, while the item is worn. The wearer is not an ally of itself.
+4. **One check on the wearer serves all three rows, every quarter second, on the regeneration step**, in place of
+   a one-second timer: a body walking in or out of reach is a quarter of a second late at worst. A copy is given
+   on arrival, its value changed in place when the buff's moves (Butcher's Heat grows per kill), and taken back
+   when the ally leaves, dies or is gone, when the buff ends, when the stat is gone, when the wearer is dead, and
+   when the wearer's character ends play.
+5. **The reach is the larger of the two that apply.** The 8 m reach applies to any running self buff; the 15 m
+   reach only to one in the Support slot.
+
+### WHAT IT DOES IN PLAY TODAY, AND WHAT IT DOES NOT
+
+**The 8 m and 15 m rows raise no character's damage in play today.** Every built buff that grants More damage --
+Unbroken, Butcher's Heat, Burning Wrath and Held Fast -- is scoped to `Element.Demonic`, and a copy keeps that
+scope (judgement 1). Two kinds of ally could carry it:
+
+- **Another player** would gain it on Demonic skills. Co-operative play is Phase 2 in the design document, so no
+  other player exists yet.
+- **A minion or thrall** carries the copy and gains nothing, because no minion's blow carries an element.
+  `Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem` already shows a Demonic-only buff
+  leaving an imp's blow unchanged; that is Conflagration's case too. A minion will gain it once a minion's blow
+  carries an element.
+
+**What is built** is the copy, its reach and its take-back, each shown in `Cataclysm.SharedBuffs.` with a buff
+granted in the test with no element, which a minion's blow does read.
+
+**Five of the nine built Support buffs grant no More damage, and these two rows give their allies nothing:**
+Ashen Edge, Slipstream, Martyr's Ember, Coil of Embers and Groundbreaker.
+
+**"Nearby allies gain 10-20% more damage" raises a minion's blow today**: it is unscoped.
+`Cataclysm.Enchantments.TheNearbyAlliesRowRaisesAnImpsBlowByTwentyPerCent` shows a worn row taking an imp's blow
+of 100 to 120.
+
+### WHAT IS NOT IN THIS PART
+
+- **"Your aura also applies its effect to all allies within range"** moved to part 4b. Neither built aura grants
+  its caster a stat: Conflagration's one benefit already reaches allies, and Living Pyre's "MoreDamagePer" raises
+  its own pulse damage, not its caster's. Part 4b gives allies inside Living Pyre's ring its immunities.
+- **"Summoned minions inherit 10%-25% of your armor and resistances"** stays blocked: no minion armour or
+  resistance stat exists.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Your support ability affects all allies within 15 meters instead of just yourself | `support_buff_shared_within_metres` flat 15 |
+| Applying a buff to yourself also applies it to all allies within 8 meters | `self_buff_shared_within_metres` flat 8 |
+| Nearby allies gain 10-20% more damage | `nearby_allies_more_damage` flat 10 to 20 |
+
+EnchantmentEffects 455 to 458, over 371 to 374. The three stats have no gameplay attribute; each has a probe in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. They need no generator change.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-02 and 2026-10-04 in the elastic-burnell worktree, on feat/allies-share-buffs-2 on `development`
+84ab7de4.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build | 29548fd6 | Build: Succeeded - 32 actions, 29 files compiled |
+| The seven engine tests, first run | 29548fd6 | Cataclysm.SharedBuffs.: 7 tests performed, 5 succeeded, 2 failed: ADeadWearerTakesEveryCopyBack, ASelfBuffAloneReachesEightMetresNotFifteen |
+| Rebuild after the two fixes | 97364b36 | Build: Succeeded - 32 actions, 29 files compiled |
+| The seven engine tests | 97364b36 | Cataclysm.SharedBuffs.: 7 tests performed, 7 succeeded, 0 failed |
+| The asset, regenerated with the editor | 7a6f91a6 | 2 files changed: `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 455 to 458; both committed, nothing else |
+| Whole suite | 7a6f91a6 | 3118 tests performed, 3118 succeeded, 0 failed; declared 3118, gap 0 |
+| Proof A: `AddStatModifier`'s handle replaced by `0`, so nothing is given | 7a6f91a6 | PROVED: with the break in: 7 tests performed, 1 succeeded, 6 failed: ACopyIsHeldOnceAndFollowsAChangedValue, ADeadWearerTakesEveryCopyBack, ASelfBuffAloneReachesEightMetresNotFifteen, ASupportBuffReachesAnAllyWithinFifteenMetresAndNotOneBeyond, NearbyAlliesGainUnscopedMoreWithinFiveMetresButNotTheWearer, TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds \| restored: 7 tests performed, 7 succeeded, 0 failed |
+| Proof B: the reach replaced by a kilometre | 7a6f91a6 | PROVED: with the break in: 7 tests performed, 4 succeeded, 3 failed: ASelfBuffAloneReachesEightMetresNotFifteen, ASupportBuffReachesAnAllyWithinFifteenMetresAndNotOneBeyond, TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds \| restored: 7 tests performed, 7 succeeded, 0 failed |
+| Proof C, first break: `TakeBack(Held);` replaced by `continue;` | 7a6f91a6 | NO MEASUREMENT: the build itself failed: Result: Failed, compiled CataclysmSharedBuffs.cpp, Module.Cataclysm.4.cpp |
+| Proof C: `TakeBack(Held);` replaced by `if (Held.Handle > 0) { continue; }` | 7a6f91a6 | PROVED: with the break in: 7 tests performed, 4 succeeded, 3 failed: ADeadWearerTakesEveryCopyBack, ASelfBuffAloneReachesEightMetresNotFifteen, TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds \| restored: 7 tests performed, 7 succeeded, 0 failed |
+| Python of record | 7a6f91a6 | 5691 passed, 8 skipped in 317.81s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+
+Each proof kept its broken run's log, and each failed exactly the assertions predicted: A eighteen in six tests,
+B four in three, C six in three. The three row tests and the three probes ran inside the whole suite and not as
+runs of their own.
+
+**The first run of the seven tests failed two, and neither was predicted.**
+
+- **`ADeadWearerTakesEveryCopyBack` found a fault in the engine.** "the second wearer left play, so the ally
+  carries nothing" read 1. The take-back at a wearer's end had been written on
+  `UCataclysmAbilitySystemComponent::EndPlay`, and a player's ability system belongs to its player state, which
+  outlives the character: removing a player character never ran it, and the ally kept its copy for good. The
+  coordinating session approved moving it to `ACataclysmCharacterBase::EndPlay`, on the actor whose step gives
+  the copies, and removing the override so there is one place. Commit d62a9c85.
+- **`ASelfBuffAloneReachesEightMetresNotFifteen` failed in its own set-up**, test only: "set-up: the Special buff
+  runs and grants 4% More". A Special skill costs 40 mana in `SkillSlots.csv` and the test had already spent 25
+  on a Support cast. The cause was inferred when it was reported; the test now gives the player 10000 mana and
+  checks "runs" and "grants 4%" apart, and it passed on the next run, which is what confirms it. Commit 97364b36.
+
+**Proof C's first break did not compile, so it measured nothing and is not a proof.** The compiler's message was
+not kept; the break left the two lines after it unreachable, which is the likely reason and is not confirmed.
+The break that replaced it behaves the same, because a held copy's handle is always above zero, and the proof
+script now prints a failed build's errors.
+
+**One Python failure was found in a dry run before anything was registered**:
+`test_the_jobs_are_pinned[ACataclysmCharacterBase::RegenerationStep]`, because the regeneration step's jobs are
+pinned and the new call was not listed. It is listed in the engine commit.
+
+---
+
 ## 2026-10-02 — A creature the player commands has a green health bar, and minion damage stays off damage over time
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (a green fill and the function

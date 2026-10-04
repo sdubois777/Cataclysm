@@ -3273,6 +3273,12 @@ const TCHAR* UCataclysmAbilitySystemComponent::NthSpellManaCostAction =
 	TEXT("nth_spell_mana_cost");
 const TCHAR* UCataclysmAbilitySystemComponent::AurasEndAtDeathStat =
 	TEXT("auras_end_at_death");
+const TCHAR* UCataclysmAbilitySystemComponent::SelfBuffSharedWithinMetresStat =
+	TEXT("self_buff_shared_within_metres");
+const TCHAR* UCataclysmAbilitySystemComponent::SupportBuffSharedWithinMetresStat =
+	TEXT("support_buff_shared_within_metres");
+const TCHAR* UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat =
+	TEXT("nearby_allies_more_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::NthAttackNoDamageAction =
 	TEXT("nth_attack_no_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetAllAction =

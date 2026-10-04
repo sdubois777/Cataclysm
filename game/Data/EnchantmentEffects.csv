@@ -454,3 +454,6 @@ Positive_When_your_energy_shield_fully_recharges_release#1,Positive_When_your_en
 Positive_Reflect_20_100_of_damage_blocked_back_at_attac#1,Positive_Reflect_20_100_of_damage_blocked_back_at_attac,,,20.0,100.0,,,0.0,,0.0,reflect_blocked,block,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0,
 Positive_Every_3_blocks_in_quick_succession_triggers_a_sh#1,Positive_Every_3_blocks_in_quick_succession_triggers_a_sh,,,100.0,200.0,,,0.0,,0.0,smite_nearby,block,,0,3.0,0.0,0.0,3,0.0,0.0,,0.0,0.0,0.25,0.0,
 Positive_Blocking_attacks_deals_200_400_of_your_armor_a#1,Positive_Blocking_attacks_deals_200_400_of_your_armor_a,,,200.0,400.0,,,0.0,,0.0,smite_nearby_by_armor,block,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0,
+Positive_Your_support_ability_affects_all_allies_within_1#1,Positive_Your_support_ability_affects_all_allies_within_1,support_buff_shared_within_metres,flat,15.0,15.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_Applying_a_buff_to_yourself_also_applies_it_to_a#1,Positive_Applying_a_buff_to_yourself_also_applies_it_to_a,self_buff_shared_within_metres,flat,8.0,8.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_Nearby_allies_gain_10_20_more_damage#1,Positive_Nearby_allies_gain_10_20_more_damage,nearby_allies_more_damage,flat,10.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,

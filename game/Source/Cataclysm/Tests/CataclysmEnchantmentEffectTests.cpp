@@ -32,6 +32,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -12405,6 +12406,182 @@ bool FCataclysmArmourNovaRowTest::RunTest(const FString&)
 	TestEqual(TEXT("the creature lost 400% of the wearer's 1000 armour. If nothing, DT_EnchantmentEffects may "
 				   "be older than the rows: run tools/generate_datatable_assets.py"),
 		Before - Its->GetNumericAttribute(Health), 4000.0f, 0.5f);
+	return true;
+}
+
+namespace CataclysmSharedBuffRowTest
+{
+	/**
+	 * A creature `Metres` along X that is the wearer's ally: OWNED BY THE WEARER,
+	 * because the bare wearer these row tests use carries no team, and an owner
+	 * chain is what makes two such actors friendly.
+	 */
+	ACataclysmEnemyCharacter* AllyOf(UWorld* World, AActor* Wearer, float Metres)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(Metres * 100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetOwner(Wearer);
+			Made->SetHealth(100000.0f);
+		}
+		return Made;
+	}
+
+	/** The More damage `Ally` carries on its own ability system. */
+	float MoreCarried(const AActor* Ally)
+	{
+		float More = 0.0f;
+		if (const UCataclysmAbilitySystemComponent* Its =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Ally)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Its->GetStatModifiers())
+			{
+				More += Modifier.Bucket == ECataclysmStatBucket::More ? Modifier.Value : 0.0f;
+			}
+		}
+		return More;
+	}
+
+	/**
+	 * The wearer casts an unscoped Burning Wrath in the Support slot, with one
+	 * enemy burning 3 m away, so it grants 4% More. Returns that buff, or null.
+	 */
+	UCataclysmSelfBuffSkill* SupportBuffOn(UWorld* World, UCataclysmAbilitySystemComponent* ASC, AActor* Wearer)
+	{
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 10000.0f);
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 10000.0f);
+		ACataclysmEnemyCharacter* Alight = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(-300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Alight)
+		{
+			return nullptr;
+		}
+		Alight->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Alight->SetHealth(100000.0f);
+		UCataclysmSkillEffects::ApplyBurn(Wearer, Alight, 100.0f,
+			/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
+			UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support, /*Level=*/1, Wearer);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSelfBuffSkill* Buff = Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Buff)
+		{
+			return nullptr;
+		}
+		Buff->SkillName = TEXT("Burning Wrath");
+		Buff->Params = UCataclysmSkillShapes::ParseParams(
+			TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"));
+		Buff->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Slot.Support"));
+		ASC->TryActivateAbility(Buff->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+		return Buff;
+	}
+
+	const TCHAR* StaleAsset =
+		TEXT(" If nothing, DT_EnchantmentEffects may be older than the rows: run "
+			 "tools/generate_datatable_assets.py");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSupportSharedRowTest,
+	"Cataclysm.Enchantments.TheSupportShareRowGivesASupportBuffsMoreToAnAllyTwelveMetresAway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your support ability affects all allies within 15 meters instead of just
+ * yourself". Issue #1833 group E part 4a: `support_buff_shared_within_metres`
+ * flat 15. WORN: a Support buff granting 4% More reaches an ally 12 m away.
+ */
+bool FCataclysmSupportSharedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSharedBuffRowTest;
+	CataclysmSmallHalvesTest::FWorn Worn(TEXT("Positive_Your_support_ability_affects_all_allies_within_1"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(*FString(TEXT("the row gives a reach of 15 m.") + FString(StaleAsset)),
+		Worn.ASC()->StatForSkill(FName(UCataclysmAbilitySystemComponent::SupportBuffSharedWithinMetresStat),
+								 FGameplayTagContainer(), 0.0f), 15.0f, 0.001f);
+	ACataclysmEnemyCharacter* Ally = AllyOf(Worn.World, Worn.Wearer->Actor, 12.0f);
+	const UCataclysmSelfBuffSkill* Buff = SupportBuffOn(Worn.World, Worn.ASC(), Worn.Wearer->Actor);
+	if (!TestNotNull(TEXT("an ally"), Ally)
+		|| !TestTrue(TEXT("set-up: the Support buff runs and grants 4% More"),
+			Buff && Buff->IsActive() && FMath::IsNearlyEqual(Buff->GrantedIncrease, 4.0f)))
+	{
+		return false;
+	}
+	UCataclysmSharedBuffs::Step(Worn.Wearer->Actor);
+	TestEqual(TEXT("the ally 12 m away carries the buff's 4% More"), MoreCarried(Ally), 4.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSelfSharedRowTest,
+	"Cataclysm.Enchantments.TheSelfBuffShareRowReachesAnAllySixMetresAwayAndNotTwelve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Applying a buff to yourself also applies it to all allies within 8 meters".
+ * Issue #1833 group E part 4a: `self_buff_shared_within_metres` flat 8. WORN:
+ * a buff granting 4% More reaches an ally 6 m away and not one 12 m away.
+ */
+bool FCataclysmSelfSharedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSharedBuffRowTest;
+	CataclysmSmallHalvesTest::FWorn Worn(TEXT("Positive_Applying_a_buff_to_yourself_also_applies_it_to_a"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(*FString(TEXT("the row gives a reach of 8 m.") + FString(StaleAsset)),
+		Worn.ASC()->StatForSkill(FName(UCataclysmAbilitySystemComponent::SelfBuffSharedWithinMetresStat),
+								 FGameplayTagContainer(), 0.0f), 8.0f, 0.001f);
+	ACataclysmEnemyCharacter* Near = AllyOf(Worn.World, Worn.Wearer->Actor, 6.0f);
+	ACataclysmEnemyCharacter* Far = AllyOf(Worn.World, Worn.Wearer->Actor, 12.0f);
+	const UCataclysmSelfBuffSkill* Buff = SupportBuffOn(Worn.World, Worn.ASC(), Worn.Wearer->Actor);
+	if (!TestNotNull(TEXT("an ally at 6 m"), Near) || !TestNotNull(TEXT("an ally at 12 m"), Far)
+		|| !TestTrue(TEXT("set-up: the buff runs and grants 4% More"),
+			Buff && Buff->IsActive() && FMath::IsNearlyEqual(Buff->GrantedIncrease, 4.0f)))
+	{
+		return false;
+	}
+	UCataclysmSharedBuffs::Step(Worn.Wearer->Actor);
+	TestEqual(TEXT("the ally 6 m away carries the buff's 4% More"), MoreCarried(Near), 4.0f, 0.001f);
+	TestEqual(TEXT("and the ally 12 m away nothing"), MoreCarried(Far), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNearbyAlliesRowTest,
+	"Cataclysm.Enchantments.TheNearbyAlliesRowRaisesAnImpsBlowByTwentyPerCent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Nearby allies gain 10-20% more damage". Issue #1833 group E part 4a:
+ * `nearby_allies_more_damage` flat 10 to 20. WORN at the top of its roll, 20:
+ * the wearer's imp 3 m away hits for 120 where it hit for 100. The minion's blow
+ * goes through `ModifiedDamage` on its own ability system, which is what this
+ * reads.
+ */
+bool FCataclysmNearbyAlliesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSharedBuffRowTest;
+	CataclysmSmallHalvesTest::FWorn Worn(TEXT("Positive_Nearby_allies_gain_10_20_more_damage"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Worn.Wearer->Actor, FVector(300.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	Imp->SetOwner(Worn.Wearer->Actor);
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Imp);
+	TestEqual(TEXT("set-up: the imp's blow of 100 is 100"),
+		UCataclysmSkillEffects::ModifiedDamage(Its, 100.0f, FGameplayTagContainer()), 100.0f, 0.01f);
+	UCataclysmSharedBuffs::Step(Worn.Wearer->Actor);
+	TestEqual(*FString(TEXT("the imp's blow of 100 is 120.") + FString(StaleAsset)),
+		UCataclysmSkillEffects::ModifiedDamage(Its, 100.0f, FGameplayTagContainer()), 120.0f, 0.01f);
 	return true;
 }
 

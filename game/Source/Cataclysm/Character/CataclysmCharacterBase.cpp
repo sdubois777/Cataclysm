@@ -16,6 +16,7 @@
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
+#include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyModifiers.h"
@@ -96,6 +97,13 @@ void ACataclysmCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		World->GetTimerManager().ClearTimer(RegenerationTimer);
 	}
+
+	// AND NO COPY OF THIS CHARACTER'S BUFFS OUTLIVES IT. Issue #1833 group E part
+	// 4a. Here, on the character whose step gives them, and not on its ability
+	// system: a player's ability system belongs to its player state, which
+	// outlives the character, so an ending there never came for a player.
+	UCataclysmSharedBuffs::TakeBackAll(Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(this)));
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -282,6 +290,12 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// SPELL DAMAGE. Issue #1515. The same step, so the maximum follows live and
 	// the next longest-held is chosen within one step of the last one's end.
 	UCataclysmSecondSelf::Step(this);
+
+	// AND THE ALLIES NEAR THIS CHARACTER ARE GIVEN THE MORE DAMAGE ITS BUFFS
+	// GRANT IT, AND IT IS TAKEN BACK FROM ANY THAT HAVE LEFT. Issue #1833 group E
+	// part 4a, ruled 2026-10-02 onto this step: a body walking in or out of
+	// reach is a quarter of a second late at worst.
+	UCataclysmSharedBuffs::Step(this);
 
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the
