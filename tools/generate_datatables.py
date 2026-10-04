@@ -7877,8 +7877,8 @@ SHAPES_THAT_SUMMON = frozenset({"Summon", "Deployable"})
 #: machines and searches for nobody. `UCataclysmSelfBuffSkill` guards both of its radius reads with
 #: `ScaledRadiusCm() > 0.0f`, so a self buff that states no radius simply has no
 #: ring rather than a broken one. Six self buffs, three deployables, three
-#: debuffs and one flickering movement state no radius today -- thirteen rows --
-#: and all thirteen are correct.
+#: debuffs, one flickering movement and one possessing summon state no radius
+#: today -- fourteen rows -- and all fourteen are correct.
 #:
 #: ONE OF THE FOUR IS CONDITIONAL, which is why this is a function and not a
 #: set. `Mode=Flicker` returns from `ActivateAbility` before the switch that

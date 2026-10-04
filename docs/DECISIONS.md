@@ -71,7 +71,8 @@ its search and its miss line), `tools/generate_datatables.py` (`shape_searches_w
 it), `tools/tests/test_a_targeted_skill_states_a_radius.py` (two tests turned round),
 `game/Source/Cataclysm/Tests/CataclysmSkillShapeTests.cpp` (the radius test no longer checks Subjugate),
 `game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` (one new test, and three test rows that no longer state a
-radius) and, in the workbook turn after this is written, Subjugate's row in `docs/All_Things_Cataclysm.xlsx`.
+radius), and Subjugate's row in `docs/All_Things_Cataclysm.xlsx` with the line of `game/Data/WeaponSkills.csv`
+generated from it.
 Issue [#1529](https://github.com/sdubois777/Cataclysm/issues/1529). Ruled by the coordinating session on
 2026-10-02 under the owner's delegation, labelled a judgement and not taken to the owner.
 
@@ -122,10 +123,11 @@ nobody. Each check it added now describes a figure nothing reads, so each change
   and now asserts by name that it is not. Without Subjugate the generator's rule finds 45 shipped rows that search
   with their radius, against the test's floor of thirty.
 
-**The row's `Radius=3` is removed in the workbook turn after this entry is written.** The coordinating session
-ruled that the change is complete only when nothing states an unread figure. Until that turn the figure stays in
-`game/Data/WeaponSkills.csv`, read by nothing, and the sentences in the generator and its test that count thirteen
-rows stating no radius stay true.
+**The row's `Radius=3` was removed on 2026-10-04**: the Weapon Skills sheet, cell H267. The coordinating session
+ruled that the change is complete only when nothing states an unread figure. The generator then changed one line of
+`game/Data/WeaponSkills.csv` and no other file, and the sentences in the generator and its test that counted
+thirteen rows stating no radius now count fourteen, which is what the data gives: six self buffs, three
+deployables, three debuffs, one flickering movement and Subjugate. The DataTable asset is rebuilt in the window.
 
 **Not built or run when this was written.** The run table follows when the window runs.
 

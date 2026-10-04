@@ -120,10 +120,10 @@ def test_it_refuses_every_shape_whose_search_reads_the_radius():
 # --------------------------------------------------------------------------
 # And stays quiet where a radius is not read
 #
-# THE HALF THAT KEEPS THE CHECK HONEST. Thirteen shipped rows state no radius --
-# six self buffs, three deployables, three debuffs and one flickering movement --
-# and all thirteen are correct, so a check that simply demanded one everywhere
-# would have to be switched off the day it was written.
+# THE HALF THAT KEEPS THE CHECK HONEST. Fourteen shipped rows state no radius --
+# six self buffs, three deployables, three debuffs, one flickering movement and
+# one possessing summon -- and all fourteen are correct, so a check that simply
+# demanded one everywhere would have to be switched off the day it was written.
 # --------------------------------------------------------------------------
 
 def test_it_leaves_alone_the_shapes_that_never_read_a_radius():

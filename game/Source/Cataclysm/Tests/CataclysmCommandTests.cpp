@@ -383,15 +383,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugatePicksByCursorTest,
  * Subjugate takes the enemy nearest where the player points, from those within
  * its range of the caster. Issue #1529.
  *
- * THE SHIPPED ROW'S SHAPE, `Radius=3` INCLUDED, because the old rule read it:
- * a three metre sphere at the aimed point. A headless run has no cursor, so the
- * aim is the caster itself and the nearest enemy to it is the one pointed at.
- * The old search ran fifteen metres out along the caster's facing instead.
+ * THE SHIPPED ROW'S SHAPE, which states no radius since this change. A
+ * headless run has no cursor, so the aim is the caster itself and the nearest
+ * enemy to it is the one pointed at. The old rule searched a three metre
+ * sphere fifteen metres out along the caster's facing instead.
  *
- * TWO CREATURES ON THAT LINE, AND ONLY THE OLD RULE REACHES THE FAR ONE. The
- * near one, at three metres, is wounded and the blow takes it. The far one, at
- * thirteen, is healthy and inside the old sphere: the old rule hit it and took
- * nobody.
+ * TWO CREATURES ON THAT LINE, AND ONLY AN AIM FIFTEEN METRES OUT PICKS THE FAR
+ * ONE. The near one, at three metres, is wounded and the blow takes it. The
+ * far one, at thirteen, is healthy: picked instead, it is hit and nobody is
+ * taken.
  */
 bool FCataclysmSubjugatePicksByCursorTest::RunTest(const FString&)
 {
@@ -401,7 +401,7 @@ bool FCataclysmSubjugatePicksByCursorTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	const TCHAR* const Row =
-		TEXT("Range=15; MaxTargets=1; Radius=3; Burn=1; Possess=1; "
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
 			 "FervourReserve=30; HealthThresholdPercent=50");
 
 	FScopedCaster Caster(World, FVector::ZeroVector);
