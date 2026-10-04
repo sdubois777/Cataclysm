@@ -43,6 +43,34 @@ struct CATACLYSM_API FCataclysmFloorRequest
  * which cells can be walked on, and where the player arrives and leaves. Placing
  * room art onto the result is the next piece of work and is not started.
  */
+/**
+ * A corridor the generator can carve between two walkable cells that are far apart to walk and close in space, and the
+ * gate that closes it. Issues #1820 and #41.
+ *
+ * WHY IT EXISTS. Three dungeon modifier rows open a path during play: Warzone Control Points' "opening shortcuts", Soul
+ * Chains' "open up new paths" and The Labrynth's paths "blocked or redirected". Measured 2026-10-02 over sixty plans
+ * (docs/DECISIONS.md), the floors this generator makes are mostly tree-like: a gate on an EXISTING detour is possible
+ * on 9 of 20 Halls plans, 2 of 20 Caverns and no Arena. So a path that can be opened is carved for the row and closed
+ * at once, on the floors that carry the row, and opening its gate is the row's effect.
+ */
+struct CATACLYSM_API FCataclysmFloorShortcut
+{
+	/** The two walkable cells the corridor joins. */
+	FIntPoint A = FIntPoint(-1, -1);
+	FIntPoint B = FIntPoint(-1, -1);
+
+	/** The cells the corridor turns from rock to floor. */
+	TArray<FIntPoint> NewCells;
+
+	/** Two of `NewCells`, side by side across the corridor. Closing both closes it. */
+	TArray<FIntPoint> Gate;
+
+	/** How many cells shorter the walk it was found for is when it is open. */
+	int32 Saving = 0;
+
+	bool IsValid() const { return Gate.Num() == 2 && NewCells.Num() >= 2; }
+};
+
 class CATACLYSM_API FCataclysmFloorGenerator
 {
 public:
@@ -212,4 +240,44 @@ public:
 
 	/** Builds the floor the request asks for. */
 	static FCataclysmFloorPlan Generate(const FCataclysmFloorRequest& Request);
+
+	// ----------------------------------------------------------------------
+	// Gated shortcuts. Issues #1820 and #41. Figures ruled 2026-10-04, each a judgement.
+	// ----------------------------------------------------------------------
+
+	/** The least a shortcut must shorten a walk, in cells, to count. Below it a gate is hard to notice. */
+	static constexpr int32 ShortcutLeastSaving = 10;
+
+	/** The most cells a shortcut's two ends may be apart, counted along rows and columns. */
+	static constexpr int32 ShortcutMostLength = 12;
+
+	/** How wide a shortcut's corridor is: the generator's least connection width. */
+	static constexpr int32 ShortcutWidth = LeastConnectionWidth;
+
+	/** How many cells `FindShortcuts` searches from, and how many of the best candidates it checks for real. */
+	static constexpr int32 ShortcutSources = 40;
+	static constexpr int32 ShortcutMostChecked = 100;
+
+	/**
+	 * The gated shortcut that most shortens the walk from `From` to `To`, or false when none saves
+	 * `ShortcutLeastSaving`. Does not carve. `Avoid` is cells no new corridor may use.
+	 *
+	 * Estimated from two breadth-first searches, then the best checked by carving on a copy: the saving must be real,
+	 * and a gate of two NEW cells must exist whose closing gives the first walk back with every walkable cell still
+	 * reachable from the entrance.
+	 */
+	static bool FindShortcutBetween(const FCataclysmFloorPlan& Plan, FIntPoint From, FIntPoint To,
+									const TSet<FIntPoint>& Avoid, FCataclysmFloorShortcut& Out);
+
+	/**
+	 * Up to `Most` gated shortcuts between ANY two places, sharing no cell with each other or with `Avoid`. Each saves
+	 * at least `ShortcutLeastSaving` between its own two ends. Searched from `ShortcutSources` cells drawn on `Stream`,
+	 * or, when `Near` is a cell, from every walkable cell within `NearCells` of it, so one end is near that cell.
+	 */
+	static TArray<FCataclysmFloorShortcut> FindShortcuts(const FCataclysmFloorPlan& Plan, FRandomStream& Stream,
+														 int32 Most, const TSet<FIntPoint>& Avoid,
+														 FIntPoint Near = FIntPoint(-1, -1), int32 NearCells = 0);
+
+	/** Carve a shortcut's corridor, through the same carving every connection uses. Its gate's cells are then floor. */
+	static void CarveShortcut(FCataclysmFloorPlan& Plan, const FCataclysmFloorShortcut& Shortcut);
 };
