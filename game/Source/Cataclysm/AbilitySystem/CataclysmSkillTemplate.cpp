@@ -915,6 +915,19 @@ bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
 		return false;
 	}
 
+	// WHAT ANOTHER CHARACTER'S SKILL GRANTED IT, FIRST. Issue #1833 group E part
+	// 4c: an ally inside an aura that makes its caster immune. HERE, so every
+	// caller of this function sees it; a minion runs no skill of its own, and
+	// this list is the only way it is ever immune.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		if (Cataclysm->HasGrantedImmunityTo(Effect))
+		{
+			return true;
+		}
+	}
+
 	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
 	{
 		if (!Spec.IsActive())
