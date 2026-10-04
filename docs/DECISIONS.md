@@ -155,7 +155,12 @@ Ten new automation tests.
 - `AShortcutBetweenTwoCellsShortensThatWalkOrIsRefused`: the plan measured at 66 cells has a shortcut to the exit and
   carving it saves what it said; a plan whose walk is as short as it can be has none; rock is no end for one.
 
-`Cataclysm.DungeonModifierEffects.`, on floors the game mode builds:
+`Cataclysm.DungeonModifierEffects.`, on floors the game mode builds. **Five of them search dungeon seeds 1 to 20 for
+a floor that meets their set-up**, and say which seed they used: how many shortcuts a built floor has cannot be
+computed without the engine, and a test that needs two gates on a floor that has one would fail on its set-up and say
+nothing about the rule. `GatedShortcutsAreCarved...` and `SoulChains...` want two gates each with two bearers;
+`WarzoneCapturing...` a point with a shortcut; `TheLabrynthSwaps...` at least two gates; `TheLabrynthNeverCloses...`
+EXACTLY two, so the gate the player stands on is the only one the rule could close. Ruled 2026-10-04.
 
 - `GatedShortcutFiguresAndTheThreeRowsBuiltStates`.
 - `GatedShortcutsAreCarvedAndClosedWhenAHallsFloorIsBuilt`: two chained shortcuts; each corridor cell floor unless it

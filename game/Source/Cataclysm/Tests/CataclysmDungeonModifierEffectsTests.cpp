@@ -44790,6 +44790,57 @@ namespace CataclysmDungeonModifierEffectsTest
 		return Count;
 	}
 
+	/** How many seeds a gate test tries for a floor that meets its set-up. Ruled 2026-10-04. */
+	constexpr int32 GateFloorSeedsTried = 20;
+
+	/**
+	 * Builds floor 2 again on dungeon seeds 1, 2, ... until `Holds` answers true, and says which seed that was.
+	 *
+	 * WHY A SEARCH AND NOT ONE SEED: how many shortcuts a floor has, and whether a Warzone point has one, was measured
+	 * on plans and not on the floors these tests build, and it cannot be computed without the engine. A test that
+	 * needs "two gates" on a floor that happens to have one would fail on its set-up and say nothing about the rule.
+	 * `Prepare` runs after each floor is built and before `Holds` is asked. When no seed serves, the test fails
+	 * naming how many it tried, which is a finding about the set-up and not about the rule.
+	 */
+	bool AGateFloorWhere(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const TCHAR* What,
+						 TFunctionRef<void()> Prepare, TFunctionRef<bool()> Holds)
+	{
+		for (int32 Seed = 1; Seed <= GateFloorSeedsTried; ++Seed)
+		{
+			Mode->DungeonSeed = Seed;
+			if (!Test.TestTrue(FString::Printf(TEXT("seed %d: floor 2 was reached"), Seed), Mode->GoToFloor(2)))
+			{
+				return false;
+			}
+			Prepare();
+			if (Holds())
+			{
+				Test.AddInfo(FString::Printf(TEXT("gate floor: dungeon seed %d gives %s"), Seed, What));
+				return true;
+			}
+		}
+		Test.AddError(FString::Printf(TEXT("set-up: no dungeon seed from 1 to %d gives %s"), GateFloorSeedsTried, What));
+		return false;
+	}
+
+	/** Whether Soul Chains has its two gates on this floor, each with its two bearers. */
+	bool SoulChainsFloorIsWhole(ACataclysmDungeonGameMode* Mode)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		if (Mode->GatedShortcutsOf(SoulChainsRow).Num() != Effects::SoulChainsGates)
+		{
+			return false;
+		}
+		for (int32 Gate = 0; Gate < Effects::SoulChainsGates; ++Gate)
+		{
+			if (Mode->SoulChainBearersNow(Gate).Num() != Effects::SoulChainsBearersPerGate)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	/** How many of a row's shortcuts are open. */
 	int32 GatesOpen(ACataclysmDungeonGameMode* Mode, FName Row)
 	{
@@ -44850,6 +44901,12 @@ bool FCataclysmGatedShortcutsCarvedTest::RunTest(const FString& Parameters)
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = AGateFloor(*this, World, Player, {SoulChainsRow});
 	if (!Mode)
+	{
+		return false;
+	}
+	// A FLOOR WITH BOTH GATES AND ALL FOUR BEARERS, searched for by seed. See `AGateFloorWhere`.
+	if (!AGateFloorWhere(*this, Mode, TEXT("two chained gates, each with two bearers"), []() {},
+						 [Mode]() { return SoulChainsFloorIsWhole(Mode); }))
 	{
 		return false;
 	}
@@ -44926,6 +44983,27 @@ bool FCataclysmWarzoneShortcutTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// A FLOOR WHERE A POINT HAS A SHORTCUT, searched for by seed. See `AGateFloorWhere`. The floor is made ready as
+	// `AWarzoneFloor` makes it: its creatures cleared and one beat run.
+	if (!AGateFloorWhere(*this, Mode, TEXT("two Warzone points, one of them with a shortcut"),
+						 [Mode]()
+						 {
+							 Mode->ClearFloorEnemies();
+							 Beat(Mode, 1);
+						 },
+						 [Mode]()
+						 {
+							 bool bOneHasAShortcut = false;
+							 for (int32 Index = 0; Index < Mode->WarzonePointCellsNow().Num(); ++Index)
+							 {
+								 bOneHasAShortcut = bOneHasAShortcut || !Mode->GatedShortcutLeadsTo(WarzoneRow, Index).IsEmpty();
+							 }
+							 return bOneHasAShortcut
+								 && Mode->WarzonePointCellsNow().Num() == UCataclysmDungeonModifierEffects::WarzoneControlPointsPerFloor;
+						 }))
+	{
+		return false;
+	}
 
 	// THE POINTS ARE THE ONES CHOSEN ON THE FLOOR'S SEED BEFORE IT WAS BUILT.
 	TestTrue(TEXT("the points are the planned ones"), Mode->WarzonePointCellsNow() == Mode->WarzonePlannedPointsNow());
@@ -44987,6 +45065,12 @@ bool FCataclysmSoulChainsTest::RunTest(const FString& Parameters)
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = AGateFloor(*this, World, Player, {SoulChainsRow});
 	if (!Mode)
+	{
+		return false;
+	}
+	// A FLOOR WITH BOTH GATES AND ALL FOUR BEARERS, searched for by seed. See `AGateFloorWhere`.
+	if (!AGateFloorWhere(*this, Mode, TEXT("two chained gates, each with two bearers"), []() {},
+						 [Mode]() { return SoulChainsFloorIsWhole(Mode); }))
 	{
 		return false;
 	}
@@ -45059,6 +45143,12 @@ bool FCataclysmLabrynthSwapTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// A FLOOR WITH AT LEAST TWO LABRYNTH GATES, searched for by seed. See `AGateFloorWhere`.
+	if (!AGateFloorWhere(*this, Mode, TEXT("at least two Labrynth gates"), [Mode]() { Mode->ClearFloorEnemies(); },
+						 [Mode]() { return Mode->GatedShortcutsOf(LabrynthRow).Num() >= 2; }))
+	{
+		return false;
+	}
 	const int32 Gates = Mode->GatedShortcutsOf(LabrynthRow).Num();
 	if (!TestTrue(FString::Printf(TEXT("set-up: at least two Labrynth gates, at most four (%d)"), Gates),
 				  Gates >= 2 && Gates <= Effects::LabrynthMostGates))
@@ -45128,8 +45218,16 @@ bool FCataclysmLabrynthHeldTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// A FLOOR WITH EXACTLY TWO LABRYNTH GATES, searched for by seed. See `AGateFloorWhere`. EXACTLY TWO, so the gate the
+	// player stands on is the only open one: the rule then has one gate it could close and must refuse it, every swap,
+	// whatever the shuffle draws. With more gates the shuffle decides whether the stood-on gate is asked at all.
+	if (!AGateFloorWhere(*this, Mode, TEXT("exactly two Labrynth gates"), [Mode]() { Mode->ClearFloorEnemies(); },
+						 [Mode]() { return Mode->GatedShortcutsOf(LabrynthRow).Num() == 2; }))
+	{
+		return false;
+	}
 	const int32 Gates = Mode->GatedShortcutsOf(LabrynthRow).Num();
-	if (!TestTrue(TEXT("set-up: at least two Labrynth gates"), Gates >= 2))
+	if (!TestEqual(TEXT("set-up: exactly two Labrynth gates"), Gates, 2))
 	{
 		return false;
 	}
