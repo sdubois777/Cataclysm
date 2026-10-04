@@ -457,3 +457,5 @@ Positive_Blocking_attacks_deals_200_400_of_your_armor_a#1,Positive_Blocking_atta
 Positive_Your_support_ability_affects_all_allies_within_1#1,Positive_Your_support_ability_affects_all_allies_within_1,support_buff_shared_within_metres,flat,15.0,15.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Applying_a_buff_to_yourself_also_applies_it_to_a#1,Positive_Applying_a_buff_to_yourself_also_applies_it_to_a,self_buff_shared_within_metres,flat,8.0,8.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Nearby_allies_gain_10_20_more_damage#1,Positive_Nearby_allies_gain_10_20_more_damage,nearby_allies_more_damage,flat,10.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_Enemies_killed_by_necrosis_rise_as_temporary_min#1,Positive_Enemies_killed_by_necrosis_rise_as_temporary_min,necrosis_kill_raises_imp_seconds,flat,5.0,10.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_When_a_minion_dies_it_automatically_re_summons_a#1,Positive_When_a_minion_dies_it_automatically_re_summons_a,minion_resummoned_after_seconds,flat,3.0,6.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,

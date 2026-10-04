@@ -667,7 +667,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 455 SINCE THE REFLECT AND THE BLOCK COUNT, issue #1833 group E part 3, from 452.
 	//
 	// AND 458 SINCE THE BUFFS SHARED WITH ALLIES, issue #1833 group E part 4a, from 455.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    458)
+	//
+	// AND 460 SINCE THE NECROSIS RISE AND THE RE-SUMMON, issue #1833 group E part 4b, from 458.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    460)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
