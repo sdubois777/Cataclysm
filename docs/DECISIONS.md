@@ -37,9 +37,9 @@ the failure could not be reproduced on demand.
   this file are. Unpinned, it draws exactly once as before, so no seeded test's later draws move.
 - **The comment says what is true.**
 
-**A labelled judgement, mine, under the owner's delegation:** "every floor cell within one cell's width of the
-nearest" rather than the single nearest cell, so three creatures are not all placed on one cell where the floor gives
-more. No figure of the row changes.
+**A labelled judgement, accepted by the coordinating session on 2026-10-05 under the owner's delegation:** "every
+floor cell within one cell's width of the nearest" rather than the single nearest cell, so three creatures are not
+all placed on one cell where the floor gives more. No figure of the row changes.
 
 ### The other callers
 
@@ -55,8 +55,9 @@ One new automation test, `Cataclysm.DungeonModifierEffects.CryptquakeBringsItsSw
 It searches dungeon seeds 1 to 20 for a 2 by 2 block of floor and an angle such that the point 600 cm from the block's
 centre has no floor within 600 cm once the block is rock, which is a block against a wall two cells thick; warns of a
 pit there as the rule does; pins the angle; and lets the warning run out. Three creatures come, each on floor, out of
-the pit and within two cells of it. **Before the change this set-up brought none**, which is what the guard proof
-below shows by taking the third place out.
+the pit and within two cells of it. **Before the change this set-up brought none.** The guard proof's break takes the
+third place out and changes nothing else, so its failing half runs `BringCreaturesNear` as it was merged in #2208:
+that half is the evidence that the test reproduces the defect, and not only that the fix can be undone.
 
 ### Not yet run
 
