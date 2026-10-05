@@ -10,6 +10,8 @@
 
 class UCataclysmAbilitySystemComponent;
 class UCataclysmEquipmentComponent;
+class UDataTable;
+struct FCataclysmWeaponSkill;
 
 /**
  * How much of what a dungeon modifier's row says has been built.
@@ -30,6 +32,40 @@ enum class ECataclysmModifierBuilt : uint8
 
 	/** What the row describes happens. */
 	Built		UMETA(DisplayName = "Built"),
+};
+
+/**
+ * Why `Chaos_Wild_Magic` leaves a skill out of its pool, or that it does not. Asked in this order, so a skill is
+ * counted under the first reason that applies. See `UCataclysmDungeonModifierEffects::WildMagicKey`.
+ */
+enum class ECataclysmWildMagicLeftOut : uint8
+{
+	/** In the pool. */
+	InThePool,
+
+	/** No shape, or a shape with no template: the skill does nothing. */
+	NoShape,
+
+	/** It moves the character somewhere the player did not choose. */
+	Movement,
+
+	/** A toggle with an upkeep. */
+	Aura,
+
+	/** It reserves Fervour and counts against a most-active figure. */
+	SummonOrDeployable,
+
+	/** It waits for a key release that never comes: tagged a channel, or it has a charge time. */
+	ChannelledOrHeld,
+
+	/** It plants the character's weapon. */
+	DisarmsTheCaster,
+
+	/** It refuses unless a condition holds. */
+	Requires,
+
+	/** It costs health, which a free use does not pay. */
+	HealthCost,
 };
 
 /**
@@ -1859,6 +1895,34 @@ public:
 	 *   walkable cell; that turn another open gate is tried, and if none can close nothing swaps.
 	 */
 	static const TCHAR* LabrynthKey;
+
+	/**
+	 * `Chaos_Wild_Magic`: "Casting a skill has a 5% chance to trigger the effect of a random different skill from
+	 * your class tree." Issues #1820 and #41.
+	 *
+	 * "YOUR CLASS TREE" IS READ AS YOUR DAMAGE TYPE'S SKILLS, RULED 2026-10-04 BY THE COORDINATING SESSION UNDER THE
+	 * OWNER'S DELEGATION, a labelled judgement. Skills are not on class trees: a class tree holds passives, and a
+	 * skill comes from a weapon type and a damage type with no level (docs/Cataclysm_GDD_v2.md, "Skills are not
+	 * leveled or unlocked through a skill tree"). The damage type is what gives a player their class trees, so its
+	 * skills, on every weapon type, are the nearest thing the data has. THE RULING OF 2026-10-01, "the whole class
+	 * tree at the player's level", rested on a wrong picture of the data and is replaced.
+	 *
+	 * THE POOL IS DERIVED BY RULE FROM THE TABLE, never from a list of names, so a skill designed later is in or
+	 * out by its own row. `WildMagicLeavesOut` is the rule and `ECataclysmWildMagicLeftOut` its eight reasons.
+	 *
+	 * EACH A LABELLED JUDGEMENT OF THE SAME DATE:
+	 * - `WildMagicChancePercent` ON EACH SKILL USE THE PLAYER PAYS FOR. The basic attack does not roll, the line the
+	 *   worn "on skill use" rows draw (ruled 2026-09-14).
+	 * - THE TRIGGERED SKILL IS FREE AND IS NOT A USE: no mana, no cooldown, no health cost, no skill-used notice. So
+	 *   it cannot roll again and feeds no "on skill use" row. See `UCataclysmTriggeredSkill`.
+	 * - `WildMagicSecondsBetweenTriggers` BETWEEN TRIGGERS, the wait a triggered action row has (2026-09-30).
+	 * - NEVER THE SKILL JUST USED, the row's "different".
+	 * - AIMED WHERE THE PRESSED SKILL WAS AIMED, and it uses the player's own weapon damage and stats.
+	 * - A DAMAGE TYPE WITH NO SKILL IN THE POOL TRIGGERS NOTHING, and the panel says so. War's pool is one skill
+	 *   on 2026-10-04, because 54 of its 61 named skills have no shape yet: the state of the War skills, not a
+	 *   fault of the rule.
+	 */
+	static const TCHAR* WildMagicKey;
 
 	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
@@ -5825,6 +5889,10 @@ public:
 	static constexpr int32 LabrynthMostGates = 4;
 	static constexpr float LabrynthSecondsBetweenSwaps = 20.0f;
 
+	/** Wild Magic's figures. The chance is the row's; the wait is ruled 2026-10-04. See `WildMagicKey`. */
+	static constexpr float WildMagicChancePercent = 5.0f;
+	static constexpr float WildMagicSecondsBetweenTriggers = 0.25f;
+
 	/** The player's sight while a travelling swarm covers them, a play-test value. */
 	static constexpr float SwarmOfLocustsSightCm = 400.0f;
 
@@ -7111,6 +7179,18 @@ public:
 
 	/** Whether this draw, 0 to 100, is a trick: creatures rather than a haste. */
 	static bool TrickOrTreatRaisesEnemies(float Roll);
+
+	/** Whether this draw, 0 to 100, triggers Wild Magic. */
+	static bool WildMagicTriggers(float Roll);
+
+	/** Why Wild Magic leaves this skill out of its pool, or `InThePool`. The whole of the pool's rule. */
+	static ECataclysmWildMagicLeftOut WildMagicLeavesOut(const FCataclysmWeaponSkill& Skill);
+
+	/** The reason in words, for a log line or a test's message. */
+	static const TCHAR* WildMagicLeftOutName(ECataclysmWildMagicLeftOut Why);
+
+	/** Every skill of this damage type that Wild Magic may trigger, in table order. */
+	static TArray<FCataclysmWeaponSkill> WildMagicPool(const UDataTable* Table, const FString& DamageType);
 
 	/** How far a soul reaches, in centimetres. */
 	static float SoulHarvestRadiusCm();

@@ -25,6 +25,8 @@
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -45321,6 +45323,525 @@ bool FCataclysmGateRowsNoShapeTest::RunTest(const FString& Parameters)
 	}
 	TestFalse(TEXT("Halls: the shape has gates"), Mode->GateRowsHaveNoShape());
 	TestTrue(TEXT("Halls: Soul Chains carved its gates"), Mode->GatedShortcutsOf(SoulChainsRow).Num() > 0);
+	return true;
+}
+
+// CHAOS_WILD_MAGIC. "Casting a skill has a 5% chance to trigger the effect of a random different skill from your class
+// tree." Issues #1820 and #41. `UCataclysmTriggeredSkill` has its own tests, in CataclysmTriggeredSkillTests.cpp; these
+// are the rule's: the pool, the roll, the pick, the wait and the panel.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName WildMagicRow(UCataclysmDungeonModifierEffects::WildMagicKey);
+
+	/** Wild Magic's pool for a damage type, read from the real table. */
+	TArray<FCataclysmWeaponSkill> TheWildMagicPool(const TCHAR* DamageType)
+	{
+		return UCataclysmDungeonModifierEffects::WildMagicPool(UCataclysmWeaponSkills::LoadGeneratedTable(), DamageType);
+	}
+
+	/**
+	 * Wild Magic's roll and pick pinned, and put back to "not pinned" afterwards.
+	 *
+	 * NOT `FScopedConsoleString`, which writes an empty string when it goes: for a number that reads as 0, and a roll
+	 * left at 0 would trigger on every skill use of every later test whose floor drew this row.
+	 */
+	struct FWildMagicPinned
+	{
+		FWildMagicPinned(const TCHAR* Roll, int32 Pick)
+		{
+			RollVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.WildMagicRoll"));
+			PickVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.WildMagicPick"));
+			Set(Roll, Pick);
+		}
+
+		~FWildMagicPinned()
+		{
+			Set(TEXT("-1"), -1);
+		}
+
+		void Set(const TCHAR* Roll, int32 Pick)
+		{
+			if (RollVariable && PickVariable)
+			{
+				RollVariable->Set(Roll, ECVF_SetByConsole);
+				PickVariable->Set(*FString::FromInt(Pick), ECVF_SetByConsole);
+			}
+		}
+
+		bool IsUsable() const { return RollVariable && PickVariable; }
+
+		IConsoleVariable* RollVariable = nullptr;
+		IConsoleVariable* PickVariable = nullptr;
+	};
+
+	/** Tells the world the player paid for a skill of this name in this slot, aimed here, as `CommitAndBegin` does. */
+	void ThePlayerUses(const FPossessedPlayer& Player, const FString& Name, ECataclysmAbilitySlot Slot,
+					   const FVector& Aim)
+	{
+		const FGameplayTagContainer NoTags;
+		UCataclysmCombatEvents::NoteSkillUsed(Player.Character, Name, NoTags, Slot, &Aim);
+	}
+
+	/** Where this skill sits in the pool once the used skill is taken out, or INDEX_NONE. */
+	int32 PickOf(const TArray<FCataclysmWeaponSkill>& Pool, const FString& Used, const FString& Wanted)
+	{
+		int32 Index = 0;
+		for (const FCataclysmWeaponSkill& Skill : Pool)
+		{
+			if (Skill.Name == Used)
+			{
+				continue;
+			}
+			if (Skill.Name == Wanted)
+			{
+				return Index;
+			}
+			++Index;
+		}
+		return INDEX_NONE;
+	}
+
+	/** The first skill of this shape in the pool, or null. */
+	const FCataclysmWeaponSkill* TheFirstOfShape(const TArray<FCataclysmWeaponSkill>& Pool, ECataclysmSkillShape Shape)
+	{
+		return Pool.FindByPredicate([Shape](const FCataclysmWeaponSkill& Skill) { return Skill.Shape == Shape; });
+	}
+
+	/** The running skill of this name the player holds that no key finds: the triggered one. */
+	const UCataclysmSkillTemplate* TheTriggeredSkillRunning(const FPossessedPlayer& Player, const FString& Name)
+	{
+		for (const FGameplayAbilitySpec& Spec : Player.AbilitySystem->GetActivatableAbilities())
+		{
+			const UCataclysmSkillTemplate* Skill = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+			if (Skill && Spec.IsActive() && Skill->SkillName == Name
+				&& !Spec.GetDynamicSpecSourceTags().HasTagExact(CataclysmAbilitySlots::Tag(Skill->Slot)))
+			{
+				return Skill;
+			}
+		}
+		return nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWildMagicFiguresTest,
+	"Cataclysm.DungeonModifierEffects.WildMagicFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWildMagicFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a 5% chance"), Effects::WildMagicChancePercent, 5.0f, 0.001f);
+	TestEqual(TEXT("a quarter second between triggers"), Effects::WildMagicSecondsBetweenTriggers, 0.25f, 0.001f);
+	TestTrue(TEXT("a roll of 0 triggers"), Effects::WildMagicTriggers(0.0f));
+	TestTrue(TEXT("a roll just under 5 triggers"), Effects::WildMagicTriggers(4.99f));
+	TestFalse(TEXT("a roll of 5 does not"), Effects::WildMagicTriggers(5.0f));
+	TestFalse(TEXT("a roll of 100 does not"), Effects::WildMagicTriggers(100.0f));
+	TestEqual(TEXT("Wild Magic is built"), static_cast<int32>(Effects::BuiltStateOf(WildMagicRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWildMagicPoolTest,
+	"Cataclysm.DungeonModifierEffects.WildMagicPoolIsCountedFromTheRealTableAndEachExclusionNamesWhatItRemoved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using EWhy = ECataclysmWildMagicLeftOut;
+
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!TestNotNull(TEXT("the weapon skill matrix loads"), Table))
+	{
+		return false;
+	}
+
+	// EVERY NAMED SKILL OF A DAMAGE TYPE, SORTED BY THE RULE. The names each reason removed are logged, so a run shows
+	// what the pool is made of and what was kept out of it.
+	const auto Sorted = [&](const TCHAR* DamageType, TMap<EWhy, TArray<FString>>& ByReason)
+	{
+		const TArray<FCataclysmWeaponSkill> All = UCataclysmWeaponSkills::SkillsOfDamageType(Table, DamageType);
+		for (const FCataclysmWeaponSkill& Skill : All)
+		{
+			ByReason.FindOrAdd(Effects::WildMagicLeavesOut(Skill)).Add(Skill.Name);
+		}
+		for (const TPair<EWhy, TArray<FString>>& Reason : ByReason)
+		{
+			AddInfo(FString::Printf(TEXT("%s, %s (%d): %s"), DamageType, Effects::WildMagicLeftOutName(Reason.Key),
+									Reason.Value.Num(), *FString::Join(Reason.Value, TEXT(", "))));
+		}
+		return All.Num();
+	};
+	const auto CountOf = [](const TMap<EWhy, TArray<FString>>& ByReason, EWhy Why)
+	{
+		const TArray<FString>* Names = ByReason.Find(Why);
+		return Names ? Names->Num() : 0;
+	};
+	const auto Holds = [](const TMap<EWhy, TArray<FString>>& ByReason, EWhy Why, const TCHAR* Name)
+	{
+		const TArray<FString>* Names = ByReason.Find(Why);
+		return Names && Names->Contains(Name);
+	};
+
+	// THE FIGURES ARE THE TABLE'S ON 2026-10-04, and docs/DECISIONS.md states them. A skill designed later moves one
+	// of them on purpose: change the figure here and in the entry together, and read which reason it fell under.
+	TMap<EWhy, TArray<FString>> Demonic;
+	TestEqual(TEXT("Demonic: named skills"), Sorted(TEXT("Demonic"), Demonic), 56);
+	TestEqual(TEXT("Demonic: in the pool"), CountOf(Demonic, EWhy::InThePool), 31);
+	TestEqual(TEXT("Demonic: no shape"), CountOf(Demonic, EWhy::NoShape), 0);
+	TestEqual(TEXT("Demonic: movement"), CountOf(Demonic, EWhy::Movement), 13);
+	TestEqual(TEXT("Demonic: aura"), CountOf(Demonic, EWhy::Aura), 2);
+	TestEqual(TEXT("Demonic: summon or deployable"), CountOf(Demonic, EWhy::SummonOrDeployable), 2);
+	TestEqual(TEXT("Demonic: channelled or held"), CountOf(Demonic, EWhy::ChannelledOrHeld), 3);
+	TestEqual(TEXT("Demonic: disarms the caster"), CountOf(Demonic, EWhy::DisarmsTheCaster), 1);
+	TestEqual(TEXT("Demonic: requires a condition"), CountOf(Demonic, EWhy::Requires), 3);
+	TestEqual(TEXT("Demonic: costs health"), CountOf(Demonic, EWhy::HealthCost), 1);
+
+	// ONE ROW FOR EACH REASON THAT A ROW SHOWED, BY NAME, so a reason that stopped working is named and not only counted.
+	TestTrue(TEXT("Pyroclasm is a channel"), Holds(Demonic, EWhy::ChannelledOrHeld, TEXT("Pyroclasm")));
+	TestTrue(TEXT("Backswing is held"), Holds(Demonic, EWhy::ChannelledOrHeld, TEXT("Backswing")));
+	TestTrue(TEXT("Buried Fire plants the weapon"), Holds(Demonic, EWhy::DisarmsTheCaster, TEXT("Buried Fire")));
+	TestTrue(TEXT("Touch Off requires a burning enemy"), Holds(Demonic, EWhy::Requires, TEXT("Touch Off")));
+	TestTrue(TEXT("Blood Pyre costs health"), Holds(Demonic, EWhy::HealthCost, TEXT("Blood Pyre")));
+	TestTrue(TEXT("Flashpoint moves the character"), Holds(Demonic, EWhy::Movement, TEXT("Flashpoint")));
+	TestTrue(TEXT("Ashen Edge is in the pool"), Holds(Demonic, EWhy::InThePool, TEXT("Ashen Edge")));
+
+	// THE POOL FUNCTION GIVES EXACTLY THE ROWS THE RULE LETS THROUGH, AND ONLY THE FOUR SHAPES THAT END BY THEMSELVES.
+	const TArray<FCataclysmWeaponSkill> Pool = TheWildMagicPool(TEXT("Demonic"));
+	TestEqual(TEXT("the pool function agrees with the count"), Pool.Num(), CountOf(Demonic, EWhy::InThePool));
+	TSet<FString> Names;
+	for (const FCataclysmWeaponSkill& Skill : Pool)
+	{
+		TestTrue(FString::Printf(TEXT("%s is a strike, a projectile, a self buff or a debuff"), *Skill.Name),
+				 Skill.Shape == ECataclysmSkillShape::Strike || Skill.Shape == ECataclysmSkillShape::Projectile
+					 || Skill.Shape == ECataclysmSkillShape::SelfBuff || Skill.Shape == ECataclysmSkillShape::Debuff);
+		TestFalse(FString::Printf(TEXT("%s is in the pool once"), *Skill.Name), Names.Contains(Skill.Name));
+		Names.Add(Skill.Name);
+	}
+
+	// WAR TODAY: 54 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills.
+	TMap<EWhy, TArray<FString>> War;
+	TestEqual(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
+	TestEqual(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 54);
+	TestEqual(TEXT("War: movement"), CountOf(War, EWhy::Movement), 3);
+	TestEqual(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
+	TestEqual(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
+	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
+	TestEqual(TEXT("a damage type with no skills has an empty pool"), TheWildMagicPool(TEXT("Celestial")).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWildMagicTriggersTest,
+	"Cataclysm.DungeonModifierEffects.WildMagicARollUnderFiveTriggersThePinnedSkillFreeAtThePressedSkillsAim",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWildMagicTriggersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// A SELF BUFF IS PINNED, because it is still running after the trigger and so can be read. The player's damage
+	// type is the component's default, Demonic.
+	const TArray<FCataclysmWeaponSkill> Pool = TheWildMagicPool(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Buff = TheFirstOfShape(Pool, ECataclysmSkillShape::SelfBuff);
+	const FCataclysmWeaponSkill* Strike = TheFirstOfShape(Pool, ECataclysmSkillShape::Strike);
+	if (!TestNotNull(TEXT("set-up: a self buff in the pool"), Buff)
+		|| !TestNotNull(TEXT("set-up: a strike in the pool"), Strike))
+	{
+		return false;
+	}
+	const FString Pressed = Strike->Name;
+	FWildMagicPinned Pinned(TEXT("0"), PickOf(Pool, Pressed, Buff->Name));
+	if (!TestTrue(TEXT("the roll and the pick can be pinned"), Pinned.IsUsable()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel before"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
+			  FString::Printf(TEXT("wild magic: 0 triggered; pool of %d Demonic skills"), Pool.Num()));
+
+	// THE USE DRAWS IT; NOTHING IS TRIGGERED UNTIL THE NEXT TICK.
+	const FVector Aim(300.0f, 400.0f, 0.0f);
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("the pinned skill is drawn"), Mode->WildMagicPendingSkill(), FName(*Buff->Name));
+	TestEqual(TEXT("and nothing is triggered yet"), Mode->WildMagicTriggeredCount(), 0);
+	TestNull(TEXT("nor running"), TheTriggeredSkillRunning(Player, Buff->Name));
+
+	// TRIGGERED: FREE, NOT A USE, AIMED WHERE THE PRESSED SKILL WAS.
+	const float ManaBefore = Player.Read(UCataclysmVitalAttributeSet::GetManaAttribute());
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	if (!TestTrue(TEXT("the trigger is made"), Mode->MakeTheWildMagicTrigger()))
+	{
+		return false;
+	}
+	const UCataclysmSkillTemplate* Running = TheTriggeredSkillRunning(Player, Buff->Name);
+	if (TestNotNull(TEXT("the triggered buff is running, with no key"), Running))
+	{
+		TestTrue(TEXT("it is aimed where the pressed skill was aimed"), Running->FreeRepeatAim.Equals(Aim, 0.01f));
+		TestTrue(TEXT("and is a free use"), Running->bFreeRepeat);
+	}
+	TestEqual(TEXT("it paid no mana"), Player.Read(UCataclysmVitalAttributeSet::GetManaAttribute()), ManaBefore);
+	TestEqual(TEXT("and sent no skill-used notice, so it cannot roll again"),
+			  UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestEqual(TEXT("one triggered"), Mode->WildMagicTriggeredCount(), 1);
+	TestEqual(TEXT("the last is the pinned skill"), Mode->WildMagicLastSkill(), FName(*Buff->Name));
+	TestTrue(TEXT("nothing waits any more"), Mode->WildMagicPendingSkill().IsNone());
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
+			  FString::Printf(TEXT("wild magic: 1 triggered; last: %s; pool of %d Demonic skills"), *Buff->Name, Pool.Num()));
+
+	// AND A SECOND CALL WITH NOTHING DRAWN DOES NOTHING.
+	TestFalse(TEXT("with nothing drawn, nothing is triggered"), Mode->MakeTheWildMagicTrigger());
+	TestEqual(TEXT("still one"), Mode->WildMagicTriggeredCount(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWildMagicNoRollTest,
+	"Cataclysm.DungeonModifierEffects.WildMagicDoesNotRollAtFiveNorForACreatureNorWithoutTheRowNorOnABasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWildMagicNoRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Pool = TheWildMagicPool(TEXT("Demonic"));
+	if (!TestTrue(TEXT("set-up: a pool of at least two"), Pool.Num() >= 2))
+	{
+		return false;
+	}
+	const FString Pressed = Pool[0].Name;
+	const FVector Aim(100.0f, 0.0f, 0.0f);
+	FWildMagicPinned Pinned(TEXT("5"), 0);
+	if (!TestTrue(TEXT("the roll and the pick can be pinned"), Pinned.IsUsable()))
+	{
+		return false;
+	}
+
+	// EACH CASE BELOW DRAWS NOTHING, and the control at the end of the first three shows the same use does draw.
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("a roll of 5 draws nothing"), Mode->WildMagicPendingSkill().IsNone());
+
+	Pinned.Set(TEXT("0"), 0);
+	AActor* SomeoneElse = World->SpawnActor<AActor>();
+	const FGameplayTagContainer NoTags;
+	UCataclysmCombatEvents::NoteSkillUsed(SomeoneElse, Pressed, NoTags, ECataclysmAbilitySlot::Heavy, &Aim);
+	TestTrue(TEXT("a skill someone else used draws nothing"), Mode->WildMagicPendingSkill().IsNone());
+
+	Mode->DungeonModifiers = {HeavensQuakeRow};
+	if (!TestTrue(TEXT("a floor without the row was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("on a floor without the row a use draws nothing"), Mode->WildMagicPendingSkill().IsNone());
+
+	// THE BASIC ATTACK, LAST, ON A FLOOR WITH THE ROW: it draws nothing, and the same use in another slot does.
+	Mode->DungeonModifiers = {WildMagicRow};
+	if (!TestTrue(TEXT("a floor with the row was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("a basic attack draws nothing"), Mode->WildMagicPendingSkill().IsNone());
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestFalse(TEXT("control: the same use in the Heavy slot draws a skill"), Mode->WildMagicPendingSkill().IsNone());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWildMagicDifferentTest,
+	"Cataclysm.DungeonModifierEffects.WildMagicNeverPicksTheSkillJustUsed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWildMagicDifferentTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Pool = TheWildMagicPool(TEXT("Demonic"));
+	if (!TestTrue(TEXT("set-up: a pool of at least three"), Pool.Num() >= 3))
+	{
+		return false;
+	}
+
+	// THE FIRST SKILL OF THE POOL IS THE ONE USED, so a pick of 0 would be that very skill if it were not taken out.
+	const FString Pressed = Pool[0].Name;
+	const FVector Aim(100.0f, 0.0f, 0.0f);
+	FWildMagicPinned Pinned(TEXT("0"), 0);
+	if (!TestTrue(TEXT("the roll and the pick can be pinned"), Pinned.IsUsable()))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("a pick of 0 is the second skill of the pool, not the one just used"),
+			  Mode->WildMagicPendingSkill(), FName(*Pool[1].Name));
+
+	// EVERY OTHER PICK IS ONE OF THE OTHERS, EACH A DIFFERENT ONE.
+	TSet<FName> Drawn;
+	for (int32 Pick = 0; Pick < Pool.Num() - 1; ++Pick)
+	{
+		Pinned.Set(TEXT("0"), Pick);
+		ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+		Drawn.Add(Mode->WildMagicPendingSkill());
+	}
+	TestEqual(TEXT("the picks draw every other skill of the pool"), Drawn.Num(), Pool.Num() - 1);
+	TestFalse(TEXT("and none of them is nothing"), Drawn.Contains(NAME_None));
+
+	// A PICK PAST THE END IS HELD TO THE LAST.
+	Pinned.Set(TEXT("0"), 9999);
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("a pick past the end is the last skill"), Mode->WildMagicPendingSkill(), FName(*Pool.Last().Name));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWildMagicWaitTest,
+	"Cataclysm.DungeonModifierEffects.WildMagicWaitsAQuarterSecondBetweenTriggers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWildMagicWaitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Pool = TheWildMagicPool(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Buff = TheFirstOfShape(Pool, ECataclysmSkillShape::SelfBuff);
+	const FCataclysmWeaponSkill* Strike = TheFirstOfShape(Pool, ECataclysmSkillShape::Strike);
+	if (!TestNotNull(TEXT("set-up: a self buff in the pool"), Buff)
+		|| !TestNotNull(TEXT("set-up: a strike in the pool"), Strike))
+	{
+		return false;
+	}
+	const FString Pressed = Strike->Name;
+	const FVector Aim(100.0f, 0.0f, 0.0f);
+	FWildMagicPinned Pinned(TEXT("0"), PickOf(Pool, Pressed, Buff->Name));
+	if (!TestTrue(TEXT("the roll and the pick can be pinned"), Pinned.IsUsable()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("before any trigger there is no wait"), Mode->WildMagicSecondsUntilNext() <= 0.0f);
+
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	if (!TestTrue(TEXT("set-up: a first trigger"), Mode->MakeTheWildMagicTrigger()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a trigger starts a quarter second's wait"), Mode->WildMagicSecondsUntilNext(),
+			  Effects::WildMagicSecondsBetweenTriggers, 0.001f);
+
+	// INSIDE THE WAIT A USE DRAWS NOTHING, EVEN AT A ROLL OF 0.
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("inside the wait a use draws nothing"), Mode->WildMagicPendingSkill().IsNone());
+
+	// PAST IT, THE SAME USE DRAWS AGAIN.
+	CataclysmTestWorld::RunClock(World, 0.3f);
+	TestTrue(TEXT("past the wait there is none"), Mode->WildMagicSecondsUntilNext() <= 0.0f);
+	ThePlayerUses(Player, Pressed, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("and the same use draws again"), Mode->WildMagicPendingSkill(), FName(*Buff->Name));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWildMagicSmallPoolTest,
+	"Cataclysm.DungeonModifierEffects.WildMagicWithAPoolOfOneOrNoneTriggersNothingMoreAndThePanelSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWildMagicSmallPoolTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
+	UCataclysmWeaponSlotsComponent* Weapon =
+		Player.Character ? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Weapon))
+	{
+		return false;
+	}
+	const FVector Aim(100.0f, 0.0f, 0.0f);
+	FWildMagicPinned Pinned(TEXT("0"), 0);
+	if (!TestTrue(TEXT("the roll and the pick can be pinned"), Pinned.IsUsable()))
+	{
+		return false;
+	}
+
+	// A DAMAGE TYPE WITH NO SKILLS AT ALL, FIRST, while nothing is drawn: a use draws nothing, and the panel says so.
+	Weapon->SetDamageType(TEXT("Celestial"));
+	TestEqual(TEXT("the panel says there is nothing to trigger"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
+			  FString(TEXT("wild magic: no other skill to trigger")));
+	ThePlayerUses(Player, TEXT("Some Other Skill"), ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("with an empty pool a use draws nothing"), Mode->WildMagicPendingSkill().IsNone());
+
+	// A WAR WEAPON: one skill in the pool on 2026-10-04. The panel says how many, which is what the row can do here.
+	Weapon->SetDamageType(TEXT("War"));
+	const TArray<FCataclysmWeaponSkill> War = TheWildMagicPool(TEXT("War"));
+	if (!TestEqual(TEXT("set-up: War's pool is one skill"), War.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel says the pool is one skill"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
+			  FString(TEXT("wild magic: 0 triggered; pool of 1 War skill")));
+	ThePlayerUses(Player, War[0].Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("using the pool's only skill draws nothing: there is no different one"),
+			 Mode->WildMagicPendingSkill().IsNone());
+	ThePlayerUses(Player, TEXT("Some Other Skill"), ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("using any other skill draws the pool's one"), Mode->WildMagicPendingSkill(), FName(*War[0].Name));
 	return true;
 }
 

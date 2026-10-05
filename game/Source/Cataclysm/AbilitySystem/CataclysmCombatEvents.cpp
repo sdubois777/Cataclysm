@@ -270,7 +270,7 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 
 void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillName,
 										   const FGameplayTagContainer& SkillTags,
-										   ECataclysmAbilitySlot Slot)
+										   ECataclysmAbilitySlot Slot, const FVector* Aim)
 {
 	UCataclysmCombatEvents* Events = User ? In(User->GetWorld()) : nullptr;
 	if (!Events || !Events->OnSkillUsed.IsBound())
@@ -284,6 +284,7 @@ void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillNam
 	Notice.SkillTags = &SkillTags;
 	Notice.Slot = Slot;
 	Notice.Location = User->GetActorLocation();
+	Notice.Aim = Aim ? *Aim : Notice.Location;
 
 	++Events->SkillUses;
 	Events->OnSkillUsed.Broadcast(Notice);
