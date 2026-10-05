@@ -81,20 +81,20 @@ namespace CataclysmEnchantmentSetTest
 	 * is where `UCataclysmDropRoll` reads it from.
 	 */
 	const TCHAR* PositiveCsv =
-		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative\n")
-		TEXT("Set_A_Two,Test Set A (2-Piece Bonus): armour,Set,7,,False\n")
-		TEXT("Set_A_Six,Test Set A (6-Piece Bonus): critical chance,Set,7,,False\n")
-		TEXT("Set_A_Ten,Test Set A (10-Piece Bonus): evasion,Set,7,,False\n")
-		TEXT("Set_B_Two,Test Set B (2-Piece Bonus): health,Set,8,,False\n")
-		TEXT("Set_C_Two,Test Set C (2-Piece Bonus): block,Set,9,,False\n")
-		TEXT("Ordinary,An ordinary benefit,Generic,1,,False\n");
+		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative,RollsDown\n")
+		TEXT("Set_A_Two,Test Set A (2-Piece Bonus): armour,Set,7,,False,\n")
+		TEXT("Set_A_Six,Test Set A (6-Piece Bonus): critical chance,Set,7,,False,\n")
+		TEXT("Set_A_Ten,Test Set A (10-Piece Bonus): evasion,Set,7,,False,\n")
+		TEXT("Set_B_Two,Test Set B (2-Piece Bonus): health,Set,8,,False,\n")
+		TEXT("Set_C_Two,Test Set C (2-Piece Bonus): block,Set,9,,False,\n")
+		TEXT("Ordinary,An ordinary benefit,Generic,1,,False,\n");
 
 	/** The costs. Set C has none, which is what makes it grant nothing. */
 	const TCHAR* NegativeCsv =
-		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative\n")
-		TEXT("Set_A_Drawback,Test Set A costs movement speed,Set,7,,True\n")
-		TEXT("Set_B_Drawback,Test Set B costs mana,Set,8,,True\n")
-		TEXT("Ordinary_Drawback,An ordinary drawback,Generic,3,,True\n");
+		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative,RollsDown\n")
+		TEXT("Set_A_Drawback,Test Set A costs movement speed,Set,7,,True,\n")
+		TEXT("Set_B_Drawback,Test Set B costs mana,Set,8,,True,\n")
+		TEXT("Ordinary_Drawback,An ordinary drawback,Generic,3,,True,\n");
 
 	/** What each made-up row grants. One stat each, so a test can tell them apart. */
 	const TCHAR* EffectCsv =
@@ -135,6 +135,14 @@ namespace CataclysmEnchantmentSetTest
 		Out.Effects = TableFrom<FCataclysmEnchantmentEffectRow>(EffectCsv);
 		if (!Out.Positive || !Out.Negative || !Out.Effects)
 		{
+			// THE HEADER TO COPY IS THE GENERATED FILE'S OWN FIRST LINE:
+			// `game/Data/EnchantmentsPositive.csv` for the two sentence tables
+			// above (the negative file's is the same) and
+			// `game/Data/EnchantmentEffects.csv` for the effect table. A NEW FIELD
+			// ON A ROW STRUCT BREAKS A TABLE BUILT FROM CSV TEXT HERE: a column
+			// the struct has and the text lacks stops the table reading. Adding
+			// `RollsDown` to the sentence row did that to all six tests on
+			// 2026-10-05.
 			Test.AddError(TEXT("A made-up table in this file did not read. Its "
 							   "columns must match the generated CSV's."));
 			return false;
