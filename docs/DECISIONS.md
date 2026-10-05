@@ -41,8 +41,26 @@ Two merged entries in this file quote the old sentence, and the docstring of
 Burn became player-applied. All three are history and stay as written.
 
 **The workbook row was edited on 2026-10-04**: the DoTs sheet, cell A4. The generator then changed one line of
-`game/Data/StatusEffects.csv`, the `DoT_Burn` row, and no other file. The DataTable asset is rebuilt in the window,
-and the run table follows.
+`game/Data/StatusEffects.csv`, the `DoT_Burn` row, and no other file. The DataTable asset was rebuilt in the window
+below.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-04 in the jovial-bouman worktree, as one window for a stack of four changes on
+`development` 03554578: five stale comments, Inferno Charge (#1560), the Burn row (#1538) and Subjugate's pick
+(#1529), in that order. Every run below was made at the stack's top, 404d8c01, unless its row says otherwise.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Python before the asset was rebuilt | 912c1962 | 1 failed, 5690 passed, 8 skipped in 330.98s; the failure was `test_every_csv_still_hashes_to_what_was_recorded`, naming StatusEffects.csv and WeaponSkills.csv |
+| Asset rebuild | 229d15b7 | three files changed: `DT_StatusEffects.uasset`, `DT_WeaponSkills.uasset` and two hash lines of `datatable_asset_sources.json`; no other asset |
+| `tools/tests` after the rebuild | 404d8c01 | 3874 passed, 8 skipped in 62.66s |
+| Build | 404d8c01's source, at 229d15b7 | Build: Succeeded - 32 actions, 29 files compiled |
+| Python of record | 404d8c01 | 5691 passed, 8 skipped in 417.90s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite | 404d8c01 | 3120 tests performed, 3120 succeeded, 0 failed; Declared: 3120 tests in the tree, gap 0 |
+
+**No proof, as registered**: this change is a sentence in a data row and a comment. The status effects asset and
+its one hash line are this change's; the weapon skills asset belongs to the Subjugate entry below.
 
 ---
 
