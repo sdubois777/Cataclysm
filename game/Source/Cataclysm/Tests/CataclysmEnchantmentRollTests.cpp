@@ -512,4 +512,112 @@ bool FCataclysmEnchantmentRollDropTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentRollDownAgreesTest,
+	"Cataclysm.Enchantments.ARangeThatRollsDownReadsTheSameInTheHoverTextAndTheEffect",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A better roll gives the better outcome, ruled 2026-10-05: a roll of 1 gives a
+ * benefit its best figure and a drawback its harshest, so a few ranges roll from
+ * their second number to their first. THE HOVER TEXT AND THE EFFECT ARE
+ * DIFFERENT CODE and neither reads the other; both read the sentence row's
+ * `RollsDown`. This reads the shipped tables and checks, at a roll of 0, of 0.5
+ * and of 1, that the sentence the player would read states exactly the figure
+ * the effect row gives, for one row of each kind that rolls down -- a Value, a
+ * Condition Value and a Scale Step -- and for a lockout, whose threshold did not
+ * roll at all until the same change while its text did.
+ *
+ * THE FIGURES AT A ROLL OF 1 ARE STATED OUTRIGHT AS WELL, so that both readers
+ * agreeing on the wrong direction would still fail.
+ */
+bool FCataclysmEnchantmentRollDownAgreesTest::RunTest(const FString&)
+{
+	const UDataTable* Positive = UCataclysmDropRoll::LoadPositiveEnchantmentTable();
+	const UDataTable* Negative = UCataclysmDropRoll::LoadNegativeEnchantmentTable();
+	const UDataTable* Effects = UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+	if (!TestNotNull(TEXT("the benefit sentences"), Positive) || !TestNotNull(TEXT("the drawback sentences"), Negative)
+		|| !TestNotNull(TEXT("the effect rows"), Effects))
+	{
+		return false;
+	}
+	const TCHAR* Stale = TEXT(" If not, the enchantment tables may be older than the sheet: run "
+							  "tools/generate_datatable_assets.py");
+
+	using FEffect = FCataclysmEnchantmentEffectRow;
+	const auto Whole = [](float Figure) { return FMath::RoundToInt(Figure); };
+
+	struct FCase
+	{
+		const TCHAR* Key;
+		const UDataTable* Sentences;
+		const TCHAR* Marked;
+		TFunction<FString(const FEffect&, float)> AsTheEffectGivesIt;
+		const TCHAR* AtTheTopRoll;
+	};
+	const TArray<FCase> Cases = {
+		// A VALUE. The shortest wait is the best.
+		{TEXT("Positive_When_a_minion_dies_it_automatically_re_summons_a"), Positive, TEXT("1"),
+		 [&](const FEffect& E, float Roll)
+		 {
+			 return FString::Printf(TEXT("When a minion dies it automatically re-summons after %d seconds"),
+				 Whole(UCataclysmItemValues::EnchantmentValue(E.ValueLow, E.ValueHigh, Roll)));
+		 },
+		 TEXT("When a minion dies it automatically re-summons after 3 seconds")},
+		// A CONDITION VALUE. The lowest threshold is the best.
+		{TEXT("Positive_Your_abilities_are_free_when_above_80_95_hp"), Positive, TEXT("1"),
+		 [&](const FEffect& E, float Roll)
+		 {
+			 return FString::Printf(TEXT("Your abilities are free when above %d%% hp"),
+				 Whole(UCataclysmItemModifiers::RolledConditionValue(E, Roll)));
+		 },
+		 TEXT("Your abilities are free when above 80% hp")},
+		// A SCALE STEP, BESIDE A VALUE THAT ROLLS UP. One roll drives both, and
+		// only the second range is marked.
+		{TEXT("Positive_This_weapon_has_5_20_more_damage_for_every_100"), Positive, TEXT("2"),
+		 [&](const FEffect& E, float Roll)
+		 {
+			 return FString::Printf(TEXT("This weapon has %d%% more damage for every %d,000 kills"),
+				 Whole(UCataclysmItemValues::EnchantmentValue(E.ValueLow, E.ValueHigh, Roll)),
+				 Whole(UCataclysmItemModifiers::RolledScaleStep(E, Roll) / 1000.0f));
+		 },
+		 TEXT("This weapon has 20% more damage for every 100,000 kills")},
+		// A LOCKOUT, WHICH ROLLS UP: the longest is the harshest. Its row stated
+		// a fixed 2 seconds while its text showed 1 or 2.
+		{TEXT("Negative_After_blocking_you_cannot_block_again_for_1_2_se"), Negative, TEXT(""),
+		 [&](const FEffect& E, float Roll)
+		 {
+			 return FString::Printf(TEXT("After blocking you cannot block again for %d seconds"),
+				 Whole(UCataclysmItemModifiers::RolledConditionValue(E, Roll)));
+		 },
+		 TEXT("After blocking you cannot block again for 2 seconds")},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		const FCataclysmEnchantmentRow* Sentence =
+			Case.Sentences->FindRow<FCataclysmEnchantmentRow>(FName(Case.Key), TEXT("test"), false);
+		const FEffect* Effect = Effects->FindRow<FEffect>(
+			FName(*FString::Printf(TEXT("%s#1"), Case.Key)), TEXT("test"), false);
+		if (!TestNotNull(*FString::Printf(TEXT("%s: its sentence row"), Case.Key), Sentence)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: its first effect row"), Case.Key), Effect))
+		{
+			continue;
+		}
+		TestEqual(*FString::Printf(TEXT("%s: the ranges its sentence marks as rolling down.%s"), Case.Key, Stale),
+			Sentence->RollsDown, FString(Case.Marked));
+		for (const float Roll : {0.0f, 0.5f, 1.0f})
+		{
+			TestEqual(*FString::Printf(TEXT("%s at a roll of %.1f: the text states the effect's figure"),
+					Case.Key, Roll),
+				UCataclysmItemValues::EnchantmentTextFor(Sentence->Effect, Sentence->RollsDown, Roll),
+				Case.AsTheEffectGivesIt(*Effect, Roll));
+		}
+		TestEqual(*FString::Printf(TEXT("%s at a roll of 1: the best for a benefit, the harshest for a drawback.%s"),
+				Case.Key, Stale),
+			UCataclysmItemValues::EnchantmentTextFor(Sentence->Effect, Sentence->RollsDown, 1.0f),
+			FString(Case.AtTheTopRoll));
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -6628,12 +6628,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaximumHealthShareRowTest,
  * "Your maximum HP cannot exceed 40%-60% of its normal value". Issue #1833, the
  * rows-only batch.
  *
- * THE ROW IS THE COMPLEMENT OF ITS SENTENCE: max_health more, -60 to -40. The
- * item text and the value are both taken by POSITION in the range, so at the
- * lowest roll the text shows the sentence's first number, 40, and the value is
- * the row's first, -60, which leaves 40% of the maximum. At the highest roll the
- * text shows 60 and the value -40 leaves 60%. Read in play, off the maximum
- * health a real refresh writes, against the same wearer with nothing on.
+ * THE ROW IS THE COMPLEMENT OF ITS SENTENCE, AND ITS RANGE ROLLS DOWN. Ruled
+ * 2026-10-05: a roll of 1 gives a drawback its harshest figure, which here is
+ * the sentence's FIRST number, 40. The sentence marks its range, so the text
+ * rolls from 60 to 40 and the row is written max_health more, -40 to -60. At
+ * the lowest roll the text shows 60 and the value -40 leaves 60% of the
+ * maximum; at the highest the text shows 40 and -60 leaves 40%. Until that
+ * ruling the roll ran the other way. Read in play, off the maximum health a
+ * real refresh writes, against the same wearer with nothing on.
  */
 bool FCataclysmMaximumHealthShareRowTest::RunTest(const FString&)
 {
@@ -6672,14 +6674,27 @@ bool FCataclysmMaximumHealthShareRowTest::RunTest(const FString&)
 		return Share;
 	};
 
-	TestEqual(TEXT("at the lowest roll the text says 40%"),
-		UCataclysmItemValues::EnchantmentTextAtRoll(Sentence, 0.0f),
-		FString(TEXT("Your maximum HP cannot exceed 40% of its normal value")));
-	TestEqual(TEXT("and 40% of the maximum is what is left"), WornAt(0.0f), 0.4f, 0.0001f);
-	TestEqual(TEXT("at the highest roll the text says 60%"),
-		UCataclysmItemValues::EnchantmentTextAtRoll(Sentence, 1.0f),
+	// THE MARK THE SHIPPED SENTENCE ROW CARRIES, read from the table, so the
+	// text below is rolled the way the hover text rolls it.
+	const UDataTable* Sentences = UCataclysmDropRoll::LoadNegativeEnchantmentTable();
+	const FCataclysmEnchantmentRow* SentenceRow = Sentences
+		? Sentences->FindRow<FCataclysmEnchantmentRow>(FName(Enchantment), TEXT("test"), false) : nullptr;
+	if (!TestNotNull(TEXT("the sentence row"), SentenceRow)
+		|| !TestEqual(TEXT("the sentence marks its one range as rolling down. If not, "
+						   "DT_EnchantmentsNegative may be older than the sheet: run "
+						   "tools/generate_datatable_assets.py"),
+				SentenceRow->RollsDown, FString(TEXT("1"))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at the lowest roll the text says 60%"),
+		UCataclysmItemValues::EnchantmentTextFor(Sentence, SentenceRow->RollsDown, 0.0f),
 		FString(TEXT("Your maximum HP cannot exceed 60% of its normal value")));
-	TestEqual(TEXT("and 60% of the maximum is what is left"), WornAt(1.0f), 0.6f, 0.0001f);
+	TestEqual(TEXT("and 60% of the maximum is what is left"), WornAt(0.0f), 0.6f, 0.0001f);
+	TestEqual(TEXT("at the highest roll the text says 40%, the harshest"),
+		UCataclysmItemValues::EnchantmentTextFor(Sentence, SentenceRow->RollsDown, 1.0f),
+		FString(TEXT("Your maximum HP cannot exceed 40% of its normal value")));
+	TestEqual(TEXT("and 40% of the maximum is what is left"), WornAt(1.0f), 0.4f, 0.0001f);
 	TestEqual(TEXT("and with it off, the whole maximum again"),
 		Wearer.AbilitySystem->GetNumericAttribute(MaxHealth) / Plain, 1.0f, 0.0001f);
 	return true;
@@ -8932,9 +8947,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponKillRowStepsTest,
 /**
  * Issue #1833, the kill counter, window B. "This weapon has 5-20% more damage
  * for every 100,000-500,000 kills", worn on a sword at the top roll: 20% more
- * per 500,000 kills. A sword that has made 499,998 grants nothing; the kill
- * that reaches 500,000 refreshes the grant, once, and attack and spell damage
- * are each 1.2 times; the kills either side refresh nothing.
+ * per 100,000 kills. RULED 2026-10-05: the best roll gives the best of BOTH
+ * ranges, so the step rolls down, from 500,000 to 100,000, while the value
+ * rolls up; until then the top roll gave 20% per 500,000. A sword that has made
+ * 99,998 grants nothing; the kill that reaches 100,000 refreshes the grant,
+ * once, and attack and spell damage are each 1.2 times; the kills either side
+ * refresh nothing.
  */
 bool FCataclysmWeaponKillRowStepsTest::RunTest(const FString&)
 {
@@ -8950,7 +8968,7 @@ bool FCataclysmWeaponKillRowStepsTest::RunTest(const FString&)
 	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
 	FCataclysmItem Removed;
 	FCataclysmItem AlsoRemoved;
-	Wearer.Equipment->EquipInto(Sword(1.0f, 499'998), ECataclysmGearSlot::Weapon1,
+	Wearer.Equipment->EquipInto(Sword(1.0f, 99'998), ECataclysmGearSlot::Weapon1,
 								Removed, AlsoRemoved);
 	Wearer.Equipment->RefreshAttributes(ASC);
 
@@ -8962,10 +8980,10 @@ bool FCataclysmWeaponKillRowStepsTest::RunTest(const FString&)
 	const float Attack = Multiplier(TEXT("attack_damage"));
 	const float Spell = Multiplier(TEXT("spell_damage"));
 
-	TestFalse(TEXT("the 499,999th kill crosses no step"),
+	TestFalse(TEXT("the 99,999th kill crosses no step"),
 		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
 	TestEqual(TEXT("and grants nothing yet"), Multiplier(TEXT("attack_damage")), Attack, 0.0001f);
-	TestTrue(TEXT("the 500,000th crosses the rolled step and refreshes the grant"),
+	TestTrue(TEXT("the 100,000th crosses the rolled step and refreshes the grant"),
 		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
 	TestEqual(FString::Printf(TEXT("attack damage 1.2 times. %s"), StaleAsset),
 		Multiplier(TEXT("attack_damage")) / Attack, 1.2f, 0.0001f);
@@ -8974,14 +8992,14 @@ bool FCataclysmWeaponKillRowStepsTest::RunTest(const FString&)
 		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
 	TestEqual(TEXT("and changes nothing"), Multiplier(TEXT("attack_damage")) / Attack, 1.2f, 0.0001f);
 
-	// AT THE BOTTOM ROLL THE STEP IS 100,000 AND THE VALUE 5. A sword at 99,999
-	// grants nothing, and its next kill is a step.
+	// AT THE BOTTOM ROLL THE STEP IS 500,000 AND THE VALUE 5, the worst of both.
+	// A sword at 499,999 grants nothing, and its next kill is a step.
 	Wearer.Equipment->UnequipEverything();
-	Wearer.Equipment->EquipInto(Sword(0.0f, 99'999), ECataclysmGearSlot::Weapon1,
+	Wearer.Equipment->EquipInto(Sword(0.0f, 499'999), ECataclysmGearSlot::Weapon1,
 								Removed, AlsoRemoved);
 	Wearer.Equipment->RefreshAttributes(ASC);
 	const float Low = Multiplier(TEXT("attack_damage"));
-	TestTrue(TEXT("at the bottom roll the 100,000th kill is a step"),
+	TestTrue(TEXT("at the bottom roll the 500,000th kill is a step"),
 		Wearer.Equipment->NoteKillOnWornWeapons(ASC));
 	TestEqual(TEXT("worth 5%"), Multiplier(TEXT("attack_damage")) / Low, 1.05f, 0.0001f);
 	return true;
@@ -8995,10 +9013,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoWeaponsKillRowTest,
  * Issue #1833, the kill counter, window B; ruled 2026-09-25 under the owner's
  * delegation. Two worn swords carry "This weapon has 5-20% more damage for
  * every 100,000-500,000 kills": the benefit is granted once, at the higher
- * roll, with THAT sword's count. A top-roll sword at 1,000,000 kills and a
- * bottom-roll one at 900,000 grant 40 (two steps of 500,000 at 20), not 20
+ * roll, with THAT sword's count. A top-roll sword at 200,000 kills and a
+ * bottom-roll one at 900,000 grant 40 (two steps of 100,000 at 20), not 180
  * (the other's 900,000 at the top step) and not 45. On a tie of rolls, the
- * larger count.
+ * larger count. The counts are for the steps as ruled on 2026-10-05: 100,000 at
+ * the top roll and 500,000 at the bottom.
  */
 bool FCataclysmTwoWeaponsKillRowTest::RunTest(const FString&)
 {
@@ -9011,13 +9030,13 @@ bool FCataclysmTwoWeaponsKillRowTest::RunTest(const FString&)
 	}
 	int32 Added = 0;
 	TestEqual(TEXT("the higher roll's own count: 40 more"),
-		OnlyEnchantmentMore(Gather(Tables, {Sword(1.0f, 1'000'000), Sword(0.0f, 900'000)}, Added),
+		OnlyEnchantmentMore(Gather(Tables, {Sword(1.0f, 200'000), Sword(0.0f, 900'000)}, Added),
 							TEXT("attack_damage")), 40.0f, 0.001f);
 	TestEqual(TEXT("whichever sword comes first"),
-		OnlyEnchantmentMore(Gather(Tables, {Sword(0.0f, 900'000), Sword(1.0f, 1'000'000)}, Added),
+		OnlyEnchantmentMore(Gather(Tables, {Sword(0.0f, 900'000), Sword(1.0f, 200'000)}, Added),
 							TEXT("attack_damage")), 40.0f, 0.001f);
 	TestEqual(TEXT("a tie of rolls takes the larger count"),
-		OnlyEnchantmentMore(Gather(Tables, {Sword(1.0f, 500'000), Sword(1.0f, 1'000'000)}, Added),
+		OnlyEnchantmentMore(Gather(Tables, {Sword(1.0f, 100'000), Sword(1.0f, 200'000)}, Added),
 							TEXT("attack_damage")), 40.0f, 0.001f);
 	return true;
 }
@@ -9029,9 +9048,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLifetimeKillRowTest,
 /**
  * Issue #1833, the kill counter, window B. "You lose 1-4% max resistances for
  * every 100,000 - 500,000 kills", worn at the top roll: 4 off the 70 cap per
- * 500,000 kills the character has made. 100,000 and 499,999 take nothing, so
- * the step is the rolled 500,000 and not the low end; 500,000 takes 4 and
- * 1,000,000 takes 8.
+ * 100,000 kills the character has made. RULED 2026-10-05: a roll of 1 gives a
+ * drawback its harshest figure in BOTH ranges, so the step rolls down to
+ * 100,000; until then the top roll took 4 per 500,000. 99,999 take nothing,
+ * 100,000 take 4 and 200,000 take 8.
  */
 bool FCataclysmLifetimeKillRowTest::RunTest(const FString&)
 {
@@ -9062,16 +9082,16 @@ bool FCataclysmLifetimeKillRowTest::RunTest(const FString&)
 	Equipment->RefreshAttributes(ASC);
 
 	using FCalc = UCataclysmDamageCalculation;
-	State->SetLifetimeKills(100'000);
-	TestEqual(TEXT("100,000 kills take nothing: the step rolled to 500,000"),
+	State->SetLifetimeKills(50'000);
+	TestEqual(TEXT("50,000 kills take nothing"), FCalc::ResistanceCapOf(ASC), 70.0f, 0.001f);
+	State->SetLifetimeKills(99'999);
+	TestEqual(TEXT("99,999 take nothing: the step rolled to 100,000"),
 		FCalc::ResistanceCapOf(ASC), 70.0f, 0.001f);
-	State->SetLifetimeKills(499'999);
-	TestEqual(TEXT("499,999 take nothing"), FCalc::ResistanceCapOf(ASC), 70.0f, 0.001f);
-	State->SetLifetimeKills(500'000);
-	TestEqual(FString::Printf(TEXT("500,000 take 4. %s"), CataclysmKillCounterTest::StaleAsset),
+	State->SetLifetimeKills(100'000);
+	TestEqual(FString::Printf(TEXT("100,000 take 4. %s"), CataclysmKillCounterTest::StaleAsset),
 		FCalc::ResistanceCapOf(ASC), 66.0f, 0.001f);
-	State->SetLifetimeKills(1'000'000);
-	TestEqual(TEXT("1,000,000 take 8"), FCalc::ResistanceCapOf(ASC), 62.0f, 0.001f);
+	State->SetLifetimeKills(200'000);
+	TestEqual(TEXT("200,000 take 8"), FCalc::ResistanceCapOf(ASC), 62.0f, 0.001f);
 	return true;
 }
 
@@ -10007,10 +10027,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFreeAboveRowTest,
 
 /**
  * "Your abilities are free when above 80%-95% hp". At 90% health a skill is
- * free for a piece rolled at the bottom, whose threshold is 80, and costs its
- * mana for a piece rolled at the top, whose threshold is 95. Issue #1833: the
- * threshold rolls with the value, and a higher roll is a harder threshold, a
- * labelled judgement of 2026-09-30.
+ * free for a piece rolled at the top, whose threshold is 80, and costs its mana
+ * for a piece rolled at the bottom, whose threshold is 95. Issue #1833: the
+ * threshold rolls with the value. RULED 2026-10-05: the best roll gives the
+ * best outcome, so the top roll is the EASIEST threshold. That replaces the
+ * labelled judgement of 2026-09-30, under which a higher roll was a harder
+ * threshold.
  */
 bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
 {
@@ -10047,16 +10069,16 @@ bool FCataclysmFreeAboveRowTest::RunTest(const FString&)
 		return Skill ? Skill->ManaCostFor(Wearer.AbilitySystem) : -1.0f;
 	};
 
-	const float Bottom = CostAt(0.0f, 900.0f);
-	const float BottomBelow = CostAt(0.0f, 700.0f);
 	const float Top = CostAt(1.0f, 900.0f);
-	TestEqual(TEXT("rolled at the bottom, a threshold of 80: free at 90% health"), Bottom, 0.0f, 0.001f);
+	const float TopBelow = CostAt(1.0f, 700.0f);
+	const float Bottom = CostAt(0.0f, 900.0f);
+	TestEqual(TEXT("rolled at the top, a threshold of 80: free at 90% health"), Top, 0.0f, 0.001f);
 	// AND THE SAME PIECE BELOW ITS THRESHOLD PAYS: a conditioned removal
 	// removes the cost only while its condition holds.
-	TestTrue(*FString::Printf(TEXT("the same piece at 70%% health, below 80: it costs its mana, %.2f"), BottomBelow),
-			 BottomBelow > 0.0f);
-	TestTrue(*FString::Printf(TEXT("rolled at the top, a threshold of 95: it costs its mana at 90%%, %.2f"), Top),
-			 Top > 0.0f);
+	TestTrue(*FString::Printf(TEXT("the same piece at 70%% health, below 80: it costs its mana, %.2f"), TopBelow),
+			 TopBelow > 0.0f);
+	TestTrue(*FString::Printf(TEXT("rolled at the bottom, a threshold of 95: it costs its mana at 90%%, %.2f"), Bottom),
+			 Bottom > 0.0f);
 	return true;
 }
 
@@ -10094,9 +10116,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCritCeilingRowTest,
 
 /**
  * "Your critical strike chance cannot exceed 30%-50%", worn at the top of its
- * roll, is a ceiling of 50: a wearer at 100% chance critically strikes on a
- * roll of 40 and not on a roll of 60. Issue #1833, `max_crit_chance` flat -50,
- * the complement of the sentence's 50.
+ * roll, is a ceiling of 30: a wearer at 100% chance critically strikes on a
+ * roll of 20 and not on a roll of 40. Issue #1833, `max_crit_chance` flat -70,
+ * the complement of the sentence's 30. RULED 2026-10-05: a roll of 1 gives a
+ * drawback its harshest figure; until then the top roll was a ceiling of 50.
  */
 bool FCataclysmCritCeilingRowTest::RunTest(const FString&)
 {
@@ -10143,8 +10166,8 @@ bool FCataclysmCritCeilingRowTest::RunTest(const FString&)
 										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
 		return Result.bWasCritical;
 	};
-	TestTrue(TEXT("a roll of 40 is under the ceiling of 50: a critical strike"), CriticalOn(40.0f));
-	TestFalse(TEXT("a roll of 60 is over it: no critical strike, though the chance is 100%"), CriticalOn(60.0f));
+	TestTrue(TEXT("a roll of 20 is under the ceiling of 30: a critical strike"), CriticalOn(20.0f));
+	TestFalse(TEXT("a roll of 40 is over it: no critical strike, though the chance is 100%"), CriticalOn(40.0f));
 	return true;
 }
 
@@ -12627,14 +12650,16 @@ bool FCataclysmNecrosisRiseRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonRowTest,
-	"Cataclysm.Enchantments.TheResummonRowBringsALostImpBackAfterSixSeconds",
+	"Cataclysm.Enchantments.TheResummonRowBringsALostImpBackAfterThreeSeconds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * "When a minion dies it automatically re-summons after 3-6 seconds". Issue
- * #1833 group E part 4b: `minion_resummoned_after_seconds` flat 3 to 6. WORN at
- * the top of its roll, 6: the wearer's summoned imp dies, nothing has come back
- * at 5.9 seconds, and one imp has at 6.1.
+ * #1833 group E part 4b: `minion_resummoned_after_seconds`, 3 to 6 seconds.
+ * WORN at the top of its roll, which is 3, the shortest wait: ruled 2026-10-05,
+ * the best roll gives the best outcome, so this range rolls down. The wearer's
+ * summoned imp dies, nothing has come back at 2.9 seconds, and one imp has at
+ * 3.1.
  */
 bool FCataclysmResummonRowTest::RunTest(const FString&)
 {
@@ -12666,10 +12691,10 @@ bool FCataclysmResummonRowTest::RunTest(const FString&)
 				   "run tools/generate_datatable_assets.py"),
 		Worn.ASC()->PendingResummons.Num(), 1);
 
-	CataclysmTestWorld::RunClock(Worn.World, 5.9f);
-	TestEqual(TEXT("at 5.9 seconds nothing has come back"), Skill->LivingMinionCount(), 0);
+	CataclysmTestWorld::RunClock(Worn.World, 2.9f);
+	TestEqual(TEXT("at 2.9 seconds nothing has come back"), Skill->LivingMinionCount(), 0);
 	CataclysmTestWorld::RunClock(Worn.World, 0.2f);
-	TestEqual(TEXT("at 6.1 seconds one imp has"), Skill->LivingMinionCount(), 1);
+	TestEqual(TEXT("at 3.1 seconds one imp has"), Skill->LivingMinionCount(), 1);
 	return true;
 }
 
