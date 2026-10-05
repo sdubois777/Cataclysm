@@ -18710,6 +18710,14 @@ namespace CataclysmAuraImmunityTest
 {
 	using namespace CataclysmSkillTest;
 
+	// EVERY TEST BELOW USES A WORLD THAT HAS BEGUN PLAY, not this file's
+	// `MakeWorld`, because each spawns a minion. In a world that never began
+	// play a minion's vital attribute set is not registered when
+	// `ACataclysmMinion::Spawn` writes its health, which is an engine ensure.
+	// AN ENSURE REPORTS ONCE PER PROCESS: on the first run of these five, the
+	// one that ran first failed on it and the other four passed only because it
+	// was already spent.
+
 	/** Living Pyre's own row. */
 	const TCHAR* const LivingPyre =
 		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; Immune=Stun, Slow, Displacement; "
@@ -18765,7 +18773,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraImmunityInsideTest,
 bool FCataclysmAuraImmunityInsideTest::RunTest(const FString&)
 {
 	using namespace CataclysmAuraImmunityTest;
-	UWorld* World = MakeWorld();
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
@@ -18816,7 +18824,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraImmunityNeedsTheRowTest,
 bool FCataclysmAuraImmunityNeedsTheRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmAuraImmunityTest;
-	UWorld* World = MakeWorld();
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
@@ -18844,7 +18852,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraImmunityTakenBackTest,
 bool FCataclysmAuraImmunityTakenBackTest::RunTest(const FString&)
 {
 	using namespace CataclysmAuraImmunityTest;
-	UWorld* World = MakeWorld();
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
@@ -18884,7 +18892,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGrantedImmunityLapsesTest,
 bool FCataclysmGrantedImmunityLapsesTest::RunTest(const FString&)
 {
 	using namespace CataclysmAuraImmunityTest;
-	UWorld* World = MakeWorld();
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Held(World, FVector::ZeroVector);
@@ -18918,7 +18926,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraWithNoImmunityTest,
 bool FCataclysmAuraWithNoImmunityTest::RunTest(const FString&)
 {
 	using namespace CataclysmAuraImmunityTest;
-	UWorld* World = MakeWorld();
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
