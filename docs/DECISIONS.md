@@ -74,7 +74,35 @@ function's stated purpose.
 listing of the header's `public:`, `protected:` and `private:` lines, read by eye, and line 826 was read as public
 when the private section runs from 734 to 873.
 
-**Not built or run when this was written.** The run table follows when the window runs.
+### THE WINDOW'S RUN
+
+Run 2026-10-04 in the jovial-bouman worktree, as one window for a stack of four changes on
+`development` 03554578: five stale comments, Inferno Charge (#1560), the Burn row (#1538) and Subjugate's pick
+(#1529), in that order. Every run below was made at the stack's top, 404d8c01, unless its row says otherwise.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| First build | 912c1962, before `FloorUnder` was made public | Result: Failed (OtherCompilationError); two C2248 errors at this change's two calls |
+| Build | 404d8c01's source, at 229d15b7 | Build: Succeeded - 32 actions, 29 files compiled |
+| Python of record | 404d8c01 | 5691 passed, 8 skipped in 417.90s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite | 404d8c01 | 3120 tests performed, 3120 succeeded, 0 failed; Declared: 3120 tests in the tree, gap 0 |
+
+| Proof: what was broken | As printed |
+| :-- | :-- |
+| P1: the charge sets off one step into the channel | PROVED: with the break in: 39 tests performed, 38 succeeded, 1 failed: InfernoChargeChannelsTwoSecondsThenLeavesItsPathBurning \| restored: 39 tests performed, 39 succeeded, 0 failed |
+| P2: the brain does not stand a channelling creature | PROVED, the same line |
+| P3: no path is laid | PROVED, the same line |
+
+**What each break failed, from the kept logs.** P1, three assertions: still channelling at 1.75 seconds, not yet
+charged, nothing burning yet. P2, one: "Expected 'the brain stands it for the channel' to be 4, but it was 1".
+P3, one: "Expected 'the path it runs is left burning' to be not null".
+
+**The Python run was started before its registration was sent** the first time this change was measured, on
+2026-10-02 at c0bc4303. The figure registered then came from a `--collect-only` taken before that run began. The
+run of record above was registered before it ran.
+
+**The lane's width has no proof of its own**, because a change is allowed three. The test's assertion that the
+marker is not null is what fails at 90 centimetres.
 
 ---
 
