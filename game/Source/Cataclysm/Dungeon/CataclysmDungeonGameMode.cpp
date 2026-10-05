@@ -1403,11 +1403,16 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	// dungeon is carved by whatever the setting or the console variable said.
 	Request.Layout = FloorBrief.Layout;
 
-	if (!CurrentFloor->Build(FCataclysmFloorGenerator::Generate(Request)))
+	// THE GATED SHORTCUTS ARE CARVED INTO THE PLAN BEFORE IT IS BUILT, on floors that carry Warzone Control Points,
+	// Soul Chains or The Labrynth, so the floor's blocks, walls and navigation mesh are made with them. Issues #1820
+	// and #41. The same dungeon and floor always carve the same ones: everything is drawn from the plan's seed.
+	FCataclysmFloorPlan Plan = FCataclysmFloorGenerator::Generate(Request);
+	PlanTheGatedShortcuts(Plan);
+	if (!CurrentFloor->Build(Plan))
 	{
 		return nullptr;
 	}
-
+	PlaceTheShortcutGates();
 	return CurrentFloor;
 }
 
@@ -1936,6 +1941,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 		// AND INFERNAL SEALS' BEARERS, for the same reason. Issues #1820 and #41.
 		ChooseTheSealBearers();
+
+		// AND SOUL CHAINS' BEARERS, for the same reason. Issues #1820 and #41.
+		ChooseTheSoulChainBearers();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -5723,7 +5731,11 @@ void ACataclysmDungeonGameMode::PlaceTheControlPoints()
 	}
 	// WHERE ETERNAL CHORUS'S PICKER PUTS ITS SOURCES, away from the entrance; a floor with fewer cells far enough
 	// apart has fewer points.
-	WarzonePointCells = EternalChorusCells(*CurrentFloor, Effects::WarzoneControlPointsPerFloor);
+	// ON A HALLS FLOOR THE POINTS WERE CHOSEN BEFORE IT WAS BUILT, on its seed, because each point's shortcut is
+	// measured from it (`PlanTheGatedShortcuts`). Elsewhere they are drawn as they always were.
+	WarzonePointCells = WarzonePlannedPoints.IsEmpty()
+		? EternalChorusCells(*CurrentFloor, Effects::WarzoneControlPointsPerFloor)
+		: WarzonePlannedPoints;
 	UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: %d point(s) on floor %d"), WarzonePointCells.Num(),
 		   FloorNumber);
 	RefreshFloorModifierPanel();
@@ -5760,6 +5772,467 @@ void ACataclysmDungeonGameMode::EndTheWarzoneAllies()
 // ---------------------------------------------------------------------------
 // The runtime floor obstacles: Heaven's Quake's pillars and Cryptquake's pits. Issues #1820 and #41. Ruled 2026-10-02.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// The gated shortcuts: Warzone's shortcuts, Soul Chains and The Labrynth. Issues #1820 and #41. Ruled 2026-10-04.
+// ---------------------------------------------------------------------------
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::SeededSourceCells(const FCataclysmFloorPlan& Plan, int32 Count,
+																FRandomStream& Stream)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE SAME TWO RULES AS `FloorSourceCells` -- away from the entrance, and apart from each other -- measured in
+	// cells, because a plan not built yet has no world positions; `WorldOfCell` is a cell's index times the cell size.
+	const float Apart = Effects::EternalChorusApartCm / FCataclysmFloorGenerator::CellSizeCm;
+	const auto CellsBetween = [](FIntPoint One, FIntPoint Two)
+	{
+		return FMath::Sqrt(static_cast<float>(FMath::Square(One.X - Two.X) + FMath::Square(One.Y - Two.Y)));
+	};
+	TArray<FIntPoint> Candidates;
+	for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+	{
+		const FIntPoint Cell = Plan.CellAt(Index);
+		if (Plan.IsFloor(Cell) && CellsBetween(Cell, Plan.Entrance) >= Apart)
+		{
+			Candidates.Add(Cell);
+		}
+	}
+	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
+	{
+		Candidates.Swap(Index, Stream.RandRange(0, Index));
+	}
+	TArray<FIntPoint> Chosen;
+	for (const FIntPoint& Cell : Candidates)
+	{
+		if (Chosen.Num() >= Count)
+		{
+			break;
+		}
+		const bool bApart = !Chosen.ContainsByPredicate([&CellsBetween, &Cell, Apart](const FIntPoint& Taken)
+		{
+			return CellsBetween(Taken, Cell) < Apart;
+		});
+		if (bApart)
+		{
+			Chosen.Add(Cell);
+		}
+	}
+	return Chosen;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheGatedShortcuts()
+{
+	for (FGatedShortcut& One : GatedShortcuts)
+	{
+		for (const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar : One.GateActors)
+		{
+			if (ACataclysmFloorObstacle* Standing = Pillar.Get())
+			{
+				Standing->Destroy();
+			}
+		}
+	}
+	GatedShortcuts.Reset();
+	WarzonePlannedPoints.Reset();
+	bGateRowsHaveNoShape = false;
+	LabrynthSecondsSince = 0.0f;
+	SoulChainsRewardDrops = 0;
+	SoulChainsRewardRolls = 0;
+}
+
+void ACataclysmDungeonGameMode::PlanTheGatedShortcuts(FCataclysmFloorPlan& Plan)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	ForgetTheGatedShortcuts();
+
+	const FName Warzone(Effects::WarzoneControlPointsKey);
+	const FName SoulChains(Effects::SoulChainsKey);
+	const FName Labrynth(Effects::LabrynthKey);
+	const bool bWarzone = FloorBrief.Modifiers.Contains(Warzone);
+	const bool bSoulChains = FloorBrief.Modifiers.Contains(SoulChains);
+	const bool bLabrynth = FloorBrief.Modifiers.Contains(Labrynth);
+	if (!bWarzone && !bSoulChains && !bLabrynth)
+	{
+		return;
+	}
+
+	// HALLS ONLY, AND NEVER A HORDE ARENA, ruled 2026-10-04 on the measurements: a carved shortcut saving ten cells
+	// exists on every Halls plan measured, on a median of none on Caverns and on no Arena. The panel says so.
+	if (FloorBrief.bWaveWalksIn || Plan.Layout != ECataclysmFloorLayout::Halls)
+	{
+		bGateRowsHaveNoShape = true;
+		return;
+	}
+
+	GatedShortcutStream = FRandomStream(FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, GatedShortcutSalt));
+
+	// EACH SHORTCUT IS SEARCHED FOR WITH THE EARLIER ONES CARVED AND THEIR GATES CLOSED, which is the floor as it
+	// stands when this one's gate opens, and none may use another's cells.
+	FCataclysmFloorPlan Search = Plan;
+	TSet<FIntPoint> Used;
+	const auto Take = [this, &Plan, &Search, &Used](const FCataclysmFloorShortcut& Shortcut, FName RowKey, int32 Index,
+													 EShortcutLeadsTo LeadsTo, bool bOpenAtStart)
+	{
+		FCataclysmFloorGenerator::CarveShortcut(Plan, Shortcut);
+		FCataclysmFloorGenerator::CarveShortcut(Search, Shortcut);
+		for (const FIntPoint& Cell : Shortcut.Gate)
+		{
+			Search.Cells[Search.IndexOf(Cell)] = ECataclysmFloorCell::Solid;
+		}
+		Used.Append(Shortcut.NewCells);
+		FGatedShortcut One;
+		One.Shortcut = Shortcut;
+		One.RowKey = RowKey;
+		One.Index = Index;
+		One.LeadsTo = LeadsTo;
+		One.bOpen = bOpenAtStart;
+		GatedShortcuts.Add(One);
+	};
+
+	if (bWarzone)
+	{
+		// THE POINTS FIRST, ON THE FLOOR'S SEED, because a shortcut is measured from its point and must be carved
+		// before the floor is built. `PlaceTheControlPoints` uses these rather than drawing its own.
+		WarzonePlannedPoints = SeededSourceCells(Plan, Effects::WarzoneControlPointsPerFloor, GatedShortcutStream);
+		for (int32 Index = 0; Index < WarzonePlannedPoints.Num(); ++Index)
+		{
+			// TO THE EXIT, ELSE TO THE ENTRANCE, ELSE THE BEST SHORTCUT NEAR THE POINT. Measured: on Halls a point has
+			// a shortcut to the exit 35 times in 200 and to either end 76 in 200, so the third step is what makes most
+			// captures open something.
+			const FIntPoint Point = WarzonePlannedPoints[Index];
+			FCataclysmFloorShortcut Shortcut;
+			if (FCataclysmFloorGenerator::FindShortcutBetween(Search, Point, Search.Exit, Used, Shortcut))
+			{
+				Take(Shortcut, Warzone, Index, EShortcutLeadsTo::Exit, /*bOpenAtStart=*/false);
+				continue;
+			}
+			if (FCataclysmFloorGenerator::FindShortcutBetween(Search, Point, Search.Entrance, Used, Shortcut))
+			{
+				Take(Shortcut, Warzone, Index, EShortcutLeadsTo::Entrance, /*bOpenAtStart=*/false);
+				continue;
+			}
+			const TArray<FCataclysmFloorShortcut> Near = FCataclysmFloorGenerator::FindShortcuts(
+				Search, GatedShortcutStream, 1, Used, Point, Effects::WarzoneShortcutNearCells);
+			if (!Near.IsEmpty())
+			{
+				Take(Near[0], Warzone, Index, EShortcutLeadsTo::Nearby, /*bOpenAtStart=*/false);
+			}
+		}
+	}
+	if (bSoulChains)
+	{
+		int32 Index = 0;
+		for (const FCataclysmFloorShortcut& Shortcut : FCataclysmFloorGenerator::FindShortcuts(
+				 Search, GatedShortcutStream, Effects::SoulChainsGates, Used))
+		{
+			Take(Shortcut, SoulChains, Index++, EShortcutLeadsTo::Anywhere, /*bOpenAtStart=*/false);
+		}
+	}
+	if (bLabrynth)
+	{
+		// HALF CLOSED WHEN THE FLOOR BEGINS: the odd ones open, the even ones shut.
+		int32 Index = 0;
+		for (const FCataclysmFloorShortcut& Shortcut : FCataclysmFloorGenerator::FindShortcuts(
+				 Search, GatedShortcutStream, Effects::LabrynthMostGates, Used))
+		{
+			Take(Shortcut, Labrynth, Index, EShortcutLeadsTo::Anywhere, /*bOpenAtStart=*/(Index % 2) == 1);
+			++Index;
+		}
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Gated shortcuts: %d carved on floor %d"), GatedShortcuts.Num(), FloorNumber);
+}
+
+bool ACataclysmDungeonGameMode::CloseTheGate(FGatedShortcut& One, bool bAsk)
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return false;
+	}
+
+	// ASKED WHEN A GATE CLOSES DURING PLAY: never onto a cell the floor holds, nor one whose closing would strand a
+	// walkable cell. Not asked when the floor begins, where the gate's cells were chosen for exactly this.
+	if (bAsk && !CataclysmFloorCanBlock(CurrentFloor->GetPlan(), One.Shortcut.Gate, ThePlayersCell(),
+										CellsTheFloorHolds()))
+	{
+		return false;
+	}
+	for (const FIntPoint& Cell : One.Shortcut.Gate)
+	{
+		CurrentFloor->BlockCell(Cell);
+	}
+	One.GateActors.RemoveAll([](const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar) { return !Pillar.IsValid(); });
+	if (One.GateActors.IsEmpty())
+	{
+		const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+			UCataclysmDungeonModifierTable::LoadDungeonModifierTable(), One.RowKey);
+		for (const FIntPoint& Cell : One.Shortcut.Gate)
+		{
+			// TWO ONE-CELL PILLARS, because the obstacle is a square block and a gate is two cells in a line.
+			if (ACataclysmFloorObstacle* Pillar = ACataclysmFloorObstacle::Place(
+					World, *CurrentFloor, {Cell}, ECataclysmObstacleKind::Pillar, One.RowKey,
+					Row ? FName(*Row->CataclysmType) : NAME_None))
+			{
+				Pillar->Raise();
+				One.GateActors.Add(Pillar);
+			}
+		}
+	}
+	One.bOpen = false;
+	return true;
+}
+
+void ACataclysmDungeonGameMode::OpenTheGate(FGatedShortcut& One)
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar : One.GateActors)
+	{
+		if (ACataclysmFloorObstacle* Standing = Pillar.Get())
+		{
+			Standing->Destroy();
+		}
+	}
+	One.GateActors.Reset();
+	if (CurrentFloor)
+	{
+		for (const FIntPoint& Cell : One.Shortcut.Gate)
+		{
+			CurrentFloor->UnblockCell(Cell);
+		}
+	}
+	One.bOpen = true;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheShortcutGates()
+{
+	for (FGatedShortcut& One : GatedShortcuts)
+	{
+		if (!One.bOpen)
+		{
+			CloseTheGate(One, /*bAsk=*/false);
+		}
+	}
+}
+
+void ACataclysmDungeonGameMode::OpenTheShortcutOf(FName RowKey, int32 Index)
+{
+	for (FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey == RowKey && One.Index == Index && !One.bOpen)
+		{
+			OpenTheGate(One);
+			RefreshFloorModifierPanel();
+		}
+	}
+}
+
+TArray<FCataclysmFloorShortcut> ACataclysmDungeonGameMode::GatedShortcutsOf(FName RowKey) const
+{
+	TArray<FCataclysmFloorShortcut> Out;
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey == RowKey)
+		{
+			Out.Add(One.Shortcut);
+		}
+	}
+	return Out;
+}
+
+bool ACataclysmDungeonGameMode::GatedShortcutIsOpen(FName RowKey, int32 Index) const
+{
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey == RowKey && One.Index == Index)
+		{
+			return One.bOpen;
+		}
+	}
+	return false;
+}
+
+FString ACataclysmDungeonGameMode::GatedShortcutLeadsTo(FName RowKey, int32 Index) const
+{
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey == RowKey && One.Index == Index)
+		{
+			switch (One.LeadsTo)
+			{
+			case EShortcutLeadsTo::Exit:
+				return TEXT("to the exit");
+			case EShortcutLeadsTo::Entrance:
+				return TEXT("to the entrance");
+			case EShortcutLeadsTo::Nearby:
+				return TEXT("nearby");
+			default:
+				return TEXT("between two places");
+			}
+		}
+	}
+	return FString();
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::SoulChainBearersNow(int32 Gate) const
+{
+	TArray<ACataclysmEnemyCharacter*> Living;
+	const FName SoulChains(UCataclysmDungeonModifierEffects::SoulChainsKey);
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey != SoulChains || One.Index != Gate)
+		{
+			continue;
+		}
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Bearer : One.Bearers)
+		{
+			if (ACataclysmEnemyCharacter* Creature = Bearer.Get();
+				IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+			{
+				Living.Add(Creature);
+			}
+		}
+	}
+	return Living;
+}
+
+void ACataclysmDungeonGameMode::ChooseTheSoulChainBearers()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	const FName SoulChains(Effects::SoulChainsKey);
+	TArray<FGatedShortcut*> Chained;
+	for (FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey == SoulChains)
+		{
+			One.Bearers.Reset();
+			One.bHadBearers = false;
+			Chained.Add(&One);
+		}
+	}
+	if (Chained.IsEmpty())
+	{
+		return;
+	}
+
+	// THE FLOOR'S OWN CREATURES THAT PAY FOR THEIR DEATH AND CAN BE KILLED, the highest rung first, as Infernal Seals
+	// chooses its bearers, and never one of those: a creature holds one thing.
+	TArray<ACataclysmEnemyCharacter*> Candidates;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->PaysForItsDeath()
+			&& !Enemy->bRaisedByARule && !CreaturesRaisedByARule.Contains(Enemy.Get()) && !Enemy->bCannotBeHurt
+			&& !DungeonGameModeIsAPlayersFollower(Enemy) && !Enemy->bIsASealBearer)
+		{
+			Candidates.Add(Enemy.Get());
+		}
+	}
+	Candidates.StableSort([](const ACataclysmEnemyCharacter& A, const ACataclysmEnemyCharacter& B)
+	{
+		return A.RarityStep > B.RarityStep;
+	});
+	int32 Next = 0;
+	for (FGatedShortcut* One : Chained)
+	{
+		for (int32 Held = 0; Held < Effects::SoulChainsBearersPerGate && Next < Candidates.Num(); ++Held, ++Next)
+		{
+			ACataclysmEnemyCharacter* Bearer = Candidates[Next];
+			if (Bearer->RarityStep < Effects::SoulChainsBearerRung)
+			{
+				Bearer->SetRarityStep(Effects::SoulChainsBearerRung);
+			}
+			One->Bearers.Add(Bearer);
+			One->bHadBearers = true;
+		}
+		// A GATE NOBODY HOLDS OPENS AT ONCE AND GIVES NOTHING: nothing could ever open it otherwise.
+		if (!One->bHadBearers)
+		{
+			OpenTheGate(*One);
+		}
+	}
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepGatedShortcuts()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor)
+	{
+		return;
+	}
+	bool bChanged = false;
+
+	// SOUL CHAINS: a gate whose bearers are all dead opens, "open up new paths", and gives one drop roll, "may grant
+	// rewards". One a gate, ruled 2026-10-04, through the same roll a kill of that rung gets.
+	const FName SoulChains(Effects::SoulChainsKey);
+	for (FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey != SoulChains || One.bOpen || !One.bHadBearers)
+		{
+			continue;
+		}
+		bool bAllDead = true;
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Bearer : One.Bearers)
+		{
+			const ACataclysmEnemyCharacter* Creature = Bearer.Get();
+			bAllDead = bAllDead && (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature));
+		}
+		if (!bAllDead)
+		{
+			continue;
+		}
+		const FVector Where = (CurrentFloor->WorldOfCell(One.Shortcut.Gate[0])
+							   + CurrentFloor->WorldOfCell(One.Shortcut.Gate[1])) * 0.5f;
+		OpenTheGate(One);
+		float MagicFind = 0.0f;
+		float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+		UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+		FRandomStream Drops(CurrentFloor->GetPlan().Seed ^ (0x50C4 + One.Index));
+		SoulChainsRewardDrops += UCataclysmDropSpawner::SpawnDropsFor(World, Effects::SoulChainsRewardRung, MagicFind,
+																	  LootQuantity, Where, Drops);
+		++SoulChainsRewardRolls;
+		bChanged = true;
+	}
+
+	// THE LABRYNTH: when due, one open gate closes and one closed gate opens. The close is asked of the placement rule;
+	// if no open gate can close this turn, nothing swaps, so the number open never drifts.
+	const FName Labrynth(Effects::LabrynthKey);
+	if (FloorBrief.Modifiers.Contains(Labrynth))
+	{
+		LabrynthSecondsSince += SecondsBetweenWaveChecks;
+		if (LabrynthSecondsSince >= Effects::LabrynthSecondsBetweenSwaps - KINDA_SMALL_NUMBER)
+		{
+			LabrynthSecondsSince = 0.0f;
+			TArray<int32> Open;
+			TArray<int32> Closed;
+			for (int32 Index = 0; Index < GatedShortcuts.Num(); ++Index)
+			{
+				if (GatedShortcuts[Index].RowKey == Labrynth)
+				{
+					(GatedShortcuts[Index].bOpen ? Open : Closed).Add(Index);
+				}
+			}
+			for (int32 Index = Open.Num() - 1; Index > 0; --Index)
+			{
+				Open.Swap(Index, GatedShortcutStream.RandRange(0, Index));
+			}
+			for (const int32 Closing : Open)
+			{
+				if (Closed.IsEmpty() || !CloseTheGate(GatedShortcuts[Closing], /*bAsk=*/true))
+				{
+					continue;
+				}
+				OpenTheGate(GatedShortcuts[Closed[GatedShortcutStream.RandRange(0, Closed.Num() - 1)]]);
+				bChanged = true;
+				break;
+			}
+		}
+	}
+	if (bChanged)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
 
 TArray<ACataclysmFloorObstacle*> ACataclysmDungeonGameMode::FloorObstaclesNow() const
 {
@@ -5861,6 +6334,7 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 		HoldWhere(Grave.Location);
 	}
 	Held.Append(WarzonePointCells);
+	Held.Append(WarzonePlannedPoints);
 	Held.Append(LocustShelterCells);
 	Held.Append(ShadowLightCells);
 	if (VoidParasiteLightCell != FIntPoint(-1, -1))
@@ -5881,6 +6355,13 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 TSet<FIntPoint> ACataclysmDungeonGameMode::CellsHeldOrWarned(const ACataclysmFloorObstacle* Except) const
 {
 	TSet<FIntPoint> Held = CellsTheFloorHolds();
+
+	// AND A SHORTCUT'S CORRIDOR, so no pillar or pit lands in one. Here and not in `CellsTheFloorHolds`, because a
+	// gate asks that when it closes, and would then refuse its own cells.
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		Held.Append(One.Shortcut.NewCells);
+	}
 	for (const FFloorObstacleWarning& Warning : FloorObstacleWarnings)
 	{
 		if (const ACataclysmFloorObstacle* Pending = Warning.Obstacle.Get(); Pending && Pending != Except)
@@ -6216,6 +6697,8 @@ void ACataclysmDungeonGameMode::StepWarzoneControlPoints(
 					   FloorNumber);
 				// AND ITS ALLIED SOLDIERS, the row's "summoning allied soldiers". Ruled 2026-10-01.
 				BringWarzoneAllies(CurrentFloor->WorldOfCell(WarzonePointCells[Index]), Player);
+				// AND ITS SHORTCUT, the row's "opening shortcuts". Ruled 2026-10-04.
+				OpenTheShortcutOf(FName(Effects::WarzoneControlPointsKey), Index);
 			}
 			else
 			{
@@ -12646,6 +13129,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bHeavensQuake && !bCryptquake && FloorObstacleWarnings.IsEmpty()
+		&& GatedShortcuts.IsEmpty()
 		&& !bMindShatteringIllusions
 		&& !bRealityRifts
 		&& !bInsanityBursts
@@ -12731,6 +13215,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bHeavensQuake || bCryptquake || !FloorObstacleWarnings.IsEmpty())
 	{
 		StepFloorObstacles(Player, bHeavensQuake, bCryptquake);
+	}
+
+	// AND THE GATED SHORTCUTS: Soul Chains' gates open when their bearers are dead, and The Labrynth swaps one.
+	if (!GatedShortcuts.IsEmpty())
+	{
+		StepGatedShortcuts();
 	}
 
 	// AND JUDGMENT ZONES, LAST OF THE THREE THAT PLACE ACTORS. It is here for the reason
@@ -15899,6 +16389,28 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString(TEXT("raw sewage: no disease stacks")));
 	}
 
+	// AND SOUL CHAINS AND THE LABRYNTH: how many of their gates are open, or why the floor has none. Ruled 2026-10-04.
+	const auto GateLine = [this, &Counting](const TCHAR* Key, const TCHAR* Label, const TCHAR* Nothing)
+	{
+		const FName RowKey(Key);
+		if (!FloorBrief.Modifiers.Contains(RowKey))
+		{
+			return;
+		}
+		int32 Gates = 0;
+		int32 Open = 0;
+		for (const FGatedShortcut& One : GatedShortcuts)
+		{
+			Gates += One.RowKey == RowKey ? 1 : 0;
+			Open += (One.RowKey == RowKey && One.bOpen) ? 1 : 0;
+		}
+		Counting.Add(RowKey, bGateRowsHaveNoShape ? FString::Printf(TEXT("%s: %s on a floor of this shape"), Label, Nothing)
+						 : Gates == 0 ? FString::Printf(TEXT("%s: %s on this floor"), Label, Nothing)
+						 : FString::Printf(TEXT("%s: %d of %d gates open"), Label, Open, Gates));
+	};
+	GateLine(UCataclysmDungeonModifierEffects::SoulChainsKey, TEXT("soul chains"), TEXT("no paths to bind"));
+	GateLine(UCataclysmDungeonModifierEffects::LabrynthKey, TEXT("the labrynth"), TEXT("no paths to turn"));
+
 	// AND THE RUNTIME FLOOR OBSTACLES: how many of each rule's cap stand. Issues #1820 and #41.
 	const FName HeavensQuake(UCataclysmDungeonModifierEffects::HeavensQuakeKey);
 	if (FloorBrief.Modifiers.Contains(HeavensQuake))
@@ -15972,6 +16484,27 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		{
 			Line += FString::Printf(TEXT("; capturing, %d of %d s"), FMath::FloorToInt(Most),
 									FMath::RoundToInt(Effects::WarzoneCaptureSeconds));
+		}
+		// AND ITS SHORTCUTS: which are open, or that this floor's shape has none. Ruled 2026-10-04.
+		if (bGateRowsHaveNoShape)
+		{
+			Line += TEXT("; no shortcuts on a floor of this shape");
+		}
+		else
+		{
+			TArray<FString> Open;
+			for (const FGatedShortcut& One : GatedShortcuts)
+			{
+				if (One.RowKey == Warzone && One.bOpen)
+				{
+					Open.Add(GatedShortcutLeadsTo(Warzone, One.Index));
+				}
+			}
+			if (!Open.IsEmpty())
+			{
+				Line += FString::Printf(TEXT("; shortcut%s open: %s"), Open.Num() == 1 ? TEXT("") : TEXT("s"),
+										*FString::Join(Open, TEXT(", ")));
+			}
 		}
 		Counting.Add(Warzone, Line);
 	}
@@ -19253,6 +19786,11 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// AND THE PILLARS AND PITS LAST THE FLOOR, ruled 2026-10-02: removed, and their cells given back, BEFORE the next
 	// floor or Horde wave is populated, so a wave's creatures are placed on the arena's whole plan.
 	EndTheFloorObstacles();
+
+	// AND THE SHORTCUTS' GATES STAND AGAIN. `BuildFloor` placed them, and the sweep of the last floor's actors above
+	// takes every obstacle with it, so they are put back here, before the floor is populated: no creature is placed
+	// on a gate's cell, which is blocked in the plan either way.
+	PlaceTheShortcutGates();
 
 	PopulateFloor();
 

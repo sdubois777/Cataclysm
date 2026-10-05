@@ -117,6 +117,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Cele
 const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
 const TCHAR* UCataclysmDungeonModifierEffects::HeavensQuakeKey = TEXT("Celestial_Heaven_s_Quake");
 const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Cryptquake");
+const TCHAR* UCataclysmDungeonModifierEffects::SoulChainsKey = TEXT("Death_Soul_Chains");
+const TCHAR* UCataclysmDungeonModifierEffects::LabrynthKey = TEXT("Chaos_The_Labrynth");
 
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
@@ -798,6 +800,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// cells during play. Issues #1820 and #41.
 		|| RowKey == FName(HeavensQuakeKey)
 		|| RowKey == FName(CryptquakeKey)
+		// WARZONE CONTROL POINTS AND SOUL CHAINS, BUILT 2026-10-04 ON THE GATED SHORTCUT, on Halls floors: a point
+		// captured opens its shortcut, and a gate whose two bearers die opens and pays. Issues #1820 and #41.
+		|| RowKey == FName(WarzoneControlPointsKey)
+		|| RowKey == FName(SoulChainsKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -823,9 +829,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
 		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
 		|| RowKey == FName(RealityRiftsKey)
-		// WARZONE CONTROL POINTS. The points are captured and held, give their strength and bring allied soldiers;
-		// "opening shortcuts" does nothing. Issues #1820 and #41.
-		|| RowKey == FName(WarzoneControlPointsKey)
+		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.
+		// THE LABRYNTH. Gated shortcuts open and close in turn, so cleared paths are blocked and others open; "rooms
+		// rearrange" does nothing, because the rooms do not move. Issues #1820 and #41.
+		|| RowKey == FName(LabrynthKey)
 		// LIGHTFORGED WALLS. The stairs stay sealed until every creature the floor placed is slain; "sections" do
 		// nothing, because nothing divides a floor into areas a barrier could close. Issues #1820 and #41.
 		|| RowKey == FName(LightforgedWallsKey))
@@ -978,6 +985,8 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(LightforgedWallsKey),
 		FName(HeavensQuakeKey),
 		FName(CryptquakeKey),
+		FName(SoulChainsKey),
+		FName(LabrynthKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),

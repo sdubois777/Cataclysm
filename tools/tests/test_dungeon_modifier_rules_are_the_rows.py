@@ -3785,8 +3785,9 @@ def test_warzone_row_still_names_allied_soldiers_and_shortcuts():
 
     "Holding these points provides strategic advantages, such as summoning allied soldiers, gaining access to powerful
     buffs, or opening shortcuts". HOLDING THESE POINTS is why a captured point brings the allies and why they last the
-    floor; SUMMONING ALLIED SOLDIERS is what is built; OPENING SHORTCUTS is why the row is still Partly. If any changes,
-    the reading built on it must be revisited; see WarzoneControlPointsKey in CataclysmDungeonModifierEffects.h.
+    floor; SUMMONING ALLIED SOLDIERS is the allies; OPENING SHORTCUTS is each point's gated shortcut, built since
+    2026-10-04, until when it was why the row was Partly. If any changes, the reading built on it must be revisited; see
+    WarzoneControlPointsKey in CataclysmDungeonModifierEffects.h.
     """
     words = flat(rows()["War_Warzone_Control_Points"]["Description"])
     lower = words.lower()
@@ -5024,3 +5025,37 @@ def test_cryptquake_row_still_says_pits_of_bones_and_swarms():
         assert phrase in lower, (
             f"Death_Cryptquake no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "CryptquakeKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_soul_chains_row_still_says_souls_are_released_by_defeating_enemies_and_open_new_paths():
+    """The phrases Soul Chains' readings rest on.
+
+    "Certain sections of the dungeon are lined with ethereal chains that bind the souls of trapped adventurers. Players
+    must release these souls by defeating specific enemies. Freeing the souls may grant rewards or open up new paths."
+    SECTIONS ... LINED WITH ... CHAINS is the gated stretch; DEFEATING SPECIFIC ENEMIES is the two bearers a gate has;
+    MAY GRANT REWARDS is the one drop roll a freed gate gives; OPEN UP NEW PATHS is the gate opening. See SoulChainsKey
+    in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Death_Soul_Chains"]["Description"])
+    lower = words.lower()
+    for phrase in ("lined with ethereal chains", "defeating specific enemies", "may grant rewards",
+                   "open up new paths"):
+        assert phrase in lower, (
+            f"Death_Soul_Chains no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "SoulChainsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_the_labrynth_row_still_says_rooms_rearrange_and_paths_are_blocked_or_redirected():
+    """The phrases The Labrynth's readings rest on, and the one that keeps it Partly.
+
+    "Dungeon rooms rearrange themselves periodically. Players might find paths they already cleared are now blocked or
+    redirected." PERIODICALLY is the swap on a clock; BLOCKED OR REDIRECTED is one gate closing and another opening;
+    ROOMS REARRANGE is what is NOT built -- the rooms do not move -- and why BuiltStateOf answers Partly. See LabrynthKey
+    in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Chaos_The_Labrynth"]["Description"])
+    lower = words.lower()
+    for phrase in ("rooms rearrange themselves periodically", "blocked or redirected"):
+        assert phrase in lower, (
+            f"Chaos_The_Labrynth no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "LabrynthKey in CataclysmDungeonModifierEffects.h. " + words)

@@ -34330,8 +34330,9 @@ bool FCataclysmWarzoneCaptureTest::RunTest(const FString& Parameters)
 	Beat(Mode, 1);
 	TestEqual(TEXT("held at 30 s"), Mode->WarzonePointsHeld(), 1);
 	TestEqual(TEXT("three waves in all"), Mode->WarzoneAttackersStanding().Num(), 3 * Effects::WarzoneCreaturesPerWave);
-	TestEqual(TEXT("the panel once held"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
-			  FString(TEXT("warzone control points: 1 of 2 held, +10% damage and +10% resistances")));
+	// STARTS WITH, since 2026-10-04: a captured point's shortcut, when it has one, is named after this.
+	TestTrue(TEXT("the panel once held"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow).StartsWith(
+				 TEXT("warzone control points: 1 of 2 held, +10% damage and +10% resistances")));
 	return true;
 }
 
@@ -34379,8 +34380,9 @@ bool FCataclysmWarzoneStrengthTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("20% more attack damage"), WarzoneRuleOn(Player, TEXT("attack_damage")), 20.0f, 0.001f);
 	TestEqual(TEXT("20% more spell damage"), WarzoneRuleOn(Player, TEXT("spell_damage")), 20.0f, 0.001f);
 	TestEqual(TEXT("20 on a resistance"), WarzoneRuleOn(Player, AResistance()), 20.0f, 0.001f);
-	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow),
-			  FString(TEXT("warzone control points: 2 of 2 held, +20% damage and +20% resistances")));
+	// STARTS WITH, since 2026-10-04: the captured points' shortcuts are named after this.
+	TestTrue(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(WarzoneRow).StartsWith(
+				 TEXT("warzone control points: 2 of 2 held, +20% damage and +20% resistances")));
 
 	// STANDING IN A HELD POINT BRINGS NOTHING.
 	const int32 Standing = Mode->WarzoneAttackersStanding().Num();
@@ -43271,7 +43273,7 @@ bool FCataclysmTrialWithReaperTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneAlliesFiguresTest,
-	"Cataclysm.DungeonModifierEffects.WarzoneAlliesFiguresAndTheRowStaysPartly",
+	"Cataclysm.DungeonModifierEffects.WarzoneAlliesFiguresAndTheRowBuilt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmWarzoneAlliesFiguresTest::RunTest(const FString& Parameters)
@@ -43281,8 +43283,9 @@ bool FCataclysmWarzoneAlliesFiguresTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("two allies a captured point"), Effects::WarzoneAlliesPerPoint, 2);
 	TestEqual(TEXT("at Common"), Effects::WarzoneAllyRung, 0);
-	TestEqual(TEXT("the row is still partly built: shortcuts are not"),
-			  static_cast<int32>(Effects::BuiltStateOf(WarzoneRow)), static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	// PARTLY UNTIL 2026-10-04, when "opening shortcuts" was built on the gated shortcut; this test was named for that.
+	TestEqual(TEXT("the row is built: its shortcuts open"),
+			  static_cast<int32>(Effects::BuiltStateOf(WarzoneRow)), static_cast<int32>(ECataclysmModifierBuilt::Built));
 	return true;
 }
 
@@ -44746,6 +44749,578 @@ bool FCataclysmObstacleHeldCellsTest::RunTest(const FString& Parameters)
 				 Mode->WarnOfAnObstacle({Mode->RealityRiftCellsNow()[0]}, ECataclysmObstacleKind::Pillar,
 										HeavensQuakeRow));
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The gated shortcuts: War_Warzone_Control_Points' shortcuts, Death_Soul_Chains and Chaos_The_Labrynth. Issues #1820
+// and #41. Ruled 2026-10-04: Halls floors only; carved and gated when the floor is built, on its seed.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName SoulChainsRow(UCataclysmDungeonModifierEffects::SoulChainsKey);
+	const FName LabrynthRow(UCataclysmDungeonModifierEffects::LabrynthKey);
+
+	/** A dungeon game mode on floor 2 carrying these rows, its creatures standing. */
+	ACataclysmDungeonGameMode* AGateFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+										  const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** How many raised pillars stand on this cell. */
+	int32 PillarsOn(UWorld* World, ACataclysmDungeonGameMode* Mode, FIntPoint Cell)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmFloorObstacle> It(World); It; ++It)
+		{
+			Count += (IsValid(*It) && !It->IsWarning() && It->CoveredCells().Contains(Cell)) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** How many seeds a gate test tries for a floor that meets its set-up. Ruled 2026-10-04. */
+	constexpr int32 GateFloorSeedsTried = 20;
+
+	/**
+	 * Builds floor 2 again on dungeon seeds 1, 2, ... until `Holds` answers true, and says which seed that was.
+	 *
+	 * WHY A SEARCH AND NOT ONE SEED: how many shortcuts a floor has, and whether a Warzone point has one, was measured
+	 * on plans and not on the floors these tests build, and it cannot be computed without the engine. A test that
+	 * needs "two gates" on a floor that happens to have one would fail on its set-up and say nothing about the rule.
+	 * `Prepare` runs after each floor is built and before `Holds` is asked. When no seed serves, the test fails
+	 * naming how many it tried, which is a finding about the set-up and not about the rule.
+	 */
+	bool AGateFloorWhere(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const TCHAR* What,
+						 TFunctionRef<void()> Prepare, TFunctionRef<bool()> Holds)
+	{
+		for (int32 Seed = 1; Seed <= GateFloorSeedsTried; ++Seed)
+		{
+			Mode->DungeonSeed = Seed;
+			if (!Test.TestTrue(FString::Printf(TEXT("seed %d: floor 2 was reached"), Seed), Mode->GoToFloor(2)))
+			{
+				return false;
+			}
+			Prepare();
+			if (Holds())
+			{
+				Test.AddInfo(FString::Printf(TEXT("gate floor: dungeon seed %d gives %s"), Seed, What));
+				return true;
+			}
+		}
+		Test.AddError(FString::Printf(TEXT("set-up: no dungeon seed from 1 to %d gives %s"), GateFloorSeedsTried, What));
+		return false;
+	}
+
+	/** Whether Soul Chains has its two gates on this floor, each with its two bearers. */
+	bool SoulChainsFloorIsWhole(ACataclysmDungeonGameMode* Mode)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		if (Mode->GatedShortcutsOf(SoulChainsRow).Num() != Effects::SoulChainsGates)
+		{
+			return false;
+		}
+		for (int32 Gate = 0; Gate < Effects::SoulChainsGates; ++Gate)
+		{
+			if (Mode->SoulChainBearersNow(Gate).Num() != Effects::SoulChainsBearersPerGate)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** How many of a row's shortcuts are open. */
+	int32 GatesOpen(ACataclysmDungeonGameMode* Mode, FName Row)
+	{
+		int32 Open = 0;
+		for (int32 Index = 0; Index < Mode->GatedShortcutsOf(Row).Num(); ++Index)
+		{
+			Open += Mode->GatedShortcutIsOpen(Row, Index) ? 1 : 0;
+		}
+		return Open;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGatedShortcutFiguresTest,
+	"Cataclysm.DungeonModifierEffects.GatedShortcutFiguresAndTheThreeRowsBuiltStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGatedShortcutFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a shortcut saves at least 10 cells"), FCataclysmFloorGenerator::ShortcutLeastSaving, 10);
+	TestEqual(TEXT("its ends are at most 12 cells apart"), FCataclysmFloorGenerator::ShortcutMostLength, 12);
+	TestEqual(TEXT("its corridor is 2 cells across"), FCataclysmFloorGenerator::ShortcutWidth, 2);
+	TestEqual(TEXT("Warzone's last resort looks 8 cells from the point"), Effects::WarzoneShortcutNearCells, 8);
+	TestEqual(TEXT("two chained gates"), Effects::SoulChainsGates, 2);
+	TestEqual(TEXT("two bearers a gate"), Effects::SoulChainsBearersPerGate, 2);
+	TestEqual(TEXT("at Elite"), Effects::SoulChainsBearerRung, 1);
+	TestEqual(TEXT("an Elite kill's roll"), Effects::SoulChainsRewardRung, 1);
+	TestEqual(TEXT("up to four Labrynth gates"), Effects::LabrynthMostGates, 4);
+	TestEqual(TEXT("a swap every 20 s"), Effects::LabrynthSecondsBetweenSwaps, 20.0f, 0.001f);
+
+	TestEqual(TEXT("Warzone Control Points is built"), static_cast<int32>(Effects::BuiltStateOf(WarzoneRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	TestEqual(TEXT("Soul Chains is built"), static_cast<int32>(Effects::BuiltStateOf(SoulChainsRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	TestEqual(TEXT("The Labrynth is partly built: rooms do not rearrange"),
+			  static_cast<int32>(Effects::BuiltStateOf(LabrynthRow)), static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGatedShortcutsCarvedTest,
+	"Cataclysm.DungeonModifierEffects.GatedShortcutsAreCarvedAndClosedWhenAHallsFloorIsBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGatedShortcutsCarvedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AGateFloor(*this, World, Player, {SoulChainsRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	// A FLOOR WITH BOTH GATES AND ALL FOUR BEARERS, searched for by seed. See `AGateFloorWhere`.
+	if (!AGateFloorWhere(*this, Mode, TEXT("two chained gates, each with two bearers"), []() {},
+						 [Mode]() { return SoulChainsFloorIsWhole(Mode); }))
+	{
+		return false;
+	}
+	const TArray<FCataclysmFloorShortcut> Shortcuts = Mode->GatedShortcutsOf(SoulChainsRow);
+	if (!TestEqual(TEXT("two chained shortcuts on a Halls floor"), Shortcuts.Num(), Effects::SoulChainsGates))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	for (int32 Index = 0; Index < Shortcuts.Num(); ++Index)
+	{
+		const FCataclysmFloorShortcut& One = Shortcuts[Index];
+		TestFalse(FString::Printf(TEXT("gate %d begins closed"), Index), Mode->GatedShortcutIsOpen(SoulChainsRow, Index));
+		for (const FIntPoint& Cell : One.NewCells)
+		{
+			// THE CORRIDOR IS CARVED INTO THE FLOOR, AND ONLY ITS GATE IS SHUT.
+			TestEqual(FString::Printf(TEXT("gate %d: a corridor cell is floor unless it is the gate"), Index),
+					  Plan.IsFloor(Cell), !One.Gate.Contains(Cell));
+		}
+		for (const FIntPoint& Cell : One.Gate)
+		{
+			TestEqual(FString::Printf(TEXT("gate %d: one pillar on each gate cell"), Index), PillarsOn(World, Mode, Cell), 1);
+		}
+
+		// AND NO PILLAR OR PIT MAY LAND IN THE CORRIDOR.
+		for (const FIntPoint& Cell : One.NewCells)
+		{
+			if (!One.Gate.Contains(Cell))
+			{
+				TestNull(TEXT("an obstacle in a shortcut's corridor is refused"),
+						 Mode->WarnOfAnObstacle({Cell}, ECataclysmObstacleKind::Pillar, HeavensQuakeRow));
+				break;
+			}
+		}
+	}
+
+	// THE SAME FLOOR BUILT AGAIN CARVES THE SAME SHORTCUTS: everything is drawn from the floor's seed.
+	if (!TestTrue(TEXT("floor 2 again"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<FCataclysmFloorShortcut> Again = Mode->GatedShortcutsOf(SoulChainsRow);
+	if (TestEqual(TEXT("as many the second time"), Again.Num(), Shortcuts.Num()))
+	{
+		for (int32 Index = 0; Index < Again.Num(); ++Index)
+		{
+			TestTrue(TEXT("and the same ones"), Again[Index].A == Shortcuts[Index].A && Again[Index].B == Shortcuts[Index].B
+					 && Again[Index].Gate == Shortcuts[Index].Gate);
+			TestEqual(TEXT("with its pillars standing again"), PillarsOn(World, Mode, Again[Index].Gate[0]), 1);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarzoneShortcutTest,
+	"Cataclysm.DungeonModifierEffects.WarzoneCapturingAPointOpensItsShortcut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWarzoneShortcutTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWarzoneFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	// A FLOOR WHERE A POINT HAS A SHORTCUT, searched for by seed. See `AGateFloorWhere`. The floor is made ready as
+	// `AWarzoneFloor` makes it: its creatures cleared and one beat run.
+	if (!AGateFloorWhere(*this, Mode, TEXT("two Warzone points, one of them with a shortcut"),
+						 [Mode]()
+						 {
+							 Mode->ClearFloorEnemies();
+							 Beat(Mode, 1);
+						 },
+						 [Mode]()
+						 {
+							 bool bOneHasAShortcut = false;
+							 for (int32 Index = 0; Index < Mode->WarzonePointCellsNow().Num(); ++Index)
+							 {
+								 bOneHasAShortcut = bOneHasAShortcut || !Mode->GatedShortcutLeadsTo(WarzoneRow, Index).IsEmpty();
+							 }
+							 return bOneHasAShortcut
+								 && Mode->WarzonePointCellsNow().Num() == UCataclysmDungeonModifierEffects::WarzoneControlPointsPerFloor;
+						 }))
+	{
+		return false;
+	}
+
+	// THE POINTS ARE THE ONES CHOSEN ON THE FLOOR'S SEED BEFORE IT WAS BUILT.
+	TestTrue(TEXT("the points are the planned ones"), Mode->WarzonePointCellsNow() == Mode->WarzonePlannedPointsNow());
+
+	// A POINT THAT HAS A SHORTCUT. Measured, most points have one once the third step is counted; which is not asserted.
+	int32 Point = INDEX_NONE;
+	for (int32 Index = 0; Index < Mode->WarzonePointCellsNow().Num() && Point == INDEX_NONE; ++Index)
+	{
+		Point = Mode->GatedShortcutLeadsTo(WarzoneRow, Index).IsEmpty() ? INDEX_NONE : Index;
+	}
+	if (!TestTrue(TEXT("set-up: a point with a shortcut"), Point != INDEX_NONE))
+	{
+		return false;
+	}
+	const FString Leads = Mode->GatedShortcutLeadsTo(WarzoneRow, Point);
+	TestTrue(FString::Printf(TEXT("it leads somewhere the panel can name (%s)"), *Leads),
+			 Leads == TEXT("to the exit") || Leads == TEXT("to the entrance") || Leads == TEXT("nearby"));
+	TestFalse(TEXT("closed before the capture"), Mode->GatedShortcutIsOpen(WarzoneRow, Point));
+	TestFalse(TEXT("and the panel names no shortcut yet"),
+			  Mode->LiveCountsForTheFloor().FindRef(WarzoneRow).Contains(TEXT("shortcut")));
+
+	// CAPTURED: ITS SHORTCUT OPENS, AND THE PANEL SAYS WHERE IT LEADS.
+	StandOnAPoint(Mode, Player, Point);
+	Beat(Mode, BeatsFor(Effects::WarzoneCaptureSeconds));
+	if (!TestEqual(TEXT("set-up: the point is held"), Mode->WarzonePointsHeld(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its shortcut is open"), Mode->GatedShortcutIsOpen(WarzoneRow, Point));
+	TestTrue(FString::Printf(TEXT("and the panel says so (%s)"), *Mode->LiveCountsForTheFloor().FindRef(WarzoneRow)),
+			 Mode->LiveCountsForTheFloor().FindRef(WarzoneRow).EndsWith(
+				 FString::Printf(TEXT("; shortcut open: %s"), *Leads)));
+	for (int32 Other = 0; Other < Mode->WarzonePointCellsNow().Num(); ++Other)
+	{
+		if (Other != Point)
+		{
+			TestFalse(TEXT("the other point's shortcut stays shut"), Mode->GatedShortcutIsOpen(WarzoneRow, Other));
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulChainsTest,
+	"Cataclysm.DungeonModifierEffects.SoulChainsAGateOpensWhenBothItsBearersDieAndGivesOneDropRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulChainsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AGateFloor(*this, World, Player, {SoulChainsRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	// A FLOOR WITH BOTH GATES AND ALL FOUR BEARERS, searched for by seed. See `AGateFloorWhere`.
+	if (!AGateFloorWhere(*this, Mode, TEXT("two chained gates, each with two bearers"), []() {},
+						 [Mode]() { return SoulChainsFloorIsWhole(Mode); }))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: two chained gates"), Mode->GatedShortcutsOf(SoulChainsRow).Num(), Effects::SoulChainsGates))
+	{
+		return false;
+	}
+
+	// TWO BEARERS A GATE, AT ELITE OR ABOVE, AND NO CREATURE HOLDS TWO GATES.
+	TArray<ACataclysmEnemyCharacter*> First = Mode->SoulChainBearersNow(0);
+	const TArray<ACataclysmEnemyCharacter*> Second = Mode->SoulChainBearersNow(1);
+	if (!TestEqual(TEXT("gate 0 has two bearers"), First.Num(), Effects::SoulChainsBearersPerGate)
+		|| !TestEqual(TEXT("gate 1 has two bearers"), Second.Num(), Effects::SoulChainsBearersPerGate))
+	{
+		return false;
+	}
+	for (const ACataclysmEnemyCharacter* Bearer : First)
+	{
+		TestTrue(TEXT("a bearer is Elite or above"), Bearer->RarityStep >= Effects::SoulChainsBearerRung);
+		TestFalse(TEXT("and holds one gate only"), Second.Contains(Bearer));
+	}
+	TestEqual(TEXT("the panel before"), Mode->LiveCountsForTheFloor().FindRef(SoulChainsRow),
+			  FString(TEXT("soul chains: 0 of 2 gates open")));
+
+	// ONE BEARER DEAD: STILL SHUT, AND NOTHING GIVEN.
+	First[0]->Destroy();
+	Beat(Mode, 1);
+	TestFalse(TEXT("one bearer dead leaves the gate shut"), Mode->GatedShortcutIsOpen(SoulChainsRow, 0));
+	TestEqual(TEXT("and no roll yet"), Mode->SoulChainsRewardRollsMade(), 0);
+
+	// BOTH DEAD: THE GATE OPENS, ITS CELLS ARE WALKABLE, AND ONE ROLL IS MADE.
+	First[1]->Destroy();
+	Beat(Mode, 1);
+	TestTrue(TEXT("both dead opens it"), Mode->GatedShortcutIsOpen(SoulChainsRow, 0));
+
+	// THE GATE IS COPIED BEFORE IT IS WALKED. `GatedShortcutsOf` answers an array by value, and a loop written straight
+	// over `GatedShortcutsOf(Row)[0].Gate` walks the cells of an array already destroyed. The first run of this test
+	// did exactly that and failed on a cell that was never the gate's (2026-10-05).
+	const TArray<FIntPoint> OpenedGate = Mode->GatedShortcutsOf(SoulChainsRow)[0].Gate;
+	for (const FIntPoint& Cell : OpenedGate)
+	{
+		TestTrue(TEXT("its gate cell is walkable"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+		TestEqual(TEXT("and no pillar stands on it"), PillarsOn(World, Mode, Cell), 0);
+	}
+	TestEqual(TEXT("one drop roll for the gate, not one a bearer"), Mode->SoulChainsRewardRollsMade(), 1);
+	TestFalse(TEXT("the other gate stays shut"), Mode->GatedShortcutIsOpen(SoulChainsRow, 1));
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(SoulChainsRow),
+			  FString(TEXT("soul chains: 1 of 2 gates open")));
+
+	// AND NO SECOND ROLL FOR A GATE ALREADY OPEN.
+	Beat(Mode, 4);
+	TestEqual(TEXT("still one roll"), Mode->SoulChainsRewardRollsMade(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLabrynthSwapTest,
+	"Cataclysm.DungeonModifierEffects.TheLabrynthSwapsOneGateEveryTwentySeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLabrynthSwapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {LabrynthRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	// A FLOOR WITH AT LEAST TWO LABRYNTH GATES, searched for by seed. See `AGateFloorWhere`.
+	if (!AGateFloorWhere(*this, Mode, TEXT("at least two Labrynth gates"), [Mode]() { Mode->ClearFloorEnemies(); },
+						 [Mode]() { return Mode->GatedShortcutsOf(LabrynthRow).Num() >= 2; }))
+	{
+		return false;
+	}
+	const int32 Gates = Mode->GatedShortcutsOf(LabrynthRow).Num();
+	if (!TestTrue(FString::Printf(TEXT("set-up: at least two Labrynth gates, at most four (%d)"), Gates),
+				  Gates >= 2 && Gates <= Effects::LabrynthMostGates))
+	{
+		return false;
+	}
+
+	// HALF CLOSED WHEN THE FLOOR BEGINS: the odd ones open.
+	TArray<bool> Before;
+	for (int32 Index = 0; Index < Gates; ++Index)
+	{
+		Before.Add(Mode->GatedShortcutIsOpen(LabrynthRow, Index));
+		TestEqual(FString::Printf(TEXT("gate %d begins open only if it is odd"), Index), Before[Index], (Index % 2) == 1);
+	}
+	const int32 OpenAtStart = GatesOpen(Mode, LabrynthRow);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(LabrynthRow),
+			  FString::Printf(TEXT("the labrynth: %d of %d gates open"), OpenAtStart, Gates));
+
+	// NOTHING BEFORE 20 S.
+	Beat(Mode, BeatsFor(Effects::LabrynthSecondsBetweenSwaps) - 1);
+	for (int32 Index = 0; Index < Gates; ++Index)
+	{
+		TestEqual(TEXT("no gate has moved before 20 s"), Mode->GatedShortcutIsOpen(LabrynthRow, Index), Before[Index]);
+	}
+
+	// AT 20 S: ONE THAT WAS OPEN IS SHUT AND ONE THAT WAS SHUT IS OPEN, AND AS MANY ARE OPEN AS BEFORE.
+	Beat(Mode, 1);
+	int32 Closed = 0;
+	int32 Opened = 0;
+	for (int32 Index = 0; Index < Gates; ++Index)
+	{
+		const bool bNow = Mode->GatedShortcutIsOpen(LabrynthRow, Index);
+		Closed += (Before[Index] && !bNow) ? 1 : 0;
+		Opened += (!Before[Index] && bNow) ? 1 : 0;
+		const FCataclysmFloorShortcut One = Mode->GatedShortcutsOf(LabrynthRow)[Index];
+		TestEqual(FString::Printf(TEXT("gate %d: pillars stand only when it is shut"), Index),
+				  PillarsOn(World, Mode, One.Gate[0]), bNow ? 0 : 1);
+		TestEqual(FString::Printf(TEXT("gate %d: its cell is walkable only when it is open"), Index),
+				  Mode->CurrentFloor->GetPlan().IsFloor(One.Gate[0]), bNow);
+	}
+	TestEqual(TEXT("one gate closed"), Closed, 1);
+	TestEqual(TEXT("and one opened"), Opened, 1);
+	TestEqual(TEXT("as many open as before"), GatesOpen(Mode, LabrynthRow), OpenAtStart);
+	TestEqual(TEXT("and no walkable cell is cut off from the player"), CellsCutOffFromThePlayer(Mode, Player), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLabrynthHeldTest,
+	"Cataclysm.DungeonModifierEffects.TheLabrynthNeverClosesAGateSomeoneStandsOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLabrynthHeldTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {LabrynthRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	// A FLOOR WITH EXACTLY TWO LABRYNTH GATES, searched for by seed. See `AGateFloorWhere`. EXACTLY TWO, so the gate the
+	// player stands on is the only open one: the rule then has one gate it could close and must refuse it, every swap,
+	// whatever the shuffle draws. With more gates the shuffle decides whether the stood-on gate is asked at all.
+	if (!AGateFloorWhere(*this, Mode, TEXT("exactly two Labrynth gates"), [Mode]() { Mode->ClearFloorEnemies(); },
+						 [Mode]() { return Mode->GatedShortcutsOf(LabrynthRow).Num() == 2; }))
+	{
+		return false;
+	}
+	const int32 Gates = Mode->GatedShortcutsOf(LabrynthRow).Num();
+	if (!TestEqual(TEXT("set-up: exactly two Labrynth gates"), Gates, 2))
+	{
+		return false;
+	}
+
+	// THE PLAYER STANDS ON AN OPEN GATE'S CELL FOR FIVE SWAPS: that gate is never the one closed.
+	const int32 Stood = 1;
+	if (!TestTrue(TEXT("set-up: gate 1 begins open"), Mode->GatedShortcutIsOpen(LabrynthRow, Stood)))
+	{
+		return false;
+	}
+	const FIntPoint Cell = Mode->GatedShortcutsOf(LabrynthRow)[Stood].Gate[0];
+	StandThePlayerAt(Player, CellAtThePlayersHeight(Mode, Player, Cell));
+	for (int32 Swap = 0; Swap < 5; ++Swap)
+	{
+		Beat(Mode, BeatsFor(Effects::LabrynthSecondsBetweenSwaps));
+		TestTrue(FString::Printf(TEXT("after swap %d the gate the player stands on is still open"), Swap + 1),
+				 Mode->GatedShortcutIsOpen(LabrynthRow, Stood));
+		TestEqual(TEXT("and no pillar stands on the player"), PillarsOn(World, Mode, Cell), 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGateRowsNoShapeTest,
+	"Cataclysm.DungeonModifierEffects.GateRowsPlaceNothingOnACavernsFloorOrInAHordeArenaAndThePanelSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGateRowsNoShapeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FName> Rows = {WarzoneRow, SoulChainsRow, LabrynthRow};
+	const auto NothingPlaced = [this, Mode, &Rows](const TCHAR* Where)
+	{
+		TestTrue(FString::Printf(TEXT("%s: the floor says its shape has no gates"), Where), Mode->GateRowsHaveNoShape());
+		for (const FName& Row : Rows)
+		{
+			TestEqual(FString::Printf(TEXT("%s: %s carves nothing"), Where, *Row.ToString()),
+					  Mode->GatedShortcutsOf(Row).Num(), 0);
+		}
+		TestEqual(FString::Printf(TEXT("%s: Soul Chains' panel"), Where), Mode->LiveCountsForTheFloor().FindRef(SoulChainsRow),
+				  FString(TEXT("soul chains: no paths to bind on a floor of this shape")));
+		TestEqual(FString::Printf(TEXT("%s: The Labrynth's panel"), Where),
+				  Mode->LiveCountsForTheFloor().FindRef(LabrynthRow),
+				  FString(TEXT("the labrynth: no paths to turn on a floor of this shape")));
+	};
+
+	// A CAVERNS FLOOR.
+	Mode->Layout = ECataclysmFloorLayout::Caverns;
+	Mode->DungeonModifiers = Rows;
+	if (!TestTrue(TEXT("a Caverns floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	NothingPlaced(TEXT("Caverns"));
+	TestTrue(FString::Printf(TEXT("Caverns: Warzone's panel (%s)"), *Mode->LiveCountsForTheFloor().FindRef(WarzoneRow)),
+			 Mode->LiveCountsForTheFloor().FindRef(WarzoneRow).EndsWith(TEXT("; no shortcuts on a floor of this shape")));
+	TestTrue(TEXT("Caverns: no planned points, so Warzone draws its own"), Mode->WarzonePlannedPointsNow().IsEmpty());
+
+	// A HORDE ARENA, on a dungeon whose own layout is Halls.
+	Mode->Layout = ECataclysmFloorLayout::Halls;
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde wave was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	NothingPlaced(TEXT("Horde"));
+
+	// AND A HALLS FLOOR AGAIN, SO "NOTHING" IS NOT WHAT EVERY FLOOR SAYS.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::None;
+	if (!TestTrue(TEXT("a Halls floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("Halls: the shape has gates"), Mode->GateRowsHaveNoShape());
+	TestTrue(TEXT("Halls: Soul Chains carved its gates"), Mode->GatedShortcutsOf(SoulChainsRow).Num() > 0);
 	return true;
 }
 

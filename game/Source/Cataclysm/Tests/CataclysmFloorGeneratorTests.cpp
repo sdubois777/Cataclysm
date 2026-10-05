@@ -794,4 +794,168 @@ bool FCataclysmFloorPlayVarietyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Gated shortcuts. Issues #1820 and #41. Ruled 2026-10-04: a corridor two cells across and at most twelve long, carved
+// between two walkable cells whose walk apart it shortens by ten or more, with a gate of two new cells.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmGatedShortcutTest
+{
+	/** The Halls plan of one of the seeds the measurements of 2026-10-02 used. */
+	FCataclysmFloorPlan HallsPlan(int32 Seed, int32 FloorNumber)
+	{
+		FCataclysmFloorRequest Request;
+		Request.DungeonSeed = 1000 + Seed * 37;
+		Request.FloorNumber = FloorNumber;
+		Request.Layout = ECataclysmFloorLayout::Halls;
+		return FCataclysmFloorGenerator::Generate(Request);
+	}
+
+	int32 WalkBetween(const FCataclysmFloorPlan& Plan, FIntPoint From, FIntPoint To)
+	{
+		return CataclysmFloorDistancesFrom(Plan, From)[Plan.IndexOf(To)];
+	}
+
+	int32 CellsCutOff(const FCataclysmFloorPlan& Plan)
+	{
+		const TArray<int32> Distance = CataclysmFloorDistancesFrom(Plan, Plan.Entrance);
+		int32 CutOff = 0;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			CutOff += (Plan.Cells[Index] == ECataclysmFloorCell::Floor && Distance[Index] == INDEX_NONE) ? 1 : 0;
+		}
+		return CutOff;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGatedShortcutsAnyPairTest,
+	"Cataclysm.FloorGenerator.AGatedShortcutSavesTenCellsAndItsGateClosesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGatedShortcutsAnyPairTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGatedShortcutTest;
+
+	// EVERY HALLS PLAN MEASURED HAD AT LEAST TWO SHORTCUTS SHARING NO CELL. Ten of them here.
+	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	{
+		const FCataclysmFloorPlan Plan = HallsPlan(Seed, 1);
+		FRandomStream Stream(Seed);
+		const TArray<FCataclysmFloorShortcut> Found =
+			FCataclysmFloorGenerator::FindShortcuts(Plan, Stream, 4, TSet<FIntPoint>());
+		if (!TestTrue(FString::Printf(TEXT("seed %d: at least two shortcuts (%d)"), Seed, Found.Num()), Found.Num() >= 2))
+		{
+			continue;
+		}
+		TSet<FIntPoint> Seen;
+		for (const FCataclysmFloorShortcut& One : Found)
+		{
+			const int32 Before = WalkBetween(Plan, One.A, One.B);
+			FCataclysmFloorPlan Carved = Plan;
+			FCataclysmFloorGenerator::CarveShortcut(Carved, One);
+			const int32 After = WalkBetween(Carved, One.A, One.B);
+			TestEqual(FString::Printf(TEXT("seed %d: carving it saves what it said"), Seed), Before - After, One.Saving);
+			TestTrue(FString::Printf(TEXT("seed %d: and that is ten cells or more (%d)"), Seed, One.Saving),
+					 One.Saving >= FCataclysmFloorGenerator::ShortcutLeastSaving);
+			TestTrue(TEXT("its ends are at most twelve cells apart"),
+					 FMath::Abs(One.A.X - One.B.X) + FMath::Abs(One.A.Y - One.B.Y)
+						 <= FCataclysmFloorGenerator::ShortcutMostLength);
+
+			// EVERY NEW CELL WAS ROCK AND IS FLOOR ONCE CARVED, AND NO TWO SHORTCUTS SHARE ONE.
+			for (const FIntPoint& Cell : One.NewCells)
+			{
+				TestFalse(TEXT("a new cell was rock"), Plan.IsFloor(Cell));
+				TestTrue(TEXT("and is floor once carved"), Carved.IsFloor(Cell));
+				TestFalse(TEXT("and belongs to no other shortcut"), Seen.Contains(Cell));
+				Seen.Add(Cell);
+			}
+
+			// THE GATE: two new cells side by side, whose closing gives the first walk back and strands nothing.
+			if (!TestEqual(TEXT("a gate is two cells"), One.Gate.Num(), 2))
+			{
+				continue;
+			}
+			TestTrue(TEXT("both of them new"), One.NewCells.Contains(One.Gate[0]) && One.NewCells.Contains(One.Gate[1]));
+			TestEqual(TEXT("side by side"),
+					  FMath::Abs(One.Gate[0].X - One.Gate[1].X) + FMath::Abs(One.Gate[0].Y - One.Gate[1].Y), 1);
+			FCataclysmFloorPlan Closed = Carved;
+			Closed.Cells[Closed.IndexOf(One.Gate[0])] = ECataclysmFloorCell::Solid;
+			Closed.Cells[Closed.IndexOf(One.Gate[1])] = ECataclysmFloorCell::Solid;
+			TestEqual(TEXT("closing the gate gives the first walk back"), WalkBetween(Closed, One.A, One.B), Before);
+			TestEqual(TEXT("and strands no walkable cell"), CellsCutOff(Closed), 0);
+		}
+
+		// THE SAME STREAM GIVES THE SAME SHORTCUTS.
+		FRandomStream Again(Seed);
+		const TArray<FCataclysmFloorShortcut> Second =
+			FCataclysmFloorGenerator::FindShortcuts(Plan, Again, 4, TSet<FIntPoint>());
+		if (TestEqual(TEXT("as many the second time"), Second.Num(), Found.Num()))
+		{
+			for (int32 Index = 0; Index < Found.Num(); ++Index)
+			{
+				TestTrue(TEXT("and the same ones"), Second[Index].A == Found[Index].A && Second[Index].B == Found[Index].B
+						 && Second[Index].Gate == Found[Index].Gate);
+			}
+		}
+	}
+
+	// AN ARENA HAS NONE, which is why the gate rows do nothing there.
+	FCataclysmFloorRequest Arena;
+	Arena.DungeonSeed = 1037;
+	Arena.FloorNumber = 1;
+	Arena.Layout = ECataclysmFloorLayout::Arena;
+	FRandomStream Stream(1);
+	TestEqual(TEXT("an arena has no shortcut"),
+			  FCataclysmFloorGenerator::FindShortcuts(FCataclysmFloorGenerator::Generate(Arena), Stream, 4,
+													 TSet<FIntPoint>()).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGatedShortcutBetweenTest,
+	"Cataclysm.FloorGenerator.AShortcutBetweenTwoCellsShortensThatWalkOrIsRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGatedShortcutBetweenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGatedShortcutTest;
+
+	// MEASURED 2026-10-02: this plan's entrance-to-exit walk can be shortened by 66 cells, and that one by none.
+	const FCataclysmFloorPlan Winding = HallsPlan(5, 10);
+	FCataclysmFloorShortcut Found;
+	if (TestTrue(TEXT("the winding plan has a shortcut to the exit"),
+				 FCataclysmFloorGenerator::FindShortcutBetween(Winding, Winding.Entrance, Winding.Exit, TSet<FIntPoint>(),
+															   Found)))
+	{
+		const int32 Before = WalkBetween(Winding, Winding.Entrance, Winding.Exit);
+		FCataclysmFloorPlan Carved = Winding;
+		FCataclysmFloorGenerator::CarveShortcut(Carved, Found);
+		TestEqual(TEXT("carving it saves what it said"), Before - WalkBetween(Carved, Carved.Entrance, Carved.Exit),
+				  Found.Saving);
+		TestTrue(FString::Printf(TEXT("ten cells or more (%d)"), Found.Saving),
+				 Found.Saving >= FCataclysmFloorGenerator::ShortcutLeastSaving);
+
+		// A CELL IT WOULD USE, GIVEN AS ONE TO AVOID, RULES THAT CORRIDOR OUT.
+		FCataclysmFloorShortcut Other;
+		const bool bAnother = FCataclysmFloorGenerator::FindShortcutBetween(
+			Winding, Winding.Entrance, Winding.Exit, TSet<FIntPoint>(Found.NewCells), Other);
+		if (bAnother)
+		{
+			for (const FIntPoint& Cell : Other.NewCells)
+			{
+				TestFalse(TEXT("another shortcut uses none of the avoided cells"), Found.NewCells.Contains(Cell));
+			}
+		}
+	}
+
+	const FCataclysmFloorPlan Straight = HallsPlan(1, 1);
+	FCataclysmFloorShortcut None;
+	TestFalse(TEXT("a plan whose walk is already as short as it can be has none"),
+			  FCataclysmFloorGenerator::FindShortcutBetween(Straight, Straight.Entrance, Straight.Exit,
+															TSet<FIntPoint>(), None));
+	TestFalse(TEXT("and rock is no end for one"),
+			  FCataclysmFloorGenerator::FindShortcutBetween(Straight, FIntPoint(-1, -1), Straight.Exit, TSet<FIntPoint>(),
+															None));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
