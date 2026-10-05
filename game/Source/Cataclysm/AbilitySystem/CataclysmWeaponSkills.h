@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "CataclysmWeaponSkills.generated.h"
 
+class UCataclysmSkillTemplate;
 class UDataTable;
 
 /**
@@ -172,6 +173,16 @@ public:
 	 *         grants the placeholder instead
 	 */
 	static TSubclassOf<UCataclysmGameplayAbility> TemplateFor(ECataclysmSkillShape Shape);
+
+	/**
+	 * Writes a row's name, description, parameters, tags and figures onto a granted skill.
+	 *
+	 * ONE FUNCTION BECAUSE TWO THINGS GRANT A SKILL FROM A ROW: the weapon slots component, for the skills a weapon
+	 * offers, and `UCataclysmTriggeredSkill`, for a skill started without a key. Written twice, the second copy would
+	 * miss the next field added. IT DOES NOT SET THE SLOT, which each caller decides: a weapon's grant takes it from
+	 * `GiveAbilityInSlot`, and a triggered skill sets the property with no key behind it.
+	 */
+	static void StampOnto(UCataclysmSkillTemplate& Template, const FCataclysmWeaponSkill& Skill);
 
 	/** Where the imported weapon skill matrix lives. */
 	static const TCHAR* TableAssetPath;
