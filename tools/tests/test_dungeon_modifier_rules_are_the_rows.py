@@ -5059,3 +5059,20 @@ def test_the_labrynth_row_still_says_rooms_rearrange_and_paths_are_blocked_or_re
         assert phrase in lower, (
             f"Chaos_The_Labrynth no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "LabrynthKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_wild_magic_row_still_says_five_percent_a_random_different_skill_and_your_class_tree():
+    """The phrases Wild Magic's readings rest on.
+
+    "Casting a skill has a 5% chance to trigger the effect of a random different skill from your class tree." A 5%
+    CHANCE is the figure; CASTING A SKILL is each use the player pays for, the basic attack excepted; RANDOM DIFFERENT
+    SKILL is why the skill just used is taken out of the pool; YOUR CLASS TREE is read as the skills of the player's
+    damage type, because skills are not on class trees. If any changes, the reading built on it must be revisited; see
+    WildMagicKey in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Chaos_Wild_Magic"]["Description"])
+    lower = words.lower()
+    for phrase in ("casting a skill", "5% chance", "random different skill", "your class tree"):
+        assert phrase in lower, (
+            f"Chaos_Wild_Magic no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "WildMagicKey in CataclysmDungeonModifierEffects.h. " + words)

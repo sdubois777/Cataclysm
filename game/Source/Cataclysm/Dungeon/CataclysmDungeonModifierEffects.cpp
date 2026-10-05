@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -119,6 +120,7 @@ const TCHAR* UCataclysmDungeonModifierEffects::HeavensQuakeKey = TEXT("Celestial
 const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Cryptquake");
 const TCHAR* UCataclysmDungeonModifierEffects::SoulChainsKey = TEXT("Death_Soul_Chains");
 const TCHAR* UCataclysmDungeonModifierEffects::LabrynthKey = TEXT("Chaos_The_Labrynth");
+const TCHAR* UCataclysmDungeonModifierEffects::WildMagicKey = TEXT("Chaos_Wild_Magic");
 
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
@@ -804,6 +806,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// captured opens its shortcut, and a gate whose two bearers die opens and pays. Issues #1820 and #41.
 		|| RowKey == FName(WarzoneControlPointsKey)
 		|| RowKey == FName(SoulChainsKey)
+		// WILD MAGIC, BUILT 2026-10-04: a skill use rolls to trigger a random different skill of the player's damage
+		// type. "Your class tree" is read as the damage type; see the key. Issues #1820 and #41.
+		|| RowKey == FName(WildMagicKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -987,6 +992,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(CryptquakeKey),
 		FName(SoulChainsKey),
 		FName(LabrynthKey),
+		FName(WildMagicKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
@@ -3020,6 +3026,94 @@ float UCataclysmDungeonModifierEffects::SoulHarvestResistanceAdded(int32 Souls)
 bool UCataclysmDungeonModifierEffects::TrickOrTreatRaisesEnemies(float Roll)
 {
 	return Roll < TrickOrTreatEnemiesBelow;
+}
+
+bool UCataclysmDungeonModifierEffects::WildMagicTriggers(float Roll)
+{
+	return Roll < WildMagicChancePercent;
+}
+
+ECataclysmWildMagicLeftOut UCataclysmDungeonModifierEffects::WildMagicLeavesOut(const FCataclysmWeaponSkill& Skill)
+{
+	// ASKED OF THE ROW AND NOTHING ELSE, in the order the enum states. Each reason is a row that showed the problem;
+	// docs/DECISIONS.md, 2026-10-04, names them.
+	if (!UCataclysmWeaponSkills::TemplateFor(Skill.Shape))
+	{
+		return ECataclysmWildMagicLeftOut::NoShape;
+	}
+	switch (Skill.Shape)
+	{
+	case ECataclysmSkillShape::Movement:
+		return ECataclysmWildMagicLeftOut::Movement;
+	case ECataclysmSkillShape::Aura:
+		return ECataclysmWildMagicLeftOut::Aura;
+	case ECataclysmSkillShape::Summon:
+	case ECataclysmSkillShape::Deployable:
+		return ECataclysmWildMagicLeftOut::SummonOrDeployable;
+	default:
+		break;
+	}
+
+	// ErrorIfNotFound IS FALSE, as `CommitAndBegin` asks for its tags: a test may run before the tag table loads.
+	const FGameplayTag Channel = FGameplayTag::RequestGameplayTag(TEXT("Type.Channel"), /*ErrorIfNotFound=*/false);
+	if ((Channel.IsValid() && Skill.Tags.HasTag(Channel)) || Skill.Params.ChargeTime > 0.0f)
+	{
+		return ECataclysmWildMagicLeftOut::ChannelledOrHeld;
+	}
+	if (Skill.Params.bDisarmsUntilRecalled)
+	{
+		return ECataclysmWildMagicLeftOut::DisarmsTheCaster;
+	}
+	if (!Skill.Params.Requires.IsEmpty())
+	{
+		return ECataclysmWildMagicLeftOut::Requires;
+	}
+	if (Skill.Params.HealthCostPercent > 0.0f)
+	{
+		return ECataclysmWildMagicLeftOut::HealthCost;
+	}
+	return ECataclysmWildMagicLeftOut::InThePool;
+}
+
+const TCHAR* UCataclysmDungeonModifierEffects::WildMagicLeftOutName(ECataclysmWildMagicLeftOut Why)
+{
+	switch (Why)
+	{
+	case ECataclysmWildMagicLeftOut::InThePool:
+		return TEXT("in the pool");
+	case ECataclysmWildMagicLeftOut::NoShape:
+		return TEXT("no shape");
+	case ECataclysmWildMagicLeftOut::Movement:
+		return TEXT("movement");
+	case ECataclysmWildMagicLeftOut::Aura:
+		return TEXT("aura");
+	case ECataclysmWildMagicLeftOut::SummonOrDeployable:
+		return TEXT("summon or deployable");
+	case ECataclysmWildMagicLeftOut::ChannelledOrHeld:
+		return TEXT("channelled or held");
+	case ECataclysmWildMagicLeftOut::DisarmsTheCaster:
+		return TEXT("disarms the caster");
+	case ECataclysmWildMagicLeftOut::Requires:
+		return TEXT("requires a condition");
+	case ECataclysmWildMagicLeftOut::HealthCost:
+		return TEXT("costs health");
+	default:
+		return TEXT("unknown");
+	}
+}
+
+TArray<FCataclysmWeaponSkill> UCataclysmDungeonModifierEffects::WildMagicPool(const UDataTable* Table,
+																			   const FString& DamageType)
+{
+	TArray<FCataclysmWeaponSkill> Pool;
+	for (FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(Table, DamageType))
+	{
+		if (WildMagicLeavesOut(Skill) == ECataclysmWildMagicLeftOut::InThePool)
+		{
+			Pool.Add(MoveTemp(Skill));
+		}
+	}
+	return Pool;
 }
 
 int32 UCataclysmDungeonModifierEffects::UnstablePortalOutcomeFor(float Roll)
