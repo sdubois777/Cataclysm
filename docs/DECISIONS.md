@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — A better roll gives the better outcome: a roll of 1 is a benefit's best figure and a drawback's harshest, so seven sentences mark a range that rolls down
+
+**Affects:** `tools/generate_datatables.py` (`ranges_rolling_down`, the `Rolls Down` column of the Enchantments
+sheet, the exchange of a marked pair in `enchantment_effects`), `game/Source/Cataclysm/Data/CataclysmDataRows.h`
+(`FCataclysmEnchantmentRow::RollsDown`), `game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp`
+(`UCataclysmItemValues::EnchantmentTextFor` and `RangesRollingDown`; `RolledScaleStep`, `RolledStackSeconds`
+and `RolledConditionValue`), `game/Source/Cataclysm/Interface/CataclysmItemTooltip.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentRollTests.cpp` (one new test) and
+`CataclysmEnchantmentEffectTests.cpp` (seven tests take new figures, one of them renamed),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (one new pin, two checks),
+`tools/tests/test_generate_datatables.py` (eight tests), `docs/All_Things_Cataclysm.xlsx` (the Enchantments
+sheet's two new columns and seven marks; two rows of the Enchantment Effects sheet), `docs/README.md`,
+`game/Data/EnchantmentsPositive.csv`, `EnchantmentsNegative.csv` and `EnchantmentEffects.csv` and their three
+assets. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS WRONG
+
+**An item's roll is a number from 0 to 1, and a roll of 1 always gave the SECOND number its sentence writes.**
+For most sentences that is the better figure: "increased by 10%-20%" is best at 20. For a few it is the worse
+one. "When a minion dies it automatically re-summons after 3-6 seconds" waited 6 seconds at the best roll.
+Found while building that row (part 4b), and audited on 2026-10-05: of the 461 effect rows, 347 carry a real
+range (222 on benefits, 125 on drawbacks), and every one was read against its sentence.
+
+### THE RESEARCH, fetched 2026-10-05
+
+| Game | What it shows | Its words | Source |
+| :-- | :-- | :-- | :-- |
+| Last Epoch | a higher tier is always the stronger one, and a roll sits inside its tier | "Tier 1 is the least powerful and Tier 7 is the most powerful."; "Each tier also has a roll range so even if two items have the same affix in the same tier they may not roll exactly the same." | maxroll.gg/last-epoch/resources/gear-walkthrough, a guide site |
+| Path of Exile | where the figure is a cost, the better tier is the LOWER cost | "Non-Channelling Skills have -5 to Total Mana Cost" at item level 72, "-(7-6) to Total Mana Cost" at 81, "-(10-9) to Total Mana Cost" from a veiled modifier only | vhpg.com/non-channelling-skills-have-to-total-mana-cost, a guide site; the wiki's own pages refused the fetch |
+
+**What it settles:** in both games a better tier is a better outcome whichever way the number runs. **What it
+does not settle:** neither page says which way a roll runs INSIDE one range, and neither has a drawback that
+rolls. Those are this game's own and are judgements below.
+
+### WHAT WAS RULED, 2026-10-05, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **A benefit's roll of 1 gives its best outcome.** Three built sentences state a range whose FIRST number is
+   the better one, and that range now rolls from its second number to its first:
+   - "When a minion dies it automatically re-summons after 3-6 seconds": a roll of 1 waits 3 seconds.
+   - "Your abilities are free when above 80%-95% hp": a roll of 1 is a threshold of 80%. **This replaces the
+     labelled judgement of 2026-09-30**, under which a higher roll was a harder threshold.
+   - "This weapon has 5-20% more damage for every 100,000-500,000 kills": its SECOND range only. A roll of 1
+     gives 20% per 100,000 kills, where it gave 20% per 500,000. One roll drives both ranges.
+   "Gadgets fire at all enemies within range simultaneously once every 5-8 seconds" takes its direction when it
+   is built. "25%-50% of damage taken is dealt over 4-8 seconds" is unchanged: a longer spread is the milder
+   outcome for the wearer, so its higher number is already the better one.
+2. **A drawback's roll of 1 gives its HARSHEST outcome.** That is what 121 of the 125 ranged drawback rows
+   already did, so the rule is the existing majority and nothing reverses for them. The four that ran the other
+   way are brought into line:
+   - "Your maximum HP cannot exceed 40%-60% of its normal value": a roll of 1 is 40%.
+   - "Your critical strike chance cannot exceed 30%-50%": a roll of 1 is 30%.
+   - "You start every dungeon floor at 30%-50% of your maximum HP": a roll of 1 is 30%.
+   - "You lose 1-4% max resistances for every 100,000 - 500,000 kills": its second range only. A roll of 1 takes
+     4% per 100,000 kills.
+3. **The sentence says which of its ranges roll down, and both readers follow it.** The Enchantments sheet has
+   a `Rolls Down` column on each half, naming ranges by their place in the sentence: `1`, `2` or `1,2`. The
+   hover text and the effect row are different code and neither reads the other. The hover text rolls a marked
+   range from its second number to its first, and the generator writes that range's effect pair the other way
+   round, so the sheet's own effect rows stay written in the sentence's order. One source, two readers.
+4. **"After blocking you cannot block again for 1-2 seconds" and "After dodging you cannot dodge again for 1-2
+   seconds" now roll.** Each row stated a fixed 2 seconds while its hover text showed 1 or 2 by the roll. Each
+   now states 1 with a second end of 2, so a roll of 1 is the harshest, 2 seconds, as the text shows. Found by
+   the audit; fixed here because it is the same pair.
+
+### WHAT THIS CHANGES FOR AN ITEM ALREADY ROLLED
+
+**An item keeps its roll, and seven sentences now read it the other way.** A piece that rolled 0.9 on the
+re-summon row waited close to 6 seconds and now waits close to 3. A piece that rolled 0.9 on the maximum health
+cap kept close to 60% and now keeps close to 40%. No save is rewritten: the roll is what is stored, and it was
+always a place in the range and never a figure.
+
+### WHAT WAS BUILT
+
+- `ranges_rolling_down` in the generator reads the column, refuses a place the sentence does not have, and
+  `enchantment_effects` exchanges a marked pair LAST, after every check has read it as the sheet states it.
+- `UCataclysmItemValues::EnchantmentTextFor` takes the sentence row's `RollsDown`; `EnchantmentTextAtRoll` is
+  that with nothing marked.
+- The three helpers that roll a second pair -- Scale Step, Stack Seconds, Condition Value -- rolled only when
+  the second end was HIGHER. They now roll when it is stated and differs. Nought still means no second end.
+- Ten effect rows change: eight pairs written the other way round on seven sentences, the two lockouts, and
+  no other.
+- **A pin in Python, in both directions**: every pair of every effect row runs in its sentence's order unless
+  the sentence marks that range and against it when it does, and every mark is carried by a row. Seven marking
+  sentences and eight pairs, measured.
+- **A test in Unreal** at a roll of 0, of 0.5 and of 1, for a Value, a Condition Value, a Scale Step and a
+  lockout: the sentence the player would read states the figure the effect row gives.
+
+**Not audited by this change:** the 147 benefit sentences with no effect row were read for a wait or an interval
+and one was found, the gadget volley; the drawback sentences with no effect row were listed and not ruled on.
+Each takes its direction when it is built.
+
+---
+
 ## 2026-10-04 — An aura that makes its caster immune gives the allies inside it the same immunities, through a list every immunity question reads
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
