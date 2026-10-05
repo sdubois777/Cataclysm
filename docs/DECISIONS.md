@@ -34,6 +34,25 @@ value plus the base for the enchantments `BASE_PLUS_SINGLE_VALUES` names, which 
 judgement of 2026-10-05 under the owner's delegation: 2 is the total and not 2 more, by the plain reading of
 "has 2 charges" beside its siblings' "has 1-2 additional charges".
 
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with this row stacked on the roll direction
+change, on `development` e8364c8e. **The ids are the commits as they stood when each step ran**; the layers were
+put together again afterwards, and tree 2d9b1b75 is the top the final runs used. The builds, both whole suites,
+the Python of record and the three proofs are in the roll direction entry's table and were all run at this
+row's top.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| The row's test against the asset built before the row | 12e16583 | 1 tests performed, 0 succeeded, 1 failed: EachChargesRowAddsUsesToTheSkillsItNames |
+| The asset, regenerated with the editor | 12e16583 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 461 to 462 |
+| Whole suite | e9e2a8d5 | 3159 tests performed, 3159 succeeded, 0 failed; declared 3159, gap 0; 0 ensures |
+| Python of record, with ruff clean | e9e2a8d5 | 5704 passed, 8 skipped in 372.83s; JUnit tests=5712 failures=0 errors=0 skipped=8 |
+
+**The row's test fails without the row and passes with it.** Against the asset that lacked the row the one
+failed assertion was "Expected 'Positive_Your_movement_ability_has_2_charges: slot 7 holds 2' to be 2, but it
+was 1", as predicted; with the asset rebuilt the test passes inside the whole suite.
+
 ---
 
 ## 2026-10-05 — A better roll gives the better outcome: a roll of 1 is a benefit's best figure and a drawback's harshest, so seven sentences mark a range that rolls down
