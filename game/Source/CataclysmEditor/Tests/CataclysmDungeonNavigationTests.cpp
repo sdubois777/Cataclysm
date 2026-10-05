@@ -77,7 +77,13 @@ namespace CataclysmDungeonNavTest
 	/** How tall the navigation bounds are. Walls are 400 cm. */
 	constexpr double BoundsHeightCm = 1600.0;
 
-	FNavigableFloor Build(int32 Seed, ECataclysmFloorLayout Layout)
+	/**
+	 * `ChangeThePlan` is given the generated plan before the floor is built from it, and before any navigation
+	 * system exists. A test that needs a floor the generator does not make by itself, a carved shortcut, changes the
+	 * plan there, which is where the game mode changes it.
+	 */
+	FNavigableFloor Build(int32 Seed, ECataclysmFloorLayout Layout,
+						  TFunctionRef<void(FCataclysmFloorPlan&)> ChangeThePlan = [](FCataclysmFloorPlan&) {})
 	{
 		FNavigableFloor Out;
 
@@ -100,7 +106,9 @@ namespace CataclysmDungeonNavTest
 		Request.DungeonSeed = Seed;
 		Request.FloorNumber = 1;
 		Request.Layout = Layout;
-		if (!Out.Floor->Build(FCataclysmFloorGenerator::Generate(Request)))
+		FCataclysmFloorPlan Plan = FCataclysmFloorGenerator::Generate(Request);
+		ChangeThePlan(Plan);
+		if (!Out.Floor->Build(Plan))
 		{
 			Out.Trouble = TEXT("the floor did not build");
 			return Out;
@@ -605,27 +613,29 @@ bool FCataclysmShortcutNavigationTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonNavTest;
 
-	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
-	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+	// A SHORTCUT CARVED INTO THE PLAN BEFORE THE FLOOR IS BUILT FROM IT, which is the order the game mode uses for a
+	// floor carrying a gate row.
+	//
+	// NOT BUILT A SECOND TIME. This test first built the plain floor, then carved, then built the same floor actor
+	// again once the navigation system existed. On its first run, 2026-10-05, both waits for the mesh below answered
+	// false while the path assertions passed, so those may have read a mesh that was not finished. The cause was not
+	// proven; the second build is what no passing test beside this one does, and it is gone.
+	FCataclysmFloorShortcut Shortcut;
+	int32 ShortcutsFound = 0;
+	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls, [&Shortcut, &ShortcutsFound](FCataclysmFloorPlan& Plan)
 	{
-		TearDown(Setup);
-		return false;
-	}
-
-	// A SHORTCUT CARVED INTO THE PLAN AND THE FLOOR BUILT AGAIN FROM IT, as the game mode builds a floor carrying a
-	// gate row.
-	FCataclysmFloorPlan Plan = Setup.Floor->GetPlan();
-	FRandomStream Stream(3);
-	const TArray<FCataclysmFloorShortcut> Found =
-		FCataclysmFloorGenerator::FindShortcuts(Plan, Stream, 1, TSet<FIntPoint>());
-	if (!TestEqual(TEXT("set-up: a shortcut on this floor"), Found.Num(), 1))
-	{
-		TearDown(Setup);
-		return false;
-	}
-	const FCataclysmFloorShortcut Shortcut = Found[0];
-	FCataclysmFloorGenerator::CarveShortcut(Plan, Shortcut);
-	if (!TestTrue(TEXT("set-up: the floor built again with the corridor"), Setup.Floor->Build(Plan)))
+		FRandomStream Stream(3);
+		const TArray<FCataclysmFloorShortcut> Found =
+			FCataclysmFloorGenerator::FindShortcuts(Plan, Stream, 1, TSet<FIntPoint>());
+		ShortcutsFound = Found.Num();
+		if (ShortcutsFound == 1)
+		{
+			Shortcut = Found[0];
+			FCataclysmFloorGenerator::CarveShortcut(Plan, Shortcut);
+		}
+	});
+	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady())
+		|| !TestEqual(TEXT("set-up: a shortcut on this floor"), ShortcutsFound, 1))
 	{
 		TearDown(Setup);
 		return false;

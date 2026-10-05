@@ -45105,7 +45105,12 @@ bool FCataclysmSoulChainsTest::RunTest(const FString& Parameters)
 	First[1]->Destroy();
 	Beat(Mode, 1);
 	TestTrue(TEXT("both dead opens it"), Mode->GatedShortcutIsOpen(SoulChainsRow, 0));
-	for (const FIntPoint& Cell : Mode->GatedShortcutsOf(SoulChainsRow)[0].Gate)
+
+	// THE GATE IS COPIED BEFORE IT IS WALKED. `GatedShortcutsOf` answers an array by value, and a loop written straight
+	// over `GatedShortcutsOf(Row)[0].Gate` walks the cells of an array already destroyed. The first run of this test
+	// did exactly that and failed on a cell that was never the gate's (2026-10-05).
+	const TArray<FIntPoint> OpenedGate = Mode->GatedShortcutsOf(SoulChainsRow)[0].Gate;
+	for (const FIntPoint& Cell : OpenedGate)
 	{
 		TestTrue(TEXT("its gate cell is walkable"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
 		TestEqual(TEXT("and no pillar stands on it"), PillarsOn(World, Mode, Cell), 0);
