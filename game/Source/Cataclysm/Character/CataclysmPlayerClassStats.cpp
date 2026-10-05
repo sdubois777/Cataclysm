@@ -333,6 +333,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("self_buff_shared_within_metres"),
 		TEXT("support_buff_shared_within_metres"),
 		TEXT("nearby_allies_more_damage"),
+		// How many seconds an imp raised where this character's necrosis killed
+		// an enemy lasts, read by UCataclysmRisenImps::RiseOnNecrosisKill, and
+		// how many seconds after a summoned minion dies it is summoned again,
+		// read by UCataclysmSummonSkill::ScheduleResummon. Above zero is each
+		// rule being held. Issue #1833 group E part 4b.
+		TEXT("necrosis_kill_raises_imp_seconds"),
+		TEXT("minion_resummoned_after_seconds"),
 		// How far a Ritualist's minions draw nearby enemies off their summoner,
 		// and how many minions that takes. Both read by
 		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil

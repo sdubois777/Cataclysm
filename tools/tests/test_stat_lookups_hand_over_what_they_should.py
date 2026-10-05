@@ -78,6 +78,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: an armour nova strikes with.
 #: Issue #1833 group E part 4a added three more on 2026-10-02, the two reaches
 #: and the More damage `UCataclysmSharedBuffs::Step` gives allies.
+#: Part 4b added two more: the seconds a necrosis-risen imp lasts and the wait
+#: before a lost minion is summoned again.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -169,6 +171,14 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
+     'FName(NecrosisRiseSecondsStat), FGameplayTagContainer(), 0.0f'):
+        'how long an imp raised by a necrosis kill lasts, asked of the killer when '
+        'something it killed dies; the kill is over and no blow or skill is in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ResummonedAfterSecondsStat), FGameplayTagContainer(), 0.0f'):
+        'how long a summoner waits before a lost minion is summoned again, asked of '
+        'the summoner when its minion dies, with no blow or skill of its own in hand; issue #1833',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.cpp',
      'FName(UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat), NoTags, 0.0f'):
         '"Nearby allies gain 10-20% more damage", read in a regeneration step on the wearer with no blow, target or skill in hand; issue #1833',

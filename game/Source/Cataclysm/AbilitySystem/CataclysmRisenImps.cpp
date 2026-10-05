@@ -7,16 +7,20 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
 #include "Engine/World.h"
 #include "GameplayEffect.h"
+#include "GameplayTagsManager.h"
 #include "Cataclysm.h"
 
 const TCHAR* UCataclysmRisenImps::RisesStat = TEXT("curse_death_raises_imp");
 const TCHAR* UCataclysmRisenImps::ImpSkillWeapon = TEXT("Staff");
 const TCHAR* UCataclysmRisenImps::ImpSkillDamageType = TEXT("Demonic");
 const TCHAR* UCataclysmRisenImps::ImpSkillName = TEXT("Summon Imp");
+const TCHAR* UCataclysmRisenImps::NecrosisRiseSecondsStat =
+	TEXT("necrosis_kill_raises_imp_seconds");
 
 namespace
 {
@@ -105,6 +109,60 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnDeath(AActor* Dying)
 		Curser, Dying->GetActorLocation(), Lifetime, SummonImp->Params.bBurns, Type);
 	if (Imp)
 	{
+		Imp->RecordExplosionRadius(SummonImp->Params.RadiusCm);
+		if (const UWorld* World = Imp->GetWorld())
+		{
+			Imp->RisenAtSeconds = World->GetTimeSeconds();
+		}
+	}
+	return Imp;
+}
+
+ACataclysmMinion* UCataclysmRisenImps::RiseOnNecrosisKill(
+	AActor* Killer, const AActor* Victim, const FVector& Where,
+	const FGameplayTagContainer* KillingTags)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Killer));
+	if (!Theirs || !Victim || !KillingTags)
+	{
+		return nullptr;
+	}
+	const float Seconds = Theirs->StatForSkill(
+		FName(NecrosisRiseSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Seconds <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	const FGameplayTag Necrosis = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false);
+	// AN ENEMY, ASKED OF THE TEAMS AND NOT OF `UCataclysmTargeting::IsHostileTo`,
+	// which answers no for anything dead -- and the victim is dead by now.
+	if (!Necrosis.IsValid() || !KillingTags->HasTagExact(Necrosis)
+		|| UCataclysmTeams::AttitudeBetween(Killer, Victim) != ETeamAttitude::Hostile)
+	{
+		return nullptr;
+	}
+
+	const TArray<FCataclysmWeaponSkill> Staff = UCataclysmWeaponSkills::SkillsFor(
+		UCataclysmWeaponSkills::LoadGeneratedTable(), ImpSkillWeapon, ImpSkillDamageType);
+	const FCataclysmWeaponSkill* SummonImp = Staff.FindByPredicate(
+		[](const FCataclysmWeaponSkill& Skill) { return Skill.Name == ImpSkillName; });
+	if (!SummonImp || SummonImp->Params.Minions.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' killed '%s' with necrosis, and nothing rose: the weapon skill "
+				 "table has no '%s' naming a minion to raise."),
+			*Killer->GetName(), *GetNameSafe(Victim), ImpSkillName);
+		return nullptr;
+	}
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Killer, Where, Seconds, SummonImp->Params.bBurns, SummonImp->Params.Minions[0].Type);
+	if (Imp)
+	{
+		Imp->bOutsideSummonCaps = true;
 		Imp->RecordExplosionRadius(SummonImp->Params.RadiusCm);
 		if (const UWorld* World = Imp->GetWorld())
 		{

@@ -21,6 +21,7 @@
 // For the potion heal paid on each step, and its step length. Issue #806.
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
@@ -1050,6 +1051,13 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				Gear->NoteKillOnWornWeapons(Acting);
 			}
 			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags);
+
+			// AND AN ENEMY ITS NECROSIS KILLED MAY RISE FOR IT. Issue #1833 group E
+			// part 4b: "Enemies killed by necrosis rise as temporary minions for 5-10
+			// seconds". The killing tags, which a lethal tick fills with its ailment,
+			// and not the killing skill's.
+			UCataclysmRisenImps::RiseOnNecrosisKill(
+				this, Notice.Victim, Notice.Location, Notice.KillingTags);
 		}
 
 		// AND LONG HOLD, BEFORE WRUNG OUT BELOW CAN BUY ANYTHING. Issue #1515.

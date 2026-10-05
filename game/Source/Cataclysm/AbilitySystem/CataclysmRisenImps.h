@@ -8,6 +8,7 @@
 
 class AActor;
 class ACataclysmMinion;
+struct FGameplayTagContainer;
 
 /**
  * An enemy that dies carrying a curse a Ritualist laid on it rises as a lesser
@@ -77,4 +78,33 @@ public:
 
 	/** Whether this actor is a risen imp still inside its "Risen" label time. */
 	static bool ShowsRisen(const AActor* Actor);
+
+	/**
+	 * How many seconds an imp raised by a necrosis kill lasts, on the killer.
+	 * Issue #1833 group E part 4b: "Enemies killed by necrosis rise as temporary
+	 * minions for 5-10 seconds". Above zero IS the rule being held. No gameplay
+	 * attribute.
+	 */
+	static const TCHAR* NecrosisRiseSecondsStat;
+
+	/**
+	 * Raise an imp for `Killer` where an enemy it killed with necrosis fell.
+	 *
+	 * NECROSIS IS READ OFF THE KILLING TAGS, which a lethal tick fills with the
+	 * ailment's own tag (`Keyword.DoT.Necrosis`). The killing SKILL'S tags say
+	 * what the skill was and not what killed, so they are not asked.
+	 *
+	 * THE STATED SECONDS ARE ITS LIFETIME, scaled by `minion_duration` as every
+	 * summon's is, and it is raised OUTSIDE EVERY SUMMON CAP: ruled 2026-10-02.
+	 * It is Summon Imp's kind, the one precedent for a raised minion.
+	 *
+	 * @param Victim       what died; nothing rises unless it was hostile to the killer
+	 * @param Where        where it fell
+	 * @param KillingTags  the death notice's killing tags, which may be null
+	 * @return the imp, or null when the rule is not held, the kill was not
+	 *         necrosis, the victim was no enemy, or the type could not be found
+	 */
+	static ACataclysmMinion* RiseOnNecrosisKill(AActor* Killer, const AActor* Victim,
+												const FVector& Where,
+												const FGameplayTagContainer* KillingTags);
 };

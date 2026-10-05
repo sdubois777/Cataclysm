@@ -2,6 +2,125 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-04 — An enemy killed by necrosis rises as an imp for the row's seconds, outside every summon cap, and a summoned minion that dies is summoned again beside its summoner after the row's seconds
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.h` and `.cpp`
+(`RiseOnNecrosisKill`, `NecrosisRiseSecondsStat`), `CataclysmMinion.h` (`bOutsideSummonCaps`),
+`CataclysmCommand.cpp` (`MinionsOfTypeCommandedBy` leaves such a minion out), `CataclysmSkillTemplates.h` and
+`.cpp` (`UCataclysmSummonSkill::ScheduleResummon`, `ResummonNow`, `ResummonedAfterSecondsStat`),
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`PendingResummons`, `ClearPendingResummons`),
+`CataclysmVitalAttributeSet.cpp` (the death hook), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`
+(`OnSomethingDied`), `CataclysmPlayerClassStats.cpp` (two names on `StatsWithNoAttribute`), four tests in
+`game/Source/Cataclysm/Tests/CataclysmRisenImpTests.cpp`, six in `CataclysmCommandTests.cpp`, two probes in
+`CataclysmStatExemptionTests.cpp`, two row tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/All_Things_Cataclysm.xlsx`,
+`docs/README.md`, `game/Data/EnchantmentEffects.csv` and its asset. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group E part 4b.
+
+### THE RESEARCH, fetched 2026-10-04
+
+| Game | What it does | Its words | Source |
+| :-- | :-- | :-- | :-- |
+| Path of Exile | a temporary minion made by a kill | "(50—69)% chance to Summon a Phantasm when Supported Skills, or Non-Phantasm Minions from Supported Skills, deal a Killing Blow"; "Phantasms last 15 seconds"; "Maximum (5—10) Summoned Phantasm" | poedb.tw/us/Summon_Phantasm_Support |
+| Path of Exile 2 | a minion that comes back after a wait | reviving minions "automatically revive after a short delay when killed. This delay is reset whenever another Reviving Minion dies." The page states no number and no place | poe2db.tw/us/Reviving_Minions |
+
+**What it settles:** a kill raising a minion with a stated lifetime, and a dead minion returning after a wait,
+are both shapes a shipped game uses. **What it does not settle,** each a judgement below: Path of Exile caps its
+phantasms and this row's imp is outside every cap; Path of Exile 2 keeps one shared wait that every death
+resets, and this row gives each loss a wait of its own; neither says where a returned minion stands.
+
+### WHAT WAS RULED, 2026-10-02, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+**"Enemies killed by necrosis rise as temporary minions for 5-10 seconds".**
+
+1. **Necrosis is read off what killed, not off the killing skill.** A lethal tick's death notice carries the
+   ailment's tag in `KillingTags` (`Keyword.DoT.Necrosis`); the `kill` event a worn row hears carries the
+   killing SKILL'S tags, which say what the skill was. So the rule is asked beside that event and not through it.
+2. **An imp rises**, Summon Imp's kind, the one precedent for a raised minion, where the enemy fell.
+3. **It lasts the row's seconds, scaled by `minion_duration`** as every summon's lifetime is.
+4. **It holds no place under any summon cap**: it does not fill Summon Imp's cap, a summon at the cap does not
+   destroy it, and it rises with the cap full. `ACataclysmMinion::bOutsideSummonCaps` says so, and
+   `UCataclysmCommand::MinionsOfTypeCommandedBy`, which both cap counts read, leaves it out.
+5. **Only an enemy rises.** The victim's side is asked of the teams and not of
+   `UCataclysmTargeting::IsHostileTo`, which answers no for anything dead.
+
+**"When a minion dies it automatically re-summons after 3-6 seconds".**
+
+6. **A wait per lost minion**, the row's seconds long, on the summoner. `ReplaceLost`, which Press-Ganged and
+   Rekindled use, is not a wait: it replaces at once and its stat is the least time between two replacements.
+7. **Only a summon skill's minion comes back**: not a deployable, a risen or raised imp, or a thrall, none of
+   which a summon skill made. **Only a death starts a wait**: an expiry and a cap eviction destroy a minion
+   without one.
+8. **When the wait ends, the minion is summoned beside its summoner**, not where it died, which may be among
+   what killed it; **only if the summoner is alive and its cap and reserve have room. Otherwise the wait is
+   over, not put off.**
+9. **A summoner's death ends its waits**, so one that stands back up gets nothing back from before it fell.
+10. **One loss gives one minion.** When Press-Ganged or Rekindled replaced the lost minion at once, no wait
+    begins.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Enemies killed by necrosis rise as temporary minions for 5-10 seconds | `necrosis_kill_raises_imp_seconds` flat 5 to 10 |
+| When a minion dies it automatically re-summons after 3-6 seconds | `minion_resummoned_after_seconds` flat 3 to 6 |
+
+EnchantmentEffects 458 to 460, over 374 to 376. Both stats have no gameplay attribute; each has a probe in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. They need no generator change.
+
+**The re-summon row's test wears it at 6 seconds**, the high end of its range, which is what the row tests'
+helper rolls. Six is the longest wait and so the worst roll of this row. **Ruled 2026-10-04: the range stays as
+its sentence states it, 3 to 6.** Whether a row whose lower figure is the better one should roll the other way
+is a question for every such row and is held for the owner. One other benefit is known to share the property,
+found by reading the benefit sentences that state a range beside "after" or "every": "Gadgets fire at all
+enemies within range simultaneously once every 5-8 seconds". That search is not a full audit.
+
+### WHAT IS NOT IN THIS PART
+
+- **"Your aura also applies its effect to all allies within range"** is part 4c: allies inside Living Pyre's
+  ring gain its immunities, through a granted-immunity list consulted by `IsImmuneTo`.
+- **"Summoned minions inherit 10%-25% of your armor and resistances"** stays blocked: no minion armour or
+  resistance stat exists.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with part 4c stacked on top of this part, on
+`development` 53889091. Every build and whole-suite run was at the top of the stack; this part's own layer is
+feat/necrosis-rise-and-resummon-3. **The ids are the commits as they stood when each step ran.** The layers were
+put together again afterwards to carry each fix and each asset on its own layer, without changing any other
+file, so the same content sits under later ids; tree 9493d7e6 is the top the final runs used.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | fa41a4f9 | Build: Succeeded - 32 actions, 29 files compiled |
+| This layer's asset, regenerated with the editor from this layer's CSV | fa41a4f9 | 2 files changed: `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 458 to 460 |
+| Python, before the first whole suite; superseded by the run of record below, because test files changed after it | 1f0c6f3e | 5691 passed, 8 skipped in 327.58s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite, first run | 1f0c6f3e | 3138 tests performed, 3136 succeeded, 2 failed: AnAuraNamingNoImmunityGivesItsAlliesNone, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing |
+| Rebuild after the two test fixes | 3226762f | Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.21.cpp, Module.Cataclysm.29.cpp |
+| The four rise tests | 3226762f | Cataclysm.NecrosisRise.: 4 tests performed, 4 succeeded, 0 failed |
+| Whole suite | 3226762f | 3138 tests performed, 3138 succeeded, 0 failed; declared 3138, gap 0; 0 ensures |
+| Python of record | 3226762f | 5691 passed, 8 skipped in 354.04s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Proof A: the necrosis check taken out of `RiseOnNecrosisKill`, so any kill raises an imp | 3226762f | PROVED: with the break in: 4 tests performed, 2 succeeded, 2 failed: AKillThatIsNotNecrosisRaisesNothing, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Proof B: `bOutsideSummonCaps` set false on the risen imp | 3226762f | PROVED: with the break in: 4 tests performed, 2 succeeded, 2 failed: AnEnemyAPlayersNecrosisTickKillsRisesAsAnImpForTheStatedSeconds, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Proof C: a wait started even when `ReplaceLost` replaced the minion at once | 3226762f | PROVED: with the break in: 6 tests performed, 5 succeeded, 1 failed: AMinionReplacedAtOnceByPressGangedStartsNoWait \| restored: 6 tests performed, 6 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: A three, B two, C two. The six
+re-summon tests, the two row tests and the two probes ran inside the whole suite and not as runs of their own.
+
+**The first whole suite failed one of this part's tests, and it was not predicted.**
+`ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing` read "a kill of the character's own imp raises
+nothing" as not null, and so counted five minions where it expected four. **The fault was in the test.** Its
+summoner is a bare actor with no team. A minion takes its summoner's team, and once it is possessed its owner is
+its controller, so that imp shared neither a team nor an owner chain with its summoner, and
+`UCataclysmTeams::AttitudeBetween` answers Hostile for any pair where one side has no team. In play a summoner
+is a player on the Players team and its minions take that team. The coordinating session approved a test-only
+fix: the test sets that imp's owner to its summoner. The engine rule, judgement 5, is unchanged.
+
+The other test that failed in that run is part 4c's, and its entry records it.
+
+---
+
 ## 2026-10-04 — The Burn row names Hellfire Aura alone: Infernal Brand applies no Burn
 
 **Affects:** the Burn row of the DoTs sheet in `docs/All_Things_Cataclysm.xlsx` and what is generated from it,
