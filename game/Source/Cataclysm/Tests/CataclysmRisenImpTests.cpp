@@ -908,8 +908,19 @@ bool FCataclysmNecrosisRiseOutsideCapsTest::RunTest(const FString&)
 	Killing.AddTag(Ailment(TEXT("Keyword.DoT.Necrosis")));
 
 	// ITS OWN IMP AS THE VICTIM: not an enemy, so nothing rises.
+	//
+	// OWNED BY ITS SUMMONER HERE, BECAUSE THIS TEST'S SUMMONER HAS NO TEAM. A
+	// minion takes its summoner's team, and once it is possessed its owner is
+	// its controller, so a team-less summoner's imp shares neither a team nor
+	// an owner chain with it -- and `AttitudeBetween` answers Hostile for any
+	// pair where one side has no team. In play the summoner is a player on the
+	// Players team and its imp takes that team. The owner chain says here what
+	// the team says there. Without this line the first run of this test raised
+	// an imp from the character's own.
+	ACataclysmMinion* Own = Holder.Imps()[0];
+	Own->SetOwner(Holder.Actor);
 	TestNull(TEXT("a kill of the character's own imp raises nothing"),
-		UCataclysmRisenImps::RiseOnNecrosisKill(Holder.Actor, Holder.Imps()[0], FVector::ZeroVector, &Killing));
+		UCataclysmRisenImps::RiseOnNecrosisKill(Holder.Actor, Own, FVector::ZeroVector, &Killing));
 
 	FScopedCreature Victim(World, FVector(5 * M, 0, 0));
 	ACataclysmMinion* Risen = UCataclysmRisenImps::RiseOnNecrosisKill(
