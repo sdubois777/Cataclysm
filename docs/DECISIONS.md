@@ -8,8 +8,8 @@ Decisions made outside the Google Drive documents, newest first.
 console variable `Cataclysm.BringCreaturesAngle`); the automation test in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
 [#2219](https://github.com/sdubois777/Cataclysm/issues/2219).
-**Applied.** The Unreal compile, the automation test and the guard proof have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proof ran on 2026-10-05;
+the figures are under "Run" at the end of this entry.
 
 ### What was wrong
 
@@ -59,9 +59,32 @@ the pit and within two cells of it. **Before the change this set-up brought none
 third place out and changes nothing else, so its failing half runs `BringCreaturesNear` as it was merged in #2208:
 that half is the evidence that the test reproduces the defect, and not only that the fix can be undone.
 
-### Not yet run
+### Run
 
-The compile, the test, its group and the guard proof.
+One window on 2026-10-05, at `fix/cryptquake-swarm-always-comes-3` fdf5b29c, on development e2f18a19, measured there
+at 3159 Unreal tests and 5712 Python. The whole suite and not only the rule's group, because `BringCreaturesNear` has
+six callers and five were read and not run. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3160 tests performed, 3160 succeeded, 0 failed`; `Declared: 3160 tests in the tree at fdf5b29c; 3160 performed, gap 0` |
+| Python, with continuous integration idle | `5704 passed, 8 skipped in 366.09s`; JUnit `tests="5712" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**The test's set-up, as it logged:** dungeon seed 1, pit corner X=3 Y=3, angle 270 degrees.
+
+**Guard proof Pa, one anchor counted, PROVED.** The break makes the third place never used and changes nothing else.
+Prefix `Cataclysm.DungeonModifierEffects.CryptquakeBringsItsSwarm`.
+
+| | Printed |
+|---|---|
+| With the break in | 1 performed, 1 failed, 1 failed assertion: "Expected 'three creatures came, though the angle pointed at rock' to be 3, but it was 0" |
+| Restored | 1 performed, 1 succeeded |
+
+The count is the one registered before the run. **The failing half is `BringCreaturesNear` as it was merged in #2208
+with the angle pinned at the rock, and it brought no creature: the defect, reproduced on demand.** No
+navigation-mesh test failed its wait in this run.
 
 ---
 
