@@ -8174,6 +8174,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeRowsReachTheirSlotsTest,
  * special ability ..." and "Your movement ability ... has 1-2 additional
  * charges": 3 in that slot. Every other slot holds 1.
  *
+ * "Your movement ability has 2 charges": 2 in the Movement slot, the one a
+ * skill always has and one more. Issue #1833, 2026-10-05: the sentence was
+ * reworded on 2026-09-30 and had no effect row until then.
+ *
  * "Skills have 1-2 additional charges when fighting Boss enemies": 1 everywhere
  * until a Boss is struck, then 3 everywhere -- within four seconds of striking
  * one, the owner's boss clock of 2026-09-18.
@@ -8198,6 +8202,7 @@ bool FCataclysmChargeRowsReachTheirSlotsTest::RunTest(const FString&)
 		{TEXT("Positive_Gain_1_3_additional_charges_for_your_cooldown_ab"), ESlot::None, 4},
 		{TEXT("Positive_Your_special_ability_has_1_2_additional_charges"), ESlot::Special, 3},
 		{TEXT("Positive_Your_movement_ability_has_1_2_additional_charges"), ESlot::Movement, 3},
+		{TEXT("Positive_Your_movement_ability_has_2_charges"), ESlot::Movement, 2},
 	};
 	for (const FCase& Case : Cases)
 	{
