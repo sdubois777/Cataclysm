@@ -76,6 +76,31 @@ ECataclysmAbilitySlot UCataclysmWeaponSkills::SlotFromName(const FString& SlotNa
 	return ECataclysmAbilitySlot::None;
 }
 
+void UCataclysmWeaponSkills::StampOnto(UCataclysmSkillTemplate& Template,
+									   const FCataclysmWeaponSkill& Skill)
+{
+	Template.SkillName = Skill.Name;
+	Template.SkillDescription = Skill.Description;
+	Template.Params = Skill.Params;
+	Template.SkillTags = Skill.Tags;
+
+	// AND ITS OWN CRITICAL STRIKE CHANCE, stamped here rather than
+	// written onto the character, because six skills are granted at once
+	// and the character has one CritChance attribute to hold them in.
+	// Each hit carries the chance of the skill that dealt it instead.
+	// Issue #657.
+	Template.CritChancePercent = Skill.CritChancePercent;
+
+	// AND WHAT IT IS WORTH, WAITS AND COSTS. A slot is a key and a
+	// skill is worth what it is worth wherever it is put, decided
+	// 2026-08-22. Each is -1 on every row today, and -1 is what the
+	// ability already treats as "take the slot's figure", so this
+	// changes nothing until a number is written. Issue #836.
+	Template.DamagePercentOverride = Skill.DamagePercent;
+	Template.CooldownOverride = Skill.Cooldown;
+	Template.ManaCostOverride = Skill.ManaCost;
+}
+
 TSubclassOf<UCataclysmGameplayAbility> UCataclysmWeaponSkills::TemplateFor(
 	ECataclysmSkillShape Shape)
 {
@@ -93,6 +118,83 @@ TSubclassOf<UCataclysmGameplayAbility> UCataclysmWeaponSkills::TemplateFor(
 	default:
 		return nullptr;
 	}
+}
+
+namespace
+{
+	/**
+	 * One row of the matrix as a skill, in the slot the caller read from it. ONE FUNCTION because two lookups read
+	 * rows: a weapon's skills and every skill of a damage type. Written twice, the second would miss the next column.
+	 */
+	FCataclysmWeaponSkill WeaponSkillFromRow(const FCataclysmWeaponSkillRow& Row, ECataclysmAbilitySlot Slot)
+	{
+		FCataclysmWeaponSkill Skill;
+		Skill.Slot = Slot;
+		Skill.Name = Row.SkillName;
+		Skill.Description = Row.SkillDescription;
+		Skill.Shape = UCataclysmSkillShapes::ShapeFromName(Row.Shape);
+		Skill.Tags = UCataclysmSkillShapes::TagsFromCell(Row.Tags);
+
+		// CARRIED UNCHANGED, INCLUDING THE -1 THAT MEANS THE ROW SAYS
+		// NOTHING. Turning that into 5% here would put the default in a
+		// second place, and the two could then disagree silently. It is
+		// applied once, where a character's attribute is written, in
+		// UCataclysmWeaponSlotsComponent. Issue #657.
+		Skill.CritChancePercent = Row.CritChancePercent;
+
+		// THE SAME, AND FOR THE SAME REASON. A -1 means the row says
+		// nothing and the slot's figure is used; turning it into that
+		// figure here would put the fallback in a second place. Applied
+		// once, where the ability is granted, in
+		// UCataclysmWeaponSlotsComponent. Issue #836.
+		Skill.DamagePercent = Row.DamagePercent;
+		Skill.Cooldown = Row.Cooldown;
+		Skill.ManaCost = Row.ManaCost;
+
+		// Named in the error so a bad cell says which of the 398 rows it
+		// is. The generator refuses one already, so this only fires for
+		// a table edited in the editor rather than generated.
+		FString Error;
+		Skill.Params = UCataclysmSkillShapes::ParseParams(Row.ShapeParams, &Error);
+		if (!Error.IsEmpty())
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("'%s' (%s %s) has unreadable shape parameters: %s"),
+				*Row.SkillName, *Row.WeaponType, *Row.Slot, *Error);
+		}
+		if (!Row.Shape.IsEmpty() && Skill.Shape == ECataclysmSkillShape::None)
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("'%s' names the shape '%s', which no template "
+					 "implements. It will fill its slot and do nothing."),
+				*Row.SkillName, *Row.Shape);
+		}
+
+		return Skill;
+	}
+}
+
+TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsOfDamageType(const UDataTable* Table,
+																		 const FString& DamageType)
+{
+	TArray<FCataclysmWeaponSkill> Found;
+	if (!Table)
+	{
+		return Found;
+	}
+	Table->ForeachRow<FCataclysmWeaponSkillRow>(
+		TEXT("UCataclysmWeaponSkills::SkillsOfDamageType"),
+		[&](const FName&, const FCataclysmWeaponSkillRow& Row)
+		{
+			const ECataclysmAbilitySlot Slot = SlotFromName(Row.Slot);
+			if (Row.SkillName.IsEmpty() || Slot == ECataclysmAbilitySlot::None
+				|| !Row.DamageType.Equals(DamageType, ESearchCase::IgnoreCase))
+			{
+				return;
+			}
+			Found.Add(WeaponSkillFromRow(Row, Slot));
+		});
+	return Found;
 }
 
 TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
@@ -146,49 +248,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 
 				Taken.Add(Slot);
 
-				FCataclysmWeaponSkill Skill;
-				Skill.Slot = Slot;
-				Skill.Name = Row.SkillName;
-				Skill.Description = Row.SkillDescription;
-				Skill.Shape = UCataclysmSkillShapes::ShapeFromName(Row.Shape);
-				Skill.Tags = UCataclysmSkillShapes::TagsFromCell(Row.Tags);
-
-				// CARRIED UNCHANGED, INCLUDING THE -1 THAT MEANS THE ROW SAYS
-				// NOTHING. Turning that into 5% here would put the default in a
-				// second place, and the two could then disagree silently. It is
-				// applied once, where a character's attribute is written, in
-				// UCataclysmWeaponSlotsComponent. Issue #657.
-				Skill.CritChancePercent = Row.CritChancePercent;
-
-				// THE SAME, AND FOR THE SAME REASON. A -1 means the row says
-				// nothing and the slot's figure is used; turning it into that
-				// figure here would put the fallback in a second place. Applied
-				// once, where the ability is granted, in
-				// UCataclysmWeaponSlotsComponent. Issue #836.
-				Skill.DamagePercent = Row.DamagePercent;
-				Skill.Cooldown = Row.Cooldown;
-				Skill.ManaCost = Row.ManaCost;
-
-				// Named in the error so a bad cell says which of the 398 rows it
-				// is. The generator refuses one already, so this only fires for
-				// a table edited in the editor rather than generated.
-				FString Error;
-				Skill.Params = UCataclysmSkillShapes::ParseParams(Row.ShapeParams, &Error);
-				if (!Error.IsEmpty())
-				{
-					UE_LOG(LogCataclysm, Warning,
-						TEXT("'%s' (%s %s) has unreadable shape parameters: %s"),
-						*Row.SkillName, *Row.WeaponType, *Row.Slot, *Error);
-				}
-				if (!Row.Shape.IsEmpty() && Skill.Shape == ECataclysmSkillShape::None)
-				{
-					UE_LOG(LogCataclysm, Warning,
-						TEXT("'%s' names the shape '%s', which no template "
-							 "implements. It will fill its slot and do nothing."),
-						*Row.SkillName, *Row.Shape);
-				}
-
-				Found.Add(MoveTemp(Skill));
+				Found.Add(WeaponSkillFromRow(Row, Slot));
 			});
 	};
 

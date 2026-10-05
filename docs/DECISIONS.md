@@ -2,6 +2,228 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-04 — Wild Magic: a skill use has a 5% chance to trigger a random different skill of the player's damage type, and "your class tree" is read as the damage type
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.h` and `.cpp` (new: a skill granted from its
+row with no key, started free and removed when it ends); `game/Source/Cataclysm/AbilitySystem/CataclysmWeaponSkills.h`
+and `.cpp` (`StampOnto`, `SkillsOfDamageType`, and the row reader both lookups now share);
+`game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.cpp` (calls `StampOnto`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (the skill-used notice says where the use was aimed);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`WildMagicKey`, the figures, the pool's
+rule, `Built`, `KeysWithARule`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the listener,
+the trigger on the next tick, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmTriggeredSkillTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the automation tests, the Python suite and the guard proofs ran on 2026-10-05; the
+figures are under "Run" at the end of this entry.
+
+### The row
+
+`Chaos_Wild_Magic`: "Casting a skill has a 5% chance to trigger the effect of a random different skill from your class
+tree."
+
+### A ruling replaced, and why
+
+**The ruling of 2026-10-01, "the pool is the player's whole class tree at the player's level", is replaced.** It was
+the coordinating session's and rested on a wrong picture of the data, found when the row was read against the tables
+on 2026-10-04:
+
+- `docs/Cataclysm_GDD_v2.md`, the paragraph beginning "Skills are not leveled or unlocked through a skill tree": skills
+  "are determined entirely by weapon type and damage type".
+- `game/Data/WeaponSkills.csv` has no class column and no level column. 403 rows, 117 with a skill name.
+- A class tree in this game is a passive tree (`game/Data/PassiveNodes.csv`). The one link from a class to skills is
+  the damage type: Demonic gives the Ravager, Ritualist and Masochist trees; War gives Bulwark, Berserker and Saboteur.
+
+**RULED 2026-10-04 by the coordinating session under the owner's delegation, a labelled judgement: "your class tree" is
+read as the skills of the player's damage type, on every weapon type.** The damage type is what gives a player their
+class trees, so its skills are the nearest thing the data has. There is no level filter, because skills have no level.
+A narrower reading, the other skills the player holds now, was offered and not taken: a player holds one to five, and
+it is not "from your class tree" in any sense.
+
+### What the research settles, and what it does not
+
+Path of Exile, `poedb.tw/us/Trigger`, fetched 2026-10-04: "Trigger a Socketed Lightning Spell on Hit, with a 0.25
+second Cooldown"; "Vaal skills, channelling skills, and skills with a reservation cannot be triggered"; "Cannot support
+skills used by totems, traps, or mines". `www.poewiki.net` refused the fetch.
+
+**That settles the shape:** a triggered skill has its own short wait, and channelled, reserved and placed skills are
+left out. **It does not settle the pool or the chance.** The 5% is the row's own figure. The pool is this game's and is
+the judgement above. No statement was found on whether a triggered skill may trigger another; this project's own entry
+of 2026-09-30, "a triggered action row waits a quarter second after it fires", is the precedent followed.
+
+### The pool is a rule, not a list
+
+`UCataclysmDungeonModifierEffects::WildMagicLeavesOut` asks a row eight questions in order and a skill is counted under
+the first that applies. A skill designed later is in or out by its own row. Each reason is a row that showed the
+problem. Counted from the table on 2026-10-04:
+
+| Reason a skill is left out | Demonic | War | A row that shows it |
+|---|---|---|---|
+| No shape: it does nothing | 0 | 54 | every undesigned War skill |
+| Movement shape: it moves the character somewhere the player did not choose | 13 | 3 | Flashpoint |
+| Aura: a toggle with an upkeep | 2 | 0 | Conflagration |
+| Summon or Deployable: it reserves Fervour and counts against a most-active figure | 2 | 3 | Summon Imp |
+| Tagged `Type.Channel`, or it has a charge time: it waits for a key release that never comes | 3 | 0 | Pyroclasm, Backswing, The Whole Weight |
+| It plants the character's weapon | 1 | 0 | Buried Fire |
+| It refuses unless a condition holds (`Requires`) | 3 | 0 | Touch Off, Unbroken, Slipstream |
+| It costs health, which a free use does not pay | 1 | 0 | Blood Pyre |
+| **In the pool** | **31** | **1** | |
+| Named skills | 56 | 61 | |
+
+The 31 are 13 Strikes, 8 Projectiles, 7 Self Buffs and 3 Debuffs. **War's pool is one skill, Shield Bash, because 54
+of War's 61 named skills have no shape yet. That is the state of the War skills and not a fault of the rule;** the
+floor panel says how many skills the pool holds, so a War player is told.
+
+### Rulings, each a labelled judgement of 2026-10-04
+
+- **5% on each skill use the player pays for.** The basic attack does not roll, the line the worn "on skill use" rows
+  draw (ruled 2026-09-14). A press the cost or the cooldown refuses is not a use.
+- **The triggered skill is free and is not a use:** no mana, no cooldown started or asked, no health cost, no
+  skill-used notice. So it cannot roll Wild Magic again and feeds no "on skill use" row.
+- **0.25 seconds between triggers.** Spent only by a trigger that happens.
+- **Never the skill just used**, the row's "different".
+- **Aimed where the pressed skill was aimed**, and it uses the player's own weapon damage and stats with the row's own
+  parameters. No template compares a row's weapon type with the weapon held.
+- **The roll and the pick can be pinned**, `Cataclysm.WildMagicRoll` and `Cataclysm.WildMagicPick`, as Trick or
+  Treat's roll is.
+- **The panel:** "wild magic: 2 triggered; last: Ashen Edge; pool of 31 Demonic skills"; with an empty pool, "wild
+  magic: no other skill to trigger". The pool's size on the line is this change's own addition to the ruled wording,
+  made so that "the War pool is one skill" is said where the player reads.
+- **The row is `Built`.**
+
+### How it is built
+
+**A triggered skill is a real skill for one use** (`UCataclysmTriggeredSkill::Trigger`). A skill's effect is the body
+of its template's `ActivateAbility`, an instance method, and nothing runs a row without an instance. So the row's
+template is granted with no `Slot.*` tag on its spec, which is the whole of "no key finds it"; its slot property and
+the row's eight fields are written; it is started with Follow Through's free repeat (`bFreeRepeat`, `FreeRepeatAim`,
+issue #1515) unchanged; and it is removed when it ends.
+
+**Three engine rules shape the order**, each read in Unreal Engine 5.8's `AbilitySystemComponent_Abilities.cpp`:
+
+- `TryActivateAbility` refuses a spec whose `RemoveAfterActivation` is already set. So the flag is set after the
+  activation, through `SetRemoveAbilityOnEnd`, which removes at once a skill that has already ended.
+- `GiveAbility` inside another ability's activation is deferred and returns a handle with no instance behind it.
+  `Trigger` refuses then and takes the pending grant back. The skill-used notice is sent from inside the pressed
+  skill's activation, so **the rule draws the skill on the notice and triggers it on the next tick**, as Follow
+  Through waits and for the same reason.
+- A spec is removed inside the `EndAbility` call that ends it.
+
+**The notice now says where the use was aimed** (`FCataclysmSkillUsedNotice::Aim`), read by `CommitAndBegin` from the
+skill's own `AimPoint()`. `NoteSkillUsed` takes it as an optional last argument; a caller that gives none gets the
+user's own location.
+
+**Two small moves so one thing is written once.** `UCataclysmWeaponSkills::StampOnto` holds the eight fields the weapon
+slots component used to write, because a triggered skill writes the same eight. `WeaponSkillFromRow` holds the lines
+that read a row, because `SkillsOfDamageType` reads rows as `SkillsFor` does.
+
+### Consequences, stated rather than changed
+
+- **A removed skill no longer answers for its later damage.** A blow carries a weak pointer to the skill that dealt
+  it. A burn a triggered skill left that kills after the skill is gone names no killing skill, so a "kill" row scoped
+  by skill tags and Follow Through's lookup see nothing for that kill. The damage is unchanged: every figure is copied
+  when the blow or the projectile is made.
+- **Fervour is earned and bought on a triggered skill's hits**, as on Follow Through's repeat: the free flag gates
+  neither.
+- **A triggered self buff stands beside the player's own, and both count.** Wild Magic never draws the skill just
+  used, but it may draw a buff the player already has running from an earlier press. Each copy is its own skill and
+  adds its own More modifier (`UCataclysmSelfBuffSkill::GrantIncrease` calls `AddStatModifier` once a copy), and the
+  stat pipeline multiplies every More modifier on its own rather than summing them. **The size of it:** three of the
+  pool's seven self buffs grant More damage, Butcher's Heat (1% a kill), Burning Wrath (4% for each burning enemy)
+  and Held Fast (10% for each pinned enemy). Burning Wrath with five enemies burning is 20% more; a second copy
+  makes it 1.2 x 1.2 = 1.44, 44% more, for as long as both run. The other four add no modifier, and a second copy
+  of one repeats its own effect. Ruled 2026-10-04: this is the row's chaos and stays. Read from the code, not run.
+- **A triggered skill turns the character to face its aim and plays an attack clip**, as Follow Through's repeat does.
+- **A skill that refuses itself triggers nothing and spends no wait**: skills locked by another rule, or a held swing
+  that forbids acting.
+- **The panel line reads the pool each time it is drawn.** Performance is parked by the owner's decision; if it
+  shows, the pool's size can be kept per damage type.
+
+### Tests
+
+Ten new automation tests.
+
+`Cataclysm.TriggeredSkill.`, on plain actors:
+
+- `ItStrikesAtItsAimForFreeAndIsGoneAfterwards`: started while its slot's cooldown runs; strikes what it is aimed at
+  and not the other side; no mana, no skill use; as many skills held and found by a key as before; the held skill
+  still waits for its cooldown.
+- `ARunningOneIsFoundByNoKeyAndIsRemovedWhenItEnds`: a self buff still running holds one more skill and no more keys;
+  its slot property is the row's; a press of its slot's key leaves it unpressed; no cooldown in its slot; ended, it is
+  no longer held.
+- `ARefusedOneLeavesNothingBehind`: a row with no shape, a skill whose requirement is unmet, and a trigger from inside
+  another skill's activation each start nothing and leave nothing held; the same row starts once that activation is
+  over.
+
+`Cataclysm.DungeonModifierEffects.`, on floors the game mode builds:
+
+- `WildMagicFiguresAndTheRowBuilt`.
+- `WildMagicPoolIsCountedFromTheRealTableAndEachExclusionNamesWhatItRemoved`: the table above, counted from the real
+  table and logged by name; one named row for each reason a row showed; the pool holds only the four shapes that end
+  by themselves, each skill once; War's pool is Shield Bash.
+- `WildMagicARollUnderFiveTriggersThePinnedSkillFreeAtThePressedSkillsAim`.
+- `WildMagicDoesNotRollAtFiveNorForACreatureNorWithoutTheRowNorOnABasicAttack`, with the same use in another slot as
+  its control.
+- `WildMagicNeverPicksTheSkillJustUsed`: the pool's first skill is the one used, so a pick of 0 would be that skill
+  if it were not taken out.
+- `WildMagicWaitsAQuarterSecondBetweenTriggers`.
+- `WildMagicWithAPoolOfOneOrNoneTriggersNothingMoreAndThePanelSaysSo`.
+
+**The pool test pins the table's counts on purpose.** A skill designed later moves one of them: the figure is changed
+there and in the table above together, after reading which reason the new skill fell under.
+
+**Python.** One new check, `test_wild_magic_row_still_says_five_percent_a_random_different_skill_and_your_class_tree`,
+pins the phrases the readings rest on. This row needs no workbook edit.
+
+### Run
+
+One window on 2026-10-05 for a stack of two: the gated shortcuts (the entry below), then this change on top of it.
+Development was 8ae2a01f, measured there at 3138 Unreal tests. Every figure below is a line a run printed. The entry
+below has the whole window; this is what belongs to this change.
+
+**First run, at `feat/wild-magic-2` 7b7a3110:**
+
+| Step | Printed |
+|---|---|
+| Build, the first compile of both layers | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Whole Unreal suite | `3158 tests performed, 3155 succeeded, 3 failed`; `Declared: 3158 tests in the tree at 7b7a3110; 3158 performed, gap 0` |
+| Python, with continuous integration idle | `5694 passed, 8 skipped in 397.37s`; JUnit `tests="5702" failures="0" errors="0" skipped="8"` |
+
+**All ten of this change's tests passed in that run.** The three failures were two tests of the layer below and one
+intermittent failure in merged code (issue [#2219](https://github.com/sdubois777/Cataclysm/issues/2219)); the entry
+below says what each was. The pool test's fifteen pinned counts held, so the C++ reader counts the table as the
+Python count did.
+
+**Second run, after two test-only fixes in the layer below, at `feat/wild-magic-3` 422f0667.** This change's files are
+the same in both heads.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Group `Cataclysm.DungeonModifierEffects.`, which holds this rule's seven tests | `593 tests performed, 593 succeeded, 0 failed` |
+| `tools/tests` at 422f0667 | `3877 passed, 8 skipped in 60.20s` |
+
+**Guard proofs, at 422f0667, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmTriggeredSkill.cpp`: a triggered skill is never marked for removal | `Cataclysm.TriggeredSkill.` | 3 performed, 3 failed, 4 failed assertions: "the character holds as many skills as before"; "once it ends it is no longer held" and "and the character holds as many skills as before"; "and is gone" | 3 performed, 3 succeeded |
+| Pb | `CataclysmDungeonGameMode.cpp`: the skill just used is not taken out of the pool | `Cataclysm.DungeonModifierEffects.WildMagicNeverPicks` | 1 performed, 1 failed, 1 failed assertion: "a pick of 0 is the second skill of the pool, not the one just used" was Ashen Edge and not Quench | 1 performed, 1 succeeded |
+| Pc | `CataclysmDungeonGameMode.cpp`: the basic attack rolls like any skill use | `Cataclysm.DungeonModifierEffects.WildMagicDoesNotRoll` | 1 performed, 1 failed, 1 failed assertion: "a basic attack draws nothing" | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 4 assertions in 3 tests, 1 and 1.
+
+**What the run settles of what the entry says was only read.** The three engine rules under "How it is built" held:
+a triggered skill started, a trigger from inside another skill's activation was refused and left nothing, and a
+skill was removed when it ended. The paragraph on a second running copy of a self buff is still read from the code
+and not run.
+
+---
+
 ## 2026-10-04 — Gated shortcuts: Warzone's shortcuts and Soul Chains built, The Labrynth partly, on Halls floors
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.h` and `.cpp` (`FCataclysmFloorShortcut`,

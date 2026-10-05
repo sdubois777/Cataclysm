@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "CataclysmWeaponSkills.generated.h"
 
+class UCataclysmSkillTemplate;
 class UDataTable;
 
 /**
@@ -128,6 +129,15 @@ public:
 												   const FString& WeaponType,
 												   const FString& DamageType);
 
+	/**
+	 * Every named skill of a damage type, on every weapon type and the weapon-independent rows, in table order.
+	 *
+	 * NOT WHAT A CHARACTER HOLDS: `SkillsFor` answers that, for one weapon. This is the whole list a damage type has,
+	 * which is what `Chaos_Wild_Magic` draws from. A row with no skill name or no readable slot is left out, as
+	 * `SkillsFor` leaves it out. A row with no shape IS returned; whether it can do anything is the caller's question.
+	 */
+	static TArray<FCataclysmWeaponSkill> SkillsOfDamageType(const UDataTable* Table, const FString& DamageType);
+
 	/** The name every basic attack carries. See BasicAttackFor for why it is one name. */
 	static const TCHAR* BasicAttackName;
 
@@ -172,6 +182,16 @@ public:
 	 *         grants the placeholder instead
 	 */
 	static TSubclassOf<UCataclysmGameplayAbility> TemplateFor(ECataclysmSkillShape Shape);
+
+	/**
+	 * Writes a row's name, description, parameters, tags and figures onto a granted skill.
+	 *
+	 * ONE FUNCTION BECAUSE TWO THINGS GRANT A SKILL FROM A ROW: the weapon slots component, for the skills a weapon
+	 * offers, and `UCataclysmTriggeredSkill`, for a skill started without a key. Written twice, the second copy would
+	 * miss the next field added. IT DOES NOT SET THE SLOT, which each caller decides: a weapon's grant takes it from
+	 * `GiveAbilityInSlot`, and a triggered skill sets the property with no key behind it.
+	 */
+	static void StampOnto(UCataclysmSkillTemplate& Template, const FCataclysmWeaponSkill& Skill);
 
 	/** Where the imported weapon skill matrix lives. */
 	static const TCHAR* TableAssetPath;

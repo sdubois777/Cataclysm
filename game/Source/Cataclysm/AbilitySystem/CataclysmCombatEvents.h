@@ -218,6 +218,13 @@ struct CATACLYSM_API FCataclysmSkillUsedNotice
 	ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
 
 	FVector Location = FVector::ZeroVector;
+
+	/**
+	 * Where the use was aimed: for a player's skill the point the skill itself reads, which is under the cursor.
+	 * The user's own location when the caller gives none, which is every creature's ability. `Chaos_Wild_Magic`
+	 * aims the skill it triggers here, ruled 2026-10-04. Issue #41.
+	 */
+	FVector Aim = FVector::ZeroVector;
 };
 
 /**
@@ -396,7 +403,7 @@ public:
 	 */
 	static void NoteSkillUsed(AActor* User, const FString& SkillName,
 							  const FGameplayTagContainer& SkillTags,
-							  ECataclysmAbilitySlot Slot);
+							  ECataclysmAbilitySlot Slot, const FVector* Aim = nullptr);
 
 	/**
 	 * Announces a creature starting one of its abilities. Called by
