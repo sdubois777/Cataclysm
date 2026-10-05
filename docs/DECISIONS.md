@@ -2,6 +2,118 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-04 — An aura that makes its caster immune gives the allies inside it the same immunities, through a list every immunity question reads
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`FCataclysmGrantedImmunity`, `GrantedImmunities`, `GrantImmunity`, `RevokeImmunitiesFrom`,
+`HasGrantedImmunityTo`, `AuraSharesImmunitiesStat`), `CataclysmSkillTemplate.cpp` (`IsImmuneTo` reads the list
+first), `CataclysmSkillTemplates.h` and `.cpp` (`UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside`,
+`StopSharingImmunities`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on
+`StatsWithNoAttribute`), five tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, one probe
+in `CataclysmStatExemptionTests.cpp`, one row test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (`FLAG_STATS` and the row count),
+`docs/All_Things_Cataclysm.xlsx`, `docs/README.md`, `game/Data/EnchantmentEffects.csv` and its asset. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group E part 4c.
+
+### WHY THE ROW IS IMMUNITIES AND NOTHING ELSE
+
+"Your aura also applies its effect to all allies within range" asks for what the aura gives its CASTER to reach
+its allies. Read from the two built auras on 2026-10-02:
+
+- **Conflagration** gives its caster nothing. Burn and Shred fall on enemies, and its one benefit, "allies
+  within it deal 8% increased fire damage", already reaches allies.
+- **Living Pyre** gives its caster three things. Its `MoreDamagePer=8; ScalingSource=HitTaken` raises the
+  pyre's own pulse damage and is not a bonus on the caster. Its health from hits taken has no writer that
+  could give it to an ally. **Its immunities -- `Immune=Stun, Slow, Displacement` -- are what is left**, and
+  they are what this part shares.
+
+The research recorded for part 4a applies here unchanged: Path of Exile's auras affect "you and your allies",
+minions among them. Nothing new was fetched for this part, because the question it had to settle was this game's
+own: where an ally's immunity is kept.
+
+### WHAT WAS RULED, 2026-10-02 AND 2026-10-04, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **A character holds a list of immunities other characters' skills granted it**: the kind, who granted it and
+   when it lapses. **`UCataclysmSkillTemplate::IsImmuneTo` reads that list first**, so its four callers -- the
+   displacement every shove, pull and launch passes through, the stun, the knockdown and the fear -- see it
+   with no change of their own. A list rather than gameplay tags: the one tag that exists, `State.StunImmune`,
+   also refuses a knockdown, a fear and madness and does not refuse a shove, which is not what Living Pyre
+   grants.
+2. **Exactly the kinds the aura's own row names.** An ally inside Living Pyre's ring refuses a stun and a shove
+   and can still be knocked down, as its caster can.
+3. **Granted for two pulse intervals and renewed every pulse; taken back at the pulse after the ally leaves, and
+   when the aura ends.** The lapse is what clears a grant whose aura stopped pulsing without ending.
+4. **A minion could not be immune to anything before this**: it is granted no ability, and `IsImmuneTo` asked
+   only a character's own running abilities. Creatures do stun and shove minions today -- the Brute's Stomp, a
+   creature's charge, the stun an ailment lays on a landed blow -- so this is reached in play.
+
+### WHAT IT DOES NOT DO
+
+- **The Slow immunity is shared and nothing asks for it.** No slow applier exists; `IsImmuneTo` is never asked
+  about Slow outside tests. It is shared so that the day one exists, an ally inside is covered as the caster is.
+- **Madness and Pin never ask `IsImmuneTo`**, so a grant naming either would change nothing. Living Pyre names
+  neither.
+- **Conflagration is unchanged**: it names no immunity, and
+  `Cataclysm.AuraImmunity.AnAuraNamingNoImmunityGivesItsAlliesNone` shows a caster wearing the row sharing
+  nothing through it.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Your aura also applies its effect to all allies within range | `aura_shares_immunities_with_allies` flat 1 |
+
+EnchantmentEffects 460 to 461, over 376 to 377. The flag has no gameplay attribute, a probe in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and joins `FLAG_STATS` because its sentence
+states no number. It needs no generator change.
+
+**"Summoned minions inherit 10%-25% of your armor and resistances" stays blocked**: no minion armour or
+resistance stat exists.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with this part stacked on part 4b, on
+`development` 53889091. **The ids are the commits as they stood when each step ran.** The layers were put
+together again afterwards to carry each fix and each asset on its own layer, without changing any other file,
+so the same content sits under later ids; tree 9493d7e6 is the top the final runs used.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | fa41a4f9 | Build: Succeeded - 32 actions, 29 files compiled |
+| The asset, regenerated with the editor | fa41a4f9 | 2 files changed: `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 458 to 461; part 4b's layer carries its own, built from its 460 rows |
+| Python, before the first whole suite; superseded by the run of record below, because test files changed after it | 1f0c6f3e | 5691 passed, 8 skipped in 327.58s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite, first run | 1f0c6f3e | 3138 tests performed, 3136 succeeded, 2 failed: AnAuraNamingNoImmunityGivesItsAlliesNone, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing |
+| Rebuild after the two test fixes | 3226762f | Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.21.cpp, Module.Cataclysm.29.cpp |
+| The five aura tests | 3226762f | Cataclysm.AuraImmunity.: 5 tests performed, 5 succeeded, 0 failed; 0 ensures |
+| Whole suite | 3226762f | 3138 tests performed, 3138 succeeded, 0 failed; declared 3138, gap 0; 0 ensures |
+| Python of record | 3226762f | 5691 passed, 8 skipped in 354.04s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Proof A: the aura's grant given for no seconds | 3226762f | PROVED: with the break in: 5 tests performed, 3 succeeded, 2 failed: AnImpInsideTheRingSharesThePyresImmunitiesAndOneOutsideDoesNot, LeavingTheRingOrThePyreEndingTakesTheImmunitiesBack \| restored: 5 tests performed, 5 succeeded, 0 failed |
+| Proof B: nothing taken back from an ally that left the ring | 3226762f | PROVED: with the break in: 5 tests performed, 4 succeeded, 1 failed: LeavingTheRingOrThePyreEndingTakesTheImmunitiesBack \| restored: 5 tests performed, 5 succeeded, 0 failed |
+| Proof C: `IsImmuneTo` not reading the granted list | 3226762f | PROVED: with the break in: 5 tests performed, 2 succeeded, 3 failed: AGrantLapsesWhenNothingRenewsItAndCrowdControlCoversEveryKind, AnImpInsideTheRingSharesThePyresImmunitiesAndOneOutsideDoesNot, LeavingTheRingOrThePyreEndingTakesTheImmunitiesBack \| restored: 5 tests performed, 5 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: A nine, B two, C eleven. The
+row test and the probe ran inside the whole suite and not as runs of their own.
+
+**The first whole suite failed one of this part's tests, and it was not predicted.**
+`AnAuraNamingNoImmunityGivesItsAlliesNone` failed on an engine ensure and not on an assertion:
+"FActiveGameplayEffectsContainer::SetAttributeBaseValue: Unable to get attribute set for attribute MaxHealth",
+raised from `ACataclysmMinion::Spawn`. **The fault was in the tests.** All five made their world with that test
+file's `MakeWorld`, which creates a world that never begins play, and a minion spawned there has no vital
+attribute set registered when `Spawn` writes its health. The coordinating session approved a test-only fix: the
+five use `CataclysmTestWorld::MakeWorldThatHasBegunPlay`, as every other test that spawns a minion does.
+
+**ONE ENSURE HID FOUR TESTS.** An ensure reports once per process. All five tests spawned an imp the same way;
+the one that ran first by name took the failure, and the other four passed only because the ensure was already
+spent. A run that shows one test failing on an ensure says nothing about the tests after it that reach the same
+line. That is why the whole suite was run again after the fix and not only the group.
+
+**The shoves were the stated uncertainty and held.** Before the run it was registered that the proofs' counts
+assumed a shove moves an imp in a test world. It does, in a world that has begun play as well as in one that has
+not.
+
+---
+
 ## 2026-10-04 — An enemy killed by necrosis rises as an imp for the row's seconds, outside every summon cap, and a summoned minion that dies is summoned again beside its summoner after the row's seconds
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.h` and `.cpp`

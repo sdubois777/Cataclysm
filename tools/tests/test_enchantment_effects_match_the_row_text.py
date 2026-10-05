@@ -180,8 +180,14 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.I
 #: `auras_end_at_death` JOINED ON 2026-09-25, issue #1833, with "When you die
 #: all your buffs are removed", which the owner kept: above zero, a death also
 #: ends the wearer's running auras.
+#:
+#: `aura_shares_immunities_with_allies` JOINED ON 2026-10-04, issue #1833 group
+#: E part 4c, with "Your aura also applies its effect to all allies within
+#: range": above zero, the allies inside the wearer's aura share the immunities
+#: it gives its caster.
 FLAG_STATS = {"skill_locked", "mana_pool_becomes_health", "auras_end_at_death",
-              "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay"}
+              "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay",
+              "aura_shares_immunities_with_allies"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -563,8 +569,10 @@ JUDGED_NUMBERS = {
 #: issue #1833 group E part 4a, from 455 over 371: three rows on three enchantments.
 #: AND 460 OVER 376 SINCE THE NECROSIS RISE AND THE RE-SUMMON,
 #: issue #1833 group E part 4b, from 458 over 374: two rows on two enchantments.
-AUTHORED_ROWS = 460
-AUTHORED_ENCHANTMENTS = 376
+#: AND 461 OVER 377 SINCE THE AURA'S SHARED IMMUNITIES,
+#: issue #1833 group E part 4c, from 460 over 376: one row on one enchantment.
+AUTHORED_ROWS = 461
+AUTHORED_ENCHANTMENTS = 377
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

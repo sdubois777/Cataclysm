@@ -80,6 +80,7 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: and the More damage `UCataclysmSharedBuffs::Step` gives allies.
 #: Part 4b added two more: the seconds a necrosis-risen imp lasts and the wait
 #: before a lost minion is summoned again.
+#: Part 4c added one more: the flag that shares an aura's immunities with allies.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -171,6 +172,10 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat), FGameplayTagContainer(), 0.0f'):
+        'a flag read on an aura\'s caster at each pulse, saying whether the allies '
+        'inside share its immunities; a pulse has no blow or target in hand; issue #1833',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
      'FName(NecrosisRiseSecondsStat), FGameplayTagContainer(), 0.0f'):
         'how long an imp raised by a necrosis kill lasts, asked of the killer when '
