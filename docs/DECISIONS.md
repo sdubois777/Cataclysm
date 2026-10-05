@@ -16,8 +16,8 @@ in `game/Source/Cataclysm/Tests/CataclysmFloorGeneratorTests.cpp`,
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and
 `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the automation tests, the Python suite and the guard proofs ran on 2026-10-05; the
+figures are under "Run" at the end of this entry.
 
 ### The rows
 
@@ -194,9 +194,65 @@ rulings rest on. Warzone's phrase check now says its shortcuts are built. **The 
 carries a struct that carries a cell**: without that the game mode's list of shortcuts was invisible to it. It names
 `GatedShortcuts` harmless, with the reason given above.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-05 for a stack of two: this change, then Wild Magic (the entry above) on top of it. Development
+was 8ae2a01f, measured there at 3138 Unreal tests. Every figure below is a line a run printed.
+
+**First run, at the top of the stack, `feat/wild-magic-2` 7b7a3110 (this layer was `feat/gated-shortcuts-3` 7f1bd451):**
+
+| Step | Printed |
+|---|---|
+| Build, the first compile of both layers | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Whole Unreal suite | `3158 tests performed, 3155 succeeded, 3 failed`; `Declared: 3158 tests in the tree at 7b7a3110; 3158 performed, gap 0` |
+| Python, with continuous integration idle | `5694 passed, 8 skipped in 397.37s`; JUnit `tests="5702" failures="0" errors="0" skipped="8"` |
+
+**The three failures, and what each was:**
+
+- `SoulChainsAGateOpensWhenBothItsBearersDieAndGivesOneDropRoll`, "its gate cell is walkable": **a fault of the test.**
+  Its loop was written straight over `GatedShortcutsOf(Row)[0].Gate`; that function answers an array by value, so the
+  loop walked the cells of an array already destroyed. The test now copies the gate first. No game code changed.
+- `AShortcutsGateClosesItOnTheNavigationMeshAndOpeningItShortensThePath`, "the mesh rebuilt with the gate shut" and
+  "... open": **cause not proven.** The test built the plain floor, carved the shortcut and built the same floor actor
+  a second time after the navigation system existed, which no passing test beside it does. Both waits for the mesh
+  answered false. **Its path assertions passed in that run and may have read a mesh that was not finished**, so that
+  run's passing path lengths are not evidence. The test now carves before the floor's first build, which is the order
+  the game mode uses; with that, both waits and the path assertions pass (second run, below).
+- `CryptquakeCollapsesATwoByTwoSectionAndBringsThreeRaisedCreaturesBesideIt`, "three creatures" was 0: **a known
+  intermittent failure in merged code, not this change's.** The test and the code are the runtime floor obstacles' of
+  2026-10-02 (#2208). Its group, `Cataclysm.DungeonModifierEffects.Cryptquake`, was run alone three times in the same
+  window on the same binaries and each printed `3 tests performed, 3 succeeded, 0 failed`. Read in the code and not
+  yet reproduced on demand: the creatures' place is drawn at an unseeded angle, and when that points at rock the
+  fallback looks around the pit's own centre, which is solid. Issue
+  [#2219](https://github.com/sdubois777/Cataclysm/issues/2219) carries it; it is the next change after this stack.
+
+**Second run, after the two test-only fixes, at `feat/wild-magic-3` 422f0667 (this layer `feat/gated-shortcuts-4`
+6184e4b3). The two heads differ from the first run's in the two test files only.** No second whole suite, by the
+standing rule for test-only fixes; the two groups holding the fixed tests were run whole.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Group `Cataclysm.DungeonFloor.` | `15 tests performed, 15 succeeded, 0 failed` |
+| Group `Cataclysm.DungeonModifierEffects.` | `593 tests performed, 593 succeeded, 0 failed` |
+| `tools/tests` at 422f0667 | `3877 passed, 8 skipped in 60.20s` |
+
+**The Python of record is the first run's**, 5702 tests and 0 failures at 7b7a3110: the fix commit changes no Python
+file, and `tools/tests` is clean at the new top.
+
+**The seeds the floor tests used**, as each logged: two chained gates with two bearers each, seed 1; a Warzone point
+with a shortcut, seed 1; at least two Labrynth gates, seed 1; exactly two Labrynth gates, seed 3.
+
+**Guard proofs, at 422f0667, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.** All three break `CataclysmDungeonGameMode.cpp`.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CloseTheGate` no longer blocks the gate's cells on the plan | `Cataclysm.DungeonModifierEffects.GatedShortcutsAreCarved` | 1 performed, 1 failed, 4 failed assertions: "gate 0" twice and "gate 1" twice, "a corridor cell is floor unless it is the gate" | 1 performed, 1 succeeded |
+| Pb | Capturing a Warzone point no longer opens its shortcut | `Cataclysm.DungeonModifierEffects.WarzoneCapturingAPoint` | 1 performed, 1 failed, 2 failed assertions: "its shortcut is open", "and the panel says so" | 1 performed, 1 succeeded |
+| Pc | A gate closing in play no longer asks the placement rule | `Cataclysm.DungeonModifierEffects.TheLabrynthNeverCloses` | 1 performed, 1 failed, 6 failed assertions: the stood-on gate shut and a pillar on the player at swaps 1, 3 and 5 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 4, 2 and 6.
 
 ---
 
