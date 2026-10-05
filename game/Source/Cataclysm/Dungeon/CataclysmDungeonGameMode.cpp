@@ -857,6 +857,16 @@ static TAutoConsoleVariable<float> CVarTrickOrTreatRoll(
 	TEXT("raises two creatures, from 50 hastes the player. -1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the angle `BringCreaturesNear` looks along, in degrees, for tests. -1 draws it. Issue #2219: the angle was drawn
+ * and could not be repeated, so a collapse that brought no creatures could not be reproduced.
+ */
+static TAutoConsoleVariable<float> CVarBringCreaturesAngle(
+	TEXT("Cataclysm.BringCreaturesAngle"),
+	-1.0f,
+	TEXT("Pin the angle, in degrees, at which creatures a rule brings arrive beside their point. -1 draws it."),
+	ECVF_Cheat);
+
 /** Pins the roll a skill use makes under Wild Magic, 0 to 100: below 5 triggers. -1 rolls normally. Issue #41. */
 static TAutoConsoleVariable<float> CVarWildMagicRoll(
 	TEXT("Cataclysm.WildMagicRoll"),
@@ -1018,6 +1028,13 @@ namespace
 	{
 		const float Pinned = CVarTrickOrTreatRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The angle `BringCreaturesNear` looks along, in radians: the pinned one, or a draw. */
+	float DungeonGameModeBringCreaturesAngle()
+	{
+		const float Pinned = CVarBringCreaturesAngle.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? FMath::DegreesToRadians(Pinned) : FMath::FRandRange(0.0f, 2.0f * PI);
 	}
 
 	float DungeonGameModeWildMagicRoll()
@@ -9571,9 +9588,14 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BringCreaturesNear(
 		return Brought;
 	}
 	// CELLS BESIDE A POINT THAT FAR AWAY AT A RANDOM ANGLE. A POINT OFF THE FLOOR, WITH NO FLOOR WITHIN REACH OF IT,
-	// FALLS BACK TO THE CELLS AROUND `At`, which stands on the floor: the rules that call this act on a single press,
-	// with no later beat to try again on, so the creatures come either way.
-	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	// FALLS BACK TO THE CELLS AROUND `At`: the rules that call this act once, with no later beat to try again on, so
+	// the creatures must come either way.
+	//
+	// AND WHEN `At` HAS NONE EITHER, TO THE FLOOR CELLS NEAREST IT. Issue #2219. This comment used to say `At` "stands
+	// on the floor", which is true of a floor object and false of a collapsed pit: Cryptquake passes the pit's centre,
+	// its four cells are rock by then, and the cells beside a 2 by 2 pit are 632 cm from that centre, outside the
+	// 600 cm `NecroticBloomWaveCells` looks within. So whenever the angle pointed at rock a collapse brought nothing.
+	const float Angle = DungeonGameModeBringCreaturesAngle();
 	const FVector Where(At.X + AwayCm * FMath::Cos(Angle), At.Y + AwayCm * FMath::Sin(Angle), At.Z);
 	const FCataclysmFloorPopulation Population =
 		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
@@ -9581,6 +9603,30 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BringCreaturesNear(
 	if (Cells.IsEmpty())
 	{
 		Cells = NecroticBloomWaveCells(*CurrentFloor, At);
+	}
+	if (Cells.IsEmpty())
+	{
+		// THE NEAREST FLOOR CELL TO `At`, AND EVERY ONE WITHIN A CELL'S WIDTH OF BEING AS NEAR, so a swarm has more
+		// than one cell to stand on where the floor gives it.
+		const FCataclysmFloorPlan& Plan = CurrentFloor->GetPlan();
+		float Nearest = TNumericLimits<float>::Max();
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			if (Plan.Cells[Index] == ECataclysmFloorCell::Floor)
+			{
+				Nearest = FMath::Min(Nearest, static_cast<float>(
+					FVector::Dist2D(CurrentFloor->WorldOfCell(Plan.CellAt(Index)), At)));
+			}
+		}
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			if (Plan.Cells[Index] == ECataclysmFloorCell::Floor
+				&& FVector::Dist2D(CurrentFloor->WorldOfCell(Plan.CellAt(Index)), At)
+					<= Nearest + FCataclysmFloorGenerator::CellSizeCm)
+			{
+				Cells.Add(Plan.CellAt(Index));
+			}
+		}
 	}
 	for (int32 Which = 0; Which < Count && !Population.Enemies.IsEmpty() && !Cells.IsEmpty(); ++Which)
 	{
