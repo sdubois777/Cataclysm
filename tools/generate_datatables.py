@@ -7865,34 +7865,32 @@ SHAPES_THAT_SUMMON = frozenset({"Summon", "Deployable"})
 #: | Strike | `UCataclysmStrikeSkill::SwingOnce`, the cone it swings through |
 #: | Projectile | `UCataclysmProjectileSkill::Land`, the line it pierces or the circle it lands in |
 #: | Movement | `UCataclysmMovementSkill::ActivateAbility`, the ends of the move or the line along it |
-#: | Summon | `UCataclysmSummonSkill::Possess`, the sphere at the point it was aimed at |
 #: | Aura | `UCataclysmAuraSkill::Pulse`, the ring around the caster |
 #:
-#: THE THREE SHAPES THAT ARE ABSENT ARE ABSENT ON PURPOSE, and the reason
+#: THE FOUR SHAPES THAT ARE ABSENT ARE ABSENT ON PURPOSE, and the reason
 #: differs for each. `UCataclysmDebuffSkill::ActivateAbility` never reads the
 #: radius at all: it searches `Range` around the caster and then sorts what it
-#: found by distance to the cursor. A Deployable places machines and searches
-#: for nobody. `UCataclysmSelfBuffSkill` guards both of its radius reads with
+#: found by distance to the cursor. `UCataclysmSummonSkill::Possess` makes the
+#: same search since issue #1529, so a Summon that takes a creature reads no
+#: radius either; it searched a sphere at the aimed point until 2026-10-02,
+#: which is why issue #1519 put Summon in this table. A Deployable places
+#: machines and searches for nobody. `UCataclysmSelfBuffSkill` guards both of its radius reads with
 #: `ScaledRadiusCm() > 0.0f`, so a self buff that states no radius simply has no
 #: ring rather than a broken one. Six self buffs, three deployables, three
-#: debuffs and one flickering movement state no radius today -- thirteen rows --
-#: and all thirteen are correct.
+#: debuffs, one flickering movement and one possessing summon state no radius
+#: today -- fourteen rows -- and all fourteen are correct.
 #:
-#: TWO OF THE FIVE ARE CONDITIONAL, which is why this is a function and not a
+#: ONE OF THE FOUR IS CONDITIONAL, which is why this is a function and not a
 #: set. `Mode=Flicker` returns from `ActivateAbility` before the switch that
 #: reads the radius -- it builds its circuit out of `Range` instead -- so
-#: Everywhere at Once is the one Movement row that needs none. And a Summon only
-#: searches when it is taking a creature rather than making one: `Possess=1` is
-#: Subjugate, and Summon Imp's radius is read by `Collapse`, which guards it the
-#: way the self buffs do.
+#: Everywhere at Once is the one Movement row that needs none. Summon Imp's
+#: radius is read by `Collapse`, which guards it the way the self buffs do.
 def shape_searches_with_the_radius(shape: str, params: dict[str, str]) -> bool:
     """True when a radius of zero would make this row find nobody."""
     if shape in {"Strike", "Projectile", "Aura"}:
         return True
     if shape == "Movement":
         return params.get("Mode") != "Flicker"
-    if shape == "Summon":
-        return params.get("Possess") == "1"
     return False
 
 

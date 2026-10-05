@@ -64,6 +64,109 @@ its one hash line are this change's; the weapon skills asset belongs to the Subj
 
 ---
 
+## 2026-10-02 — Subjugate takes the enemy nearest the cursor within its range, as the curse skills do
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmSummonSkill::Possess`,
+its search and its miss line), `tools/generate_datatables.py` (`shape_searches_with_the_radius` and the table above
+it), `tools/tests/test_a_targeted_skill_states_a_radius.py` (two tests turned round),
+`game/Source/Cataclysm/Tests/CataclysmSkillShapeTests.cpp` (the radius test no longer checks Subjugate),
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` (one new test, and three test rows that no longer state a
+radius), and Subjugate's row in `docs/All_Things_Cataclysm.xlsx` with the line of `game/Data/WeaponSkills.csv`
+generated from it.
+Issue [#1529](https://github.com/sdubois777/Cataclysm/issues/1529). Ruled by the coordinating session on
+2026-10-02 under the owner's delegation, labelled a judgement and not taken to the owner.
+
+### What was wrong
+
+Subjugate, the Staff's Demonic Ultimate: "Drive your will into an enemy up to 15 meters away". `Possess` searched a
+sphere of the row's `Radius`, three metres, centred on the point the player aimed at. A cast at the ground a few
+metres beside an enemy took nobody, and spent the skill.
+
+### What it does now
+
+**It searches the row's `Range` around the caster and takes the enemy nearest the cursor.** That is
+`UCataclysmDebuffSkill::ActivateAbility`'s rule, copied. Its own comment records that it began as a small circle at
+the aim point and was changed because a cursor a metre off an enemy took nobody. Everything after the pick is
+unchanged: the 300% blow and its burn, the health threshold read after the blow, the room in the Fervour pool, and
+the refusal of a boss.
+
+### The genre check
+
+Fetched 2026-10-02, and fetched again before this entry was written.
+
+- **Diablo 2, Conversion** ([diablo2.io](https://diablo2.io/skills/conversion-t4033.html)): "A successful attack has a
+  chance to convert the target to fight evil." It "will not work on Super Unique Monsters, Champions, and Bosses."
+- **Path of Exile, Dominating Blow** ([poedb](https://poedb.tw/us/Dominating_Blow)): "Attacks enemies with a melee
+  strike, applying a debuff for a short duration." A non-unique enemy that dies with the debuff becomes a Sentinel
+  of Dominance.
+- **Path of Exile, Raise Spectre** ([poedb](https://poedb.tw/us/Raise_Spectre)): holding the corpse targeting toggle
+  "makes it easier to choose a corpse to raise".
+- **Last Epoch**: no skill found that takes an enemy permanently, so it is not a source.
+
+**What the research settles:** a permanent take-over acts on the enemy the player's own attack points at, and the
+games help the player aim it. None searches a fixed circle around a point on the ground.
+
+**What it does not settle, and is a judgement:** this game aims at the ground under the cursor rather than at a
+clicked monster, so "the enemy pointed at" has to become a rule. The rule chosen is the one this game's curse
+skills already use, so one skill is not aimed differently from its neighbours.
+
+### What followed from the radius no longer being read
+
+**Issue #1519 had made the radius required for Subjugate**, because the old search read it and a missing one took
+nobody. Each check it added now describes a figure nothing reads, so each changes with this:
+
+- `shape_searches_with_the_radius` answers False for a Summon, possessing or not.
+- `test_subjugate_states_a_radius_greater_than_zero` became `test_subjugate_is_not_asked_for_a_radius`, and
+  `test_it_refuses_a_summon_that_possesses_and_states_no_radius` became
+  `test_it_leaves_alone_a_summon_that_possesses_and_states_no_radius`.
+- `Cataclysm.SkillShape.EveryShapeThatSearchesWithItsRadiusStatesOne` asserted by name that Subjugate was checked,
+  and now asserts by name that it is not. Without Subjugate the generator's rule finds 45 shipped rows that search
+  with their radius, against the test's floor of thirty.
+
+**The row's `Radius=3` was removed on 2026-10-04**: the Weapon Skills sheet, cell H267. The coordinating session
+ruled that the change is complete only when nothing states an unread figure. The generator then changed one line of
+`game/Data/WeaponSkills.csv` and no other file, and the sentences in the generator and its test that counted
+thirteen rows stating no radius now count fourteen, which is what the data gives: six self buffs, three
+deployables, three debuffs, one flickering movement and Subjugate. The DataTable asset is rebuilt in the window.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-04 in the jovial-bouman worktree, as one window for a stack of four changes on
+`development` 03554578: five stale comments, Inferno Charge (#1560), the Burn row (#1538) and Subjugate's pick
+(#1529), in that order. Every run below was made at the stack's top, 404d8c01, unless its row says otherwise.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Asset rebuild | 229d15b7 | `DT_WeaponSkills.uasset` and its hash line; the status effects asset in the same rebuild belongs to the Burn row entry above |
+| `tools/tests` after the rebuild | 404d8c01 | 3874 passed, 8 skipped in 62.66s |
+| Build | 404d8c01's source, at 229d15b7 | Build: Succeeded - 32 actions, 29 files compiled |
+| Python of record | 404d8c01 | 5691 passed, 8 skipped in 417.90s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite | 404d8c01 | 3120 tests performed, 3120 succeeded, 0 failed; Declared: 3120 tests in the tree, gap 0 |
+
+| Proof: what was broken | As printed |
+| :-- | :-- |
+| P1: the pick is ordered by a point fifteen metres along the caster's facing | PROVED: with the break in: 22 tests performed, 21 succeeded, 1 failed: SubjugateTakesTheEnemyNearestTheCursorWithinItsRange \| restored: 22 tests performed, 22 succeeded, 0 failed |
+| P2: the radius test's helper answers True for a possessing Summon again | PROVED: with the break in: 10 tests performed, 9 succeeded, 1 failed: EveryShapeThatSearchesWithItsRadiusStatesOne \| restored: 10 tests performed, 10 succeeded, 0 failed |
+| Python: the generator answers True for a possessing Summon again | PROVED: 3 failed, 6 passed in 0.31s \| restored: 9 passed in 0.26s |
+
+**What each break failed, from the kept logs.** P1, three assertions: no enemy taken, the near one not commanded,
+and the far one at 600 health where 1000 was expected -- the broken pick struck the far creature and took nobody.
+P2, two: the shipped Subjugate row reported as stating a radius of 0cm, and "Expected 'Subjugate is not one of the
+rows checked' to be false".
+
+**The Python proof named three tests where two were registered.** The two registered,
+`test_subjugate_is_not_asked_for_a_radius` and `test_it_leaves_alone_a_summon_that_possesses_and_states_no_radius`,
+both failed. The third was `test_the_shipped_rows_all_state_a_radius_where_one_is_read`: the prediction was made
+while the shipped row still stated `Radius=3` and was not redone after the row edit, and without the radius the
+broken generator refuses the real row. The coordinating session accepted it as a proof with the miss recorded. It
+ran in a `git archive` copy of 404d8c01, after the window, with no suite running.
+
+**P1's anchor was narrowed before the window.** `const FVector Aim = AimPoint();` appears twice in
+`CataclysmSkillTemplates.cpp`, in the Debuff template and in `Possess`; the anchor used is that line with
+`Targets.Sort(` under it, which is `Possess` alone.
+
+---
+
 ## 2026-10-02 — Inferno Charge channels for two seconds with its lane drawn, then charges and leaves its path burning
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (the channel, the path, two

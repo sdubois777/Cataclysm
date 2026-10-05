@@ -14,6 +14,10 @@ checks it takes a wounded creature -- but it writes its own parameter string
 with `Radius=15` in it, a figure that appears in no row of the real data. It
 proved the mechanism and could not see the row. That is why the checks here read
 the shipped data rather than a string written beside them.
+
+SUBJUGATE LEFT THIS RULE ON 2026-10-02. Issue #1529 made `Possess` search the
+skill's `Range` around the caster and take the enemy nearest the cursor, the
+Debuff template's rule, so it reads no radius at all and is not asked for one.
 """
 
 from __future__ import annotations
@@ -56,15 +60,19 @@ def test_the_shipped_rows_all_state_a_radius_where_one_is_read():
     assert gen.validate_targeted_shapes_state_a_radius(as_table(skills())) == []
 
 
-def test_subjugate_states_a_radius_greater_than_zero():
-    """Named on its own, so a failure says which skill rather than how many."""
+def test_subjugate_is_not_asked_for_a_radius():
+    """Named on its own, because it is the row this file was written for.
+
+    Read off the shipped row, so it still carries `Possess=1` -- a Subjugate
+    that stopped possessing would be exempted for the wrong reason.
+    """
     row = next(r for r in skills() if r["Name"] == "Demonic_Staff_Ultimate")
     assert row["SkillName"] == "Subjugate"
-    written = params_of(row).get("Radius")
-    assert written is not None, (
-        "Subjugate states no Radius, so UCataclysmSummonSkill::Possess searches "
-        "a sphere of size zero and can take nobody. Issue #1519.")
-    assert float(written) > 0.0, f"Subjugate states Radius={written}"
+    params = params_of(row)
+    assert params.get("Possess") == "1"
+    assert gen.shape_searches_with_the_radius(row["Shape"], params) is False, (
+        "UCataclysmSummonSkill::Possess searches Range around the caster and "
+        "reads no radius since issue #1529.")
 
 
 # --------------------------------------------------------------------------
@@ -75,15 +83,16 @@ def test_subjugate_states_a_radius_greater_than_zero():
 # real file no longer has.
 # --------------------------------------------------------------------------
 
-def test_it_refuses_a_summon_that_possesses_and_states_no_radius():
-    """Subjugate's row exactly as it was before this issue was fixed."""
-    problems = gen.validate_targeted_shapes_state_a_radius(as_table([
+def test_it_leaves_alone_a_summon_that_possesses_and_states_no_radius():
+    """Subjugate's row as it was before issue #1519, refused until #1529.
+
+    It took nobody then because `Possess` searched a sphere of that radius.
+    It searches `Range` now, so the same row is a working skill.
+    """
+    assert gen.validate_targeted_shapes_state_a_radius(as_table([
         one_row("Demonic_Staff_Ultimate", "Summon",
                 "Range=15; MaxTargets=1; Burn=1; Possess=1; "
-                "FervourReserve=30; HealthThresholdPercent=50")]))
-    assert len(problems) == 1
-    assert "Demonic_Staff_Ultimate" in problems[0]
-    assert "Radius" in problems[0]
+                "FervourReserve=30; HealthThresholdPercent=50")])) == []
 
 
 def test_it_refuses_a_radius_written_as_zero():
@@ -111,10 +120,10 @@ def test_it_refuses_every_shape_whose_search_reads_the_radius():
 # --------------------------------------------------------------------------
 # And stays quiet where a radius is not read
 #
-# THE HALF THAT KEEPS THE CHECK HONEST. Thirteen shipped rows state no radius --
-# six self buffs, three deployables, three debuffs and one flickering movement --
-# and all thirteen are correct, so a check that simply demanded one everywhere
-# would have to be switched off the day it was written.
+# THE HALF THAT KEEPS THE CHECK HONEST. Fourteen shipped rows state no radius --
+# six self buffs, three deployables, three debuffs, one flickering movement and
+# one possessing summon -- and all fourteen are correct, so a check that simply
+# demanded one everywhere would have to be switched off the day it was written.
 # --------------------------------------------------------------------------
 
 def test_it_leaves_alone_the_shapes_that_never_read_a_radius():
@@ -151,8 +160,8 @@ def test_a_flickering_movement_needs_no_radius():
 
 
 def test_a_summon_that_makes_a_minion_needs_no_radius():
-    """Only `Possess=1` searches. Summon Imp's radius is read by `Collapse`,
-    which guards it with `ScaledRadiusCm() > 0.0f` the way the self buffs do."""
+    """Summon Imp's radius is read by `Collapse`, which guards it with
+    `ScaledRadiusCm() > 0.0f` the way the self buffs do."""
     assert gen.validate_targeted_shapes_state_a_radius(as_table([
         one_row("Made_Up_Summon", "Summon",
                 "Count=1; MaxActive=3; Duration=20; Minions=Imp:1")])) == []
