@@ -1955,6 +1955,22 @@ public:
 	 * treat is hasting the player now. Issues #1820 and #41.
 	 */
 	int32 TrickOrTreatPickupCount() const { return TrickOrTreatPickups; }
+
+	/** The skill Wild Magic has drawn and not yet triggered, or none. It is triggered on the next tick. */
+	FName WildMagicPendingSkill() const { return WildMagicPending; }
+
+	/**
+	 * Triggers the pending skill at the aim it was drawn with. Called on the tick after the use that drew it,
+	 * because a skill cannot be granted inside another skill's activation; public so a test, whose world is never
+	 * ticked, can make it. @return whether a skill started.
+	 */
+	bool MakeTheWildMagicTrigger();
+
+	int32 WildMagicTriggeredCount() const { return WildMagicTriggered; }
+	FName WildMagicLastSkill() const { return WildMagicLast; }
+
+	/** Seconds until Wild Magic may trigger again; zero or less when it may. */
+	float WildMagicSecondsUntilNext() const;
 	int32 TrickOrTreatRaisedCount() const { return TrickOrTreatRaised; }
 	bool TrickOrTreatIsHasting() const;
 
@@ -2632,6 +2648,9 @@ private:
 
 	/** Trick or Treat, on every take: a clicked drop on a floor carrying the row rolls. */
 	void OnLootTaken(const struct FCataclysmLootTakenNotice& Notice);
+
+	/** A skill used anywhere on the floor. Wild Magic's roll. Issues #1820 and #41. */
+	void OnSkillWasUsed(const struct FCataclysmSkillUsedNotice& Notice);
 
 	/**
 	 * A cleanse, on every character cleansed: when it is the player, the dungeon stacks whose rows say they are
@@ -4260,6 +4279,13 @@ private:
 	int32 TrickOrTreatRaised = 0;
 	float TrickOrTreatHasteUntilSeconds = -1.0f;
 	float TrickOrTreatHasteApplied = 0.0f;
+
+	/** Wild Magic: what is drawn and waits a tick, where it is aimed, the count, the last one and the wait. */
+	FName WildMagicPending;
+	FVector WildMagicPendingAim = FVector::ZeroVector;
+	int32 WildMagicTriggered = 0;
+	FName WildMagicLast;
+	float WildMagicNextAllowedSeconds = -1.0f;
 
 	/**
 	 * Soul Harvest: each fed creature's souls and what they have added to it, and the souls

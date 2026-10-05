@@ -178,7 +178,10 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// returned, so a refused press announces nothing.
 	if (!bFreeRepeat)
 	{
-		UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot);
+		// AND WHERE IT IS AIMED, read as the skill's own body will read it. `Chaos_Wild_Magic` aims the skill it
+		// triggers at the same point. Issue #41.
+		const FVector AimedAt = AimPoint();
+		UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot, &AimedAt);
 
 		PayHealthCost();
 	}

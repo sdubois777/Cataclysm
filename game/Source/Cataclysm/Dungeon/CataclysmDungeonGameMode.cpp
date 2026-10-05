@@ -20,6 +20,9 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -854,6 +857,21 @@ static TAutoConsoleVariable<float> CVarTrickOrTreatRoll(
 	TEXT("raises two creatures, from 50 hastes the player. -1 rolls normally."),
 	ECVF_Cheat);
 
+/** Pins the roll a skill use makes under Wild Magic, 0 to 100: below 5 triggers. -1 rolls normally. Issue #41. */
+static TAutoConsoleVariable<float> CVarWildMagicRoll(
+	TEXT("Cataclysm.WildMagicRoll"),
+	-1.0f,
+	TEXT("Pin the roll a skill use makes under Wild Magic, 0 to 100: below 5 triggers a skill. -1 rolls normally."),
+	ECVF_Cheat);
+
+/** Pins which skill Wild Magic triggers: an index into its pool with the used skill removed. -1 draws normally. */
+static TAutoConsoleVariable<int32> CVarWildMagicPick(
+	TEXT("Cataclysm.WildMagicPick"),
+	-1,
+	TEXT("Pin which skill Wild Magic triggers: an index into its pool with the used skill removed, held to the ")
+	TEXT("last one when too large. -1 draws normally."),
+	ECVF_Cheat);
+
 /** Pins which burst Insanity Bursts sends, 0 to 100: below 50 the skill lock, from 50 the stun. Issues #1820, #41. */
 static TAutoConsoleVariable<float> CVarInsanityBurstsRoll(
 	TEXT("Cataclysm.InsanityBurstsRoll"),
@@ -1000,6 +1018,26 @@ namespace
 	{
 		const float Pinned = CVarTrickOrTreatRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeWildMagicRoll()
+	{
+		const float Pinned = CVarWildMagicRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** Which of `Count` skills Wild Magic triggers: the pinned index held to the last, or a draw. */
+	int32 DungeonGameModeWildMagicPick(int32 Count)
+	{
+		const int32 Pinned = CVarWildMagicPick.GetValueOnAnyThread();
+		return Pinned >= 0 ? FMath::Min(Pinned, Count - 1) : FMath::RandRange(0, Count - 1);
+	}
+
+	/** Wild Magic's pool for this character: every skill of its damage type the rule lets through. */
+	TArray<FCataclysmWeaponSkill> DungeonGameModeWildMagicPoolOf(const AActor* Character)
+	{
+		return UCataclysmDungeonModifierEffects::WildMagicPool(
+			UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character));
 	}
 
 	float DungeonGameModeInsanityBurstsRoll()
@@ -1235,6 +1273,10 @@ void ACataclysmDungeonGameMode::StartPlay()
 		// AND A DROP TAKEN ANYWHERE REACHES TRICK OR TREAT, bound for the same three reasons.
 		// Issues #1820 and #41.
 		Events->OnLootTaken.AddUObject(this, &ACataclysmDungeonGameMode::OnLootTaken);
+
+		// AND A SKILL USED ANYWHERE REACHES WILD MAGIC, bound for the same three reasons. THE FIRST DUNGEON RULE TO
+		// LISTEN TO THIS ANNOUNCEMENT; the player character's worn rows were its only listener. Issues #1820, #41.
+		Events->OnSkillUsed.AddUObject(this, &ACataclysmDungeonGameMode::OnSkillWasUsed);
 
 		// AND A CLEANSE OF THE PLAYER REACHES THE STACKS WHOSE ROWS SAY THEY ARE CLEANSED, bound for the same
 		// three reasons. Ruled 2026-09-26.
@@ -11577,6 +11619,83 @@ void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Not
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::OnSkillWasUsed(const FCataclysmSkillUsedNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE PLAYER'S OWN SKILL, NOT THE BASIC ATTACK, ON A FLOOR CARRYING THE ROW, AND NOT INSIDE THE WAIT. The notice
+	// is sent for creatures too. A triggered skill sends none, so it never reaches here. Ruled 2026-10-04.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::WildMagicKey)) || !Player || Notice.User != Player
+		|| Notice.Slot == ECataclysmAbilitySlot::BasicAttack
+		|| WildMagicSecondsUntilNext() > 0.0f)
+	{
+		return;
+	}
+	if (!Effects::WildMagicTriggers(DungeonGameModeWildMagicRoll()))
+	{
+		return;
+	}
+
+	// "A RANDOM DIFFERENT SKILL": the pool with the skill just used taken out.
+	TArray<FCataclysmWeaponSkill> Pool = DungeonGameModeWildMagicPoolOf(Player);
+	Pool.RemoveAll([&Notice](const FCataclysmWeaponSkill& Skill) { return FName(*Skill.Name) == Notice.SkillName; });
+	if (Pool.IsEmpty())
+	{
+		return;
+	}
+
+	// DRAWN NOW, TRIGGERED ON THE NEXT TICK. This is called from inside the pressed skill's activation, where the
+	// engine defers a grant and there is no instance to start. Follow Through waits a tick for the same reason.
+	WildMagicPending = FName(*Pool[DungeonGameModeWildMagicPick(Pool.Num())].Name);
+	WildMagicPendingAim = Notice.Aim;
+	World->GetTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateWeakLambda(this, [this]() { MakeTheWildMagicTrigger(); }));
+}
+
+bool ACataclysmDungeonGameMode::MakeTheWildMagicTrigger()
+{
+	const FName Drawn = WildMagicPending;
+	WildMagicPending = NAME_None;
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (Drawn.IsNone() || !Player)
+	{
+		return false;
+	}
+	for (const FCataclysmWeaponSkill& Skill : DungeonGameModeWildMagicPoolOf(Player))
+	{
+		if (FName(*Skill.Name) != Drawn)
+		{
+			continue;
+		}
+
+		// THE WAIT IS SPENT ONLY BY A TRIGGER THAT HAPPENS: a skill that refuses itself, locked or forbidden by a
+		// held swing, costs the player nothing and the next use may roll.
+		if (!UCataclysmTriggeredSkill::Trigger(Player, Skill, WildMagicPendingAim))
+		{
+			return false;
+		}
+		++WildMagicTriggered;
+		WildMagicLast = Drawn;
+		WildMagicNextAllowedSeconds =
+			static_cast<float>(World->GetTimeSeconds()) + UCataclysmDungeonModifierEffects::WildMagicSecondsBetweenTriggers;
+		UE_LOG(LogCataclysm, Log, TEXT("Wild Magic: triggered %s on floor %d"), *Drawn.ToString(), FloorNumber);
+		RefreshFloorModifierPanel();
+		return true;
+	}
+	return false;
+}
+
+float ACataclysmDungeonGameMode::WildMagicSecondsUntilNext() const
+{
+	const UWorld* World = GetWorld();
+	return World ? WildMagicNextAllowedSeconds - static_cast<float>(World->GetTimeSeconds()) : 0.0f;
+}
+
 void ACataclysmDungeonGameMode::RaiseTheTrickOrTreatPair(const FVector& Where)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -17099,6 +17218,23 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			TrickOrTreatIsHasting() ? TEXT(", hasted by a treat") : TEXT("")));
 	}
 
+	// AND WILD MAGIC: how many it has triggered, the last one, and how many skills it draws from. The pool's size is
+	// on the line because it is what the row can do for this player: one skill for a War weapon on 2026-10-04.
+	const FName Wild(Effects::WildMagicKey);
+	if (FloorBrief.Modifiers.Contains(Wild))
+	{
+		const UWorld* PanelWorld = GetWorld();
+		const APlayerController* PanelController = PanelWorld ? PanelWorld->GetFirstPlayerController() : nullptr;
+		const APawn* PanelPlayer = PanelController ? PanelController->GetPawn() : nullptr;
+		const FString DamageType = PanelPlayer ? UCataclysmWeaponSlotsComponent::DamageTypeOf(PanelPlayer) : FString();
+		const int32 InPool = PanelPlayer ? DungeonGameModeWildMagicPoolOf(PanelPlayer).Num() : 0;
+		Counting.Add(Wild, InPool == 0
+			? FString(TEXT("wild magic: no other skill to trigger"))
+			: FString::Printf(TEXT("wild magic: %d triggered%s; pool of %d %s skill%s"), WildMagicTriggered,
+							  WildMagicLast.IsNone() ? TEXT("") : *FString::Printf(TEXT("; last: %s"), *WildMagicLast.ToString()),
+							  InPool, *DamageType, InPool == 1 ? TEXT("") : TEXT("s")));
+	}
+
 	// AND THE STARVATION CURSE: each kind as "N of M" and the share it takes. Issues #1820
 	// and #41.
 	const FName Curse(Effects::StarvationCurseKey);
@@ -19640,6 +19776,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			TrickOrTreatPickups = 0;
 			TrickOrTreatRaised = 0;
 			TrickOrTreatHasteUntilSeconds = -1.0f;
+
+			// AND WILD MAGIC'S COUNT, ITS LAST SKILL AND ANYTHING DRAWN AND NOT YET TRIGGERED. Issues #1820 and #41.
+			WildMagicPending = NAME_None;
+			WildMagicTriggered = 0;
+			WildMagicLast = NAME_None;
+			WildMagicNextAllowedSeconds = -1.0f;
 
 			// AND SOUL HARVEST'S RECORD: the souls went with the creatures that held them.
 			// Issues #1820 and #41.
