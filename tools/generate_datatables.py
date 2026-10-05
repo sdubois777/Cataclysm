@@ -875,13 +875,58 @@ def enchantments(book, negative: bool) -> list[dict]:
         if not text:
             continue
         kind = "Negative" if negative else "Positive"
+        rolls_down = clean(raw[first + 4]) if len(raw) > first + 4 else ""
         out.append({"Name": row_name(kind, text[:48]),
                     "Effect": text,
                     "EnchantmentType": clean(raw[first + 1]),
                     "Weight": number(raw[first + 2], "Weight", index),
                     "Tags": clean(raw[first + 3]),
-                    "IsNegative": "True" if negative else "False"})
+                    "IsNegative": "True" if negative else "False",
+                    "RollsDown": ",".join(
+                        str(place) for place in
+                        sorted(ranges_rolling_down(rolls_down, text, index)))})
     return unique(out, f"Enchantments ({'negative' if negative else 'positive'})")
+
+
+def ranges_rolling_down(cell: str, words: str, index: int = 0) -> frozenset[int]:
+    """Which of a sentence's ranges roll from their second number to their first.
+
+    A BETTER ROLL GIVES THE BETTER OUTCOME, ruled 2026-10-05 under the owner's
+    delegation. A roll of 1 gives a benefit its best figure and a drawback its
+    harshest. For most sentences that is the second number of each range, which
+    is what a roll of 1 has always given. For a few it is the first: "re-summons
+    after 3-6 seconds" is best at 3, and "cannot exceed 40%-60%" is harshest at
+    40. THE `Rolls Down` COLUMN NAMES THOSE RANGES BY THEIR PLACE IN THE
+    SENTENCE, counted from 1: `1`, `2`, or `1,2`.
+
+    ONE SOURCE, TWO READERS. The hover text rewrites the sentence's ranges and
+    the effect row carries the pair the character receives; they are different
+    code and neither reads the other. Both read this column, so they cannot
+    disagree about which way a range runs. `enchantment_effects` writes a
+    marked range's pair in the opposite order to the sentence's, and
+    `UCataclysmItemValues::EnchantmentTextAtRoll` rolls a marked range from its
+    second number to its first.
+
+    A PLACE THE SENTENCE DOES NOT HAVE IS REFUSED, so a mark cannot name a range
+    a reword removed.
+    """
+    if not cell:
+        return frozenset()
+    count = len(enchantment_ranges(words))
+    places = set()
+    for part in cell.split(","):
+        part = part.strip()
+        # A CELL TYPED AS A NUMBER ARRIVES AS `2.0`.
+        if part.endswith(".0"):
+            part = part[:-2]
+        if not part.isdigit() or not 1 <= int(part) <= count:
+            raise DataError(
+                f"Enchantments row {index}: Rolls Down is {cell!r} for {words!r}, "
+                f"which states {count} range(s). Name each range that rolls "
+                f"from its second number to its first by its place in the "
+                f"sentence, counted from 1, separated by commas.")
+        places.add(int(part))
+    return frozenset(places)
 
 
 #: How many pieces a set's bonus row says it needs, read from its own words.
@@ -5684,6 +5729,9 @@ def enchantment_effects(book) -> list[dict]:
     # is checked against exactly the name an item stores.
     words: dict[str, str] = {}
     types: dict[str, str] = {}
+    #: The places of each sentence's ranges that roll downward. See
+    #: `ranges_rolling_down`.
+    rolls_down: dict[str, frozenset[int]] = {}
 
     # AND EVERY SET'S ROWS, GATHERED BY IDENTIFIER. The check at the end refuses
     # half a set, and to do that it has to know which of a set's bonus rows
@@ -5695,6 +5743,8 @@ def enchantment_effects(book) -> list[dict]:
         for row in enchantments(book, negative=negative):
             words[row["Name"]] = row["Effect"]
             types[row["Name"]] = row["EnchantmentType"]
+            rolls_down[row["Name"]] = ranges_rolling_down(
+                row["RollsDown"], row["Effect"])
 
             set_id = enchantment_set_id(row)
             if not set_id:
@@ -5781,6 +5831,7 @@ def enchantment_effects(book) -> list[dict]:
                 f"row, so nothing records a roll for the 6-piece or 10-piece "
                 f"row and a range could not be read back.")
 
+        value_as_stated = None
         if high != low:
             # A RANGE IS ONE THE SENTENCE STATES, IN ITS ORDER AND WITH ONE
             # SIGN. The owner ruled on 2026-09-11 that an enchantment rolls a
@@ -5810,6 +5861,7 @@ def enchantment_effects(book) -> list[dict]:
                     f"they state: {written or 'none'}. Write the first number "
                     f"as Value Low and the second as Value High, both with "
                     f"the row's sign.")
+            value_as_stated = shown
 
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Enchantment Effects", index, name)
@@ -6385,6 +6437,27 @@ def enchantment_effects(book) -> list[dict]:
                 f"Enchantment Effects row {index}: {name} deals remaining damage on "
                 f"the event's target and names no Ailment. Name one of "
                 f"{', '.join(AILMENTS)}.")
+
+        # A RANGE THE SENTENCE MARKS AS ROLLING DOWN IS WRITTEN THE OTHER WAY
+        # ROUND. Every pair above was checked in the sentence's own order, which
+        # is how the sheet states it. The game reads the first of a pair at a
+        # roll of 0 and the second at a roll of 1, so a range whose best or
+        # harshest figure is its FIRST number leaves here with its ends
+        # exchanged. See `ranges_rolling_down`. LAST, so that every check above
+        # reads the pair as a person wrote it.
+        marked = {
+            stated for place, stated
+            in enumerate(enchantment_ranges(words[name]), start=1)
+            if place in rolls_down[name]}
+
+        if value_as_stated is not None and value_as_stated in marked:
+            low, high = high, low
+        if scale_step_high and (scale_step, scale_step_high) in marked:
+            scale_step, scale_step_high = scale_step_high, scale_step
+        if stack_seconds_high and (stack_seconds, stack_seconds_high) in marked:
+            stack_seconds, stack_seconds_high = stack_seconds_high, stack_seconds
+        if condition_value_high and (condition_value, condition_value_high) in marked:
+            condition_value, condition_value_high = condition_value_high, condition_value
 
         counts[name] = counts.get(name, 0) + 1
         out.append({
