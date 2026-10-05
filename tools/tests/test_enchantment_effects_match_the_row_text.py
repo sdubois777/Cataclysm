@@ -304,6 +304,18 @@ JUDGED_NUMBERS = {
     "Positive_Skills_that_cost_HP_restore_that_amount_as_mana",
 }
 
+#: Enchantments whose sentence states A TOTAL and whose row grants what is
+#: ADDED to a base, as (the base, the stat). "Your movement ability has 2
+#: charges" is `skill_charges_bonus` 1: a skill always holds one charge, which
+#: `UCataclysmAbilitySystemComponent::SkillChargesMaximum` adds the bonus to, so
+#: the sentence's 2 is that 1 and the row's 1. Issue #1833, 2026-10-05. The
+#: sibling of the generator's `BASE_PLUS_RANGE_ENCHANTMENTS`, which does the
+#: same for a range. `test_every_base_plus_single_value_is_still_needed` keeps
+#: it honest.
+BASE_PLUS_SINGLE_VALUES = {
+    "Positive_Your_movement_ability_has_2_charges": (1.0, "skill_charges_bonus"),
+}
+
 #: How many rows are written, and over how many enchantments. Pinned so that
 #: the coverage only moves when somebody means it to, and says so in
 #: `docs/DECISIONS.md` at the same time.
@@ -958,6 +970,11 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
         if row["ValueKind"] == "removed":
             continue
         text = words_of(row, enchantments)
+        # A TOTAL IS THE BASE PLUS THE ROW'S VALUE, FOR THE FEW NAMED. See
+        # `BASE_PLUS_SINGLE_VALUES`.
+        base, base_stat = BASE_PLUS_SINGLE_VALUES.get(row["Enchantment"], (0.0, ""))
+        if base_stat == row["Stat"]:
+            value += base
         # AN ACTION ROW HAS NO STAT, SO ITS ACTION STANDS IN FOR ONE as the
         # key of a word that states a value. Issue #1833, every Nth.
         if not value_is_stated(row["Stat"] or row["Action"], value, text):
@@ -1261,6 +1278,22 @@ def test_every_complement_range_enchantment_is_still_needed(effects, enchantment
         assert needing, (
             f"no row of {name} states its range as a complement, so it should "
             f"leave COMPLEMENT_RANGE_ENCHANTMENTS")
+
+
+def test_every_base_plus_single_value_is_still_needed(effects, enchantments):
+    """An exemption that outlives its reason hides a real mismatch. Each name in
+    `BASE_PLUS_SINGLE_VALUES` must still have a row of its stat whose value its
+    sentence does not state and whose value plus the base it does."""
+    for name, (base, stat) in sorted(BASE_PLUS_SINGLE_VALUES.items()):
+        needing = [
+            r["Name"] for r in effects
+            if r["Enchantment"] == name and r["Stat"] == stat
+            and float(r["ValueLow"]) == float(r["ValueHigh"])
+            and not value_is_stated(stat, float(r["ValueLow"]), words_of(r, enchantments))
+            and value_is_stated(stat, float(r["ValueLow"]) + base, words_of(r, enchantments))]
+        assert needing, (
+            f"no {stat} row of {name} states its value only as {base:g} plus "
+            f"it, so it should leave BASE_PLUS_SINGLE_VALUES")
 
 
 def test_every_base_plus_range_enchantment_is_still_needed(effects, enchantments):
