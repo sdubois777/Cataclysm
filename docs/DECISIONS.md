@@ -2,6 +2,77 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-04 — An aura that makes its caster immune gives the allies inside it the same immunities, through a list every immunity question reads
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`FCataclysmGrantedImmunity`, `GrantedImmunities`, `GrantImmunity`, `RevokeImmunitiesFrom`,
+`HasGrantedImmunityTo`, `AuraSharesImmunitiesStat`), `CataclysmSkillTemplate.cpp` (`IsImmuneTo` reads the list
+first), `CataclysmSkillTemplates.h` and `.cpp` (`UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside`,
+`StopSharingImmunities`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on
+`StatsWithNoAttribute`), five tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, one probe
+in `CataclysmStatExemptionTests.cpp`, one row test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (`FLAG_STATS` and the row count),
+`docs/All_Things_Cataclysm.xlsx`, `docs/README.md`, `game/Data/EnchantmentEffects.csv` and its asset. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833), group E part 4c.
+
+### WHY THE ROW IS IMMUNITIES AND NOTHING ELSE
+
+"Your aura also applies its effect to all allies within range" asks for what the aura gives its CASTER to reach
+its allies. Read from the two built auras on 2026-10-02:
+
+- **Conflagration** gives its caster nothing. Burn and Shred fall on enemies, and its one benefit, "allies
+  within it deal 8% increased fire damage", already reaches allies.
+- **Living Pyre** gives its caster three things. Its `MoreDamagePer=8; ScalingSource=HitTaken` raises the
+  pyre's own pulse damage and is not a bonus on the caster. Its health from hits taken has no writer that
+  could give it to an ally. **Its immunities -- `Immune=Stun, Slow, Displacement` -- are what is left**, and
+  they are what this part shares.
+
+The research recorded for part 4a applies here unchanged: Path of Exile's auras affect "you and your allies",
+minions among them. Nothing new was fetched for this part, because the question it had to settle was this game's
+own: where an ally's immunity is kept.
+
+### WHAT WAS RULED, 2026-10-02 AND 2026-10-04, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **A character holds a list of immunities other characters' skills granted it**: the kind, who granted it and
+   when it lapses. **`UCataclysmSkillTemplate::IsImmuneTo` reads that list first**, so its four callers -- the
+   displacement every shove, pull and launch passes through, the stun, the knockdown and the fear -- see it
+   with no change of their own. A list rather than gameplay tags: the one tag that exists, `State.StunImmune`,
+   also refuses a knockdown, a fear and madness and does not refuse a shove, which is not what Living Pyre
+   grants.
+2. **Exactly the kinds the aura's own row names.** An ally inside Living Pyre's ring refuses a stun and a shove
+   and can still be knocked down, as its caster can.
+3. **Granted for two pulse intervals and renewed every pulse; taken back at the pulse after the ally leaves, and
+   when the aura ends.** The lapse is what clears a grant whose aura stopped pulsing without ending.
+4. **A minion could not be immune to anything before this**: it is granted no ability, and `IsImmuneTo` asked
+   only a character's own running abilities. Creatures do stun and shove minions today -- the Brute's Stomp, a
+   creature's charge, the stun an ailment lays on a landed blow -- so this is reached in play.
+
+### WHAT IT DOES NOT DO
+
+- **The Slow immunity is shared and nothing asks for it.** No slow applier exists; `IsImmuneTo` is never asked
+  about Slow outside tests. It is shared so that the day one exists, an ally inside is covered as the caster is.
+- **Madness and Pin never ask `IsImmuneTo`**, so a grant naming either would change nothing. Living Pyre names
+  neither.
+- **Conflagration is unchanged**: it names no immunity, and
+  `Cataclysm.AuraImmunity.AnAuraNamingNoImmunityGivesItsAlliesNone` shows a caster wearing the row sharing
+  nothing through it.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Your aura also applies its effect to all allies within range | `aura_shares_immunities_with_allies` flat 1 |
+
+EnchantmentEffects 460 to 461, over 376 to 377. The flag has no gameplay attribute, a probe in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and joins `FLAG_STATS` because its sentence
+states no number. It needs no generator change.
+
+**"Summoned minions inherit 10%-25% of your armor and resistances" stays blocked**: no minion armour or
+resistance stat exists.
+
+---
+
 ## 2026-10-04 — An enemy killed by necrosis rises as an imp for the row's seconds, outside every summon cap, and a summoned minion that dies is summoned again beside its summoner after the row's seconds
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.h` and `.cpp`
