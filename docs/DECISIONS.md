@@ -2,6 +2,68 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-04 — The Burn row names Hellfire Aura alone: Infernal Brand applies no Burn
+
+**Affects:** the Burn row of the DoTs sheet in `docs/All_Things_Cataclysm.xlsx` and what is generated from it,
+`game/Data/StatusEffects.csv` row `DoT_Burn` and its DataTable asset, and one comment in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`. Issue
+[#1538](https://github.com/sdubois777/Cataclysm/issues/1538).
+
+### The ruling, which is from 2026-09-14 and was recorded only on the issue
+
+The `DoT_Burn` row ended: "The Infernal Brand and Hellfire Aura enemy modifiers apply it to the player." Hellfire
+Aura does. Infernal Brand does not. The issue asked whether the brand should also apply Burn or the row should stop
+naming it.
+
+**The row stops naming it.** The coordinating session ruled on 2026-09-14, under the owner's delegation of that
+date: "drop Infernal Brand's name from the StatusEffects.csv DoT_Burn row; BrandOnHit's row promises only the
+explosion." The brand's own row, `Debuff_Infernal_Brand`, says "A stacking debuff that explodes at 5 stacks,
+dealing a large amount of fire damage to the player", and that is what it does. The game code does not change.
+
+### What the code does, read on 2026-10-04 at `development` 84ab7de4
+
+- `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.cpp` calls `UCataclysmSkillEffects::ApplyBurn` once, in
+  `UCataclysmEnemyModifiers::AuraStep`, for a creature carrying Hellfire Aura.
+- `UCataclysmEnemyModifiers::BrandOnHit` applies the brand's tag, counts stacks, and at five deals one blow through
+  `ApplyDirectDamage`. It applies no Burn.
+
+### What changes
+
+- **The row's last sentence** becomes "The Hellfire Aura enemy modifier applies it to the player."
+- **The comment above the Spore Clouds rule** in `CataclysmDungeonModifierEffects.h` argued from the Burn row naming
+  two enemy modifiers, "both of those are real code", and cited a line number that has since moved. It now names
+  the one modifier and the function that applies the Burn.
+
+### Not changed
+
+Two merged entries in this file quote the old sentence, and the docstring of
+`test_burn_is_an_effect_the_player_can_apply` in `tools/tests/test_demonic_skills.py` describes the sheet before
+Burn became player-applied. All three are history and stay as written.
+
+**The workbook row was edited on 2026-10-04**: the DoTs sheet, cell A4. The generator then changed one line of
+`game/Data/StatusEffects.csv`, the `DoT_Burn` row, and no other file. The DataTable asset was rebuilt in the window
+below.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-04 in the jovial-bouman worktree, as one window for a stack of four changes on
+`development` 03554578: five stale comments, Inferno Charge (#1560), the Burn row (#1538) and Subjugate's pick
+(#1529), in that order. Every run below was made at the stack's top, 404d8c01, unless its row says otherwise.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Python before the asset was rebuilt | 912c1962 | 1 failed, 5690 passed, 8 skipped in 330.98s; the failure was `test_every_csv_still_hashes_to_what_was_recorded`, naming StatusEffects.csv and WeaponSkills.csv |
+| Asset rebuild | 229d15b7 | three files changed: `DT_StatusEffects.uasset`, `DT_WeaponSkills.uasset` and two hash lines of `datatable_asset_sources.json`; no other asset |
+| `tools/tests` after the rebuild | 404d8c01 | 3874 passed, 8 skipped in 62.66s |
+| Build | 404d8c01's source, at 229d15b7 | Build: Succeeded - 32 actions, 29 files compiled |
+| Python of record | 404d8c01 | 5691 passed, 8 skipped in 417.90s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite | 404d8c01 | 3120 tests performed, 3120 succeeded, 0 failed; Declared: 3120 tests in the tree, gap 0 |
+
+**No proof, as registered**: this change is a sentence in a data row and a comment. The status effects asset and
+its one hash line are this change's; the weapon skills asset belongs to the Subjugate entry below.
+
+---
+
 ## 2026-10-02 — Inferno Charge channels for two seconds with its lane drawn, then charges and leaves its path burning
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (the channel, the path, two
