@@ -45487,18 +45487,30 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 	};
 
 	// THE FIGURES ARE THE TABLE'S ON 2026-10-04, and docs/DECISIONS.md states them. A skill designed later moves one
-	// of them on purpose: change the figure here and in the entry together, and read which reason it fell under.
+	// of them on purpose, and the failure says which two places to change. Ruled 2026-10-04: the pin stays.
+	const auto Pin = [this](const TCHAR* What, int32 Counted, int32 Pinned)
+	{
+		TestEqual(FString::Printf(
+					  TEXT("%s. THIS COUNT IS PINNED ON PURPOSE. A skill added to or changed in the weapon skill matrix "
+						   "moved it: read which reason the skill fell under in the lines this test logs, then change the "
+						   "figure in TWO places together: this test, "
+						   "Cataclysm.DungeonModifierEffects.WildMagicPoolIsCountedFromTheRealTableAndEachExclusionNamesWhatItRemoved, "
+						   "and the table in docs/DECISIONS.md under the 2026-10-04 heading that begins \"Wild Magic: a skill use has "
+						   "a 5%% chance to trigger a random different skill of the player's damage type\""),
+					  What),
+				  Counted, Pinned);
+	};
 	TMap<EWhy, TArray<FString>> Demonic;
-	TestEqual(TEXT("Demonic: named skills"), Sorted(TEXT("Demonic"), Demonic), 56);
-	TestEqual(TEXT("Demonic: in the pool"), CountOf(Demonic, EWhy::InThePool), 31);
-	TestEqual(TEXT("Demonic: no shape"), CountOf(Demonic, EWhy::NoShape), 0);
-	TestEqual(TEXT("Demonic: movement"), CountOf(Demonic, EWhy::Movement), 13);
-	TestEqual(TEXT("Demonic: aura"), CountOf(Demonic, EWhy::Aura), 2);
-	TestEqual(TEXT("Demonic: summon or deployable"), CountOf(Demonic, EWhy::SummonOrDeployable), 2);
-	TestEqual(TEXT("Demonic: channelled or held"), CountOf(Demonic, EWhy::ChannelledOrHeld), 3);
-	TestEqual(TEXT("Demonic: disarms the caster"), CountOf(Demonic, EWhy::DisarmsTheCaster), 1);
-	TestEqual(TEXT("Demonic: requires a condition"), CountOf(Demonic, EWhy::Requires), 3);
-	TestEqual(TEXT("Demonic: costs health"), CountOf(Demonic, EWhy::HealthCost), 1);
+	Pin(TEXT("Demonic: named skills"), Sorted(TEXT("Demonic"), Demonic), 56);
+	Pin(TEXT("Demonic: in the pool"), CountOf(Demonic, EWhy::InThePool), 31);
+	Pin(TEXT("Demonic: no shape"), CountOf(Demonic, EWhy::NoShape), 0);
+	Pin(TEXT("Demonic: movement"), CountOf(Demonic, EWhy::Movement), 13);
+	Pin(TEXT("Demonic: aura"), CountOf(Demonic, EWhy::Aura), 2);
+	Pin(TEXT("Demonic: summon or deployable"), CountOf(Demonic, EWhy::SummonOrDeployable), 2);
+	Pin(TEXT("Demonic: channelled or held"), CountOf(Demonic, EWhy::ChannelledOrHeld), 3);
+	Pin(TEXT("Demonic: disarms the caster"), CountOf(Demonic, EWhy::DisarmsTheCaster), 1);
+	Pin(TEXT("Demonic: requires a condition"), CountOf(Demonic, EWhy::Requires), 3);
+	Pin(TEXT("Demonic: costs health"), CountOf(Demonic, EWhy::HealthCost), 1);
 
 	// ONE ROW FOR EACH REASON THAT A ROW SHOWED, BY NAME, so a reason that stopped working is named and not only counted.
 	TestTrue(TEXT("Pyroclasm is a channel"), Holds(Demonic, EWhy::ChannelledOrHeld, TEXT("Pyroclasm")));
@@ -45524,11 +45536,11 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 
 	// WAR TODAY: 54 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills.
 	TMap<EWhy, TArray<FString>> War;
-	TestEqual(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
-	TestEqual(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 54);
-	TestEqual(TEXT("War: movement"), CountOf(War, EWhy::Movement), 3);
-	TestEqual(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
-	TestEqual(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
+	Pin(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
+	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 54);
+	Pin(TEXT("War: movement"), CountOf(War, EWhy::Movement), 3);
+	Pin(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
+	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
 	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
 	TestEqual(TEXT("a damage type with no skills has an empty pool"), TheWildMagicPool(TEXT("Celestial")).Num(), 0);
 	return true;
