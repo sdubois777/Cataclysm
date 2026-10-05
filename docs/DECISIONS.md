@@ -83,6 +83,42 @@ enemies within range simultaneously once every 5-8 seconds". That search is not 
 - **"Summoned minions inherit 10%-25% of your armor and resistances"** stays blocked: no minion armour or
   resistance stat exists.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with part 4c stacked on top of this part, on
+`development` 53889091. Every build and whole-suite run was at the top of the stack; this part's own layer is
+feat/necrosis-rise-and-resummon-3. **The ids are the commits as they stood when each step ran.** The layers were
+put together again afterwards to carry each fix and each asset on its own layer, without changing any other
+file, so the same content sits under later ids; tree 9493d7e6 is the top the final runs used.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | fa41a4f9 | Build: Succeeded - 32 actions, 29 files compiled |
+| This layer's asset, regenerated with the editor from this layer's CSV | fa41a4f9 | 2 files changed: `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 458 to 460 |
+| Python, before the first whole suite; superseded by the run of record below, because test files changed after it | 1f0c6f3e | 5691 passed, 8 skipped in 327.58s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite, first run | 1f0c6f3e | 3138 tests performed, 3136 succeeded, 2 failed: AnAuraNamingNoImmunityGivesItsAlliesNone, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing |
+| Rebuild after the two test fixes | 3226762f | Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.21.cpp, Module.Cataclysm.29.cpp |
+| The four rise tests | 3226762f | Cataclysm.NecrosisRise.: 4 tests performed, 4 succeeded, 0 failed |
+| Whole suite | 3226762f | 3138 tests performed, 3138 succeeded, 0 failed; declared 3138, gap 0; 0 ensures |
+| Python of record | 3226762f | 5691 passed, 8 skipped in 354.04s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Proof A: the necrosis check taken out of `RiseOnNecrosisKill`, so any kill raises an imp | 3226762f | PROVED: with the break in: 4 tests performed, 2 succeeded, 2 failed: AKillThatIsNotNecrosisRaisesNothing, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Proof B: `bOutsideSummonCaps` set false on the risen imp | 3226762f | PROVED: with the break in: 4 tests performed, 2 succeeded, 2 failed: AnEnemyAPlayersNecrosisTickKillsRisesAsAnImpForTheStatedSeconds, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Proof C: a wait started even when `ReplaceLost` replaced the minion at once | 3226762f | PROVED: with the break in: 6 tests performed, 5 succeeded, 1 failed: AMinionReplacedAtOnceByPressGangedStartsNoWait \| restored: 6 tests performed, 6 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: A three, B two, C two. The six
+re-summon tests, the two row tests and the two probes ran inside the whole suite and not as runs of their own.
+
+**The first whole suite failed one of this part's tests, and it was not predicted.**
+`ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing` read "a kill of the character's own imp raises
+nothing" as not null, and so counted five minions where it expected four. **The fault was in the test.** Its
+summoner is a bare actor with no team. A minion takes its summoner's team, and once it is possessed its owner is
+its controller, so that imp shared neither a team nor an owner chain with its summoner, and
+`UCataclysmTeams::AttitudeBetween` answers Hostile for any pair where one side has no team. In play a summoner
+is a player on the Players team and its minions take that team. The coordinating session approved a test-only
+fix: the test sets that imp's owner to its summoner. The engine rule, judgement 5, is unchanged.
+
+The other test that failed in that run is part 4c's, and its entry records it.
+
 ---
 
 ## 2026-10-04 — The Burn row names Hellfire Aura alone: Infernal Brand applies no Burn
