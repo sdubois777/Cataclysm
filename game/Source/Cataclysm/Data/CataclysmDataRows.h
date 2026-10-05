@@ -201,6 +201,21 @@ struct FCataclysmEnchantmentRow : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment")
 	bool IsNegative = false;
+
+	/**
+	 * Which of this sentence's ranges roll from their second number to their
+	 * first, by their place in the sentence counted from 1: empty, `1`, `2` or
+	 * `1,2`. Ruled 2026-10-05: a better roll gives the better outcome, so a roll
+	 * of 1 gives a benefit its best figure and a drawback its harshest. For
+	 * "re-summons after 3-6 seconds" that is 3, the first number.
+	 *
+	 * ONE SOURCE, TWO READERS. `UCataclysmItemValues::EnchantmentTextFor` rolls
+	 * a marked range downward for the hover text, and
+	 * `tools/generate_datatables.py` writes that range's effect pair the other
+	 * way round, so what is read and what is received cannot disagree.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment")
+	FString RollsDown;
 };
 
 /** One enemy modifier. Source: Enemy Modifiers, which is stored as a matrix. */
