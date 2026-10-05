@@ -71,6 +71,47 @@ states no number. It needs no generator change.
 **"Summoned minions inherit 10%-25% of your armor and resistances" stays blocked**: no minion armour or
 resistance stat exists.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with this part stacked on part 4b, on
+`development` 53889091. **The ids are the commits as they stood when each step ran.** The layers were put
+together again afterwards to carry each fix and each asset on its own layer, without changing any other file,
+so the same content sits under later ids; tree 9493d7e6 is the top the final runs used.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | fa41a4f9 | Build: Succeeded - 32 actions, 29 files compiled |
+| The asset, regenerated with the editor | fa41a4f9 | 2 files changed: `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 458 to 461; part 4b's layer carries its own, built from its 460 rows |
+| Python, before the first whole suite; superseded by the run of record below, because test files changed after it | 1f0c6f3e | 5691 passed, 8 skipped in 327.58s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite, first run | 1f0c6f3e | 3138 tests performed, 3136 succeeded, 2 failed: AnAuraNamingNoImmunityGivesItsAlliesNone, ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing |
+| Rebuild after the two test fixes | 3226762f | Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.21.cpp, Module.Cataclysm.29.cpp |
+| The five aura tests | 3226762f | Cataclysm.AuraImmunity.: 5 tests performed, 5 succeeded, 0 failed; 0 ensures |
+| Whole suite | 3226762f | 3138 tests performed, 3138 succeeded, 0 failed; declared 3138, gap 0; 0 ensures |
+| Python of record | 3226762f | 5691 passed, 8 skipped in 354.04s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Proof A: the aura's grant given for no seconds | 3226762f | PROVED: with the break in: 5 tests performed, 3 succeeded, 2 failed: AnImpInsideTheRingSharesThePyresImmunitiesAndOneOutsideDoesNot, LeavingTheRingOrThePyreEndingTakesTheImmunitiesBack \| restored: 5 tests performed, 5 succeeded, 0 failed |
+| Proof B: nothing taken back from an ally that left the ring | 3226762f | PROVED: with the break in: 5 tests performed, 4 succeeded, 1 failed: LeavingTheRingOrThePyreEndingTakesTheImmunitiesBack \| restored: 5 tests performed, 5 succeeded, 0 failed |
+| Proof C: `IsImmuneTo` not reading the granted list | 3226762f | PROVED: with the break in: 5 tests performed, 2 succeeded, 3 failed: AGrantLapsesWhenNothingRenewsItAndCrowdControlCoversEveryKind, AnImpInsideTheRingSharesThePyresImmunitiesAndOneOutsideDoesNot, LeavingTheRingOrThePyreEndingTakesTheImmunitiesBack \| restored: 5 tests performed, 5 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: A nine, B two, C eleven. The
+row test and the probe ran inside the whole suite and not as runs of their own.
+
+**The first whole suite failed one of this part's tests, and it was not predicted.**
+`AnAuraNamingNoImmunityGivesItsAlliesNone` failed on an engine ensure and not on an assertion:
+"FActiveGameplayEffectsContainer::SetAttributeBaseValue: Unable to get attribute set for attribute MaxHealth",
+raised from `ACataclysmMinion::Spawn`. **The fault was in the tests.** All five made their world with that test
+file's `MakeWorld`, which creates a world that never begins play, and a minion spawned there has no vital
+attribute set registered when `Spawn` writes its health. The coordinating session approved a test-only fix: the
+five use `CataclysmTestWorld::MakeWorldThatHasBegunPlay`, as every other test that spawns a minion does.
+
+**ONE ENSURE HID FOUR TESTS.** An ensure reports once per process. All five tests spawned an imp the same way;
+the one that ran first by name took the failure, and the other four passed only because the ensure was already
+spent. A run that shows one test failing on an ensure says nothing about the tests after it that reach the same
+line. That is why the whole suite was run again after the fix and not only the group.
+
+**The shoves were the stated uncertainty and held.** Before the run it was registered that the proofs' counts
+assumed a shove moves an imp in a test world. It does, in a world that has begun play as well as in one that has
+not.
+
 ---
 
 ## 2026-10-04 — An enemy killed by necrosis rises as an imp for the row's seconds, outside every summon cap, and a summoned minion that dies is summoned again beside its summoner after the row's seconds
