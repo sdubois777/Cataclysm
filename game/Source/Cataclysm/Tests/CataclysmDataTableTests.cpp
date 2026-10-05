@@ -671,7 +671,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 460 SINCE THE NECROSIS RISE AND THE RE-SUMMON, issue #1833 group E part 4b, from 458.
 	//
 	// AND 461 SINCE THE AURA'S SHARED IMMUNITIES, issue #1833 group E part 4c, from 460.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    461)
+	//
+	// AND 462 SINCE "YOUR MOVEMENT ABILITY HAS 2 CHARGES", issue #1833, from 461.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    462)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
