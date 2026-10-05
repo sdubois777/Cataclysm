@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-02 — Inferno Charge channels for two seconds with its lane drawn, then charges and leaves its path burning
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (the channel, the path, two
+new figures and a wider lane), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the channel's count,
+its fixed lane, its marker and the path, kept on the creature), `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`
+(the brain stands a channelling creature still), `CataclysmEnemyController.h` beside it (`FloorUnder` made public) and `game/Source/Cataclysm/Tests/CataclysmEnemyModifierTests.cpp`
+(one test). Issue [#1560](https://github.com/sdubois777/Cataclysm/issues/1560). Ruled by the coordinating session
+on 2026-10-02 under the owner's delegation.
+
+### What was wrong
+
+The row, `Demonic_Inferno_Charge`: "Channel for 2 seconds, then dash towards the player at rapid speeds. Deals AoE
+damage on hit and leave a lingering DoT over the path traveled." The creature charged the moment its twelve second
+timer was up. `InfernoChannelSeconds = 2.0f` was declared and read by nothing, no lane was drawn before the charge,
+and nothing burned on the path afterwards.
+
+### What it does now
+
+- **The channel is the last two seconds of the twelve.** At ten seconds, with somebody within twenty metres, the
+  creature begins to channel: it stands, the lane it will run is drawn on the floor from its feet to the player's,
+  and two seconds later it charges down that lane. A charge therefore still sets off every twelve seconds, as the
+  2026-09-05 entry "The remaining six Demonic enemy modifiers, and a debuff that stacks" set, and the two tests
+  that already stepped twelve seconds and expected a charge are unchanged. **A judgement**: the row gives the two
+  seconds and not where they fall.
+- **The lane is fixed when the channel begins and does not follow the player.** That is the general telegraph rule
+  every enemy wind-up keeps; a player who walks out of the drawn lane is not charged.
+- **The brain stands the creature still for the channel**, as it does for a wind-up, and reports `WindingUp`. It
+  does not begin a channel while its own ability is winding up; the timer keeps running and the channel begins
+  after. A channel the creature may no longer finish -- it loses the row, or becomes a creature that takes no
+  hostile action -- is abandoned and its marker taken away.
+- **The path burns, copied from the Hellhound's lane** (`ACataclysmHellhoundCharacter::UseEnemyAbility`): laid when
+  the charge sets off, along the whole lane, a quarter of a hit per second for four seconds, priced once off the
+  creature's attack damage, burning the player and nobody on the creature's own side. It is of the creature's own
+  damage type, as the Hellhound's is, because the row names none. It is laid only if the charge really set off; a
+  creature standing in a pit is refused the charge and leaves no path. **A judgement**, ruled as a copy of the
+  Hellhound's lane.
+
+### The lane is one metre either side, raised from 90 centimetres
+
+**The drawn lane needed it.** `ACataclysmTelegraphMarker::ShowLine` draws nothing narrower than
+`SmallestUsefulRadiusCm`, 100 centimetres. That is the design's rule that a marker smaller than a metre "is smaller
+than the creature standing in it, so there is nowhere to walk", pinned to the simulation by
+`tools/tests/test_telegraph_markers.py`. At the 2026-09-05 judgement of 90 the channel would have drawn nothing,
+and a warning the player cannot see is not a warning.
+
+**Option A of three, labelled a judgement.** The coordinating session chose 100, the smallest width that draws,
+over the Hellhound's 150 (two-thirds wider) and over keeping 90 with no marker. The charge's hit lane, the drawn
+lane and the burning path are the one constant `InfernoChargeHalfWidthCm`, so all three moved together.
+
+**Where the old figure was stated, searched before changing it:** `tools/`, `sim/`, `docs/Cataclysm_GDD_v2.md` and
+the 2026-09-05 entry. Nothing states 90 for this lane. The 2026-09-05 entry says only that "the width" is a
+judgement, which is still true.
+
+### Not changed
+
+**The 2026-09-05 entry says the telegraph was one implementation a player had already learned to read.** No lane
+was drawn for this modifier until this change. That entry is merged and is left as written; this entry is the
+correction.
+
+### `FloorUnder` is public now, and the first build failed because it was not
+
+**The lane's two ends go through `ACataclysmEnemyController::FloorUnder`**, the one function every enemy marker
+uses to put a point on the floor. It was declared in the controller's private section, and this change calls it
+from `UCataclysmEnemyModifiers::TimedStep`. The window's first build, on 2026-10-04, failed with two C2248 errors
+at those two calls. The coordinating session ruled the declaration and its comment be moved, unchanged, into the
+public section, over a second copy of the expression inside `TimedStep`: one expression for every marker is the
+function's stated purpose.
+
+**No access scan was run on this change, which is why none reported the call.** The check made instead was a
+listing of the header's `public:`, `protected:` and `private:` lines, read by eye, and line 826 was read as public
+when the private section runs from 734 to 873.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-04 in the jovial-bouman worktree, as one window for a stack of four changes on
+`development` 03554578: five stale comments, Inferno Charge (#1560), the Burn row (#1538) and Subjugate's pick
+(#1529), in that order. Every run below was made at the stack's top, 404d8c01, unless its row says otherwise.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| First build | 912c1962, before `FloorUnder` was made public | Result: Failed (OtherCompilationError); two C2248 errors at this change's two calls |
+| Build | 404d8c01's source, at 229d15b7 | Build: Succeeded - 32 actions, 29 files compiled |
+| Python of record | 404d8c01 | 5691 passed, 8 skipped in 417.90s; JUnit tests=5699 failures=0 errors=0 skipped=8 |
+| Whole suite | 404d8c01 | 3120 tests performed, 3120 succeeded, 0 failed; Declared: 3120 tests in the tree, gap 0 |
+
+| Proof: what was broken | As printed |
+| :-- | :-- |
+| P1: the charge sets off one step into the channel | PROVED: with the break in: 39 tests performed, 38 succeeded, 1 failed: InfernoChargeChannelsTwoSecondsThenLeavesItsPathBurning \| restored: 39 tests performed, 39 succeeded, 0 failed |
+| P2: the brain does not stand a channelling creature | PROVED, the same line |
+| P3: no path is laid | PROVED, the same line |
+
+**What each break failed, from the kept logs.** P1, three assertions: still channelling at 1.75 seconds, not yet
+charged, nothing burning yet. P2, one: "Expected 'the brain stands it for the channel' to be 4, but it was 1".
+P3, one: "Expected 'the path it runs is left burning' to be not null".
+
+**The Python run was started before its registration was sent** the first time this change was measured, on
+2026-10-02 at c0bc4303. The figure registered then came from a `--collect-only` taken before that run began. The
+run of record above was registered before it ran.
+
+**The lane's width has no proof of its own**, because a change is allowed three. The test's assertion that the
+marker is not null is what fails at 90 centimetres.
+
+---
+
 ## 2026-10-02 — A running self buff's More damage reaches allies within 8 m, or 15 m for a Support skill, and a standing 10-20% More reaches every ally within 5 m
 
 **Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.h` and `.cpp`

@@ -7,14 +7,17 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -1846,6 +1849,137 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernoChargeTest,
 	}
 
 	TestTrue(TEXT("and one carrying it charges"), Charger->IsCharging());
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernoChargeChannelTest,
+	"Cataclysm.EnemyModifiers.InfernoChargeChannelsTwoSecondsThenLeavesItsPathBurning")
+{
+	using namespace CataclysmEnemyModifierTest;
+	using Modifiers_t = UCataclysmEnemyModifiers;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Charger =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Charger))
+	{
+		return false;
+	}
+	Charger->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Charger->SetHealth(500.0f);
+
+	// PRICED OFF THE CREATURE'S OWN ATTACK DAMAGE WHEN THE PATH IS LAID, so
+	// it has some, set here because the figure is asserted below.
+	constexpr float AttackDamage = 100.0f;
+	Charger->SetAttackDamage(AttackDamage);
+	Charger->ModifierRows.Add(FName(Modifiers_t::InfernoChargeRow));
+	Charger->SecondsSinceInfernoCharge = 0.0f;
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Charger->GetController());
+	if (!TestNotNull(TEXT("the creature's brain"), Brain))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Quarry = SpawnPlayerWithState(World);
+	if (!TestNotNull(TEXT("somebody to charge"), Quarry))
+	{
+		return false;
+	}
+	Quarry->SetActorLocation(FVector(900.0f, 0.0f, 0.0f));
+	const FVector StoodAt = Charger->GetActorLocation();
+
+	// THE CHANNEL IS THE LAST TWO SECONDS OF THE TWELVE: thirty-nine quarter
+	// second steps leave it doing nothing, and the fortieth, at ten seconds,
+	// begins the channel. Issue #1560.
+	for (int32 Step = 0; Step < 39; ++Step)
+	{
+		Modifiers_t::TimedStep(Charger, 0.25f);
+	}
+	TestFalse(TEXT("nothing has begun at 9.75 seconds"),
+			  Charger->IsChannellingInfernoCharge() || Charger->IsCharging());
+
+	Modifiers_t::TimedStep(Charger, 0.25f);
+	if (!TestTrue(TEXT("the channel begins at ten seconds"),
+				  Charger->IsChannellingInfernoCharge()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and it has not charged yet"), Charger->IsCharging());
+
+	// THE LANE IS DRAWN, AND IT IS THE CHARGE'S OWN WIDTH. A lane narrower
+	// than a metre draws nothing, which is why the width was raised to one.
+	const ACataclysmTelegraphMarker* Marker = Charger->InfernoChargeMarker.Get();
+	if (TestNotNull(TEXT("the lane it will run is drawn on the floor"), Marker))
+	{
+		TestTrue(TEXT("as a lane"), Marker->IsLane());
+		TestEqual(TEXT("as wide as the charge"), Marker->RadiusCm,
+				  Modifiers_t::InfernoChargeHalfWidthCm);
+		TestEqual(TEXT("and as long as the way to the player"), Marker->LengthCm,
+				  static_cast<float>(FVector::Dist2D(
+					  StoodAt, FVector(900.0f, 0.0f, 0.0f))),
+				  0.5f);
+	}
+
+	// IT STANDS. The brain answers a channelling creature by standing it still,
+	// rather than walking it at the player nine metres away.
+	TestEqual(TEXT("the brain stands it for the channel"),
+			  static_cast<int32>(Brain->Think()),
+			  static_cast<int32>(ECataclysmBrainAction::WindingUp));
+
+	// THE LANE DOES NOT FOLLOW THE PLAYER. The player steps sideways out of it.
+	const FVector Aimed = Charger->InfernoChargeTo;
+	Quarry->SetActorLocation(FVector(0.0f, 900.0f, 0.0f));
+
+	// SEVEN MORE STEPS IS 1.75 SECONDS OF CHANNEL: still standing, no charge
+	// and no path.
+	for (int32 Step = 0; Step < 7; ++Step)
+	{
+		Modifiers_t::TimedStep(Charger, 0.25f);
+	}
+	TestTrue(TEXT("at 1.75 seconds it is still channelling"),
+			 Charger->IsChannellingInfernoCharge());
+	TestFalse(TEXT("and has not charged"), Charger->IsCharging());
+	TestFalse(TEXT("and nothing burns yet"),
+			  Charger->LastInfernoPathLeftBurning.IsValid());
+
+	// THE EIGHTH IS TWO SECONDS: THE CHARGE SETS OFF.
+	Modifiers_t::TimedStep(Charger, 0.25f);
+	TestFalse(TEXT("the channel is over at two seconds"),
+			  Charger->IsChannellingInfernoCharge());
+	TestTrue(TEXT("and the charge has set off"), Charger->IsCharging());
+	TestEqual(TEXT("down the lane drawn when the channel began"),
+			  Charger->InfernoChargeTo, Aimed);
+	TestEqual(TEXT("which ran to where the player stood then"),
+			  FVector2D(Aimed), FVector2D(900.0f, 0.0f));
+
+	// AND ITS PATH BURNS: the Hellhound's lane, copied.
+	const ACataclysmGroundZone* Path =
+		Charger->LastInfernoPathLeftBurning.Get();
+	if (!TestNotNull(TEXT("the path it runs is left burning"), Path))
+	{
+		return false;
+	}
+	TestTrue(TEXT("along a path rather than at a point"), Path->IsLong());
+	TestEqual(TEXT("from where it stood"), FVector2D(Path->GetActorLocation()),
+			  FVector2D(StoodAt));
+	TestEqual(TEXT("to where it was aimed"), FVector2D(Path->FarEnd),
+			  FVector2D(900.0f, 0.0f));
+	TestEqual(TEXT("as wide as the charge"), Path->RadiusCm,
+			  Modifiers_t::InfernoChargeHalfWidthCm);
+	TestEqual(TEXT("a quarter of a hit a second"), Path->DamagePerTick,
+			  AttackDamage * Modifiers_t::InfernoPathPercent / 100.0f);
+	TestFalse(TEXT("burning the player and not the creature's own side"),
+			  Path->bBurnsEveryone);
 
 	return true;
 }

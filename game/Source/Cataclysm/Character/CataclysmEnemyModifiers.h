@@ -322,12 +322,33 @@ public:
 	 *
 	 * THE TWO SECOND CHANNEL IS THE ROW'S OWN FIGURE. The speed, the width and
 	 * the damage share are judgements.
+	 *
+	 * THE CHANNEL IS THE LAST TWO SECONDS OF THE TWELVE, so a charge still sets
+	 * off every twelve seconds. The creature stands, the lane it will run is
+	 * drawn on the floor, and the lane is fixed when the channel starts and
+	 * does not follow the player -- the general telegraph rule. Issue #1560.
+	 *
+	 * THE PATH IT RAN BURNS AFTERWARDS, COPIED FROM THE HELLHOUND'S LANE: a
+	 * quarter of a hit per second for four seconds, as wide as the charge, and
+	 * of the creature's own damage type, because the row names none. The
+	 * coordinating session ruled the copy on 2026-10-02, labelled a judgement.
+	 *
+	 * ONE METRE EITHER SIDE, RAISED FROM 90 CM ON 2026-10-02 SO THE LANE IS
+	 * DRAWN. `ACataclysmTelegraphMarker::ShowLine` draws nothing narrower than
+	 * `SmallestUsefulRadiusCm`, the design's rule that a smaller marker leaves
+	 * nowhere to walk, and the channel exists to be read. The charge's hit
+	 * lane, the drawn lane and the burning path stay this one figure. A
+	 * judgement, ruled by the coordinating session.
 	 */
 	static constexpr float InfernoChannelSeconds = 2.0f;
 	static constexpr float InfernoChargeSpeedCmPerSecond = 1800.0f;
-	static constexpr float InfernoChargeHalfWidthCm = 90.0f;
+	static constexpr float InfernoChargeHalfWidthCm = 100.0f;
 	static constexpr float InfernoChargeDamagePercent = 150.0f;
 	static constexpr float InfernoChargeIntervalSeconds = 12.0f;
+	static constexpr float InfernoPathSeconds = 4.0f;
+	static constexpr float InfernoPathPercent = 25.0f;
+	static_assert(InfernoChannelSeconds < InfernoChargeIntervalSeconds,
+				  "the channel is part of the interval, so it must be shorter");
 
 	/**
 	 * Keeps a phase step's direction off the modifier draw's stream.
