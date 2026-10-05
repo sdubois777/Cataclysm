@@ -2,6 +2,59 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — "Your movement ability has 2 charges" is built: one more charge in the Movement slot
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(one case in the table of `Cataclysm.Enchantments.EachChargesRowAddsUsesToTheSkillsItNames`), `CataclysmDataTableTests.cpp`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (`BASE_PLUS_SINGLE_VALUES`, one test, the row
+count), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS FOUND
+
+**The sentence had no effect row, so the enchantment did nothing.** It was reworded on 2026-09-30 from "Your
+movement abilities no longer share a cooldown", and the rename table carries the old name to the new one, but no
+row was written for the new words. Found on 2026-10-05 by a search that saw `skill_charges_bonus` rows for the
+six "additional charges" sentences and none for this one.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Your movement ability has 2 charges | `skill_charges_bonus` flat 1, requiring `Slot.Movement` |
+
+EnchantmentEffects 461 to 462, over 377 to 378. No engine change: `skill_charges_bonus` is the stat the six
+sibling rows grant, and `UCataclysmAbilitySystemComponent::SkillChargesMaximum` answers one charge plus the
+bonus its slot's tags reach.
+
+**THE SENTENCE STATES A TOTAL AND THE ROW GRANTS WHAT IS ADDED.** A skill always holds one charge, so "2 charges"
+is that one and the row's one. The row-text check that a single value appears in its sentence reads the row's
+value plus the base for the enchantments `BASE_PLUS_SINGLE_VALUES` names, which is this one, and
+`test_every_base_plus_single_value_is_still_needed` keeps the allowance from outliving its reason. A labelled
+judgement of 2026-10-05 under the owner's delegation: 2 is the total and not 2 more, by the plain reading of
+"has 2 charges" beside its siblings' "has 1-2 additional charges".
+
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with this row stacked on the roll direction
+change, on `development` e8364c8e. **The ids are the commits as they stood when each step ran**; the layers were
+put together again afterwards, and tree 2d9b1b75 is the top the final runs used. The builds, both whole suites,
+the Python of record and the three proofs are in the roll direction entry's table and were all run at this
+row's top.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| The row's test against the asset built before the row | 12e16583 | 1 tests performed, 0 succeeded, 1 failed: EachChargesRowAddsUsesToTheSkillsItNames |
+| The asset, regenerated with the editor | 12e16583 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 461 to 462 |
+| Whole suite | e9e2a8d5 | 3159 tests performed, 3159 succeeded, 0 failed; declared 3159, gap 0; 0 ensures |
+| Python of record, with ruff clean | e9e2a8d5 | 5704 passed, 8 skipped in 372.83s; JUnit tests=5712 failures=0 errors=0 skipped=8 |
+
+**The row's test fails without the row and passes with it.** Against the asset that lacked the row the one
+failed assertion was "Expected 'Positive_Your_movement_ability_has_2_charges: slot 7 holds 2' to be 2, but it
+was 1", as predicted; with the asset rebuilt the test passes inside the whole suite.
+
+---
+
 ## 2026-10-05 — A better roll gives the better outcome: a roll of 1 is a benefit's best figure and a drawback's harshest, so seven sentences mark a range that rolls down
 
 **Affects:** `tools/generate_datatables.py` (`ranges_rolling_down`, the `Rolls Down` column of the Enchantments
