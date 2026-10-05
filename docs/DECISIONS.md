@@ -17,8 +17,8 @@ the trigger on the next tick, the panel line); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the automation tests, the Python suite and the guard proofs ran on 2026-10-05; the
+figures are under "Run" at the end of this entry.
 
 ### The row
 
@@ -178,9 +178,49 @@ there and in the table above together, after reading which reason the new skill 
 **Python.** One new check, `test_wild_magic_row_still_says_five_percent_a_random_different_skill_and_your_class_tree`,
 pins the phrases the readings rest on. This row needs no workbook edit.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-05 for a stack of two: the gated shortcuts (the entry below), then this change on top of it.
+Development was 8ae2a01f, measured there at 3138 Unreal tests. Every figure below is a line a run printed. The entry
+below has the whole window; this is what belongs to this change.
+
+**First run, at `feat/wild-magic-2` 7b7a3110:**
+
+| Step | Printed |
+|---|---|
+| Build, the first compile of both layers | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Whole Unreal suite | `3158 tests performed, 3155 succeeded, 3 failed`; `Declared: 3158 tests in the tree at 7b7a3110; 3158 performed, gap 0` |
+| Python, with continuous integration idle | `5694 passed, 8 skipped in 397.37s`; JUnit `tests="5702" failures="0" errors="0" skipped="8"` |
+
+**All ten of this change's tests passed in that run.** The three failures were two tests of the layer below and one
+intermittent failure in merged code (issue [#2219](https://github.com/sdubois777/Cataclysm/issues/2219)); the entry
+below says what each was. The pool test's fifteen pinned counts held, so the C++ reader counts the table as the
+Python count did.
+
+**Second run, after two test-only fixes in the layer below, at `feat/wild-magic-3` 422f0667.** This change's files are
+the same in both heads.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 35 actions, 30 files compiled` |
+| Group `Cataclysm.DungeonModifierEffects.`, which holds this rule's seven tests | `593 tests performed, 593 succeeded, 0 failed` |
+| `tools/tests` at 422f0667 | `3877 passed, 8 skipped in 60.20s` |
+
+**Guard proofs, at 422f0667, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmTriggeredSkill.cpp`: a triggered skill is never marked for removal | `Cataclysm.TriggeredSkill.` | 3 performed, 3 failed, 4 failed assertions: "the character holds as many skills as before"; "once it ends it is no longer held" and "and the character holds as many skills as before"; "and is gone" | 3 performed, 3 succeeded |
+| Pb | `CataclysmDungeonGameMode.cpp`: the skill just used is not taken out of the pool | `Cataclysm.DungeonModifierEffects.WildMagicNeverPicks` | 1 performed, 1 failed, 1 failed assertion: "a pick of 0 is the second skill of the pool, not the one just used" was Ashen Edge and not Quench | 1 performed, 1 succeeded |
+| Pc | `CataclysmDungeonGameMode.cpp`: the basic attack rolls like any skill use | `Cataclysm.DungeonModifierEffects.WildMagicDoesNotRoll` | 1 performed, 1 failed, 1 failed assertion: "a basic attack draws nothing" | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 4 assertions in 3 tests, 1 and 1.
+
+**What the run settles of what the entry says was only read.** The three engine rules under "How it is built" held:
+a triggered skill started, a trigger from inside another skill's activation was refused and left nothing, and a
+skill was removed when it ended. The paragraph on a second running copy of a self buff is still read from the code
+and not run.
 
 ---
 
