@@ -12673,4 +12673,62 @@ bool FCataclysmResummonRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraSharesImmunitiesRowTest,
+	"Cataclysm.Enchantments.TheAuraShareRowMakesAnImpInsideLivingPyreImmuneToAStun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your aura also applies its effect to all allies within range". Issue #1833
+ * group E part 4c: `aura_shares_immunities_with_allies` flat 1. WORN: the wearer
+ * casts Living Pyre, whose row names `Immune=Stun, Slow, Displacement`, and after
+ * one pulse its imp 2 m away is immune to a stun and not to a knockdown.
+ */
+bool FCataclysmAuraSharesImmunitiesRowTest::RunTest(const FString&)
+{
+	CataclysmSmallHalvesTest::FWorn Worn(TEXT("Positive_Your_aura_also_applies_its_effect_to_all_allies"), true);
+	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
+	{
+		return false;
+	}
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 10000.0f);
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 10000.0f);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Worn.Wearer->Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	Imp->SetOwner(Worn.Wearer->Actor);
+
+	// THE AURA SLOT, WHICH ASKS NO FERVOUR OF A BARE WEARER. The row reads the
+	// aura's own `Immune=`, whichever slot it sits in.
+	const FGameplayAbilitySpecHandle Handle = Worn.ASC()->GiveAbilityInSlot(
+		UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura, /*Level=*/1, Worn.Wearer->Actor);
+	FGameplayAbilitySpec* Spec = Handle.IsValid() ? Worn.ASC()->FindAbilitySpecFromHandle(Handle) : nullptr;
+	UCataclysmAuraSkill* Pyre = Spec ? Cast<UCataclysmAuraSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("the aura"), Pyre))
+	{
+		return false;
+	}
+	Pyre->SkillName = TEXT("Living Pyre");
+	Pyre->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Radius=4; Interval=1; Burn=1; Immune=Stun, Slow, Displacement"));
+	if (!TestTrue(TEXT("set-up: it activates"),
+			Worn.ASC()->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)))
+	{
+		return false;
+	}
+	Pyre->Pulse();
+	if (!TestTrue(TEXT("set-up: it is still running after a pulse"), Pyre->IsActive()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the imp inside is immune to a stun. If not, DT_EnchantmentEffects may be older than "
+				  "the rows: run tools/generate_datatable_assets.py"),
+		UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Stun")));
+	TestFalse(TEXT("and not to a knockdown, which the aura's row does not name"),
+		UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Knockdown")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
