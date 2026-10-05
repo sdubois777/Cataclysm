@@ -495,6 +495,21 @@ public:
 	static FString EnchantmentTextAtRoll(const FString& Effect, float Roll);
 
 	/**
+	 * An enchantment row's sentence at this roll, WITH THE RANGES ITS ROW MARKS
+	 * AS ROLLING DOWN rolled from their second number to their first. This is
+	 * what the hover text shows. `EnchantmentTextAtRoll` above is this with no
+	 * range marked.
+	 *
+	 * @param RollsDown  the row's `RollsDown`: places counted from 1, separated
+	 *                   by commas. A place the sentence does not have is ignored
+	 */
+	static FString EnchantmentTextFor(const FString& Effect, const FString& RollsDown,
+									  float Roll);
+
+	/** The places a `RollsDown` cell names, counted from 1. */
+	static TSet<int32> RangesRollingDown(const FString& RollsDown);
+
+	/**
 	 * Every range an enchantment's sentence states, as the first and second
 	 * number of each, in the order the sentence gives them. These are the
 	 * ranges EnchantmentTextAtRoll replaces.

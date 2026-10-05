@@ -342,17 +342,48 @@ TArray<FVector2D> UCataclysmItemValues::EnchantmentRanges(const FString& Effect)
 FString UCataclysmItemValues::EnchantmentTextAtRoll(const FString& Effect,
 													 float Roll)
 {
+	return EnchantmentTextFor(Effect, FString(), Roll);
+}
+
+TSet<int32> UCataclysmItemValues::RangesRollingDown(const FString& RollsDown)
+{
+	TSet<int32> Places;
+	TArray<FString> Parts;
+	RollsDown.ParseIntoArray(Parts, TEXT(","));
+	for (FString Part : Parts)
+	{
+		Part.TrimStartAndEndInline();
+		if (Part.IsNumeric())
+		{
+			Places.Add(FCString::Atoi(*Part));
+		}
+	}
+	return Places;
+}
+
+FString UCataclysmItemValues::EnchantmentTextFor(const FString& Effect,
+												  const FString& RollsDown,
+												  float Roll)
+{
+	const TSet<int32> Down = RangesRollingDown(RollsDown);
+
 	FString Out;
 	FEnchantmentNumberText First;
 	FEnchantmentNumberText Second;
 	int32 Copied = 0;
+	int32 Place = 0;
 	while (FindEnchantmentRange(Effect, Copied, First, Second))
 	{
+		++Place;
 		const int32 Places = FMath::Max(EnchantmentDecimalPlaces(First.Value),
 										EnchantmentDecimalPlaces(Second.Value));
+		// A MARKED RANGE ROLLS FROM ITS SECOND NUMBER TO ITS FIRST, which is
+		// the order the generator wrote its effect pair in.
+		const bool bDown = Down.Contains(Place);
 		Out += Effect.Mid(Copied, First.Start - Copied);
 		Out += EnchantmentNumberAsWritten(
-			EnchantmentValue(First.Value, Second.Value, Roll), Places,
+			EnchantmentValue(bDown ? Second.Value : First.Value,
+							 bDown ? First.Value : Second.Value, Roll), Places,
 			First.bCommas || Second.bCommas);
 		if (First.bPercent || Second.bPercent)
 		{
@@ -984,7 +1015,10 @@ FName UCataclysmItemModifiers::OwnStackKeyFor(const FCataclysmEnchantmentEffectR
 float UCataclysmItemModifiers::RolledScaleStep(const FCataclysmEnchantmentEffectRow& Effect,
 											   float Roll)
 {
-	return Effect.ScaleStepHigh > Effect.ScaleStep
+	// RANGED WHEN THE SECOND END IS STATED AND DIFFERS, NOT ONLY WHEN IT IS
+	// HIGHER. A range its sentence marks as rolling down arrives with its ends
+	// exchanged, ruled 2026-10-05, and nought still means no second end.
+	return Effect.ScaleStepHigh > 0.0f && Effect.ScaleStepHigh != Effect.ScaleStep
 		? UCataclysmItemValues::EnchantmentValue(Effect.ScaleStep, Effect.ScaleStepHigh, Roll)
 		: Effect.ScaleStep;
 }
@@ -992,7 +1026,7 @@ float UCataclysmItemModifiers::RolledScaleStep(const FCataclysmEnchantmentEffect
 float UCataclysmItemModifiers::RolledStackSeconds(const FCataclysmEnchantmentEffectRow& Effect,
 												  float Roll)
 {
-	return Effect.StackSecondsHigh > Effect.StackSeconds
+	return Effect.StackSecondsHigh > 0.0f && Effect.StackSecondsHigh != Effect.StackSeconds
 		? UCataclysmItemValues::EnchantmentValue(Effect.StackSeconds, Effect.StackSecondsHigh, Roll)
 		: Effect.StackSeconds;
 }
@@ -1000,7 +1034,7 @@ float UCataclysmItemModifiers::RolledStackSeconds(const FCataclysmEnchantmentEff
 float UCataclysmItemModifiers::RolledConditionValue(const FCataclysmEnchantmentEffectRow& Effect,
 													float Roll)
 {
-	return Effect.ConditionValueHigh > Effect.ConditionValue
+	return Effect.ConditionValueHigh > 0.0f && Effect.ConditionValueHigh != Effect.ConditionValue
 		? UCataclysmItemValues::EnchantmentValue(Effect.ConditionValue, Effect.ConditionValueHigh, Roll)
 		: Effect.ConditionValue;
 }
