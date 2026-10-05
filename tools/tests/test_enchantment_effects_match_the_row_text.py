@@ -583,8 +583,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833 group E part 4b, from 458 over 374: two rows on two enchantments.
 #: AND 461 OVER 377 SINCE THE AURA'S SHARED IMMUNITIES,
 #: issue #1833 group E part 4c, from 460 over 376: one row on one enchantment.
-AUTHORED_ROWS = 461
-AUTHORED_ENCHANTMENTS = 377
+#: AND 462 OVER 378 SINCE "YOUR MOVEMENT ABILITY HAS 2 CHARGES",
+#: issue #1833, 2026-10-05, from 461 over 377: one row on one enchantment.
+AUTHORED_ROWS = 462
+AUTHORED_ENCHANTMENTS = 378
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
