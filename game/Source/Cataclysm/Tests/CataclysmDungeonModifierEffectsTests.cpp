@@ -45857,4 +45857,163 @@ bool FCataclysmWildMagicSmallPoolTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ISSUE #2219. A Cryptquake collapse sometimes brought no creatures: the angle they arrive at was drawn, and when it
+// pointed at rock the fallback looked around the pit's own centre, whose cells are rock once it has collapsed.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The angle `BringCreaturesNear` looks along, pinned in degrees and put back to "drawn" afterwards. */
+	struct FBringCreaturesAnglePinned
+	{
+		explicit FBringCreaturesAnglePinned(float Degrees)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.BringCreaturesAngle"));
+			if (Variable)
+			{
+				Variable->Set(*FString::SanitizeFloat(Degrees), ECVF_SetByConsole);
+			}
+		}
+
+		~FBringCreaturesAnglePinned()
+		{
+			if (Variable)
+			{
+				Variable->Set(TEXT("-1"), ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/**
+	 * A 2 by 2 block of floor and an angle, in degrees, such that the point the swarm would arrive beside -- 600 cm
+	 * from the block's centre at that angle -- has no floor cell within reach once the block is rock. That is a block
+	 * against a wall at least two cells thick. False when the floor has none.
+	 */
+	bool APitSiteAgainstRock(const ACataclysmDungeonFloor& Floor, TArray<FIntPoint>& OutCells, float& OutDegrees)
+	{
+		const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+		const float Away = FCataclysmFloorGenerator::CellSizeCm * 1.5f;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			const FIntPoint Corner = Plan.CellAt(Index);
+			const TArray<FIntPoint> Block = {Corner, Corner + FIntPoint(1, 0), Corner + FIntPoint(0, 1),
+											 Corner + FIntPoint(1, 1)};
+			bool bAllFloor = true;
+			for (const FIntPoint& Cell : Block)
+			{
+				bAllFloor = bAllFloor && Plan.IsFloor(Cell) && Cell != Plan.Entrance && Cell != Plan.Exit;
+			}
+			if (!bAllFloor)
+			{
+				continue;
+			}
+			const FVector Centre = (Floor.WorldOfCell(Block[0]) + Floor.WorldOfCell(Block[3])) * 0.5;
+			for (const float Degrees : {0.0f, 90.0f, 180.0f, 270.0f})
+			{
+				const float Radians = FMath::DegreesToRadians(Degrees);
+				const FVector Where(Centre.X + Away * FMath::Cos(Radians), Centre.Y + Away * FMath::Sin(Radians), Centre.Z);
+				bool bFloorInReach = false;
+				for (int32 Other = 0; Other < Plan.Cells.Num() && !bFloorInReach; ++Other)
+				{
+					const FIntPoint Cell = Plan.CellAt(Other);
+					bFloorInReach = Plan.IsFloor(Cell) && !Block.Contains(Cell)
+						&& FVector::Dist2D(Floor.WorldOfCell(Cell), Where)
+							<= UCataclysmDungeonModifierEffects::NecroticBloomWaveWithinCm;
+				}
+				if (!bFloorInReach)
+				{
+					OutCells = Block;
+					OutDegrees = Degrees;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCryptquakeAgainstRockTest,
+	"Cataclysm.DungeonModifierEffects.CryptquakeBringsItsSwarmWhenTheAngleItArrivesAtPointsAtRock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCryptquakeAgainstRockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {CryptquakeRow});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// A PIT AGAINST ROCK, AND THE ANGLE THAT POINTS AT THE ROCK, searched for by seed: a block the floor lets a pit
+	// take, where the point the swarm would arrive beside has no floor in reach. THE FALLBACK AROUND THE PIT'S CENTRE
+	// FINDS NOTHING EITHER, on any floor: the cells beside a 2 by 2 pit are 632 cm from its centre and the search
+	// reaches 600. So before issue #2219 was fixed this brought no creature at all.
+	TWeakObjectPtr<ACataclysmFloorObstacle> Warning;
+	TArray<FIntPoint> Pit;
+	float Degrees = 0.0f;
+	int32 SeedUsed = 0;
+	for (int32 Seed = 1; Seed <= 20 && !Warning.IsValid(); ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("seed %d: floor 2 was reached"), Seed), Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		if (APitSiteAgainstRock(*Mode->CurrentFloor, Pit, Degrees))
+		{
+			Warning = Mode->WarnOfAnObstacle(Pit, ECataclysmObstacleKind::Pit, CryptquakeRow);
+			SeedUsed = Seed;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a pit against rock on one of seeds 1 to 20"), Warning.IsValid()))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("cryptquake against rock: dungeon seed %d, pit corner %s, angle %.0f degrees"), SeedUsed,
+							*Pit[0].ToString(), Degrees));
+	TestEqual(TEXT("set-up: no creature before the collapse"), Mode->FloorEnemies.Num(), 0);
+
+	FBringCreaturesAnglePinned Pinned(Degrees);
+	if (!TestNotNull(TEXT("the angle can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	Beat(Mode, WarningBeats());
+	if (!TestTrue(TEXT("set-up: the section collapsed"), Warning.IsValid() && !Warning->IsWarning()))
+	{
+		return false;
+	}
+
+	// THE SWARM CAME, ON FLOOR, OUT OF THE PIT.
+	int32 Swarm = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+	{
+		if (!IsValid(Creature))
+		{
+			continue;
+		}
+		++Swarm;
+		const FIntPoint Cell = Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation());
+		TestTrue(TEXT("a creature of the swarm stands on floor"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+		TestFalse(TEXT("and not in the pit"), Pit.Contains(Cell));
+		TestTrue(TEXT("and within two cells of the pit's edge"),
+				 Cell.X >= Pit[0].X - 2 && Cell.X <= Pit[0].X + 3 && Cell.Y >= Pit[0].Y - 2 && Cell.Y <= Pit[0].Y + 3);
+	}
+	TestEqual(TEXT("three creatures came, though the angle pointed at rock"), Swarm,
+			  Effects::CryptquakeCreaturesPerSection);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
