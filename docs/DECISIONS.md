@@ -2,6 +2,92 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — A Cryptquake collapse always brings its creatures: when neither the drawn point nor the pit's centre has floor in reach, they come on the floor cells nearest the pit
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`BringCreaturesNear`, and the
+console variable `Cataclysm.BringCreaturesAngle`); the automation test in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
+[#2219](https://github.com/sdubois777/Cataclysm/issues/2219).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proof ran on 2026-10-05;
+the figures are under "Run" at the end of this entry.
+
+### What was wrong
+
+`Death_Cryptquake` collapses a 2 by 2 section into a pit and brings three creatures beside it. **Sometimes it brought
+none.** In the whole-suite run of 2026-10-05 the test
+`CryptquakeCollapsesATwoByTwoSectionAndBringsThreeRaisedCreaturesBesideIt` printed "Expected 'three creatures' to be
+3, but it was 0"; its group then passed three times out of three on the same binaries.
+
+`ACataclysmDungeonGameMode::BringCreaturesNear` draws an angle, takes the point that far from `At` at that angle, and
+looks for floor cells within 600 cm of it (`NecroticBloomWaveWithinCm`). With none, it falls back to the cells within
+600 cm of `At`. Its comment said `At` "stands on the floor ... so the creatures come either way".
+
+**That is true of a floor object and false of a pit.** Cryptquake passes the pit's centre. A cell is 400 cm, so the
+four cells nearest the centre are the pit's own, rock by then, and the cells beside the pit are sqrt(600^2 + 200^2) =
+632 cm from the centre: outside the 600. **So the fallback could never find a cell for a pit, and whenever the angle
+pointed at rock nothing came.** The angle was drawn with `FMath::FRandRange` and could not be repeated, which is why
+the failure could not be reproduced on demand.
+
+### What changed
+
+- **A third place to look.** When neither has floor in reach, the creatures come on the floor cell nearest `At` and
+  every floor cell within one cell's width of being as near. For a 2 by 2 pit that is the ring of cells around it.
+  The first two places are unchanged, so every caller whose `At` stands on floor behaves as before.
+- **The angle can be pinned**, `Cataclysm.BringCreaturesAngle` in degrees, -1 to draw it, as the other pinned rolls in
+  this file are. Unpinned, it draws exactly once as before, so no seeded test's later draws move.
+- **The comment says what is true.**
+
+**A labelled judgement, accepted by the coordinating session on 2026-10-05 under the owner's delegation:** "every
+floor cell within one cell's width of the nearest" rather than the single nearest cell, so three creatures are not
+all placed on one cell where the floor gives more. No figure of the row changes.
+
+### The other callers
+
+`BringCreaturesNear` is also called for Battlefield Relics' spirits, Pandora's Box's waves, the War Banner's
+assailants, Forced Tithes' angels and Grim Totems' elite. **Each passes a floor object's own position, and Forced
+Tithes passes either its altar's position or the floor's entrance.** Each of those stands on a floor cell, so
+`NecroticBloomWaveCells` answers at least that cell and their fallback worked. Read at the call sites, not run. They
+gain the third place too and cannot reach it while their point stands on floor.
+
+### Test
+
+One new automation test, `Cataclysm.DungeonModifierEffects.CryptquakeBringsItsSwarmWhenTheAngleItArrivesAtPointsAtRock`.
+It searches dungeon seeds 1 to 20 for a 2 by 2 block of floor and an angle such that the point 600 cm from the block's
+centre has no floor within 600 cm once the block is rock, which is a block against a wall two cells thick; warns of a
+pit there as the rule does; pins the angle; and lets the warning run out. Three creatures come, each on floor, out of
+the pit and within two cells of it. **Before the change this set-up brought none.** The guard proof's break takes the
+third place out and changes nothing else, so its failing half runs `BringCreaturesNear` as it was merged in #2208:
+that half is the evidence that the test reproduces the defect, and not only that the fix can be undone.
+
+### Run
+
+One window on 2026-10-05, at `fix/cryptquake-swarm-always-comes-3` fdf5b29c, on development e2f18a19, measured there
+at 3159 Unreal tests and 5712 Python. The whole suite and not only the rule's group, because `BringCreaturesNear` has
+six callers and five were read and not run. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3160 tests performed, 3160 succeeded, 0 failed`; `Declared: 3160 tests in the tree at fdf5b29c; 3160 performed, gap 0` |
+| Python, with continuous integration idle | `5704 passed, 8 skipped in 366.09s`; JUnit `tests="5712" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**The test's set-up, as it logged:** dungeon seed 1, pit corner X=3 Y=3, angle 270 degrees.
+
+**Guard proof Pa, one anchor counted, PROVED.** The break makes the third place never used and changes nothing else.
+Prefix `Cataclysm.DungeonModifierEffects.CryptquakeBringsItsSwarm`.
+
+| | Printed |
+|---|---|
+| With the break in | 1 performed, 1 failed, 1 failed assertion: "Expected 'three creatures came, though the angle pointed at rock' to be 3, but it was 0" |
+| Restored | 1 performed, 1 succeeded |
+
+The count is the one registered before the run. **The failing half is `BringCreaturesNear` as it was merged in #2208
+with the angle pinned at the rock, and it brought no creature: the defect, reproduced on demand.** No
+navigation-mesh test failed its wait in this run.
+
+---
+
 ## 2026-10-05 — "Your movement ability has 2 charges" is built: one more charge in the Movement slot
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),

@@ -3023,7 +3023,8 @@ private:
 
 	/**
 	 * Up to `Count` creatures of the floor's own kinds, on cells beside a point `AwayCm` from `At` at a random angle --
-	 * or around `At` when that point has no floor within reach -- at `FixedRung`, or a rung drawn as usual when it is
+	 * or around `At` when that point has no floor within reach, or on the floor cells nearest `At` when it has none
+	 * either, which is a collapsed pit (issue #2219) -- at `FixedRung`, or a rung drawn as usual when it is
 	 * -1, noticing the player from `SightMultiplier` times the ordinary distance. Each is raised by a rule and is one of
 	 * the floor's creatures, paying as its rung does. Issues #1820 and #41. Taken out of Grim Totems' embrace so every
 	 * rule that brings creatures after the player brings them the one way.
