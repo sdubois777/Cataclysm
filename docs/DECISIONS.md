@@ -7,7 +7,7 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (the channel, the path, two
 new figures and a wider lane), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the channel's count,
 its fixed lane, its marker and the path, kept on the creature), `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`
-(the brain stands a channelling creature still) and `game/Source/Cataclysm/Tests/CataclysmEnemyModifierTests.cpp`
+(the brain stands a channelling creature still), `CataclysmEnemyController.h` beside it (`FloorUnder` made public) and `game/Source/Cataclysm/Tests/CataclysmEnemyModifierTests.cpp`
 (one test). Issue [#1560](https://github.com/sdubois777/Cataclysm/issues/1560). Ruled by the coordinating session
 on 2026-10-02 under the owner's delegation.
 
@@ -60,6 +60,19 @@ judgement, which is still true.
 **The 2026-09-05 entry says the telegraph was one implementation a player had already learned to read.** No lane
 was drawn for this modifier until this change. That entry is merged and is left as written; this entry is the
 correction.
+
+### `FloorUnder` is public now, and the first build failed because it was not
+
+**The lane's two ends go through `ACataclysmEnemyController::FloorUnder`**, the one function every enemy marker
+uses to put a point on the floor. It was declared in the controller's private section, and this change calls it
+from `UCataclysmEnemyModifiers::TimedStep`. The window's first build, on 2026-10-04, failed with two C2248 errors
+at those two calls. The coordinating session ruled the declaration and its comment be moved, unchanged, into the
+public section, over a second copy of the expression inside `TimedStep`: one expression for every marker is the
+function's stated purpose.
+
+**No access scan was run on this change, which is why none reported the call.** The check made instead was a
+listing of the header's `public:`, `protected:` and `private:` lines, read by eye, and line 826 was read as public
+when the private section runs from 734 to 873.
 
 **Not built or run when this was written.** The run table follows when the window runs.
 
