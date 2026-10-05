@@ -3853,3 +3853,75 @@ class TestAnAtNPointsRowStatesItsThreshold:
         assert gen.validate_passive_effects(tables(8), set()) == []
         problems = gen.validate_passive_effects(tables(9), set())
         assert len(problems) == 1 and "no player can ever earn it" in problems[0], problems
+
+
+class TestRangesThatRollDown:
+    """A sentence marks, by place, the ranges that roll from their second
+    number to their first, and a marked range's effect pair leaves the generator
+    written the other way round. Ruled 2026-10-05: a better roll gives the
+    better outcome. "When a minion dies it automatically re-summons after 3-6
+    seconds" is best at 3, and "This weapon has 5-20% more damage for every
+    100,000-500,000 kills" is best at 20 and at 100,000, so only its second
+    range is marked. Issue #1833."""
+
+    WAIT_WORDS = "When a minion dies it automatically re-summons after 3-6 seconds"
+    WAIT = gen.row_name("Positive", WAIT_WORDS[:48])
+    KILLS_WORDS = "This weapon has 5-20% more damage for every 100,000-500,000 kills"
+    KILLS = gen.row_name("Positive", KILLS_WORDS[:48])
+    HEADER = TestScaleStepHigh.HEADER
+
+    def sentences(self, wait_mark, kills_mark):
+        return [
+            ["Positives", "Type", "Weight", "Column 4", "Rolls Down",
+             "Negatives", "Type", "Weight", "Tags", "Rolls Down"],
+            [self.WAIT_WORDS, "Generic", 4, "Type.Minion", wait_mark,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life", None],
+            [self.KILLS_WORDS, "Generic", 4, "Item.Slot.Weapon", kills_mark,
+             None, None, None, None, None],
+        ]
+
+    def effects(self, tmp_path, wait_mark=None, kills_mark=None):
+        wait = {"Enchantment": self.WAIT, "Effect": self.WAIT_WORDS,
+                "Stat": "minion_resummoned_after_seconds", "Value Kind": "flat",
+                "Value Low": 3, "Value High": 6}
+        kills = {"Enchantment": self.KILLS, "Effect": self.KILLS_WORDS,
+                 "Stat": "attack_damage", "Value Kind": "more",
+                 "Value Low": 5, "Value High": 20, "Scale": "weapon_kills",
+                 "Scale Step": 100000, "Scale Step High": 500000}
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "rolls_down.xlsx",
+            {"Enchantments": self.sentences(wait_mark, kills_mark),
+             "Enchantment Effects": [self.HEADER]
+             + [[row.get(column) for column in self.HEADER] for row in (wait, kills)]}))
+        return {row["Enchantment"]: row for row in gen.enchantment_effects(book)}, book
+
+    def test_an_unmarked_range_is_written_in_its_sentences_order(self, tmp_path):
+        rows, book = self.effects(tmp_path)
+        assert (rows[self.WAIT]["ValueLow"], rows[self.WAIT]["ValueHigh"]) == (3, 6)
+        assert (rows[self.KILLS]["ScaleStep"], rows[self.KILLS]["ScaleStepHigh"]) == (100000, 500000)
+        assert [row["RollsDown"] for row in gen.enchantments(book, negative=False)] == ["", ""]
+
+    def test_a_marked_value_range_is_written_the_other_way_round(self, tmp_path):
+        rows, book = self.effects(tmp_path, wait_mark="1")
+        assert (rows[self.WAIT]["ValueLow"], rows[self.WAIT]["ValueHigh"]) == (6, 3)
+        assert gen.enchantments(book, negative=False)[0]["RollsDown"] == "1"
+
+    def test_only_the_marked_range_of_two_is_turned_round(self, tmp_path):
+        """The weapon kill sentence states two ranges and marks the second: its
+        step is turned round and its value is left as the sentence has it."""
+        rows, book = self.effects(tmp_path, kills_mark=2)
+        kills = rows[self.KILLS]
+        assert (kills["ValueLow"], kills["ValueHigh"]) == (5, 20)
+        assert (kills["ScaleStep"], kills["ScaleStepHigh"]) == (500000, 100000)
+        # A CELL TYPED AS A NUMBER STILL READS AS A PLACE.
+        assert gen.enchantments(book, negative=False)[1]["RollsDown"] == "2"
+
+    def test_both_ranges_can_be_marked(self):
+        assert gen.ranges_rolling_down("1, 2", self.KILLS_WORDS) == frozenset({1, 2})
+        assert gen.ranges_rolling_down("", self.KILLS_WORDS) == frozenset()
+
+    @pytest.mark.parametrize("cell", ["2", "0", "second", "1;2"])
+    def test_a_place_the_sentence_does_not_have_is_refused(self, cell):
+        """The wait sentence states one range, so only `1` names one."""
+        with pytest.raises(gen.DataError, match="Rolls Down"):
+            gen.ranges_rolling_down(cell, self.WAIT_WORDS, 7)

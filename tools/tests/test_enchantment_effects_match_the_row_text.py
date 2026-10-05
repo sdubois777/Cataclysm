@@ -669,6 +669,40 @@ def words_of(row: dict, enchantments: dict[str, dict]) -> str:
     return enchantments[row["Enchantment"]]["Effect"]
 
 
+def ranges_marked_down(row: dict, enchantments: dict[str, dict]) -> set:
+    """The ranges of this row's sentence that its sentence row marks as rolling
+    from their second number to their first. See the generator's
+    `ranges_rolling_down`: a better roll gives the better outcome, ruled
+    2026-10-05, so a few ranges run against their sentence."""
+    sentence = enchantments[row["Enchantment"]]
+    places = gen.ranges_rolling_down(sentence.get("RollsDown", ""), sentence["Effect"])
+    return {stated for place, stated
+            in enumerate(gen.enchantment_ranges(sentence["Effect"]), start=1)
+            if place in places}
+
+
+def fault_in_the_order(pair, row, enchantments) -> str:
+    """Why this pair is not written the way its sentence says, or "".
+
+    A PAIR IS WRITTEN IN ITS SENTENCE'S ORDER, UNLESS THE SENTENCE MARKS THAT
+    RANGE, AND THEN THE OTHER WAY ROUND. Both halves are faults: a marked range
+    left in the sentence's order would roll one way in the hover text and the
+    other in the effect, and so would an unmarked range written backwards.
+    """
+    stated = gen.enchantment_ranges(words_of(row, enchantments))
+    marked = ranges_marked_down(row, enchantments)
+    backwards = (pair[1], pair[0])
+    if pair in stated and pair not in marked:
+        return ""
+    if backwards in marked:
+        return ""
+    if pair in marked:
+        return "its sentence marks that range as rolling down and the row is not written backwards"
+    if backwards in stated:
+        return "it is written backwards and its sentence does not mark that range"
+    return "its sentence does not state that range"
+
+
 #: A HEALTH DRAIN WORDED AS DAMAGE TAKES HEALTH AWAY. Issue #1833's small engine
 #: halves, a labelled judgement recorded in docs/DECISIONS.md: "Every hit you
 #: take deals an additional 5%-10% of your maximum HP as bonus damage" is a
@@ -817,10 +851,91 @@ def test_a_range_is_one_the_words_state(effects, enchantments):
         if row["Enchantment"] in gen.BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
             base = gen.BASE_PLUS_RANGE_ENCHANTMENTS[row["Enchantment"]]
             shown = (base + low, base + high)
-        if ((low < 0) != (high < 0)
-                or shown not in gen.enchantment_ranges(text)):
-            wrong.append(f"{row['Name']}: {low:g} to {high:g} against {text!r}")
+        # IN THE SENTENCE'S ORDER, OR AGAINST IT WHEN THE SENTENCE MARKS THE
+        # RANGE. See `fault_in_the_order`.
+        fault = fault_in_the_order(shown, row, enchantments)
+        if (low < 0) != (high < 0) or fault:
+            wrong.append(f"{row['Name']}: {low:g} to {high:g} against {text!r}"
+                         f"{': ' + fault if fault else ''}")
     assert not wrong, "; ".join(wrong)
+
+
+#: How many sentences mark a range as rolling down, and how many effect pairs
+#: are written backwards for them. Measured on 2026-10-05 with the ruling that
+#: a better roll gives the better outcome: three benefits (the re-summon wait,
+#: the free-abilities threshold, the weapon kill step) and four drawbacks (the
+#: maximum health cap, the critical chance cap, the floor-start health, the
+#: lifetime kill step); the weapon kill sentence has two rows. WITHOUT THESE
+#: THE TEST BELOW PASSES ON TABLES THAT MARK NOTHING.
+SENTENCES_MARKING_A_RANGE = 7
+PAIRS_WRITTEN_BACKWARDS = 8
+
+#: Each ranged pair a row can carry, as (first column, second column). The
+#: value pair is compared as the sentence shows it, which the test below works
+#: out; these three are compared as written.
+SECONDARY_PAIRS = (("ScaleStep", "ScaleStepHigh"),
+                   ("StackSeconds", "StackSecondsHigh"),
+                   ("ConditionValue", "ConditionValueHigh"))
+
+
+def test_a_pair_runs_against_its_sentence_exactly_when_the_sentence_marks_it(
+        effects, enchantments):
+    """ONE SOURCE, TWO READERS, CHECKED FROM THE DATA. The hover text rolls a
+    range downward when the sentence row's `RollsDown` names it, and the effect
+    row's pair is what the character receives. Every pair of every row is in
+    its sentence's order unless the sentence marks that range, and against it
+    when it does; and every mark is used by a row, so no mark is left naming a
+    range nothing rolls. Issue #1833, ruled 2026-10-05."""
+    wrong = []
+    backwards = 0
+    used: dict[str, set] = {}
+    for row in effects:
+        marked = ranges_marked_down(row, enchantments)
+        for first, second in SECONDARY_PAIRS:
+            low, high = float(row[first]), float(row[second])
+            if not high or low == high:
+                continue
+            fault = fault_in_the_order((low, high), row, enchantments)
+            if fault:
+                wrong.append(f"{row['Name']} {first} {low:g} to {high:g}: {fault}")
+            elif (high, low) in marked:
+                backwards += 1
+                used.setdefault(row["Enchantment"], set()).add((high, low))
+        low, high = float(row["ValueLow"]), float(row["ValueHigh"])
+        if low != high:
+            shown = ((100.0 - abs(low), 100.0 - abs(high))
+                     if row["Enchantment"] in gen.COMPLEMENT_RANGE_ENCHANTMENTS
+                     and low < 0 else (abs(low), abs(high)))
+            if row["Enchantment"] in gen.BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
+                base = gen.BASE_PLUS_RANGE_ENCHANTMENTS[row["Enchantment"]]
+                shown = (base + low, base + high)
+            if (shown[1], shown[0]) in marked:
+                backwards += 1
+                used.setdefault(row["Enchantment"], set()).add((shown[1], shown[0]))
+    assert not wrong, "; ".join(wrong)
+
+    built = {row["Enchantment"] for row in effects}
+    unused = []
+    marking = 0
+    for name, sentence in enchantments.items():
+        places = gen.ranges_rolling_down(sentence.get("RollsDown", ""), sentence["Effect"])
+        if not places:
+            continue
+        marking += 1
+        if name not in built:
+            continue
+        stated = gen.enchantment_ranges(sentence["Effect"])
+        for place in sorted(places):
+            if stated[place - 1] not in used.get(name, set()):
+                unused.append(f"{name} range {place}")
+    assert not unused, (
+        "a sentence marks a range as rolling down and no effect row of it "
+        "carries that range backwards, so the hover text would roll it one way "
+        "and nothing would follow: " + "; ".join(unused))
+    assert (marking, backwards) == (SENTENCES_MARKING_A_RANGE, PAIRS_WRITTEN_BACKWARDS), (
+        f"{marking} sentences mark a range and {backwards} pairs are written "
+        f"backwards; {SENTENCES_MARKING_A_RANGE} and {PAIRS_WRITTEN_BACKWARDS} "
+        f"were measured. Move the two constants with the reason.")
 
 
 def test_a_single_value_appears_in_its_words_outside_any_range(effects,
@@ -1131,9 +1246,17 @@ def test_every_complement_range_enchantment_is_still_needed(effects, enchantment
             if r["Enchantment"] != name:
                 continue
             low, high = float(r["ValueLow"]), float(r["ValueHigh"])
-            stated = gen.enchantment_ranges(words_of(r, enchantments))
-            if ((abs(low), abs(high)) not in stated
-                    and (100.0 - abs(low), 100.0 - abs(high)) in stated):
+            # JUDGED BY ORDER AS WELL AS BY NUMBERS. Both of today's roll down,
+            # so their pairs are written against the sentence, and "cannot
+            # exceed 40%-60%" written -40 to -60 has the sentence's own numbers
+            # in it while still meaning the complement: at a roll of 0 it takes
+            # 40 where the text shows 60. So the question is whether the plain
+            # reading is a fault and the complement is not. See
+            # `fault_in_the_order`.
+            plain = (abs(low), abs(high))
+            complement = (100.0 - abs(low), 100.0 - abs(high))
+            if (fault_in_the_order(plain, r, enchantments)
+                    and not fault_in_the_order(complement, r, enchantments)):
                 needing.append(r["Name"])
         assert needing, (
             f"no row of {name} states its range as a complement, so it should "
