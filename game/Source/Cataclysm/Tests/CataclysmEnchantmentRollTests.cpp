@@ -617,6 +617,24 @@ bool FCataclysmEnchantmentRollDownAgreesTest::RunTest(const FString&)
 			UCataclysmItemValues::EnchantmentTextFor(Sentence->Effect, Sentence->RollsDown, 1.0f),
 			FString(Case.AtTheTopRoll));
 	}
+
+	// AND A PAIR WITH NO SECOND END DOES NOT ROLL. The three helpers roll when
+	// the second end is stated and differs, and NOUGHT IS "NOT STATED": a plain
+	// "differs" would roll every unranged row from its figure toward nought.
+	// "Blocking an attack grants 10%-20% increased damage for 3 seconds" states
+	// one window, 3, in a row with no Condition Value High.
+	const FEffect* Unranged = Effects->FindRow<FEffect>(
+		FName(TEXT("Positive_Blocking_an_attack_grants_10_20_increased_dama#1")), TEXT("test"), false);
+	if (TestNotNull(TEXT("a row with a threshold and no second end"), Unranged)
+		&& TestTrue(TEXT("set-up: it states a threshold of 3 and no second end"),
+				Unranged->ConditionValue == 3.0f && Unranged->ConditionValueHigh == 0.0f))
+	{
+		for (const float Roll : {0.0f, 0.5f, 1.0f})
+		{
+			TestEqual(*FString::Printf(TEXT("an unranged threshold is 3 at a roll of %.1f"), Roll),
+				UCataclysmItemModifiers::RolledConditionValue(*Unranged, Roll), 3.0f, 0.0001f);
+		}
+	}
 	return true;
 }
 
