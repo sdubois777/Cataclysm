@@ -31,8 +31,10 @@ class AActor;
  *     set and no spell, and matters only to a thrall's `Type.Spell` abilities.
  *   - AREA OF EFFECT multiplies the chosen one's explosion radius and its
  *     Shared Ruin death blast, the only areas a minion has.
- *   - TWICE THE FERVOUR: a chosen thrall counts as two in the thrall limit.
- *     Nothing reads an imp's reserve yet (#1934), so for one this does nothing.
+ *   - TWICE THE FERVOUR: a chosen thrall counts as two in the thrall limit,
+ *     and `UCataclysmCommand::ReservedFervourOf` adds the chosen one's reserve a
+ *     second time, a thrall's or an imp's. An imp reserves its 10 since #2172;
+ *     issue #1934 carries only the gadgets' half now.
  *
  * GENRE: no shipped mechanic was found that copies the player's own maximum life
  * or spell damage onto one minion, so the shape is this design's own.
