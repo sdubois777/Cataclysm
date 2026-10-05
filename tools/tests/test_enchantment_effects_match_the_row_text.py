@@ -561,8 +561,10 @@ JUDGED_NUMBERS = {
 #: issue #1833 group E part 3, from 452 over 368: three rows on three enchantments.
 #: AND 458 OVER 374 SINCE THE BUFFS SHARED WITH ALLIES,
 #: issue #1833 group E part 4a, from 455 over 371: three rows on three enchantments.
-AUTHORED_ROWS = 458
-AUTHORED_ENCHANTMENTS = 374
+#: AND 460 OVER 376 SINCE THE NECROSIS RISE AND THE RE-SUMMON,
+#: issue #1833 group E part 4b, from 458 over 374: two rows on two enchantments.
+AUTHORED_ROWS = 460
+AUTHORED_ENCHANTMENTS = 376
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
