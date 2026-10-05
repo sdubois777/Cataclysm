@@ -128,8 +128,14 @@ that read a row, because `SkillsOfDamageType` reads rows as `SkillsFor` does.
   when the blow or the projectile is made.
 - **Fervour is earned and bought on a triggered skill's hits**, as on Follow Through's repeat: the free flag gates
   neither.
-- **A triggered self buff stands beside the player's own.** Wild Magic never draws the skill just used, but it may
-  draw a buff the player already has running from an earlier press, and the two then both apply.
+- **A triggered self buff stands beside the player's own, and both count.** Wild Magic never draws the skill just
+  used, but it may draw a buff the player already has running from an earlier press. Each copy is its own skill and
+  adds its own More modifier (`UCataclysmSelfBuffSkill::GrantIncrease` calls `AddStatModifier` once a copy), and the
+  stat pipeline multiplies every More modifier on its own rather than summing them. **The size of it:** three of the
+  pool's seven self buffs grant More damage, Butcher's Heat (1% a kill), Burning Wrath (4% for each burning enemy)
+  and Held Fast (10% for each pinned enemy). Burning Wrath with five enemies burning is 20% more; a second copy
+  makes it 1.2 x 1.2 = 1.44, 44% more, for as long as both run. The other four add no modifier, and a second copy
+  of one repeats its own effect. Ruled 2026-10-04: this is the row's chaos and stays. Read from the code, not run.
 - **A triggered skill turns the character to face its aim and plays an attack clip**, as Follow Through's repeat does.
 - **A skill that refuses itself triggers nothing and spends no wait**: skills locked by another rule, or a held swing
   that forbids acting.
