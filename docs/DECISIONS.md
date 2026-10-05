@@ -93,6 +93,48 @@ always a place in the range and never a figure.
 and one was found, the gadget volley; the drawback sentences with no effect row were listed and not ruled on.
 Each takes its direction when it is built.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with the movement charges row stacked on this
+change, on `development` e8364c8e. **The ids are the commits as they stood when each step ran.** The layers were
+put together again afterwards to carry each asset and the one test fix on its own layer, without changing any
+other file, so the same content sits under later ids; tree 2d9b1b75 is the top the final runs used.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | 12e16583 | Build: Succeeded - 35 actions, 30 files compiled |
+| The assets, regenerated with the editor, each layer from its own CSV | 12e16583 | this layer: `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset`, `DT_EnchantmentsNegative.uasset` and three hashes in `datatable_asset_sources.json`; the two sentence assets are the same bytes in both layers |
+| Whole suite, first run | 30e8dc3d | 3159 tests performed, 3152 succeeded, 7 failed: ARemovedObstacleGivesItsCellsBackToTheNavigationMesh, AnItemCarryingTwoSetsIsAPieceOfEach, ASetWithNoDrawbackGrantsNothing, EachThresholdAddsItsBonusToTheOnesBelowIt, PiecesOfDifferentSetsDoNotAddUp, TheDrawbackAppliesOnceHoweverManyPiecesAreWorn, TwoPiecesGrantTheFirstBonusAndTheDrawbackOnce; declared 3159, gap 0; 0 ensures |
+| The navigation test, alone | 30e8dc3d | 1 tests performed, 1 succeeded, 0 failed |
+| Rebuild after the test fix | e9e2a8d5 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.15.cpp |
+| The set tests | e9e2a8d5 | Cataclysm.EnchantmentSets.: 9 tests performed, 9 succeeded, 0 failed; 0 ensures |
+| Whole suite | e9e2a8d5 | 3159 tests performed, 3159 succeeded, 0 failed; declared 3159, gap 0; 0 ensures |
+| Python of record, with ruff clean | e9e2a8d5 | 5704 passed, 8 skipped in 372.83s; JUnit tests=5712 failures=0 errors=0 skipped=8 |
+| Proof A: the hover text ignoring the marks | e9e2a8d5 | PROVED: with the break in: 199 tests performed, 197 succeeded, 2 failed: ARangeThatRollsDownReadsTheSameInTheHoverTextAndTheEffect, TheMaximumHealthShareRowLeavesTheShareItsTextShows \| restored: 199 tests performed, 199 succeeded, 0 failed |
+| Proof B: a threshold rolling only when its second end is higher | e9e2a8d5 | PROVED: with the break in: 199 tests performed, 197 succeeded, 2 failed: ARangeThatRollsDownReadsTheSameInTheHoverTextAndTheEffect, TheFreeAbilitiesRowUsesTheThresholdItRolled \| restored: 199 tests performed, 199 succeeded, 0 failed |
+| Proof C: a step rolling only when its second end is higher | e9e2a8d5 | PROVED: with the break in: 199 tests performed, 195 succeeded, 4 failed: ARangeThatRollsDownReadsTheSameInTheHoverTextAndTheEffect, TheLifetimeKillsRowLowersTheCapAtItsRolledStep, TheWeaponKillRowGrowsAtItsRolledStepAndRefreshesOnce, TwoWeaponsWithTheKillRowGrantItOnceAtTheHigherRollsCount \| restored: 199 tests performed, 199 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: A thirteen, B three, C eleven.
+
+**The first whole suite failed six tests of this change's making, and they were not predicted.** All six are in
+`Cataclysm.EnchantmentSets.` and build their sentence tables from CSV text written in the test file. This change
+added `RollsDown` to `FCataclysmEnchantmentRow`; the made-up text had no such column, the tables did not read,
+and each test stopped at its set-up. **The fault was in the tests.** The coordinating session approved a
+test-only fix: the two made-up headers gain `RollsDown` and each made-up row an empty last cell, and a comment
+there names the generated files whose header to copy.
+
+**A NEW FIELD ON A ROW STRUCT BREAKS ANY TEST THAT BUILDS THAT TABLE FROM CSV TEXT.** The search before the
+window was by enchantment -- which tests read a row this change moves -- and not by hand-made tables, so it
+did not find a file that names no real enchantment. Search for `CreateTableFromCSVString` and the struct's
+name when a row struct gains a field.
+
+**One other test failed once, and its cause was not found.**
+`Cataclysm.DungeonFloor.ARemovedObstacleGivesItsCellsBackToTheNavigationMesh` failed a set-up assertion in the
+first whole suite, "Expected 'set-up: the cell is off the mesh' to be false", passed when run alone straight
+after, and passed in the second whole suite. This change does not touch the dungeon floor or navigation.
+Nothing was changed for it in this stack; it is recorded as one failure of a set-up assertion and clean runs
+after, with the cause not found.
+
 ---
 
 ## 2026-10-04 — Wild Magic: a skill use has a 5% chance to trigger a random different skill of the player's damage type, and "your class tree" is read as the damage type
