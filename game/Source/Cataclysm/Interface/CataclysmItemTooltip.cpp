@@ -473,8 +473,8 @@ TArray<FString> UCataclysmItemTooltip::EnchantmentLines(
 			{
 				// THE ITEM'S OWN NUMBER IN PLACE OF EACH RANGE. A sentence that
 				// states one number has no range and reads as it is written.
-				Lines.Add(UCataclysmItemValues::EnchantmentTextAtRoll(
-					Row->Effect, Rolled.PositiveRoll));
+				Lines.Add(UCataclysmItemValues::EnchantmentTextFor(
+					Row->Effect, Row->RollsDown, Rolled.PositiveRoll));
 			}
 		}
 	}
@@ -489,8 +489,8 @@ TArray<FString> UCataclysmItemTooltip::EnchantmentLines(
 			if (!Row->Effect.IsEmpty())
 			{
 				Lines.Add(FString(DrawbackPrefix)
-						  + UCataclysmItemValues::EnchantmentTextAtRoll(
-								Row->Effect, Rolled.NegativeRoll));
+						  + UCataclysmItemValues::EnchantmentTextFor(
+								Row->Effect, Row->RollsDown, Rolled.NegativeRoll));
 			}
 		}
 	}
