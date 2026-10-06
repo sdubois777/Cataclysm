@@ -124,6 +124,34 @@ comes with that row.
   next two and the nearest keeps its ten; then one of those two dies, and its copy passes to the one enemy near it
   that does not carry the Disease, for the six seconds the copy had left.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one and the one above it, on `development` 8c724dd0.
+The build, the whole suite and the Python of record are in the table of the entry "Nearby enemies gain 20%-40%
+resistances is reworded" and were run with this layer in the stack. **The ids are the commits as they stood when
+each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| First compile of this layer's engine code, in the build of the whole stack | cfd09737 | Build: Succeeded - 32 actions, 29 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 383ddd2c | 242 tests performed, 238 succeeded, 4 failed; neither of this layer's two tests among them |
+| Assets | 8d0d3ad7 | none built: this layer changes no table and carries the assets of the layer below |
+
+**This layer's two tests need no row**, so they pass against the older assets and have no failing half there.
+Their failing halves are the guard proofs below.
+
+**C++ guard proofs, each with `prove_cpp_guard` on `Cataclysm.Enchantments.` at 4c90f9a9**, every one restored
+to 242 tests performed, 242 succeeded, 0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| Disease passes to nobody by itself (`DiseaseSpreadsToByItself` read as 0, `CataclysmContagion.cpp`) | 242 performed, 3 failed | `ADiseasedEnemysDeathPassesItsDiseaseToTheTwoNearestWithinFiveMetresForTheTimeItHadLeft` 3, `ADiseaseSpreadPassesOverAnEnemyThatAlreadyCarriesItAndACopyPassesOnAgain` 3, and the Disease row test of the layer above 2 (5 expected, 3 passed on) |
+| The count a row hangs on the ailment is not read at the death (kind `SpreadOnDeath` read as `None`) | 242 performed, 2 failed | the Disease row test of the layer above 2, the Bleed row test of the layer above 2 |
+| A copy raises `dot_applied` (`!bApplyingASpreadCopy` taken out, `CataclysmSkillEffects.cpp`) | 242 performed, 1 failed | `ADiseasedEnemysDeathPasses...` 1: "dot_applied was not raised" to be 0, but it was 2 |
+| An enemy that already carries the ailment is not passed over (`return !Its;`) | 242 performed, 1 failed | `ADiseaseSpreadPassesOver...` 2 |
+
+Each proof failed on the tests and the number of assertions registered before the window.
+
 ---
 
 ## 2026-10-06 — Four rows on the stats a persistent area reads: areas that expire sooner, deal more for each enemy inside, slow those inside, and only one at a time
