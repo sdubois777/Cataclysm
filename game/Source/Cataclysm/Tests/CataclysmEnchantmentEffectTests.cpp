@@ -15075,4 +15075,69 @@ bool FCataclysmEnemiesWithinFiveMetresResistRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFourZoneRowsTest,
+	"Cataclysm.Enchantments.TheFourPersistentAreaRowsEachGiveTheStatAZoneReadsWhenItIsLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The four enchantment rows on the stats a persistent area reads where a skill
+ * leaves it, each WORN at the top of its roll (a drawback's harshest) and asked
+ * as `UCataclysmSkillTemplate` asks it, through `StatForSkill` with the base the
+ * engine supplies as the fallback:
+ *
+ *   "Persistent AOE effects expire 40%-60% faster"              `persistent_area_duration` 100 becomes 40
+ *   "Persistent AOE zones deal 10%-20% increased damage for
+ *    each enemy standing in them"                               `zone_damage_per_enemy_inside` is 20
+ *   "Your persistent AOE zones also slow enemies within them
+ *    by 20%-35%"                                                `zone_slow_percent` is 35
+ *   "You can only have 1 persistent AOE effect active at a time"  `only_one_persistent_area` is above nought
+ *
+ * EACH IS READ AGAINST A WEARER OF NOTHING IN THE SAME TEST, so a stat that came
+ * back as its fallback either way would show as no difference. What a zone then
+ * does with each figure is covered by the four probes of the entry that built
+ * the stats, in `Cataclysm.StatExemption.`.
+ */
+bool FCataclysmFourZoneRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Row;
+		bool bBenefit;
+		const TCHAR* Stat;
+		float Fallback;
+		float Worn;
+	};
+	const FCase Cases[] = {
+		{TEXT("Negative_Persistent_AOE_effects_expire_40_60_faster"), false,
+		 UCataclysmDamageCalculation::PersistentAreaDurationStat,
+		 UCataclysmDamageCalculation::NormalPersistentAreaDuration, 40.0f},
+		{TEXT("Positive_Persistent_AOE_zones_deal_10_20_increased_dama"), true,
+		 UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat, 0.0f, 20.0f},
+		{TEXT("Positive_Your_persistent_AOE_zones_also_slow_enemies_with"), true,
+		 UCataclysmDamageCalculation::ZoneSlowPercentStat, 0.0f, 35.0f},
+		{TEXT("Negative_You_can_only_have_1_persistent_AOE_effect_active"), false,
+		 UCataclysmDamageCalculation::OnlyOnePersistentAreaStat, 0.0f, 1.0f},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FWorn Worn(Case.Row, Case.bBenefit);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(Case.Stat);
+		TestEqual(FString::Printf(TEXT("%s, worn: %s is %.0f.%s"), Case.Row, Case.Stat, Case.Worn,
+					  CataclysmRepeatRowsTest::OlderAsset),
+			Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), Case.Fallback), Case.Worn, 0.01f);
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(FString::Printf(TEXT("%s, taken off: %s is %.0f again"), Case.Row, Case.Stat, Case.Fallback),
+			Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), Case.Fallback), Case.Fallback, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
