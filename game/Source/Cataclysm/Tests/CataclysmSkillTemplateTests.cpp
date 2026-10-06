@@ -16441,6 +16441,114 @@ bool FCataclysmHealthCostRowKeepsTheManaPoolTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthForManaWhenShortRowTest,
+	"Cataclysm.Skills.TheWornRowForSpendingHealthWhenManaIsShortChargesThreeHealthForEachMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Skills can spend HP instead of mana at a 3:1 ratio", DRIVEN END TO END FROM
+ * THE TABLE THE GAME LOADS. Ruled 2026-10-06: three health for one mana, and
+ * only when the mana held cannot pay; `skill_cost_paid_from_health_when_short`
+ * flat 3.
+ *
+ * THREE CASTERS, ONE CAST EACH, each wearing the row and each with 1,000 maximum
+ * health and a skill that costs 40:
+ *
+ *   with mana to pay     the 40 comes out of mana and health is untouched
+ *   with 10 mana         the cast is allowed, the 10 mana stays, and 120 comes
+ *                        out of health
+ *   with 10 mana and     the cast is refused and neither pool moves, because a
+ *   120 health           cost may not take a character to nothing
+ */
+bool FCataclysmHealthForManaWhenShortRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Rich(World, FVector::ZeroVector);
+	FScopedFighter Short(World, FVector(10 * M, 0, 0));
+	FScopedFighter Frail(World, FVector(20 * M, 0, 0));
+	UCataclysmStrikeSkill* RichSkill = GrantCosting(Rich, 40.0f);
+	UCataclysmStrikeSkill* ShortSkill = GrantCosting(Short, 40.0f);
+	UCataclysmStrikeSkill* FrailSkill = GrantCosting(Frail, 40.0f);
+	if (!RichSkill || !ShortSkill || !FrailSkill)
+	{
+		AddError(TEXT("Could not grant the skills."));
+		return false;
+	}
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
+	const FGameplayAttribute MaxMana = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+
+	/** Wears the helm carrying the sentence, then stands at 1,000 maximum health with this much of each pool. */
+	const auto Prepared = [&](FScopedFighter& Who, float HealthHeld, float ManaHeld) -> bool
+	{
+		UCataclysmEquipmentComponent* Equipment =
+			NewObject<UCataclysmEquipmentComponent>(Who.Actor);
+		Equipment->RegisterComponent();
+
+		FCataclysmItem Helm;
+		Helm.Base = FName(TEXT("Head_Helm"));
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(
+			TEXT("Positive_Skills_can_spend_HP_instead_of_mana_at_a_3_1_rat"));
+		Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
+		Helm.Enchantments.Add(Rolled);
+		Helm.EnchantmentCount = 1;
+
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(Who.AbilitySystem);
+
+		// WRITTEN AFTER THE REFRESH, which recomputes the maximum from the gear.
+		Who.AbilitySystem->SetNumericAttributeBase(MaxHealth, 1000.0f);
+		Who.AbilitySystem->SetNumericAttributeBase(Health, HealthHeld);
+		const float Most = Who.AbilitySystem->GetNumericAttribute(MaxMana);
+		Who.AbilitySystem->SetNumericAttributeBase(Mana, ManaHeld < 0.0f ? Most : ManaHeld);
+		return Most >= 40.0f;
+	};
+	const auto Read = [](FScopedFighter& Who, const FGameplayAttribute& Attribute)
+	{
+		return Who.AbilitySystem->GetNumericAttribute(Attribute);
+	};
+
+	if (!TestTrue(TEXT("set-up: each caster's mana pool could hold the stated cost"),
+				  Prepared(Rich, 1000.0f, -1.0f) && Prepared(Short, 1000.0f, 10.0f)
+					  && Prepared(Frail, 120.0f, 10.0f)))
+	{
+		return false;
+	}
+
+	// WITH MANA TO PAY, THE ROW DOES NOTHING.
+	const float RichMana = Read(Rich, Mana);
+	TestTrue(TEXT("with mana to pay, the cast is allowed"), Activate(Rich, RichSkill));
+	TestEqual(TEXT("and forty came out of mana"), Read(Rich, Mana), RichMana - 40.0f, 0.01f);
+	TestEqual(TEXT("leaving the health alone"), Read(Rich, Health), 1000.0f, 0.01f);
+
+	// WITH TEN MANA, THE 40 IS PAID AS 120 HEALTH.
+	TestEqual(TEXT("the skill still costs what it states"),
+		ShortSkill->ManaCostFor(Short.AbilitySystem), 40.0f, 0.01f);
+	TestTrue(TEXT("with 10 mana and the row, the cast is allowed. If not, DT_EnchantmentEffects may be older "
+				  "than the row: run tools/generate_datatable_assets.py"),
+		Activate(Short, ShortSkill));
+	TestEqual(TEXT("the mana held is untouched"), Read(Short, Mana), 10.0f, 0.01f);
+	TestEqual(TEXT("and three health for each of the forty came out of health"),
+		Read(Short, Health), 880.0f, 0.01f);
+
+	// WITH TEN MANA AND 120 HEALTH, NOTHING CAN PAY: 120 is not more than 120.
+	TestFalse(TEXT("with 10 mana and exactly the 120 health it would take, the cast is refused"),
+		Activate(Frail, FrailSkill));
+	TestEqual(TEXT("and its mana is untouched"), Read(Frail, Mana), 10.0f, 0.01f);
+	TestEqual(TEXT("and its health"), Read(Frail, Health), 120.0f, 0.01f);
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // Famine_Desperate_Measures, the dungeon floor rule. Issues #1820 and #41.
 //

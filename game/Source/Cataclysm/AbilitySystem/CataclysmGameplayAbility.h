@@ -423,9 +423,32 @@ public:
 	 *
 	 * ONE ANSWER FOR EVERY PAYER, as `CostPool` is: the cast's check and payment,
 	 * an aura's upkeep and the skill bar all ask this.
+	 *
+	 * AND THEN HEALTH, AT A PRICE, when `CostPaidFromHealthWhenShortStat` is held
+	 * and health can cover that price. After the shield, a judgement: a shield
+	 * is not life. Health must stay above what is taken, as for every cost paid
+	 * from health.
+	 *
+	 * @param OutAmount  what the pool answered is to be charged: `Cost`, or for
+	 *                   health paid because mana was short, `Cost` times the
+	 *                   stat. Every payer takes THIS and not `Cost`.
 	 */
 	static FGameplayAttribute PoolPaying(const UAbilitySystemComponent* AbilitySystem,
-										 float Cost);
+										 float Cost, float* OutAmount = nullptr);
+
+	/**
+	 * The health paid for each point of mana cost when the mana cannot cover a
+	 * skill's cost; above zero means the option is held. Ruled 2026-10-06:
+	 * "Skills can spend HP instead of mana at a 3:1 ratio" is 3, three health for
+	 * one mana, and "can spend" is an option the skill takes ONLY WHEN MANA IS
+	 * SHORT, as `CostPaidFromEnergyShieldStat` is. The cost is the one this
+	 * character pays, after its mana cost reductions.
+	 *
+	 * THE SECOND OF TWO READINGS OF "PAID FROM HEALTH". `CostPaidFromHealthStat`
+	 * moves every cost onto health at one for one, whatever mana is held; this
+	 * one leaves a cost on mana whenever mana can pay it.
+	 */
+	static const TCHAR* CostPaidFromHealthWhenShortStat;
 
 	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle,
 						   const FGameplayAbilityActorInfo* ActorInfo,
