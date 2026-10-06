@@ -3410,6 +3410,9 @@ const TCHAR* UCataclysmAbilitySystemComponent::AilmentArmorRiderAction = TEXT("a
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageDealtAction = TEXT("ailment_damage_dealt");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentHealingReceivedAction =
 	TEXT("ailment_healing_received");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentSpeedAction = TEXT("ailment_speed");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentMovementSpeedAction =
+	TEXT("ailment_movement_speed");
 
 ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const FString& Action)
 {
@@ -3428,6 +3431,14 @@ ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const
 	if (Action.Equals(AilmentHealingReceivedAction, ESearchCase::IgnoreCase))
 	{
 		return ECataclysmAilmentRider::HealingReceived;
+	}
+	if (Action.Equals(AilmentSpeedAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::Speed;
+	}
+	if (Action.Equals(AilmentMovementSpeedAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::MovementSpeed;
 	}
 	return ECataclysmAilmentRider::None;
 }
