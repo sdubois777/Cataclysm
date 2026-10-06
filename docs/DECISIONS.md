@@ -82,8 +82,11 @@ figure and the rulings above.
   `Type.Spell`.
 - **A reflected hit kills nobody by being taken**: the wearer takes nothing, so a lethal melee hit that is reflected
   is survived.
-- **Not checked:** whether a row that counts hits taken counts an absorbed or a reflected blow. It is whatever such
-  a row does with a blow in the no-damage window, and that was not read.
+- **An absorbed or a reflected blow still counts as a hit taken.** Read in
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`: `NoteHitTaken`, the "every Nth hit you take" count and
+  `NoteMeleeHitTaken` ask whether the blow was evaded and not what it dealt, so they count a blow these two chances
+  emptied as they count one the no-damage window emptied. So do the attacker's own hit counts. Read, not run: no
+  accessor reads those counts back without a row, so no test was added for it.
 - **The reflection is priced before the wearer's mitigation**, so armour does not lower what goes back.
 
 ### Tests
