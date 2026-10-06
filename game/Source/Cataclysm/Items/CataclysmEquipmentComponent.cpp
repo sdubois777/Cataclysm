@@ -4,6 +4,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerClassStats.h"
@@ -572,6 +573,36 @@ UCataclysmEquipmentComponent::GatherModifiers(
 		Worn = &Counted;
 	}
 
+	// A WEAPON LEFT STANDING IN THE GROUND IS READ AS EMPTY TOO, by the same loop and for the same things: its
+	// implicit, its affixes and its enchantments give nothing, and it is not a piece of any set. Issue #1166, ruled
+	// 2026-10-05: "the weapon's own implicit and its affixes are left out while it is planted, and everything worn
+	// elsewhere stays".
+	//
+	// THE PLANTED WEAPON IS THE FIRST WEAPON SLOT THAT HOLDS SOMETHING, which is the slot the character's skills come
+	// from (`EquippedWeaponType`) and so the weapon whose skill planted it. A second weapon in the other hand is
+	// "worn elsewhere" and stays.
+	//
+	// THE ITEM STAYS WORN. Its base swing rate and the critical strike base a held weapon gives are not lines on the
+	// weapon and are read elsewhere (`StatBasesFromWeapons`), so both stay; and its skills stay, which is what lets
+	// the second press pull it free.
+	if (ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
+	{
+		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::WeaponSlots())
+		{
+			const int32 Index = static_cast<int32>(Slot);
+			if (Slots.IsValidIndex(Index) && !Slots[Index].Base.IsNone())
+			{
+				if (Worn == &Slots)
+				{
+					Counted = Slots;
+					Worn = &Counted;
+				}
+				Counted[Index] = FCataclysmItem();
+				break;
+			}
+		}
+	}
+
 	for (const FCataclysmItem& Item : *Worn)
 	{
 		if (Item.Base.IsNone())
@@ -709,6 +740,14 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 		Cataclysm->SetPoolActions(MoveTemp(Actions));
 	}
 	TMap<FName, float> Bases = StatBasesFromWeapons();
+
+	// AND THE UNARMED BASE WHILE THE WEAPON STANDS IN THE GROUND. Issue #1166. Attack damage has no base otherwise:
+	// a weapon's damage is a flat line on its base, and `GatherModifiers` has just left the planted weapon's out.
+	// A BASE AND NOT A FLAT LINE, so everything worn elsewhere adds to it and scales it exactly as it did the weapon.
+	if (ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
+	{
+		Bases.Add(FName(UCataclysmItemModifiers::AttackDamageStat), ACataclysmPlantedWeapon::UnarmedAttackDamage);
+	}
 
 	// AND THE EIGHT ATTRIBUTES, FOR THE SAME REASON THE OTHER CALLER DOES IT.
 	// Leaving them out here would have made swapping a helmet reset every

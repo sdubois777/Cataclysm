@@ -7,11 +7,16 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Components/SphereComponent.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -2232,6 +2237,177 @@ bool FCataclysmEquipmentSwapIsWhole::RunTest(const FString& Parameters)
 		Equipment->Unequip(ECataclysmGearSlot::Weapon2, TakenOff));
 	TestEqual(TEXT("and announces nothing"), WornWhenTold.Num(), 0);
 
+	return true;
+}
+
+// ISSUE #1166. A character whose weapon stands in the ground "fights unarmed until you do" pull it free, and until
+// 2026-10-05 went on swinging for the buried weapon's damage.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlantedWeaponLeavesUnarmedTest,
+	"Cataclysm.Equipment.AWeaponLeftInTheGroundLeavesTheUnarmedBaseAndEverythingWornElsewhere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlantedWeaponLeavesUnarmedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayAttribute Damage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	const FGameplayAttribute Speed = UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
+
+	// A GREATSWORD AND A RING WITH FLAT DAMAGE ON IT. Flat, so the ring's share is the same number whatever the base is.
+	const FCataclysmItem Ring = WithAffix(RingBase, FlatDamageAffix, 10);
+	const float RingAlone = AttributeWearing(World, {Ring}, Damage);
+	FScopedCharacter Character(World);
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot;
+	Character.Equipment->Equip(Plain(TwoHandedBase, 10), Removed, AlsoRemoved, Slot);
+	Character.Equipment->Equip(Ring, Removed, AlsoRemoved, Slot);
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+	const float Armed = Character.AbilitySystem->GetNumericAttribute(Damage);
+	const float SpeedArmed = Character.AbilitySystem->GetNumericAttribute(Speed);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the ring alone gives flat damage (%.2f)"), RingAlone), RingAlone > 0.0f)
+		|| !TestTrue(FString::Printf(TEXT("set-up: the greatsword gives far more (%.2f)"), Armed), Armed > RingAlone + 50.0f)
+		|| !TestTrue(TEXT("set-up: and a swing rate"), SpeedArmed > 0.0f))
+	{
+		return false;
+	}
+
+	// PLANTED. Nothing here refreshes the stats by hand: the sword going into the ground has to.
+	ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::Plant(
+		Character.Actor, FVector::ZeroVector, TEXT("Greatsword"), nullptr, 0.0f);
+	if (!TestNotNull(TEXT("set-up: the sword stands in the ground"), Sword))
+	{
+		return false;
+	}
+	const float Unarmed = ACataclysmPlantedWeapon::UnarmedAttackDamage + RingAlone;
+	TestEqual(TEXT("the unarmed base is six"), ACataclysmPlantedWeapon::UnarmedAttackDamage, 6.0f, 0.001f);
+	TestEqual(TEXT("planted, attack damage is the unarmed base and the ring's flat damage"),
+			  Character.AbilitySystem->GetNumericAttribute(Damage), Unarmed, 0.05f);
+	TestEqual(TEXT("the swing rate is the weapon's still, so the character goes on swinging"),
+			  Character.AbilitySystem->GetNumericAttribute(Speed), SpeedArmed, 0.001f);
+
+	// ANY OTHER REFRESH DURING THE TEN SECONDS FINDS THE CHARACTER STILL UNARMED.
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+	TestEqual(TEXT("a refresh while it stands leaves the character unarmed"),
+			  Character.AbilitySystem->GetNumericAttribute(Damage), Unarmed, 0.05f);
+
+	// HANDED BACK WHILE THE SWORD STILL STANDS, as the recall does before its eruption.
+	Sword->HandBack();
+	TestTrue(TEXT("the sword still stands"), ACataclysmPlantedWeapon::HeldBy(Character.Actor) == Sword);
+	TestEqual(TEXT("handed back, attack damage is the weapon's again"),
+			  Character.AbilitySystem->GetNumericAttribute(Damage), Armed, 0.05f);
+
+	// AND A SWORD THAT IS SIMPLY DESTROYED, which is every other way a plant ends, returns the stats itself.
+	Sword->Destroy();
+	ACataclysmPlantedWeapon* Again = ACataclysmPlantedWeapon::Plant(
+		Character.Actor, FVector::ZeroVector, TEXT("Greatsword"), nullptr, 0.0f);
+	if (!TestNotNull(TEXT("set-up: planted a second time"), Again))
+	{
+		return false;
+	}
+	TestEqual(TEXT("planted again, unarmed again"), Character.AbilitySystem->GetNumericAttribute(Damage), Unarmed, 0.05f);
+	Again->Destroy();
+	TestEqual(TEXT("destroyed, attack damage is the weapon's again"),
+			  Character.AbilitySystem->GetNumericAttribute(Damage), Armed, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlantedWeaponEruptionTest,
+	"Cataclysm.Equipment.PullingAPlantedWeaponFreeEruptsWithTheWeaponsDamageNotTheUnarmedBase",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlantedWeaponEruptionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayAttribute Damage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	FScopedCharacter Character(World);
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot;
+	Character.Equipment->Equip(Plain(TwoHandedBase, 10), Removed, AlsoRemoved, Slot);
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem, ECataclysmPoolFill::FillToMaximum);
+	const float Armed = Character.AbilitySystem->GetNumericAttribute(Damage);
+
+	// SOMETHING FOR THE ERUPTION TO CATCH: a body on the pawn channel, standing where the sword will.
+	AActor* Body = World->SpawnActor<AActor>();
+	USphereComponent* Sphere = NewObject<USphereComponent>(Body);
+	Sphere->InitSphereRadius(34.0f);
+	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Sphere->SetCollisionObjectType(ECC_Pawn);
+	Sphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+	Body->SetRootComponent(Sphere);
+	Sphere->RegisterComponent();
+	UCataclysmAbilitySystemComponent* BodySystem = NewObject<UCataclysmAbilitySystemComponent>(Body);
+	BodySystem->RegisterComponent();
+	BodySystem->AddAttributeSetSubobject(NewObject<UCataclysmVitalAttributeSet>(Body));
+	BodySystem->AddAttributeSetSubobject(NewObject<UCataclysmCombatAttributeSet>(Body));
+	BodySystem->InitAbilityActorInfo(Body, Body);
+	BodySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	BodySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+
+	// BURIED FIRE, exactly as game/Data/WeaponSkills.csv writes its row.
+	const FGameplayAbilitySpecHandle Handle = Character.AbilitySystem->GiveAbilityInSlot(
+		UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Character.Actor);
+	FGameplayAbilitySpec* Spec = Character.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+	UCataclysmStrikeSkill* BuriedFire = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the skill is granted"), BuriedFire))
+	{
+		return false;
+	}
+	BuriedFire->SkillName = TEXT("Buried Fire");
+	BuriedFire->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Radius=4; Angle=360; Burn=1; GroundRadius=4; GroundDuration=10; GroundPercent=10.0; MoreDamagePer=12; "
+			 "ScalingSource=Second; DisarmsUntilRecalled=1"));
+	if (!TestTrue(TEXT("set-up: the skill is used"), Character.AbilitySystem->TryActivateAbility(Handle)))
+	{
+		return false;
+	}
+	if (!ACataclysmPlantedWeapon::HeldBy(Character.Actor))
+	{
+		BuriedFire->PlantTheWeapon();
+	}
+	if (!TestNotNull(TEXT("set-up: the sword stands in the ground"), ACataclysmPlantedWeapon::HeldBy(Character.Actor))
+		|| !TestEqual(TEXT("set-up: and the character is unarmed"), Character.AbilitySystem->GetNumericAttribute(Damage),
+					  ACataclysmPlantedWeapon::UnarmedAttackDamage, 0.05f))
+	{
+		return false;
+	}
+
+	// PULLED FREE. The character's attack damage is read at the instant the eruption lands on the body.
+	float AtTheEruption = -1.0f;
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	UCataclysmAbilitySystemComponent* System = Character.AbilitySystem;
+	const AActor* Caught = Body;
+	const FDelegateHandle Listening = Events->OnHit.AddLambda(
+		[&AtTheEruption, System, Caught, Damage](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Target == Caught)
+			{
+				AtTheEruption = System->GetNumericAttribute(Damage);
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
+	TestEqual(TEXT("the eruption catches the body"), BuriedFire->PullTheWeaponFree(), 1);
+	TestEqual(TEXT("the eruption is priced with the weapon's attack damage, not the unarmed base"), AtTheEruption, Armed,
+			  0.05f);
+	TestNull(TEXT("the sword is out of the ground"), ACataclysmPlantedWeapon::HeldBy(Character.Actor));
+	TestEqual(TEXT("and the character holds the weapon's damage"), Character.AbilitySystem->GetNumericAttribute(Damage),
+			  Armed, 0.05f);
 	return true;
 }
 

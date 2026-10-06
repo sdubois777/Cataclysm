@@ -874,6 +874,10 @@ int32 UCataclysmStrikeSkill::PullTheWeaponFree()
 	//
 	// BEFORE THE SWORD IS DESTROYED, WHICH `EndAbility` BELOW DOES. Asking
 	// afterwards would find no sword and scale by nothing.
+	//
+	// AND AFTER THE WEAPON'S STATS ARE HANDED BACK. Issue #1166: while the sword stands the character's attack damage
+	// is the unarmed base, and the eruption is the weapon's own blow. Without this line it would be priced as a punch.
+	Sword->HandBack();
 	Erupted = HitScaled(Caught, TArray<AActor*>());
 
 	UCataclysmStrikeEffect::PlayAt(Self, Where, AimDirection(),

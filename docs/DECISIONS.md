@@ -2,6 +2,101 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — A character whose weapon stands in the ground swings for a flat base of 6: the planted weapon's own lines are left out and everything worn elsewhere stays
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPlantedWeapon.h` and `.cpp` (`UnarmedAttackDamage`,
+`LeavesUnarmed`, `HandBack`, and a stat refresh when the sword goes in and when it is destroyed);
+`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp` (`GatherModifiers` and `RefreshAttributes`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (the recall hands the weapon back before its
+eruption); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (a comment); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmEquipmentTests.cpp`. Issue
+[#1166](https://github.com/sdubois777/Cataclysm/issues/1166).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have.
+
+### What was wrong
+
+The Greatsword's Buried Fire: "Drive the greatsword into the ground and leave it there. ... Pull it free within 10
+seconds to erupt ... You fight unarmed until you do." The entry of 2026-09-02, "A weapon can be left standing in the ground, and Buried Fire is finished",
+recorded what was left: **"What they swing for is still the buried weapon's damage."** Attack damage comes from what
+is worn, and the item is still worn. A +10 Greatsword gives 156; the character with it in the ground went on swinging
+for 156.
+
+### The figure, and where it comes from
+
+**No unarmed figure exists anywhere in the design.** "Unarmed" appears nowhere in `docs/Cataclysm_GDD_v2.md`.
+
+**RULED 2026-10-05 by the coordinating session under the owner's delegation of unstated numbers, a labelled
+judgement: one flat base of 6 for every class while the weapon is planted.**
+
+Research: Path of Exile, `poedb.tw/us/Unarmed`, fetched 2026-10-05 and recorded on the issue. An unarmed attack there
+has base physical damage 2-5, 2-6 or 2-8 by class, far below any weapon. **That settles the shape**: unarmed is a
+small flat base of its own, not a share of the weapon. **It does not settle the number**, which is this game's. This
+game's weapon bases run from 26 (Dagger) to 84 (Warhammer), and 6 is about a quarter of the Dagger's.
+
+### What stays and what goes
+
+**RULED the same day, a labelled judgement: the weapon's own implicit and its affixes are left out while it is
+planted, and everything worn elsewhere stays.**
+
+How the code makes that true, with the parts the ruling did not name stated as judgements of the writing session:
+
+- **The planted weapon's slot is read as empty** when the character's stats are worked out, which is the route a
+  floor rule already uses to switch a slot off (`Famine_Scarcity`). So its implicit, its affixes **and its
+  enchantments** give nothing, and it is not a piece of any set. A judgement: the enchantments are on the weapon, so
+  they go with it.
+- **The base of 6 is a base, not a flat line**, so a ring's flat damage adds to it and an increase scales it, exactly
+  as they did the weapon's.
+- **The weapon's base swing rate stays, and so does the critical strike base a held weapon gives.** Neither is a line
+  on the weapon; both are read from what is worn (`StatBasesFromWeapons`), and the item is still worn. A judgement,
+  and a forced one for the swing rate: with no weapon counted the rate is 0, and a rate of 0 is read as never
+  swinging. No unarmed swing rate exists in the design either.
+- **The skills stay.** Nothing is unequipped, which is what lets the second press pull the sword free.
+- **The swing's reach, its arc and its weapon sub-type are the greatsword's still**, and a passive that asks whether
+  a two-handed weapon is wielded still answers yes. Not changed; stated.
+- **The planted weapon is the first weapon slot that holds something**, the slot the character's skills come from.
+  With Both Hands Full a second two-handed weapon in the other hand is "worn elsewhere" and its damage stays, so
+  that character's unarmed swing is not 6. A judgement.
+
+**It is asked, not set.** `ACataclysmPlantedWeapon::LeavesUnarmed` is asked every time the stats are worked out. A
+kill counted on a weapon, a dungeon rule or a spent point can each refresh the stats during the ten seconds, and each
+finds the character still unarmed.
+
+### The eruption is the weapon's
+
+Pulling the sword free erupts where it stands, sized by how long it stood, so the sword must still be standing when
+the eruption is priced. **At that instant the character would be unarmed, and the eruption would be priced as a
+punch.** `HandBack` gives the weapon's stats back while the sword still stands, and the recall calls it just before
+the eruption. A judgement of the writing session: the eruption is the weapon's own blow. The burning ground is priced
+before the sword exists and was never affected.
+
+### When the stats change
+
+- **In:** the sword's `BeginPlay`, beside the redraw of the empty hands.
+- **Back:** `HandBack` on a recall; otherwise the sword's `EndPlay` when it is destroyed, which every other way a
+  plant ends reaches: the window running out, the owner's death, the skill being cancelled.
+- Not when a level is torn down or the game quits: the sword ends then too, and nothing is worked out.
+- The refresh is the equipment component's own. **Not the character's "equipment changed" route**, which grants the
+  worn weapon's abilities again and begins by taking them all back, the running skill that holds the sword included.
+
+### Tests
+
+Two new automation tests, `Cataclysm.Equipment.`:
+
+- `AWeaponLeftInTheGroundLeavesTheUnarmedBaseAndEverythingWornElsewhere`: a +10 Greatsword and a ring with flat
+  damage; planted, attack damage is 6 plus the ring's flat damage with no refresh called by the test; the swing rate
+  is unchanged; a refresh while it stands leaves the character unarmed; handed back, the weapon's figure returns
+  while the sword still stands; a sword simply destroyed returns it too.
+- `PullingAPlantedWeaponFreeEruptsWithTheWeaponsDamageNotTheUnarmedBase`: the real Buried Fire on a character wearing
+  a real Greatsword; planted, attack damage is 6; pulled free, the character's attack damage read at the instant the
+  eruption lands on a body is the weapon's.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-05 — Echo Chamber: every skill use fires a free copy of that skill in a random direction, and a copy aimed within its own radius hits the player for a tenth
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`EchoChamberKey`, the two
