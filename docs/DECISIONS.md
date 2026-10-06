@@ -64,6 +64,34 @@ does is covered by the tests of the 2026-10-05 entry, which use a player charact
   use was aimed, not a use itself, and not for a self buff, a movement skill, an aura, a summon, a channelled or
   held skill, or the basic attack.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in the elastic-burnell worktree, in one window with the three layers stacked on this one, on
+`development` 0a3844e0. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | 7882d9d4 | Build: Succeeded - 35 actions, 30 files compiled |
+| The asset, regenerated with the editor | 7882d9d4 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 478 to 479 |
+| Whole suite | 9e89c347 | 3201 tests performed, 3200 succeeded, 1 failed: SpellbladesWillTwoPiecesTriggerAHeldSkillOnAMeleeAttackAndHalveMeleeDamage; declared 3201, gap 0; 0 ensures |
+| Build, after two calls were changed in that one test of the top layer | eaec6b80 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp |
+| Cataclysm.Enchantments., whole, after it | eaec6b80 | 228 tests performed, 228 succeeded, 0 failed; 0 ensures |
+| Python of record, with ruff clean | eaec6b80 | 5752 passed, 8 skipped in 314.93s; JUnit tests=5760 failures=0 errors=0 skipped=8 |
+| Proof F: the loader not handing a repeat row its Damage Share | eaec6b80 | PROVED: with the break in: 228 tests performed, 227 succeeded, 1 failed: TheDuplicateRowRepeatsAnySkillUnderItsTopRollAtHalfItsDamage \| restored: 228 tests performed, 228 succeeded, 0 failed |
+| Python proof 1: a Damage Share on a row that repeats nothing let through, in a copy | eaec6b80 | PROVED: 1 failed, 473 passed \| restored: 474 passed; the one is test_a_share_on_a_row_that_repeats_nothing_is_refused |
+| Python proof 2: a Damage Share outside above 0 and up to 100 let through, in a copy | eaec6b80 | PROVED: 3 failed, 471 passed \| restored: 474 passed; the three cases of test_a_share_outside_above_0_and_up_to_100_is_refused |
+
+Proof F kept its broken run's log and failed exactly the one assertion predicted, in the test of the half-damage
+row of the layer above this one: "at half its damage" was 1.000000 against 0.500000. That row is the only one that
+states a share, which is why the column's proof fails a test of the layer above.
+
+**The whole suite was run once, and one test of the top layer failed in it.** The test asked the wrong function;
+the entry for Spellblade's Will has the cause. No test of this layer failed. After the two calls in that test were
+changed, the group was run again and the whole suite was not, by the standing rule for a change to a test alone.
+
+**This layer's test against a table without its row** is in the run table of the entry above this one, with the
+other seven.
+
 ---
 
 ## 2026-10-06 — The navigation tests wait for the mesh by blocking on its tile builds, not by counting ticks: the intermittent "mesh rebuild finished" failures of issue #2222
