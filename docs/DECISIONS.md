@@ -108,6 +108,38 @@ tied to its tag instead; what a player sees is what was ruled.
 | Applying a debuff to an enemy reduces their damage output by 10%-20% | HELD: it names no ailment and no duration |
 | Enemies with Necrosis have 1%-2% less maximum health | HELD: dungeon rules derive a maximum from the current one and health is not given back |
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the generator check below this layer, on `development` 2b87c355. The build, the
+whole suite and the Python of record are in that entry's table and were run with this layer in the stack. **The
+ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before the five rows, first run | 77ded50e | unknown tests performed, 203 succeeded, 4 failed: the four tests of this layer; 9 failed assertions; the log ends inside the last test of the group |
+| The same, run again | 77ded50e | 208 tests performed, 204 succeeded, 4 failed: the four tests of this layer; 9 failed assertions; 0 ensures |
+| The asset, regenerated with the editor | 77ded50e | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 471 to 476 |
+| Whole suite | 600f5341 | 3177 tests performed, 3177 succeeded, 0 failed; declared 3177, gap 0; 0 ensures |
+| Proof B: an applied ailment handing the carrier no riders | 600f5341 | PROVED: with the break in: 208 tests performed, 204 succeeded, 4 failed: TheBleedingRowRaisesWhatAnEnemyTakesOnlyWhileItCarriesTheWearersBleed, TheBurnAndDiseaseArmourRowsRemoveTheirShareOfAnAilingEnemysArmour, TheDiseaseHealingRowStopsADiseasedEnemyBeingHealedAtItsTopRoll, ThePoisonedRowTakesItsShareOffWhatAPoisonedEnemysAttacksAreWorth \| restored: 208 tests performed, 208 succeeded, 0 failed |
+| Proof C: an applier with nothing to hang taking down anybody's riders | 600f5341 | PROVED: with the break in: 208 tests performed, 207 succeeded, 1 failed: TheBleedingRowRaisesWhatAnEnemyTakesOnlyWhileItCarriesTheWearersBleed \| restored: 208 tests performed, 208 succeeded, 0 failed |
+| Python proof 2: a rider with no Ailment let through, in a copy | 600f5341 | PROVED: 1 failed, 458 passed \| restored: 459 passed; the one is test_a_rider_with_no_ailment_is_refused |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: B nine, three in the bleed test,
+four in the armour test and one each in the poison and healing tests; C one, "and another character refreshing it
+leaves the 40".
+
+**The four tests fail against a table without the rows and pass with them**, on the same nine assertions proof B
+fails, which is what a missing row and a rider never handed over have in common.
+
+**THE FIRST RUN AGAINST THE OLD ASSET DID NOT FINISH, AND THE CAUSE WAS NOT FOUND.** Its log ends after the last
+test of the group, `WeightOneIsSixtyFourTimesRarerThanWeightFour`, had started, with 207 of 208 tests reported and
+no total printed. No crash record was written and no editor process was left. The four failures and their nine
+assertions were already in the log and were the ones predicted. The same command was run again with nothing
+changed, and it finished. That test is not one of this stack's and passed in every later run.
+
+**The engine code compiled on its first build, and with the rows in the table every test passed on its first
+run.** Nothing was changed after the first build.
+
 ---
 
 ## 2026-10-06 — The generator refuses a conditioned row the game cannot judge: a stat nothing asks for, or a condition its asker is not handed
