@@ -2,6 +2,67 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — Starvation's ten-piece bonus is built: a kill grants a Famished stack that raises all three kinds of leech, up to ten
+
+**Affects:** `tools/generate_datatables.py` (`STATS_WITH_AN_ASKER`), `docs/All_Things_Cataclysm.xlsx` (three rows
+of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset,
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (three probes),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(`Cataclysm.Enchantments.StarvationTenPiecesGainAFamishedStackPerKillRaisingAllLeechUpToTen`),
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Rows |
+| :-- | :-- |
+| Starvation (10-Piece Bonus): When you kill an enemy, gain a stack of "Famished." Each stack increases all of your leech by 5%. Stacks last 4 seconds | `life_leech`, `mana_leech` and `energy_shield_leech`, each increased 5 per own stack, a stack on `kill`, 4 seconds, cap 10 |
+
+EnchantmentEffects 467 to 470, over 383 to 384. No engine change.
+
+- **THE CAP OF 10 IS A LABELLED JUDGEMENT** of 2026-10-05 under the owner's delegation. The sentence states none
+  and an own-stack row must state one. At 10 the bonus is half again of the wearer's leech.
+- **Each of the three rows holds its own stacks**, because a stack is keyed by its enchantment and its stat. One
+  kill grants each row one, so the three move together and read as one count.
+- **A kill restarts the four seconds for every stack held**, which is the rule every own-stack row has.
+- **"Increases" is the increased bucket**, so the 5% sums with the wearer's other increases to leech and
+  multiplies the set's own two-piece 5% of leech.
+
+**The three leech stats joined the list of stats something asks for.** A row scaled by a count is never written
+onto its attribute, so it reaches play only where the code asks the stat pipeline for the stat. The generator
+refuses a scaled row on a stat that is not on its list of such stats, and the list is held to a table of probes
+that measure the ask. `UCataclysmLeech::NoteHit` has asked for all three through the pipeline since issue #947;
+the dry run of these rows was refused until the three names and a probe for each were added. Each probe gives two
+attackers the stat at a base of 10 with 100 increased per stack, gives one a stack, and reads what a hit of 1000
+queues to be leeched: 100 and 200.
+
+**Starvation's six-piece bonus is not built.** "5% damage reduction for each active unique instance of leech"
+needs a count of the leech payments a character holds, which nothing reads.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in one window with two layers below this one and one above, on `development` 6efeac81. The
+builds, both whole suites and the Python of record are in the timed cleanse entry's table and were all run with
+this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| This layer's test against the asset built before its rows | 43c17ee7 | failed on 9 assertions, inside "204 tests performed, 199 succeeded, 5 failed": two kills, twelve kills and just inside four seconds, for each of the three kinds of leech |
+| The asset, regenerated with the editor | 43c17ee7 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 467 to 470 |
+| Cataclysm.Enchantments. | eabbef30 | 204 tests performed, 204 succeeded, 0 failed; 0 ensures |
+| Proof C: life leech read from the attribute and not asked for, on Cataclysm.StatExemption. | eabbef30 | PROVED: with the break in: 3 tests performed, 2 succeeded, 1 failed: EveryStatTheDataScalesIsAskedForThroughThePipeline \| restored: 3 tests performed, 3 succeeded, 0 failed |
+| Python proof 3: `life_leech` taken off the list of stats something asks for, in a copy | eabbef30 | PROVED: 4 failed, 487 passed \| restored: 491 passed |
+
+Proof C kept its broken run's log and failed exactly the two assertions predicted, both in the life leech probe.
+Python proof 3's four are the check that the generator's list and the probe table are the same set, the check
+that no shipped row is refused, and two checks that run the generator against the real workbook.
+
+**The leech function gained a parameter while this layer waited.** `UCataclysmLeech::NoteHit` takes the tags of
+the skill that dealt the hit since the Wasting Sickness entry of this date, which merged first. The three probes
+pass an empty container, which is what a hit with no skill behind it passes.
+
+---
+
 ## 2026-10-05 — Four drawbacks take a share of the wearer's own damage: a row may take a share of what a hit dealt or retaliation dealt
 
 **Affects:** `tools/generate_datatables.py` (`EVENTS_WITH_AN_AMOUNT`), `docs/All_Things_Cataclysm.xlsx` (four
