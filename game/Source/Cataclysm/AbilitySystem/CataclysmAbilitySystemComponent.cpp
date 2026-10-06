@@ -3398,6 +3398,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
+const TCHAR* UCataclysmAbilitySystemComponent::RepeatSkillAction = TEXT("repeat_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -3602,6 +3603,15 @@ static TAutoConsoleVariable<float> CVarCooldownResetRoll(
 static TAutoConsoleVariable<float> CVarStatusRoll(
 	TEXT("Cataclysm.StatusRoll"), -1.0f,
 	TEXT("Pins the 0-100 roll a status enchantment makes against its chance. Negative rolls for real."),
+	ECVF_Default);
+
+/**
+ * Pins the roll a repeat action makes against its chance, 0 to 100, for tests. Negative, the default, rolls for
+ * real. Mechanism B2; the same shape as `Cataclysm.StatusRoll` above.
+ */
+static TAutoConsoleVariable<float> CVarRepeatSkillRoll(
+	TEXT("Cataclysm.RepeatSkillRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a repeat-skill enchantment makes against its chance. Negative rolls for real."),
 	ECVF_Default);
 
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
@@ -4163,6 +4173,17 @@ void UCataclysmAbilitySystemComponent::GrantOwnStack(FName StackKey,
 	Held.WindowSeconds = WindowSeconds;
 }
 
+void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags,
+													 const FVector& Aim)
+{
+	// A NEW USE BEGINS WITH NOTHING PENDING: a repeat nobody made belongs to the use before, and is let go.
+	ClearPendingRepeat();
+	SkillInHandName = SkillName;
+	SkillInHandAim = Aim;
+	ActOnEvent(FName(TEXT("skill_use")), SkillTags);
+	SkillInHandName = NAME_None;
+}
+
 void UCataclysmAbilitySystemComponent::ActOnEvent(
 	FName Event, const FGameplayTagContainer* EventTags, float EventAmount,
 	bool bLanded, const AActor* EventTarget)
@@ -4390,6 +4411,31 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				Delivery.bCannotLeech = true;
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Attacker, Reflected, Delivery);
 				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// A REPEAT OF THE SKILL JUST USED. Mechanism B2, ruled 2026-10-05. Only when the event names a skill, once
+		// per row per event, rolled against the row's value. ONE REPEAT FOR ONE USE: every row that passes is
+		// counted here, and what is kept is the highest share among them.
+		if (Action.bRepeatSkill)
+		{
+			if (bLanded && !SkillInHandName.IsNone() && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Pinned = CVarRepeatSkillRoll.GetValueOnAnyThread();
+				const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+				if (Roll < Action.Percent)
+				{
+					const float Share = Action.RepeatSharePercent / 100.0f;
+					if (PendingRepeatName.IsNone() || Share > PendingRepeatDamageShare)
+					{
+						PendingRepeatName = SkillInHandName;
+						PendingRepeatAimPoint = SkillInHandAim;
+						PendingRepeatDamageShare = Share;
+					}
+					NoteTriggerFired(Action);
+				}
 			}
 			continue;
 		}

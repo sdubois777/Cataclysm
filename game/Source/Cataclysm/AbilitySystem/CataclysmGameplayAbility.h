@@ -373,6 +373,14 @@ public:
 	bool bFreeRepeat = false;
 
 	/**
+	 * What share of its damage a free start deals: 1 is all of it. Read only while `bFreeRepeat` is set, and put back
+	 * to 1 when that use ends. Mechanism B2, ruled 2026-10-05: "Each skill has a 20%-40% chance to cast a duplicate
+	 * at 50% damage". IT REACHES WHAT THE PER-USE MULTIPLIER REACHES -- hits, projectiles, rack throws and ground --
+	 * AND NOT DAMAGE OVER TIME, which that multiplier has never reached; see `LastNextUseMoreMultiplier`.
+	 */
+	float FreeRepeatDamageShare = 1.0f;
+
+	/**
 	 * The pool that pays `Cost` for this character now, or an invalid attribute
 	 * if none can. Issue #1515.
 	 *
