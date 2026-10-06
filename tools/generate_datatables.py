@@ -5127,10 +5127,29 @@ REPEAT_SKILL_EVENTS = ("skill_use", "attack_use")
 TRIGGER_HELD_SKILL_ACTION = "trigger_held_skill"
 TRIGGER_HELD_SPELL_ACTION = "trigger_held_spell"
 
+#: The actions that roll, once for the use in hand, that the use deals no
+#: damage. Ruled 2026-10-06. The value is the chance. The first is for every
+#: skill the row's tags allow: "Strike skills have a 10%-20% chance to miss
+#: entirely regardless of other stats". The second is for a skill with a
+#: cooldown only: "Your cooldown abilities have a 25% chance to deal no
+#: damage". `UCataclysmAbilitySystemComponent::UseNoDamageAction` and
+#: `CooldownUseNoDamageAction` hold the same names.
+USE_NO_DAMAGE_ACTIONS = ("use_no_damage", "cooldown_use_no_damage")
+
+#: The same two for a use that deals increased damage: "Your cooldown abilities
+#: have a 5%-20% chance to deal 50%-200% increased damage". The engine has them
+#: (`UseIncreasedDamageAction`, `CooldownUseIncreasedDamageAction`). THE
+#: GENERATOR REFUSES THEM UNTIL A COLUMN CARRIES THE INCREASE, which is the
+#: sentence's second number: a row written today would roll and then add
+#: nothing.
+USE_INCREASED_DAMAGE_ACTIONS = ("use_increased_damage",
+                                "cooldown_use_increased_damage")
+
 #: Every action that acts on the skill of the use in hand. Each is written on
 #: an event that names a skill, and its value is a chance and nothing else.
 SKILL_IN_HAND_ACTIONS = (REPEAT_SKILL_ACTION, TRIGGER_HELD_SKILL_ACTION,
-                         TRIGGER_HELD_SPELL_ACTION)
+                         TRIGGER_HELD_SPELL_ACTION) + USE_NO_DAMAGE_ACTIONS \
+    + USE_INCREASED_DAMAGE_ACTIONS
 
 
 def takes_a_trigger_cooldown(action: str) -> bool:
@@ -5708,6 +5727,12 @@ def _check_repeat_skill_action(index: int, who: str, action: str, event: str,
     skill of the use to leave it out. The messages say "repeats a skill" for
     all three, and name the action.
     """
+    if action in USE_INCREASED_DAMAGE_ACTIONS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} uses the action "
+            f"{action!r}, which needs the increase it gives as a second "
+            f"number, and no column carries that yet. The engine has the "
+            f"action; the row cannot be written until the column exists.")
     if event not in REPEAT_SKILL_EVENTS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} repeats a skill on the "

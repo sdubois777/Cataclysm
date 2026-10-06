@@ -3954,6 +3954,39 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bTriggerHeldSpell = false;
 
 	/**
+	 * Set, this action rolls `Percent` as a chance out of 100, once for the use in hand, that THE USE DEALS NO
+	 * DAMAGE. Ruled 2026-10-06, for "Your cooldown abilities have a 25% chance to deal no damage", "Strike skills
+	 * have a 10%-20% chance to miss entirely regardless of other stats" and "Projectiles have a 20%-35% chance to
+	 * explode prematurely dealing no damage". Only on an event that names a skill. See
+	 * `UCataclysmAbilitySystemComponent::TakePendingUseNoDamage`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseDealsNoDamage = false;
+
+	/**
+	 * Set, this action rolls `Percent` as a chance that the use in hand deals `UseIncreasePercent` increased damage.
+	 * Ruled 2026-10-06, for "Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseDealsIncreasedDamage = false;
+
+	/**
+	 * The increase a passing `bUseDealsIncreasedDamage` roll gives, in percent. THE SECOND NUMBER OF THE SENTENCE,
+	 * and its own field because the row's value is the chance. Nought until a column of the effect table carries
+	 * it; the tests set it by hand.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float UseIncreasePercent = 0.0f;
+
+	/**
+	 * Set, either roll above is made only for A SKILL WITH A COOLDOWN: one whose own cooldown is above nought, so
+	 * not the basic attack and not an aura. Ruled 2026-10-06: a flag on the action and not a row condition, because
+	 * it is a fact about the skill used and is known only at the event.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOnlyASkillWithACooldown = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833

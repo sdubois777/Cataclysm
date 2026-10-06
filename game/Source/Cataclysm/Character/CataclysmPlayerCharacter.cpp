@@ -1035,11 +1035,12 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 		if (bBasicAttack)
 		{
 			const FGameplayTagContainer Asked = UCataclysmTriggeredSkill::BasicAttackUseTags(this, Notice.SkillTags);
-			Acting->ActOnSkillUse(Notice.SkillName, &Asked, Notice.Aim, /*bBasicAttack=*/true);
+			Acting->ActOnSkillUse(Notice.SkillName, &Asked, Notice.Aim, /*bBasicAttack=*/true, Notice.bHasCooldown);
 		}
 		else
 		{
-			Acting->ActOnSkillUse(Notice.SkillName, Notice.SkillTags, Notice.Aim);
+			Acting->ActOnSkillUse(Notice.SkillName, Notice.SkillTags, Notice.Aim, /*bBasicAttack=*/false,
+								  Notice.bHasCooldown);
 		}
 
 		// AND ANY REPEAT A ROW ASKED FOR IS MADE ON THE NEXT TICK. This runs inside the used skill's activation,

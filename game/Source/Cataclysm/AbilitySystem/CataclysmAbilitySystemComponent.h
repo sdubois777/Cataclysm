@@ -606,7 +606,32 @@ public:
 	 * `attack_use` is raised. Both events of one use share the one pending repeat, so one use still gives one repeat.
 	 */
 	void ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags, const FVector& Aim,
-					   bool bBasicAttack = false);
+					   bool bBasicAttack = false, bool bHasCooldown = false);
+
+	/**
+	 * What the rows rolled for the use in hand, taken by that use as it is paid for. Ruled 2026-10-06.
+	 *
+	 * `ActOnSkillUse` IS REACHED FROM INSIDE `UCataclysmSkillTemplate::CommitAndBegin`, through the skill-used
+	 * notice, a few lines before that function writes what the use's damage reads. So a row rolls there, the answer
+	 * is kept here, and the same call of `CommitAndBegin` takes it. Each is read once and cleared. A new use
+	 * begins with neither.
+	 *
+	 * NO DAMAGE WINS OVER AN INCREASE. Several increase rows that pass on one use add, as increases do.
+	 */
+	bool TakePendingUseNoDamage()
+	{
+		const bool bWas = bPendingUseNoDamage;
+		bPendingUseNoDamage = false;
+		return bWas;
+	}
+	float TakePendingUseIncreasePercent()
+	{
+		const float Was = PendingUseIncreasePercent;
+		PendingUseIncreasePercent = 0.0f;
+		return Was;
+	}
+	bool PendingUseNoDamage() const { return bPendingUseNoDamage; }
+	float PendingUseIncrease() const { return PendingUseIncreasePercent; }
 
 	/** The skill a row asked to repeat and that has not been made yet, or none. */
 	FName PendingRepeatSkill() const { return PendingRepeatName; }
@@ -898,6 +923,17 @@ public:
 	 */
 	static const TCHAR* TriggerHeldSkillAction;
 	static const TCHAR* TriggerHeldSpellAction;
+
+	/**
+	 * The four actions that roll for the use in hand, with the value as the chance: the use deals no damage, or
+	 * deals increased damage; each for every skill the row's tags allow, or for a skill with a cooldown only. Ruled
+	 * 2026-10-06. `tools/generate_datatables.py` holds the same names. See
+	 * `FCataclysmPoolAction::bUseDealsNoDamage`.
+	 */
+	static const TCHAR* UseNoDamageAction;
+	static const TCHAR* CooldownUseNoDamageAction;
+	static const TCHAR* UseIncreasedDamageAction;
+	static const TCHAR* CooldownUseIncreasedDamageAction;
 
 	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
@@ -3510,6 +3546,13 @@ protected:
 	FVector PendingHeldTriggerAimPoint = FVector::ZeroVector;
 	bool bPendingHeldTriggerSpell = false;
 	bool bPendingHeldTriggerCooldownSkill = false;
+
+	/** Whether the skill of the use in hand has a cooldown. Set only inside `ActOnSkillUse`. */
+	bool bSkillInHandHasCooldown = false;
+
+	/** What the rows rolled for the use in hand. See `TakePendingUseNoDamage`. */
+	bool bPendingUseNoDamage = false;
+	float PendingUseIncreasePercent = 0.0f;
 	float PendingFollowThroughUntilSeconds = -1.0f;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */
