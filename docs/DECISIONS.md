@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Spellblade's Will's ten-piece bonus is built: a melee attack rolls to trigger one of the spells the character holds, and with none it does nothing
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Spellblade's Will (10-Piece Bonus): Your melee attacks have a 25% of triggering one of your spells. This does not put the spell on cooldown but does use it's mana cost | `trigger_held_spell` on `attack_use`, 25, Required Tags `Type.Melee` |
+
+EnchantmentEffects 496 to 497, over 410 to 411 enchantments. No engine code and no generator code is changed here;
+the action is the one the entry "A row can trigger a different held skill" built, and that entry said the row
+waited for the owner.
+
+### THE OWNER'S ANSWER, 2026-10-06
+
+The question was what "your spells" means for a melee character, who holds no skill tagged `Type.Spell`. **The
+owner's answer: it means the spells the character is running, and if they are running none, it does nothing.** So
+the row is written as it stands, and a character holding no spell gets nothing from the ten-piece bonus.
+
+### NOT BUILT
+
+**The 6-piece bonus**, Spellslinger and Dervish. It needs a row to gain its own stack only when the event's tags
+match, which the dungeon session builds next.
+
+### HOW THE ROW IS TESTED
+
+`Cataclysm.Enchantments.SpellbladesWillTenPiecesRollToTriggerAHeldSpellOnAMeleeAttack` wears nine pieces and then
+ten, each carrying the set's real first bonus and real drawback, with `Cataclysm.TriggerHeldSkillRoll` pinned. On a
+melee basic attack at a roll of 24.9 the two-piece row records its trigger at nine and at ten, and a trigger of a
+spell is recorded only at ten. A ranged basic attack and a roll of 25 record no spell trigger.
+
+**The test stops at the recorded trigger.** Which spell is picked, that it pays its cost and starts no cooldown,
+and that a character holding no spell gets nothing are covered by the tests of the entry that built the action.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **At ten pieces both bonuses roll and one skill is triggered for a use.** When both pass and a spell is held, the
+  spell is the one triggered and it pays; otherwise the two-piece's skill with a cooldown, free. That is the ruling
+  of the entry that built the action.
+- **A character whose only spells may not be triggered gets nothing**: a channelled, held, movement, aura or summon
+  skill is left out, as for every triggered skill.
+- **The set's drawback halves the triggered spell too when it carries `Type.Melee`.**
+
+---
+
 ## 2026-10-06 — Three benefits on the defender chances and the strike that hits all nearby: spells absorbed, melee hits reflected, and melee skills hitting everything within 3 metres
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (three rows of the Enchantment Effects sheet),

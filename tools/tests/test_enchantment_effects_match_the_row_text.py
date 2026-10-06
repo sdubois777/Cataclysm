@@ -626,8 +626,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 490 over 404: three rows on three enchantments.
 #: AND 496 OVER 410 SINCE THE ABSORB, REFLECT AND HIT-ALL ROWS,
 #: issue #1833, 2026-10-06, from 493 over 407: three rows on three enchantments.
-AUTHORED_ROWS = 496
-AUTHORED_ENCHANTMENTS = 410
+#: AND 497 OVER 411 SINCE SPELLBLADE'S WILL'S TEN-PIECE ROW,
+#: issue #1833, 2026-10-06, from 496 over 410: one row on one enchantment.
+AUTHORED_ROWS = 497
+AUTHORED_ENCHANTMENTS = 411
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
