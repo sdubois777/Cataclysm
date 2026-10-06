@@ -19352,6 +19352,9 @@ bool FCataclysmRolledUseHitsItsUserTest::RunTest(const FString&)
 		return false;
 	}
 	Caster.AbilitySystem->SetPoolActions({Row});
+	// THE USER IS GIVEN FULL EVASION FIRST: the self hit is delivered as area damage, which cannot be evaded, so it
+	// is taken whole all the same. Ruled 2026-10-06.
+	Caster.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
 	TheRowsSeeAUseOf(Caster, Swing);
 	TestEqual(TEXT("the row records the whole hit for the use"), Caster.AbilitySystem->PendingUseSelfHitShare(), 100.0f,
 			  0.001f);
@@ -19360,7 +19363,8 @@ bool FCataclysmRolledUseHitsItsUserTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	if (!TestEqual(TEXT("and deals its user what it dealt the enemy when it was plain"), CasterLost, Whole, Whole * 0.005f))
+	if (!TestEqual(TEXT("and deals its user, who evades everything that can be evaded, what it dealt the enemy when plain"),
+				   CasterLost, Whole, Whole * 0.005f))
 	{
 		return false;
 	}
