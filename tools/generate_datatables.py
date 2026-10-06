@@ -7447,6 +7447,7 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "nova_damage_of_missing_health": ASKER_PASSES_NOTHING_MORE,
     "retaliation": ASKER_PASSES_NOTHING_MORE,
     "skill_charges_bonus": ASKER_PASSES_NOTHING_MORE,
+    "skill_cost_paid_from_health": ASKER_PASSES_NOTHING_MORE,
     "skill_locked": ASKER_PASSES_NOTHING_MORE,
 }
 

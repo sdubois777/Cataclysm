@@ -343,6 +343,9 @@ public:
 	 * The pool a character pays a skill's mana cost from: HEALTH for one that
 	 * traded its mana pool for it, MANA for everyone else. Issue #1067.
 	 *
+	 * AND HEALTH FOR ONE HOLDING `CostPaidFromHealthStat`, which moves the cost
+	 * and leaves the mana pool where it is. Issue #2228.
+	 *
 	 * ONE ANSWER FOR EVERY PAYER, which is why it is a function. The activation
 	 * cost asked this and `UCataclysmAuraSkill::Pulse` did not, so an aura
 	 * switched on by a character with no mana pool switched itself off at its
@@ -360,6 +363,23 @@ public:
 	 * Above zero means the option is held.
 	 */
 	static const TCHAR* CostPaidFromEnergyShieldStat;
+
+	/**
+	 * Above zero, a skill's mana cost is paid from HEALTH, the same number out
+	 * of a different pool, and NOTHING ELSE CHANGES: the mana pool keeps its
+	 * maximum and what it holds. Issue #2228, ruled 2026-10-06. "While below
+	 * 50% HP, all skills cost HP instead of mana and cost 50% less" is this stat
+	 * under `health_below` 50.
+	 *
+	 * NOT `mana_pool_becomes_health`, WHICH IT WAS WRITTEN ON UNTIL THEN. That
+	 * stat is Water to Blood: it also adds the whole of maximum mana to maximum
+	 * health at an attribute refresh and empties the mana pool, which that
+	 * sentence never asked for and which a refresh below half health did.
+	 *
+	 * ASKED WITH THE CHARACTER'S STATE BY `CostPool`, so a condition on the row
+	 * is judged each time a cost is checked or paid.
+	 */
+	static const TCHAR* CostPaidFromHealthStat;
 
 	/**
 	 * THIS USE IS FOLLOW THROUGH'S FREE REPEAT, and not a use at all. Issue
