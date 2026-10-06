@@ -469,3 +469,4 @@ Negative_You_take_10_20_of_the_damage_you_reflect#1,Negative_You_take_10_20_of_t
 Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en#1,Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en,life_leech,increased,5.0,5.0,,,0.0,own_stacks,1.0,,kill,,10,4.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en#2,Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en,mana_leech,increased,5.0,5.0,,,0.0,own_stacks,1.0,,kill,,10,4.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en#3,Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en,energy_shield_leech,increased,5.0,5.0,,,0.0,own_stacks,1.0,,kill,,10,4.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#1,Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,armor,increased,50.0,50.0,,health_below,50.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
