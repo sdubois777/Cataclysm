@@ -158,6 +158,19 @@ TArrayView<const FCataclysmAilmentKind> UCataclysmAilments::Kinds()
 	return MakeArrayView(EveryKind);
 }
 
+FName UCataclysmAilments::AilmentOfDamageType(FName DamageType)
+{
+	if (DamageType == FName(TEXT("Demonic")))
+	{
+		return FName(TEXT("Burn"));
+	}
+	if (DamageType == FName(TEXT("War")))
+	{
+		return FName(TEXT("Bleed"));
+	}
+	return NAME_None;
+}
+
 const FCataclysmAilmentKind* UCataclysmAilments::KindNamed(const FString& Ailment)
 {
 	const FString Wanted = Ailment.TrimStartAndEnd();

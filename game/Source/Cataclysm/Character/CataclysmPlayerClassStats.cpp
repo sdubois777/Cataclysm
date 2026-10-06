@@ -422,6 +422,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("zone_damage_per_enemy_inside"),
 		TEXT("zone_slow_percent"),
 		TEXT("only_one_persistent_area"),
+		// And two flags a ground zone reads there too: a stagger for whoever
+		// enters, and the ailment of the zone's own damage type each sweep.
+		// Ruled 2026-10-06.
+		TEXT("zone_staggers_on_entry"),
+		TEXT("zone_applies_own_ailment"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health

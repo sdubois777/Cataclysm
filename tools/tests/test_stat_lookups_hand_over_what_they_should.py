@@ -443,6 +443,14 @@ INVENTORY = {
         "the slow a zone lays on those inside (ruled 2026-10-06), asked "
         "where the zone is left; a zone is not a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f'):
+        "whether a zone staggers whoever enters it (ruled 2026-10-06), asked "
+        "where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat), SkillTags, 0.0f'):
+        "whether a zone lays the ailment of its own damage type (ruled "
+        "2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmSkillSlots::LockedStat), SkillTags, 0.0f'):
         "a skill's own cost and shape, asked before any blow exists",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
