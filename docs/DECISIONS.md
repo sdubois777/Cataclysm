@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — "While below 50% HP, all skills cost HP instead of mana" no longer converts the mana pool: a stat that moves a skill's cost onto health and does nothing else
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (`CostPaidFromHealthStat`,
+`CostPool`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the stats with no attribute),
+`tools/generate_datatables.py` (`CONDITIONED_STATS_WITH_AN_ASKER`), `docs/All_Things_Cataclysm.xlsx` (the Stat of one
+row of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset, one new test and one
+comment in `CataclysmSkillTemplateTests.cpp`, one probe in `CataclysmStatExemptionTests.cpp`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (`FLAG_STATS`). Issues
+[#2228](https://github.com/sdubois777/Cataclysm/issues/2228) and
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### THE FAULT
+
+"While below 50% HP, all skills cost HP instead of mana and cost 50% less" was written, under the owner's ruling of
+2026-09-17 on its 50%, as two rows under `health_below` 50, and the first was `mana_pool_becomes_health`. That stat is the Masochist's Water to Blood,
+and one function answers for it, `UCataclysmSkillTemplate::ManaPoolBecomesHealth`, which asks the stat pipeline with
+the character's state. Two things call it:
+
+- `UCataclysmGameplayAbility::CostPool`, so a skill's cost comes out of health. That half is what the sentence says.
+- `UCataclysmPlayerClassStats::ApplyTo`, at every attribute refresh: it adds the whole of maximum mana to maximum
+  health, sets maximum mana to nothing and empties the mana held. That half the sentence never asked for.
+
+So a refresh made while the wearer stood below half health converted its mana pool into health, and a later refresh
+above half gave maximum mana back and left the mana held at nothing. A refresh is what a changed helmet, a level
+gained or a point spent makes. Issue #2228 recorded this as read from the code and not reproduced; the row's own
+test refreshed at full health only.
+
+**WHY A CONDITION COULD REACH THE REFRESH AT ALL.** The fold that writes a gameplay attribute works a stat out
+with an empty state, which refuses every condition, and a conditioned row is dead there. This read is not that
+fold: it goes through `ManaPoolBecomesHealth`, which asks with the wearer's health in hand. So the row's condition
+was judged at the refresh, and held whenever the refresh came below half health.
+
+### WHAT WAS RULED, 2026-10-06, UNDER THE OWNER'S DELEGATION
+
+- **A separate stat for the cost alone**, and the row moves to it. The Masochist's capstone keeps
+  `mana_pool_becomes_health` and both of its behaviours.
+- **The test that reproduces the fault is written first and shown failing on the code as it stood**, before the
+  stat exists. That is the first half of this change's proof.
+
+### HOW IT IS BUILT
+
+- **`skill_cost_paid_from_health`**, `UCataclysmGameplayAbility::CostPaidFromHealthStat`. Above zero, `CostPool`
+  answers health, as it does for Water to Blood: the same number out of a different pool. It is asked with the
+  character's state, so the row's condition is judged each time a cost is checked or paid, as it was before.
+- **Nothing else reads it.** The attribute refresh still asks `ManaPoolBecomesHealth` and nothing more, so a wearer
+  of the row keeps its mana pool at every health.
+- **The row** `Positive_While_below_50_HP_all_skills_cost_HP_instead_o#1` changes its Stat and nothing else. Its
+  second row, `mana_cost` more -50, is untouched, so below half health a skill still costs half, out of health.
+- **The generator** lists the stat among those a condition may be written on, with an asker that passes the
+  wearer's state and nothing more. It has no gameplay attribute, and its probe grants it under `health_below` 50.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **No enchantment row states `mana_pool_becomes_health` any more.** One passive row does, the Masochist's.
+- **A character that holds both** pays from health, and its pool is converted, by the passive.
+- **A cost paid from health must leave health above nothing**, as before: `PoolCovers` asks for strictly more than
+  the cost.
+- **The energy shield is not reached while the cost is on health.** Cast from Ward asks whether MANA is not enough,
+  and below half health with this row the cost is not mana's. That was so before this change.
+
+### Tests
+
+- `Cataclysm.Skills.TheWornRowForPayingHealthBelowHalfHealthKeepsTheManaPoolWhenAttributesRefresh`, new: the row
+  worn, health at four tenths, the mana pool full, and a refresh. Maximum mana, maximum health and the mana held are
+  what they were, and a cost still comes out of health.
+- `Cataclysm.Skills.TheWornRowForPayingHealthBelowHalfHealthChargesHealthAndHalvesIt`, unchanged in what it asserts.
+- The probe for `skill_cost_paid_from_health` in `Cataclysm.StatExemption.`.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in the elastic-burnell worktree, in one window with the five layers stacked on this one, on
+`development` bae2f26c. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| THE REPRODUCTION, ALONE: `development` plus this entry's new test and nothing else, built, then that one test run | 398890e8 | Build: Succeeded - 32 actions, 29 files compiled; 1 tests performed, 0 succeeded, 1 failed: TheWornRowForPayingHealthBelowHalfHealthKeepsTheManaPoolWhenAttributesRefresh |
+| Build, at the top of the stack | b71a44e5 | Build: Succeeded - 32 actions, 29 files compiled |
+| Cataclysm.Skills. against the asset built before the row moved | b71a44e5 | 274 tests performed, 272 succeeded, 2 failed: this entry's new test and the test of the layer above; 5 failed assertions |
+| The asset, regenerated with the editor | b71a44e5 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, 487 rows, one of them on its new stat |
+| Whole suite | 276116ba | 3217 tests performed, 3217 succeeded, 0 failed; declared 3217, gap 0; 0 ensures |
+| Python of record, with ruff clean | 276116ba | 5762 passed, 8 skipped in 379.34s; JUnit tests=5770 failures=0 errors=0 skipped=8 |
+| Proof H: the cost pool not asking for the stat that moves a cost onto health | 276116ba | PROVED: with the break in: 274 tests performed, 272 succeeded, 2 failed: TheWornRowForPayingHealthBelowHalfHealthChargesHealthAndHalvesIt, TheWornRowForPayingHealthBelowHalfHealthKeepsTheManaPoolWhenAttributesRefresh \| restored: 274 tests performed, 274 succeeded, 0 failed |
+| Python proof: the stat taken off the list a condition may be written on, in a copy | 276116ba | PROVED: 1 failed, 13 passed \| restored: 14 passed; the one is test_no_shipped_row_is_refused[EnchantmentEffects] |
+
+**THE FAULT WAS REPRODUCED BEFORE THE STAT EXISTED.** On `development`'s code with only the new test added,
+the test failed on exactly the three assertions predicted. After a refresh below half health: maximum mana was
+0.000000 against 116.000000; maximum health was 626.000000 against 510.000000, which is the 116 moved across;
+and the mana held was 0.000000 against 116.000000. Its fourth assertion, that a cost still comes out of health,
+held.
+
+**The same three assertions fail with the stat built and the asset old**, because the old asset still has the
+row on `mana_pool_becomes_health`. They pass once the asset carries the moved row. So the fix is the stat and
+the row's move together, and neither alone.
+
+Proof H kept its broken run's log and failed exactly the three assertions predicted: in the older test, "and
+the mana pool is untouched" and "because the halved cost came out of health", the cost having come out of
+mana; and in the new test its set-up line, that below half health a cost comes out of health.
+
+**The Python suite was not run in the worktree before the stack was registered.** It was run before the window
+began and gave 1 failed, 5761 passed, 8 skipped, the one being the test that the asset is current.
+
+**The engine code compiled on its first build.** Nothing was changed after it.
+
+---
+
 ## 2026-10-06 — Four stats a persistent area reads: how long it lasts, more damage for each enemy inside, a slow, and only one at a time; no row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (four stat names and one
@@ -1446,7 +1551,9 @@ tied to its tag instead; what a player sees is what was ruled.
 ### CONSEQUENCES, STATED RATHER THAN CHANGED
 
 - **A minion's ailment carries no riders.** A burn a minion's swing applies is the minion's own, ruled
-  2026-09-17, and a minion wears nothing. "Your burn effects" is the wearer's own applications.
+  2026-09-17, and a minion wears nothing. "Your burn effects" is the wearer's own applications. **Confirmed by
+  the owner on 2026-10-06**: a minion's ailment does not carry the wearer's enchantment bonus unless a row says
+  so. Their words, to the question as put: "not unless specified".
 - **One applier's riders per ailment.** A second character's riders on the same ailment replace the first's;
   they do not add. With one player this cannot be seen.
 - **Riders on different ailments add**: a creature burning and diseased by a wearer of both armour rows has lost

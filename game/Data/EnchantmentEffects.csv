@@ -227,7 +227,7 @@ Positive_Gadgets_deal_20_40_increased_damage#1,Positive_Gadgets_deal_20_40_incre
 Positive_Gadgets_deal_20_40_increased_damage#2,Positive_Gadgets_deal_20_40_increased_damage,spell_damage,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Can_t_inflict_bleeding#1,Negative_Can_t_inflict_bleeding,bleed_chance,removed,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Can_t_inflict_bleeding#2,Negative_Can_t_inflict_bleeding,bleed_on_crit_chance,removed,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
-Positive_While_below_50_HP_all_skills_cost_HP_instead_o#1,Positive_While_below_50_HP_all_skills_cost_HP_instead_o,mana_pool_becomes_health,flat,1.0,1.0,,health_below,50.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_While_below_50_HP_all_skills_cost_HP_instead_o#1,Positive_While_below_50_HP_all_skills_cost_HP_instead_o,skill_cost_paid_from_health,flat,1.0,1.0,,health_below,50.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_While_below_50_HP_all_skills_cost_HP_instead_o#2,Positive_While_below_50_HP_all_skills_cost_HP_instead_o,mana_cost,more,-50.0,-50.0,,health_below,50.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Enemies_ignore_10_20_of_your_resistances#1,Negative_Enemies_ignore_10_20_of_your_resistances,resistance_war,flat,-10.0,-20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Enemies_ignore_10_20_of_your_resistances#2,Negative_Enemies_ignore_10_20_of_your_resistances,resistance_demonic,flat,-10.0,-20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

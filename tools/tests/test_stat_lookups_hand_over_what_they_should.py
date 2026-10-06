@@ -564,6 +564,10 @@ INVENTORY = {
      'FName(CostPaidFromEnergyShieldStat), FGameplayTagContainer(), 0.0f'):
         "Cast from Ward's flag, asked when a cost is weighed against the pools, "
         'which is a question about the character and not about one skill',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(CostPaidFromHealthStat), FGameplayTagContainer(), 0.0f'):
+        'the flag that moves a cost onto health, asked when the pool that pays '
+        'is chosen, which is a question about the character and not one skill',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'WardStat, FGameplayTagContainer(), 0.0f'):
         "Sacrificial Ward's interval, a flag read off the defender when a blow "
