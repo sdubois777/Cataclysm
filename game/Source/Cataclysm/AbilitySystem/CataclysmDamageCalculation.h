@@ -631,6 +631,20 @@ public:
 	static const TCHAR* ZoneAtImpactSecondsStat;
 
 	/**
+	 * TWO BY WHICH A ZONE REACHES THE CHARACTER WHO LEFT IT, each a flag: above nought is yes. Read where the zone
+	 * is left. THE OWNER DECIDED ON 2026-10-06 that a character's own skills and zones may hurt them where a row's
+	 * sentence says so; the own-side rule of 2026-08-20 stays the default for everything else.
+	 *
+	 * `zone_damages_its_owner`: "Persistent AOE zones also damage you if you stand in them". The zone's own sweep
+	 * figure, through the owner's defences, and it can kill.
+	 *
+	 * `zone_applies_effects_to_owner`: "Your persistent AOE zones apply their effects to you if you stand in them".
+	 * The curse, the slow, the stagger on entry and the ailment. Not the damage, which is the other row's.
+	 */
+	static const TCHAR* ZoneDamagesItsOwnerStat;
+	static const TCHAR* ZoneAppliesEffectsToOwnerStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *
