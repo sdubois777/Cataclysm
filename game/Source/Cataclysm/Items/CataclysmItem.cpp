@@ -1411,6 +1411,14 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bRepeatSkill = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::RepeatSkillAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT TRIGGERS A DIFFERENT HELD SKILL: one with a cooldown, free, or a spell that
+					// pays its cost. Ruled 2026-10-06. The value is the chance.
+					Action.bTriggerHeldSkill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TriggerHeldSkillAction,
+						ESearchCase::IgnoreCase);
+					Action.bTriggerHeldSpell = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TriggerHeldSpellAction,
+						ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

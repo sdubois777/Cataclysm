@@ -13927,4 +13927,303 @@ bool FCataclysmAttackUseShapeTagTest::RunTest(const FString&)
 	return true;
 }
 
+// A ROW THAT TRIGGERS A DIFFERENT HELD SKILL. Ruled 2026-10-06, for Spellblade's Will: "Your melee attacks have a 25%
+// chance to trigger an ability with a cooldown" and "Your melee attacks have a 25% of triggering one of your spells.
+// This does not put the spell on cooldown but does use it's mana cost". The rows are made by hand. Issue #1833.
+namespace CataclysmHeldTriggerTest
+{
+	using namespace CataclysmAttackUseTest;
+
+	/** A trigger row on `attack_use`, at a chance of 25: a spell row, or a row for a skill with a cooldown. */
+	FCataclysmPoolAction ATriggerRow(const TCHAR* Key, bool bSpell, const TCHAR* TagCell = TEXT(""))
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("attack_use"));
+		Action.Percent = 25.0f;
+		Action.bTriggerHeldSpell = bSpell;
+		Action.bTriggerHeldSkill = !bSpell;
+		Action.TriggerKey = FName(Key);
+		Action.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		return Action;
+	}
+
+	/** One console variable pinned, and put back to "for real" afterwards. */
+	struct FHeldTriggerPinned
+	{
+		FHeldTriggerPinned(const TCHAR* Name, const TCHAR* Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			Set(Value);
+		}
+
+		~FHeldTriggerPinned()
+		{
+			Set(TEXT("-1"));
+		}
+
+		void Set(const TCHAR* Value)
+		{
+			if (Variable)
+			{
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/** The names of a pool, in its order, joined for one comparison and one message. */
+	FString NamesOf(const TArray<FCataclysmWeaponSkill>& Pool)
+	{
+		TArray<FString> Names;
+		for (const FCataclysmWeaponSkill& Skill : Pool)
+		{
+			Names.Add(Skill.Name);
+		}
+		return FString::Join(Names, TEXT(", "));
+	}
+
+	/** Where this name stands in the pool, as the text the pick variable takes; "-1" when it is not there. */
+	FString PickOf(const TArray<FCataclysmWeaponSkill>& Pool, const TCHAR* Name)
+	{
+		return FString::FromInt(
+			Pool.IndexOfByPredicate([Name](const FCataclysmWeaponSkill& Skill) { return Skill.Name == Name; }));
+	}
+
+	float ManaOf(const UCataclysmAbilitySystemComponent* System)
+	{
+		return System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldTriggerCooldownSkillTest,
+	"Cataclysm.Enchantments.AnAttackTriggersADifferentHeldSkillWithACooldownFree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldTriggerCooldownSkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmHeldTriggerTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FHeldTriggerPinned Roll(TEXT("Cataclysm.TriggerHeldSkillRoll"), TEXT("0"));
+	FHeldTriggerPinned Pick(TEXT("Cataclysm.TriggerHeldSkillPick"), TEXT("0"));
+	FCataclysmWeaponSkill Basic;
+	if (!TestTrue(TEXT("set-up: a possessed player"), Rig.IsUsable())
+		|| !TestTrue(TEXT("set-up: the roll and the pick can be pinned"), Roll.Variable && Pick.Variable)
+		|| !TestTrue(TEXT("set-up: a Sword and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Sword"), Basic)))
+	{
+		return false;
+	}
+	const FName BasicName(*Basic.Name);
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(200.0f, 50.0f, 0.0f);
+
+	// THE POOL IS WHAT THE CHARACTER HOLDS THAT HAS A COOLDOWN AND MAY BE TRIGGERED. A Demonic Sword holds six: the
+	// basic attack has no cooldown, Ashen Edge is a self buff, Flashpoint is a movement skill and Touch Off needs a
+	// burning enemy. Two are left.
+	const TArray<FCataclysmWeaponSkill> Pool =
+		UCataclysmTriggeredSkill::HeldSkillsToTrigger(Rig.Player, BasicName, /*bSpells=*/false);
+	if (!TestEqual(TEXT("the skills a Sword's basic attack may trigger"), NamesOf(Pool), FString(TEXT("Quench, Extinction"))))
+	{
+		return false;
+	}
+	// NEVER THE SKILL JUST USED.
+	TestEqual(TEXT("after a use of Quench, Quench is not in the pool"),
+			  NamesOf(UCataclysmTriggeredSkill::HeldSkillsToTrigger(Rig.Player, FName(TEXT("Quench")), false)),
+			  FString(TEXT("Extinction")));
+	TestEqual(TEXT("and a Sword holds no spell to trigger"),
+			  UCataclysmTriggeredSkill::HeldSkillsToTrigger(Rig.Player, BasicName, /*bSpells=*/true).Num(), 0);
+
+	// A ROLL AT THE CHANCE TRIGGERS NOTHING.
+	Rig.System->SetPoolActions({ATriggerRow(TEXT("Test:two"), /*bSpell=*/false, TEXT("Type.Melee"))});
+	Roll.Set(TEXT("25"));
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("a roll of 25 against a chance of 25 records nothing"), Rig.System->PendingHeldTriggerUsedSkill().IsNone());
+
+	// A ROLL BELOW IT RECORDS ONE, FOR THE SKILL USED, AND STARTS NOTHING INSIDE THE USE.
+	Roll.Set(TEXT("0"));
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	if (!TestEqual(TEXT("a melee basic attack records a trigger"), Rig.System->PendingHeldTriggerUsedSkill(), BasicName))
+	{
+		return false;
+	}
+	TestTrue(TEXT("for a skill with a cooldown, and not for a spell"),
+			 Rig.System->PendingHeldTriggerWantsACooldownSkill() && !Rig.System->PendingHeldTriggerWantsASpell());
+	TestTrue(TEXT("at the point the swing was aimed"), Rig.System->PendingHeldTriggerAim().Equals(Aim, 0.01f));
+
+	// MADE: FREE, NOT A USE, AND NO COOLDOWN STARTED.
+	const float ManaBefore = ManaOf(Rig.System);
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	if (!TestTrue(TEXT("the trigger is made"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it paid no mana"), ManaOf(Rig.System), ManaBefore);
+	TestEqual(TEXT("it sent no skill-used notice"), UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestFalse(TEXT("it started no cooldown on the heavy slot"),
+			  Rig.System->HasMatchingGameplayTag(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy)));
+	TestFalse(TEXT("and there is no second one to make"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldTriggerSpellPaysTest,
+	"Cataclysm.Enchantments.ATriggeredSpellPaysItsCostStartsNoCooldownAndIsRefusedWithTooLittle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldTriggerSpellPaysTest::RunTest(const FString&)
+{
+	using namespace CataclysmHeldTriggerTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FHeldTriggerPinned Roll(TEXT("Cataclysm.TriggerHeldSkillRoll"), TEXT("0"));
+	FHeldTriggerPinned Pick(TEXT("Cataclysm.TriggerHeldSkillPick"), TEXT("0"));
+	FCataclysmWeaponSkill Basic;
+	if (!TestTrue(TEXT("set-up: a possessed player"), Rig.IsUsable())
+		|| !TestTrue(TEXT("set-up: the roll and the pick can be pinned"), Roll.Variable && Pick.Variable)
+		|| !TestTrue(TEXT("set-up: a Wand and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Wand"), Basic)))
+	{
+		return false;
+	}
+	const FName BasicName(*Basic.Name);
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+
+	// THE SPELLS A DEMONIC WAND HOLDS THAT MAY BE TRIGGERED: four of its five. Foul Wake is a movement skill.
+	const TArray<FCataclysmWeaponSkill> Spells =
+		UCataclysmTriggeredSkill::HeldSkillsToTrigger(Rig.Player, BasicName, /*bSpells=*/true);
+	if (!TestEqual(TEXT("the spells a Wand's basic attack may trigger"), NamesOf(Spells),
+				   FString(TEXT("Hex of Cinders, Malefice, Anathema, Whisper of Madness"))))
+	{
+		return false;
+	}
+	Pick.Set(*PickOf(Spells, TEXT("Malefice")));
+
+	Rig.System->SetPoolActions({ATriggerRow(TEXT("Test:ten"), /*bSpell=*/true)});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	if (!TestTrue(TEXT("a basic attack records a trigger of a spell"),
+				  Rig.System->PendingHeldTriggerUsedSkill() == BasicName && Rig.System->PendingHeldTriggerWantsASpell()))
+	{
+		return false;
+	}
+
+	// MADE: IT PAYS ITS COST, AND NOTHING ELSE OF A USE.
+	const float ManaBefore = ManaOf(Rig.System);
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	if (!TestTrue(TEXT("the trigger is made"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player)))
+	{
+		return false;
+	}
+	const UCataclysmSkillTemplate* Running = nullptr;
+	if (!TestEqual(TEXT("one triggered Malefice is running"), RepeatsRunning(Rig.System, TEXT("Malefice"), &Running), 1)
+		|| !Running)
+	{
+		return false;
+	}
+	TestTrue(TEXT("it paid mana"), ManaOf(Rig.System) < ManaBefore);
+	TestEqual(TEXT("and what it paid is what Malefice costs this character"), ManaBefore - ManaOf(Rig.System),
+			  Running->ManaCostFor(Rig.System), 0.01f);
+	TestEqual(TEXT("it sent no skill-used notice"), UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestFalse(TEXT("it started no cooldown on the heavy slot"),
+			  Rig.System->HasMatchingGameplayTag(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy)));
+
+	// WITH TOO LITTLE TO PAY, THE TRIGGER IS REFUSED AND NOTHING ELSE HAPPENS.
+	Rig.System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 0.0f);
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestFalse(TEXT("with no mana the trigger is refused"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	TestEqual(TEXT("and no second Malefice runs"), RepeatsRunning(Rig.System, TEXT("Malefice")), 1);
+	TestEqual(TEXT("and no mana is taken"), ManaOf(Rig.System), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldTriggerBothRowsTest,
+	"Cataclysm.Enchantments.WhenBothTriggerRowsPassOneSkillIsTriggeredAndTheSpellRowWinsWhenASpellIsHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldTriggerBothRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHeldTriggerTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FHeldTriggerPinned Roll(TEXT("Cataclysm.TriggerHeldSkillRoll"), TEXT("0"));
+	FHeldTriggerPinned Pick(TEXT("Cataclysm.TriggerHeldSkillPick"), TEXT("0"));
+	FCataclysmWeaponSkill Basic;
+	if (!TestTrue(TEXT("set-up: a possessed player"), Rig.IsUsable())
+		|| !TestTrue(TEXT("set-up: the roll and the pick can be pinned"), Roll.Variable && Pick.Variable)
+		|| !TestTrue(TEXT("set-up: a Wand and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Wand"), Basic)))
+	{
+		return false;
+	}
+	const FName BasicName(*Basic.Name);
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+	const FCataclysmPoolAction Two = ATriggerRow(TEXT("Test:two"), /*bSpell=*/false);
+	const FCataclysmPoolAction Ten = ATriggerRow(TEXT("Test:ten"), /*bSpell=*/true);
+
+	// A WAND HOLDS SPELLS, AND THEY ARE ALSO ITS SKILLS WITH A COOLDOWN. Malefice stands at the same place in both
+	// pools, so the pick below takes it whichever row is acted on, and what tells the two apart is the mana.
+	const TArray<FCataclysmWeaponSkill> Spells = UCataclysmTriggeredSkill::HeldSkillsToTrigger(Rig.Player, BasicName, true);
+	const TArray<FCataclysmWeaponSkill> WithACooldown =
+		UCataclysmTriggeredSkill::HeldSkillsToTrigger(Rig.Player, BasicName, false);
+	if (!TestTrue(TEXT("set-up: Malefice is in both pools at one place"),
+				  PickOf(Spells, TEXT("Malefice")) != TEXT("-1")
+					  && PickOf(Spells, TEXT("Malefice")) == PickOf(WithACooldown, TEXT("Malefice"))))
+	{
+		return false;
+	}
+	Pick.Set(*PickOf(Spells, TEXT("Malefice")));
+
+	// BOTH ROWS PASS ON ONE USE: ONE TRIGGER, AND IT IS THE SPELL ROW'S, WHICH PAYS.
+	Rig.System->SetPoolActions({Two, Ten});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	if (!TestTrue(TEXT("both rows are recorded for the one use"),
+				  Rig.System->PendingHeldTriggerWantsASpell() && Rig.System->PendingHeldTriggerWantsACooldownSkill()))
+	{
+		return false;
+	}
+	const float ManaBefore = ManaOf(Rig.System);
+	TestTrue(TEXT("a trigger is made"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	TestTrue(TEXT("it is the spell row's: it paid mana"), ManaOf(Rig.System) < ManaBefore);
+	TestEqual(TEXT("one Malefice runs, not two"), RepeatsRunning(Rig.System, TEXT("Malefice")), 1);
+	TestFalse(TEXT("and there is no second trigger to make"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+
+	// A SWORD HOLDS NO SPELL. Both rows pass: the trigger is the cooldown row's, and it is free.
+	if (!TestTrue(TEXT("set-up: a Sword and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Sword"), Basic)))
+	{
+		return false;
+	}
+	Pick.Set(TEXT("0"));
+	Rig.System->SetPoolActions({Two, Ten});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	const float SwordManaBefore = ManaOf(Rig.System);
+	TestTrue(TEXT("with no spell held the cooldown row's trigger is made"),
+			 UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	TestEqual(TEXT("and it is free"), ManaOf(Rig.System), SwordManaBefore);
+
+	// AND THE SPELL ROW ALONE DOES NOTHING FOR A CHARACTER THAT HOLDS NO SPELL.
+	Rig.System->SetPoolActions({Ten});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("the spell row is recorded"), Rig.System->PendingHeldTriggerWantsASpell());
+	TestFalse(TEXT("and nothing is triggered, because no spell is held"),
+			  UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

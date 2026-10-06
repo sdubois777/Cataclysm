@@ -3937,6 +3937,23 @@ struct CATACLYSM_API FCataclysmPoolAction
 	float RepeatSharePercent = 100.0f;
 
 	/**
+	 * Set, this action triggers a DIFFERENT skill the character holds that has a cooldown, free, with `Percent` as
+	 * its chance out of 100. Ruled 2026-10-06, for Spellblade's Will: "Your melee attacks have a 25% chance to
+	 * trigger an ability with a cooldown". The triggered skill's cooldown is not waited for and none is started.
+	 * Only on an event that names a skill. See `UCataclysmTriggeredSkill::MakePendingHeldTrigger`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTriggerHeldSkill = false;
+
+	/**
+	 * Set, this action triggers a held skill that is a spell, which PAYS ITS COST and starts no cooldown. Ruled
+	 * 2026-10-06, for Spellblade's Will: "Your melee attacks have a 25% of triggering one of your spells. This does
+	 * not put the spell on cooldown but does use it's mana cost". With too little to pay, nothing is triggered.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTriggerHeldSpell = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
