@@ -54,6 +54,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "EngineUtils.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -6009,6 +6010,122 @@ bool FCataclysmMeleeReflectChanceTest::RunTest(const FString&)
 	TaggedBlowOn(Attacker, Both, TEXT("Type.Melee"));
 	TestEqual(TEXT("a defender that reflects and retaliates sends back the reflection alone"),
 			  AttackerBefore - Attacker.Health(), SentBackByTheReflection, 0.01f);
+	return true;
+}
+
+// TERRAIN'S HALF OF TWO OF THE ZONE STATS. Ruled 2026-10-06: "persistent AOE effects" are ground zones and terrain, so
+// `persistent_area_duration` and `only_one_persistent_area` reach a terrain piece too, and the change that added them
+// tested only the ground zone's half. Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTerrainReadsTheZoneStatsTest,
+	"Cataclysm.StatExemption.ATerrainPieceLastsLessWithTheDurationStatAndANewOneEndsAnEarlierOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTerrainReadsTheZoneStatsTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	/** What two strikes that each raise a wall leave: how long the first lasts, and how many stand after each. */
+	struct FRead
+	{
+		bool bMade = false;
+		float FirstLastsSeconds = -1.0f;
+		int32 AfterOne = -1;
+		int32 AfterTwo = -1;
+	};
+	const auto TwoWalls = [](TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Caster(World, FVector::ZeroVector);
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Carry(Inputs);
+		if (Inputs.Num() > 0)
+		{
+			Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+		// UPTHRUST'S OWN SHAPE, without its burn and its launch: a strike that raises a wall for 8 seconds.
+		const auto RaiseAWall = [&Caster](ECataclysmAbilitySlot Slot) -> bool
+		{
+			const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), Slot, /*Level=*/100, Caster.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmStrikeSkill* Strike = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Strike)
+			{
+				return false;
+			}
+			Strike->SkillName = TEXT("A strike raising a wall");
+			Strike->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Radius=10; Angle=15; Terrain=Wall; TerrainSize=10; TerrainDuration=8"));
+			Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(
+				TEXT("Item.Weapon.Warhammer, Element.Demonic, Type.AOE.Persistent, Type.Melee"));
+			return Caster.AbilitySystem->TryActivateAbility(Handle);
+		};
+		const auto Standing = [World, &Caster](ACataclysmTerrain** OutOne = nullptr) -> int32
+		{
+			int32 Count = 0;
+			for (TActorIterator<ACataclysmTerrain> It(World); It; ++It)
+			{
+				if (IsValid(*It) && It->GetOwner() == Caster.Actor)
+				{
+					++Count;
+					if (OutOne)
+					{
+						*OutOne = *It;
+					}
+				}
+			}
+			return Count;
+		};
+
+		if (!RaiseAWall(ECataclysmAbilitySlot::Heavy))
+		{
+			return Read;
+		}
+		Read.bMade = true;
+		ACataclysmTerrain* First = nullptr;
+		Read.AfterOne = Standing(&First);
+		Read.FirstLastsSeconds = First ? First->GetLifeSpan() : -1.0f;
+		Read.AfterTwo = RaiseAWall(ECataclysmAbilitySlot::Special) ? Standing() : -1;
+		return Read;
+	};
+
+	const FRead Plain = TwoWalls([](TMap<FName, FCataclysmStatInputs>&) {});
+	const FRead Cut = TwoWalls([](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		FCataclysmStatModifier Half;
+		Half.Bucket = ECataclysmStatBucket::More;
+		Half.Source = ECataclysmModifierSource::Enchantment;
+		Half.Value = -50.0f;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::PersistentAreaDurationStat));
+		Line.Base = UCataclysmDamageCalculation::NormalPersistentAreaDuration;
+		Line.Modifiers = {Half};
+	});
+	const FRead OnlyOne = TwoWalls([](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmDamageCalculation::OnlyOnePersistentAreaStat, 1.0f);
+	});
+	if (!TestTrue(TEXT("set-up: each caster raised a wall"), Plain.bMade && Cut.bMade && OnlyOne.bMade)
+		|| !TestEqual(TEXT("set-up: a plain caster's two strikes leave one wall, then two"),
+					  Plain.AfterOne * 10 + Plain.AfterTwo, 12))
+	{
+		return false;
+	}
+
+	// THE DURATION STAT REACHES TERRAIN.
+	TestEqual(TEXT("a plain caster's wall lasts its stated 8 seconds"), Plain.FirstLastsSeconds, 8.0f, 0.01f);
+	TestEqual(TEXT("and with 50% less of the duration stat it lasts 4"), Cut.FirstLastsSeconds, 4.0f, 0.01f);
+
+	// AND SO DOES THE ONLY-ONE RULE: a new terrain piece ends the earlier one.
+	TestEqual(TEXT("a caster that may hold only one has one wall after the first strike"), OnlyOne.AfterOne, 1);
+	TestEqual(TEXT("and still one after the second"), OnlyOne.AfterTwo, 1);
 	return true;
 }
 
