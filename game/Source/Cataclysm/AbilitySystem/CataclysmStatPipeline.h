@@ -3869,6 +3869,19 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bDamageImmunity = false;
 
 	/**
+	 * Set, this action repeats the skill just used, free, with `Percent` as its chance out of 100, instead of moving
+	 * a pool. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15% chance to cast a second time for free".
+	 * Only on an event that names a skill, which is `skill_use`. See
+	 * `UCataclysmAbilitySystemComponent::ActOnSkillUse` and `UCataclysmTriggeredSkill::MakePendingRepeat`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bRepeatSkill = false;
+
+	/** The share of its damage the repeat deals, in percent: 100 unless the row says less. See `bRepeatSkill`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float RepeatSharePercent = 100.0f;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833

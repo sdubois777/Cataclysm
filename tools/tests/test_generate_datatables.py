@@ -2829,6 +2829,47 @@ class TestReflectAndTheBlockCount:
         with pytest.raises(gen.DataError, match="from 2"):
             gen.enchantment_effects(self.wave(tmp_path, {"Every Nth": 1}))
 
+class TestRepeatSkill:
+    """A row that repeats the skill just used, free. Mechanism B2, ruled
+    2026-10-05: "Every skill use has a 5%-15% chance to cast a second time for
+    free"."""
+
+    WORDS = "Every skill use has a 5%-15% chance to cast a second time for free"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnSkillUse, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def repeat(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "repeat_skill", "Action Event": "skill_use",
+                  "Value Low": 5, "Value High": 15}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "repeat.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_repeat_row_is_carried_through_with_its_chance_and_no_fraction(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            "repeat_skill", "skill_use", 5.0, 15.0, "")
+
+    def test_a_repeat_row_on_an_event_that_names_no_skill_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "kill"}))
+
+    def test_a_repeat_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Fraction Of": "maximum"}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
