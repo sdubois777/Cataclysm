@@ -3380,10 +3380,13 @@ namespace CataclysmStatExemptionTest
 		float TakenByOneEnemy = -1.0f;
 		bool bEnemyIsSlowed = false;
 		float SlowStatedOnTheEnemy = -1.0f;
+		float CreatureSpeedBefore = -1.0f;
+		float CreatureSpeedAfter = -1.0f;
 		int32 LiveZonesAfterASecondBlink = 0;
 	};
 
-	FZoneReading ReadABlinksZones(TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry)
+	FZoneReading ReadABlinksZones(TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry,
+								  bool bWithACreature = false)
 	{
 		FZoneReading Read;
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -3410,6 +3413,11 @@ namespace CataclysmStatExemptionTest
 		FScopedSwinger Caster(World, FVector::ZeroVector);
 		FScopedSwinger Left(World, FVector(0.0f, 200.0f, 0.0f));
 		FScopedSwinger Right(World, FVector(0.0f, -200.0f, 0.0f));
+		// AND A REAL CREATURE 1.5 M BEHIND THE CASTER, when the caller reads a speed: only a creature has one. It is
+		// a third body inside the zone, so the probe that counts enemies does not ask for it.
+		ACataclysmEnemyCharacter* Creature = bWithACreature
+			? World->SpawnActor<ACataclysmEnemyCharacter>(FVector(-150.0f, 0.0f, 0.0f), FRotator::ZeroRotator)
+			: nullptr;
 		TMap<FName, FCataclysmStatInputs> Inputs;
 		Carry(Inputs);
 		if (Inputs.Num() > 0)
@@ -3464,7 +3472,15 @@ namespace CataclysmStatExemptionTest
 			Read.LastsSeconds = AtTheOrigin->GetLifeSpan();
 			const UAbilitySystemComponent* LeftSystem = UCataclysmTargeting::AbilitySystemOf(Left.Actor);
 			const float Before = LeftSystem->GetNumericAttribute(Vital::GetHealthAttribute());
+			if (Creature)
+			{
+				Read.CreatureSpeedBefore = Creature->CrippleMultiplier();
+			}
 			AtTheOrigin->Sweep();
+			if (Creature)
+			{
+				Read.CreatureSpeedAfter = Creature->CrippleMultiplier();
+			}
 			Read.TakenByOneEnemy = Before - LeftSystem->GetNumericAttribute(Vital::GetHealthAttribute());
 			Read.bEnemyIsSlowed = LeftSystem->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
 			Read.SlowStatedOnTheEnemy =
@@ -3536,11 +3552,11 @@ namespace CataclysmStatExemptionTest
 	 */
 	void ProbeZoneSlowPercent(FAutomationTestBase& Test)
 	{
-		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {}, /*bWithACreature=*/true);
 		const FZoneReading Slowing = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>& Inputs)
 		{
 			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneSlowPercentStat, 20.0f);
-		});
+		}, /*bWithACreature=*/true);
 		if (!Test.TestTrue(TEXT("both zones' sweeps reached the enemy"),
 						   Plain.TakenByOneEnemy > 0.0f && Slowing.TakenByOneEnemy > 0.0f))
 		{
@@ -3550,6 +3566,18 @@ namespace CataclysmStatExemptionTest
 		Test.TestTrue(TEXT("and a carrying caster's zone slows the enemy inside"), Slowing.bEnemyIsSlowed);
 		Test.TestEqual(TEXT("by the 20 per cent the stat states, and not the Cripple row's 30"),
 			Slowing.SlowStatedOnTheEnemy, 20.0f, 0.01f);
+
+		// AND THE RESULT, NOT ONLY THE STATEMENT: a real creature's own speed multiplier, which is what its walk and
+		// its attacks are multiplied by. A stated strength nothing read would pass the line above.
+		if (!Test.TestEqual(TEXT("a creature in either zone is at its whole speed before the sweep"),
+							Plain.CreatureSpeedBefore + Slowing.CreatureSpeedBefore, 2.0f, 0.001f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a plain zone's sweep leaves the creature at its whole speed"),
+			Plain.CreatureSpeedAfter, 1.0f, 0.001f);
+		Test.TestEqual(TEXT("and a carrying caster's zone leaves it at 0.8 of its speed"),
+			Slowing.CreatureSpeedAfter, 0.8f, 0.001f);
 	}
 
 	/**

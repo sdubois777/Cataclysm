@@ -74,6 +74,23 @@ No new source was read. **Nothing read settles any of the four**; each is the se
 - **None of the four reaches a floor rule's zone or a creature's.** They are read from the character whose skill
   leaves the area.
 
+### A fault found after the first window, and corrected before this merged
+
+**The first version of the slow dropped its size.** The sweep laid it with `ApplyNamedEffect`. For an effect whose row
+moves no attribute, which Cripple's is, that function lays the tag alone and does not carry the magnitude, so every
+zone slow was the Cripple row's own 30%, whatever the stat said. It is now laid with `ApplyTagForDuration` and its
+stated strength, the call `UCataclysmAilments::Apply` uses for a cripple.
+
+**Why the first window could not see it.** The probe gave the stat 30, which is the Cripple row's own figure, and
+asked only whether the enemy carried the tag. Both were true of the faulty version. The whole suite and three proofs
+passed with the fault in. It was found afterwards, while reading for the next change, and reported before any pull
+request for this layer was opened.
+
+**The probe now gives the stat 20** and asks for three things: the tag; a stated strength of 20 on the enemy; and
+the result, a real creature's own speed multiplier at 0.8 after the sweep and at 1 after a plain zone's. Ruled
+2026-10-06 by the coordinating session: the last, because a stated strength that nothing reads would be the same
+kind of fault.
+
 ### What is not here
 
 - The three sentences that need a zone to know who entered it or where a target stands, the four that make a zone
@@ -86,13 +103,14 @@ with an enemy 2 m to each side:
 
 - `ProbePersistentAreaDuration`: a zone lasts its stated 6 seconds, and 3 with 50% less.
 - `ProbeZoneDamagePerEnemyInside`: with two enemies inside, 20 per enemy makes a sweep 1.4 times a plain one.
-- `ProbeZoneSlowPercent`: an enemy swept by a carrying caster's zone carries the Cripple tag; a plain zone's does not.
+- `ProbeZoneSlowPercent`: an enemy swept by a zone whose owner carries 20 carries the Cripple tag stating 20, and a
+  creature swept by it is at 0.8 of its speed; a plain zone slows neither.
 - `ProbeOnlyOnePersistentArea`: a plain caster's blink leaves two zones and a second blink four; a carrying caster
   has one after each.
 
-**Not tested:** terrain's half of the duration and of the only-one rule; the size of the slow as a speed. Ruled
-2026-10-06: the next zone change begins with a probe for each of the three: a terrain piece lasting less with the
-stat, a new terrain piece ending an earlier one, and the slow read as a speed and not only as a tag.
+**Not tested:** terrain's half of the duration and of the only-one rule. Ruled 2026-10-06: the next zone change
+begins with a probe for each: a terrain piece lasting less with the stat, and a new terrain piece ending an earlier
+one.
 
 **Python.** No new test. The inventory of stat lookups gained four entries, one for each new call.
 
