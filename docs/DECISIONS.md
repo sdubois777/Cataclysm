@@ -2,6 +2,60 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Three drawbacks roll for a use to deal no damage: cooldown abilities, strike skills that miss, and projectiles that explode prematurely
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (three rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, three new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The three rows the entry "A row can roll, once for a use, that the use deals no damage or deals increased damage"
+left to the session holding the design workbook, each as that entry's table states it. No engine code and no
+generator code is changed here.
+
+| Sentence | Action | Event | Chance | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Your cooldown abilities have a 25% chance to deal no damage | `cooldown_use_no_damage` | `skill_use` | 25 | |
+| Strike skills have a 10%-20% chance to miss entirely regardless of other stats | `use_no_damage` | `skill_use` | 10 to 20 | `Type.Strike` |
+| Projectiles have a 20%-35% chance to explode prematurely dealing no damage | `use_no_damage` | `attack_use` | 20 to 35 | `Type.Projectile` |
+
+EnchantmentEffects 490 to 493, over 404 to 407 enchantments.
+
+**Not here:** "Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage". The generator
+refuses the two increase actions until a column carries the increase, as that entry states.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading is that entry's: "cooldown abilities" are skills whose cooldown is above nought; "skills" is
+`skill_use`, so the basic attack does not roll; a sentence that names no skill is `attack_use`, so a projectile
+basic attack does; "explode prematurely" is the no-damage outcome and the projectile still flies.
+
+### HOW THE ROWS ARE TESTED
+
+One test for each row, each wearing the real drawback at its harshest roll and handing the wearer's ability system a
+use through `ActOnSkillUse`, with `Cataclysm.UseOutcomeRoll` pinned.
+
+- `TheCooldownAbilitiesNoDamageRowRollsOnlyForASkillWithACooldown`: a roll of 24.9 records no damage for a skill
+  with a cooldown and nothing for one without; a roll of 25 records nothing.
+- `TheStrikeSkillsMissRowRollsForAStrikeSkillAndNotForASpellOrABasicAttack`: a roll of 19.9 records it for a strike
+  skill, and not for a spell or for a basic attack; a roll of 20 records nothing.
+- `TheProjectilesExplodePrematurelyRowRollsForEveryProjectileUseTheBasicAttackIncluded`: a roll of 34.9 records it
+  for a projectile basic attack and for a projectile skill, and not for a strike; a roll of 35 records nothing.
+
+**Each test stops at what the rows recorded.** The wearer the enchantment tests use is not a player character and
+uses no skill, so that a use then deals nothing is covered by that entry's tests, with rows made by hand.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- Everything that entry states of a use that deals no damage holds for these rows: it still pays its cost and
+  starts its cooldown, it does not ask evasion, and a free repeat or a triggered skill never rolls.
+- **A character wearing the cooldown row and the strike row rolls each for a strike skill with a cooldown**, and
+  either passing is enough.
+
+---
+
 ## 2026-10-06 — Reaper's Embrace is partly built: two pieces raise every heal by a tenth and halve health regeneration, through a stat that can raise what a heal restores
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (`HealingReceivedStat`,
