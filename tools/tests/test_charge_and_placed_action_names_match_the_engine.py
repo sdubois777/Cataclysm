@@ -69,6 +69,9 @@ CONSTANTS = {
     "CleanseAction": "cleanse",
     # AND THE REPEAT OF THE SKILL JUST USED, since mechanism B2.
     "RepeatSkillAction": "repeat_skill",
+    # AND THE TWO THAT TRIGGER A DIFFERENT HELD SKILL, ruled 2026-10-06.
+    "TriggerHeldSkillAction": "trigger_held_skill",
+    "TriggerHeldSpellAction": "trigger_held_spell",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -170,6 +173,12 @@ def test_the_generator_accepts_exactly_the_reflect_name_the_engine_has() -> None
 def test_the_generator_accepts_exactly_the_repeat_skill_name_the_engine_has() -> None:
     """Mechanism B2."""
     assert gen.REPEAT_SKILL_ACTION == engine_names()["RepeatSkillAction"]
+
+
+def test_the_generator_accepts_exactly_the_trigger_held_names_the_engine_has() -> None:
+    """Spellblade's Will, ruled 2026-10-06."""
+    assert gen.TRIGGER_HELD_SKILL_ACTION == engine_names()["TriggerHeldSkillAction"]
+    assert gen.TRIGGER_HELD_SPELL_ACTION == engine_names()["TriggerHeldSpellAction"]
 
 
 def test_the_generator_accepts_exactly_the_damage_immunity_name_the_engine_has() -> None:

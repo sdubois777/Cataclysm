@@ -4,14 +4,22 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 
+/** Which skill of the pool a held trigger takes. Ruled 2026-10-06. */
+static TAutoConsoleVariable<int32> CVarTriggerHeldSkillPick(
+	TEXT("Cataclysm.TriggerHeldSkillPick"), -1,
+	TEXT("Pins which skill of its pool a trigger-held-skill enchantment takes, by index. Negative picks for real."),
+	ECVF_Default);
+
 bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
-									   float DamageShare)
+									   float DamageShare, bool bPaysCost)
 {
 	UCataclysmAbilitySystemComponent* System =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
@@ -40,6 +48,7 @@ bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeapon
 	Template->Slot = Skill.Slot;
 	UCataclysmWeaponSkills::StampOnto(*Template, Skill);
 	Template->bFreeRepeat = true;
+	Template->bFreeRepeatPaysCost = bPaysCost;
 	Template->FreeRepeatAim = Aim;
 	Template->FreeRepeatDamageShare = DamageShare;
 	if (!System->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true))
@@ -128,4 +137,84 @@ FGameplayTagContainer UCataclysmTriggeredSkill::BasicAttackUseTags(const AActor*
 		Asked.AddTag(ByShape);
 	}
 	return Asked;
+}
+
+TArray<FCataclysmWeaponSkill> UCataclysmTriggeredSkill::HeldSkillsToTrigger(const AActor* Character, FName UsedSkill,
+																			 bool bSpells)
+{
+	TArray<FCataclysmWeaponSkill> Pool;
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Character ? Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	if (!Slots)
+	{
+		return Pool;
+	}
+
+	const UDataTable* SlotTable = UCataclysmSkillSlots::LoadGeneratedTable();
+	for (const FCataclysmWeaponSkill& Skill : Slots->GetAvailableSkills())
+	{
+		if (FName(*Skill.Name) == UsedSkill || !RepeatsFromARow(Skill))
+		{
+			continue;
+		}
+		if (bSpells)
+		{
+			if (UCataclysmSkillEffects::IsSpell(Skill.Tags))
+			{
+				Pool.Add(Skill);
+			}
+			continue;
+		}
+		// THE ROW'S OWN COOLDOWN WHEN IT STATES ONE, AND ITS SLOT'S WHEN IT DOES NOT, as the granted skill reads it.
+		const float Cooldown =
+			Skill.Cooldown >= 0.0f ? Skill.Cooldown : UCataclysmSkillSlots::NumbersFor(SlotTable, Skill.Slot).Cooldown;
+		if (Cooldown > 0.0f)
+		{
+			Pool.Add(Skill);
+		}
+	}
+	return Pool;
+}
+
+bool UCataclysmTriggeredSkill::MakePendingHeldTrigger(AActor* Character)
+{
+	UCataclysmAbilitySystemComponent* System =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!System || System->PendingHeldTriggerUsedSkill().IsNone())
+	{
+		return false;
+	}
+
+	// TAKEN AND CLEARED BEFORE ANYTHING IS STARTED, so whatever happens next there is one trigger for one use.
+	const FName Used = System->PendingHeldTriggerUsedSkill();
+	const FVector Aim = System->PendingHeldTriggerAim();
+	const bool bSpell = System->PendingHeldTriggerWantsASpell();
+	const bool bCooldownSkill = System->PendingHeldTriggerWantsACooldownSkill();
+	System->ClearPendingHeldTrigger();
+
+	const auto PickFrom = [](const TArray<FCataclysmWeaponSkill>& Pool)
+	{
+		const int32 Pinned = CVarTriggerHeldSkillPick.GetValueOnAnyThread();
+		return Pool[Pinned >= 0 ? Pinned % Pool.Num() : FMath::RandRange(0, Pool.Num() - 1)];
+	};
+
+	// THE SPELL ROW WINS WHEN A SPELL IS HELD, and then it is the only trigger of this use: one it cannot pay for is
+	// refused and nothing else happens. Ruled 2026-10-06.
+	if (bSpell)
+	{
+		const TArray<FCataclysmWeaponSkill> Spells = HeldSkillsToTrigger(Character, Used, /*bSpells=*/true);
+		if (!Spells.IsEmpty())
+		{
+			return Trigger(Character, PickFrom(Spells), Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/true);
+		}
+	}
+	if (bCooldownSkill)
+	{
+		const TArray<FCataclysmWeaponSkill> WithACooldown = HeldSkillsToTrigger(Character, Used, /*bSpells=*/false);
+		if (!WithACooldown.IsEmpty())
+		{
+			return Trigger(Character, PickFrom(WithACooldown), Aim);
+		}
+	}
+	return false;
 }

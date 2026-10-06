@@ -621,6 +621,23 @@ public:
 	}
 
 	/**
+	 * The trigger of a different held skill that a row asked for on the use in hand and nobody has made yet.
+	 * Ruled 2026-10-06. `UsedSkill` is the skill that was used, which is never the one triggered; none means
+	 * nothing is pending. ONE TRIGGER FOR ONE USE: every row that passes its roll is counted, as a spell row or as
+	 * a cooldown row, and `UCataclysmTriggeredSkill::MakePendingHeldTrigger` makes one.
+	 */
+	FName PendingHeldTriggerUsedSkill() const { return PendingHeldTriggerUsedName; }
+	FVector PendingHeldTriggerAim() const { return PendingHeldTriggerAimPoint; }
+	bool PendingHeldTriggerWantsASpell() const { return bPendingHeldTriggerSpell; }
+	bool PendingHeldTriggerWantsACooldownSkill() const { return bPendingHeldTriggerCooldownSkill; }
+	void ClearPendingHeldTrigger()
+	{
+		PendingHeldTriggerUsedName = NAME_None;
+		bPendingHeldTriggerSpell = false;
+		bPendingHeldTriggerCooldownSkill = false;
+	}
+
+	/**
 	 * How many stacks of one row's own this character holds now: nought once
 	 * the row's window has passed since the last grant. Issue #1833.
 	 */
@@ -858,6 +875,14 @@ public:
 	 * `FCataclysmPoolAction::bRepeatSkill`.
 	 */
 	static const TCHAR* RepeatSkillAction;
+
+	/**
+	 * The two actions that trigger a different held skill, with the value as the chance: one with a cooldown, free;
+	 * and one spell, which pays its cost. Ruled 2026-10-06. `tools/generate_datatables.py` holds the same names in
+	 * `TRIGGER_HELD_SKILL_ACTION` and `TRIGGER_HELD_SPELL_ACTION`. See `FCataclysmPoolAction::bTriggerHeldSkill`.
+	 */
+	static const TCHAR* TriggerHeldSkillAction;
+	static const TCHAR* TriggerHeldSpellAction;
 
 	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
@@ -3417,6 +3442,12 @@ protected:
 	FName PendingRepeatName;
 	FVector PendingRepeatAimPoint = FVector::ZeroVector;
 	float PendingRepeatDamageShare = 0.0f;
+
+	/** The trigger of a different held skill a row asked for. See `PendingHeldTriggerUsedSkill`. */
+	FName PendingHeldTriggerUsedName;
+	FVector PendingHeldTriggerAimPoint = FVector::ZeroVector;
+	bool bPendingHeldTriggerSpell = false;
+	bool bPendingHeldTriggerCooldownSkill = false;
 	float PendingFollowThroughUntilSeconds = -1.0f;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */
