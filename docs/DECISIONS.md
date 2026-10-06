@@ -2,6 +2,52 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — The fog-spread test tells a new patch apart by which zone it is, not by where it is: a test that failed once in a whole-suite run
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` only. No game code. Issue
+[#2251](https://github.com/sdubois777/Cataclysm/issues/2251).
+**Applied.** The Unreal compile, the automation tests and the guard proof have NOT run yet; the figures are added at the
+end of this entry when they have.
+
+### What happened
+
+`Cataclysm.DungeonModifierEffects.TheFogSpreadsOnItsCadenceFromPatchToPatchUpToItsCap` failed once, in a whole-suite
+run on 2026-10-06, at "the new patch is told apart from the old". It passed alone at the same binaries, and in the two
+whole-suite runs before it. No game file had changed.
+
+### The cause, as read and not reproduced by a seed
+
+- A later fog patch is put one patch-width from a randomly picked earlier patch, at a random angle, and nothing
+  checks for a patch already there.
+- The engine's random draw has 32,768 possible values on this platform, so a repeated pick and a repeated angle put a
+  new patch exactly on an earlier one.
+- The test looked for a centre in the new list that was not in the old list. A patch exactly on an old one has no new
+  centre, so the test found none, although the patch count had gone up by one.
+
+### The change
+
+- **The fog test now finds the new patch by which zone it is**, the zone in the list after that was not in the list
+  before. Its "touches one already there" check is unchanged.
+- **A new test makes the case by hand**: two patches a patch-width apart and a third put exactly on the first. Its
+  control asserts that comparing centres finds no new patch, which is the assertion that failed; then that the new
+  way finds the third. **This is the reproduction.** It is the same state the fog met, made without searching for a
+  seed that gives it, and its control is the old assertion.
+
+### Rulings by the coordinating session under the owner's delegation, 2026-10-06
+
+- **An exact overlap in play is too rare to matter alone**, and is not changed.
+- **Whether the fog should avoid ground it already covers is a design question**, held and not blocking.
+- **The test that reseeds the shared random generator is a different fault with its own issue**,
+  [#2253](https://github.com/sdubois777/Cataclysm/issues/2253): one test calls `FMath::RandInit` for each of fifty
+  seeds and cannot restore the generator, so every later test that draws is order-dependent. It is the likely reason
+  this failure appeared when an unrelated test changed. Not fixed here.
+
+### Not yet run
+
+The compile, the two tests and the guard proof.
+
+---
+
 ## 2026-10-06 — Spellblade's Will's ten-piece bonus is built: a melee attack rolls to trigger one of the spells the character holds, and with none it does nothing
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
