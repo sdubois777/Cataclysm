@@ -67,6 +67,13 @@ other types**; that half is the judgement above.
 - **Most Demonic skills that leave ground already burn what they hit.** With this flag their zone also burns whoever
   stands in it, at the ordinary figure and not at the skill's.
 - **A zone's own damage is unchanged.** The ailment is a second thing each sweep does.
+- **A zone's ailment is its owner's application, so it carries what the owner's rows hang on that ailment and it
+  raises the owner's "applied a damage over time" event.** Read in `UCataclysmSkillEffects::ApplyDamageOverTime`:
+  the instigator is the zone's owner; the applier's riders go onto the carrier on every application, a refresh
+  included; and `dot_applied` is raised on every application to another character, a refresh included. So each
+  sweep, for each enemy inside, counts as applying a damage over time: a row that stacks on that event stacks once
+  a sweep for each enemy standing there, and a rider such as "an ailment passes on at its carrier's death" holds for
+  a zone's burn as for any other. Read, not run.
 - **The stagger reaches whatever the stagger reaches**: it does not stop its target acting, and an owner that
   carries a stagger health ceiling keeps to it.
 - **Until a row makes zones for other skills, both reach the 12 Demonic skills that leave ground.**
