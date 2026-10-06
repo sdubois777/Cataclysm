@@ -703,7 +703,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 496 SINCE THE ABSORB, REFLECT AND HIT-ALL ROWS, issue #1833, from 493.
 	//
 	// AND 497 SINCE SPELLBLADE'S WILL'S TEN-PIECE ROW, issue #1833, from 496.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    497)
+	//
+	// AND 498 SINCE THE REWORDED RESISTANCES ROW, issue #1833, from 497.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    498)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

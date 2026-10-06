@@ -15030,4 +15030,49 @@ bool FCataclysmSpellbladesWillTenRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemiesWithinFiveMetresResistRowTest,
+	"Cataclysm.Enchantments.TheEnemiesWithinFiveMetresGainResistancesRowTakesTheWearersPenetrationOnlyThatNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies within 5 metres gain 20%-40% resistances", which read "Nearby
+ * enemies gain 20%-40% resistances" until the owner approved the reword on
+ * 2026-10-06. Ruled 2026-10-05: read on the wearer's side, as less penetration
+ * against a character within 5 metres; `penetration` flat -20 to -40 under
+ * `target_within_metres` 5, WORN at the top of its roll, a drawback's harshest.
+ *
+ * ASKED AS THE DAMAGE STEP ASKS IT, with the distance to the character struck,
+ * AND READ AS A DIFFERENCE between a target 3 metres away and one 8 metres
+ * away, so the wearer's own penetration cancels and a wearer with no row reads
+ * no difference at all.
+ */
+bool FCataclysmEnemiesWithinFiveMetresResistRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Negative_Enemies_within_5_metres_gain_20_40_resistances"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Stat(TEXT("penetration"));
+	const auto At = [&Worn, &Stat](float Metres)
+	{
+		return Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f, /*SkillHealthCostPercent=*/-1.0f,
+										FCataclysmBlowContext(), /*MetresMovedBeforeBlow=*/-1.0f, Metres);
+	};
+
+	const float Far = At(8.0f);
+	TestEqual(*(FString(TEXT("against a target 3 metres away the wearer has 40 less penetration than against one 8 "
+							 "metres away.")) + CataclysmRepeatRowsTest::OlderAsset),
+		At(3.0f) - Far, -40.0f, 0.01f);
+	TestEqual(TEXT("and with no distance known, none is taken"), At(-1.0f) - Far, 0.0f, 0.01f);
+
+	// WHAT THAT IS WORTH TO THE ENEMY: its resistance is that much higher, up to its cap.
+	TestEqual(TEXT("an enemy with 20 resistance, 40 penetration taken away: it stands at 60"),
+		UCataclysmDamageCalculation::EffectiveResistanceUnderCap(20.0f, -40.0f, 70.0f), 60.0f, 0.01f);
+	TestEqual(TEXT("and one with 50 stops at its cap of 70"),
+		UCataclysmDamageCalculation::EffectiveResistanceUnderCap(50.0f, -40.0f, 70.0f), 70.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
