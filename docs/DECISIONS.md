@@ -2,6 +2,54 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — Four drawbacks take a share of the wearer's own damage: a row may take a share of what a hit dealt or retaliation dealt
+
+**Affects:** `tools/generate_datatables.py` (`EVENTS_WITH_AN_AMOUNT`), `docs/All_Things_Cataclysm.xlsx` (four
+rows of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (two tests), `CataclysmDataTableTests.cpp`,
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_pool_action_names_match_the_engine.py`
+(`test_every_event_a_row_may_take_a_share_of_is_fired_with_an_amount`),
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS FOUND
+
+**The game already passed the amount and the generator refused to let a row use it.** A pool action may take its
+percentage of what its event carried, and `ApplyPoolAction` has had that base since "Skills that cost HP restore
+that amount as mana". `hit_dealt` and `retaliation_dealt` each carry what reached the other character's health. The generator
+allowed the base on `health_cost` alone.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| You take 10%-20% of the damage dealt by your own point blank AOE skills | `health` -10 to -20 of `event_amount` on `hit_dealt`, requiring `Type.AOE.PointBlank` |
+| Your retaliation damage also applies to you at 25%-50% effectiveness | `health` -25 to -50 of `event_amount` on `retaliation_dealt` |
+| Your retaliation damage also damages you at 20%-40% effectiveness | `health` -20 to -40 of `event_amount` on `retaliation_dealt` |
+| You take 10%-20% of the damage you reflect | `health` -10 to -20 of `event_amount` on `retaliation_dealt` |
+
+EnchantmentEffects 463 to 467, over 379 to 383. No engine change. `EVENTS_WITH_AN_AMOUNT` gains `hit_dealt` and
+`retaliation_dealt`, and a Python check reads every call that fires an event on that list and fails if one
+passes no amount; it proves itself on `hit_taken`, which passes a literal nought, and `kill`, which passes none.
+
+### WHAT WAS RULED, 2026-10-05, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **IT IS A DRAIN AND NOT DAMAGE.** The wearer's armour, resistance and block do not reduce it, no on-damage
+   effect fires for it, and it stops at 1 health, so it cannot kill. That is the rule every negative pool action
+   has had since 2026-09-14. "You take X% of the damage" is read as that amount leaving health.
+2. **EVERY HIT PAYS.** A hit-fired event waits a quarter of a second between firings unless its row says
+   otherwise, which would charge the wearer for one enemy of a burst that struck five. Each of the four rows
+   states a trigger cooldown of 0. The generator already carried a stated 0 through; no engine change was needed.
+3. **"THE DAMAGE YOU REFLECT" IS RETALIATION.** The "Reflect X% of damage taken" rows are `retaliation` rows, so
+   three of these four drawbacks do the same thing at different sizes. All three are built as written.
+4. **THE AMOUNT IS WHAT REACHED HEALTH.** Damage an energy shield absorbed, or a blow that was blocked or evaded,
+   is not in the amount, because the event carries what the other character's health lost.
+
+**A roll of 1 gives the harshest share**, the second number of each range, which is the rule of the roll
+direction entry of this date; no range here is marked to roll down.
+
+---
+
 ## 2026-10-05 — "You are cleansed every 5 seconds" is built: the generator accepts the timed cleanse the game already had
 
 **Affects:** `tools/generate_datatables.py` (`CLEANSE_ACTION`, `_check_cleanse_action`),

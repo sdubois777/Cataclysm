@@ -3364,13 +3364,42 @@ class TestEnchantmentEffects:
 
     def test_a_fraction_of_the_events_own_amount_is_accepted(self, tmp_path):
         # "Skills that cost HP restore that amount as mana" is a fraction of
-        # what the event carried rather than of a pool. Only the health cost
-        # carries an amount today.
+        # what the event carried rather than of a pool. The health cost was the
+        # only event carrying an amount until 2026-10-05; the two tests below
+        # are the two that joined it.
         out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
             {"Action": "mana", "Action Event": "health_cost",
              "Fraction Of": "event_amount"})]))
 
         assert out[0]["FractionOf"] == "event_amount"
+
+    def test_a_share_of_a_hit_dealt_is_accepted_and_may_fire_on_every_hit(self, tmp_path):
+        # "You take 10%-20% of the damage dealt by your own point blank AOE
+        # skills", issue #1833, 2026-10-05. A STATED COOLDOWN OF 0 SURVIVES: a
+        # hit-fired event defaults to a quarter second, which would charge the
+        # wearer for one enemy of a burst that struck five.
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action Event": "hit_dealt", "Fraction Of": "event_amount",
+             "Trigger Cooldown": 0, "Required Tags": "Type.AOE.PointBlank"})]))
+
+        assert (out[0]["ActionEvent"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"], out[0]["RequiredTags"]) == (
+            "hit_dealt", "event_amount", 0.0, "Type.AOE.PointBlank")
+
+    def test_a_share_of_a_hit_dealt_waits_a_quarter_second_when_it_states_none(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action Event": "hit_dealt", "Fraction Of": "event_amount"})]))
+
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_a_share_of_what_retaliation_dealt_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action Event": "retaliation_dealt", "Fraction Of": "event_amount",
+             "Trigger Cooldown": 0})]))
+
+        assert (out[0]["ActionEvent"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"]) == ("retaliation_dealt", "event_amount", 0.0)
 
     def test_a_fraction_of_an_amount_no_event_carries_is_refused(self, tmp_path):
         # A ROW ASKING FOR THE AMOUNT OF AN EVENT THAT CARRIES NONE would

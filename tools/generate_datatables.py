@@ -5214,8 +5214,19 @@ CONSECUTIVE_HIT_EVENTS = (
 #: A SHORT LIST ON PURPOSE. A row asking for a fraction of an amount on an
 #: event that carries none would resolve to nothing and say so nowhere, which
 #: is the silent failure this table keeps producing.
+#:
+#: `hit_dealt` AND `retaliation_dealt` JOINED ON 2026-10-05, issue #1833, for
+#: "You take 10%-20% of the damage dealt by your own point blank AOE skills" and
+#: the three drawbacks that pay a share of retaliation back to the wearer. Each
+#: passes what reached the other character's HEALTH:
+#: `ACataclysmPlayerCharacter` passes `Notice.DealtToHealth` and
+#: `UCataclysmRetaliation::Pay` passes what its payment took.
+#: `tools/tests/test_pool_action_names_match_the_engine.py` reads the calls and
+#: fails if a name here is fired with no amount.
 EVENTS_WITH_AN_AMOUNT = (
     "health_cost",
+    "hit_dealt",
+    "retaliation_dealt",
 )
 
 
