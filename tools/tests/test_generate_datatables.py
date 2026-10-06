@@ -1841,7 +1841,7 @@ class TestScaleStepHigh:
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
               "Condition Value High", "Trigger Cooldown", "Event Value",
-              "Ailment"]
+              "Ailment", "Damage Share"]
 
     def book(self, tmp_path, changes):
         values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
@@ -2921,6 +2921,27 @@ class TestRepeatSkill:
         with pytest.raises(gen.DataError, match="must be empty"):
             gen.enchantment_effects(self.repeat(tmp_path, {"Fraction Of": "maximum"}))
 
+    # THE SHARE OF ITS DAMAGE THE REPEAT DEALS. The column the rows needed,
+    # 2026-10-06: empty is the whole and is written as 0.
+    def test_a_repeat_row_that_states_no_share_writes_none(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {}))
+        assert out[0]["DamageShare"] == 0.0
+
+    def test_a_repeat_row_carries_the_share_it_states(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {"Damage Share": 50}))
+        assert out[0]["DamageShare"] == 50.0
+
+    @pytest.mark.parametrize("share", [-50, 100.5, 150])
+    def test_a_share_outside_above_0_and_up_to_100_is_refused(self, tmp_path, share):
+        with pytest.raises(gen.DataError, match="above 0 and up to 100"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Damage Share": share}))
+
+    def test_a_share_on_a_row_that_repeats_nothing_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states a Damage Share"):
+            gen.enchantment_effects(self.repeat(tmp_path, {
+                "Action": "mana", "Action Event": "kill", "Fraction Of": "maximum",
+                "Damage Share": 50}))
+
 
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
@@ -2961,7 +2982,7 @@ class TestEnchantmentEffects:
               "Every Seconds", "Every Nth", "Scale Step High",
               "Stack Seconds High", "Condition 2", "Condition Value 2",
               "Condition Value High", "Trigger Cooldown", "Event Value",
-              "Ailment"]
+              "Ailment", "Damage Share"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -2991,7 +3012,7 @@ class TestEnchantmentEffects:
             "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
             "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
             "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0,
-            "Ailment": ""}]
+            "Ailment": "", "DamageShare": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
