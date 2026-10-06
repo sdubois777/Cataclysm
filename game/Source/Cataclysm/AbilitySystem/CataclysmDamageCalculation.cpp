@@ -863,9 +863,15 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// "less" or "more" is a multiplier of its own, so the 75% cap on damage
 		// reduction above does not reach it, and like every "less" it removes at
 		// most 99% of the hit.
+		//
+		// AND WHAT RIDES ON THE AILMENTS IT CARRIES IS ADDED, as a pin's increase
+		// is added to the attribute read here. Issue #1833, ruled 2026-10-06:
+		// "Bleeding enemies take 20%-40% increased damage from all sources".
 		Damage *= FMath::Max(0.0f,
 			DefenderStat(Defender, DamageTakenStat,
-						 Combat->GetDamageTaken(), BlowOf(Hit))) / 100.0f;
+						 Combat->GetDamageTaken(), BlowOf(Hit))
+			+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
+				  Defender, ECataclysmAilmentRider::DamageTaken)) / 100.0f;
 
 		// AND THE Nth HIT OF AN "EVERY Nth HIT YOU TAKE" ROW TAKES ITS SHARE ON
 		// TOP. Issue #1833, phase 2. Nought on every other hit.
