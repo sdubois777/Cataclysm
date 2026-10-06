@@ -106,6 +106,7 @@ namespace
 		{ TEXT("opponent_is_crowd_controlled"), ECataclysmStatCondition::OpponentIsCrowdControlled },
 		{ TEXT("melee_hit_while_moving"),       ECataclysmStatCondition::MeleeHitWhileMoving },
 		{ TEXT("target_is_staggered"),          ECataclysmStatCondition::TargetIsStaggered },
+		{ TEXT("target_in_your_zone"),          ECataclysmStatCondition::TargetStandsInYourZone },
 		{ TEXT("target_is_boss"),               ECataclysmStatCondition::TargetIsBoss },
 		{ TEXT("target_is_not_boss"),           ECataclysmStatCondition::TargetIsNotBoss },
 		{ TEXT("while_moving"),                 ECataclysmStatCondition::WhileMoving },
@@ -288,8 +289,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesAnyDebuff:
 	case ECataclysmStatCondition::TargetCarriesADot:
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
+	case ECataclysmStatCondition::TargetStandsInYourZone:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-eight says
+		// nothing for a number to be compared against. Each of the twenty-nine says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -457,6 +459,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesAnyDebuff:
 	case C::TargetCarriesADot:
 	case C::TargetDamagedByYouWithinSeconds:
+	case C::TargetStandsInYourZone:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -819,6 +822,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// character sheet built with no blow and no target answers false here, so
 		// a bonus conditioned on a staggered target is correctly withheld from it.
 		return State.bTargetIsStaggered;
+
+	case ECataclysmStatCondition::TargetStandsInYourZone:
+		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. Ruled 2026-10-06. False is also "no target in
+		// hand" and "nothing asked", and all refuse together.
+		return State.bTargetStandsInYourZone;
 
 	case ECataclysmStatCondition::TargetIsBoss:
 		// THE MIRROR OF `OpponentIsBoss`, READING A DIFFERENT FIELD, for exactly
