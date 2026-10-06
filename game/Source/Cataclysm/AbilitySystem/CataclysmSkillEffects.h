@@ -1431,6 +1431,53 @@ public:
 	static float RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
 										 const FActiveGameplayEffectHandle& Handle);
 
+	/** One damage over time ailment running on a character. Issue #919. */
+	struct FRunningAilment
+	{
+		/** The tag it grants, such as `Keyword.DoT.Disease`. */
+		FGameplayTag Ailment;
+
+		/** What it deals a second, as it was stated when it was applied. */
+		float DamagePerSecond = 0.0f;
+
+		/** How long it has left. */
+		float SecondsLeft = 0.0f;
+
+		/** Who applied it: the instigator of the running effect. */
+		TWeakObjectPtr<AActor> Applier;
+	};
+
+	/**
+	 * The running application of this ailment on `Carrier`, when it has one that
+	 * states a damage and has time left. The strongest, which is the one an
+	 * enemy carries: it holds one application of an ailment at a time.
+	 */
+	static bool RunningAilmentOn(AActor* Carrier, const FGameplayTag& Ailment,
+								 FRunningAilment& Out);
+
+	/**
+	 * Put a COPY of a running ailment on `Target`: the same damage a second, for
+	 * the seconds the original had left, with `Applier` as its source. Issue
+	 * #919, ruled 2026-10-06: "a copy carries what the source has left".
+	 *
+	 * NONE OF THE APPLIER'S DAMAGE OVER TIME STATS IS APPLIED AGAIN. The figure
+	 * copied already holds them, and applying them twice would make each hop
+	 * stronger than the last.
+	 *
+	 * IT IS NOT THE APPLIER APPLYING A DAMAGE OVER TIME, so its `dot_applied`
+	 * event is not raised: the ailment moved, and nobody acted. The target does
+	 * receive what the applier's rows hang on the ailment, as it would from an
+	 * application, so a copy can pass on again when ITS carrier dies.
+	 *
+	 * WITH NO DAMAGE TYPE, as `UCataclysmContagion::SpreadOne` applies one.
+	 *
+	 * A target already carrying a stronger one would keep it and have it
+	 * refreshed, by the rule every application follows; the spread at a death
+	 * never offers it one, because it passes over whoever carries the ailment.
+	 */
+	static bool ApplySpreadCopy(AActor* Applier, AActor* Target,
+								const FRunningAilment& Running);
+
 	/**
 	 * Deal `Percent` of the remaining damage of every damage over time effect
 	 * `Owner` placed on `Target`, each as ONE damage instance delivered as its

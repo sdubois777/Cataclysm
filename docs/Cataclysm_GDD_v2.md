@@ -1904,7 +1904,7 @@ The chance summed is the total across every source: affixes, gems, keystones and
 | :-- | :-- | :-- |
 | Bleed | 20 damage a second for 5 seconds, ticking only while the target moves and stopping after 4 seconds of movement | The damage |
 | Poison | 20 damage a second for 8 seconds | The damage |
-| Disease | 12 damage a second for 6 seconds, and on the target's death it spreads its remaining duration to nearby enemies | The damage |
+| Disease | 12 damage a second for 6 seconds, and on the target's death it spreads its remaining duration to the 2 nearest enemies within 5 metres | The damage |
 | Burn | 25 damage a second for 4 seconds | The damage |
 | Void Splinter | 1% of current health per second over 4 seconds | The damage |
 | Necrosis | 10 damage a second for 10 seconds, and denies the target all healing for that time, dealing the denied amount as damage over the following 5 seconds | The damage. The healing denial is already total, so magnitude extends the duration rather than raising it |
@@ -1935,7 +1935,7 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-**Three of the six conditions are not built yet.** Bleed's movement gate, disease's spread on death and Necrosis's healing denial are all stated here and in the DoTs sheet and nothing implements them; they are issues #918, #919 and #920. Void Splinter is built, under the project owner's answer on issue #915.
+**Two of the six conditions are not built yet.** Bleed's movement gate and Necrosis's healing denial are stated here and in the DoTs sheet and nothing implements them; they are issues #918 and #920. Disease's spread on death is built, issue #919, on the project owner's answer of 2026-10-06: the 2 nearest enemies within 5 metres of the body, a count and a distance `docs/DECISIONS.md` records as a judgement. Void Splinter is built, under the project owner's answer on issue #915.
 
   
 

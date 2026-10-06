@@ -3413,6 +3413,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::AilmentHealingReceivedAction =
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentSpeedAction = TEXT("ailment_speed");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentMovementSpeedAction =
 	TEXT("ailment_movement_speed");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentSpreadOnDeathAction =
+	TEXT("ailment_spread_on_death");
 
 ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const FString& Action)
 {
@@ -3439,6 +3441,10 @@ ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const
 	if (Action.Equals(AilmentMovementSpeedAction, ESearchCase::IgnoreCase))
 	{
 		return ECataclysmAilmentRider::MovementSpeed;
+	}
+	if (Action.Equals(AilmentSpreadOnDeathAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::SpreadOnDeath;
 	}
 	return ECataclysmAilmentRider::None;
 }
@@ -3516,6 +3522,19 @@ float UCataclysmAbilitySystemComponent::AilmentRiderPercentNow(ECataclysmAilment
 		}
 	}
 	return FMath::Max(0.0f, Total);
+}
+
+float UCataclysmAbilitySystemComponent::AilmentRiderPercentCarriedOn(
+	const FGameplayTag& Ailment, ECataclysmAilmentRider Kind) const
+{
+	// WHILE IT CARRIES THE AILMENT, asked now and not remembered, as the sum is.
+	const FCarriedRiders* Held = AilmentRiders.Find(Ailment);
+	if (!Held || !HasMatchingGameplayTag(Ailment))
+	{
+		return 0.0f;
+	}
+	const float* Percent = Held->Percent.Find(Kind);
+	return Percent ? FMath::Max(0.0f, *Percent) : 0.0f;
 }
 
 float UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(

@@ -345,3 +345,79 @@ int32 UCataclysmContagion::SpreadOnDeath(AActor* Dying, AActor* Killer,
 
 	return Passed;
 }
+
+int32 UCataclysmContagion::SpreadFromTheDying(AActor* Dying)
+{
+	if (!Dying)
+	{
+		return 0;
+	}
+	const UCataclysmAbilitySystemComponent* Carrier =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Dying));
+
+	// THE FIVE AILMENTS THAT STATE A DAMAGE A TICK. Void Splinter states a share
+	// of health and has its own applier; it is not passed on here.
+	static const TCHAR* const Names[] = {
+		TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"), TEXT("Keyword.DoT.Disease"),
+		TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn")};
+	const FGameplayTag Disease =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Disease")), /*ErrorIfNotFound=*/false);
+	const FVector Body = Dying->GetActorLocation();
+
+	int32 Copies = 0;
+	for (const TCHAR* Name : Names)
+	{
+		const FGameplayTag Ailment =
+			FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+		UCataclysmSkillEffects::FRunningAilment Running;
+		if (!Ailment.IsValid() || !UCataclysmSkillEffects::RunningAilmentOn(Dying, Ailment, Running))
+		{
+			continue;
+		}
+		AActor* Applier = Running.Applier.Get();
+		if (!Applier || Applier == Dying)
+		{
+			continue;
+		}
+
+		// WHAT THE AILMENT PASSES TO BY ITSELF, AND WHAT A ROW ADDS. A rolled
+		// range gives a figure between whole numbers, and it is rounded to the
+		// nearest: a count is whole.
+		const int32 ByItself = Ailment == Disease ? DiseaseSpreadsToByItself : 0;
+		const int32 FromRows = Carrier
+			? FMath::RoundToInt(Carrier->AilmentRiderPercentCarriedOn(
+				  Ailment, ECataclysmAilmentRider::SpreadOnDeath))
+			: 0;
+		const int32 Count = ByItself + FromRows;
+		if (Count <= 0)
+		{
+			continue;
+		}
+
+		// THE NEAREST FIRST, measured from the body, AND ONLY THOSE THAT DO NOT
+		// CARRY IT ALREADY. Ruled 2026-10-06: an enemy that already carries the
+		// ailment is passed over and not refreshed, so the count is spent on
+		// enemies the ailment is new to.
+		TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+			Dying->GetWorld(), Applier, Body, SpreadFromTheDyingMetres * CentimetresPerMetre);
+		Nearby.Remove(Dying);
+		Nearby.RemoveAll([&Ailment](const AActor* Candidate)
+		{
+			const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Candidate);
+			return !Its || Its->HasMatchingGameplayTag(Ailment);
+		});
+		Nearby.Sort([&Body](const AActor& A, const AActor& B)
+		{
+			return FVector::DistSquared(A.GetActorLocation(), Body)
+				< FVector::DistSquared(B.GetActorLocation(), Body);
+		});
+		for (int32 Index = 0; Index < Nearby.Num() && Index < Count; ++Index)
+		{
+			if (UCataclysmSkillEffects::ApplySpreadCopy(Applier, Nearby[Index], Running))
+			{
+				++Copies;
+			}
+		}
+	}
+	return Copies;
+}
