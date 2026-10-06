@@ -11,8 +11,8 @@ figures, `EchoChamberCopies`, `EchoChamberHitsTheCaster`, `Built`, `KeysWithARul
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-05;
+the figures are under "Run" at the end of this entry.
 
 ### The row
 
@@ -121,9 +121,36 @@ Five new automation tests, `Cataclysm.DungeonModifierEffects.`:
 **Python.** One new check, `test_echo_chamber_row_still_says_a_copy_in_a_random_direction_that_can_also_hit_you`,
 pins the phrases the readings rest on, "it can also hit you" among them. This row needs no workbook edit.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-05 for a stack of two: the Wasting Sickness and leech change (the entry below), then this one
+on top of it, at `feat/echo-chamber` ee9c7e1b. Development was 8f83b888, measured there at 3160 Unreal tests and 5712
+Python. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3167 tests performed, 3167 succeeded, 0 failed`; `Declared: 3167 tests in the tree at ee9c7e1b; 3167 performed, gap 0` |
+| Python, with continuous integration idle | `5705 passed, 8 skipped in 311.47s`; JUnit `tests="5713" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**No other rule's test failed because of the self hit.** That is what the whole suite can say about it; rules with no
+test for a blow the player deals themselves were not measured.
+
+**Guard proofs, at ee9c7e1b, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmDungeonGameMode.cpp`: the self hit no longer asks whether the aim was within the radius | `Cataclysm.DungeonModifierEffects.EchoChamberACopyAimedWithin` | 1 performed, 1 failed, 4 failed assertions: the far copy hit (1 against 0), health was 496.35 against 510, the near count read 2 against 1, the panel said "2 hit you" | 1 performed, 1 succeeded |
+| Pb | Same file: the basic attack is copied like any use | `Cataclysm.DungeonModifierEffects.EchoChamberCopiesNothing` | 1 performed, 1 failed, 1 failed assertion: "a basic attack is not copied" | 1 performed, 1 succeeded |
+| Pc | `CataclysmDungeonModifierEffects.cpp`: `EchoChamberCopies` no longer asks Wild Magic's rule | `Cataclysm.DungeonModifierEffects.EchoChamberFigures` | 1 performed, 1 failed, 1 failed assertion: "a held strike is not" | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 4, 1 and 1.
+
+**One size, measured in passing.** Pa's failing half printed the test player's health as 496.35 of 510 after one self
+hit from the copied strike: 13.65, about 2.7% of that player's maximum health. It is one skill on one test
+character and not a figure for play. **The self hit is ordinary damage and can kill a player low enough.**
 
 ---
 
