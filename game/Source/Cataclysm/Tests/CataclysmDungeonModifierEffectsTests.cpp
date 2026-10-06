@@ -11205,6 +11205,110 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 // Necrotic Ground. Issues #1820 and #41
 // ---------------------------------------------------------------------------
 
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** Every live ground zone in the world, as the zones themselves. */
+	TArray<ACataclysmGroundZone*> LiveZonesIn(UWorld* World)
+	{
+		TArray<ACataclysmGroundZone*> Found;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	}
+
+	/**
+	 * The zone that is in `After` and was not in `Before`, or null. TOLD APART BY WHICH ZONE IT IS. Issue #2251.
+	 *
+	 * THE FOG TEST USED TO TELL IT APART BY WHERE IT IS, and failed once in a whole-suite run: a later patch is put
+	 * one patch-width from a random earlier patch at a random angle, the engine's random draw has 32,768 values on
+	 * this platform, and nothing stops a patch landing exactly on an earlier one. A patch there is still a new patch.
+	 */
+	ACataclysmGroundZone* TheZoneThatIsNew(const TArray<ACataclysmGroundZone*>& Before,
+										   const TArray<ACataclysmGroundZone*>& After)
+	{
+		for (ACataclysmGroundZone* Zone : After)
+		{
+			if (!Before.Contains(Zone))
+			{
+				return Zone;
+			}
+		}
+		return nullptr;
+	}
+
+	/** THE OLD WAY, kept for the test that shows what was wrong with it: whether any centre in `After` is new. */
+	bool ACentreIsNew(const TArray<ACataclysmGroundZone*>& Before, const TArray<ACataclysmGroundZone*>& After)
+	{
+		for (const ACataclysmGroundZone* Zone : After)
+		{
+			const FVector Centre = Zone->GetActorLocation();
+			if (!Before.ContainsByPredicate([&Centre](const ACataclysmGroundZone* Old)
+				{
+					return Old->GetActorLocation().Equals(Centre, 0.01);
+				}))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNewPatchOnAnOldOneTest,
+	"Cataclysm.DungeonModifierEffects.ANewPatchExactlyOnAnOldOneIsStillToldApartFromIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNewPatchOnAnOldOneTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CASE THE FOG TEST MET ONCE, MADE BY HAND SO IT HAPPENS EVERY TIME. Issue #2251. Two patches a patch-width
+	// apart, then a third put exactly on the first, which is what a repeated pick and a repeated angle give.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!TestNotNull(TEXT("set-up: the floor's hazard source"), Source))
+	{
+		return false;
+	}
+	const auto APatchAt = [Source](const FVector& Where)
+	{
+		return ACataclysmGroundZone::SpawnForTheFloor(Source, Where, Where, Effects::NecroticGroundPatchRadiusCm, 0.0f);
+	};
+	const FVector Here(0.0, 0.0, 0.0);
+	ACataclysmGroundZone* First = APatchAt(Here);
+	ACataclysmGroundZone* Second = APatchAt(Here + FVector(Effects::NecroticGroundSpreadCm, 0.0, 0.0));
+	if (!TestNotNull(TEXT("set-up: a first patch"), First) || !TestNotNull(TEXT("set-up: a second"), Second))
+	{
+		return false;
+	}
+	const TArray<ACataclysmGroundZone*> Before = LiveZonesIn(World);
+	ACataclysmGroundZone* OnTheFirst = APatchAt(Here);
+	const TArray<ACataclysmGroundZone*> After = LiveZonesIn(World);
+	if (!TestNotNull(TEXT("set-up: a third patch exactly on the first"), OnTheFirst)
+		|| !TestEqual(TEXT("set-up: three patches"), After.Num(), 3))
+	{
+		return false;
+	}
+
+	// BY WHERE IT IS, IT CANNOT BE TOLD APART: this is the assertion that failed.
+	TestFalse(TEXT("control: no centre is new, so the old way finds no new patch"), ACentreIsNew(Before, After));
+	// BY WHICH ZONE IT IS, IT CAN.
+	TestTrue(TEXT("the zone that is new is the third"), TheZoneThatIsNew(Before, After) == OnTheFirst);
+	TestNull(TEXT("and with nothing added there is none"), TheZoneThatIsNew(After, After));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecroticSpreadTest,
 	"Cataclysm.DungeonModifierEffects.TheFogSpreadsOnItsCadenceFromPatchToPatchUpToItsCap",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -11240,19 +11344,6 @@ bool FCataclysmNecroticSpreadTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	const auto Centres = [World]()
-	{
-		TArray<FVector> Found;
-		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
-		{
-			if (IsValid(*It))
-			{
-				Found.Add(It->GetActorLocation());
-			}
-		}
-		return Found;
-	};
-
 	const FVector Feet = Player.Character->GetActorLocation();
 	Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches) - 1);
 	TestEqual(TEXT("no fog a beat short of one cadence"), ZonesOnTheFloor(World), 0);
@@ -11279,36 +11370,28 @@ bool FCataclysmNecroticSpreadTest::RunTest(const FString& Parameters)
 	// AND NOT OFF `NecroticGroundSpreadCm`, so a spread that stopped meaning touching
 	// fails here rather than agreeing with itself.
 	const double Touching = 2.0 * First->RadiusCm;
-	TArray<FVector> Before = Centres();
+	TArray<ACataclysmGroundZone*> Before = LiveZonesIn(World);
 	for (int32 Expected = 2; Expected <= Effects::NecroticGroundMostPatches; ++Expected)
 	{
 		Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches));
-		const TArray<FVector> After = Centres();
+		const TArray<ACataclysmGroundZone*> After = LiveZonesIn(World);
 		if (!TestEqual(FString::Printf(TEXT("patch %d appeared on its cadence"), Expected),
 					   After.Num(), Expected))
 		{
 			return false;
 		}
-		TOptional<FVector> Newest;
-		for (const FVector& Centre : After)
-		{
-			if (!Before.ContainsByPredicate([&Centre](const FVector& Old)
-				{
-					return Old.Equals(Centre, 0.01);
-				}))
-			{
-				Newest = Centre;
-			}
-		}
-		if (!TestTrue(TEXT("the new patch is told apart from the old"), Newest.IsSet()))
+		// TOLD APART BY WHICH ZONE IT IS AND NOT BY WHERE IT IS. Issue #2251: a new patch can land exactly on an
+		// old one, and comparing centres then found no new patch. The test above makes that case by hand.
+		const ACataclysmGroundZone* Newest = TheZoneThatIsNew(Before, After);
+		if (!TestNotNull(TEXT("the new patch is told apart from the old"), Newest))
 		{
 			return false;
 		}
 		double ClosestToTouching = TNumericLimits<double>::Max();
-		for (const FVector& Old : Before)
+		for (const ACataclysmGroundZone* Old : Before)
 		{
 			ClosestToTouching = FMath::Min(ClosestToTouching,
-				FMath::Abs(FVector::Dist2D(Old, Newest.GetValue()) - Touching));
+				FMath::Abs(FVector::Dist2D(Old->GetActorLocation(), Newest->GetActorLocation()) - Touching));
 		}
 		TestTrue(FString::Printf(TEXT("patch %d touches one already there: %.3f cm off "
 									  "one patch-width"), Expected, ClosestToTouching),
