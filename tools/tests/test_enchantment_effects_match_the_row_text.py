@@ -600,8 +600,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 471 over 385: five rows on five enchantments.
 #: AND 478 OVER 392 SINCE THE TWO SLOWS HUNG ON AN AILMENT,
 #: issue #1833, 2026-10-06, from 476 over 390: two rows on two enchantments.
-AUTHORED_ROWS = 478
-AUTHORED_ENCHANTMENTS = 392
+#: AND 479 OVER 393 SINCE THE FIRST ROW THAT REPEATS A SKILL,
+#: issue #1833, 2026-10-06, from 478 over 392: one row on one enchantment.
+AUTHORED_ROWS = 479
+AUTHORED_ENCHANTMENTS = 393
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

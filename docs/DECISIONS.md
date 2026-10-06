@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — The first row that repeats a skill, and a Damage Share column so a row can say how much of its damage the repeat deals
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (a new column, Damage Share, on the Enchantment Effects sheet, and one
+row), `tools/generate_datatables.py` (the column read, checked and written as `DamageShare`),
+`game/Data/EnchantmentEffects.csv` and its asset, `game/Source/Cataclysm/Data/CataclysmDataRows.h`
+(`FCataclysmEnchantmentEffectRow::DamageShare`), `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the loader sets
+`RepeatSharePercent`), five tables built from CSV text in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmEnchantmentRollTests.cpp` and `CataclysmEnchantmentSetTests.cpp`, one new test in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The entry of 2026-10-05, "A row can repeat the skill just used, free", built the action `repeat_skill` and left two
+things to the session holding the design workbook: the first row, and a way for a row to state the share of its
+damage a repeat deals. Both are here. Nothing in the engine of that entry is changed.
+
+| Sentence | Row |
+| :-- | :-- |
+| Every skill use has a 5%-15% chance to cast a second time for free | `repeat_skill` on `skill_use`, 5 to 15, no scope, no share |
+
+EnchantmentEffects 478 to 479, over 392 to 393 enchantments.
+
+### THE COLUMN
+
+- **Damage Share** is the last column of the Enchantment Effects sheet and of `EnchantmentEffects.csv`, where it is
+  `DamageShare`. It is the percent of its damage the repeat deals.
+- **An empty cell is the whole of the damage**, and is written to the CSV as 0. The loader leaves
+  `FCataclysmPoolAction::RepeatSharePercent` at its default of 100 for a 0 and sets it to the cell otherwise. This
+  is the choice the 2026-10-05 entry left open between 0 and 100 for an empty cell; 0 was taken so that every row
+  that repeats nothing carries the same figure every other unused numeric column carries.
+- **The generator refuses** a Damage Share on any action but `repeat_skill`, because nothing else reads one and it
+  would be dropped, and a share that is not above 0 and up to 100.
+- **No row states a share in this change.** "Each skill has a 20%-40% chance to cast a duplicate at 50% damage" is
+  in the change above this one.
+
+### THE FIVE TABLES A TEST BUILDS FROM CSV TEXT
+
+A table read from CSV text stops reading when the row struct has a field the text lacks. The 2026-10-05 entry named
+one such file. A search for the effect table's header text found five tables in three files: three in
+`CataclysmEnchantmentEffectTests.cpp`, one in `CataclysmEnchantmentRollTests.cpp` and one in
+`CataclysmEnchantmentSetTests.cpp`, holding fourteen rows between them. Each header gains `DamageShare` and each
+row gains its cell.
+
+### HOW THE ROW IS TESTED
+
+`Cataclysm.Enchantments.TheEverySkillUseRowRepeatsAnySkillUnderItsTopRollAtTheWholeOfItsDamage` wears the real row
+at the top of its roll and hands the wearer's ability system a skill use through `ActOnSkillUse`, which is the call
+the player character makes when a skill is used, with `Cataclysm.RepeatSkillRoll` pinned. A roll of 14.9 records a
+repeat of the skill, at the whole of its damage, for a melee skill and for a spell; a roll of 15 records none.
+
+**The test stops at the recorded repeat.** The wearer the enchantment tests use is not a player character, so the
+skill-used notice does not reach it and `MakePendingRepeat` has no weapon to read. What a recorded repeat then
+does is covered by the tests of the 2026-10-05 entry, which use a player character and rows made by hand.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- Everything the 2026-10-05 entry states about a repeat holds for this row: one repeat for one use, aimed where the
+  use was aimed, not a use itself, and not for a self buff, a movement skill, an aura, a summon, a channelled or
+  held skill, or the basic attack.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in the elastic-burnell worktree, in one window with the three layers stacked on this one, on
+`development` 0a3844e0. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | 7882d9d4 | Build: Succeeded - 35 actions, 30 files compiled |
+| The asset, regenerated with the editor | 7882d9d4 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 478 to 479 |
+| Whole suite | 9e89c347 | 3201 tests performed, 3200 succeeded, 1 failed: SpellbladesWillTwoPiecesTriggerAHeldSkillOnAMeleeAttackAndHalveMeleeDamage; declared 3201, gap 0; 0 ensures |
+| Build, after two calls were changed in that one test of the top layer | eaec6b80 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp |
+| Cataclysm.Enchantments., whole, after it | eaec6b80 | 228 tests performed, 228 succeeded, 0 failed; 0 ensures |
+| Python of record, with ruff clean | eaec6b80 | 5752 passed, 8 skipped in 314.93s; JUnit tests=5760 failures=0 errors=0 skipped=8 |
+| Proof F: the loader not handing a repeat row its Damage Share | eaec6b80 | PROVED: with the break in: 228 tests performed, 227 succeeded, 1 failed: TheDuplicateRowRepeatsAnySkillUnderItsTopRollAtHalfItsDamage \| restored: 228 tests performed, 228 succeeded, 0 failed |
+| Python proof 1: a Damage Share on a row that repeats nothing let through, in a copy | eaec6b80 | PROVED: 1 failed, 473 passed \| restored: 474 passed; the one is test_a_share_on_a_row_that_repeats_nothing_is_refused |
+| Python proof 2: a Damage Share outside above 0 and up to 100 let through, in a copy | eaec6b80 | PROVED: 3 failed, 471 passed \| restored: 474 passed; the three cases of test_a_share_outside_above_0_and_up_to_100_is_refused |
+
+Proof F kept its broken run's log and failed exactly the one assertion predicted, in the test of the half-damage
+row of the layer above this one: "at half its damage" was 1.000000 against 0.500000. That row is the only one that
+states a share, which is why the column's proof fails a test of the layer above.
+
+**The whole suite was run once, and one test of the top layer failed in it.** The test asked the wrong function;
+the entry for Spellblade's Will has the cause. No test of this layer failed. After the two calls in that test were
+changed, the group was run again and the whole suite was not, by the standing rule for a change to a test alone.
+
+**This layer's test against a table without its row** is in the run table of the entry above this one, with the
+other seven.
+
+---
+
 ## 2026-10-06 — The navigation tests wait for the mesh by blocking on its tile builds, not by counting ticks: the intermittent "mesh rebuild finished" failures of issue #2222
 
 **Affects:** `game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp` only: `WaitForTheNavigationMesh`,
