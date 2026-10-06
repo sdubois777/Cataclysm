@@ -6226,4 +6226,88 @@ bool FCataclysmTerrainReadsTheZoneStatsTest::RunTest(const FString&)
 	return true;
 }
 
+// THE TARGET STANDS IN ONE OF THE ASKER'S ZONES. Ruled 2026-10-06: "You deal 15%-30% increased damage to enemies
+// standing in your persistent AOE zones" is a row carrying the condition `target_in_your_zone`. Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetInYourZoneTest,
+	"Cataclysm.StatExemption.ABonusForEnemiesStandingInYourZonesReachesOnlyThoseInAZoneYouOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTargetInYourZoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// EVERY BLOW'S CRITICAL STRIKE ROLL IS NOUGHT, so a blow critically strikes exactly when its chance is above
+	// nought. The chance is nought on its base and a hundred only while the condition holds, which makes "did it
+	// critically strike" the reading of the condition, as the boss test in CataclysmCriticalStrikeTests.cpp does.
+	const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 0.0f);
+
+	FScopedSwinger Attacker(World, FVector::ZeroVector);
+	FScopedSwinger Stranger(World, FVector(-2000.0f, 0.0f, 0.0f));
+	FScopedSwinger InMine(World, FVector(100.0f, 0.0f, 0.0f));
+	FScopedSwinger InAStrangers(World, FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmGroundZone* Mine = ACataclysmGroundZone::Spawn(Attacker.Actor, FVector::ZeroVector, 300.0f, 10.0f, 1.0f);
+	ACataclysmGroundZone* Theirs =
+		ACataclysmGroundZone::Spawn(Stranger.Actor, FVector(1000.0f, 0.0f, 0.0f), 300.0f, 10.0f, 1.0f);
+	if (!TestNotNull(TEXT("set-up: the attacker's zone"), Mine) || !TestNotNull(TEXT("set-up: a stranger's zone"), Theirs)
+		|| !TestTrue(TEXT("set-up: each enemy stands in the zone meant for it"),
+					 Mine->Covers(InMine.Actor->GetActorLocation()) && !Mine->Covers(InAStrangers.Actor->GetActorLocation())
+						 && Theirs->Covers(InAStrangers.Actor->GetActorLocation())))
+	{
+		return false;
+	}
+
+	const auto Carry = [&Attacker](ECataclysmStatCondition Condition)
+	{
+		FCataclysmStatModifier Conditional;
+		Conditional.Bucket = ECataclysmStatBucket::Flat;
+		Conditional.Source = ECataclysmModifierSource::Enchantment;
+		Conditional.Value = 100.0f;
+		Conditional.Condition = Condition;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("crit_chance")));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Conditional};
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	};
+	const auto Strike = [&Attacker](FScopedSwinger& Target)
+	{
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Result);
+		return Result;
+	};
+
+	// CONTROL: WITH NO ROW, NOTHING CRITICALLY STRIKES, so the readings below are the row's.
+	Carry(ECataclysmStatCondition::TargetIsBoss);
+	if (!TestFalse(TEXT("control: with a row that asks something else, a blow on the enemy in the zone does not critically strike"),
+				   Strike(InMine).bWasCritical))
+	{
+		return false;
+	}
+
+	Carry(ECataclysmStatCondition::TargetStandsInYourZone);
+	if (!TestTrue(TEXT("a blow on the enemy standing in the attacker's zone carries the bonus"), Strike(InMine).bWasCritical))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a blow on the enemy standing in a stranger's zone does not"), Strike(InAStrangers).bWasCritical);
+
+	// AND IT IS WHERE THE ENEMY STANDS NOW: once it has left the zone, the bonus is gone.
+	InMine.Actor->SetActorLocation(FVector(100.0f, 3000.0f, 0.0f));
+	TestFalse(TEXT("once the enemy has left the zone, a blow on it does not"), Strike(InMine).bWasCritical);
+
+	// AND A ZONE THAT IS GONE COUNTS FOR NOTHING.
+	InMine.Actor->SetActorLocation(FVector(100.0f, 0.0f, 0.0f));
+	Mine->Destroy();
+	TestFalse(TEXT("once the zone is gone, a blow on the enemy where it stood does not"), Strike(InMine).bWasCritical);
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS

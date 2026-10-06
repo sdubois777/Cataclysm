@@ -1541,6 +1541,24 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetDamagedByYouWithinSeconds
 		UMETA(DisplayName = "Target Damaged By You Within Seconds"),
+
+	/**
+	 * The target stands in a ground zone the asking character's skill left. Ruled 2026-10-06: "You deal 15%-30%
+	 * increased damage to enemies standing in your persistent AOE zones".
+	 *
+	 * "YOUR" ZONES ARE THE ONES WHOSE OWNER IS THE ASKER, which is the character whose skill left them. A floor
+	 * rule's zone and a creature's are another owner's.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`, which walks the world's zones for that. False is "not in
+	 * one", "no target in hand" and "nothing asked", and all three refuse.
+	 *
+	 * IT DOES NOT REACH THE ZONE'S OWN DAMAGE. A zone is priced once, when it is left, with no target, so no
+	 * target-side condition reaches it; this one raises the blows its owner lands on whoever stands in it.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetStandsInYourZone
+		UMETA(DisplayName = "Target Stands In Your Zone"),
 };
 
 /**
@@ -2880,6 +2898,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetIsStaggered = false;
+
+	/**
+	 * Whether the character being hit stands in a ground zone the asker's skill left. Ruled 2026-10-06. Filled by
+	 * `WithTargetState` only when some modifier in the lookup asks; false otherwise, which refuses. See
+	 * `ECataclysmStatCondition::TargetStandsInYourZone`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStandsInYourZone = false;
 
 	/**
 	 * Whether the character being hit is a boss. Issue #1815.
@@ -4304,7 +4330,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a sixty-fifth, which is the drift that put the passive tree eight
+	 * adds a sixty-sixth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -4313,7 +4339,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-EIGHT OF THE SIXTY-FOUR COMPARE NOTHING. They are the case labels
+	 * TWENTY-NINE OF THE SIXTY-FIVE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
