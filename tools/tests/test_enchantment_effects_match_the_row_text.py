@@ -207,9 +207,14 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.I
 #: and the mana pool is left alone. "While below 50% HP, all skills cost HP
 #: instead of mana" moved to it, and no enchantment row states the old stat any
 #: more, so `test_every_flag_stat_is_still_used` would refuse it here.
+#: TWO JOINED ON 2026-10-06 with their rows, issue #1833: `zone_staggers_on_entry`,
+#: "Enemies that enter your persistent AOE zones are briefly staggered", and
+#: `zone_applies_own_ailment`, "Persistent AOE zones apply a DoT to enemies
+#: standing in them". A zone asks each whether it is above nought.
 FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death",
               "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay",
-              "aura_shares_immunities_with_allies"}
+              "aura_shares_immunities_with_allies", "zone_staggers_on_entry",
+              "zone_applies_own_ailment"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -660,8 +665,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 504 over 418: two rows on two enchantments.
 #: AND 507 OVER 421 SINCE THE ROW THAT MAKES A VOID SPLINTER DETONATE,
 #: issue #1833, 2026-10-06, from 506 over 420: one row on one enchantment.
-AUTHORED_ROWS = 507
-AUTHORED_ENCHANTMENTS = 421
+#: AND 511 OVER 424 SINCE THREE MORE PERSISTENT AREA SENTENCES,
+#: issue #1833, 2026-10-06, from 507 over 421: four rows on three enchantments.
+AUTHORED_ROWS = 511
+AUTHORED_ENCHANTMENTS = 424
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
