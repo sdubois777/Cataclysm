@@ -70,6 +70,41 @@ was judged at the refresh, and held whenever the refresh came below half health.
 - `Cataclysm.Skills.TheWornRowForPayingHealthBelowHalfHealthChargesHealthAndHalvesIt`, unchanged in what it asserts.
 - The probe for `skill_cost_paid_from_health` in `Cataclysm.StatExemption.`.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in the elastic-burnell worktree, in one window with the five layers stacked on this one, on
+`development` bae2f26c. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| THE REPRODUCTION, ALONE: `development` plus this entry's new test and nothing else, built, then that one test run | 398890e8 | Build: Succeeded - 32 actions, 29 files compiled; 1 tests performed, 0 succeeded, 1 failed: TheWornRowForPayingHealthBelowHalfHealthKeepsTheManaPoolWhenAttributesRefresh |
+| Build, at the top of the stack | b71a44e5 | Build: Succeeded - 32 actions, 29 files compiled |
+| Cataclysm.Skills. against the asset built before the row moved | b71a44e5 | 274 tests performed, 272 succeeded, 2 failed: this entry's new test and the test of the layer above; 5 failed assertions |
+| The asset, regenerated with the editor | b71a44e5 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, 487 rows, one of them on its new stat |
+| Whole suite | 276116ba | 3217 tests performed, 3217 succeeded, 0 failed; declared 3217, gap 0; 0 ensures |
+| Python of record, with ruff clean | 276116ba | 5762 passed, 8 skipped in 379.34s; JUnit tests=5770 failures=0 errors=0 skipped=8 |
+| Proof H: the cost pool not asking for the stat that moves a cost onto health | 276116ba | PROVED: with the break in: 274 tests performed, 272 succeeded, 2 failed: TheWornRowForPayingHealthBelowHalfHealthChargesHealthAndHalvesIt, TheWornRowForPayingHealthBelowHalfHealthKeepsTheManaPoolWhenAttributesRefresh \| restored: 274 tests performed, 274 succeeded, 0 failed |
+| Python proof: the stat taken off the list a condition may be written on, in a copy | 276116ba | PROVED: 1 failed, 13 passed \| restored: 14 passed; the one is test_no_shipped_row_is_refused[EnchantmentEffects] |
+
+**THE FAULT WAS REPRODUCED BEFORE THE STAT EXISTED.** On `development`'s code with only the new test added,
+the test failed on exactly the three assertions predicted. After a refresh below half health: maximum mana was
+0.000000 against 116.000000; maximum health was 626.000000 against 510.000000, which is the 116 moved across;
+and the mana held was 0.000000 against 116.000000. Its fourth assertion, that a cost still comes out of health,
+held.
+
+**The same three assertions fail with the stat built and the asset old**, because the old asset still has the
+row on `mana_pool_becomes_health`. They pass once the asset carries the moved row. So the fix is the stat and
+the row's move together, and neither alone.
+
+Proof H kept its broken run's log and failed exactly the three assertions predicted: in the older test, "and
+the mana pool is untouched" and "because the halved cost came out of health", the cost having come out of
+mana; and in the new test its set-up line, that below half health a cost comes out of health.
+
+**The Python suite was not run in the worktree before the stack was registered.** It was run before the window
+began and gave 1 failed, 5761 passed, 8 skipped, the one being the test that the asset is current.
+
+**The engine code compiled on its first build.** Nothing was changed after it.
+
 ---
 
 ## 2026-10-06 — Four stats a persistent area reads: how long it lasts, more damage for each enemy inside, a slow, and only one at a time; no row authored yet
