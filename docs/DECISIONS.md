@@ -16,8 +16,8 @@ pending repeat, `RepeatSkillAction`, the console variable `Cataclysm.RepeatSkill
 `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; and `tools/tests/test_generate_datatables.py` and
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses the action yet**: the first row and the column that lets a
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses the action yet**: the first row and the column that lets a
 row state a damage share are added in a later turn with the design workbook.
 
 ### What it is for
@@ -152,9 +152,33 @@ Five new automation tests.
 **Python.** Four new checks: the generator's action name equals the engine's; a repeat row is carried through; one on
 an event that names no skill is refused; one with a fraction is refused.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of two: the unarmed swing (the entry below), then this change on top of it, at
+`feat/repeat-skill-action-3` 3045071d. Development was 2b87c355. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3179 tests performed, 3179 succeeded, 0 failed`; `Declared: 3179 tests in the tree at 3045071d; 3179 performed, gap 0` |
+| Python, with continuous integration idle | `5719 passed, 8 skipped in 316.28s`; JUnit `tests="5727" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 3045071d, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmSkillTemplate.cpp`: a free start's share is not written into the per-use multiplier | `Cataclysm.TriggeredSkill.AShareOfHalf` | 1 performed, 1 failed, 1 failed assertion: the half strike dealt 250 against 125 | 1 performed, 1 succeeded |
+| Pb | `CataclysmAbilitySystemComponent.cpp`: the last row to pass its roll wins whatever its share | `Cataclysm.Enchantments.TwoRepeatRowsOnOneUse` | 1 performed, 1 failed, 1 failed assertion: with the whole row first and the half row second the repeat read 0.5 against 1 | 1 performed, 1 succeeded |
+| Pc | `CataclysmTriggeredSkill.cpp`: a self buff may be repeated | `Cataclysm.Enchantments.ASelfBuffIsNotRepeated` | 1 performed, 1 failed, 3 failed assertions: the rule answered yes for the self buff, its repeat was made, and a second copy ran | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 3.
+
+**What the run settles of what the entry says was only written.** A repeat row on a possessed player recorded the
+used skill, its aim and its share; the repeat was made on a real projectile skill, free, with no skill-used notice;
+and two rows on one use gave one repeat. **Not run, because no row exists yet:** the loader reading the action from
+the effect table, and anything a worn row does in play.
 
 ---
 
