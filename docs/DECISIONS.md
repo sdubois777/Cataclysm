@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — The generator refuses a conditioned row the game cannot judge: a stat nothing asks for, or a condition its asker is not handed
+
+**Affects:** `tools/generate_datatables.py` (`CONDITIONED_STATS_WITH_AN_ASKER`, `CONDITIONS_OF_A_BLOW_TAKEN`,
+`CONDITIONS_OF_A_HIT_DEALT`, `refuse_a_condition_nothing_asks_for`),
+`tools/tests/test_every_conditioned_stat_has_an_asker.py` (new),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (eight probes, `ConditionedProbes`, and
+`Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed`). No data row changes and no
+engine code changes. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS WRONG
+
+**A row could state a stat under a condition, be accepted, built and imported, and grant nothing.**
+`UCataclysmPlayerClassStats::ApplyTo` works out a gameplay attribute with an empty state, which refuses every
+condition. So a conditioned row reaches play only where the code that uses its stat asks the stat pipeline at
+the moment of use. A blow reads a defender's resistance from the attribute, and on 2026-10-05 Brute's Heart's
+"resistances increased by 50% below half health" was about to be written as eight such rows. The generator had
+a refusal of this kind for a SCALED row, `refuse_a_scale_nothing_asks_for`, and none for a conditioned one.
+
+### THE AUDIT, 2026-10-06, READ FROM THE CODE AND NOT RUN
+
+122 built enchantment rows state a stat under a condition, on 25 stats, and the passives add nine stats more.
+**None is wholly dead, and none is on a resistance or a maximum pool.** Four grant less, or more, than their
+sentence says, and each has an issue:
+
+| What | Issue |
+| :-- | :-- |
+| `attack_speed` under a condition does not reach a projectile skill that scales with attack speed | [#2233](https://github.com/sdubois777/Cataclysm/issues/2233) |
+| `attack_damage` under a condition does not reach damage priced outside a hit: ground patches, the Echo Chamber self-hit, stored damage | [#2234](https://github.com/sdubois777/Cataclysm/issues/2234) |
+| `dot_damage` under `while_moving` is judged once, when the effect is applied | [#2235](https://github.com/sdubois777/Cataclysm/issues/2235) |
+| `mana_pool_becomes_health` under `health_below` converts the mana pool if attributes refresh below half health | [#2228](https://github.com/sdubois777/Cataclysm/issues/2228) |
+
+### WHAT WAS BUILT
+
+**`refuse_a_condition_nothing_asks_for`**, called beside the scale refusal for both effect sheets. It refuses a
+row that states a stat under a condition when:
+
+- **the stat is not on `CONDITIONED_STATS_WITH_AN_ASKER`**, which is the case a resistance row falls in; or
+- **the condition asks about something the stat's asker is not handed.** The list says, stat by stat, what its
+  asker passes beyond the wearer's own state: the blow being taken (`armor`, `block_chance`, `damage_reduction`,
+  `damage_taken`, `evasion`) or the hit being dealt (`attack_damage`, `spell_damage`, `armor_penetration`,
+  `penetration`, `crit_chance`, `crit_multiplier`, `minion_damage`). `movement_speed` under `target_is_boss` is
+  refused, and so is `attack_damage` under `hit_is_spell`: each would be refused every time it was judged.
+
+A row with no stat is an action, whose condition is judged where the action fires, and is skipped.
+
+**RULED 2026-10-06 UNDER THE OWNER'S DELEGATION: the per-stat form and not a flat list of stats.** A flat list
+would have stopped the resistance row and let the other two through.
+
+### WHAT HOLDS THE LIST TO THE GAME, AND WHAT DOES NOT
+
+- **Probes.** Every name on the list must have a probe in one of three tables in
+  `CataclysmStatExemptionTests.cpp`: the scaled probes, the probes for stats with no attribute, and eight new
+  conditioned probes for the stats the enchantments condition that had none (`area_of_effect`,
+  `armor_penetration`, `block_chance`, `cooldown_reduction`, `crit_multiplier`, `dot_damage`,
+  `mana_pool_becomes_health`, `penetration`). A scale and a condition are both judged against the state handed
+  over when a stat is asked for, so a probe of either kind measures the ask. Each new probe gives one fighter a
+  modifier that holds below half health and reads the engine's own answer at full health and at two fifths.
+- **Seven passive stats are listed with no probe**, named in the test file as read from the code and not yet
+  probed: `cooldown_skip_chance`, `debuffs_do_not_expire`, `fervour_loss_suppressed`, `fervour_per_cast`,
+  `health_cost_suppressed`, `movement_speed_reduction_suppressed`, `nova_damage_of_missing_health`. A name must
+  leave that set when its probe is written, and a test fails if one stays. Issue
+  [#2236](https://github.com/sdubois777/Cataclysm/issues/2236) is for writing the seven.
+- **NOT MEASURED: which of "blow taken" and "hit dealt" each asker passes.** That is read from the code, stat by
+  stat. No probe hands over a blow or a target to prove it.
+- **NOT COVERED: a second consumer that reads the attribute.** The list says a stat has an asker, not that every
+  place the stat is used asks. The first three issues above are that case.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in the elastic-burnell worktree, in one window with the two layers of numbers hung on an ailment
+stacked on this one, on `development` 426c061d. An earlier window on `development` 2b87c355 ran this layer too;
+the engine for repeating a skill merged before it did, the stack was made again on top of that, and nothing
+measured there is quoted here. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack, first | 39329cc9 | Build: Failed - 32 actions, 29 files compiled |
+| Build, after two include lines in a test file of the top layer | c9e522fd | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp |
+| Whole suite | 87ffdee3 | 3186 tests performed, 3186 succeeded, 0 failed; declared 3186, gap 0; 0 ensures |
+| Python of record, with ruff clean | 87ffdee3 | 5739 passed, 8 skipped in 314.36s; JUnit tests=5747 failures=0 errors=0 skipped=8 |
+| Proof A: the cooldown reading its reduction from the attribute and not asking, on Cataclysm.StatExemption. | 87ffdee3 | PROVED: with the break in: 4 tests performed, 3 succeeded, 1 failed: AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Python proof 1: a condition its asker is not handed let through, in a copy | 87ffdee3 | PROVED: 3 failed, 11 passed \| restored: 14 passed |
+
+Proof A kept its broken run's log and failed exactly the one assertion predicted, in the cooldown probe:
+"cooldown_reduction is asked for, so below half health the cooldown is shorter: 4.000 against 4.000". Python
+proof 1's three are the made-up rows that put a target condition on `movement_speed`, a blow condition on
+`attack_damage`, and a target condition in a row's second condition.
+
+**The first build failed in the top layer's test file and in nothing of this layer's.** Its 18 errors are in the
+entry for the two slows. This layer's code compiled in that build and was not changed after it.
+
+---
+
 ## 2026-10-05 — A row can repeat the skill just used, free: the engine and the generator for one action, `repeat_skill`, with no row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ActOnSkillUse`, the
