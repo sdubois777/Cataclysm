@@ -60,6 +60,37 @@ EnchantmentEffects 497 to 498, over 411 to 412 enchantments.
   against one 8 metres away, and with no distance known none is taken; and the two figures above.
 - `test_enemies_gaining_excuses_a_negative_value_on_one_stat_only`, in the row-text check.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers above this one, on `development` 8c724dd0. **The ids are the
+commits as they stood when each step ran.** This table carries the steps the four layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack | cfd09737 | Build: Succeeded - 32 actions, 29 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, first run | cfd09737 | 242 tests performed, 238 succeeded, 4 failed; 8 failed assertions, 1 of them this layer's |
+| The same, run again after one test of the top layer was corrected (see that layer's entry) | 383ddd2c | Build: Succeeded - 29 actions, 26 files compiled; 242 tests performed, 238 succeeded, 4 failed; 9 failed assertions, 1 of them this layer's |
+| The three enchantment assets, regenerated with the editor | b7c3e193 | effect rows 497 to 498 |
+| Whole suite, every asset built | 4c90f9a9 | 3226 tests performed, 3226 succeeded, 0 failed. 40 skipped part of what they check; 0 ensures |
+| Python of record, continuous integration idle | 4c90f9a9 | 5768 passed, 8 skipped in 365.63s; the JUnit file: tests 5776, failures 0, errors 0, skipped 8 |
+| Lint | 4c90f9a9 | All checks passed! |
+
+**This layer's test fails against a table without its row and passes with it**, on one assertion: against a
+target 3 metres away the wearer has 0 less penetration than against one 8 metres away, where 40 less is expected.
+
+**The registration gave 11 as the total of failed assertions and the figures it gave for each test add to 9.**
+That was an error of addition in the registration. Each test failed on the number of assertions registered for it.
+
+**Python guard proofs, each run in a copy of 4c90f9a9 with `tools/prove_guard.py`:**
+
+| The break | With the break in | Restored | The tests that noticed |
+| :-- | :-- | :-- | :-- |
+| The reword's pair taken out of the alias table in `CataclysmEnchantmentRenames.cpp` | 1 failed, 6 passed | 7 passed | `test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table` |
+| `GAINED_BY_ENEMIES_WHEN_NEGATIVE` emptied | 2 failed, 33 passed | 35 passed | `test_a_negative_value_is_on_words_that_take_something_away`, `test_enemies_gaining_excuses_a_negative_value_on_one_stat_only` |
+
+**No C++ guard proof.** The alias table is data read when a save is loaded and the row is data; the run against
+the older assets is the row's failing half.
+
 ---
 
 ## 2026-10-06 — A row can roll for a use to hit its own user instead of any enemy, whole or by half; and a stack a row grants can be kept to one kind of use. No row authored yet
