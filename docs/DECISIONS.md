@@ -6,8 +6,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` only. No game code. Issue
 [#2251](https://github.com/sdubois777/Cataclysm/issues/2251).
-**Applied.** The Unreal compile, the automation tests and the guard proof have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proof ran on 2026-10-06;
+the figures are under "Run" at the end of this entry.
 
 ### What happened
 
@@ -42,9 +42,26 @@ whole-suite runs before it. No game file had changed.
   seeds and cannot restore the generator, so every later test that draws is order-dependent. It is the likely reason
   this failure appeared when an unrelated test changed. Not fixed here.
 
-### Not yet run
+### Run
 
-The compile, the two tests and the guard proof.
+One window on 2026-10-06 for a stack of two, at `feat/use-hits-its-user-5` 5c0072e7: the fog-spread test
+(`fix/fog-test-independent-of-the-draw-3` 5a93fb20), then a use that hits its own user. Development was 3de1c490.
+Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3220 tests performed, 3220 succeeded, 0 failed`; `Declared: 3220 tests in the tree at 5c0072e7; 3220 performed, gap 0` |
+| Python, with continuous integration idle | `5765 passed, 8 skipped in 369.16s`; JUnit `tests="5773" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proof Pa, at 5c0072e7, one anchor counted, the source hash the same before and after: PROVED.** The break makes
+the new helper compare by place again. Prefix `Cataclysm.DungeonModifierEffects.ANewPatchExactlyOnAnOldOne`. With the
+break in: 1 performed, 1 failed, 1 failed assertion, the count registered before the run: "the zone that is new is the
+third" was false. Restored: 1 performed, 1 succeeded.
+
+**What this run does not show.** The fog test passed in this whole-suite run, as it did in most runs before the
+change. The evidence that the change does its job is the hand-made test and its proof.
 
 ---
 
