@@ -316,6 +316,11 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # echo is read as a second free activation. The two rows that say "twice"
     # need no word here, because "twice" already reads as 100 everywhere.
     "repeat_skill": {"echo": 100.0},
+    # "NEAREST" IS 1 ON `ailment_spread_on_death`, whose value is how many: "its
+    # bleed spreads to the nearest enemy within 5 metres" is one enemy. The 5
+    # in that sentence is the distance, which is the reach every spread at a
+    # death has and is no cell of the row.
+    "ailment_spread_on_death": {"nearest": 1.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -649,8 +654,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 497 over 411: one row on one enchantment.
 #: AND 502 OVER 416 SINCE FOUR ROWS ON THE STATS A PERSISTENT AREA READS,
 #: issue #1833, 2026-10-06, from 498 over 412: four rows on four enchantments.
-AUTHORED_ROWS = 502
-AUTHORED_ENCHANTMENTS = 416
+#: AND 504 OVER 418 SINCE THE TWO ROWS THAT PASS AN AILMENT ON AT A DEATH,
+#: issue #1833, 2026-10-06, from 502 over 416: two rows on two enchantments.
+AUTHORED_ROWS = 504
+AUTHORED_ENCHANTMENTS = 418
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

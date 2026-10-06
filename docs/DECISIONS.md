@@ -2,6 +2,64 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Two rows pass an ailment on at a death: Disease to 1 to 3 more than its own two, and a Bleed to the nearest enemy
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+Two rows on the number the entry below this one lets a row hang on an ailment, `ailment_spread_on_death`. No engine
+code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Disease effects you apply spread to 1-3 nearby enemies when the afflicted enemy dies | `ailment_spread_on_death` 1 to 3 on Disease |
+| When a bleeding enemy dies, its bleed spreads to the nearest enemy within 5 metres | `ailment_spread_on_death` 1 on Bleed |
+
+EnchantmentEffects 502 to 504, over 416 to 418 enchantments.
+
+### WHAT WAS RULED, 2026-10-06
+
+- **THE OWNER: the Disease row ADDS to what Disease passes to by itself.** With the row a dying enemy's Disease
+  passes to 3 to 5 enemies: its own two and the row's 1 to 3.
+- **The coordinating session, under the owner's delegation: the Bleed row is one enemy, the nearest.** A Bleed
+  passes to nobody by itself, so the one is the row's.
+
+### HOW THE SENTENCES ARE READ
+
+- **"Nearby" and "within 5 metres" are the same reach**, the one every spread at a death has. The Bleed sentence
+  states it and the Disease sentence says "nearby", which has been 5 metres since 2026-09-11. Neither is a cell of
+  the row.
+- **"The nearest" is the count 1.** The row-text check learns that word for this action alone.
+- **"You apply" and "its bleed"**: the count is hung on the ailment when the WEARER applies it, and is read off
+  the dying enemy. A Bleed another character applied passes to nobody for the wearer's row.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The count is fixed when the ailment is applied**, at the roll of the item worn then, and lasts as long as the
+  ailment does, as every number hung on an ailment is. An item taken off stops adding at the wearer's next
+  application.
+- **A copy is handed the row's count again**, so with the Disease row a pack passes it along 3 to 5 at a time, and
+  with the Bleed row a Bleed moves from body to body one enemy at a time, each hop with less time left.
+- **A Bleed ticks whether or not its carrier moves**, today; the design document's rule that it ticks only while
+  the target moves is issue #918 and is not built.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheDiseaseSpreadRowAddsItsThreeToTheTwoADiseasedEnemysDeathAlreadyPassesTo`: the real row
+  worn at the top of its roll; of six creatures within 5 metres of the body, the five nearest receive the Disease
+  and the furthest does not.
+- `Cataclysm.Enchantments.TheBleedSpreadRowPassesADyingEnemysBleedToTheOneNearestWithinFiveMetres`: the real row
+  worn; of creatures 2, 3 and 6 metres from the body, the first receives the Bleed and the other two do not.
+
+Both call the spread itself and not a death; the test of the entry below this one is the one that goes through a
+death.
+
+---
+
 ## 2026-10-06 — Disease passes to the two nearest enemies when its carrier dies, and a row can add to that or give another ailment a count; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmContagion.h` and `.cpp` (`SpreadFromTheDying`),
