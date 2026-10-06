@@ -7005,6 +7005,15 @@ def stats_with_no_attribute() -> set[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-10-05 FOR "Starvation (10-Piece Bonus): When you kill an enemy,
+    # gain a stack of 'Famished.' Each stack increases all of your leech by 5%",
+    # issue #1833, three rows scaled by their own stacks. `UCataclysmLeech::NoteHit`
+    # has asked all three through `StatForSkill` since issue #947;
+    # `ProbeScaledLifeLeech`, `ProbeScaledManaLeech` and
+    # `ProbeScaledEnergyShieldLeech` measure that with the scale the rows carry.
+    "life_leech",
+    "mana_leech",
+    "energy_shield_leech",
     # ADDED 2026-10-02 FOR "Consecutive blocks within 3 seconds each block 5%-10%
     # more damage", issue #1833 group E part 2, a row scaled by its own stacks.
     # `UCataclysmDamageCalculation::BlockShareOf` asks it through `StatForSkill`
