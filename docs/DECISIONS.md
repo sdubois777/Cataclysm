@@ -2,6 +2,72 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Spellblade's Will is partly built: two pieces trigger a held skill with a cooldown on a melee attack, and melee damage is reduced by half
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the pinned counts and
+`SETS_THAT_WORK`), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The two rows the entry "A row can trigger a different held skill" left to the session holding the design workbook.
+A set is written whole or not at all, so the first bonus and the drawback are written together. No engine code and
+no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Spellblade's Will (2-Piece Bonus): Your melee attacks have a 25% chance to trigger an ability with a cooldown | `trigger_held_skill` on `attack_use`, 25, Required Tags `Type.Melee` |
+| Melee damage is reduced by 50% | `attack_damage`, `increased`, -50, Required Tags `Type.Melee` |
+
+EnchantmentEffects 485 to 487, over 399 to 401 enchantments. Eleven of the fourteen sets now have a row.
+
+### WHAT WAS RULED, 2026-10-06, UNDER THE OWNER'S DELEGATION
+
+- **The rows are as that entry and the coordinating session gave them**: the bonus on `attack_use` scoped to
+  `Type.Melee`, so the basic attack is reached; the drawback scoped to `Type.Melee`, the sentence's word, and not
+  the `Type.Strike` of its Tags cell, as with the Ravager rows of issue #944.
+- **THE DRAWBACK IS IN THE `increased` BUCKET.** The sentence says "reduced", and the project's tested rule is that
+  a sentence that says "reduced" is an `increased` row with a negative value: of the 22 effect rows on a drawback
+  that says "reduced by", 16 are `increased`, 2 are flat on the healing reduction, and the 4 that are `more` each
+  also say "less". The sizing sent before the ruling said `more`; that was not ruled and is not what is built.
+
+### NOT BUILT, AND WHY
+
+- **The 10-piece bonus** waits for the owner: a melee character holds no skill tagged `Type.Spell`, and what "your
+  spells" means for that character is their question.
+- **The 6-piece bonus** needs a row to scope the grant of its own stacks apart from the scope of its stat, which the
+  loader does not have. Both are stated in the entry that built the action.
+
+### HOW THE ROWS ARE TESTED
+
+`Cataclysm.Enchantments.SpellbladesWillTwoPiecesTriggerAHeldSkillOnAMeleeAttackAndHalveMeleeDamage` wears one piece
+and then two, each piece carrying the real bonus and the real drawback.
+
+- **The bonus**, with `Cataclysm.TriggerHeldSkillRoll` pinned: at two pieces a roll of 24.9 on a melee basic attack
+  records a trigger of a skill with a cooldown, naming the attack used; a ranged basic attack records none; a roll
+  of 25 records none. At one piece nothing is recorded.
+- **The drawback**: at two pieces a melee skill's attack damage of 100 is 50 and a ranged skill's is 100. At one
+  piece both are 100.
+
+**The bonus is read at the recorded trigger.** Which held skill is picked, that it is free and that its cooldown is
+untouched are covered by the three tests of the entry that built the action, with rows made by hand.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **Other increased melee damage adds against the drawback.** It is one term of the sum of increases, so a
+  character with 50% increased attack damage from elsewhere deals what it would with neither, and one with more
+  than that still gains. A `more` row would have halved melee damage whatever else was worn.
+- **The drawback reaches every skill that carries `Type.Melee`, and the triggered skill too when it is melee.** A
+  Demonic Sword's two triggerable skills, Quench and Extinction, both carry `Type.Melee`, so the skill the bonus
+  triggers for that character is itself lowered by the drawback.
+- **The drawback lowers attack damage and not spell damage.** A melee skill that deals spell damage would not be
+  lowered; none was looked for.
+- Everything the entry that built the action states of a triggered skill holds for this row: it is not a use, it
+  may be the ultimate, and its cooldown is neither read nor started.
+
+---
+
 ## 2026-10-06 — "Your melee attacks have a 12%-15% chance to trigger twice" is built: a repeat on `attack_use`, scoped to melee, so the basic attack is reached
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
