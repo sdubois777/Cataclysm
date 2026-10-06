@@ -67,6 +67,32 @@ zone is covered by the four probes of the entry that built the stats.
   the enemy being hurt.
 - **The only-one row ends every earlier zone and terrain the same character's skills left** when a new one is made.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the layer below this one and the two above it, on `development` 8c724dd0. The
+build, the whole suite and the Python of record are in the table of the entry "Nearby enemies gain 20%-40%
+resistances is reworded" and were run with this layer in the stack. **The ids are the commits as they stood when
+each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 383ddd2c | 242 tests performed, 238 succeeded, 4 failed, this layer's among them; 4 of the 9 failed assertions are this layer's |
+| The three enchantment assets, regenerated with the editor | bc6a559e | effect rows 498 to 502 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of the layer above | 4c90f9a9 | 242 tests performed, 242 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**, on one assertion a row: a persistent
+area's duration read as 100 where 40 is expected, and 0 read where 20, 35 and 1 are expected for the damage for
+each enemy inside, the slow and the one-at-a-time switch.
+
+**Python guard proof, run in a copy of 4c90f9a9 with `tools/prove_guard.py`:**
+
+| The break | With the break in | Restored | The tests that noticed |
+| :-- | :-- | :-- | :-- |
+| `EXPIRES_FASTER_WHEN_NEGATIVE` emptied | 2 failed, 33 passed | 35 passed | `test_a_negative_value_is_on_words_that_take_something_away`, `test_expiring_faster_excuses_a_negative_value_on_one_stat_only` |
+
+**This layer changes no engine code and no generator code, so it has no C++ guard proof of its own.** The four
+stats were proved by the session that built them.
+
 ---
 
 ## 2026-10-06 — "Nearby enemies gain 20%-40% resistances" is reworded to "Enemies within 5 metres gain 20%-40% resistances" and built: the wearer has that much less penetration against a character that near
