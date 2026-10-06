@@ -66,6 +66,51 @@ untouched are covered by the three tests of the entry that built the action, wit
 - Everything the entry that built the action states of a triggered skill holds for this row: it is not a use, it
   may be the ultimate, and its cooldown is neither read nor started.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers below this one, on `development` 0a3844e0. The first build and
+the Python of record are in the table of the entry "The first row that repeats a skill" and were run with this
+layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | 7882d9d4 | 228 tests performed, 220 succeeded, 8 failed, this layer's test among them; 3 of the 19 failed assertions are its own |
+| The asset, regenerated with the editor | 7882d9d4 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 485 to 487 |
+| Whole suite | 9e89c347 | 3201 tests performed, 3200 succeeded, 1 failed: SpellbladesWillTwoPiecesTriggerAHeldSkillOnAMeleeAttackAndHalveMeleeDamage; declared 3201, gap 0; 0 ensures |
+| Build, after two calls were changed in that test | eaec6b80 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp |
+| Cataclysm.Enchantments., whole, after it | eaec6b80 | 228 tests performed, 228 succeeded, 0 failed; 0 ensures |
+
+**THE WHOLE SUITE WAS REGISTERED AS 3201 OF 3201 AND ONE TEST FAILED: THIS LAYER'S, AND THE FAULT WAS THE TEST'S.**
+Its two failed assertions were both at two pieces: "a melee skill's attack damage of 100 is halved only at two",
+expected 50.000000 and was 0.000000; and "a ranged skill's attack damage of 100 is left alone", expected
+100.000000 and was 0.000000. Its three assertions about the trigger passed.
+
+- **The cause.** The test called `StatForSkill(attack_damage, tags, 100)`. The third argument of that function is a
+  FALLBACK, handed back only when the character has nothing recorded for the stat; it is not a base. With the
+  drawback worn something is recorded, so the function ran on the test wearer's own recorded base, which is 0
+  because that bare wearer holds no weapon, and 0 was the answer for a melee skill and a ranged one alike.
+  `StatAppliedTo`, declared beside it, takes the figure handed in as the base, and its own header records this
+  mistake being made before, on 2026-09-17.
+- **What was changed, after it was asked for**: those two calls, to `StatAppliedTo`, with a comment saying why.
+  That test and nothing else. The window stopped until the change was agreed.
+- **THE PREDICTION FOR THE RUN AGAINST THE OLD ASSET WAS RIGHT ON THAT LINE FOR THE WRONG REASON.** It registered
+  that the damage line would fail without the row, and it did: 100 came back against an expected 50. But 100 came
+  back because nothing was recorded and the fallback was returned, which is also why the same line passed at one
+  piece. The line could not have told a missing row from a row that did nothing. So that run is not evidence for
+  the drawback row.
+- **THE RUN AGAINST THE OLD ASSET CANNOT BE MADE AGAIN FOR THIS LAYER**, because the asset is built. What stands in
+  for it: the three trigger assertions of that first run, which failed as predicted with no row and pass with it;
+  and for the drawback, the changed test passing at two pieces at 50 for a melee skill and 100 for a ranged one,
+  and at one piece at 100 for both, on a figure the function treats as the base. That the drawback line FAILS
+  without its row was not measured after the change.
+- **A SEARCH FOR THE SAME FAULT** covered every test this stack adds and every test the three ailment layers added,
+  which are already on `development`: for `StatForSkill` called with a figure an assertion treats as a base. These
+  two calls were the only ones.
+- **The whole suite was not run a second time**, by the standing rule for a change to a test alone: its group was,
+  and passed whole.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.**
+
 ---
 
 ## 2026-10-06 — "Your melee attacks have a 12%-15% chance to trigger twice" is built: a repeat on `attack_use`, scoped to melee, so the basic attack is reached
