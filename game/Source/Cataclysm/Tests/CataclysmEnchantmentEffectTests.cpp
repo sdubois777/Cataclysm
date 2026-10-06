@@ -41,6 +41,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
@@ -58,6 +59,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveGather.h"
@@ -13612,6 +13614,109 @@ bool FCataclysmDiseaseHealingRowTest::RunTest(const FString&)
 		Restored(), 0.0f, 0.5f);
 	UCataclysmDebuffs::Cleanse(Enemy);
 	TestEqual(TEXT("cleansed, what it restored before"), Restored(), Plain, 0.5f);
+	return true;
+}
+
+namespace CataclysmAilmentSpeedRowTest
+{
+	/** An Imp at the origin, which has a designed walk speed and a designed attack interval. */
+	ACataclysmImpCharacter* AnImp(UWorld* World)
+	{
+		return World->SpawnActor<ACataclysmImpCharacter>(FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	}
+
+	/** Its walk speed as the movement component holds it, refreshed first. */
+	float WalkOf(ACataclysmEnemyCharacter* Creature)
+	{
+		Creature->RefreshWalkSpeed();
+		return Creature->GetCharacterMovement()->MaxWalkSpeed;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPoisonedSlowRowTest,
+	"Cataclysm.Enchantments.ThePoisonedSlowRowSlowsAPoisonedEnemysWalkingAndItsAttackingAlike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Poisoned enemies are slowed by 30%-50%". Issue #1833, ruled 2026-10-06: a
+ * rider on Poison, `ailment_speed` 30 to 50, WORN at the top of its roll. BOTH
+ * SPEEDS, as Cripple was read: an Imp carrying the wearer's poison walks at half
+ * its speed and takes twice as long between attacks, and both come back when
+ * the poison is cleansed.
+ */
+bool FCataclysmPoisonedSlowRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmAilmentRiderRowTest;
+	using namespace CataclysmAilmentSpeedRowTest;
+	FWorn Worn(TEXT("Positive_Poisoned_enemies_are_slowed_by_30_50"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	ACataclysmImpCharacter* Imp = AnImp(Worn.World);
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	if (!TestTrue(TEXT("an Imp and the poison tag"), Imp && Poison.IsValid()))
+	{
+		return false;
+	}
+	const float Walk = WalkOf(Imp);
+	const float Interval = Imp->SecondsBetweenAttacks();
+	if (!TestTrue(TEXT("set-up: the Imp walks and attacks at something"), Walk > 0.0f && Interval > 0.0f))
+	{
+		return false;
+	}
+	Ail(Worn.Wearer->Actor, Imp, Poison);
+	TestEqual(*(FString(TEXT("poisoned by the wearer, it walks at half its speed.")) + StaleAsset),
+		WalkOf(Imp) / Walk, 0.5f, 0.001f);
+	TestEqual(TEXT("and takes twice as long between attacks"),
+		Imp->SecondsBetweenAttacks() / Interval, 2.0f, 0.001f);
+	UCataclysmDebuffs::Cleanse(Imp);
+	TestEqual(TEXT("cleansed, it walks as before"), WalkOf(Imp) / Walk, 1.0f, 0.001f);
+	TestEqual(TEXT("and attacks as before"), Imp->SecondsBetweenAttacks() / Interval, 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedingMoveRowTest,
+	"Cataclysm.Enchantments.TheBleedingMoveRowSlowsABleedingEnemysWalkingAndNotItsAttacking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Bleeding enemies move 5%-10% slower". Issue #1833, ruled 2026-10-06: a rider
+ * on Bleed, `ailment_movement_speed` 5 to 10, WORN at the top of its roll.
+ * MOVEMENT ALONE, as written: an Imp carrying the wearer's bleed walks at nine
+ * tenths of its speed and attacks on the interval it had, and the walk comes
+ * back when the bleed is cleansed.
+ */
+bool FCataclysmBleedingMoveRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmAilmentRiderRowTest;
+	using namespace CataclysmAilmentSpeedRowTest;
+	FWorn Worn(TEXT("Positive_Bleeding_enemies_move_5_10_slower"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	ACataclysmImpCharacter* Imp = AnImp(Worn.World);
+	const FGameplayTag Bleed = Ailment(TEXT("Keyword.DoT.Bleed"));
+	if (!TestTrue(TEXT("an Imp and the bleed tag"), Imp && Bleed.IsValid()))
+	{
+		return false;
+	}
+	const float Walk = WalkOf(Imp);
+	const float Interval = Imp->SecondsBetweenAttacks();
+	if (!TestTrue(TEXT("set-up: the Imp walks and attacks at something"), Walk > 0.0f && Interval > 0.0f))
+	{
+		return false;
+	}
+	Ail(Worn.Wearer->Actor, Imp, Bleed);
+	TestEqual(*(FString(TEXT("bleeding from the wearer, it walks at nine tenths of its speed.")) + StaleAsset),
+		WalkOf(Imp) / Walk, 0.9f, 0.001f);
+	TestEqual(TEXT("and attacks on the interval it had"),
+		Imp->SecondsBetweenAttacks() / Interval, 1.0f, 0.001f);
+	UCataclysmDebuffs::Cleanse(Imp);
+	TestEqual(TEXT("cleansed, it walks as before"), WalkOf(Imp) / Walk, 1.0f, 0.001f);
 	return true;
 }
 

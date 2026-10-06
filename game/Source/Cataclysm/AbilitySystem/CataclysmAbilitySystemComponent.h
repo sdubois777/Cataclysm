@@ -846,14 +846,16 @@ public:
 	static const TCHAR* ReflectBlockedAction;
 
 	/**
-	 * The four ailment rider action names, one per `ECataclysmAilmentRider` but
+	 * The six ailment rider action names, one per `ECataclysmAilmentRider` but
 	 * None. Issue #1833, ruled 2026-10-06. `AILMENT_RIDER_ACTIONS` in
-	 * `tools/generate_datatables.py` holds the same four.
+	 * `tools/generate_datatables.py` holds the same six.
 	 */
 	static const TCHAR* AilmentDamageTakenAction;
 	static const TCHAR* AilmentArmorRiderAction;
 	static const TCHAR* AilmentDamageDealtAction;
 	static const TCHAR* AilmentHealingReceivedAction;
+	static const TCHAR* AilmentSpeedAction;
+	static const TCHAR* AilmentMovementSpeedAction;
 
 	/** Which rider an action name is, or None. */
 	static ECataclysmAilmentRider AilmentRiderNamed(const FString& Action);
