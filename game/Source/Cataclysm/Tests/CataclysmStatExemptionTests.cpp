@@ -3864,6 +3864,169 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * What one sweep of a zone did to the character who left it and stands in it, for the two flags by which a zone
+	 * reaches its owner. The owner's decision of 2026-10-06.
+	 *
+	 * A STRIKE THAT LEAVES GROUND UNDER ITS USER, 4 m in radius, carrying the skill's curse. The user wears the three
+	 * zone rows as well -- a slow of 20, the stagger on entry and the zone's own ailment -- so the zone has every
+	 * effect a zone can have. One enemy stands 2 m away, inside it, as the control: it is reached whatever is worn.
+	 */
+	struct FOwnerReading
+	{
+		bool bMade = false;
+		bool bTheZoneCarriesACurse = false;
+		float PerSweep = -1.0f;
+		float TakenByTheOwner = -1.0f;
+		float TakenByTheEnemy = -1.0f;
+		int32 EnemiesFoundByTheSweep = -1;
+		bool bOwnerIsSlowed = false;
+		bool bOwnerIsStaggered = false;
+		bool bOwnerIsBurning = false;
+		bool bOwnerIsCursed = false;
+		bool bOwnerStaggeredAgainWhileStaying = false;
+	};
+
+	FOwnerReading ReadAZoneUnderItsOwner(TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry)
+	{
+		FOwnerReading Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		// NO CRITICAL STRIKES, so a sweep deals its stated figure. Pinned by hand: `FPinnedRoll` is declared further down.
+		IConsoleVariable* CritRoll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+		const float CritRollWas = CritRoll ? CritRoll->GetFloat() : -1.0f;
+		if (CritRoll)
+		{
+			CritRoll->Set(100.0f, ECVF_SetByConsole);
+		}
+		ON_SCOPE_EXIT
+		{
+			if (CritRoll)
+			{
+				CritRoll->Set(CritRollWas, ECVF_SetByConsole);
+			}
+		};
+
+		FScopedSwinger User(World, FVector::ZeroVector);
+		FScopedSwinger Enemy(World, FVector(200.0f, 0.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneSlowPercentStat, 20.0f);
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneStaggersOnEntryStat, 1.0f);
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat, 1.0f);
+		Carry(Inputs);
+		User.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		const FGameplayAbilitySpecHandle Handle = User.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Movement, /*Level=*/100, User.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? User.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSkillTemplate* Skill = Spec ? Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Skill)
+		{
+			return Read;
+		}
+		Skill->SkillName = TEXT("A strike leaving ground under its user");
+		Skill->Params = UCataclysmSkillShapes::ParseParams(
+			TEXT("Radius=1; Angle=360; GroundRadius=4; GroundDuration=6; GroundPercent=16.7; EffectDuration=6; Effect=Shred"));
+		Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent"));
+		if (!User.AbilitySystem->TryActivateAbility(Handle))
+		{
+			return Read;
+		}
+
+		ACataclysmGroundZone* Zone = nullptr;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It) && It->GetOwner() == User.Actor)
+			{
+				Zone = *It;
+			}
+		}
+		if (!Zone)
+		{
+			return Read;
+		}
+		Read.bMade = true;
+		Read.bTheZoneCarriesACurse = Zone->AppliedEffect.IsValid();
+		Read.PerSweep = Zone->DamagePerTick;
+
+		UAbilitySystemComponent* Owner = UCataclysmTargeting::AbilitySystemOf(User.Actor);
+		const UAbilitySystemComponent* EnemySystem = UCataclysmTargeting::AbilitySystemOf(Enemy.Actor);
+		const float OwnerBefore = Owner->GetNumericAttribute(Vital::GetHealthAttribute());
+		const float EnemyBefore = EnemySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		Zone->Sweep();
+		Read.EnemiesFoundByTheSweep = Zone->LastSweepCount;
+		Read.TakenByTheOwner = OwnerBefore - Owner->GetNumericAttribute(Vital::GetHealthAttribute());
+		Read.TakenByTheEnemy = EnemyBefore - EnemySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		Read.bOwnerIsSlowed = Owner->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
+		Read.bOwnerIsStaggered = UCataclysmSkillEffects::IsStaggered(User.Actor);
+		Read.bOwnerIsBurning = UCataclysmSkillEffects::HasTag(User.Actor, UCataclysmSkillEffects::BurnTag());
+		Read.bOwnerIsCursed = Zone->AppliedEffect.IsValid() && Owner->HasMatchingGameplayTag(Zone->AppliedEffect);
+
+		// AND A SECOND SWEEP WHILE THE OWNER STAYS, with the stagger taken off by hand since nothing here moves time.
+		Owner->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(UCataclysmSkillEffects::StaggeredTag()));
+		Zone->Sweep();
+		Read.bOwnerStaggeredAgainWhileStaying = UCataclysmSkillEffects::IsStaggered(User.Actor);
+		return Read;
+	}
+
+	/**
+	 * `zone_damages_its_owner` is read where the zone is left. A plain owner standing in their own zone takes
+	 * nothing from a sweep; a carrying one takes the zone's sweep figure, and none of its effects.
+	 */
+	void ProbeZoneDamagesItsOwner(FAutomationTestBase& Test)
+	{
+		const FOwnerReading Plain = ReadAZoneUnderItsOwner([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FOwnerReading Hurt = ReadAZoneUnderItsOwner([](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat, 1.0f);
+		});
+		if (!Test.TestTrue(TEXT("both strikes left a zone that deals something"),
+						   Plain.bMade && Hurt.bMade && Plain.PerSweep > 0.0f && Hurt.PerSweep > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("control: a plain owner's zone damages the enemy standing in it"), Plain.TakenByTheEnemy > 0.0f);
+		Test.TestEqual(TEXT("and deals its owner nothing"), Plain.TakenByTheOwner, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("a carrying owner takes the zone's sweep figure"), Hurt.TakenByTheOwner, Hurt.PerSweep, 0.01f);
+		Test.TestEqual(TEXT("and the sweep still counts one enemy, not two"), Hurt.EnemiesFoundByTheSweep, 1);
+		Test.TestFalse(TEXT("and the owner carries none of the zone's effects: not the slow"), Hurt.bOwnerIsSlowed);
+		Test.TestFalse(TEXT("nor the stagger"), Hurt.bOwnerIsStaggered);
+		Test.TestFalse(TEXT("nor the ailment"), Hurt.bOwnerIsBurning);
+		Test.TestFalse(TEXT("nor the curse"), Hurt.bOwnerIsCursed);
+	}
+
+	/**
+	 * `zone_applies_effects_to_owner` is read where the zone is left. A carrying owner standing in their own zone
+	 * is slowed, staggered on entering, set alight and cursed by a sweep, and takes no damage from it.
+	 */
+	void ProbeZoneAppliesEffectsToOwner(FAutomationTestBase& Test)
+	{
+		const FOwnerReading Plain = ReadAZoneUnderItsOwner([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FOwnerReading Affected = ReadAZoneUnderItsOwner([](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat, 1.0f);
+		});
+		if (!Test.TestTrue(TEXT("both strikes left a zone that carries a curse"),
+						   Plain.bMade && Affected.bMade && Plain.bTheZoneCarriesACurse && Affected.bTheZoneCarriesACurse))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("control: a plain owner is not slowed by their own zone"), Plain.bOwnerIsSlowed);
+		Test.TestFalse(TEXT("control: nor staggered"), Plain.bOwnerIsStaggered);
+		Test.TestFalse(TEXT("control: nor set alight"), Plain.bOwnerIsBurning);
+		Test.TestFalse(TEXT("control: nor cursed"), Plain.bOwnerIsCursed);
+		Test.TestTrue(TEXT("a carrying owner is slowed by their own zone"), Affected.bOwnerIsSlowed);
+		Test.TestTrue(TEXT("and staggered on entering it"), Affected.bOwnerIsStaggered);
+		Test.TestFalse(TEXT("and not again while staying"), Affected.bOwnerStaggeredAgainWhileStaying);
+		Test.TestTrue(TEXT("and set alight"), Affected.bOwnerIsBurning);
+		Test.TestTrue(TEXT("and cursed"), Affected.bOwnerIsCursed);
+		Test.TestEqual(TEXT("and the sweep deals them no damage"), Affected.TakenByTheOwner, 0.0f, 0.001f);
+	}
+
+	/**
 	 * A player character on its player state, for the potion probes below: only a
 	 * player character holds potions. Issue #806.
 	 */
@@ -5844,6 +6007,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_applies_own_ailment"), &ProbeZoneAppliesOwnAilment},
 			{TEXT("zone_at_start_and_end_seconds"), &ProbeZoneAtStartAndEndSeconds},
 			{TEXT("zone_at_impact_seconds"), &ProbeZoneAtImpactSeconds},
+			{TEXT("zone_damages_its_owner"), &ProbeZoneDamagesItsOwner},
+			{TEXT("zone_applies_effects_to_owner"), &ProbeZoneAppliesEffectsToOwner},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 			{TEXT("skill_duration"), &ProbeSkillDuration},

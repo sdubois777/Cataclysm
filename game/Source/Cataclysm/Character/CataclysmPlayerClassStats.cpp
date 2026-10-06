@@ -432,6 +432,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmSkillTemplate::LeaveRowZoneAt. Ruled 2026-10-06.
 		TEXT("zone_at_start_and_end_seconds"),
 		TEXT("zone_at_impact_seconds"),
+		// And two flags by which a zone reaches the character who left it:
+		// its damage, and its effects. Read where the zone is left. The
+		// owner's decision of 2026-10-06.
+		TEXT("zone_damages_its_owner"),
+		TEXT("zone_applies_effects_to_owner"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health

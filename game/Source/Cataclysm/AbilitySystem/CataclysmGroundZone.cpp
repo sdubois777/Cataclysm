@@ -389,7 +389,9 @@ void ACataclysmGroundZone::Sweep()
 		: Cast<ACataclysmFloorHazardSource>(Source);
 	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 
-	for (AActor* Target : Inside)
+	// WHAT A SWEEP DOES TO ONE CHARACTER STANDING IN IT, as a function because the zone's owner may be reached too,
+	// below, and by only one half of it: `bDamage` is the damage and `bEffects` is everything else.
+	const auto Reach = [&](AActor* Target, bool bDamage, bool bEffects)
 	{
 		// AREA AND OVER TIME BOTH. A zone catches whatever is standing in it
 		// rather than striking one target, so it cannot be evaded; and it is
@@ -406,7 +408,7 @@ void ACataclysmGroundZone::Sweep()
 		// now, and a hit of zero is still a hit: it would announce itself, count
 		// towards anything that reacts to being struck, and read in a combat log
 		// as an attack that did nothing.
-		if (bDamages && (!Hazard || Hazard->MayBurn(BurnsOnceASecondAs, Target, Now)))
+		if (bDamage && bDamages && (!Hazard || Hazard->MayBurn(BurnsOnceASecondAs, Target, Now)))
 		{
 			// THE FIRST SWEEP MAY DEAL ITS OWN FIGURE. Issue #1686. `TicksElapsed`
 			// is still nought during it, because it moves after the sweep.
@@ -424,7 +426,7 @@ void ACataclysmGroundZone::Sweep()
 		// walks into it". Laid on every sweep, which refreshes rather than
 		// stacks, so the curse runs its own duration from the moment the target
 		// last stood here.
-		if (bCurses)
+		if (bEffects && bCurses)
 		{
 			UCataclysmSkillEffects::ApplyNamedEffect(
 				Source, Target, AppliedEffect, AppliedEffectSeconds,
@@ -438,7 +440,7 @@ void ACataclysmGroundZone::Sweep()
 		// version of this called `ApplyNamedEffect`, which for an effect whose row moves no attribute lays the tag
 		// alone and drops the size; every zone slow was then the Cripple row's own 30%, whatever the stat said.
 		// That call does not hold the size to the row's cap, so it is held here.
-		if (SlowsThoseInsidePercent > 0.0f)
+		if (bEffects && SlowsThoseInsidePercent > 0.0f)
 		{
 			const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
 			const float Cap = UCataclysmSkillEffects::NumbersForEffectTag(Cripple).StrengthCap;
@@ -448,27 +450,53 @@ void ACataclysmGroundZone::Sweep()
 		}
 
 		// AND A STAGGER FOR WHOEVER WAS NOT INSIDE AT THE SWEEP BEFORE. Ruled 2026-10-06.
-		if (bStaggersThoseEntering && !InsideLastSweep.Contains(Target))
+		if (bEffects && bStaggersThoseEntering && !InsideLastSweep.Contains(Target))
 		{
 			UCataclysmSkillEffects::ApplyStagger(Source, Target);
 		}
 
 		// AND THE AILMENT OF THE ZONE'S OWN DAMAGE TYPE, at that ailment's ordinary figures. Ruled 2026-10-06.
 		// A magnitude of one is one application at the row's own size, as a chance of up to a hundred gives.
-		if (!OwnAilment.IsNone())
+		if (bEffects && !OwnAilment.IsNone())
 		{
 			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(OwnAilment.ToString()))
 			{
 				UCataclysmAilments::Apply(Source, Target, *Kind, /*Magnitude=*/1.0f);
 			}
 		}
+	};
+
+	for (AActor* Target : Inside)
+	{
+		Reach(Target, /*bDamage=*/true, /*bEffects=*/true);
 	}
 
-	// WHO WAS INSIDE, FOR THE NEXT SWEEP TO TELL WHO HAS ENTERED.
+	// AND THE CHARACTER WHO LEFT IT, WHERE A ROW SAYS SO AND THEY STAND IN IT. The owner decided on 2026-10-06 that
+	// a character's own zones may hurt them where a row's sentence says so. Two rows and two flags: one for the
+	// damage, one for the effects.
+	//
+	// AFTER THE ENEMIES AND NOT AMONG THEM, so the owner is not counted by "increased damage for each enemy
+	// standing in them" and not by `LastSweepCount`. NOT TWICE: a zone that reaches everyone has found its owner
+	// already.
+	const bool bOwnerIsReached = (bAlsoDamagesItsOwner || bAlsoLaysItsEffectsOnItsOwner)
+		&& !Inside.Contains(Source)
+		&& !UCataclysmSkillEffects::IsDead(Source)
+		&& Covers(Source->GetActorLocation());
+	if (bOwnerIsReached)
+	{
+		Reach(Source, bAlsoDamagesItsOwner, bAlsoLaysItsEffectsOnItsOwner);
+	}
+
+	// WHO WAS INSIDE, FOR THE NEXT SWEEP TO TELL WHO HAS ENTERED. The owner too, where it was reached, so it is
+	// staggered when it enters and not again while it stays.
 	InsideLastSweep.Reset();
 	for (AActor* Target : Inside)
 	{
 		InsideLastSweep.Add(Target);
+	}
+	if (bOwnerIsReached)
+	{
+		InsideLastSweep.Add(Source);
 	}
 
 	LastSweepCount = Inside.Num();
