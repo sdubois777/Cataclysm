@@ -480,6 +480,9 @@ namespace CataclysmDungeonNavTest
 			Setup.NavData->EnsureBuildCompletion();
 			if (Tick >= 2 && TheNavigationMeshIsBuilt(Setup))
 			{
+				// HOW LONG IT TOOK, EVERY TIME, so a run's log says whether the limit is generous or tight.
+				UE_LOG(LogTemp, Display, TEXT("Navigation wait finished: %d ticks in %.4f s. Issue #2222."), Tick + 1,
+					FPlatformTime::Seconds() - Began);
 				return true;
 			}
 			if (FPlatformTime::Seconds() - Began > MostSeconds)
