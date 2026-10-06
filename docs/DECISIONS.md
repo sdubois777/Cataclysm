@@ -70,6 +70,26 @@ Read from the code on 2026-10-06. "All sources" is everything in the first list.
   health regeneration of 100 is 50; at one piece 100 and 100.
 - The probe for `healing_received` in `Cataclysm.StatExemption.`.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one and the three above it, on `development`
+bae2f26c. The build, the whole suite and the Python of record are in the table of the entry "While below 50% HP, all
+skills cost HP instead of mana no longer converts the mana pool" and were run with this layer in the stack.
+**The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | b71a44e5 | 236 tests performed, 228 succeeded, 8 failed, this layer's test among them; 2 of the 10 failed assertions are its own |
+| The asset, regenerated with the editor | b71a44e5 | rows 488 to 490 |
+| Proof K: a heal not asking for the stat that raises it | 276116ba | PROVED: with the break in: 236 tests performed, 235 succeeded, 1 failed: ReapersEmbraceTwoPiecesRaiseEveryHealByATenthAndHalveHealthRegeneration \| restored: 236 tests performed, 236 succeeded, 0 failed |
+
+Proof K kept its broken run's log and failed exactly the one assertion predicted: at two pieces a heal of 100
+restored 100.000000 against 110.000000. The drawback's line passed in that run, as it should: the break is in
+the heal, and the drawback is a row on another stat.
+
+**The test fails against a table without the rows and passes with them**, on two assertions at two pieces: the
+heal, and the health regeneration of 100 that should be 50.
+
 ---
 
 ## 2026-10-06 — "Skills can spend HP instead of mana at a 3:1 ratio" is built: when mana is short a skill is paid for from health, at three health for each mana
