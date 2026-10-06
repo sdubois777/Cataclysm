@@ -286,6 +286,9 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # #1833 group E part 1. One word for each of its two rows' sentences, so
     # each is needed by a row.
     "apply_status": {"always": 100.0, "applies": 100.0},
+    # "CLEANSED" IS 100 ON `cleanse`: "You are cleansed every 5 seconds" removes
+    # all of what a cleanse removes, and the generator requires 100. Issue #1833.
+    "cleanse": {"cleansed": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -585,8 +588,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833 group E part 4c, from 460 over 376: one row on one enchantment.
 #: AND 462 OVER 378 SINCE "YOUR MOVEMENT ABILITY HAS 2 CHARGES",
 #: issue #1833, 2026-10-05, from 461 over 377: one row on one enchantment.
-AUTHORED_ROWS = 462
-AUTHORED_ENCHANTMENTS = 378
+#: AND 463 OVER 379 SINCE "YOU ARE CLEANSED EVERY 5 SECONDS",
+#: issue #1833, 2026-10-05, from 462 over 378: one row on one enchantment.
+AUTHORED_ROWS = 463
+AUTHORED_ENCHANTMENTS = 379
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
