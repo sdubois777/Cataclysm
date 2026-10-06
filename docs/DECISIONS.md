@@ -2,6 +2,159 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — `attack_use`: an event for every paid use, the basic attack included, so a row can repeat a melee swing; `skill_use` is unchanged
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ActOnSkillUse`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.h` and `.cpp` (`HeldBasicAttack`, `BasicAttackUseTags`,
+`MakePendingRepeat`); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the skill-use hook);
+`tools/generate_datatables.py` (`ACTION_ONLY_EVENTS`, `REPEAT_SKILL_EVENTS`); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; and `tools/tests/test_generate_datatables.py`.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation suite, the Python suite and the guard proofs ran on 2026-10-06; the
+figures, two failures in tests this change does not touch, and one fault the proofs found are under "Run" at the end
+of this entry. **No enchantment row uses the event yet**; the row is the enchantment session's.
+
+### What it is for
+
+"Your melee attacks have a 12%-15% chance to trigger twice". The repeat action of 2026-10-05 (the entry below) acts on
+`skill_use`, and `skill_use` leaves the basic attack out: ruled 2026-09-14, because the basic attack is automatic and
+free and a row on every use of it would fire constantly. A melee character's commonest melee attack is its basic
+attack, so the sentence could not be written.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **A new event, `attack_use`, is raised for every paid use including the basic attack, with the skill in hand.**
+- **`skill_use` stays as it is**, so the 2026-09-14 ruling holds for every row written before this.
+- **The event adds the melee or ranged tag by the skill's shape to the tags the row is asked against, and the basic
+  attack's own tags are untouched.**
+- **`MakePendingRepeat` finds the basic attack's row through `BasicAttackFor`.**
+
+### A correction to what the ruling was asked on
+
+The sizing sent before the ruling said the basic attack "has no Type.Melee and no Type.Ranged". **Half of that was
+wrong.** A Strike basic attack has carried `Type.Melee` itself since issue #1564 (`BasicAttackFor` adds it). A
+Projectile basic attack carries no `Type.Ranged`. So for a melee weapon the event's added tag changes nothing, and a
+row scoped `Type.Melee` on `attack_use` would have matched a melee basic attack without it. The ruling is built as
+given: the tag is added by shape, and it has an effect only for the four weapon types whose basic attack is a
+projectile (Wand, Staff, Crossbow, 2H Crossbow).
+
+### How it is built
+
+- **`ActOnSkillUse` raises both events for one use**: `skill_use` unless the use is the basic attack, then
+  `attack_use`. Both are raised with the skill in hand, and they share the one pending repeat, so one use still gives
+  one repeat at the highest share, whichever event the rows are on.
+- **The player's hook no longer returns for the basic attack.** It passes it on with `bBasicAttack`, asked against
+  `UCataclysmTriggeredSkill::BasicAttackUseTags`: the attack's own tags, and `Type.Melee` for a Strike or
+  `Type.Ranged` for a Projectile.
+- **The tag is added for the basic attack only.** A judgement by the writing session: a skill of the weapon skill
+  table carries the tags its row states, and two Strike rows state no `Type.Melee` on purpose (Touch Off and
+  Anathema), so adding by shape there would overrule the row.
+- **The basic attack is repeated from the row the character holds**, `UCataclysmTriggeredSkill::HeldBasicAttack`: the
+  one its weapon slots built through `BasicAttackFor`, with the element tag that component adds. It is not a row of
+  the weapon skill table, which is where every other repeat is looked up.
+- **The generator** knows `attack_use` as an event and accepts `repeat_skill` on it. `basic_attack`, the older event
+  that carries no skill, is still refused for a repeat.
+
+### Consequences, stated rather than changed
+
+- **Every row on `attack_use` fires on the automatic swing.** That is what the event is for; a row has to ask for it
+  by name, so no row written before it does.
+- **A repeat of the basic attack is a free start**: it sends no skill-used notice, so it raises neither event and is
+  not repeated; it does not open the basic-attack window (`NoteBasicAttackUsed`) and spends no next-use charge.
+- **A use of the basic attack now clears a repeat that was pending and not yet made.** A repeat is made on the tick
+  after its use, so this needs two uses inside one tick.
+- **A character with no weapon slots, or holding no basic attack, has its basic attack asked with its own tags and no
+  added one.**
+
+### Tests
+
+Three new automation tests.
+
+- `Cataclysm.Enchantments.AnAttackUseRowRepeatsTheBasicAttackFree`: a row on `skill_use` records nothing for a Sword's
+  basic attack; a row on `attack_use` records it at its aim; it is made, pays no mana and sends no notice.
+- `Cataclysm.Enchantments.ASkillUseAlsoRaisesAttackUseAndOneUseStillGivesOneRepeat`: a heavy skill raises
+  `attack_use`; a row on each event passing on one use gives one repeat, whole, in both arrangements.
+- `Cataclysm.Enchantments.ABasicAttackIsAskedWithTheMeleeOrRangedTagOfItsShape`: a Wand's basic attack matches a row
+  for ranged attacks and not one for melee attacks, and its own tags still hold no ranged tag; a Sword's the reverse.
+  **The Sword half would pass without the added tag**, for the reason the correction above gives.
+
+**Python.** Two new checks: a repeat row may be written on `attack_use`; one on `basic_attack` is refused.
+
+### Run
+
+One window on 2026-10-06, in two turns, for a stack of two: this change, then the trigger of a different held skill
+(the entry above) on top of it. Development was 98959d80. Every figure is a line the run printed.
+
+**First turn, at `feat/trigger-held-skill-2` 56b10cdc** (this layer was `feat/attack-use-event-2` c3d02107).
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3192 tests performed, 3190 succeeded, 2 failed: ARemovedObstacleGivesItsCellsBackToTheNavigationMesh, ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound`; `Declared: 3192 tests in the tree at 56b10cdc; 3192 performed, gap 0` |
+| The two failed tests, run again alone with no file changed | `2 tests performed, 2 succeeded, 0 failed` |
+| Python, with continuous integration idle | `5746 passed, 8 skipped in 315.36s`; JUnit `tests="5754" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**The two failures are not this change's, and their cause was not found.** Both are in
+`CataclysmDungeonNavigationTests.cpp`, in the `CataclysmEditor` module, where this stack changes no file; both say a
+navigation mesh rebuild did not finish in the time the test waits; and the six tests this stack adds are among the
+3190 that succeeded. Accepted by the coordinating session under the owner's delegation. Issue
+[#2222](https://github.com/sdubois777/Cataclysm/issues/2222), of which this is the fourth occurrence.
+
+**Second turn, at `feat/trigger-held-skill-3` 8b84d346** (this layer `feat/attack-use-event-3` 998c7048), after the
+one-line fix described below. **No second whole suite**: a labelled exception ruled by the coordinating session,
+because the change is one include of an engine header in a file that already compiled inside a merged compile unit,
+and each proof compiles that file on its own.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| `Cataclysm.Enchantments.`, whole | `220 tests performed, 220 succeeded, 0 failed` |
+| `Cataclysm.TriggeredSkill.`, whole | `4 tests performed, 4 succeeded, 0 failed` |
+| `tools/tests` | `3929 passed, 8 skipped in 43.87s` |
+
+No Python file changed between the two heads, so the Python figures of the first turn stand.
+
+### The fault the proofs found: a header that compiled only inside a merged compile unit
+
+`CataclysmTriggeredSkill.h` declared `static FGameplayTagContainer BasicAttackUseTags(...)` and did not include
+`GameplayTagContainer.h`. **The first build could not see it.** The build tool merges source files into larger compile
+units, and in that unit another file had already included the header. A guard proof's break makes
+`CataclysmTriggeredSkill.cpp` a changed file, the build tool then compiles it on its own, and the header failed:
+
+```
+CataclysmTriggeredSkill.h(127,31): error C3646: 'BasicAttackUseTags': unknown override specifier
+CataclysmTriggeredSkill.h(127,50): error C2059: syntax error: 'const'
+CataclysmTriggeredSkill.cpp(121,49): error C2039: 'BasicAttackUseTags': is not a member of 'UCataclysmTriggeredSkill'
+CataclysmTriggeredSkill.cpp(125,38): error C3861: 'HeldBasicAttack': identifier not found
+Result: Failed (OtherCompilationError)
+```
+
+It would have failed the same way for anyone who edited that file. **The fix is the include**, and proofs Pb and Pc
+below each compiled the file on its own with it in. The other headers this work and the work before it created or
+changed were checked by reading their include lists, not by compiling each alone; this was the only one.
+
+### Guard proofs
+
+Each with one anchor counted and the source hash the same before and after.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa, at 56b10cdc | `CataclysmAbilitySystemComponent.cpp`: `attack_use` is never raised | `Cataclysm.Enchantments.ASkillUseAlsoRaisesAttackUse` | PROVED. 1 performed, 1 failed, 1 failed assertion: "a row on attack_use records a heavy skill" was None against Carom | 1 performed, 1 succeeded |
+| Pb, first attempt, at 56b10cdc | `CataclysmTriggeredSkill.cpp`: `ByShape = FGameplayTag();` in place of the ranged tag | `Cataclysm.Enchantments.ABasicAttackIsAskedWith` | **NO MEASUREMENT.** The build failed; the compiler's message was not kept | not reached |
+| Pb, second attempt, at 56b10cdc | Same file: the Projectile comparison changed to `ECataclysmSkillShape::None` | Same | **NO MEASUREMENT.** The build failed with the errors quoted above, which are the header's and not the break's | not reached |
+| Pb, at 8b84d346 | The first break again | Same | PROVED. 1 performed, 1 failed, 1 failed assertion: "a row for ranged attacks records a Wand's basic attack" was None against Basic Attack | 1 performed, 1 succeeded |
+| Pc, at 8b84d346 | Same file: the basic attack is looked up in the weapon skill table, where it is not | `Cataclysm.Enchantments.AnAttackUseRowRepeatsTheBasicAttack` | PROVED. 1 performed, 1 failed, 1 failed assertion: "the repeat of the basic attack is made" was false | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1. Pa's file is the same at both heads. **Not proven, and
+not provable:** the melee tag added for a Strike basic attack, for the reason "A correction to what the ruling was
+asked on" gives.
+
+**Not run, because no row exists yet:** the loader reading a row on `attack_use`, and anything a worn row does in
+play.
+
+---
+
 ## 2026-10-06 — Two slows hung on an ailment: a poisoned enemy is slowed in both speeds, and a bleeding enemy in its movement alone
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`ECataclysmAilmentRider::Speed` and
