@@ -6636,6 +6636,26 @@ def enchantment_effects(book) -> list[dict]:
                 f"ailment and names no Ailment. Name one of "
                 f"{', '.join(AILMENTS)}.")
 
+        # THE SHARE OF ITS DAMAGE A REPEAT DEALS, in percent. Mechanism B2, ruled
+        # 2026-10-05: "Each skill has a 20%-40% chance to cast a duplicate at 50%
+        # damage" is 50. Read by `repeat_skill` alone and refused everywhere
+        # else, as Event Value is. An empty cell is written as 0, which the
+        # game reads as the whole of the damage.
+        share_text = clean(_cell(raw, headers, "Damage Share"))
+        damage_share = 0.0
+        if share_text:
+            if action != REPEAT_SKILL_ACTION:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states a Damage "
+                    f"Share on {action or stat!r}. Only {REPEAT_SKILL_ACTION} "
+                    f"reads one, so it would be dropped.")
+            damage_share = number(share_text, "Damage Share", index)
+            if not 0 < damage_share <= 100:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} repeats a skill at "
+                    f"{damage_share:g} per cent of its damage. A share is above 0 "
+                    f"and up to 100, and an empty cell is the whole.")
+
         # A RANGE THE SENTENCE MARKS AS ROLLING DOWN IS WRITTEN THE OTHER WAY
         # ROUND. Every pair above was checked in the sentence's own order, which
         # is how the sheet states it. The game reads the first of a pair at a
@@ -6686,6 +6706,7 @@ def enchantment_effects(book) -> list[dict]:
             "TriggerCooldown": trigger_cooldown,
             "EventValue": event_value,
             "Ailment": ailment,
+            "DamageShare": damage_share,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A

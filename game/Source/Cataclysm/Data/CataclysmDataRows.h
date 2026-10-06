@@ -2395,4 +2395,14 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	FString Ailment;
+
+	/**
+	 * The share of its damage a repeated skill deals, in percent, or 0 for the
+	 * whole. Mechanism B2, ruled 2026-10-05: "Each skill has a 20%-40% chance to
+	 * cast a duplicate at 50% damage" is 50. Read by the `repeat_skill` action
+	 * alone; `tools/generate_datatables.py` refuses it on every other row and
+	 * writes 0 for an empty cell. See `FCataclysmPoolAction::RepeatSharePercent`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float DamageShare = 0.0f;
 };

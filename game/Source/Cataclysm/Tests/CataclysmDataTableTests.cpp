@@ -685,7 +685,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 476 SINCE THE FIVE NUMBERS HUNG ON AN AILMENT, issue #1833, from 471.
 	//
 	// AND 478 SINCE THE TWO SLOWS HUNG ON AN AILMENT, issue #1833, from 476.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    478)
+	//
+	// AND 479 SINCE THE FIRST ROW THAT REPEATS A SKILL, issue #1833, from 478.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    479)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
