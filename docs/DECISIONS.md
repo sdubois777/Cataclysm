@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Reaper's Embrace is partly built: two pieces raise every heal by a tenth and halve health regeneration, through a stat that can raise what a heal restores
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (`HealingReceivedStat`,
+`TopUp`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, `docs/All_Things_Cataclysm.xlsx` (two
+rows of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset, one new test in
+`CataclysmEnchantmentEffectTests.cpp`, one probe in `CataclysmStatExemptionTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the pinned counts and
+`SETS_THAT_WORK`), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Reaper's Embrace (2-Piece Bonus): You gain 10% more life from all sources | `healing_received` more 10 |
+| All of your life regeneration effects are reduced by 50% | `health_regen` increased -50 |
+
+EnchantmentEffects 488 to 490, over 402 to 404 enchantments. Twelve of the fourteen sets now have a row. A set is
+written whole, so the first bonus and the drawback are written together.
+
+### WHAT WAS RULED, 2026-10-06, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+- **"More life from all sources" is healing, not maximum life.** The sentence could be read either way. The set's
+  own drawback is about life regeneration, and "from all sources" names where life comes from; so it is the health
+  every heal restores. Read as maximum life it would have been `max_health` more 10 and needed nothing new.
+- **A new stat, signed, applied as its own multiplier.** `healing_received_reduction` is a share from 0 to 100 that
+  can only lower; its clamp, and the two tests that pin a negative to nothing, are untouched.
+- **The drawback is `health_regen` increased -50**, as "All mana regeneration effects are reduced by 50%" is
+  `mana_regen` increased -50.
+
+### HOW IT IS BUILT
+
+- **`healing_received`**, `UCataclysmRegeneration::HealingReceivedStat`, asked in `UCataclysmRegeneration::TopUp`
+  through `StatAppliedTo`, with the amount offered as the base the row's buckets apply to. A character with no such
+  row is offered what it was. It has no gameplay attribute and is asked with the character's state at each heal.
+- **Before the reduction, and separate from it.** 10% more under a 50% reduction is 100 times 1.1 times 0.5.
+- **Health only**, as the reduction is. Mana and the energy shield come through the same function and are not
+  touched.
+- **Never below nothing.** A row that lowered it past the whole amount offers nothing; a heal takes no health away.
+
+### WHAT PASSES THROUGH `TopUp`, AND WHAT DOES NOT
+
+Read from the code on 2026-10-06. "All sources" is everything in the first list.
+
+- **Through it**: health regeneration, life leech, potions, the worn rows that restore health and the ones that
+  heal others, Fervour's restores, Living Pyre, an enemy healer's heal, and the dungeon floor rules that heal.
+- **Not through it**, and so not raised: a revive, a thrall set to full health, an enemy's heal by sacrifice, the
+  dungeon rules that write health directly, and the filling of the pools when a character arrives.
+
+### NOT BUILT
+
+- **The 6-piece and 10-piece bonuses.** Souls left by a dying minion and picked up, Soul Strike's stacks, and cull
+  on hit for each stack need mechanisms that do not exist.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The bonus raises regeneration too, and the drawback halves it.** A wearer of two pieces regenerates health at
+  0.5 times 1.1 of what it did, which is less, and gains a tenth more from leech and potions.
+- **The stat can lower as well as raise.** No row lowers with it; the sentences that reduce healing use the
+  reduction.
+- **An enemy has no stat line**, so nothing changes for it.
+
+### Tests
+
+- `Cataclysm.Enchantments.ReapersEmbraceTwoPiecesRaiseEveryHealByATenthAndHalveHealthRegeneration`: one piece and
+  then two, each carrying the real bonus and the real drawback. At two pieces a heal of 100 restores 110 and a
+  health regeneration of 100 is 50; at one piece 100 and 100.
+- The probe for `healing_received` in `Cataclysm.StatExemption.`.
+
+---
+
 ## 2026-10-06 — "Skills can spend HP instead of mana at a 3:1 ratio" is built: when mana is short a skill is paid for from health, at three health for each mana
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
