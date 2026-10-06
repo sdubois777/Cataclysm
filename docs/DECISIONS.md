@@ -2,6 +2,50 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Three more persistent area sentences are rows: zones that stagger on entry, zones that lay their own ailment, and more damage to an enemy standing in your zone
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The rows the two entries "A zone can stagger whoever enters it and lay the ailment of its own damage type" and "A
+row can ask whether the target is standing in one of your ground zones" left to the session holding the design
+workbook, each as those entries state it. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Condition |
+| :-- | :-- | :-- | :-- | :-- |
+| Enemies that enter your persistent AOE zones are briefly staggered | `zone_staggers_on_entry` | flat | 1 | |
+| Persistent AOE zones apply a DoT to enemies standing in them | `zone_applies_own_ailment` | flat | 1 | |
+| You deal 15%-30% increased damage to enemies standing in your persistent AOE zones | `attack_damage` | increased | 15 to 30 | `target_in_your_zone` |
+| the same sentence | `spell_damage` | increased | 15 to 30 | `target_in_your_zone` |
+
+EnchantmentEffects 507 to 511, over 421 to 424 enchantments.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+- **Every reading of the three sentences is those entries'**: what "briefly staggered" lasts, which ailment a
+  zone lays, and that "your zones" are the ground zones the wearer owns and not terrain.
+- **"You deal" is both damage stats**, one row each, as "You deal 3%-5% more damage to an enemy carrying a void
+  splinter" has had since 2026-10-01.
+- **`target_in_your_zone` leaves the list of conditions built ahead of their rows**, the same day it joined.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheZoneStaggerRowAndTheZoneAilmentRowEachSetTheFlagAZoneReads`: each row worn reads its
+  stat as 1, as a zone asks it, and as 0 again when taken off.
+- `Cataclysm.Enchantments.TheDamageInYourZonesRowRaisesABlowOnlyOnACreatureStandingInTheWearersZone`: a real
+  player wearing the row at the top of its roll; its blow on a creature standing in a zone it owns is 1.3 times
+  its blow on a creature standing in none.
+
+**Not tested here:** a zone staggering or laying an ailment because of a worn row; those entries test each with
+a stat line made by hand.
+
+---
+
 ## 2026-10-06 — "Void splinter stacks detonate for 50%-100% increased damage" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
