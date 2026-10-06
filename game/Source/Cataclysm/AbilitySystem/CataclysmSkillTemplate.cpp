@@ -683,9 +683,11 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// SO IS THE BASIC ATTACK, DELIBERATELY. "You fight unarmed" says the
 	// character goes on fighting; refusing every slot would leave them unable to
 	// act at all for ten seconds, which reads as the game having stopped working
-	// rather than as a cost. What they swing with is still the buried weapon's
-	// damage, because attack damage comes from what is WORN and the item is still
-	// worn -- that is issue #1166 and not this.
+	// rather than as a cost. WHAT THEY SWING FOR IS THE UNARMED BASE, since
+	// 2026-10-05 and issue #1166: `ACataclysmPlantedWeapon::LeavesUnarmed` has
+	// the equipment component leave the planted weapon's lines out. Until then
+	// the swing still used the buried weapon's damage, because the item is still
+	// worn.
 	if (Slot != ECataclysmAbilitySlot::BasicAttack
 		&& !Params.bDisarmsUntilRecalled
 		&& ACataclysmPlantedWeapon::HeldBy(

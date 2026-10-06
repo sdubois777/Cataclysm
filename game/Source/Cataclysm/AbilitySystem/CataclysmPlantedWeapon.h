@@ -94,6 +94,32 @@ public:
 	static ACataclysmPlantedWeapon* HeldBy(const AActor* Who);
 
 	/**
+	 * What an unarmed swing is worth: the flat attack damage base a character has while their weapon stands in the
+	 * ground. Issue #1166. ONE FIGURE FOR EVERY CLASS, RULED 2026-10-05 by the coordinating session under the owner's
+	 * delegation of unstated numbers, a labelled judgement: no unarmed figure exists anywhere in the design. Path of
+	 * Exile's unarmed attack has base physical damage 2-5, 2-6 or 2-8 by class (poedb.tw/us/Unarmed, fetched
+	 * 2026-10-05), far below any weapon; this game's weapon bases run from 26 to 84.
+	 */
+	static constexpr float UnarmedAttackDamage = 6.0f;
+
+	/**
+	 * Whether this character fights unarmed now: their weapon stands in the ground and has not been handed back.
+	 *
+	 * ASKED BY `UCataclysmEquipmentComponent` EVERY TIME IT WORKS OUT THE CHARACTER'S STATS, rather than set once.
+	 * Anything may refresh the stats during the ten seconds -- a kill counted on a weapon, a dungeon rule, a spent
+	 * point -- and each of those must find the character still unarmed without being told.
+	 */
+	static bool LeavesUnarmed(const AActor* Who);
+
+	/**
+	 * Gives the weapon's own stats back while the sword still stands. Called by the recall just before its eruption
+	 * is priced: the eruption is the weapon's own blow and is sized by how long the sword stood, so the sword has to
+	 * be there and the character has to be holding its damage again. Everything else that ends the plant returns the
+	 * stats through `EndPlay`.
+	 */
+	void HandBack();
+
+	/**
 	 * How long it has stood, in seconds.
 	 *
 	 * COUNTED RATHER THAN SUBTRACTED FROM THE WORLD CLOCK, and the reason is
@@ -190,6 +216,12 @@ private:
 
 	/** Asks the player character to draw its hands again. Harmless for anyone else. */
 	void RedrawTheHandsOf(AActor* Who) const;
+
+	/** Works the character's stats out again, which is what makes a plant, a hand-back and a return take effect. */
+	void RefreshTheStatsOf(AActor* Who) const;
+
+	/** Whether `HandBack` has run. The sword still stands and the hands are still empty; only the stats are back. */
+	bool bHandedBack = false;
 
 	FTimerHandle CountTimer;
 };
