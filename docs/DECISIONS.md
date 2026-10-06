@@ -53,7 +53,11 @@ EnchantmentEffects 476 to 478, over 390 to 392.
 ### CONSEQUENCES, STATED RATHER THAN CHANGED
 
 - **The movement slow reaches a creature's walk and a Brute's chase**, the two places a walk speed is written.
-  Whether a movement made another way, such as a charge, is slowed by it was not traced.
+- **A CHARGE IS NOT SLOWED, BY EITHER ROW.** Traced 2026-10-06. `ACataclysmEnemyCharacter::BeginCharge` is handed
+  a speed by its caller and moves the creature itself, a step at a time, reading neither the walk speed nor
+  `SpeedMultiplier`. Its three callers each pass a fixed figure: the Hellhound's rush, the Abyssal Warden's
+  stampede and the charge of the Inferno modifier. Cripple and Ground Down do not slow a charge either, for the
+  same reason, so the two rows behave as the slows before them do.
 - **Both end with the ailment**, by time, by a cleanse or by death, as every rider does.
 
 ---
