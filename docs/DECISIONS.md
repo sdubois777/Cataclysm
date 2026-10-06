@@ -2,6 +2,82 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A new condition, `target_in_your_zone`: the target stands in a ground zone the asker's skill left. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`
+(`ECataclysmStatCondition::TargetStandsInYourZone`, `FCataclysmStatConditions::bTargetStandsInYourZone`, the name
+table, `ConditionTakesAValue`, `WhatConditionDependsOn`, `ConditionHolds`, two count sentences);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (`WithTargetState`);
+`tools/generate_datatables.py` (`CONDITIONS`, `CONDITIONS_OF_A_HIT_DEALT`); one test in
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, one list in `CataclysmPassiveTreeTests.cpp`, and one
+list in `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have. **No row carries the condition yet**; the row is the enchantment session's.
+
+### What it is for
+
+"You deal 15%-30% increased damage to enemies standing in your persistent AOE zones". The third of four windows for
+the persistent-area sentences, and the one that is not a stat a zone reads: it is about the blows the zone's owner
+lands on whoever stands in it.
+
+### What the condition asks
+
+- **What it asks:** whether the character being struck stands, now, inside a ground zone whose owner is the
+  character asking for the stat. "Your" zones are the ones a skill of yours left; a floor rule's zone and a
+  creature's have another owner.
+- **Which direction it takes when its reading is unknown:** it refuses. No target in hand, no row asking, a target
+  in no zone, and a zone that has ended all read false.
+- **Whether it compares a number:** no. It names a state.
+
+### Judgements by the writing session, for the coordinating session to rule
+
+- **Ground zones only, not terrain.** The sentence says "zones", terrain deals no damage, and the ruling that
+  "persistent AOE effects" include terrain was made for the duration row and the only-one row. Terrain could be
+  added: it already answers whether an actor stands in it.
+- **It does not raise the zone's own damage.** A zone is priced once, when it is left, with no target, so no
+  target-side condition reaches it. The sentence says "you deal", and what it raises is the owner's blows.
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles either judgement**; they are readings of the sentence.
+
+### How it is built
+
+- **A condition like the others that ask about the character struck**: a row carries it on a stat that is asked for
+  while a hit is priced, and the generator accepts it on those stats and refuses it on the rest.
+- **Read only when a row asks.** `WithTargetState` walks its lookup's modifiers once and reads the target only for
+  what they ask; a character with no such row pays nothing more.
+- **How it is read:** the world's ground zones are walked for one whose owner is the asker and which covers where
+  the target stands. No list of a character's zones is kept; the zone's own regeneration rule and the only-one rule
+  find zones the same way.
+- **What the row needs:** `attack_damage` and `spell_damage`, `increased` 15 to 30, Condition `target_in_your_zone`,
+  no Condition Value.
+
+### Consequences, stated rather than changed
+
+- **Until a row makes zones for other skills, this reaches the 12 Demonic skills that leave ground.**
+- **A minion's blow does not carry it**, as it carries none of its summoner's target-side bonuses.
+- **Damage over time is not raised by it**: a tick is priced with no target-side state. Not checked for this
+  condition in particular; it is how the conditions beside it behave.
+
+### Tests
+
+One new automation test: `Cataclysm.StatExemption.ABonusForEnemiesStandingInYourZonesReachesOnlyThoseInAZoneYouOwn`.
+A critical strike chance of 100 that holds only under the condition, with every roll pinned at nought, so a blow
+critically strikes exactly when the condition holds: it does on an enemy in the attacker's zone; not on one in a
+stranger's zone; not once the enemy has left; not once the zone is gone; and a row asking something else is the
+control.
+
+**Python.** No new test. Three existing checks gained the name: the generator's condition tables, the list of
+conditions that compare nothing, and the list of conditions built ahead of their rows.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-06 — A zone staggers whoever enters it and lays the ailment of its own damage type; and terrain's half of two zone stats is tested. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp` (`AilmentOfDamageType`);
