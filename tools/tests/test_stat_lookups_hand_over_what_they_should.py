@@ -427,6 +427,22 @@ INVENTORY = {
         "the share a skill's zone deals on its first sweep (issue #1686), "
         "asked where the zone is priced; a zone is not a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::PersistentAreaDurationStat), SkillTags, UCataclysmDamageCalculation::NormalPersistentAreaDuration'):
+        "the share of its stated time a ground zone or a terrain lasts (ruled "
+        "2026-10-06), asked where the area is left; an area is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::OnlyOnePersistentAreaStat), SkillTags, 0.0f'):
+        "whether a character may hold only one persistent area (ruled "
+        "2026-10-06), asked where an area is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat), SkillTags, 0.0f'):
+        "how much more a zone's sweep deals for each enemy inside (ruled "
+        "2026-10-06), asked where the zone is priced; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneSlowPercentStat), SkillTags, 0.0f'):
+        "the slow a zone lays on those inside (ruled 2026-10-06), asked "
+        "where the zone is left; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmSkillSlots::LockedStat), SkillTags, 0.0f'):
         "a skill's own cost and shape, asked before any blow exists",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',

@@ -194,6 +194,29 @@ public:
 	void DealsOnItsFirstSweep(float Damage) { FirstSweepDamage = FMath::Max(0.0f, Damage); }
 
 	/**
+	 * How much more, in per cent, each sweep deals FOR EACH ENEMY IT FINDS INSIDE; nought, which is every zone no
+	 * row reaches, changes nothing. Ruled 2026-10-06: "Persistent AOE zones deal 10%-20% increased damage for each
+	 * enemy standing in them". The count is that sweep's own: who is inside is asked afresh every sweep.
+	 *
+	 * IT MULTIPLIES THE FIGURE THE ZONE WAS PRICED AT. A zone's damage is fixed when the zone is made, with every
+	 * increase its owner carried then already in it, so this cannot be added to those increases; it is applied on
+	 * top of them.
+	 */
+	UPROPERTY(Transient)
+	float MorePerEnemyInsidePercent = 0.0f;
+
+	/**
+	 * The slow each sweep lays on those inside, in per cent; nought lays none. Ruled 2026-10-06: "Your persistent AOE
+	 * zones also slow enemies within them by 20%-35%". A slow is the Cripple debuff at this size, laid for
+	 * `SlowSeconds`, so it lasts from one sweep to the next and ends soon after its target leaves.
+	 */
+	UPROPERTY(Transient)
+	float SlowsThoseInsidePercent = 0.0f;
+
+	/** How long one sweep's slow lasts: a sweep and a half. */
+	static constexpr float SlowSeconds = 1.5f;
+
+	/**
 	 * Also make this patch heal whoever left it faster while they stand in it.
 	 *
 	 * ONE ROW ASKS. The Fist's Blood Pyre: "standing in your own pyre does you
