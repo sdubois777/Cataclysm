@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A worn row can hang a number on an ailment: five sentences that change an enemy while it carries the wearer's bleed, burn, disease or poison
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`ECataclysmAilmentRider`,
+`FCataclysmPoolAction::Rider`), `CataclysmAbilitySystemComponent.h` and `.cpp` (`ReceiveAilmentRiders`,
+`AilmentRiderPercentNow`, `ArmourRemovedPercentNow`), `CataclysmSkillEffects.cpp` (`ApplyDamageOverTime`,
+`WeaponDamageOf`), `CataclysmDamageCalculation.cpp` (the damage taken step), `CataclysmRegeneration.cpp`
+(`TopUp`), `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the loader), `tools/generate_datatables.py`
+(`AILMENT_RIDER_ACTIONS`), `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, four tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT IT IS FOR
+
+Nine sentences change a number ON AN ENEMY while it carries an ailment. The 2026-09-14 entry ruled that these
+are not a condition on the attacker: "they belong with the rows that need a modifier carried by the ailment
+itself". Five are built here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Bleeding enemies take 20%-40% increased damage from all sources | `ailment_damage_taken` 20 to 40 on Bleed |
+| Enemies affected by your burn effects have 10%-20% reduced armor | `ailment_armor_removed` 10 to 20 on Burn |
+| Disease effects you apply also reduce enemy armor by 5%-15% | `ailment_armor_removed` 5 to 15 on Disease |
+| Poisoned enemies deal 2%-4% less damage | `ailment_damage_dealt` 2 to 4 on Poison |
+| Disease effects reduce enemy healing by 50%-100% | `ailment_healing_received` 50 to 100 on Disease |
+
+EnchantmentEffects 471 to 476, over 385 to 390.
+
+### THE RESEARCH, fetched 2026-10-06
+
+- `poedb.tw/us/Maim_Support` (Path of Exile): "Enemies Maimed by Supported Skills take 10% increased Physical
+  Damage" and "(Maimed enemies have 30% reduced Movement Speed)". A debuff on the enemy, from all sources, tied
+  to a status the character's own skills applied.
+- `poedb.tw/us/Bleeding`: the other shape, a condition on the attacker, for example Goredrill's "40% increased
+  Attack Damage against Bleeding Enemies".
+- `poedb.tw/us/Poison`: Runegraft of Rotblood, "Enemies Poisoned by you have 10% of Physical Damage they deal
+  converted to Chaos". A change to what the enemy deals, tied to "by you".
+
+**What it settles:** the genre has both shapes, and it words the enemy-side one as "by you" or "by supported
+skills". **What it does not settle:** the sizes, how two riders add, and how long one lasts. Those are the
+rulings below.
+
+### WHAT WAS RULED, 2026-10-06, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **The rider goes with the ailment and ends with it**, by time, by a cleanse or by death.
+2. **It lasts the rest of the ailment after the item comes off.** It is taken down at the wearer's next
+   application of that ailment, when the wearer no longer has the row.
+3. **An application that only refreshes a running ailment hands the riders over too.** A weaker or equal
+   application does not replace a running effect, and its riders are put on all the same.
+4. **"Increased damage from all sources" is added to the damage the carrier takes**, summing with a pin's
+   increase, and reaches hits, damage over time ticks and minion blows alike.
+5. **"Deal less damage" is a multiplier on what the carrier's attacks are worth**, as Weaken is, and multiplies
+   with Weaken.
+6. **"Reduced armor" adds to the one figure for armour removed**, with Rending Blows and the placed stacks,
+   clamped at 100 together.
+7. **"Reduce enemy healing" is added to the healing received reduction and capped at 100 with it.** AT A ROLL OF
+   100 NOTHING HEALS A DISEASED ENEMY through the ordinary path: regeneration, leech, the Field Medic's pulse,
+   `heal_nearby_enemies`, Leech Spores and Necrotic Ground, each read from the code on 2026-10-06 as going
+   through `UCataclysmRegeneration::TopUp`. **A dungeon rule that writes health directly is not reduced**: the
+   rules that set a creature's maximum and rescale its health do that.
+
+### HOW IT IS BUILT
+
+- **A rider row is an action with no event**, an Ailment and a percent. Nothing fires it. The loader marks it
+  with which of the carrier's numbers it moves, and it sits among the wearer's actions.
+- **When a character applies a damage over time ailment to another**, `ApplyDamageOverTime` hands the carrier
+  what the applier's worn rows hang on that ailment. It does so before it decides between a new effect and a
+  refresh, which is the one place both pass through.
+- **The carrier keeps them by the ailment's tag, with who applied them**, and they count only while it holds
+  that tag. That is asked when a number is read and not remembered, so nothing has to take them back.
+- **An applier with nothing to hang takes down only its own.** Another character refreshing the ailment leaves
+  the wearer's riders standing. A fresh application, on a carrier that does not hold the ailment, starts from
+  nothing, so an ended ailment's riders do not come back under somebody else's.
+- **Four readers:** the damage taken step adds the rider to the figure it reads;
+  `ArmourRemovedPercentNow` adds it to the armour removed; `WeaponDamageOf` takes it off what the carrier's
+  attacks are worth; `TopUp` adds it to the healing reduction.
+
+**NOT ON THE AILMENT'S OWN EFFECT, which is where the ruling pointed and where a pin carries its increase.** A
+damage over time effect is periodic, and a periodic gameplay effect EXECUTES its modifiers on every tick rather
+than holding them: a modifier beside the damage would be added again each tick and never taken back. A pin's
+effect has no period, which is why it can hold one. The riders sit on the carrier beside the ailment and are
+tied to its tag instead; what a player sees is what was ruled.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A minion's ailment carries no riders.** A burn a minion's swing applies is the minion's own, ruled
+  2026-09-17, and a minion wears nothing. "Your burn effects" is the wearer's own applications.
+- **One applier's riders per ailment.** A second character's riders on the same ailment replace the first's;
+  they do not add. With one player this cannot be seen.
+- **Riders on different ailments add**: a creature burning and diseased by a wearer of both armour rows has lost
+  the sum.
+- **"Deal less damage" reaches whatever reads `WeaponDamageOf`.** Damage that reads the attack damage attribute
+  some other way would not be cut; none was found.
+- **Void Splinter is not a rider's ailment.** It is applied by another path, and the generator refuses it.
+
+### NOT BUILT, AND WHY
+
+| Sentence | Waits for |
+| :-- | :-- |
+| Poisoned enemies are slowed by 30%-50% | a factor in a creature's speed read off the rider; ruled both movement and attack speed |
+| Bleeding enemies move 5%-10% slower | a movement-only term, which no creature has; ruled movement only |
+| Applying a debuff to an enemy reduces their damage output by 10%-20% | HELD: it names no ailment and no duration |
+| Enemies with Necrosis have 1%-2% less maximum health | HELD: dungeon rules derive a maximum from the current one and health is not given back |
+
+---
+
 ## 2026-10-06 — The generator refuses a conditioned row the game cannot judge: a stat nothing asks for, or a condition its asker is not handed
 
 **Affects:** `tools/generate_datatables.py` (`CONDITIONED_STATS_WITH_AN_ASKER`, `CONDITIONS_OF_A_BLOW_TAKEN`,

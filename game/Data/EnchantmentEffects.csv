@@ -470,3 +470,8 @@ Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en#1,Positive_Starvation_10_
 Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en#2,Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en,mana_leech,increased,5.0,5.0,,,0.0,own_stacks,1.0,,kill,,10,4.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en#3,Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en,energy_shield_leech,increased,5.0,5.0,,,0.0,own_stacks,1.0,,kill,,10,4.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#1,Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,armor,increased,50.0,50.0,,health_below,50.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_Bleeding_enemies_take_20_40_increased_damage_f#1,Positive_Bleeding_enemies_take_20_40_increased_damage_f,,,20.0,40.0,,,0.0,,0.0,ailment_damage_taken,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Bleed
+Positive_Enemies_affected_by_your_burn_effects_have_10_2#1,Positive_Enemies_affected_by_your_burn_effects_have_10_2,,,10.0,20.0,,,0.0,,0.0,ailment_armor_removed,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Burn
+Positive_Disease_effects_you_apply_also_reduce_enemy_armo#1,Positive_Disease_effects_you_apply_also_reduce_enemy_armo,,,5.0,15.0,,,0.0,,0.0,ailment_armor_removed,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Disease
+Positive_Poisoned_enemies_deal_2_4_less_damage#1,Positive_Poisoned_enemies_deal_2_4_less_damage,,,2.0,4.0,,,0.0,,0.0,ailment_damage_dealt,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Poison
+Positive_Disease_effects_reduce_enemy_healing_by_50_100#1,Positive_Disease_effects_reduce_enemy_healing_by_50_100,,,50.0,100.0,,,0.0,,0.0,ailment_healing_received,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Disease

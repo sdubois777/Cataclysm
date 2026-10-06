@@ -2690,6 +2690,58 @@ class TestDamageImmunityAndTheShieldRecharge:
             "Value Low": 50, "Value High": 100}))
         assert out[0]["TriggerCooldown"] == 0.0
 
+class TestRidersOnAnAilment:
+    """A number hung on an ailment the wearer applies. Issue #1833, ruled
+    2026-10-06: "Bleeding enemies take 20%-40% increased damage from all
+    sources". No event, an Ailment, and a percent."""
+
+    WORDS = "Bleeding enemies take 20%-40% increased damage from all sources"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Keyword.DoT.Bleed", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def rider(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "ailment_damage_taken", "Ailment": "Bleed",
+                  "Value Low": 20, "Value High": 40}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "rider.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_rider_is_carried_through_with_its_ailment_and_no_event(self, tmp_path):
+        out = gen.enchantment_effects(self.rider(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["Ailment"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"]) == (
+            "ailment_damage_taken", "", "Bleed", 20.0, 40.0, "", 0.0)
+
+    def test_a_rider_with_an_event_is_refused(self, tmp_path):
+        # NOTHING FIRES A RIDER. An event on one would be a column nothing reads.
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Action Event": "hit_dealt"}))
+
+    def test_a_rider_with_no_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no Ailment"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Ailment": None}))
+
+    def test_a_rider_on_an_ailment_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="not one the game has"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Ailment": "Void Splinter"}))
+
+    def test_a_rider_with_a_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.rider(tmp_path, {
+                "Condition": "health_below", "Condition Value": 50}))
+
+
 class TestTheTimedCleanse:
     """A cleanse on a clock. Issue #1833, written 2026-10-05: "You are cleansed
     every 5 seconds". The game has cleansed on the timed event since 2026-09-26
