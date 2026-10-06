@@ -614,6 +614,23 @@ public:
 	static const TCHAR* ZoneAppliesOwnAilmentStat;
 
 	/**
+	 * TWO BY WHICH A ROW GIVES A GROUND ZONE TO A SKILL THAT STATES NONE, each a number of seconds: nought is no
+	 * zone. Ruled 2026-10-06. Read by `UCataclysmSkillTemplate::LeaveRowZoneAt` with the skill's own tags, so a row
+	 * restricted to a kind of skill reaches only that kind.
+	 *
+	 * `zone_at_start_and_end_seconds`: "Your movement ability leaves a persistent AOE zone at both start and end
+	 * locations for 3-5 seconds". Read only by a Movement skill, where it began and where it arrived.
+	 *
+	 * `zone_at_impact_seconds`: "Charge skills leave a persistent AOE zone at the impact point for 3-6 seconds" and
+	 * "Your spells leave a persistent AOE zone at the impact point lasting 2-4 seconds". Read where a Movement
+	 * skill arrived, where a projectile's flight ended, under a strike's user and under each target of a curse.
+	 *
+	 * A SKILL THAT STATES GROUND OF ITS OWN GETS NONE FROM EITHER.
+	 */
+	static const TCHAR* ZoneAtStartAndEndSecondsStat;
+	static const TCHAR* ZoneAtImpactSecondsStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *

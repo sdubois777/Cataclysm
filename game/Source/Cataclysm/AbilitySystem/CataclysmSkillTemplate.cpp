@@ -2892,12 +2892,6 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 		return nullptr;
 	}
 
-	AActor* Self = Avatar();
-	if (!Self)
-	{
-		return nullptr;
-	}
-
 	// THE GROUND STATES WHAT IT DEALS AND THIS READS IT. Every skill that leaves
 	// ground carries a GroundPercent, added on issue #361: the percent of the
 	// skill's own damage that patch deals per second, set so that standing in it
@@ -2923,6 +2917,42 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 		return nullptr;
 	}
 
+	return LeaveZoneAlong(Start, End, ScaledGroundRadiusCm(), Params.GroundDuration, Params.GroundPercent,
+						  /*bTheSkillsOwnGround=*/true);
+}
+
+ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveRowZoneAt(const TCHAR* SecondsStat, const FVector& Location)
+{
+	// A SKILL THAT STATES GROUND KEEPS ITS OWN AND GETS NONE FROM A ROW. Ruled 2026-10-06.
+	if (Params.LeavesGround())
+	{
+		return nullptr;
+	}
+
+	const AActor* Self = Avatar();
+	const UCataclysmAbilitySystemComponent* Asking =
+		Self ? Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)) : nullptr;
+	// ASKED WITH THE SKILL'S TAGS, so a row restricted to charge skills or to spells reaches only those.
+	const float Seconds = Asking ? Asking->StatForSkill(FName(SecondsStat), SkillTags, 0.0f) : 0.0f;
+	if (Seconds <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	return LeaveZoneAlong(Location, Location, RowZoneRadiusCm * AreaOfEffectMultiplier(), Seconds,
+						  RowZonePercentPerSweep, /*bTheSkillsOwnGround=*/false);
+}
+
+ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
+	const FVector& Start, const FVector& End, float RadiusCm, float Seconds, float PercentPerSweep,
+	bool bTheSkillsOwnGround)
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
 	const UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Self);
 	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem);
@@ -2938,15 +2968,18 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 							AbilitySystem,
 							WeaponDamage * GetDamagePercent() / 100.0f,
 							SkillTags)
-						* Params.GroundPercent / 100.0f
+						* PercentPerSweep / 100.0f
 						* WithSpentIncrease(AbilitySystem);
 
 	// FOR THE SHARE OF ITS STATED TIME A ROW LEAVES IT, and with every earlier area ended first when the character
 	// may hold only one. Ruled 2026-10-06.
 	EndEarlierPersistentAreasIfOnlyOne(Self, AbilitySystem, SkillTags);
 	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
-		Self, Start, End, ScaledGroundRadiusCm(),
-		Params.GroundDuration * PersistentAreaDurationMultiplier(AbilitySystem, SkillTags), PerTick);
+		Self, Start, End, RadiusCm,
+		Seconds * PersistentAreaDurationMultiplier(AbilitySystem, SkillTags), PerTick,
+		// A ROW'S ZONE IS HANDED THE SKILL'S DAMAGE TYPE BY NAME. Ruled 2026-10-06. A skill's own ground is
+		// left without one, as it was before this, and deals its owner's.
+		/*bBurnsEveryone=*/false, bTheSkillsOwnGround ? FName() : DamageTypeName());
 
 	// AND WHAT A ROW ADDS TO EVERY SWEEP: more for each enemy inside, and a slow. Ruled 2026-10-06.
 	if (const UCataclysmAbilitySystemComponent* ZoneAsking =
@@ -2973,8 +3006,10 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 	// holds one.
 	if (Zone)
 	{
+		// ONLY THE SKILL'S OWN GROUND. A zone a row gives a skill that names a curse -- a Debuff spell -- does
+		// not carry it; the row's sentence says a zone, and the curse is the skill's.
 		const TArray<FGameplayTag> Named = NamedEffectTags();
-		if (!Named.IsEmpty())
+		if (bTheSkillsOwnGround && !Named.IsEmpty())
 		{
 			Zone->AlsoApply(Named[0], AppliedEffectSeconds(Named[0]),
 							Params.EffectMagnitude, DamageTypeName());
@@ -2989,7 +3024,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 		// A PERCENT OF NORMAL TURNED INTO A MULTIPLIER HERE, so the sheet reads
 		// 200 for "doubles" and the zone holds 2. Every other row states none and
 		// the zone keeps its scale of one.
-		if (Params.OwnGroundRegenPercent > 100.0f)
+		if (bTheSkillsOwnGround && Params.OwnGroundRegenPercent > 100.0f)
 		{
 			Zone->AlsoHealItsOwner(Params.OwnGroundRegenPercent / 100.0f);
 		}
