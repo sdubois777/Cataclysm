@@ -4815,6 +4815,296 @@ namespace CataclysmStatExemptionTest
 			AllyIsImmuneAfterAPulse(Test, /*bWithTheFlag=*/true));
 	}
 
+	// ------------------------------------------------------------------------
+	// A CONDITIONED ROW IS JUDGED WHERE THE STAT IS USED. Issue #1833, 2026-10-06.
+	//
+	// A gameplay attribute is worked out with every condition refused, so a row
+	// under a condition reaches play only where the consuming code asks the stat
+	// pipeline. Each probe below gives one fighter one modifier that holds below
+	// half health, reads the engine's own answer at full health and at two
+	// fifths, and asserts the two differ. The scaled probes above measure the same
+	// ask for the stats they cover; these are the stats the shipped data
+	// conditions that had no probe.
+	// ------------------------------------------------------------------------
+
+	/** One modifier on one stat that holds only while its fighter is below half health. */
+	void ConditionedBelowHalf(FScopedFighter& Fighter, const TCHAR* Stat,
+							  ECataclysmStatBucket Bucket, float Value, float Base)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = Bucket;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Value;
+		Row.Condition = ECataclysmStatCondition::HealthBelowPercent;
+		Row.ConditionValue = 50.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = Base;
+		Line.Modifiers = {Row};
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** Put a fighter at this share of its health. */
+	void AtHealthShare(FScopedFighter& Fighter, float Share)
+	{
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetHealthAttribute(), TargetHealthPool * Share);
+	}
+
+	/** `area_of_effect`, read by `UCataclysmSkillTemplate::AreaOfEffectMultiplier`. */
+	void ProbeConditionedAreaOfEffect(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmSelfBuffSkill* Skill = SupportBuffOn(Fighter);
+		if (!Test.TestNotNull(TEXT("a skill"), Skill))
+		{
+			return;
+		}
+		ConditionedBelowHalf(Fighter, TEXT("area_of_effect"), ECataclysmStatBucket::Increased, 50.0f, 100.0f);
+		Test.TestEqual(TEXT("area_of_effect at full health: 1"), Skill->AreaOfEffectMultiplier(), 1.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("area_of_effect is asked for, so below half health 50% increased gives 1.5"),
+					   Skill->AreaOfEffectMultiplier(), 1.5f, 0.001f);
+	}
+
+	/** `cooldown_reduction`, read by `UCataclysmGameplayAbility::CooldownAfterReduction`. */
+	void ProbeConditionedCooldownReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, TEXT("cooldown_reduction"), ECataclysmStatBucket::Flat, 50.0f, 0.0f);
+		const float Full = UCataclysmGameplayAbility::CooldownAfterReduction(Fighter.AbilitySystem, 4.0f);
+		AtHealthShare(Fighter, 0.4f);
+		const float Hurt = UCataclysmGameplayAbility::CooldownAfterReduction(Fighter.AbilitySystem, 4.0f);
+		Test.TestEqual(TEXT("cooldown_reduction at full health: the stated four seconds"), Full, 4.0f, 0.001f);
+		Test.TestTrue(FString::Printf(TEXT("cooldown_reduction is asked for, so below half health the cooldown is "
+										   "shorter: %.3f against %.3f"), Hurt, Full),
+					  Hurt < Full - 0.1f);
+	}
+
+	/** `dot_damage`, read by `UCataclysmSkillEffects::DamageOverTimeNumbers` when an effect is applied. */
+	void ProbeConditionedDotDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, TEXT("dot_damage"), ECataclysmStatBucket::Increased, 50.0f, 100.0f);
+		const FGameplayTagContainer Burn(UCataclysmSkillEffects::BurnTag());
+		const float Full = UCataclysmSkillEffects::DamageOverTimeNumbers(
+			Fighter.AbilitySystem, 100.0f, 5.0f, Burn).DamagePerTick;
+		AtHealthShare(Fighter, 0.4f);
+		const float Hurt = UCataclysmSkillEffects::DamageOverTimeNumbers(
+			Fighter.AbilitySystem, 100.0f, 5.0f, Burn).DamagePerTick;
+		if (!Test.TestTrue(TEXT("a tick is priced at something at full health"), Full > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("dot_damage is asked for, so a tick priced below half health is half again"),
+					   Hurt / Full, 1.5f, 0.001f);
+	}
+
+	/** `mana_pool_becomes_health`, read by `UCataclysmSkillTemplate::ManaPoolBecomesHealth`. */
+	void ProbeConditionedManaPoolBecomesHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmSkillTemplate::ManaPoolBecomesHealthStat,
+							 ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("mana_pool_becomes_health at full health: no"),
+					   UCataclysmSkillTemplate::ManaPoolBecomesHealth(Fighter.AbilitySystem));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("mana_pool_becomes_health is asked for, so below half health: yes"),
+					  UCataclysmSkillTemplate::ManaPoolBecomesHealth(Fighter.AbilitySystem));
+	}
+
+	/** `block_chance`, read by `UCataclysmDamageCalculation::Resolve` at the block step. */
+	void ProbeConditionedBlockChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Defender, TEXT("block_chance"), ECataclysmStatBucket::Flat, 100.0f, 0.0f);
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		const auto Blocks = [&Blow, &Defender]()
+		{
+			return UCataclysmDamageCalculation::Resolve(
+				Blow, Defender.AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/100.0f,
+				/*BlockRoll=*/50.0f).bBlocked;
+		};
+		Test.TestFalse(TEXT("block_chance at full health: a roll of 50 is not blocked"), Blocks());
+		AtHealthShare(Defender, 0.4f);
+		Test.TestTrue(TEXT("block_chance is asked for, so below half health the same roll is blocked"), Blocks());
+	}
+
+	/**
+	 * What one blow of 100% does to a defender, from a striker that never
+	 * critically strikes unless `CritRoll` says so. The three probes below price a
+	 * real hit, because that is where these three stats are asked for.
+	 */
+	FCataclysmDamageResult OneBlow(FScopedFighter& Striker, FScopedFighter& Defender)
+	{
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Striker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
+		return Result;
+	}
+
+	/** Pin the critical strike roll for a probe's length. A roll of 100 never critically strikes. */
+	struct FPinnedCritRoll
+	{
+		explicit FPinnedCritRoll(float Value)
+			: Roll(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll")))
+		{
+			if (Roll)
+			{
+				Previous = Roll->GetFloat();
+				Roll->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		~FPinnedCritRoll()
+		{
+			if (Roll)
+			{
+				Roll->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Roll = nullptr;
+		float Previous = 0.0f;
+	};
+
+	/** `armor_penetration`, read where a hit is priced, with the striker's state. */
+	void ProbeConditionedArmorPenetration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll NeverCritical(100.0f);
+		FScopedFighter Full(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Hurt(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 1000.0f);
+		for (FScopedFighter* Striker : {&Full, &Hurt})
+		{
+			ConditionedBelowHalf(*Striker, TEXT("armor_penetration"), ECataclysmStatBucket::Flat, 100.0f, 0.0f);
+		}
+		AtHealthShare(Hurt, 0.4f);
+		const FCataclysmDamageResult AtFull = OneBlow(Full, Defender);
+		const FCataclysmDamageResult WhenHurt = OneBlow(Hurt, Defender);
+		if (!Test.TestTrue(TEXT("armour takes a share of the blow from the striker at full health"),
+				AtFull.RemovedByArmour > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("armor_penetration is asked for, so the striker below half health loses nothing to armour"),
+					   WhenHurt.RemovedByArmour, 0.0f, 0.01f);
+	}
+
+	/** `penetration`, read where a hit is priced, with the striker's state. */
+	void ProbeConditionedPenetration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll NeverCritical(100.0f);
+		FScopedFighter Full(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Hurt(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f);
+		for (FScopedFighter* Striker : {&Full, &Hurt})
+		{
+			ConditionedBelowHalf(*Striker, TEXT("penetration"), ECataclysmStatBucket::Flat, 100.0f, 0.0f);
+		}
+		AtHealthShare(Hurt, 0.4f);
+		const float AtFull = OneBlow(Full, Defender).DealtToHealth;
+		const float WhenHurt = OneBlow(Hurt, Defender).DealtToHealth;
+		if (!Test.TestTrue(TEXT("the blow from the striker at full health lands for something"), AtFull > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("penetration is asked for, so the striker below half health meets no resistance "
+							"and deals twice what fifty resistance let through"),
+					   WhenHurt / AtFull, 2.0f, 0.01f);
+	}
+
+	/** `crit_multiplier`, read where a hit is priced, with the striker's state. */
+	void ProbeConditionedCritMultiplier(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll AlwaysCritical(0.0f);
+		FScopedFighter Full(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Hurt(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		for (FScopedFighter* Striker : {&Full, &Hurt})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			ConditionedBelowHalf(*Striker, TEXT("crit_multiplier"), ECataclysmStatBucket::Flat, 100.0f, 150.0f);
+		}
+		AtHealthShare(Hurt, 0.4f);
+		const FCataclysmDamageResult AtFull = OneBlow(Full, Defender);
+		const FCataclysmDamageResult WhenHurt = OneBlow(Hurt, Defender);
+		if (!Test.TestTrue(TEXT("both blows landed and critically struck"),
+				AtFull.bWasCritical && WhenHurt.bWasCritical && AtFull.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(FString::Printf(TEXT("crit_multiplier is asked for, so the striker below half health's "
+										   "critical strike deals more: %.1f against %.1f"),
+						  WhenHurt.DealtToHealth, AtFull.DealtToHealth),
+					  WhenHurt.DealtToHealth > AtFull.DealtToHealth * 1.2f);
+	}
+
+	const TMap<FString, FProbe>& ConditionedProbes()
+	{
+		static const TMap<FString, FProbe> Made = {
+			{TEXT("area_of_effect"),           &ProbeConditionedAreaOfEffect},
+			{TEXT("armor_penetration"),        &ProbeConditionedArmorPenetration},
+			{TEXT("block_chance"),             &ProbeConditionedBlockChance},
+			{TEXT("cooldown_reduction"),       &ProbeConditionedCooldownReduction},
+			{TEXT("crit_multiplier"),          &ProbeConditionedCritMultiplier},
+			{TEXT("dot_damage"),               &ProbeConditionedDotDamage},
+			{TEXT("mana_pool_becomes_health"), &ProbeConditionedManaPoolBecomesHealth},
+			{TEXT("penetration"),              &ProbeConditionedPenetration},
+		};
+		return Made;
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5064,6 +5354,45 @@ bool FCataclysmEveryScaledStatIsAskedForTest::RunTest(const FString&)
 	// check holds: `tools/tests/` reads the probe table above and requires it to
 	// equal `STATS_WITH_AN_ASKER` in `tools/generate_datatables.py`. Stated here
 	// so a reader of this test knows where the refusal lives.
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryConditionedProbeTest,
+	"Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row under a condition reaches play only where the code that uses its stat
+ * asks the stat pipeline. Issue #1833, 2026-10-06.
+ *
+ * WHY THIS EXISTS. A gameplay attribute is worked out with every condition
+ * refused, so a conditioned row on a stat whose consumer reads the attribute is
+ * accepted, built, imported and dead. A resistance row under `health_below`
+ * would have been one on 2026-10-05. `tools/generate_datatables.py` now refuses
+ * a conditioned row on a stat outside `CONDITIONED_STATS_WITH_AN_ASKER`, and
+ * the promise behind each name on that list can only be measured here.
+ *
+ * THESE EIGHT ARE THE STATS THE SHIPPED DATA CONDITIONS THAT NO OTHER PROBE
+ * COVERED. The scaled probes above measure the same ask for the others: a scale
+ * and a condition are both judged against the state handed over when the stat
+ * is asked for. `tools/tests/test_every_conditioned_stat_has_an_asker.py` holds
+ * the generator's list to the three probe tables in this file.
+ *
+ * EVERY PROBE RUNS, WHATEVER THE DATA HOLDS, so a consumer changed to read its
+ * attribute fails here by name.
+ */
+bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	if (!TestEqual(TEXT("the eight probes are all here"), ConditionedProbes().Num(), 8))
+	{
+		return false;
+	}
+	for (const TPair<FString, FProbe>& Probe : ConditionedProbes())
+	{
+		Probe.Value(*this);
+	}
 	return true;
 }
 
