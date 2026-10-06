@@ -2074,15 +2074,15 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 	// which is what a control is for. Issue #1786 built the last of the four rows
 	// that had no rule, so a row chosen for being unbuilt has to be chosen again.
 	//
-	// CHAOS ECHO CHAMBER FOR A STATED REASON RATHER THAN FOR HAPPENING TO BE
-	// UNBUILT, which is the argument `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack`
-	// already makes where it uses the same row: it is blocked by a standing owner
-	// rule, not by missing code. Its row asks for "a ghostly copy of that ability
-	// ... it can also hit you", and
-	// `tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`
-	// records the rule that refuses: "A creature does not burn itself or its own
-	// side." A control blocked by a rule outlasts one waiting for a session.
-	const FName BlockedByARule(TEXT("Chaos_Echo_Chamber"));
+	// IT WAS CHAOS ECHO CHAMBER UNTIL 2026-10-05, chosen as "blocked by a standing owner rule, not by missing code":
+	// its copy "can also hit you" and the owner's rule is that a creature does not burn its own side. The coordinating
+	// session then ruled that sentence the row's own stated exception, and the row was built.
+	//
+	// WAR SUPPLY LINES NOW, AND FOR A STATED REASON: "A supply cart must be escorted to the end of the dungeon. If the
+	// cart is destroyed, you lose." There is no way to lose a dungeon yet; that waits on issues #48 (the capital hub)
+	// and #41 (the dungeon's own resolution). A control blocked by two systems that do not exist. The variable keeps
+	// its old name's meaning loosely: blocked, by something other than a session's time.
+	const FName BlockedByARule(TEXT("War_Supply_Lines"));
 
 	const TArray<FCataclysmFloorModifierLine> Lines =
 		Layout::LinesFor({Starvation, BlockedByARule, PartlyBuilt, NotARow},
@@ -2098,7 +2098,7 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 			 Lines[0].Description.Contains(TEXT("reduced by 1%")));
 
 	TestTrue(TEXT("an unbuilt one says it does nothing"),
-			 Layout::NameLineFor(Lines[1]).StartsWith(TEXT("Echo Chamber"))
+			 Layout::NameLineFor(Lines[1]).StartsWith(TEXT("Supply Lines"))
 				 && Layout::NameLineFor(Lines[1]).Contains(TEXT("not built yet")));
 	TestTrue(TEXT("a partly built one says so"),
 			 Layout::NameLineFor(Lines[2]).Contains(TEXT("partly built")));
@@ -2866,25 +2866,16 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 				  FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 
-	// THE NOT-BUILT CONTROL USED TO BE Void_Singularity_Wells AND THAT ROW IS NOW
-	// PARTLY BUILT, so it had to be replaced. Chaos_Echo_Chamber takes its place
-	// for a stated reason rather than because it happened to be unbuilt.
+	// THE NOT-BUILT CONTROL USED TO BE Void_Singularity_Wells, THEN Chaos_Echo_Chamber, and each was built in turn:
+	// Echo Chamber on 2026-10-05, when its "it can also hit you" was ruled the row's own stated exception to the
+	// owner's rule that a creature does not burn its own side.
 	//
-	// IT IS BLOCKED BY AN OWNER RULE, NOT BY MISSING CODE, which is what makes it
-	// a control likely to last. Its row asks for "a ghostly copy of that ability
-	// ... it can also hit you, dealing a small amount of damage", and
-	// `tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`
-	// records the rule it breaks: "A creature does not burn itself or its own
-	// side. Set by the project owner on 2026-08-20 as a general rule." That test
-	// also records that the opposite was asserted once and deliberately reversed,
-	// so somebody has already tried the other way.
-	//
-	// "NOT BUILT" AND "NOT BUILDABLE UNDER A STANDING RULE" READ THE SAME HERE AND
-	// MEAN DIFFERENT THINGS. Whoever replaces this control next should say which
-	// applies to their choice.
-	TestEqual(TEXT("and a row blocked by an owner rule is not built at all"),
+	// WAR SUPPLY LINES NOW. "If the cart is destroyed, you lose": there is no way to lose a dungeon yet, which waits on
+	// issues #48 and #41. THAT IS "NOT BUILDABLE UNTIL TWO SYSTEMS EXIST", which is the kind the last note here asked
+	// its successor to state.
+	TestEqual(TEXT("and a row that waits on systems that do not exist is not built at all"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
-				  FName(TEXT("Chaos_Echo_Chamber")))),
+				  FName(TEXT("War_Supply_Lines")))),
 			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
 
 	// AND SINGULARITY WELLS WAS THE THIRD, REVISITED THE SAME WAY: since 2026-10-01 its wells pull the player and turn
@@ -46091,6 +46082,353 @@ bool FCataclysmWastingSicknessAttackerTest::RunTest(const FString& Parameters)
 	// AND THE SAME ENEMY'S DIRECT DAMAGE, the route a tick of its ailment takes, rolls too.
 	UCataclysmSkillEffects::ApplyDirectDamage(Enemy, Player.Character, 5.0f, Delivery);
 	TestEqual(TEXT("damage an enemy deals without a swing adds a stack too"), Mode->WastingSicknessStacksHeld(), 2);
+	return true;
+}
+
+// CHAOS_ECHO_CHAMBER. "Every time you use an ability, a ghostly copy of that ability is fired in a random direction.
+// The copy can hit enemies, but it can also hit you, dealing a small amount of damage." Issues #1820 and #41.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName EchoChamberRow(UCataclysmDungeonModifierEffects::EchoChamberKey);
+
+	/** Echo Chamber's angle pinned in degrees, and put back to "drawn" afterwards. */
+	struct FEchoChamberAnglePinned
+	{
+		explicit FEchoChamberAnglePinned(float Degrees)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.EchoChamberAngle"));
+			if (Variable)
+			{
+				Variable->Set(*FString::SanitizeFloat(Degrees), ECVF_SetByConsole);
+			}
+		}
+
+		~FEchoChamberAnglePinned()
+		{
+			if (Variable)
+			{
+				Variable->Set(TEXT("-1"), ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/** Every named skill of a damage type, read from the real table. */
+	TArray<FCataclysmWeaponSkill> EverySkillOf(const TCHAR* DamageType)
+	{
+		return UCataclysmWeaponSkills::SkillsOfDamageType(UCataclysmWeaponSkills::LoadGeneratedTable(), DamageType);
+	}
+
+	/** The skill of this name, or null. */
+	const FCataclysmWeaponSkill* TheSkillNamed(const TArray<FCataclysmWeaponSkill>& Skills, const TCHAR* Name)
+	{
+		return Skills.FindByPredicate([Name](const FCataclysmWeaponSkill& Skill) { return Skill.Name == Name; });
+	}
+
+	/** The first strike Echo Chamber copies whose own radius is at least this, or null. */
+	const FCataclysmWeaponSkill* AStrikeEchoChamberCopies(const TArray<FCataclysmWeaponSkill>& Skills, float LeastRadiusCm)
+	{
+		return Skills.FindByPredicate([LeastRadiusCm](const FCataclysmWeaponSkill& Skill)
+		{
+			return Skill.Shape == ECataclysmSkillShape::Strike && Skill.Params.RadiusCm >= LeastRadiusCm
+				&& UCataclysmDungeonModifierEffects::EchoChamberCopies(Skill);
+		});
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberFiguresTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberFiguresWhichSkillsItCopiesAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("the copy hits the player for a tenth"), Effects::EchoChamberSelfHitPercent, 10.0f, 0.001f);
+	TestEqual(TEXT("a use aimed at one's own feet is aimed one metre away"), Effects::EchoChamberLeastAimCm, 100.0f, 0.001f);
+	TestEqual(TEXT("Echo Chamber is built"), static_cast<int32>(Effects::BuiltStateOf(EchoChamberRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+
+	// INSIDE THE COPY'S AREA: the aim is within the skill's own radius.
+	TestTrue(TEXT("aimed inside the radius hits the player"), Effects::EchoChamberHitsTheCaster(100.0f, 300.0f));
+	TestTrue(TEXT("aimed exactly at the radius hits the player"), Effects::EchoChamberHitsTheCaster(300.0f, 300.0f));
+	TestFalse(TEXT("aimed beyond the radius does not"), Effects::EchoChamberHitsTheCaster(301.0f, 300.0f));
+	TestFalse(TEXT("a skill with no radius never does"), Effects::EchoChamberHitsTheCaster(100.0f, 0.0f));
+
+	// WHICH SKILLS ARE COPIED, on rows of the real table, each by name.
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* HeldStrike = TheSkillNamed(Demonic, TEXT("Backswing"));
+	const FCataclysmWeaponSkill* SelfBuff = TheSkillNamed(Demonic, TEXT("Ashen Edge"));
+	const FCataclysmWeaponSkill* Movement = TheSkillNamed(Demonic, TEXT("Flashpoint"));
+	const FCataclysmWeaponSkill* Projectile = TheSkillNamed(Demonic, TEXT("Carom"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 0.0f);
+	if (!TestNotNull(TEXT("set-up: Backswing"), HeldStrike) || !TestNotNull(TEXT("set-up: Ashen Edge"), SelfBuff)
+		|| !TestNotNull(TEXT("set-up: Flashpoint"), Movement) || !TestNotNull(TEXT("set-up: Carom"), Projectile)
+		|| !TestNotNull(TEXT("set-up: a strike that is copied"), Strike))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a plain strike is copied"), Effects::EchoChamberCopies(*Strike));
+	TestTrue(TEXT("a projectile is copied"), Effects::EchoChamberCopies(*Projectile));
+	TestFalse(TEXT("a self buff is not: it is not fired anywhere"), Effects::EchoChamberCopies(*SelfBuff));
+	TestFalse(TEXT("a movement skill is not: its copy would move the player"), Effects::EchoChamberCopies(*Movement));
+	TestFalse(TEXT("a held strike is not: Wild Magic's rule leaves it out"), Effects::EchoChamberCopies(*HeldStrike));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberCopyTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberFiresAFreeCopyAsFarAsTheUseWasAimedAtTheDrawnAngle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberCopyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 0.0f);
+	if (!TestNotNull(TEXT("set-up: a strike that is copied"), Strike))
+	{
+		return false;
+	}
+	FEchoChamberAnglePinned Pinned(90.0f);
+	if (!TestNotNull(TEXT("the angle can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel before"), Mode->LiveCountsForTheFloor().FindRef(EchoChamberRow),
+			  FString(TEXT("echo chamber: 0 copies fired, 0 hit you")));
+
+	// A USE AIMED 20 METRES ALONG X. The copy is drawn for 20 metres along Y, the pinned angle, and is not fired yet.
+	const FVector From = Player.Character->GetActorLocation();
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, From + FVector(2000.0f, 0.0f, 0.0f));
+	TestEqual(TEXT("the used skill is the one to copy"), Mode->EchoChamberPendingSkill(), FName(*Strike->Name));
+	TestTrue(FString::Printf(TEXT("aimed as far away at the pinned angle (%s)"), *Mode->EchoChamberAimNow().ToString()),
+			 Mode->EchoChamberAimNow().Equals(From + FVector(0.0f, 2000.0f, 0.0f), 1.0f));
+	TestEqual(TEXT("and nothing is fired yet"), Mode->EchoChamberCopiesFired(), 0);
+
+	// FIRED: FREE, NOT A USE, AND TOO FAR AWAY TO HIT THE PLAYER.
+	const float ManaBefore = Player.Read(UCataclysmVitalAttributeSet::GetManaAttribute());
+	const float HealthBefore = Player.Read(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	if (!TestTrue(TEXT("the copy is fired"), Mode->MakeTheEchoChamberCopy()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one copy fired"), Mode->EchoChamberCopiesFired(), 1);
+	TestEqual(TEXT("it paid no mana"), Player.Read(UCataclysmVitalAttributeSet::GetManaAttribute()), ManaBefore);
+	TestEqual(TEXT("and sent no skill-used notice, so a copy is not copied"),
+			  UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestTrue(TEXT("nothing waits any more"), Mode->EchoChamberPendingSkill().IsNone());
+	TestEqual(TEXT("aimed twenty metres away it did not hit the player"), Mode->EchoChamberSelfHits(), 0);
+	TestEqual(TEXT("whose health is what it was"), Player.Read(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			  HealthBefore);
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(EchoChamberRow),
+			  FString(TEXT("echo chamber: 1 copies fired, 0 hit you")));
+	TestFalse(TEXT("with nothing drawn, nothing is fired"), Mode->MakeTheEchoChamberCopy());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSelfHitTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberACopyAimedWithinItsOwnRadiusHitsThePlayerAndOneAimedBeyondDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberSelfHitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// A STRIKE WHOSE OWN RADIUS IS AT LEAST TWO METRES, so one metre is inside it and twenty are not.
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 200.0f);
+	if (!TestNotNull(TEXT("set-up: a copied strike with a radius of two metres or more"), Strike))
+	{
+		return false;
+	}
+	FEchoChamberAnglePinned Pinned(0.0f);
+	if (!TestNotNull(TEXT("the angle can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FVector From = Player.Character->GetActorLocation();
+
+	// AIMED BEYOND ITS RADIUS, FIRST: the copy is fired and the player is not hit.
+	const float BeforeTheFarOne = Player.Read(Health);
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, From + FVector(2000.0f, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: the far copy is fired"), Mode->MakeTheEchoChamberCopy()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a copy aimed beyond its radius does not hit the player"), Mode->EchoChamberSelfHits(), 0);
+	TestEqual(TEXT("whose health is what it was"), Player.Read(Health), BeforeTheFarOne);
+
+	// AIMED AT THE PLAYER'S OWN FEET: the copy lands a metre away, inside its radius, and the player is hit.
+	const float BeforeTheNearOne = Player.Read(Health);
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, From);
+	if (!TestTrue(TEXT("set-up: the near copy is fired"), Mode->MakeTheEchoChamberCopy()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a copy aimed within its radius hits the player"), Mode->EchoChamberSelfHits(), 1);
+	const float Lost = BeforeTheNearOne - Player.Read(Health);
+	TestTrue(FString::Printf(TEXT("who loses health (%.2f)"), Lost), Lost > 0.0f);
+
+	// AND NO MORE THAN A TENTH OF WHAT THE COPY WOULD DEAL TO AN ENEMY, before the player's own defences.
+	const float Percent = Strike->DamagePercent >= 0.0f
+		? Strike->DamagePercent
+		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Strike->Slot).DamagePercent;
+	const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
+		Player.AbilitySystem, UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem) * Percent / 100.0f, Strike->Tags);
+	TestTrue(FString::Printf(TEXT("set-up: the copy would deal something to an enemy (%.2f)"), ToAnEnemy), ToAnEnemy > 0.0f);
+	TestTrue(FString::Printf(TEXT("at most a tenth of it: %.2f of %.2f"), Lost, ToAnEnemy),
+			 Lost <= ToAnEnemy * Effects::EchoChamberSelfHitPercent / 100.0f + 0.01f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(EchoChamberRow),
+			  FString(TEXT("echo chamber: 2 copies fired, 1 hit you")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberNoCopyTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberCopiesNothingForACreatureASelfBuffAFloorWithoutTheRowOrABasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberNoCopyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 0.0f);
+	if (!TestNotNull(TEXT("set-up: a strike that is copied"), Strike))
+	{
+		return false;
+	}
+	const FVector Aim = Player.Character->GetActorLocation() + FVector(2000.0f, 0.0f, 0.0f);
+
+	// EACH CASE BELOW DRAWS NOTHING. The basic attack is last, with the same use in another slot as its control.
+	AActor* SomeoneElse = World->SpawnActor<AActor>();
+	const FGameplayTagContainer NoTags;
+	UCataclysmCombatEvents::NoteSkillUsed(SomeoneElse, Strike->Name, NoTags, ECataclysmAbilitySlot::Heavy, &Aim);
+	TestTrue(TEXT("a skill someone else used is not copied"), Mode->EchoChamberPendingSkill().IsNone());
+
+	ThePlayerUses(Player, TEXT("Ashen Edge"), ECataclysmAbilitySlot::Support, Aim);
+	TestTrue(TEXT("a self buff is not copied"), Mode->EchoChamberPendingSkill().IsNone());
+
+	ThePlayerUses(Player, TEXT("No Such Skill"), ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("a skill the table does not hold is not copied"), Mode->EchoChamberPendingSkill().IsNone());
+
+	Mode->DungeonModifiers = {HeavensQuakeRow};
+	if (!TestTrue(TEXT("a floor without the row was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("on a floor without the row nothing is copied"), Mode->EchoChamberPendingSkill().IsNone());
+
+	Mode->DungeonModifiers = {EchoChamberRow};
+	if (!TestTrue(TEXT("a floor with the row was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("a basic attack is not copied"), Mode->EchoChamberPendingSkill().IsNone());
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("control: the same use in the Heavy slot is"), Mode->EchoChamberPendingSkill(), FName(*Strike->Name));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberWithWildMagicTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberAndWildMagicEachActOnceOnOneUseAndNeitherActsOnTheOthersSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberWithWildMagicTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow, WildMagicRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const TArray<FCataclysmWeaponSkill> Pool = TheWildMagicPool(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 0.0f);
+	const FCataclysmWeaponSkill* Buff = TheFirstOfShape(Pool, ECataclysmSkillShape::SelfBuff);
+	if (!TestNotNull(TEXT("set-up: a strike that is copied"), Strike)
+		|| !TestNotNull(TEXT("set-up: a self buff in Wild Magic's pool"), Buff))
+	{
+		return false;
+	}
+	FWildMagicPinned WildPinned(TEXT("0"), PickOf(Pool, Strike->Name, Buff->Name));
+	FEchoChamberAnglePinned AnglePinned(90.0f);
+	if (!TestTrue(TEXT("the pins can be set"), WildPinned.IsUsable() && AnglePinned.Variable != nullptr))
+	{
+		return false;
+	}
+
+	// ONE USE: Echo Chamber draws its copy of it, and Wild Magic draws a different skill.
+	const FVector Aim = Player.Character->GetActorLocation() + FVector(2000.0f, 0.0f, 0.0f);
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("Echo Chamber draws the used skill"), Mode->EchoChamberPendingSkill(), FName(*Strike->Name));
+	TestEqual(TEXT("Wild Magic draws its pinned skill"), Mode->WildMagicPendingSkill(), FName(*Buff->Name));
+
+	// BOTH ARE MADE, AND NEITHER SENDS A NOTICE, so neither draws again from the other's skill.
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	TestTrue(TEXT("the copy is fired"), Mode->MakeTheEchoChamberCopy());
+	TestTrue(TEXT("the trigger is made"), Mode->MakeTheWildMagicTrigger());
+	TestEqual(TEXT("neither sent a skill-used notice"), UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestTrue(TEXT("Echo Chamber has nothing more to copy"), Mode->EchoChamberPendingSkill().IsNone());
+	TestTrue(TEXT("Wild Magic has nothing more to trigger"), Mode->WildMagicPendingSkill().IsNone());
+	TestEqual(TEXT("one copy"), Mode->EchoChamberCopiesFired(), 1);
+	TestEqual(TEXT("one trigger"), Mode->WildMagicTriggeredCount(), 1);
 	return true;
 }
 
