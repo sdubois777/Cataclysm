@@ -16349,6 +16349,73 @@ bool FCataclysmManaPoolBecomesHealthRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthForManaRowTest,
+	"Cataclysm.Skills.TheWornRowForSpendingHealthInsteadOfManaChargesThreeTimesTheCostToHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Skills can spend HP instead of mana at a 3:1 ratio". Issue #1833, ruled
+ * 2026-10-05 under the owner's delegation: ALWAYS ON, as TWO rows with no
+ * condition, `mana_pool_becomes_health` flat 1 and `mana_cost` more 200. The
+ * swap converts the pool and not the price, as the row above this one records,
+ * so trebling the mana cost trebles the health paid: three health for each
+ * point of mana the skill states.
+ *
+ * WORN, AND CAST: a skill stating 40 costs 120, the 120 comes out of health,
+ * and the mana pool is left alone. THE MANA POOL IS LEFT FULL ON PURPOSE, for
+ * the reason the test above gives.
+ */
+bool FCataclysmHealthForManaRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Skill = GrantCosting(Caster, 40.0f);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	UCataclysmEquipmentComponent* Equipment = NewObject<UCataclysmEquipmentComponent>(Caster.Actor);
+	Equipment->RegisterComponent();
+	FCataclysmItem Helm;
+	Helm.Base = FName(TEXT("Head_Helm"));
+	FCataclysmRolledEnchantment Rolled;
+	Rolled.Positive = FName(TEXT("Positive_Skills_can_spend_HP_instead_of_mana_at_a_3_1_rat"));
+	Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
+	Helm.Enchantments.Add(Rolled);
+	Helm.EnchantmentCount = 1;
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(Caster.AbilitySystem);
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetManaAttribute(),
+		Caster.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute()));
+	const float ManaBefore = Caster.Mana();
+	const float HealthBefore = Caster.AbilitySystem->GetNumericAttribute(Health);
+	if (!TestTrue(TEXT("the caster holds more than 120 health and at least 40 mana"),
+			HealthBefore > 121.0f && ManaBefore >= 40.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a skill stating 40 costs 120. If 40, DT_EnchantmentEffects may be older than the rows: "
+				   "run tools/generate_datatable_assets.py"),
+		Skill->ManaCostFor(Caster.AbilitySystem), 120.0f, 0.01f);
+	TestTrue(TEXT("and the cast is allowed"), Activate(Caster, Skill));
+	TestEqual(TEXT("and the mana pool is untouched"), Caster.Mana(), ManaBefore, 0.01f);
+	TestEqual(TEXT("because the 120 came out of health"),
+		Caster.AbilitySystem->GetNumericAttribute(Health), HealthBefore - 120.0f, 0.01f);
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // Famine_Desperate_Measures, the dungeon floor rule. Issues #1820 and #41.
 //

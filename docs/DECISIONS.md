@@ -2,6 +2,53 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — Two sentences built on stats the game already reads: health paid for mana at three to one, and Brute's Heart's armour below half health
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (three rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`
+(`Cataclysm.Skills.TheWornRowForSpendingHealthInsteadOfManaChargesThreeTimesTheCostToHealth`),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(`Cataclysm.Enchantments.BrutesHeartSixPiecesRaiseArmourByHalfOnlyBelowHalfHealth`),
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (`MULTIPLIER`,
+`STATED_BY_WORD`), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Rows |
+| :-- | :-- |
+| Skills can spend HP instead of mana at a 3:1 ratio | `mana_pool_becomes_health` flat 1, and `mana_cost` more 200 |
+| Brute's Heart (6-Piece Bonus): When your health falls below 50%, you gain a powerful aura that taunts all nearby enemies and increases your armor and resistances by 50% | `armor` increased 50 under `health_below` 50 |
+
+EnchantmentEffects 470 to 473, over 384 to 386. No engine change.
+
+### WHAT WAS RULED, 2026-10-05, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **HEALTH FOR MANA IS ALWAYS ON.** "Can" is not read as a choice or as "when mana runs short": no condition
+   asks whether a skill can be afforded. Every skill of the wearer is paid from health, at three health for each
+   point of mana it states. The swap converts the pool and not the price, as the 2026-09-17 entry for "While
+   below 50% HP, all skills cost HP instead of mana" records, so trebling the mana cost trebles the health paid.
+2. **A RATIO IS A MULTIPLIER, AND "3:1" IS 200 MORE.** The sentence's numbers are 3 and 1 and the rows' are 1 and
+   200: the first row is a flag, and 200 more is three times. The row-text check gained two things for this one
+   sentence, each recorded where it is made: `ratio` is a word that words a `more` row, and "ratio" states 200
+   on `mana_cost`. A second sentence at another ratio would fail the second and be read again.
+3. **BRUTE'S HEART'S SIX-PIECE BONUS IS PARTLY BUILT.** Its armour is built. Two parts are not:
+   - **The taunt.** No taunt exists for a player to place on enemies.
+   - **The resistances.** `UCataclysmDamageCalculation` reads a defender's resistance from the attribute and not
+     through the stat pipeline, and an attribute is worked out with every condition refused. A resistance row
+     under `health_below` would be accepted, built and would grant nothing. Armour is asked for through the
+     pipeline at the armour step, which is why its row works. The resistances wait for the resistance step to
+     ask the same way; that is an engine change to every blow and was not made here.
+
+### NOT BUILT HERE, AND WHY
+
+**"Nearby enemies gain 20%-40% resistances"** was ruled the same day to be read on the wearer's side, as lower
+penetration against a character within 5 metres. It was not written. A row under `target_within_metres` acts on
+a distance, and the row-text check refuses a distance its sentence does not state; "Nearby enemies deal 10%-30%
+less damage to you" gained ", from within 5 metres" for that reason. This sentence is 39 characters, so a clause
+appended to it falls inside the 48 that name its row and would rename it. It waits for a ruling on the reword.
+
+---
+
 ## 2026-10-05 — Starvation's ten-piece bonus is built: a kill grants a Famished stack that raises all three kinds of leech, up to ten
 
 **Affects:** `tools/generate_datatables.py` (`STATS_WITH_AN_ASKER`), `docs/All_Things_Cataclysm.xlsx` (three rows
