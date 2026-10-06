@@ -68,6 +68,26 @@ that stopped being needed for.
 - The probe for `skill_cost_paid_from_health_when_short` in `Cataclysm.StatExemption.`: a cost of 20 with no mana is
   paid from health and 60 is to be charged.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the layer below this one and the four above it, on `development` bae2f26c.
+The build, the whole suite and the Python of record are in the table of the entry "While below 50% HP, all
+skills cost HP instead of mana no longer converts the mana pool" and were run with this layer in the stack.
+**The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Skills. against the asset built before the row | b71a44e5 | 274 tests performed, 272 succeeded, 2 failed, this layer's test among them; 2 of the 5 failed assertions are its own |
+| The asset, regenerated with the editor | b71a44e5 | rows 487 to 488 |
+| Proof I: health never offered when mana is short | 276116ba | PROVED: with the break in: 274 tests performed, 273 succeeded, 1 failed: TheWornRowForSpendingHealthWhenManaIsShortChargesThreeHealthForEachMana \| restored: 274 tests performed, 274 succeeded, 0 failed |
+| Proof J: the cost charged, and not what the pool said to charge | 276116ba | PROVED: with the break in: 274 tests performed, 273 succeeded, 1 failed: the same test \| restored: 274 tests performed, 274 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted. I two: the cast with 10 mana
+was refused, and health stayed at 1000.000000 against 880.000000. J one: health was 960.000000 against
+880.000000, which is the 40 taken where 120 was owed.
+
+**The test fails against a table without the row and passes with it**, on the two assertions proof I fails.
+
 ---
 
 ## 2026-10-06 — "While below 50% HP, all skills cost HP instead of mana" no longer converts the mana pool: a stat that moves a skill's cost onto health and does nothing else
