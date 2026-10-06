@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — "Your melee attacks have a 12%-15% chance to trigger twice" is built: a repeat on `attack_use`, scoped to melee, so the basic attack is reached
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The seventh of the sentences the 2026-10-05 entry "A row can repeat the skill just used, free" lists, on the event
+the entry "`attack_use`: an event for every paid use" built for it. No engine code and no generator code is changed
+here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Your melee attacks have a 12%-15% chance to trigger twice | `repeat_skill` on `attack_use`, 12 to 15, Required Tags `Type.Melee` |
+
+EnchantmentEffects 484 to 485, over 398 to 399 enchantments.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+- **"Trigger twice" is a second free activation**, by the 2026-10-05 ruling.
+- **"Melee attacks" is every paid use that is melee, the basic attack included**, by the 2026-10-06 ruling that made
+  `attack_use`. The row is on that event and not on `skill_use`, which leaves the basic attack out.
+
+### HOW THE ROW IS TESTED
+
+`Cataclysm.Enchantments.TheMeleeAttacksTwiceRowRepeatsAMeleeBasicAttackAndAMeleeSkillUnderItsTopRoll` wears the real
+row at the top of its roll and calls `ActOnSkillUse` with the roll pinned. With `bBasicAttack`, which raises
+`attack_use` alone, a roll of 14.9 records a repeat for a use tagged melee and none for one tagged ranged; without
+it, a melee skill records one too; a roll of 15 records none.
+
+**The test stops at the recorded repeat and hands the tags over itself.** The tags a real basic attack is asked
+with (`UCataclysmTriggeredSkill::BasicAttackUseTags`) and the making of a basic attack's repeat are covered by the
+three tests of the `attack_use` entry, which use a player character and rows made by hand.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The row fires on the automatic swing**, which is what the sentence asks and what the `attack_use` entry states
+  of every row on that event. At the top roll, 15 of every 100 melee basic attacks are made twice, free.
+- **It reaches every melee skill as well as the basic attack**: a heavy or special skill that carries `Type.Melee`
+  raises `attack_use` too. Two Strike skills state no `Type.Melee` on purpose, Touch Off and Anathema, and are not
+  reached.
+- **Worn with a row on `skill_use`, one use still gives one repeat**, at the highest share among the rows that
+  passed, because both events of one use share the one pending repeat.
+- **A melee skill that may not be repeated is not**: held, channelled, movement, aura and summon skills are left
+  out as for every repeat row.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one and the one above it, on `development` 0a3844e0.
+The builds, the whole suite and the Python of record are in the table of the entry "The first row that repeats a
+skill" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | 7882d9d4 | 228 tests performed, 220 succeeded, 8 failed, this layer's test among them; 3 of the 19 failed assertions are its own |
+| The asset, regenerated with the editor | 7882d9d4 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 484 to 485 |
+| Cataclysm.Enchantments., whole, with every asset built | eaec6b80 | 228 tests performed, 228 succeeded, 0 failed; 0 ensures |
+
+**The test fails against a table without the row and passes with it.** Its three failed assertions were the repeat
+recorded for a melee basic attack, that repeat's share, and the repeat recorded for a melee skill that is not the
+basic attack. Its two lines that expect nothing recorded, for a ranged basic attack and for a roll of 15, passed in
+both runs.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The event it is
+written on was proved by the session that built it.
+
+---
+
 ## 2026-10-06 — Five more rows that repeat a skill: spells, a duplicate at half damage, the heavy attack after standing still, an echo and the ultimate; and a chance of 100 is always
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),

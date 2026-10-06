@@ -14505,4 +14505,52 @@ bool FCataclysmUltimateTwiceRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeAttacksTwiceRowTest,
+	"Cataclysm.Enchantments.TheMeleeAttacksTwiceRowRepeatsAMeleeBasicAttackAndAMeleeSkillUnderItsTopRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your melee attacks have a 12%-15% chance to trigger twice". `repeat_skill`
+ * on `attack_use`, the event for every paid use with the basic attack included,
+ * 12 to 15, scoped to `Type.Melee`, WORN at the top of its roll. The basic
+ * attack is handed over as the player character hands it, with `bBasicAttack`,
+ * which raises `attack_use` alone.
+ */
+bool FCataclysmMeleeAttacksTwiceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmRepeatRowsTest;
+	FWorn Worn(TEXT("Positive_Your_melee_attacks_have_a_12_15_chance_to_trig"), true);
+	FRepeatRollPinned Pinned(TEXT("14.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Ranged = Tagged(TEXT("Type.Projectile, Type.Ranged"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2 && Ranged.Num() == 2))
+	{
+		return false;
+	}
+	const FVector Aim(900.0f, 300.0f, 0.0f);
+	const FName Swing(TEXT("Carom"));
+
+	Worn.ASC()->ActOnSkillUse(Swing, &Melee, Aim, /*bBasicAttack=*/true);
+	TestEqual(*(FString(TEXT("a roll of 14.9 against the top roll of 15 repeats a melee basic attack.")) + OlderAsset),
+		Worn.ASC()->PendingRepeatSkill(), Swing);
+	TestEqual(TEXT("at the whole of its damage"), Worn.ASC()->PendingRepeatShare(), 1.0f, 0.001f);
+	Worn.ASC()->ActOnSkillUse(Swing, &Melee, Aim);
+	TestEqual(TEXT("and a melee skill that is not the basic attack"), Worn.ASC()->PendingRepeatSkill(), Swing);
+
+	Worn.ASC()->ActOnSkillUse(Swing, &Ranged, Aim, /*bBasicAttack=*/true);
+	TestTrue(TEXT("a ranged basic attack is not a melee attack, and is not repeated"),
+		Worn.ASC()->PendingRepeatSkill().IsNone());
+	Pinned.Set(TEXT("15"));
+	Worn.ASC()->ActOnSkillUse(Swing, &Melee, Aim, /*bBasicAttack=*/true);
+	TestTrue(TEXT("a roll of 15 repeats nothing"), Worn.ASC()->PendingRepeatSkill().IsNone());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
