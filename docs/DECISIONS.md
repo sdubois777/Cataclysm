@@ -2,6 +2,133 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A row can trigger a different held skill: one with a cooldown, free, or a spell that pays its cost and starts no cooldown; no row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bTriggerHeldSkill`
+and `bTriggerHeldSpell`); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the
+pending held trigger, `TriggerHeldSkillAction`, `TriggerHeldSpellAction`, the console variable
+`Cataclysm.TriggerHeldSkillRoll`); `game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.h` and `.cpp`
+(`HeldSkillsToTrigger`, `MakePendingHeldTrigger`, a paying start, `Cataclysm.TriggerHeldSkillPick`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` and `CataclysmSkillTemplate.cpp`
+(`bFreeRepeatPaysCost`); `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the loader);
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`; `tools/generate_datatables.py`
+(`TRIGGER_HELD_SKILL_ACTION`, `TRIGGER_HELD_SPELL_ACTION`, `SKILL_IN_HAND_ACTIONS`); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; and `tools/tests/test_generate_datatables.py` and
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have. **No enchantment row uses either action yet**; the rows are the enchantment session's.
+
+### What it is for
+
+Spellblade's Will, set 10.
+
+| Piece count | Words | What it needs |
+|---|---|---|
+| 2 | "Your melee attacks have a 25% chance to trigger an ability with a cooldown" | `trigger_held_skill`, here |
+| 6 | "When you use a melee attack, you gain a stack of Spellslinger which reduces the mana cost of your spells by 10% per stack, and when you use a spell, you gain a stack of Dervish which increases your attack speed for melee attacks by 10% per stack" | rows; see below |
+| 10 | "Your melee attacks have a 25% of triggering one of your spells. This does not put the spell on cooldown but does use it's mana cost" | `trigger_held_spell`, here; **the row waits** |
+| Drawback | "Melee damage is reduced by 50%" | a stat row |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **The triggered ability's cooldown is ignored and none is started.** A skill on cooldown may still be triggered.
+- **With too little mana the trigger is refused, and nothing else happens.**
+- **At 10 pieces both bonuses roll, but there is one trigger per use**, by the one-repeat-per-use precedent. If both
+  pass, the 10-piece's spell wins when a spell is held; otherwise the 2-piece's.
+- **The 10-piece row waits.** A melee character holds no skill tagged `Type.Spell` today, and what "your spells"
+  should mean for them is the owner's question, which has been put to them. The mechanism is built so the row is all
+  that is missing.
+- **Spellslinger and Dervish: 5 stacks lasting 5 s**, as already recorded (the table row "Spellslinger and Dervish
+  (P354)"). **Dervish raises every swing**: the attack speed read stays without tags.
+- **The drawback is scoped `Type.Melee`, the words, and not `Type.Strike`**, as with the Ravager rows of issue #944.
+  The Tags cell of the row disagreed with its words.
+
+### What the research settles, and what it does not
+
+`poedb.tw/us/Trigger`, fetched 2026-10-06: "Vaal skills, channelling skills, and skills with a reservation cannot be
+triggered." That is the source the Wild Magic entry of 2026-10-04 used, and it is why held, channelled and reserved
+skills are left out here too. **The page does not state whether a triggered skill pays its cost or what happens to
+its cooldown**, so neither ruling above is read off a shipped game; both are judgements. One repeat for one use, and
+the spell row winning, are this game's own.
+
+### What Spellslinger reaches, checked before it is written
+
+The mana cost read **does** take the skill's tags: `UCataclysmGameplayAbility::ManaCostFor` asks
+`StatForSkill(ManaCostStat, SkillTagsForStats(), Base)`. So a mana cost row scoped `Type.Spell` reaches the skills
+that carry `Type.Spell` and no others: 9 skills on 2026-10-06, all Demonic Wand and Staff. **A melee character holds
+none of them, so today Spellslinger lowers no cost for the character the set is for**, for the same reason the
+10-piece waits. Dervish needs no scope and reaches every swing.
+
+### How it is built
+
+- **Two actions**, `trigger_held_skill` and `trigger_held_spell`, with the row's value as the chance out of 100. Like
+  a repeat, each acts only on an event that names a skill (`skill_use` or `attack_use`), once per row per event, and
+  keeps to the row's required tags and condition. "Melee attacks" is `attack_use` scoped `Type.Melee`.
+- **What a passing row records** is the skill that was used, its aim, and which kind of row passed. Nothing is
+  started inside the use; the trigger is made on the next tick, after any repeat, for the reason a repeat is.
+- **The pool is what the character holds**, `UCataclysmTriggeredSkill::HeldSkillsToTrigger`: its weapon slots'
+  skills, never the skill just used, less everything a row may not repeat (`RepeatsFromARow`: no movement skill,
+  aura, summon, deployable, channelled or held skill, no skill that needs something of its target, no health cost,
+  and no self buff). For the cooldown action, those with a cooldown above nought, read from the row when it states
+  one and from its slot when it does not; for the spell action, those carrying `Type.Spell`.
+- **Leaving self buffs out of the pool is a judgement by the writing session**, taken from the repeat action's
+  ruling: a second running copy of a self buff adds a second More modifier.
+- **One is drawn evenly from the pool.**
+- **`MakePendingHeldTrigger` makes one trigger.** When a spell row passed and a spell is held, that spell, paying its
+  cost; when it cannot pay, nothing. Otherwise, when a cooldown row passed, one skill with a cooldown, free.
+- **A start that pays** is `bFreeRepeatPaysCost` on a free start: `CheckCost` answers for real, and
+  `CommitAndBegin` commits the cost alone (`CommitAbilityCost`). Everything else a free start skips is still skipped.
+- **What is paid is the whole of what a press pays through `ApplyCost`**: mana, or what the character pays in its
+  place, and the 50 Fervour an ultimate costs. A judgement by the writing session; the words say "mana cost", and a
+  triggered ultimate spell with too little Fervour is refused as one with too little mana is.
+
+### Consequences, stated rather than changed
+
+- **A use may give a repeat and a held trigger both.** They are two actions; "one per use" is one of each.
+- **A triggered skill is not a use**: no skill-used notice, so no row, no Wild Magic roll and no Echo Chamber copy
+  acts on it, and it is neither repeated nor triggers again.
+- **A Demonic Sword's basic attack may trigger two skills**: Quench and Extinction. Ashen Edge is a self buff,
+  Flashpoint a movement skill and Touch Off needs a burning enemy.
+- **The 2-piece can trigger the ultimate**, free and with its cooldown running. Extinction is one of the two above.
+- **A wand or staff character's spells are also its skills with a cooldown**, so for that character both rows draw
+  from the same skills and the difference is whether mana is paid.
+- **A skill that may not be triggered and is the only one held leaves nothing to trigger**, and the row does nothing.
+
+### What is not here
+
+- **No row.** The 2-piece and the drawback are written together by the enchantment session (the generator refuses
+  half a set); the 10-piece waits on the owner.
+- **The 6-piece.** The writing session believes it needs rows and no engine: a stack grant on `attack_use` scoped
+  `Type.Melee` and one on `skill_use` scoped `Type.Spell`, each scaling the other's stat. **That is not checked**
+  against the generator.
+
+### Tests
+
+Three new automation tests.
+
+- `Cataclysm.Enchantments.AnAttackTriggersADifferentHeldSkillWithACooldownFree`: the pool for a Demonic Sword is
+  Quench and Extinction; after a use of Quench it is Extinction; a roll at the chance records nothing; a roll below
+  it records one trigger, which is made, pays no mana, sends no notice and starts no cooldown.
+- `Cataclysm.Enchantments.ATriggeredSpellPaysItsCostStartsNoCooldownAndIsRefusedWithTooLittle`: a Demonic Wand's pool
+  of spells is four; the triggered Malefice pays what Malefice costs, sends no notice and starts no cooldown; with no
+  mana it is refused, no second one runs and no mana is taken.
+- `Cataclysm.Enchantments.WhenBothTriggerRowsPassOneSkillIsTriggeredAndTheSpellRowWinsWhenASpellIsHeld`: with both
+  rows passing a Wand character gets one trigger and it pays; a Sword character gets the free one; the spell row
+  alone gives a Sword character nothing.
+
+**Not tested:** a trigger of a skill whose cooldown is running. The cooldown check is skipped by the same line that
+skips it for every free start since Follow Through.
+
+**Python.** Five new checks: the generator's two action names equal the engine's; each action is carried through;
+each is refused on an event that names no skill.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-06 — `attack_use`: an event for every paid use, the basic attack included, so a row can repeat a melee swing; `skill_use` is unchanged
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ActOnSkillUse`);
