@@ -5492,6 +5492,40 @@ namespace CataclysmStatExemptionTest
 					   Charged, 60.0f, 0.001f);
 	}
 
+	/**
+	 * `healing_received`, read by `UCataclysmRegeneration::TopUp`. A character at
+	 * 100 of 1,000 health offered a heal of 100 gains 100; one holding the stat
+	 * at a flat 50 is offered 150 and gains that.
+	 */
+	void ProbeHealingReceived(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto Gained = [World](bool bHeld)
+		{
+			FScopedFighter Healed(World, /*AttackDamage=*/0.0f);
+			Healed.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+			Healed.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 100.0f);
+			if (bHeld)
+			{
+				GrantFlats(Healed.Actor, {{FName(UCataclysmRegeneration::HealingReceivedStat), 50.0f}});
+			}
+			UCataclysmRegeneration::TopUp(*Healed.AbilitySystem, Vital::GetHealthAttribute(),
+										  Vital::GetMaxHealthAttribute(), 100.0f);
+			return Healed.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()) - 100.0f;
+		};
+
+		Test.TestEqual(TEXT("a plain character offered a heal of 100 gains 100"), Gained(false), 100.0f, 0.01f);
+		Test.TestEqual(TEXT("and one holding healing_received at a flat 50 gains 150, so "
+							"UCataclysmRegeneration::TopUp really reads it"),
+					   Gained(true), 150.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5526,6 +5560,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
 			{TEXT("skill_cost_paid_from_health"), &ProbeCostPaidFromHealth},
 			{TEXT("skill_cost_paid_from_health_when_short"), &ProbeCostPaidFromHealthWhenShort},
+			{TEXT("healing_received"), &ProbeHealingReceived},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},

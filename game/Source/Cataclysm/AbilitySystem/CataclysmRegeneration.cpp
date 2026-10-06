@@ -21,6 +21,7 @@
 #include "GameFramework/Actor.h"
 
 const TCHAR* UCataclysmRegeneration::HealthRegenStat = TEXT("health_regen");
+const TCHAR* UCataclysmRegeneration::HealingReceivedStat = TEXT("healing_received");
 const TCHAR* UCataclysmRegeneration::ManaRegenStat = TEXT("mana_regen");
 const TCHAR* UCataclysmRegeneration::EnergyShieldRegenStat =
 	TEXT("energy_shield_regen");
@@ -121,6 +122,18 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// healing event that healed nobody.
 	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
 	{
+		// A ROW MAY RAISE OR LOWER WHAT IS OFFERED FIRST, AS ITS OWN MULTIPLIER.
+		// Ruled 2026-10-06: "You gain 10% more life from all sources". See
+		// `HealingReceivedStat`. The amount offered is the base the row's
+		// buckets apply to, and a character with no such row is offered what it
+		// was. Never below nothing: a heal does not take health away.
+		if (const UCataclysmAbilitySystemComponent* Asking =
+				Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem))
+		{
+			Gain = FMath::Max(0.0f, Asking->StatAppliedTo(FName(HealingReceivedStat),
+														  FGameplayTagContainer(), Gain));
+		}
+
 		// AND WHAT RIDES ON THE AILMENTS IT CARRIES, added and capped with it.
 		// Issue #1833, ruled 2026-10-06: "Disease effects reduce enemy healing by
 		// 50%-100%".
