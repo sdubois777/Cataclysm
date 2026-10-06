@@ -1731,7 +1731,8 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_carries_a_dot")
 			// ISSUE #1515, TWO HANDS. It names the weapon in hand rather than a
 			// number, so it compares nothing.
-			|| Name == TEXT("wielding_two_handed_weapon");
+			|| Name == TEXT("wielding_two_handed_weapon")
+			|| Name == TEXT("target_in_your_zone");
 	}
 }
 

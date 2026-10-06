@@ -71,6 +71,10 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
     "not_attacked_for_seconds",
+    # Landed on 2026-10-06 as the engine half of "You deal 15%-30% increased
+    # damage to enemies standing in your persistent AOE zones", issue #1833.
+    # The enchantment session writes the row; the workbook is its.
+    "target_in_your_zone",
     # `target_carries_void_splinter` LEFT on 2026-10-01 with its row, "You deal
     # 3%-5% more damage to an enemy carrying a void splinter", issue #1833 group
     # E part 1.
