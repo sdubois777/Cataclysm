@@ -2,6 +2,9 @@
 
 #include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystemComponent.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Cataclysm.h"
 // For emptying and refilling the character's hands while the sword is standing
 // in the ground. Issue #1141.
@@ -152,6 +155,11 @@ void ACataclysmPlantedWeapon::BeginPlay()
 	// reads as the skill not having worked.
 	RedrawTheHandsOf(Caster.Get());
 
+	// AND THE STATS ARE THE OTHER HALF, since 2026-10-05. Issue #1166: until then the character went on swinging for
+	// the buried weapon's damage, because the item is still worn. `LeavesUnarmed` answers yes from here on, so this
+	// refresh is the one that takes the weapon's lines out and puts the unarmed base in.
+	RefreshTheStatsOf(Caster.Get());
+
 	if (UWorld* World = GetWorld())
 	{
 		// FIRST COUNT A FULL SECOND IN, because no time has passed at the moment
@@ -190,7 +198,49 @@ void ACataclysmPlantedWeapon::EndPlay(const EEndPlayReason::Type Reason)
 	Caster.Reset();
 	RedrawTheHandsOf(WhoseItWas);
 
+	// AND THE WEAPON'S STATS COME BACK WHATEVER ENDED THIS, for the reason the hands are filled here. Issue #1166.
+	// ONLY WHEN THE SWORD ITSELF WAS DESTROYED. A level being torn down or the game quitting also ends this actor,
+	// and working a character's stats out in the middle of that would touch things already going.
+	if (Reason == EEndPlayReason::Destroyed)
+	{
+		RefreshTheStatsOf(WhoseItWas);
+	}
+
 	Super::EndPlay(Reason);
+}
+
+bool ACataclysmPlantedWeapon::LeavesUnarmed(const AActor* Who)
+{
+	const ACataclysmPlantedWeapon* Sword = HeldBy(Who);
+	return Sword && !Sword->bHandedBack;
+}
+
+void ACataclysmPlantedWeapon::HandBack()
+{
+	if (!bHandedBack)
+	{
+		bHandedBack = true;
+		RefreshTheStatsOf(Caster.Get());
+	}
+}
+
+void ACataclysmPlantedWeapon::RefreshTheStatsOf(AActor* Who) const
+{
+	if (!IsValid(Who) || Who->IsActorBeingDestroyed())
+	{
+		return;
+	}
+
+	// THE EQUIPMENT COMPONENT'S OWN REFRESH, CALLED DIRECTLY. NOT THROUGH THE CHARACTER'S "equipment changed" ROUTE,
+	// which also grants the worn weapon's abilities again -- and that begins by taking them all back, the running
+	// skill that holds this sword included. FOUND BY CLASS RATHER THAN BY A CAST TO THE PLAYER, so anything that
+	// wears equipment is served.
+	UCataclysmEquipmentComponent* Equipment = Who->FindComponentByClass<UCataclysmEquipmentComponent>();
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Who);
+	if (Equipment && AbilitySystem)
+	{
+		Equipment->RefreshAttributes(AbilitySystem);
+	}
 }
 
 void ACataclysmPlantedWeapon::RedrawTheHandsOf(AActor* Who) const
