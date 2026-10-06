@@ -60,6 +60,40 @@ EnchantmentEffects 476 to 478, over 390 to 392.
   same reason, so the two rows behave as the slows before them do.
 - **Both end with the ailment**, by time, by a cleanse or by death, as every rider does.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one, on `development` 426c061d. The whole suite and
+the Python of record are in the generator check's table and were run with this layer in the stack. **The ids are
+the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, first | 39329cc9 | Build: Failed - 32 actions, 29 files compiled |
+| Build, after the two include lines | c9e522fd | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp |
+| Cataclysm.Enchantments. against the asset built before the two rows | c9e522fd | 214 tests performed, 212 succeeded, 2 failed: TheBleedingMoveRowSlowsABleedingEnemysWalkingAndNotItsAttacking, ThePoisonedSlowRowSlowsAPoisonedEnemysWalkingAndItsAttackingAlike; 3 failed assertions |
+| The asset, regenerated with the editor | c9e522fd | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 476 to 478 |
+| Whole suite | 87ffdee3 | 3186 tests performed, 3186 succeeded, 0 failed; declared 3186, gap 0; 0 ensures |
+| Proof D: a creature's speed not reading the slow that rides on its ailments | 87ffdee3 | PROVED: with the break in: 214 tests performed, 213 succeeded, 1 failed: ThePoisonedSlowRowSlowsAPoisonedEnemysWalkingAndItsAttackingAlike \| restored: 214 tests performed, 214 succeeded, 0 failed |
+| Proof E: a creature's walk speed written without the movement slow | 87ffdee3 | PROVED: with the break in: 214 tests performed, 213 succeeded, 1 failed: TheBleedingMoveRowSlowsABleedingEnemysWalkingAndNotItsAttacking \| restored: 214 tests performed, 214 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: D two, "poisoned by the wearer,
+it walks at half its speed" and "and takes twice as long between attacks"; E one, "bleeding from the wearer, it
+walks at nine tenths of its speed".
+
+**The two tests fail against a table without the rows and pass with them**, on the three assertions proofs D and
+E fail between them.
+
+**THE BUILD WAS REGISTERED AS SUCCEEDING AND IT FAILED.** The two tests of this layer use
+`ACataclysmImpCharacter` and `UCharacterMovementComponent`, and `CataclysmEnchantmentEffectTests.cpp` included
+the header of neither. The compiler printed 18 errors, every one in those two tests, lines 13630 to 13717, and
+none in any other file; the first was "error C2027: use of undefined type 'UCharacterMovementComponent'". The
+window stopped there and the fix was asked for before it was made: two lines,
+`#include "Character/CataclysmImpCharacter.h"` and `#include "GameFramework/CharacterMovementComponent.h"`, in
+that test file and nowhere else. The tests had been written and never compiled, and the rehearsal of this layer
+ran the Python suite alone, which reads a C++ file as text and cannot tell that a type is undefined.
+
+**After those two lines nothing was changed.** With the rows in the table every test passed on its first run.
+
 ---
 
 ## 2026-10-06 — A worn row can hang a number on an ailment: five sentences that change an enemy while it carries the wearer's bleed, burn, disease or poison
