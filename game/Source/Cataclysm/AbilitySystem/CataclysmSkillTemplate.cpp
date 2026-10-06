@@ -172,6 +172,15 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		return false;
 	}
 
+	// A FREE START THAT PAYS, PAYS HERE: THE COST AND NOT THE COOLDOWN. Ruled 2026-10-06. The engine commits the two
+	// separately, and this is the cost half alone. See `bFreeRepeatPaysCost`.
+	if (bFreeRepeat && bFreeRepeatPaysCost && !CommitAbilityCost(Handle, ActorInfo, ActivationInfo))
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo,
+				   /*bReplicateEndAbility=*/true, /*bWasCancelled=*/true);
+		return false;
+	}
+
 	// ANNOUNCED ONCE IT HAS BEEN PAID FOR, which is the commit above. Issue #41,
 	// slice 4. Every one of the eight skill shapes and the basic attack pass
 	// through here, and a skill the cost or the cooldown refused has already
@@ -529,6 +538,7 @@ void UCataclysmSkillTemplate::EndAbility(
 	// Cleared here rather than when it began because the aim is read after the
 	// wind-up, and the cost and cooldown checks before the activation.
 	bFreeRepeat = false;
+	bFreeRepeatPaysCost = false;
 	FreeRepeatDamageShare = 1.0f;
 }
 

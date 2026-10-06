@@ -373,6 +373,16 @@ public:
 	bool bFreeRepeat = false;
 
 	/**
+	 * THIS FREE START PAYS ITS COST. Ruled 2026-10-06, for Spellblade's Will: "This does not put the spell on
+	 * cooldown but does use it's mana cost". Read only while `bFreeRepeat` is set: `CheckCost` answers for real, so
+	 * a character with too little is refused, and `UCataclysmSkillTemplate::CommitAndBegin` pays the cost and
+	 * nothing else. Everything else a free start skips is still skipped: no cooldown is waited for or started, no
+	 * skill-used notice is sent and no next-use charge is spent. THE COST IS THE WHOLE OF WHAT A PRESS PAYS through
+	 * `ApplyCost`: mana or what the character pays in its place, and the Fervour an ultimate costs.
+	 */
+	bool bFreeRepeatPaysCost = false;
+
+	/**
 	 * What share of its damage a free start deals: 1 is all of it. Read only while `bFreeRepeat` is set, and put back
 	 * to 1 when that use ends. Mechanism B2, ruled 2026-10-05: "Each skill has a 20%-40% chance to cast a duplicate
 	 * at 50% damage". IT REACHES WHAT THE PER-USE MULTIPLIER REACHES -- hits, projectiles, rack throws and ground --

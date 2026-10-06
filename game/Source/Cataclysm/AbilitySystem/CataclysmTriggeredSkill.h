@@ -58,7 +58,33 @@ public:
 	 *         (locked skills, an unmet `Requires`).
 	 */
 	static bool Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
-						float DamageShare = 1.0f);
+						float DamageShare = 1.0f, bool bPaysCost = false);
+
+	/**
+	 * The skills a row may trigger for a character that has just used `UsedSkill`: the skills it HOLDS, less the one
+	 * used and less what `RepeatsFromARow` leaves out. Ruled 2026-10-06, for Spellblade's Will.
+	 *
+	 * WITH `bSpells`, those carrying `Type.Spell`. WITHOUT IT, those with a cooldown above nought, read from the row
+	 * when it states one and from its slot when it does not; the basic attack and an aura have none.
+	 *
+	 * WHAT IS HELD AND NOT THE DAMAGE TYPE'S TABLE, because the words are "an ability" and "one of your spells" of
+	 * the character's own. Wild Magic's pool is the table.
+	 */
+	static TArray<FCataclysmWeaponSkill> HeldSkillsToTrigger(const AActor* Character, FName UsedSkill, bool bSpells);
+
+	/**
+	 * Makes the trigger of a different held skill that a row recorded on the character's ability system, and clears
+	 * it. Called on the tick after the use, as `MakePendingRepeat` is.
+	 *
+	 * ONE TRIGGER FOR ONE USE, ruled 2026-10-06. When a spell row passed and the character holds a spell to trigger,
+	 * that is the one: it pays its cost, and with too little to pay nothing is triggered at all. Otherwise, when a
+	 * cooldown row passed, one held skill with a cooldown is triggered free. The triggered skill's cooldown is not
+	 * waited for and none is started, so a skill on cooldown may be triggered.
+	 *
+	 * WHICH ONE is drawn evenly from the pool; `Cataclysm.TriggerHeldSkillPick` pins the index for a test.
+	 * @return whether a skill started.
+	 */
+	static bool MakePendingHeldTrigger(AActor* Character);
 
 	/**
 	 * Whether a row action may repeat this skill. Mechanism B2, ruled 2026-10-05.

@@ -1044,10 +1044,15 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 
 		// AND ANY REPEAT A ROW ASKED FOR IS MADE ON THE NEXT TICK. This runs inside the used skill's activation,
 		// where a skill cannot be granted; Follow Through, Wild Magic and Echo Chamber wait a tick for the same reason.
-		if (!Acting->PendingRepeatSkill().IsNone())
+		// AND SO IS A TRIGGER OF A DIFFERENT HELD SKILL, after the repeat. Ruled 2026-10-06. Each asks the ability
+		// system whether anything is pending for it, so one timer serves both.
+		if (!Acting->PendingRepeatSkill().IsNone() || !Acting->PendingHeldTriggerUsedSkill().IsNone())
 		{
-			GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(
-				this, [this]() { UCataclysmTriggeredSkill::MakePendingRepeat(this); }));
+			GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				UCataclysmTriggeredSkill::MakePendingRepeat(this);
+				UCataclysmTriggeredSkill::MakePendingHeldTrigger(this);
+			}));
 		}
 	}
 }
