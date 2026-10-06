@@ -99,9 +99,11 @@ none of them, so today Spellslinger lowers no cost for the character the set is 
 
 - **No row.** The 2-piece and the drawback are written together by the enchantment session (the generator refuses
   half a set); the 10-piece waits on the owner.
-- **The 6-piece.** The writing session believes it needs rows and no engine: a stack grant on `attack_use` scoped
-  `Type.Melee` and one on `skill_use` scoped `Type.Spell`, each scaling the other's stat. **That is not checked**
-  against the generator.
+- **The 6-piece, which needs engine work and not rows alone.** A row scaled by its own stacks gains a stack on its
+  event whatever the event's tags: the loader in `CataclysmItem.cpp` states "An own stack's tags scope its stat and
+  not its grant". Spellslinger's stat is scoped to spells and its stack is gained on a melee attack; Dervish's stack
+  is gained on a spell. With today's rows Spellslinger would gain a stack on every use and Dervish on every skill.
+  A row needs a scope for its grant that is separate from the scope of its stat. Read from the code, not run.
 
 ### Tests
 
