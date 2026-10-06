@@ -12,8 +12,8 @@ base); `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`
 in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; and
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses these stats yet**; the rows are the enchantment
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses these stats yet**; the rows are the enchantment
 session's.
 
 ### What it is for
@@ -88,13 +88,42 @@ with an enemy 2 m to each side:
 - `ProbeOnlyOnePersistentArea`: a plain caster's blink leaves two zones and a second blink four; a carrying caster
   has one after each.
 
-**Not tested:** terrain's half of the duration and of the only-one rule; the size of the slow as a speed.
+**Not tested:** terrain's half of the duration and of the only-one rule; the size of the slow as a speed. Ruled
+2026-10-06: the next zone change begins with a probe for each of the three: a terrain piece lasting less with the
+stat, a new terrain piece ending an earlier one, and the slow read as a speed and not only as a tag.
 
 **Python.** No new test. The inventory of stat lookups gained four entries, one for each new call.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of three, at `feat/zone-stats-2` 0ca651cc: the roll for a use
+(`feat/use-outcome-roll-2` 190b39b4), the two defender chances and the strike that hits all nearby
+(`feat/defender-chances-and-hit-all-2` 478a593c), then the four stats a persistent area reads. Development was
+f77a7e5b. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3207 tests performed, 3207 succeeded, 0 failed`; `Declared: 3207 tests in the tree at 0ca651cc; 3207 performed, gap 0` |
+| Python, with continuous integration idle | `5762 passed, 8 skipped in 312.75s`; JUnit `tests="5770" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 0ca651cc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+All three are under the prefix `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, the one test that
+runs every probe.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Pa | `CataclysmSkillTemplate.cpp`: a ground zone lasts its stated time whatever the stat says | 1 performed, 1 failed, 1 failed assertion: the carrying caster's zone lasted 6.000000 against 3.000000 | 1 performed, 1 succeeded |
+| Pb | `CataclysmGroundZone.cpp`: a sweep counts nobody inside | 1 performed, 1 failed, 1 failed assertion: the sweep was 1.000000 times a plain one against 1.400000 | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplate.cpp`: the only-one rule ends nobody's own zones | 1 performed, 1 failed, 2 failed assertions: the carrying caster was left with 2 zones against 1, and with 4 after a second blink against 1 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 2.
+
+**Not run, because no row exists yet:** any of the four stats read from the effect table, and anything a worn row
+does in play.
 
 ---
 
