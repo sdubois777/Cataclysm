@@ -11,8 +11,8 @@ Decisions made outside the Google Drive documents, newest first.
 eruption); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (a comment); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmEquipmentTests.cpp`. Issue
 [#1166](https://github.com/sdubois777/Cataclysm/issues/1166).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry.
 
 ### What was wrong
 
@@ -91,9 +91,34 @@ Two new automation tests, `Cataclysm.Equipment.`:
   a real Greatsword; planted, attack damage is 6; pulled free, the character's attack damage read at the instant the
   eruption lands on a body is the weapon's.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of two: this change, then the repeat action's engine (the entry above) on top of
+it, at `feat/repeat-skill-action-3` 3045071d; this layer was `fix/unarmed-while-the-weapon-is-planted-3` 615fe925.
+Development was 2b87c355. The whole suite, because `GatherModifiers` and `RefreshAttributes` serve every character.
+Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3179 tests performed, 3179 succeeded, 0 failed`; `Declared: 3179 tests in the tree at 3045071d; 3179 performed, gap 0` |
+| Python, with continuous integration idle | `5719 passed, 8 skipped in 316.28s`; JUnit `tests="5727" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 3045071d, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmEquipmentComponent.cpp`: the unarmed base is not supplied | `Cataclysm.Equipment.AWeaponLeftInTheGround` | 1 performed, 1 failed, 3 failed assertions: attack damage while planted read 32, the ring's flat damage alone, against 38, three times | 1 performed, 1 succeeded |
+| Pb | Same file: the planted weapon's slot is not read as empty | Same | 1 performed, 1 failed, 3 failed assertions: the same three read 194 against 38 | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplates.cpp`: the recall does not hand the weapon back before its eruption | `Cataclysm.Equipment.PullingAPlantedWeaponFree` | 1 performed, 1 failed, 1 failed assertion: attack damage at the eruption was 6 against 156 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 3, 3 and 1.
+
+**The figures the proofs printed are the change in small.** On the test character, a +10 Greatsword with a flat-damage
+ring: 188 armed (156 and 32, added here from the printed figures); 38 with the sword in the ground, which is the base of 6 and the ring's 32; 194 if the weapon's lines
+were kept on top of the base; and an eruption priced from 6 and not 156 if the weapon were not handed back first.
 
 ---
 
