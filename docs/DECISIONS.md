@@ -2,6 +2,115 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A row can roll, once for a use, that the use deals no damage or deals increased damage: four actions, with no row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bUseDealsNoDamage`,
+`bUseDealsIncreasedDamage`, `UseIncreasePercent`, `bOnlyASkillWithACooldown`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ActOnSkillUse`, what a use takes,
+four action names, the console variable `Cataclysm.UseOutcomeRoll`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (`FCataclysmSkillUsedNotice::bHasCooldown`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`CommitAndBegin`);
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`; `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the
+loader); `tools/generate_datatables.py` (`USE_NO_DAMAGE_ACTIONS`, `USE_INCREASED_DAMAGE_ACTIONS`); the automation tests
+in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; and `tools/tests/test_generate_datatables.py` and
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have. **No enchantment row uses these actions yet**; the rows are the enchantment
+session's.
+
+### What it is for
+
+Nine enchantment sentences state a chance of their own for each use or each hit, and until now no row could. Four of
+them fit the one shape built here:
+
+| Sentence | Action | Event | Scope |
+|---|---|---|---|
+| "Your cooldown abilities have a 25% chance to deal no damage" | `cooldown_use_no_damage` | `skill_use` | none |
+| "Strike skills have a 10%-20% chance to miss entirely regardless of other stats" | `use_no_damage` | `skill_use` | `Type.Strike` |
+| "Projectiles have a 20%-35% chance to explode prematurely dealing no damage" | `use_no_damage` | `attack_use` | `Type.Projectile` |
+| "Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage" | `cooldown_use_increased_damage` | `skill_use` | none |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **"Cooldown abilities" are skills whose cooldown is above nought**, so not the basic attack and not an aura. **It
+  is a flag on the action and not a row condition**, because it is a fact about the skill used and is known only at
+  the event.
+- **Which event a row is written on is decided by the sentence's own word.** "Skills" and "abilities" mean
+  `skill_use`, so the basic attack does not roll. A sentence with no such word, "Projectiles have a 20%-35% chance
+  to explode prematurely", means every paid use, `attack_use`, so a projectile basic attack rolls.
+- **A free repeat or a triggered skill raises no event and never rolls.**
+- **The increase is the action's own field.** Which column of the effect table feeds it is the enchantment
+  session's decision.
+- **"Explode prematurely" is the no-damage outcome and nothing more. The projectile still flies.**
+
+### What the research settles, and what it does not
+
+No new source was read for this. The shape, a chance rolled once when a skill is used, is the one the repeat action
+(2026-10-05) and the trigger actions (2026-10-06) already use, and their entries name their sources. **Nothing read
+settles that a miss should ignore evasion or that an increase and a miss should resolve as they do here**; those are
+the sentences' own words and the judgements below.
+
+### How it is built
+
+- **Where the roll is made.** A use sends its skill-used notice from inside `CommitAndBegin`, a few lines before that
+  function writes what the use's damage reads. The notice reaches the rows through `ActOnSkillUse`. So a row rolls
+  there, the answer is kept on the ability system, and the same call of `CommitAndBegin` takes it
+  (`TakePendingUseNoDamage`, `TakePendingUseIncreasePercent`). Each is read once and cleared, and a new use begins
+  with neither.
+- **No damage** sets `bThisUseDealsNoDamage`, the switch "every Nth attack deals no damage" already uses: hits,
+  projectiles, ground and damage over time deal nothing, and no stun, shove or curse lands. **It does not ask
+  evasion**, which is what "regardless of other stats" needs.
+- **An increase** is added to the use's own increase, the figure a next-use charge already raises. Several increase
+  rows that pass on one use add.
+- **No damage wins over an increase**, and a use that deals no damage spends no next-use charge, as the Nth attack
+  does not. A judgement by the writing session, taken from that precedent.
+- **A skill that delivers no damage itself takes no increase.** It still rolls.
+- **The notice says whether the skill has a cooldown** (`bHasCooldown`, the skill's own cooldown above nought), and
+  a row with the flag is not rolled at all for a skill without one.
+- **The generator** accepts `use_no_damage` and `cooldown_use_no_damage` on `skill_use` or `attack_use`, with a
+  chance above 0 and up to 100 and no fraction, value kind or scale. **It refuses `use_increased_damage` and
+  `cooldown_use_increased_damage`** until a column carries the increase: a row written today would roll and then add
+  nothing.
+
+### What the rows need
+
+- **The three no-damage rows can be written now**, as the table above states them. Value Low and Value High are the
+  chance. No Fraction Of, no Value Kind, no Scale.
+- **The increase row needs a column** (or a pair, for "50%-200%") that the generator writes and the loader in
+  `CataclysmItem.cpp` copies into `FCataclysmPoolAction::UseIncreasePercent`. Then the generator's refusal of the two
+  increase actions is replaced by a check that the increase is stated.
+
+### Consequences, stated rather than changed
+
+- **Only a player character's uses roll.** The notice reaches the rows through the player character's hook; a
+  creature's ability does not.
+- **A basic attack is never "a cooldown ability"**, on either event.
+- **The roll is made for a skill that deals no damage too**, a self buff for one, and changes nothing.
+- **A missed use still pays its cost and starts its cooldown.** It is a use.
+- **The other five sentences are not here**: "hit all enemies within 3 meters", the spell absorb and the melee
+  reflect are the next window; "hit you instead of the enemy" and "backfire" wait on the owner.
+
+### Tests
+
+Three new automation tests, on fighters that are not player characters; each hands the use to the rows itself.
+
+- `Cataclysm.Skills.AUseARowRolledToDealNoDamageDealsNoneAndTheNextUseDealsItsOwn`: a roll at the chance records
+  nothing; a roll below it records, the use deals no damage and sets nothing alight, and the next use deals its own.
+- `Cataclysm.Skills.AUseARowRolledToDealIncreasedDamageTakesTheIncreaseAndTwoRowsAdd`: rows of 100 and 50 give a use
+  150; a no-damage row beside an increase row gives no damage, and the increase is not kept.
+- `Cataclysm.Skills.ARowForCooldownAbilitiesRollsOnlyForASkillWithACooldownAndASkillUseRowNotForTheBasicAttack`: the
+  flag, the two events, the row's tags, and a real use's notice saying whether its skill has a cooldown.
+
+**Python.** Eight new checks: the generator's four names equal the engine's; a no-damage row is carried through on
+each event; one on an event that names no skill is refused; each increase action is refused.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-06 — The navigation tests wait for the mesh by blocking on its tile builds, not by counting ticks: the intermittent "mesh rebuild finished" failures of issue #2222
 
 **Affects:** `game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp` only: `WaitForTheNavigationMesh`,
