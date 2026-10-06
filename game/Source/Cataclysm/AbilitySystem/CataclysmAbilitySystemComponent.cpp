@@ -3533,6 +3533,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownUseNoDamageAction = TEXT(
 const TCHAR* UCataclysmAbilitySystemComponent::UseIncreasedDamageAction = TEXT("use_increased_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownUseIncreasedDamageAction =
 	TEXT("cooldown_use_increased_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction = TEXT("use_hits_all_nearby");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -4327,6 +4328,7 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 	ClearPendingHeldTrigger();
 	bPendingUseNoDamage = false;
 	PendingUseIncreasePercent = 0.0f;
+	PendingUseHitsAllCm = 0.0f;
 	SkillInHandName = SkillName;
 	SkillInHandAim = Aim;
 	bSkillInHandHasCooldown = bHasCooldown;
@@ -4598,7 +4600,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// is: only when the event names a skill, once per row per event, rolled against the row's value. A row for
 		// cooldown abilities is not rolled at all for a skill without one. The use takes the answer as it is paid
 		// for; see `TakePendingUseNoDamage`.
-		if (Action.bUseDealsNoDamage || Action.bUseDealsIncreasedDamage)
+		if (Action.bUseDealsNoDamage || Action.bUseDealsIncreasedDamage || Action.bUseHitsAllNearby)
 		{
 			if (bLanded && !SkillInHandName.IsNone() && !StackedThisEvent.Contains(Action.TriggerKey)
 				&& (!Action.bOnlyASkillWithACooldown || bSkillInHandHasCooldown) && TriggerReady(Action))
@@ -4611,6 +4613,11 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					if (Action.bUseDealsNoDamage)
 					{
 						bPendingUseNoDamage = true;
+					}
+					else if (Action.bUseHitsAllNearby)
+					{
+						// THE FURTHEST OF THE ROWS THAT PASSED, in centimetres.
+						PendingUseHitsAllCm = FMath::Max(PendingUseHitsAllCm, Action.UseHitsAllMetres * 100.0f);
 					}
 					else
 					{

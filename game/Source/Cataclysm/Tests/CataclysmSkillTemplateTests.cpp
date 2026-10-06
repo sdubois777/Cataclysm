@@ -19200,4 +19200,80 @@ bool FCataclysmUseRowScopeTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledUseHitsAllTest,
+	"Cataclysm.Skills.AStrikeARowRolledToHitAllNearbyHitsEveryEnemyAroundItsUserAndTheNextStrikeDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Melee skills have a 10%-20% chance to hit all enemies within 3 meters", hand-built. Ruled 2026-10-06. Three enemies:
+ * one 2.5 m away, which the strike's own reach of 1 m does not reach; one 2.8 m away on the other side; one 3.5 m away,
+ * outside the 3 m. A plain strike hurts neither of the first two. The rolled one hurts both, with a target limit of 1
+ * stated on the skill, and not the third. The next strike is plain again.
+ */
+bool FCataclysmRolledUseHitsAllTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(2.5f * M, 0, 0));
+	FScopedFighter Behind(World, FVector(-2.8f * M, 0, 0));
+	FScopedFighter Far(World, FVector(0, 3.5f * M, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("0"));
+	const TCHAR* Shape = TEXT("Radius=1; Angle=60; MaxTargets=1");
+	UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, Shape, TEXT("Plain"), TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* Wide = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, Shape, TEXT("Wide"), TEXT("Type.Melee"));
+	Caster.GiveFervourForUltimates(1);
+	UCataclysmStrikeSkill* After = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, Shape, TEXT("After"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the plain strike"), Plain) || !TestNotNull(TEXT("set-up: the wide one"), Wide)
+		|| !TestNotNull(TEXT("set-up: the one after"), After))
+	{
+		return false;
+	}
+	FCataclysmPoolAction Row = AUseRow(TEXT("Test:all"), 20.0f, /*bNoDamage=*/false, 0.0f, false, TEXT("skill_use"));
+	Row.bUseDealsIncreasedDamage = false;
+	Row.bUseHitsAllNearby = true;
+	if (!TestEqual(TEXT("set-up: a row reaches 3 metres unless it says otherwise"), Row.UseHitsAllMetres, 3.0f, 0.001f))
+	{
+		return false;
+	}
+	Caster.AbilitySystem->SetPoolActions({Row});
+
+	// A PLAIN STRIKE REACHES 1 M, so it hurts neither enemy that stands further off.
+	float NearBefore = Near.Health();
+	float BehindBefore = Behind.Health();
+	TestTrue(TEXT("the plain strike is used"), Activate(Caster, Plain));
+	if (!TestTrue(TEXT("control: a plain strike hurts neither"),
+				  NearBefore - Near.Health() == 0.0f && BehindBefore - Behind.Health() == 0.0f))
+	{
+		return false;
+	}
+
+	// THE ROLLED ONE HITS EVERY ENEMY WITHIN 3 M, WHATEVER ITS OWN REACH, ARC AND TARGET LIMIT.
+	TheRowsSeeAUseOf(Caster, Wide);
+	TestEqual(TEXT("the row records 300 cm for the use"), Caster.AbilitySystem->PendingUseHitsAll(), 300.0f, 0.001f);
+	const float FarBefore = Far.Health();
+	TestTrue(TEXT("the wide strike is used"), Activate(Caster, Wide));
+	if (!TestTrue(TEXT("the enemy 2.5 m in front is hurt"), NearBefore - Near.Health() > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the one 2.8 m behind, past a target limit of 1"), BehindBefore - Behind.Health() > 0.0f);
+	TestEqual(TEXT("and not the one 3.5 m away"), FarBefore - Far.Health(), 0.0f, 0.001f);
+	TestEqual(TEXT("and nothing is left for a later use"), Caster.AbilitySystem->PendingUseHitsAll(), 0.0f, 0.001f);
+
+	// THE NEXT STRIKE, WHICH NO ROW ROLLED FOR, IS PLAIN AGAIN.
+	NearBefore = Near.Health();
+	TestTrue(TEXT("the strike after is used"), Activate(Caster, After));
+	TestEqual(TEXT("it hurts nobody 2.5 m away"), NearBefore - Near.Health(), 0.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

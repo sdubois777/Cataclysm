@@ -5136,6 +5136,13 @@ TRIGGER_HELD_SPELL_ACTION = "trigger_held_spell"
 #: `CooldownUseNoDamageAction` hold the same names.
 USE_NO_DAMAGE_ACTIONS = ("use_no_damage", "cooldown_use_no_damage")
 
+#: The action that rolls for a strike to hit every enemy within 3 metres of its
+#: user. Ruled 2026-10-06: "Melee skills have a 10%-20% chance to hit all
+#: enemies within 3 meters". The 3 is the engine's, since no column carries a
+#: distance for an action.
+#: `UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction` holds the name.
+USE_HITS_ALL_NEARBY_ACTION = "use_hits_all_nearby"
+
 #: The same two for a use that deals increased damage: "Your cooldown abilities
 #: have a 5%-20% chance to deal 50%-200% increased damage". The engine has them
 #: (`UseIncreasedDamageAction`, `CooldownUseIncreasedDamageAction`). THE
@@ -5149,7 +5156,7 @@ USE_INCREASED_DAMAGE_ACTIONS = ("use_increased_damage",
 #: an event that names a skill, and its value is a chance and nothing else.
 SKILL_IN_HAND_ACTIONS = (REPEAT_SKILL_ACTION, TRIGGER_HELD_SKILL_ACTION,
                          TRIGGER_HELD_SPELL_ACTION) + USE_NO_DAMAGE_ACTIONS \
-    + USE_INCREASED_DAMAGE_ACTIONS
+    + USE_INCREASED_DAMAGE_ACTIONS + (USE_HITS_ALL_NEARBY_ACTION,)
 
 
 def takes_a_trigger_cooldown(action: str) -> bool:

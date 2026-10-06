@@ -165,6 +165,10 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// two lines after it and the block below, whose `else` gives it the readings
 	// of a use nothing measured. It keeps the turn to face its target and the
 	// burst at the caster, which are what the player sees of it.
+	// EVERY USE BEGINS HITTING WHAT ITS OWN SHAPE HITS. Written here and not below, because a free start skips the
+	// block that takes what a row rolled.
+	ThisUseHitsAllWithinCm = 0.0f;
+
 	if (!bFreeRepeat && !CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo,
@@ -235,6 +239,7 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// damage spends no next-use charge and takes no increase, as the Nth attack above does not.
 		const bool bRolledNoDamage = Cataclysm->TakePendingUseNoDamage();
 		const float RolledIncreasePercent = Cataclysm->TakePendingUseIncreasePercent();
+		ThisUseHitsAllWithinCm = Cataclysm->TakePendingUseHitsAllCm();
 		bThisUseDealsNoDamage = bThisUseDealsNoDamage || bRolledNoDamage;
 		if (bThisUseDealsNoDamage)
 		{

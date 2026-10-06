@@ -289,6 +289,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Issue #1833 group E part 2.
 		TEXT("block_damage_reduction"),
 		TEXT("block_negation_chance"),
+		// The two chances a defender rolls against an incoming blow, in
+		// UCataclysmVitalAttributeSet beside the no-damage window: a spell
+		// absorbed, and a melee hit reflected whole as retaliation. Ruled
+		// 2026-10-06.
+		TEXT("spell_absorb_chance"),
+		TEXT("melee_reflect_chance"),
 		// The three Famine rows on potions, written by the dungeon floor rules and
 		// read by UCataclysmPotions: Hard Mode's flag, Recession's share off
 		// every kill, and Diminishing Returns' share off each drink. Issue #806.

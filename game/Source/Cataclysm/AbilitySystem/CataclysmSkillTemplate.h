@@ -320,6 +320,15 @@ public:
 	bool bThisUseDealsNoDamage = false;
 
 	/**
+	 * How far THIS use hits every enemy around its user, in centimetres; nought, which is every use no row rolled
+	 * for, leaves the skill's own shape alone. Ruled 2026-10-06: "Melee skills have a 10%-20% chance to hit all
+	 * enemies within 3 meters". Written by every use; read by `UCataclysmStrikeSkill::SwingOnce`, and by no other
+	 * shape.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float ThisUseHitsAllWithinCm = 0.0f;
+
+	/**
 	 * Whether a use of this skill delivers damage itself, through its own hits
 	 * or ground, and so spends next-use charges. Issue #1833, phase 2.
 	 *
