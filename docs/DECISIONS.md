@@ -40,12 +40,26 @@ Three sentences, each of which makes a zone where the skill's own row states non
 - **Each row does what its sentence says**, so a charge skill under the first two rows leaves two zones where it
   arrived, one from each row, and one where it began.
 - **The zone's damage type is the skill's own.**
+- **"The impact point" is, for each kind of skill, the place the table under "How it is built" gives**, and Summon,
+  Deployable, Aura and Self Buff skills read neither stat.
+- **A skill that fires several projectiles leaves several zones**, one where each flight ended.
+- **A row's zone carries no curse and does not heal its owner.**
+- **The charge row follows `Keyword.Charge` and the movement row follows `Slot.Movement`.** The skill data is not
+  changed for either.
+- **A Support-slot spell's zone deals nothing a sweep and is still left**, as it falls out of the slot's damage.
 
 ### For the owner's play-check
 
 Four figures no sentence states: **1.5 metres**, **10 of the skill's hit a sweep**, and so **20 to 60 of a hit over a
 row's zone's whole time** against the 100 of a designed skill's ground; and the two-zones-at-the-end result for a
 charge skill under both rows.
+
+- **A skill that fires several projectiles leaves one zone for each.**
+- **Three skills a row does not reach, by name, for the owner to decide:** Lunge is a charge by its mode and does
+  not carry `Keyword.Charge`, so the charge row does not reach it; Echo and Everywhere at Once are Movement skills
+  outside the Movement slot, so the movement row does not reach them. Whether Lunge should carry the keyword is the
+  owner's.
+- **Hex of Cinders and Quarry get a zone that deals nothing a sweep.**
 
 ### What the research settles, and what it does not
 
@@ -69,13 +83,12 @@ own authored rows state, chosen by the coordinating session.
   | Debuff | under each target the curse was laid on; every Debuff row states `MaxTargets=1` |
 
   **Summon, Deployable, Aura and Self Buff skills read neither stat**: none of them has a point of impact in the
-  code. That is a judgement by the writing session.
+  code.
 - **Priced and left as a skill's own ground is.** `LeaveGroundAlong` now ends in a shared function,
   `LeaveZoneAlong`, that takes the radius, the seconds and the share; a row's zone goes through the same function.
   So the duration row, the only-one row, the first-sweep row and every row a zone reads reach a row's zone.
 - **Two things only a skill's own ground does**: it carries the skill's curse, and it heals its owner where the row
-  says so. A row's zone does neither. A judgement by the writing session: the sentence says a zone, and the curse
-  belongs to the skill.
+  says so. A row's zone does neither: the sentence says a zone, and the curse belongs to the skill.
 - **A row's zone is handed the skill's damage type by name.** A skill's own ground is left without one, as before
   this change, and deals its owner's.
 - **Both rows that feed `zone_at_impact_seconds` are flat**, so a skill carrying both `Keyword.Charge` and
@@ -98,7 +111,7 @@ Read from `game/Data/WeaponSkills.csv`; none of this is run.
 
 - **Hex of Cinders and Quarry sit in the Support slot, whose damage is nought, so the zone the spell row gives them
   deals nothing a sweep.** The zone is still left, and still carries what the zone rows add: the slow, the stagger
-  on entry and the ailment. Not ruled.
+  on entry and the ailment. Accepted as it falls out.
 - **A walked charge, Inexorable, leaves its zones when the walk ends**, the start one included.
 - **With the only-one row worn too, one zone is left**: each zone a use leaves ends the earlier ones.
 
@@ -120,6 +133,9 @@ automation test, `Cataclysm.StatExemption.ARowGivesAZoneOnlyToASkillThatStatesNo
 ### Not yet run
 
 The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+**A behaviour with a test and no guard proof:** an instant move asking the impact row where it arrives. The proof
+written for it was dropped by the coordinating session to keep the window to eight proofs.
 
 ---
 
