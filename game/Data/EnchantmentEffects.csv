@@ -461,3 +461,4 @@ Positive_Enemies_killed_by_necrosis_rise_as_temporary_min#1,Positive_Enemies_kil
 Positive_When_a_minion_dies_it_automatically_re_summons_a#1,Positive_When_a_minion_dies_it_automatically_re_summons_a,minion_resummoned_after_seconds,flat,6.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Your_aura_also_applies_its_effect_to_all_allies#1,Positive_Your_aura_also_applies_its_effect_to_all_allies,aura_shares_immunities_with_allies,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Your_movement_ability_has_2_charges#1,Positive_Your_movement_ability_has_2_charges,skill_charges_bonus,flat,1.0,1.0,Slot.Movement,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Positive_You_are_cleansed_every_5_seconds#1,Positive_You_are_cleansed_every_5_seconds,,,100.0,100.0,,,0.0,,0.0,cleanse,every_seconds,,0,0.0,0.0,5.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,

@@ -2690,6 +2690,58 @@ class TestDamageImmunityAndTheShieldRecharge:
             "Value Low": 50, "Value High": 100}))
         assert out[0]["TriggerCooldown"] == 0.0
 
+class TestTheTimedCleanse:
+    """A cleanse on a clock. Issue #1833, written 2026-10-05: "You are cleansed
+    every 5 seconds". The game has cleansed on the timed event since 2026-09-26
+    and the generator refused the action's name until this."""
+
+    WORDS = "You are cleansed every 5 seconds"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Trigger.Timer", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def cleanse(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "cleanse", "Action Event": "every_seconds",
+                  "Every Seconds": 5, "Value Low": 100}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "cleanse.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_timed_cleanse_is_carried_through_with_its_period(self, tmp_path):
+        out = gen.enchantment_effects(self.cleanse(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"],
+                out[0]["ValueLow"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "cleanse", "every_seconds", 5.0, 100.0, "", 0.0)
+
+    def test_a_cleanse_on_any_event_but_the_timed_one_is_refused(self, tmp_path):
+        # THE GAME READS THE FLAG ON THE TIMED PATH ONLY. A cleanse on a kill
+        # would reach the pool path, find no pool named cleanse and do nothing.
+        with pytest.raises(gen.DataError, match="on nothing else"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {
+                "Action Event": "kill", "Every Seconds": None}))
+
+    def test_a_cleanse_with_a_size_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="is 100 and nothing else"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {"Value Low": 50}))
+
+    def test_a_cleanse_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_a_cleanse_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would never grant"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {"Every Seconds": None}))
+
+
 class TestReflectAndTheBlockCount:
     """A share of what a block removed paid back to the attacker, a nearby blow
     scaled by armour, and a nearby action on the Nth of its events inside a
