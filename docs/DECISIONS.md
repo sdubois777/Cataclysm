@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Four rows on the stats a persistent area reads: areas that expire sooner, deal more for each enemy inside, slow those inside, and only one at a time
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The four rows of the entry "Four stats a persistent area reads", which built the stats and wrote no row. No engine
+code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Persistent AOE effects expire 40%-60% faster | `persistent_area_duration` increased -40 to -60 |
+| Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them | `zone_damage_per_enemy_inside` flat 10 to 20 |
+| Your persistent AOE zones also slow enemies within them by 20%-35% | `zone_slow_percent` flat 20 to 35 |
+| You can only have 1 persistent AOE effect active at a time | `only_one_persistent_area` flat 1 |
+
+EnchantmentEffects 498 to 502, over 412 to 416 enchantments.
+
+### ONE ROW DIFFERS FROM THAT ENTRY'S TABLE, AND WHY
+
+That entry gives the first row as `more` -40 to -60. It is written here as `increased` -40 to -60.
+
+- **The project's tested rule decides the bucket.** A row in the `more` bucket must have a sentence that says more,
+  less, double or the like, and "faster" is one of the words that mark the `increased` bucket: "Your energy shield
+  recharges 30%-60% faster" and "Gadgets fire 20%-40% faster" are both `increased`. The same rule decided the
+  bucket of Spellblade's Will's drawback on 2026-10-06.
+- **The figure is the same today.** The stat is based at 100 and no other row touches it, so 60% less by either
+  bucket leaves 40. They would differ only beside another row on this stat, where increases sum.
+- **"Expire faster" stays 40% to 60% less time**, that entry's reading, and not a rate 40% to 60% higher.
+
+### A WORD THE ROW-TEXT CHECK HAD TO LEARN
+
+The check refuses a negative value unless its sentence's words take something away, and "faster" is not such a word:
+on a speed, "faster" beside a negative value is a sign error. An area that expires faster lasts less, so the check
+gains one widening, for `persistent_area_duration` alone and only for a sentence that says "expire ... faster". A
+labelled judgement of the writing session, with a test on made-up rows that "faster" on a speed, and other words on
+this stat, stay refused.
+
+### WHAT THE ROWS REACH
+
+Every reading is that entry's. "Persistent AOE effects" are ground zones and terrain, not auras and not the tether.
+Until rows that make a zone for a skill that states none are built, each row reaches the skills that leave ground
+themselves: 12 on 2026-10-06, all Demonic, and for the duration row and the only-one row 5 more that leave terrain.
+
+### HOW THE ROWS ARE TESTED
+
+`Cataclysm.Enchantments.TheFourPersistentAreaRowsEachGiveTheStatAZoneReadsWhenItIsLeft` wears each real row in turn
+at the top of its roll, a drawback's being its harshest, and asks the stat as a skill asks it when it leaves an
+area. Worn, the duration is 40 of its 100, the damage for each enemy inside 20, the slow 35 and the only-one flag
+above nought; with the row taken off, each is what it was.
+
+**The test stops at the stat.** That a zone then lasts that long, deals that much more, slows and ends an earlier
+zone is covered by the four probes of the entry that built the stats.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The slow is a Cripple**, so it slows movement and attacks both, is held to Cripple's cap of 80, and a stronger
+  cripple already on the target stands. That entry states it.
+- **More for each enemy inside multiplies what the zone was priced at**, on top of its owner's increases, and counts
+  the enemy being hurt.
+- **The only-one row ends every earlier zone and terrain the same character's skills left** when a new one is made.
+
+---
+
 ## 2026-10-06 — "Nearby enemies gain 20%-40% resistances" is reworded to "Enemies within 5 metres gain 20%-40% resistances" and built: the wearer has that much less penetration against a character that near
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one sentence of the Enchantments sheet and one row of the Enchantment
