@@ -691,7 +691,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 484 SINCE FIVE MORE ROWS THAT REPEAT A SKILL, issue #1833, from 479.
 	//
 	// AND 485 SINCE THE MELEE ATTACKS ROW ON attack_use, issue #1833, from 484.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    485)
+	//
+	// AND 487 SINCE SPELLBLADE'S WILL'S FIRST BONUS AND ITS DRAWBACK, issue #1833, from 485.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    487)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
