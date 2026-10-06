@@ -924,6 +924,7 @@ public:
 	static const TCHAR* AilmentHealingReceivedAction;
 	static const TCHAR* AilmentSpeedAction;
 	static const TCHAR* AilmentMovementSpeedAction;
+	static const TCHAR* AilmentSpreadOnDeathAction;
 
 	/** Which rider an action name is, or None. */
 	static ECataclysmAilmentRider AilmentRiderNamed(const FString& Action);
@@ -2701,6 +2702,14 @@ public:
 	/** The same for any ability system: nought for one that is not this class. */
 	static float AilmentRiderPercentOn(const UAbilitySystemComponent* Carrier,
 									   ECataclysmAilmentRider Kind);
+
+	/**
+	 * What rides on ONE ailment this character carries, for one kind: nought
+	 * when it does not hold that ailment now. The carrier's side of a rider,
+	 * for a reader that asks about one ailment, as the spread at a death does.
+	 */
+	float AilmentRiderPercentCarriedOn(const FGameplayTag& Ailment,
+									   ECataclysmAilmentRider Kind) const;
 
 	/** What this character's worn rows hang on `Ailment`, for one kind, summed. */
 	float AilmentRiderPercentFor(const FGameplayTag& Ailment,
