@@ -2925,6 +2925,22 @@ class TestRepeatSkill:
         with pytest.raises(gen.DataError, match="names no skill to repeat"):
             gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "kill"}))
 
+    @pytest.mark.parametrize("action", ["trigger_held_skill", "trigger_held_spell"])
+    def test_a_row_that_triggers_a_held_skill_is_carried_through(self, tmp_path, action):
+        out = gen.enchantment_effects(self.repeat(
+            tmp_path, {"Action": action, "Action Event": "attack_use",
+                       "Value Low": 5, "Value High": 15}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            action, "attack_use", 5.0, 15.0, "")
+
+    @pytest.mark.parametrize("action", ["trigger_held_skill", "trigger_held_spell"])
+    def test_a_row_that_triggers_a_held_skill_on_an_event_naming_no_skill_is_refused(
+            self, tmp_path, action):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Action": action, "Action Event": "kill"}))
+
     def test_a_repeat_row_with_a_fraction_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="must be empty"):
             gen.enchantment_effects(self.repeat(tmp_path, {"Fraction Of": "maximum"}))

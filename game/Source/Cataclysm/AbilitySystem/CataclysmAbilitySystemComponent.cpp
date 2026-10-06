@@ -3526,6 +3526,8 @@ float UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
 	return Cataclysm ? Cataclysm->AilmentRiderPercentNow(Kind) : 0.0f;
 }
 const TCHAR* UCataclysmAbilitySystemComponent::RepeatSkillAction = TEXT("repeat_skill");
+const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSkillAction = TEXT("trigger_held_skill");
+const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSpellAction = TEXT("trigger_held_spell");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -3739,6 +3741,12 @@ static TAutoConsoleVariable<float> CVarStatusRoll(
 static TAutoConsoleVariable<float> CVarRepeatSkillRoll(
 	TEXT("Cataclysm.RepeatSkillRoll"), -1.0f,
 	TEXT("Pins the 0-100 roll a repeat-skill enchantment makes against its chance. Negative rolls for real."),
+	ECVF_Default);
+
+/** The same, for a row that triggers a different held skill. Ruled 2026-10-06. */
+static TAutoConsoleVariable<float> CVarTriggerHeldSkillRoll(
+	TEXT("Cataclysm.TriggerHeldSkillRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a trigger-held-skill enchantment makes against its chance. Negative rolls for real."),
 	ECVF_Default);
 
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
@@ -4305,6 +4313,7 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 {
 	// A NEW USE BEGINS WITH NOTHING PENDING: a repeat nobody made belongs to the use before, and is let go.
 	ClearPendingRepeat();
+	ClearPendingHeldTrigger();
 	SkillInHandName = SkillName;
 	SkillInHandAim = Aim;
 	// NOT `skill_use` FOR THE BASIC ATTACK, as ruled 2026-09-14. `attack_use` is for every paid use.
@@ -4565,6 +4574,34 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						PendingRepeatName = SkillInHandName;
 						PendingRepeatAimPoint = SkillInHandAim;
 						PendingRepeatDamageShare = Share;
+					}
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
+		// A TRIGGER OF A DIFFERENT HELD SKILL. Ruled 2026-10-06. Asked as a repeat is: only when the event names a
+		// skill, once per row per event, rolled against the row's value. What is kept is which kind of row passed;
+		// one trigger is made for the use, and `UCataclysmTriggeredSkill::MakePendingHeldTrigger` picks the skill.
+		if (Action.bTriggerHeldSkill || Action.bTriggerHeldSpell)
+		{
+			if (bLanded && !SkillInHandName.IsNone() && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Pinned = CVarTriggerHeldSkillRoll.GetValueOnAnyThread();
+				const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+				if (Roll < Action.Percent)
+				{
+					PendingHeldTriggerUsedName = SkillInHandName;
+					PendingHeldTriggerAimPoint = SkillInHandAim;
+					if (Action.bTriggerHeldSpell)
+					{
+						bPendingHeldTriggerSpell = true;
+					}
+					else
+					{
+						bPendingHeldTriggerCooldownSkill = true;
 					}
 					NoteTriggerFired(Action);
 				}

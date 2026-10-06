@@ -424,8 +424,8 @@ bool UCataclysmGameplayAbility::CheckCost(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
-	// FOLLOW THROUGH'S REPEAT IS "AT NO COST". See `bFreeRepeat`.
-	if (bFreeRepeat)
+	// FOLLOW THROUGH'S REPEAT IS "AT NO COST". See `bFreeRepeat`. A free start that pays is asked as a press is.
+	if (bFreeRepeat && !bFreeRepeatPaysCost)
 	{
 		return true;
 	}
