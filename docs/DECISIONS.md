@@ -153,6 +153,45 @@ Each count is the one registered before the run: 1, 1 and 2.
 **Not run, because no row exists yet:** any of the four stats read from the effect table, and anything a worn row
 does in play.
 
+### Run, second turn: the slow corrected
+
+At `feat/zone-stats-4` on development d45b89aa, on 2026-10-06. Every figure is a line a run printed. **There was no
+whole-suite run at this head in which every test passed.** The game change, one call in `ACataclysmGroundZone::Sweep`,
+went through the whole suite twice; each time every test passed but one, and neither failure was caused by the
+change.
+
+| Step | Printed |
+|---|---|
+| Build, at 1bf51b81 | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole suite, at 1bf51b81 | `3207 tests performed, 3206 succeeded, 1 failed: EveryStatWithNoAttributeIsActuallyRead`. One failed assertion: the creature's speed read 1.000000 against 0.800000. **The probe's fault**, described above: its creature had no health and was never swept |
+| The probe test alone, with two assertions added | `1 tests performed, 0 succeeded, 1 failed`: each sweep found 2 bodies, the two sweeps 4 against 6 |
+| The probe test alone, with the creature given a side and health | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole suite, at 648b3e58 | `3207 tests performed, 3206 succeeded, 1 failed: TheFogSpreadsOnItsCadenceFromPatchToPatchUpToItsCap`; `Declared: 3207 ... 3207 performed, gap 0`. One failed assertion: "the new patch is told apart from the old" was false |
+| The fog test alone, at the same binaries | `1 tests performed, 1 succeeded, 0 failed` |
+| `tools/tests`, at 648b3e58 | `3945 passed, 8 skipped in 58.55s` |
+| Ruff | `All checks passed!` |
+
+**The fog test's failure is not this change's.** It is a dungeon rule's test in another file; it passed in the whole
+suite at 0ca651cc and at 1bf51b81; no game file changed between 1bf51b81 and 648b3e58; and it passed alone. Accepted
+by the coordinating session under the owner's delegation. Issue
+[#2251](https://github.com/sdubois777/Cataclysm/issues/2251) has what was read of its cause.
+
+**Guard proofs at 648b3e58, each with one anchor counted and the source hash the same before and after, each PROVED.**
+Both under the prefix `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Pd | `CataclysmGroundZone.cpp`: the sweep's slow states no size | 1 performed, 1 failed, 2 failed assertions: the stated strength read -1.000000 against 20.000000, and the creature moved at 0.700000 against 0.800000 | 1 performed, 1 succeeded |
+| Pb, again | Same file: a sweep counts nobody inside | 1 performed, 1 failed, 1 failed assertion: the sweep was 1.000000 times a plain one against 1.400000 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 2 and 1. **Pd's figures are the first fault in small**: a slow that
+states nothing slows by the Cripple row's 30, a speed of 0.7, whatever the stat says.
+
+**What this probe closes.** It is the first test found to show a skill's ground zone sweeping a real
+`ACataclysmEnemyCharacter`: found, hurt, slowed. A search for an older one covered five test files
+(`CataclysmSkillTemplateTests.cpp`, whose 13 sweeps use plain test bodies, and the enemy modifier, death, hellhound
+and enchantment effect tests) and found none; it did not cover every file.
+
 ---
 
 ## 2026-10-06 — A defender can roll to absorb a spell or to reflect a melee hit, and a row can roll for a strike to hit every enemy within 3 metres; no row authored yet
@@ -2139,6 +2178,8 @@ changed for it; it is recorded as one failure and one clean rerun.
 ---
 
 ## 2026-10-05 — Echo Chamber: every skill use fires a free copy of that skill in a random direction, and a copy aimed within its own radius hits the player for a tenth
+
+**The self hit is confirmed by the owner, 2026-10-06:** a character's own skills or zones may hurt them where a row's sentence says so; the 2026-08-20 own-side rule stays the default.
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`EchoChamberKey`, the two
 figures, `EchoChamberCopies`, `EchoChamberHitsTheCaster`, `Built`, `KeysWithARule`);
