@@ -2323,9 +2323,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment,DamageShare\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0,0,0,\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0,0,0,0,,0,0,0,0,,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4298,9 +4298,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment,DamageShare\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0,0,0,\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0,0,0,0,,0,0,0,0,,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -4417,9 +4417,9 @@ bool FCataclysmStackSecondsRollTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment,DamageShare\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0,0,0,\n"),
+				TEXT("%s#1,%s,skill_locked,flat,1,1,,,0,own_stacks,1,,critical_strike,,1,0.5,0,0,0,0,%g,,0,0,0,0,,0\n"),
 				DrawbackWithNoEffect, DrawbackWithNoEffect, StackSecondsHigh));
 		if (!Effects)
 		{
@@ -14238,6 +14238,69 @@ bool FCataclysmHeldTriggerBothRowsTest::RunTest(const FString&)
 	TestTrue(TEXT("the spell row is recorded"), Rig.System->PendingHeldTriggerWantsASpell());
 	TestFalse(TEXT("and nothing is triggered, because no spell is held"),
 			  UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	return true;
+}
+
+// THE AUTHORED ROWS THAT REPEAT A SKILL. Mechanism B2, issue #1833. Each test wears the real row at the top of its
+// roll and hands its ability system the skill use the player character hands it (`ActOnSkillUse`), with the roll
+// pinned. What a recorded repeat then does is `CataclysmSkillRepeatTest`'s, above.
+namespace CataclysmRepeatRowsTest
+{
+	const TCHAR* const OlderAsset =
+		TEXT(" If nothing, DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py");
+
+	/** The tags of one skill, as a cell of the skill table states them. */
+	FGameplayTagContainer Tagged(const TCHAR* Cell)
+	{
+		return UCataclysmSkillShapes::TagsFromCell(Cell);
+	}
+
+	/** Hands the wearer one use of a skill carrying these tags, aimed ahead of it. */
+	void Uses(UCataclysmAbilitySystemComponent* System, const FGameplayTagContainer& Tags)
+	{
+		System->ActOnSkillUse(FName(TEXT("Carom")), &Tags, FVector(900.0f, 300.0f, 0.0f));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEverySkillUseRepeatRowTest,
+	"Cataclysm.Enchantments.TheEverySkillUseRowRepeatsAnySkillUnderItsTopRollAtTheWholeOfItsDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every skill use has a 5%-15% chance to cast a second time for free".
+ * `repeat_skill` on `skill_use`, 5 to 15, no scope and no share, WORN at the top
+ * of its roll: a roll under 15 records a repeat of the skill used, at the whole
+ * of its damage, whatever the skill's tags; a roll of 15 records none.
+ */
+bool FCataclysmEverySkillUseRepeatRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmRepeatRowsTest;
+	FWorn Worn(TEXT("Positive_Every_skill_use_has_a_5_15_chance_to_cast_a_se"), true);
+	FRepeatRollPinned Pinned(TEXT("14.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Spell = Tagged(TEXT("Type.Spell"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2 && Spell.Num() == 1))
+	{
+		return false;
+	}
+
+	Uses(Worn.ASC(), Melee);
+	TestEqual(*(FString(TEXT("a roll of 14.9 against the top roll of 15 repeats a melee skill.")) + OlderAsset),
+		Worn.ASC()->PendingRepeatSkill(), FName(TEXT("Carom")));
+	TestEqual(TEXT("at the whole of its damage"), Worn.ASC()->PendingRepeatShare(), 1.0f, 0.001f);
+	Uses(Worn.ASC(), Spell);
+	TestEqual(TEXT("and a spell alike"), Worn.ASC()->PendingRepeatSkill(), FName(TEXT("Carom")));
+
+	Pinned.Set(TEXT("15"));
+	Uses(Worn.ASC(), Melee);
+	TestTrue(TEXT("a roll of 15 repeats nothing"), Worn.ASC()->PendingRepeatSkill().IsNone());
 	return true;
 }
 

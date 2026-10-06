@@ -1407,10 +1407,14 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::DamageImmunityAction,
 						ESearchCase::IgnoreCase);
 					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
-					// stays at its default of 100 until the row can state one.
+					// is the row's Damage Share, and the whole of the damage when the row states none.
 					Action.bRepeatSkill = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::RepeatSkillAction,
 						ESearchCase::IgnoreCase);
+					if (Action.bRepeatSkill && Effect->DamageShare > 0.0f)
+					{
+						Action.RepeatSharePercent = Effect->DamageShare;
+					}
 					// AND WHETHER IT TRIGGERS A DIFFERENT HELD SKILL: one with a cooldown, free, or a spell that
 					// pays its cost. Ruled 2026-10-06. The value is the chance.
 					Action.bTriggerHeldSkill = Effect->Action.Equals(
