@@ -403,6 +403,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute: asked once per zone with the skill's tags, based at 100 by
 		// `EngineSuppliedBases`.
 		TEXT("zone_first_sweep_damage"),
+		// Four more a persistent area reads where a skill leaves it, in
+		// UCataclysmSkillTemplate::LeaveGroundAlong and LeaveTerrainAlong, each
+		// with the skill's tags. Ruled 2026-10-06. The first is based at 100 by
+		// `EngineSuppliedBases`; the other three have no base.
+		TEXT("persistent_area_duration"),
+		TEXT("zone_damage_per_enemy_inside"),
+		TEXT("zone_slow_percent"),
+		TEXT("only_one_persistent_area"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health
@@ -1255,6 +1263,11 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			// the same reason: its one row is a `more` of -20 to -35.
 			{FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat),
 			 UCataclysmDamageCalculation::NormalZoneFirstSweepDamage},
+
+			// AND WHAT SHARE OF ITS STATED TIME A PERSISTENT AREA LASTS, at 100.
+			// Ruled 2026-10-06: its one row is a `more` of -40 to -60.
+			{FName(UCataclysmDamageCalculation::PersistentAreaDurationStat),
+			 UCataclysmDamageCalculation::NormalPersistentAreaDuration},
 
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
 			// for normal. Issue #1033. The THIRD stat of this shape and it meets the

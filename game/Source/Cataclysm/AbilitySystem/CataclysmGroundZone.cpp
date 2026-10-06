@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -408,9 +409,11 @@ void ACataclysmGroundZone::Sweep()
 		{
 			// THE FIRST SWEEP MAY DEAL ITS OWN FIGURE. Issue #1686. `TicksElapsed`
 			// is still nought during it, because it moves after the sweep.
-			const float ThisSweep = TicksElapsed == 0 && FirstSweepDamage >= 0.0f
+			// AND MORE FOR EACH ENEMY THIS SWEEP FOUND INSIDE, when a row says so. Ruled 2026-10-06.
+			const float ThisSweep = (TicksElapsed == 0 && FirstSweepDamage >= 0.0f
 				? FirstSweepDamage
-				: DamagePerTick;
+				: DamagePerTick)
+				* (1.0f + FMath::Max(0.0f, MorePerEnemyInsidePercent) * Inside.Num() / 100.0f);
 			UCataclysmSkillEffects::ApplyDirectDamage(Source, Target,
 													  ThisSweep, Delivery);
 		}
@@ -425,6 +428,14 @@ void ACataclysmGroundZone::Sweep()
 			UCataclysmSkillEffects::ApplyNamedEffect(
 				Source, Target, AppliedEffect, AppliedEffectSeconds,
 				AppliedEffectMagnitude, AppliedEffectDamageType);
+		}
+
+		// AND A SLOW, IF A ROW GIVES THIS ZONE ONE. Ruled 2026-10-06. Beside the curse and not in its place: a zone
+		// carries one curse, and this is a second effect.
+		if (SlowsThoseInsidePercent > 0.0f)
+		{
+			UCataclysmSkillEffects::ApplyNamedEffect(
+				Source, Target, UCataclysmDebuffs::CrippleTag(), SlowSeconds, SlowsThoseInsidePercent);
 		}
 	}
 
