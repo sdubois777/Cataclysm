@@ -69,6 +69,26 @@ would have stopped the resistance row and let the other two through.
 - **NOT COVERED: a second consumer that reads the attribute.** The list says a stat has an asker, not that every
   place the stat is used asks. The first three issues above are that case.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in the elastic-burnell worktree, in one window with the numbers hung on an ailment stacked on this
+layer, on `development` 2b87c355. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack | 77ded50e | Build: Succeeded - 32 actions, 29 files compiled |
+| Whole suite | 600f5341 | 3177 tests performed, 3177 succeeded, 0 failed; declared 3177, gap 0; 0 ensures |
+| Python of record, with ruff clean | 600f5341 | 5735 passed, 8 skipped in 318.22s; JUnit tests=5743 failures=0 errors=0 skipped=8 |
+| Proof A: the cooldown reading its reduction from the attribute and not asking, on Cataclysm.StatExemption. | 600f5341 | PROVED: with the break in: 4 tests performed, 3 succeeded, 1 failed: AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Python proof 1: a condition its asker is not handed let through, in a copy | 600f5341 | PROVED: 3 failed, 11 passed \| restored: 14 passed |
+
+Proof A kept its broken run's log and failed exactly the one assertion predicted, in the cooldown probe:
+"cooldown_reduction is asked for, so below half health the cooldown is shorter: 4.000 against 4.000". Python
+proof 1's three are the made-up rows that put a target condition on `movement_speed`, a blow condition on
+`attack_damage`, and a target condition in a row's second condition.
+
+**The eight probes passed on their first run.** Nothing was changed after the first build.
+
 ---
 
 ## 2026-10-05 — Brute's Heart's six-piece bonus is partly built: its armour below half health; and why "Skills can spend HP instead of mana" is not
