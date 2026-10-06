@@ -1376,6 +1376,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.Ailment = FGameplayTag::RequestGameplayTag(
 							FName(Kind->TagName), /*ErrorIfNotFound=*/false);
 					}
+					// AND WHETHER IT IS A RIDER ON THAT AILMENT, and of which of
+					// the carrier's numbers. Issue #1833, ruled 2026-10-06. The
+					// value is the percent.
+					Action.Rider = UCataclysmAbilitySystemComponent::AilmentRiderNamed(
+						Effect->Action);
 					// AND WHETHER IT APPLIES A STATUS TO THE OTHER CHARACTER, and
 					// which. Issue #1833 group E part 1. The value is the chance,
 					// or the seconds for `apply_status_seconds`; the status is the

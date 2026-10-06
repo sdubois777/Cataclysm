@@ -2377,6 +2377,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	PlacedStacks.Empty();
 
+	// AND WHAT RODE ON ITS AILMENTS. Issue #1833, 2026-10-06.
+	AilmentRiders.Empty();
+
 	// AND EVERY "EVERY Nth" COUNT, ruled 2026-09-24. Issue #1833, phase 2.
 	NthCounts.Empty();
 
@@ -2974,7 +2977,11 @@ float UCataclysmAbilitySystemComponent::ArmourRemovedPercentNow() const
 	// 2026-09-24: all armour removed, from every source, stops at all of it.
 	const float Rending = World->GetTimeSeconds() < ArmourRemovedUntil
 		? FMath::Max(0.0f, ArmourRemovedPercent) : 0.0f;
-	return FMath::Clamp(Rending + PlacedPercentNow(/*bCutsDamage=*/false), 0.0f, 100.0f);
+	// AND WHAT RIDES ON THE AILMENTS IT CARRIES, in the same sum. Issue #1833,
+	// ruled 2026-10-06: every armour reduction on a character adds in one place.
+	return FMath::Clamp(Rending + PlacedPercentNow(/*bCutsDamage=*/false)
+							+ AilmentRiderPercentNow(ECataclysmAilmentRider::ArmourRemoved),
+						0.0f, 100.0f);
 }
 
 int32 UCataclysmAbilitySystemComponent::StandingNthCount(FName Key) const
@@ -3398,6 +3405,115 @@ const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageTakenAction = TEXT("ailment_damage_taken");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentArmorRiderAction = TEXT("ailment_armor_removed");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageDealtAction = TEXT("ailment_damage_dealt");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentHealingReceivedAction =
+	TEXT("ailment_healing_received");
+
+ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const FString& Action)
+{
+	if (Action.Equals(AilmentDamageTakenAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::DamageTaken;
+	}
+	if (Action.Equals(AilmentArmorRiderAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::ArmourRemoved;
+	}
+	if (Action.Equals(AilmentDamageDealtAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::DamageDealt;
+	}
+	if (Action.Equals(AilmentHealingReceivedAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::HealingReceived;
+	}
+	return ECataclysmAilmentRider::None;
+}
+
+float UCataclysmAbilitySystemComponent::AilmentRiderPercentFor(
+	const FGameplayTag& Ailment, ECataclysmAilmentRider Kind) const
+{
+	float Total = 0.0f;
+	if (Kind == ECataclysmAilmentRider::None || !Ailment.IsValid())
+	{
+		return Total;
+	}
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.Rider == Kind && Action.Ailment == Ailment)
+		{
+			Total += FMath::Max(0.0f, Action.Percent);
+		}
+	}
+	return Total;
+}
+
+void UCataclysmAbilitySystemComponent::ReceiveAilmentRiders(
+	const FGameplayTag& Ailment, const UCataclysmAbilitySystemComponent* Applier)
+{
+	if (!Ailment.IsValid() || !Applier || Applier == this)
+	{
+		return;
+	}
+	// A FRESH APPLICATION STARTS WITH NOTHING. The riders of an ailment that has
+	// ended are still on record, because nothing announces an ailment ending,
+	// and they must not come back when somebody else applies it again.
+	if (!HasMatchingGameplayTag(Ailment))
+	{
+		AilmentRiders.Remove(Ailment);
+	}
+
+	TMap<ECataclysmAilmentRider, float> Asked;
+	for (const FCataclysmPoolAction& Action : Applier->GetPoolActions())
+	{
+		if (Action.Rider != ECataclysmAilmentRider::None && Action.Ailment == Ailment
+			&& Action.Percent > 0.0f)
+		{
+			Asked.FindOrAdd(Action.Rider) += Action.Percent;
+		}
+	}
+	if (Asked.IsEmpty())
+	{
+		// AN APPLIER WITH NOTHING TO HANG TAKES DOWN ONLY ITS OWN.
+		const FCarriedRiders* Held = AilmentRiders.Find(Ailment);
+		if (Held && Held->Applier.Get() == Applier)
+		{
+			AilmentRiders.Remove(Ailment);
+		}
+		return;
+	}
+	FCarriedRiders& Now = AilmentRiders.FindOrAdd(Ailment);
+	Now.Applier = Applier;
+	Now.Percent = MoveTemp(Asked);
+}
+
+float UCataclysmAbilitySystemComponent::AilmentRiderPercentNow(ECataclysmAilmentRider Kind) const
+{
+	float Total = 0.0f;
+	for (const TPair<FGameplayTag, FCarriedRiders>& Held : AilmentRiders)
+	{
+		// WHILE IT CARRIES THE AILMENT, asked now and not remembered.
+		if (!HasMatchingGameplayTag(Held.Key))
+		{
+			continue;
+		}
+		if (const float* Percent = Held.Value.Percent.Find(Kind))
+		{
+			Total += *Percent;
+		}
+	}
+	return FMath::Max(0.0f, Total);
+}
+
+float UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
+	const UAbilitySystemComponent* Carrier, ECataclysmAilmentRider Kind)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Carrier);
+	return Cataclysm ? Cataclysm->AilmentRiderPercentNow(Kind) : 0.0f;
+}
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 

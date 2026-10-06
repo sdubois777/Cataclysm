@@ -338,8 +338,17 @@ float UCataclysmSkillEffects::WeaponDamageOf(const UAbilitySystemComponent* Abil
 	{
 		return 0.0f;
 	}
+	// LESS BY WHAT RIDES ON THE AILMENTS IT CARRIES. Issue #1833, ruled
+	// 2026-10-06: "Poisoned enemies deal 2%-4% less damage" is a multiplier on
+	// what its attacks are worth, as Weaken is, and multiplies with Weaken, whose
+	// cut is already in the attribute read here.
+	const float Cut = FMath::Clamp(
+		UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
+			AbilitySystem, ECataclysmAilmentRider::DamageDealt),
+		0.0f, 100.0f);
 	return AbilitySystem->GetNumericAttribute(
-		UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+			   UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+		* (1.0f - Cut / 100.0f);
 }
 
 FGameplayTag UCataclysmSkillEffects::SpellTag()
@@ -1726,6 +1735,22 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 				Cast<UCataclysmAbilitySystemComponent>(Source))
 		{
 			Applier->ActOnEvent(FName(TEXT("dot_applied")));
+		}
+	}
+
+	// AND WHAT THE APPLIER'S WORN ROWS HANG ON THIS AILMENT GOES ONTO THE
+	// CARRIER. Issue #1833, ruled 2026-10-06: "Bleeding enemies take 20%-40%
+	// increased damage from all sources". HERE, BEFORE THE TWO BRANCHES BELOW, so
+	// an application that only refreshes a stronger running effect hands them
+	// over as one that makes a new effect does. The instigator's own rows: a
+	// minion's ailment is the minion's, ruled 2026-09-17, so it carries none.
+	if (Instigator != Target)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier =
+				Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->ReceiveAilmentRiders(
+				EffectTag, Cast<UCataclysmAbilitySystemComponent>(Source));
 		}
 	}
 

@@ -3406,6 +3406,46 @@ enum class ECataclysmNearbyAction : uint8
 };
 
 /**
+ * A number a worn row hangs on an ailment the wearer applies: while the character
+ * it was applied to carries that ailment, this of its numbers is moved by the
+ * row's percent. Issue #1833, ruled 2026-10-06. `AILMENT_RIDER_ACTIONS` in
+ * `tools/generate_datatables.py` holds the action names, one per value below but
+ * None. See `UCataclysmAbilitySystemComponent::ReceiveAilmentRiders`.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmAilmentRider : uint8
+{
+	/** Not a rider row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * Added to the damage the carrier takes from every source, as a pin's
+	 * increase is: "Bleeding enemies take 20%-40% increased damage from all
+	 * sources".
+	 */
+	DamageTaken UMETA(DisplayName = "Damage taken, increased"),
+
+	/**
+	 * Added to the armour the carrier has had removed, with Rending Blows and
+	 * the placed stacks, clamped at 100 together: "Enemies affected by your burn
+	 * effects have 10%-20% reduced armor".
+	 */
+	ArmourRemoved UMETA(DisplayName = "Armour removed"),
+
+	/**
+	 * Taken off what the carrier's attacks are worth, multiplying with Weaken:
+	 * "Poisoned enemies deal 2%-4% less damage".
+	 */
+	DamageDealt UMETA(DisplayName = "Damage dealt, less"),
+
+	/**
+	 * Added to the carrier's healing received reduction, capped at 100 with it:
+	 * "Disease effects reduce enemy healing by 50%-100%".
+	 */
+	HealingReceived UMETA(DisplayName = "Healing received, reduced"),
+};
+
+/**
  * Where an action deals the remaining damage of the wearer's own damage over time
  * effects. Issue #1833 group D part 4, ruled 2026-10-01. `REMAINING_DAMAGE_ACTIONS`
  * in `tools/generate_datatables.py` holds the two action names, one per value below
@@ -3886,6 +3926,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float CountWindowSeconds = 0.0f;
+
+	/**
+	 * Set, this is no action at all: it names no event and nothing fires it. It
+	 * is a rider on `Ailment`, read when the wearer applies that ailment, and
+	 * `Percent` is how far it moves the carrier's number. Issue #1833, ruled
+	 * 2026-10-06.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmAilmentRider Rider = ECataclysmAilmentRider::None;
 };
 
 /**
