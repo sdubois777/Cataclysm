@@ -2,6 +2,58 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — Brute's Heart's six-piece bonus is partly built: its armour below half health; and why "Skills can spend HP instead of mana" is not
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(`Cataclysm.Enchantments.BrutesHeartSixPiecesRaiseArmourByHalfOnlyBelowHalfHealth`),
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Brute's Heart (6-Piece Bonus): When your health falls below 50%, you gain a powerful aura that taunts all nearby enemies and increases your armor and resistances by 50% | `armor` increased 50 under `health_below` 50 |
+
+EnchantmentEffects 470 to 471, over 384 to 385. No engine change.
+
+**BRUTE'S HEART'S SIX-PIECE BONUS IS PARTLY BUILT**, ruled 2026-10-05 under the owner's delegation. Its armour is
+built. Two parts are not:
+
+- **The taunt.** No taunt exists for a player to place on enemies.
+- **The resistances.** `UCataclysmDamageCalculation` reads a defender's resistance from the attribute and not
+  through the stat pipeline, and an attribute is worked out with every condition refused. A resistance row under
+  `health_below` would be accepted, built and would grant nothing. Armour is asked for through the pipeline at
+  the armour step, which is why its row works. The resistances wait for the resistance step to ask the same way;
+  that is an engine change to every blow and was not made here.
+
+### NOT BUILT HERE, AND WHY
+
+**"Skills can spend HP instead of mana at a 3:1 ratio" was written, failed its own test, and was taken out.** It
+was ruled always on, as two rows: `mana_pool_becomes_health` flat 1 and `mana_cost` more 200. The whole suite
+failed the row's test at its set-up, on a check that the caster held mana before the cast: it held none.
+
+**THE FLAG DOES TWO THINGS AND THE SURVEY READ ONE.** `UCataclysmGameplayAbility` asks
+`UCataclysmSkillTemplate::ManaPoolBecomesHealth` to decide which pool pays a skill's cost, and that is the side
+the survey of 2026-10-05 read when it called the sentence buildable with an existing mechanism.
+`UCataclysmPlayerClassStats::ApplyTo` asks the same function at every attribute refresh, and when it answers yes
+it adds the character's whole maximum mana to maximum health and sets maximum mana and current mana to nought.
+That is the Masochist's Water to Blood, issue #1067: "You no longer have a mana pool. All maximum mana is
+converted into added maximum health." An unconditional row would have given the wearer no mana pool and that
+much more health, neither of which the sentence says.
+
+**The sentence waits for a mechanism:** a stat that swaps the pool a cost is paid from and does nothing else,
+separate from the conversion of the mana pool. Ruled 2026-10-05 under the owner's delegation.
+
+**"Nearby enemies gain 20%-40% resistances"** was ruled the same day to be read on the wearer's side, as lower
+penetration against a character within 5 metres. It was not written. A row under `target_within_metres` acts on
+a distance, and the row-text check refuses a distance its sentence does not state; "Nearby enemies deal 10%-30%
+less damage to you" gained ", from within 5 metres" for that reason. This sentence is 39 characters, so a clause
+appended to it falls inside the 48 that name its row and would rename it. It waits for a ruling on the reword.
+
+---
+
 ## 2026-10-05 — Starvation's ten-piece bonus is built: a kill grants a Famished stack that raises all three kinds of leech, up to ten
 
 **Affects:** `tools/generate_datatables.py` (`STATS_WITH_AN_ASKER`), `docs/All_Things_Cataclysm.xlsx` (three rows
