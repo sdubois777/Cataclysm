@@ -2,6 +2,54 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Three benefits on the defender chances and the strike that hits all nearby: spells absorbed, melee hits reflected, and melee skills hitting everything within 3 metres
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (three rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, three new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The three rows the entry "A defender can roll to absorb a spell or to reflect a melee hit, and a row can roll for a
+strike to hit every enemy within 3 metres" left to the session holding the design workbook, each as that entry
+states it. No engine code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Spells that hit you have a 15%-30% chance to be absorbed dealing no damage | `spell_absorb_chance` flat 15 to 30 |
+| Melee attacks that hit you have a 10%-20% chance to be reflected back as retaliation damage | `melee_reflect_chance` flat 10 to 20 |
+| Melee skills have a 10%-20% chance to hit all enemies within 3 meters | `use_hits_all_nearby` on `skill_use`, 10 to 20, Required Tags `Type.Melee` |
+
+EnchantmentEffects 493 to 496, over 407 to 410 enchantments.
+
+### HOW THE ROWS ARE TESTED
+
+One test for each row, each wearing the real row at the top of its roll.
+
+- `TheSpellsAbsorbedRowAbsorbsASpellUnderItsTopRollAndNeverAMeleeBlow`: the question the damage step asks,
+  `UCataclysmDamageCalculation::SpellIsAbsorbed`, with `Cataclysm.SpellAbsorbRoll` pinned. A roll of 29.9 absorbs a
+  spell and not a melee blow; a roll of 30 absorbs nothing.
+- `TheMeleeAttacksReflectedRowReflectsAMeleeHitUnderItsTopRollAndNeverASpell`: `MeleeIsReflected`, with
+  `Cataclysm.MeleeReflectRoll` pinned. A roll of 19.9 reflects a melee hit and not a spell; a roll of 20 reflects
+  nothing.
+- `TheMeleeSkillsHitAllRowRollsThreeMetresForAMeleeSkillAndNotForABasicAttack`: a use handed over through
+  `ActOnSkillUse` with `Cataclysm.UseOutcomeRoll` pinned. A roll of 19.9 records 300 centimetres for a melee skill,
+  and nothing for a spell or for a melee basic attack; a roll of 20 records nothing.
+
+**Each test stops at the answer.** That an absorbed spell deals nothing, what a reflected hit pays back, and that a
+strike then hits everything around its user are covered by the three tests of the entry that built them.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The absorb reaches one enemy attack today**, the Succubus's Soulfire, the only enemy attack tagged
+  `Type.Spell`, as that entry states. The row is worth what the enemies' attacks are tagged.
+- **A reflected melee hit is not taken at all**, so a lethal one that is reflected is survived.
+- **Only a Strike reads the 3 metres.** A melee movement skill rolls and nothing changes.
+- **The melee basic attack does not roll for the hit-all row**: "melee skills" is `skill_use`.
+
+---
+
 ## 2026-10-06 — Three drawbacks roll for a use to deal no damage: cooldown abilities, strike skills that miss, and projectiles that explode prematurely
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (three rows of the Enchantment Effects sheet),
