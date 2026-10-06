@@ -917,7 +917,7 @@ CATACLYSM_TEST(FCataclysmLeechHealingSaysItIsLeechTest,
 	// A HIT WORTH LEECHING, and a life leech rate to leech it with.
 	Character.AbilitySystem->SetNumericAttributeBase(
 		UCataclysmVitalAttributeSet::GetLifeLeechAttribute(), 10.0f);
-	UCataclysmLeech::NoteHit(Character.AbilitySystem, 1'000.0f);
+	UCataclysmLeech::NoteHit(Character.AbilitySystem, 1'000.0f, FGameplayTagContainer());
 
 	// PAID OUT OVER ITS WHOLE WINDOW, so the whole instalment lands.
 	for (float Elapsed = 0.0f;
@@ -937,7 +937,7 @@ CATACLYSM_TEST(FCataclysmLeechHealingSaysItIsLeechTest,
 	SuppressFervourLossFor(Character, Fervour::LeechTag());
 	Character.SetFervour(50.0f);
 	Character.SetHealth(500.0f, 1'000.0f);
-	UCataclysmLeech::NoteHit(Character.AbilitySystem, 1'000.0f);
+	UCataclysmLeech::NoteHit(Character.AbilitySystem, 1'000.0f, FGameplayTagContainer());
 
 	for (float Elapsed = 0.0f;
 		 Elapsed < UCataclysmLeech::PayoutSeconds + 0.001f;

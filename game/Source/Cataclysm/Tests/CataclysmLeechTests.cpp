@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "CataclysmTestWorld.h"
 #include "Engine/World.h"
@@ -423,6 +425,70 @@ CATACLYSM_LEECH_TEST(FCataclysmMinionBlowLeechesNothingTest,
 	TestEqual(TEXT("while a blow the summoner strikes itself does"),
 		Summoner.AbilitySystem->GetLeechPayments().Num(), 1);
 
+	return true;
+}
+
+CATACLYSM_LEECH_TEST(FCataclysmLeechScopedToASkillTest,
+	"Cataclysm.Leech.ALeechRowScopedToAKindOfSkillReachesOnlyThatKind")
+{
+	using namespace CataclysmLeechTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FLeechCombatant Attacker(World);
+	FLeechCombatant Target(World);
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+
+	// A SYNTHETIC ROW: 10% life leech that requires a melee skill. No authored leech row carries required tags today
+	// (17 counted, 2026-10-04), so this is written by hand, as a row would give it. Issue #947.
+	const FGameplayTagContainer Melee = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+	const FGameplayTagContainer Ranged = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Ranged"));
+	if (!TestTrue(TEXT("set-up: both tags exist"), Melee.Num() == 1 && Ranged.Num() == 1))
+	{
+		return false;
+	}
+	FCataclysmStatModifier Scoped;
+	Scoped.Bucket = ECataclysmStatBucket::Flat;
+	Scoped.Source = ECataclysmModifierSource::PassiveKeystone;
+	Scoped.Value = 10.0f;
+	Scoped.RequiredTags = Melee;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("life_leech")));
+	Line.Base = 0.0f;
+	Line.Modifiers = {Scoped};
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	// A HIT FROM A SKILL OF ANOTHER KIND LEECHES NOTHING.
+	const float RangedDealt = UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target.Actor, /*DamagePercent=*/100.0f,
+															   Ranged, FCataclysmHitDelivery());
+	if (!TestTrue(FString::Printf(TEXT("set-up: the ranged hit dealt damage (%.1f)"), RangedDealt), RangedDealt > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a ranged skill's hit starts no payment"), Attacker.AbilitySystem->GetLeechPayments().Num(), 0);
+
+	// A HIT FROM A MELEE SKILL LEECHES THE ROW'S SHARE OF WHAT IT TOOK.
+	const float MeleeDealt = UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target.Actor, /*DamagePercent=*/100.0f,
+															  Melee, FCataclysmHitDelivery());
+	if (!TestTrue(FString::Printf(TEXT("set-up: the melee hit dealt damage (%.1f)"), MeleeDealt), MeleeDealt > 0.0f)
+		|| !TestEqual(TEXT("a melee skill's hit starts one payment"), Attacker.AbilitySystem->GetLeechPayments().Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth 10% of what the hit took"), Attacker.AbilitySystem->GetLeechPayments()[0].Remaining,
+			  UCataclysmLeech::AmountFrom(MeleeDealt, 10.0f), 0.01f);
+
+	// AND A CALLER WITH NO SKILL, WHICH PASSES NO TAGS, GETS NOTHING FROM A SCOPED ROW.
+	UCataclysmLeech::NoteHit(Attacker.AbilitySystem, 1'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a hit that names no skill starts no further payment"),
+			  Attacker.AbilitySystem->GetLeechPayments().Num(), 1);
 	return true;
 }
 

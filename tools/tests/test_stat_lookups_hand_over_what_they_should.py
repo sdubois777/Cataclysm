@@ -350,9 +350,9 @@ INVENTORY = {
      'FName(ClearedOnDroppingLowStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
         "the health debt's own rates, read off the character",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
-     'FName(Stat), FGameplayTagContainer(), FromAttribute'):
-        'how much a leech returns, asked of the character after the '
-        'blow has already resolved',
+     'FName(Stat), SkillTags, FromAttribute'):
+        'how much a leech returns, asked with the tags of the skill that dealt '
+        'the hit (issue #947) after the blow has already resolved',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
      'FName(TEXT("life_leech")), FGameplayTagContainer(), Vitals->GetLifeLeech()'):
         'how much a leech returns, asked of the character after the '
