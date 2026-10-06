@@ -677,7 +677,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 463 SINCE "YOU ARE CLEANSED EVERY 5 SECONDS", issue #1833, from 462.
 	//
 	// AND 467 SINCE THE FOUR SHARES OF THE WEARER'S OWN DAMAGE, issue #1833, from 463.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    467)
+	//
+	// AND 470 SINCE STARVATION'S TEN-PIECE BONUS, issue #1833, from 467.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    470)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

@@ -2,6 +2,45 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — Starvation's ten-piece bonus is built: a kill grants a Famished stack that raises all three kinds of leech, up to ten
+
+**Affects:** `tools/generate_datatables.py` (`STATS_WITH_AN_ASKER`), `docs/All_Things_Cataclysm.xlsx` (three rows
+of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset,
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (three probes),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(`Cataclysm.Enchantments.StarvationTenPiecesGainAFamishedStackPerKillRaisingAllLeechUpToTen`),
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Rows |
+| :-- | :-- |
+| Starvation (10-Piece Bonus): When you kill an enemy, gain a stack of "Famished." Each stack increases all of your leech by 5%. Stacks last 4 seconds | `life_leech`, `mana_leech` and `energy_shield_leech`, each increased 5 per own stack, a stack on `kill`, 4 seconds, cap 10 |
+
+EnchantmentEffects 467 to 470, over 383 to 384. No engine change.
+
+- **THE CAP OF 10 IS A LABELLED JUDGEMENT** of 2026-10-05 under the owner's delegation. The sentence states none
+  and an own-stack row must state one. At 10 the bonus is half again of the wearer's leech.
+- **Each of the three rows holds its own stacks**, because a stack is keyed by its enchantment and its stat. One
+  kill grants each row one, so the three move together and read as one count.
+- **A kill restarts the four seconds for every stack held**, which is the rule every own-stack row has.
+- **"Increases" is the increased bucket**, so the 5% sums with the wearer's other increases to leech and
+  multiplies the set's own two-piece 5% of leech.
+
+**The three leech stats joined the list of stats something asks for.** A row scaled by a count is never written
+onto its attribute, so it reaches play only where the code asks the stat pipeline for the stat. The generator
+refuses a scaled row on a stat that is not on its list of such stats, and the list is held to a table of probes
+that measure the ask. `UCataclysmLeech::NoteHit` has asked for all three through the pipeline since issue #947;
+the dry run of these rows was refused until the three names and a probe for each were added. Each probe gives two
+attackers the stat at a base of 10 with 100 increased per stack, gives one a stack, and reads what a hit of 1000
+queues to be leeched: 100 and 200.
+
+**Starvation's six-piece bonus is not built.** "5% damage reduction for each active unique instance of leech"
+needs a count of the leech payments a character holds, which nothing reads.
+
+---
+
 ## 2026-10-05 — Four drawbacks take a share of the wearer's own damage: a row may take a share of what a hit dealt or retaliation dealt
 
 **Affects:** `tools/generate_datatables.py` (`EVENTS_WITH_AN_AMOUNT`), `docs/All_Things_Cataclysm.xlsx` (four
