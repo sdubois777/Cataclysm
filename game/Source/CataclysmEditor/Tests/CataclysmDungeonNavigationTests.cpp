@@ -13,6 +13,13 @@
 #include "NavigationSystem.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AI/NavDataGenerator.h"
+#include <atomic>
+
+#include "HAL/Event.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
+#include "Misc/IQueuedWork.h"
+#include "Misc/QueuedThreadPool.h"
 #include "Dungeon/CataclysmFloorObstacle.h"
 
 /**
@@ -422,21 +429,149 @@ bool FCataclysmFloorRockIsNotWalkableTest::RunTest(const FString& Parameters)
 
 namespace CataclysmDungeonNavTest
 {
-	/** Tick the navigation system until it is not building, at most `MostTicks`; whether it finished. */
-	bool WaitForTheNavigationMesh(FNavigableFloor& Setup, int32 MostTicks = 600)
+	/** Whether the navigation system has nothing left to build. */
+	bool TheNavigationMeshIsBuilt(FNavigableFloor& Setup)
 	{
-		FNavDataGenerator* Generator = Setup.NavData->GetGenerator();
+		const FNavDataGenerator* Generator = Setup.NavData->GetGenerator();
+		return !Setup.Navigation->IsNavigationBuildInProgress()
+			&& (!Generator || Generator->GetNumRemaningBuildTasks() == 0);
+	}
+
+	/**
+	 * THE WAIT THESE TESTS USED UNTIL ISSUE #2222, kept so one test can show what was wrong with it: tick the
+	 * navigation system until it is not building, at most `MostTicks`; whether it finished.
+	 *
+	 * A COUNT OF TICKS IS NOT AN AMOUNT OF TIME. The mesh's tiles are rebuilt by tasks on the engine's worker threads
+	 * (`FRecastNavMeshGenerator` starts each with `StartBackgroundTask`), and a tick only collects the ones that
+	 * have finished. This loop does not sleep, so its 600 ticks last as long as 600 calls take, and it fails
+	 * whenever no worker finishes the tile in that time.
+	 */
+	bool TickOnlyForTheNavigationMesh(FNavigableFloor& Setup, int32 MostTicks = 600)
+	{
 		for (int32 Tick = 0; Tick < MostTicks; ++Tick)
 		{
 			Setup.Navigation->Tick(1.0f / 60.0f);
-			if (Tick >= 2 && !Setup.Navigation->IsNavigationBuildInProgress()
-				&& (!Generator || Generator->GetNumRemaningBuildTasks() == 0))
+			if (Tick >= 2 && TheNavigationMeshIsBuilt(Setup))
 			{
 				return true;
 			}
 		}
 		return false;
 	}
+
+	/**
+	 * Tick the navigation system and BLOCK ON ITS TILE BUILDS until it is not building; whether it finished.
+	 *
+	 * `EnsureBuildCompletion` IS WHAT THE FIRST BUILD OF EVERY ONE OF THESE FLOORS ALREADY USES, through
+	 * `UNavigationSystemV1::Build`. It waits for each running tile task, and runs one itself when no worker has
+	 * started it, so it does not depend on a worker thread being free. Issue #2222.
+	 *
+	 * THE LIMIT IS SECONDS ON THE CLOCK, for the reason the tick-only wait above gives. WHEN IT DOES NOT FINISH IT
+	 * SAYS WHAT IT SAW, so the next failure names its cause: the ticks run, the seconds, the tasks left, and whether
+	 * a build was still in progress.
+	 */
+	bool WaitForTheNavigationMesh(FNavigableFloor& Setup, double MostSeconds = 60.0)
+	{
+		const double Began = FPlatformTime::Seconds();
+		int32 Tick = 0;
+		for (;; ++Tick)
+		{
+			Setup.Navigation->Tick(1.0f / 60.0f);
+			Setup.NavData->EnsureBuildCompletion();
+			if (Tick >= 2 && TheNavigationMeshIsBuilt(Setup))
+			{
+				return true;
+			}
+			if (FPlatformTime::Seconds() - Began > MostSeconds)
+			{
+				break;
+			}
+		}
+		const FNavDataGenerator* Generator = Setup.NavData->GetGenerator();
+		UE_LOG(LogTemp, Warning,
+			TEXT("The navigation mesh did not finish building: %d ticks in %.3f s, %d build tasks left, build in "
+				 "progress %d. Issue #2222."),
+			Tick + 1, FPlatformTime::Seconds() - Began, Generator ? Generator->GetNumRemaningBuildTasks() : -1,
+			Setup.Navigation->IsNavigationBuildInProgress() ? 1 : 0);
+		return false;
+	}
+
+	/** One piece of work that holds a worker thread until it is let go. */
+	class FHeldWorker : public IQueuedWork
+	{
+	public:
+		FHeldWorker(FEvent* InLetGo, std::atomic<int32>* InStarted) : LetGo(InLetGo), Started(InStarted) {}
+
+		virtual void DoThreadedWork() override
+		{
+			++(*Started);
+			LetGo->Wait();
+		}
+
+		virtual void Abandon() override {}
+
+	private:
+		FEvent* LetGo;
+		std::atomic<int32>* Started;
+	};
+
+	/**
+	 * Every thread of the engine's pool held, until this goes out of scope. It is how the fault of issue #2222 is
+	 * made to happen every time: with no worker free, a tile task that is started in the background is not begun.
+	 */
+	struct FEveryWorkerHeld
+	{
+		FEveryWorkerHeld()
+		{
+			LetGo = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/true);
+			const int32 Threads = GThreadPool ? GThreadPool->GetNumThreads() : 0;
+			for (int32 Index = 0; Index < Threads; ++Index)
+			{
+				Held.Add(new FHeldWorker(LetGo, &Started));
+				GThreadPool->AddQueuedWork(Held.Last());
+			}
+			// UNTIL EACH HAS BEGUN, at most five seconds: work that is only queued holds nothing.
+			const double Began = FPlatformTime::Seconds();
+			while (Started.load() < Threads && FPlatformTime::Seconds() - Began < 5.0)
+			{
+				FPlatformProcess::Sleep(0.001f);
+			}
+			bEveryOneHeld = Threads > 0 && Started.load() == Threads;
+		}
+
+		~FEveryWorkerHeld()
+		{
+			// WORK NO THREAD BEGAN IS TAKEN BACK, and the rest is let go and waited for, so nothing touches the
+			// counter or the event after they are gone.
+			int32 TakenBack = 0;
+			for (FHeldWorker* Work : Held)
+			{
+				if (GThreadPool->RetractQueuedWork(Work))
+				{
+					++TakenBack;
+				}
+			}
+			const int32 Begun = Held.Num() - TakenBack;
+			const double Began = FPlatformTime::Seconds();
+			while (Started.load() < Begun && FPlatformTime::Seconds() - Began < 5.0)
+			{
+				FPlatformProcess::Sleep(0.001f);
+			}
+			LetGo->Trigger();
+			// A MOMENT FOR EACH TO LEAVE `Wait` before the work is deleted; the event goes back to its pool.
+			FPlatformProcess::Sleep(0.05f);
+			for (FHeldWorker* Work : Held)
+			{
+				delete Work;
+			}
+			FPlatformProcess::ReturnSynchEventToPool(LetGo);
+		}
+
+		FEvent* LetGo = nullptr;
+		std::atomic<int32> Started{0};
+		TArray<FHeldWorker*> Held;
+		bool bEveryOneHeld = false;
+	};
 
 	/** A floor cell with every cell of a Side + 2 square around it walkable, or (-1, -1). */
 	FIntPoint OpenSquareCorner(const FCataclysmFloorPlan& Plan, int32 Side)
@@ -597,6 +732,71 @@ bool FCataclysmObstacleRemovedTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the rebuild after removing it finished"), WaitForTheNavigationMesh(Setup));
 	TestTrue(TEXT("the cell is on the navigation mesh again"),
 			 Setup.Navigation->ProjectPointToNavigation(Setup.Floor->WorldOfCell(Cell), Landed, CloseEnough));
+	TearDown(Setup);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The wait itself. Issue #2222: four whole-suite runs in two days failed one of the tests above at "the mesh rebuild
+// finished", and every one passed when run again alone.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNavigationWaitTest,
+	"Cataclysm.DungeonFloor.TheNavigationWaitFinishesWhenNoWorkerThreadIsFree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNavigationWaitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonNavTest;
+
+	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
+	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	const FIntPoint Cell = OpenSquareCorner(Setup.Floor->GetPlan(), 1);
+	if (!TestTrue(TEXT("set-up: an open cell"), Cell.X >= 0))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	FNavLocation Landed;
+	const FVector Where = Setup.Floor->WorldOfCell(Cell);
+	if (!TestTrue(TEXT("set-up: the cell is on the mesh before anything stands on it"),
+				  Setup.Navigation->ProjectPointToNavigation(Where, Landed, CloseEnough)))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	{
+		// EVERY WORKER IS BUSY, which is what a whole-suite run can do to these tests and a run of them alone does
+		// not.
+		FEveryWorkerHeld Workers;
+		if (!TestTrue(TEXT("set-up: every worker thread is held"), Workers.bEveryOneHeld))
+		{
+			TearDown(Setup);
+			return false;
+		}
+		ACataclysmFloorObstacle* Obstacle = ACataclysmFloorObstacle::Place(
+			Setup.World, *Setup.Floor, {Cell}, ECataclysmObstacleKind::Pillar, NAME_None, NAME_None);
+		if (!TestNotNull(TEXT("a pillar was placed"), Obstacle))
+		{
+			TearDown(Setup);
+			return false;
+		}
+		Obstacle->Raise();
+
+		// THE FAULT: 600 ticks pass and the tile is not rebuilt, because nothing was free to rebuild it.
+		TestFalse(TEXT("control: counting 600 ticks does not finish the rebuild while no worker is free"),
+				  TickOnlyForTheNavigationMesh(Setup));
+
+		// THE WAIT: it finishes anyway, and the mesh is the changed one.
+		TestTrue(TEXT("the wait finishes the rebuild while no worker is free"), WaitForTheNavigationMesh(Setup));
+		TestFalse(TEXT("and the cell under the pillar is off the mesh"),
+				  Setup.Navigation->ProjectPointToNavigation(Where, Landed, CloseEnough));
+	}
 	TearDown(Setup);
 	return true;
 }
