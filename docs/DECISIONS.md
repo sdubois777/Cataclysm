@@ -69,6 +69,30 @@ would have stopped the resistance row and let the other two through.
 - **NOT COVERED: a second consumer that reads the attribute.** The list says a stat has an asker, not that every
   place the stat is used asks. The first three issues above are that case.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in the elastic-burnell worktree, in one window with the two layers of numbers hung on an ailment
+stacked on this one, on `development` 426c061d. An earlier window on `development` 2b87c355 ran this layer too;
+the engine for repeating a skill merged before it did, the stack was made again on top of that, and nothing
+measured there is quoted here. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack, first | 39329cc9 | Build: Failed - 32 actions, 29 files compiled |
+| Build, after two include lines in a test file of the top layer | c9e522fd | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp |
+| Whole suite | 87ffdee3 | 3186 tests performed, 3186 succeeded, 0 failed; declared 3186, gap 0; 0 ensures |
+| Python of record, with ruff clean | 87ffdee3 | 5739 passed, 8 skipped in 314.36s; JUnit tests=5747 failures=0 errors=0 skipped=8 |
+| Proof A: the cooldown reading its reduction from the attribute and not asking, on Cataclysm.StatExemption. | 87ffdee3 | PROVED: with the break in: 4 tests performed, 3 succeeded, 1 failed: AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed \| restored: 4 tests performed, 4 succeeded, 0 failed |
+| Python proof 1: a condition its asker is not handed let through, in a copy | 87ffdee3 | PROVED: 3 failed, 11 passed \| restored: 14 passed |
+
+Proof A kept its broken run's log and failed exactly the one assertion predicted, in the cooldown probe:
+"cooldown_reduction is asked for, so below half health the cooldown is shorter: 4.000 against 4.000". Python
+proof 1's three are the made-up rows that put a target condition on `movement_speed`, a blow condition on
+`attack_damage`, and a target condition in a row's second condition.
+
+**The first build failed in the top layer's test file and in nothing of this layer's.** Its 18 errors are in the
+entry for the two slows. This layer's code compiled in that build and was not changed after it.
+
 ---
 
 ## 2026-10-05 — A row can repeat the skill just used, free: the engine and the generator for one action, `repeat_skill`, with no row authored yet
