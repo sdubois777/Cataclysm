@@ -79,6 +79,28 @@ alone, for "Your spells echo +1 time".
   character wearing the echo row and the half-damage row gets one whole repeat of a spell, and never two.
 - **The spell rows and the every-skill row overlap on a spell** in the same way: two chances at one repeat.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the layer below this one and the two above it, on `development` 0a3844e0. The
+builds, the whole suite and the Python of record are in the table of the entry below this one and were run with
+this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | 7882d9d4 | 228 tests performed, 220 succeeded, 8 failed: the eight row tests of the four layers; 19 failed assertions |
+| The asset, regenerated with the editor | 7882d9d4 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 479 to 484 |
+| Cataclysm.Enchantments., whole, with every asset built | eaec6b80 | 228 tests performed, 228 succeeded, 0 failed; 0 ensures |
+| Proof G: a repeat's chance of 100 rolled and not compared | eaec6b80 | PROVED: with the break in: 228 tests performed, 225 succeeded, 3 failed: TheHeavyAttackTwiceRowRepeatsAHeavyAttackOnlyAfterTwoSecondsStandingStill, TheSpellsEchoRowRepeatsEverySpellAndNothingElse, TheUltimateTwiceRowRepeatsEveryUltimateAndNothingElse \| restored: 228 tests performed, 228 succeeded, 0 failed |
+
+**The 19 assertions of the run against the old asset, by test**: every skill use 3; spells 2; the duplicate 2; the
+heavy attack 2; the echo 2; the ultimate 2; the melee attacks row 3; Spellblade's Will 3. Each test failed where it
+reads the recorded repeat or the recorded trigger, and passed every line that expects nothing to be recorded.
+
+Proof G kept its broken run's log and failed exactly the six assertions predicted, two in each of the three tests
+that pin the roll at 100: the repeat was not recorded, and its share was 0.000000 against 1.000000.
+
+**The engine code compiled on its first build.** Nothing of this layer was changed after it.
+
 ---
 
 ## 2026-10-06 — The first row that repeats a skill, and a Damage Share column so a row can say how much of its damage the repeat deals
