@@ -5076,3 +5076,23 @@ def test_wild_magic_row_still_says_five_percent_a_random_different_skill_and_you
         assert phrase in lower, (
             f"Chaos_Wild_Magic no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "WildMagicKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_echo_chamber_row_still_says_a_copy_in_a_random_direction_that_can_also_hit_you():
+    """The phrases Echo Chamber's readings rest on.
+
+    "Every time you use an ability, a ghostly copy of that ability is fired in a random direction. The copy can hit
+    enemies, but it can also hit you, dealing a small amount of damage." EVERY TIME YOU USE AN ABILITY is every use the
+    player pays for, with no roll; A GHOSTLY COPY OF THAT ABILITY is the same skill triggered free; A RANDOM DIRECTION
+    is the drawn angle; IT CAN ALSO HIT YOU is the row's own stated exception to the owner's rule that a creature does
+    not burn its own side, and what the self hit rests on; A SMALL AMOUNT OF DAMAGE is why the figure is ruled and not
+    read. If any changes, the reading built on it must be revisited; see EchoChamberKey in
+    CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Chaos_Echo_Chamber"]["Description"])
+    lower = words.lower()
+    for phrase in ("every time you use an ability", "ghostly copy of that ability", "random direction",
+                   "it can also hit you", "small amount of damage"):
+        assert phrase in lower, (
+            f"Chaos_Echo_Chamber no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "EchoChamberKey in CataclysmDungeonModifierEffects.h. " + words)
