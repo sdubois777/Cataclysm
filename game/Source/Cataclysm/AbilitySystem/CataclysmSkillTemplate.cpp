@@ -37,6 +37,7 @@
 // For the persistent geometry a skill leaves: a pit, a wall, a fissure
 // or a thicket. Five rows across the Spear and the Warhammer. Issue #37.
 #include "AbilitySystem/CataclysmTerrain.h"
+#include "EngineUtils.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -2727,6 +2728,53 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Loca
 	return LeaveGroundAlong(Location, Location);
 }
 
+namespace
+{
+	/**
+	 * What share of its stated time a persistent area this skill leaves lasts, as a multiplier: 1 with no row.
+	 * Ruled 2026-10-06, for "Persistent AOE effects expire 40%-60% faster".
+	 */
+	float PersistentAreaDurationMultiplier(const UAbilitySystemComponent* AbilitySystem,
+										   const FGameplayTagContainer& SkillTags)
+	{
+		const UCataclysmAbilitySystemComponent* Asking = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+		const float Share = Asking
+			? Asking->StatForSkill(FName(UCataclysmDamageCalculation::PersistentAreaDurationStat), SkillTags, UCataclysmDamageCalculation::NormalPersistentAreaDuration)
+			: UCataclysmDamageCalculation::NormalPersistentAreaDuration;
+		return FMath::Max(0.0f, Share) / 100.0f;
+	}
+
+	/**
+	 * Ends every ground zone and terrain this character's skills left, when the character may hold only one. Called
+	 * just before a new one is made. Ruled 2026-10-06, for "You can only have 1 persistent AOE effect active at a
+	 * time". A floor rule's zone has another owner and is not touched.
+	 */
+	void EndEarlierPersistentAreasIfOnlyOne(AActor* Self, const UAbilitySystemComponent* AbilitySystem,
+											const FGameplayTagContainer& SkillTags)
+	{
+		const UCataclysmAbilitySystemComponent* Asking = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+		if (!Self || !Asking
+			|| Asking->StatForSkill(FName(UCataclysmDamageCalculation::OnlyOnePersistentAreaStat), SkillTags, 0.0f) <= 0.0f)
+		{
+			return;
+		}
+		for (TActorIterator<ACataclysmGroundZone> Zone(Self->GetWorld()); Zone; ++Zone)
+		{
+			if (Zone->GetOwner() == Self && !Zone->bLastsTheFloor)
+			{
+				Zone->Destroy();
+			}
+		}
+		for (TActorIterator<ACataclysmTerrain> Terrain(Self->GetWorld()); Terrain; ++Terrain)
+		{
+			if (Terrain->GetOwner() == Self)
+			{
+				Terrain->Destroy();
+			}
+		}
+	}
+}
+
 ACataclysmTerrain* UCataclysmSkillTemplate::LeaveTerrainAlong(
 	const FVector& Start, const FVector& End)
 {
@@ -2776,7 +2824,12 @@ ACataclysmTerrain* UCataclysmSkillTemplate::LeaveTerrainAlong(
 	// "Your support ability duration is increased" reaches Groundbreaker's
 	// terrain, ruled 2026-09-30. Only this skill's own stat: a buff or debuff
 	// duration row does not reach terrain time.
-	const float Lasts = Params.TerrainDuration * OwnDurationMultiplier(/*bIsBuff=*/false);
+	// AND FOR THE SHARE OF THAT TIME A ROW LEAVES IT, and with every earlier area ended first when the character may
+	// hold only one. Ruled 2026-10-06.
+	const UAbilitySystemComponent* TerrainOwnerSystem = UCataclysmTargeting::AbilitySystemOf(Self);
+	const float Lasts = Params.TerrainDuration * OwnDurationMultiplier(/*bIsBuff=*/false)
+		* PersistentAreaDurationMultiplier(TerrainOwnerSystem, SkillTags);
+	EndEarlierPersistentAreasIfOnlyOne(Self, TerrainOwnerSystem, SkillTags);
 	ACataclysmTerrain* Terrain = ACataclysmTerrain::Spawn(
 		Self, Kind, Start, End, SizeCm, Lasts,
 		Params.ForcedMovementDuration);
@@ -2848,8 +2901,20 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 						* Params.GroundPercent / 100.0f
 						* WithSpentIncrease(AbilitySystem);
 
+	// FOR THE SHARE OF ITS STATED TIME A ROW LEAVES IT, and with every earlier area ended first when the character
+	// may hold only one. Ruled 2026-10-06.
+	EndEarlierPersistentAreasIfOnlyOne(Self, AbilitySystem, SkillTags);
 	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
-		Self, Start, End, ScaledGroundRadiusCm(), Params.GroundDuration, PerTick);
+		Self, Start, End, ScaledGroundRadiusCm(),
+		Params.GroundDuration * PersistentAreaDurationMultiplier(AbilitySystem, SkillTags), PerTick);
+
+	// AND WHAT A ROW ADDS TO EVERY SWEEP: more for each enemy inside, and a slow. Ruled 2026-10-06.
+	if (const UCataclysmAbilitySystemComponent* ZoneAsking =
+			Zone ? Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem) : nullptr)
+	{
+		Zone->MorePerEnemyInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat), SkillTags, 0.0f);
+		Zone->SlowsThoseInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneSlowPercentStat), SkillTags, 0.0f);
+	}
 
 	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's
 	// Foul Wake: "the ground you fled burns for 6 seconds and strips the Demonic

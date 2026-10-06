@@ -6998,6 +6998,13 @@ ENGINE_SUPPLIED_BASES = {
         "UCataclysmDamageCalculation::NormalZoneFirstSweepDamage, put on the "
         "character by UCataclysmPlayerClassStats::EngineSuppliedBases",
 
+    # AND WHAT SHARE OF ITS STATED TIME A GROUND ZONE OR A TERRAIN LASTS, at
+    # 100. Ruled 2026-10-06: "Persistent AOE effects expire 40%-60% faster" is
+    # a `more` row on it.
+    "persistent_area_duration":
+        "UCataclysmDamageCalculation::NormalPersistentAreaDuration, put on "
+        "the character by UCataclysmPlayerClassStats::EngineSuppliedBases",
+
     # AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at 100 for
     # normal. Issue #1767. The Ravager's Dragging Weight reads "+3% increased
     # magnitude of Cripple you apply per point" and its Sapped says the same of

@@ -555,6 +555,27 @@ public:
 	static const TCHAR* ZoneFirstSweepDamageStat;
 
 	/**
+	 * FOUR MORE STATS A PERSISTENT AREA READS, each asked once where a skill leaves the area, with the skill's tags.
+	 * Ruled 2026-10-06. "Persistent AOE effects" are ground zones and terrain; not auras and not the tether.
+	 *
+	 * `persistent_area_duration`: what share of its stated time a ground zone or a terrain lasts, based at 100.
+	 * "Persistent AOE effects expire 40%-60% faster".
+	 *
+	 * `zone_damage_per_enemy_inside`: how much more, in per cent, a ground zone's sweep deals for each enemy it
+	 * finds inside. "Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them".
+	 *
+	 * `zone_slow_percent`: the slow a ground zone lays on those inside, each sweep. "Your persistent AOE zones also
+	 * slow enemies within them by 20%-35%".
+	 *
+	 * `only_one_persistent_area`: above nought, a new ground zone or terrain ends every earlier one its owner's
+	 * skills left. "You can only have 1 persistent AOE effect active at a time".
+	 */
+	static const TCHAR* PersistentAreaDurationStat;
+	static const TCHAR* ZoneDamagePerEnemyInsideStat;
+	static const TCHAR* ZoneSlowPercentStat;
+	static const TCHAR* OnlyOnePersistentAreaStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *
@@ -643,6 +664,9 @@ public:
 
 	/** `ZoneFirstSweepDamageStat`'s base: a first sweep deals all of a tick. */
 	static constexpr float NormalZoneFirstSweepDamage = 100.0f;
+
+	/** `PersistentAreaDurationStat`'s base: an area lasts all of its stated time. */
+	static constexpr float NormalPersistentAreaDuration = 100.0f;
 
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;
