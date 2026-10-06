@@ -611,8 +611,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 479 over 393: five rows on five enchantments.
 #: AND 485 OVER 399 SINCE THE MELEE ATTACKS ROW ON attack_use,
 #: issue #1833, 2026-10-06, from 484 over 398: one row on one enchantment.
-AUTHORED_ROWS = 485
-AUTHORED_ENCHANTMENTS = 399
+#: AND 487 OVER 401 SINCE SPELLBLADE'S WILL'S FIRST BONUS AND ITS DRAWBACK,
+#: issue #1833, 2026-10-06, from 485 over 399: two rows on two enchantments.
+AUTHORED_ROWS = 487
+AUTHORED_ENCHANTMENTS = 401
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -659,7 +661,12 @@ REMOVED_ROWS = 34
 #: issue #1791: its drawback, "You have no health/mana/es regen", is three
 #: removed rows, and its 2-piece bonus three flat leech rows. Its 6-piece and
 #: 10-piece rows still wait.
-SETS_THAT_WORK = [5, 6, 7, 8, 9, 11, 12, 13, 16, 17]
+#:
+#: ELEVEN OF FOURTEEN SINCE 2026-10-06. Spellblade's Will (10) needed the
+#: action that triggers a different held skill: its 2-piece bonus is one
+#: `trigger_held_skill` row on `attack_use` and its drawback one `attack_damage`
+#: row scoped to melee. Its 6-piece and 10-piece rows still wait.
+SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -849,10 +856,10 @@ def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
 
 
 def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
-    """Ten of the fourteen sets have a row written: Archon's Aegis (5),
-    Tyrant's Chains (6), Chronomancer's Time-Lock (7), Mana Weaver (8), Brute's Heart (9), Demon King's
-    Regalia (11), Plague Doctor (12), Starvation (13), Divine Retribution
-    (16) and Warlord's Will (17). The other four wait
+    """Eleven of the fourteen sets have a row written: Archon's Aegis (5),
+    Tyrant's Chains (6), Chronomancer's Time-Lock (7), Mana Weaver (8), Brute's Heart (9), Spellblade's
+    Will (10), Demon King's Regalia (11), Plague Doctor (12), Starvation (13), Divine Retribution
+    (16) and Warlord's Will (17). The other three wait
     for what their rows need, which `docs/DECISIONS.md` lists set by set. This
     moves only when somebody means it to.
 
