@@ -1925,6 +1925,34 @@ public:
 	static const TCHAR* WildMagicKey;
 
 	/**
+	 * `Chaos_Echo_Chamber`: "Every time you use an ability, a ghostly copy of that ability is fired in a random
+	 * direction. The copy can hit enemies, but it can also hit you, dealing a small amount of damage. This creates a
+	 * new layer of risk/reward to using skills." Issues #1820 and #41.
+	 *
+	 * THE COPY IS THE SAME SKILL, TRIGGERED FREE (`UCataclysmTriggeredSkill`) at the distance the use was aimed and at
+	 * a drawn angle. It is not a use: it sends no skill-used notice, so a copy is not copied and rolls no Wild Magic.
+	 *
+	 * "IT CAN ALSO HIT YOU" IS THE ROW'S OWN STATED EXCEPTION TO THE OWNER'S RULE OF 2026-08-20, "a creature does not
+	 * burn itself or its own side". RULED 2026-10-05 BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, a
+	 * labelled judgement: the row's sentence decides yes, and `EchoChamberSelfHitPercent` of what the copy would deal
+	 * to an enemy, ONLY WHEN THE PLAYER STANDS INSIDE THE COPY'S OWN AREA. "A small amount" has no figure in the row.
+	 *
+	 * EACH A LABELLED JUDGEMENT OF THE WRITING SESSION, 2026-10-05:
+	 * - EVERY SKILL USE THE PLAYER PAYS FOR, the basic attack excepted, the line Wild Magic and the worn "on skill
+	 *   use" rows draw.
+	 * - WHICH SKILLS ARE COPIED: the ones Wild Magic may trigger (`WildMagicLeavesOut`) whose shape is a strike, a
+	 *   projectile or a debuff. A self buff is not "fired" anywhere, and a copy of a movement skill would move the
+	 *   player. `EchoChamberCopies` is the rule.
+	 * - "INSIDE THE COPY'S OWN AREA" IS: the copy's aim point is within the skill's own radius of the player. The
+	 *   copy is aimed as far from the player as the use was, so a skill aimed at one's own feet copies onto oneself
+	 *   and one aimed far away does not. `EchoChamberHitsTheCaster` is the rule.
+	 * - WHAT THE COPY "WOULD DEAL TO AN ENEMY" IS the player's weapon damage at the skill's damage percent with the
+	 *   player's own modifiers for that skill's tags (`ModifiedDamage`). The player's own defences then reduce it as
+	 *   an enemy's would. It cannot critically strike, leeches nothing and is not retaliated against.
+	 */
+	static const TCHAR* EchoChamberKey;
+
+	/**
 	 * The row where a crescendo hastes every creature on the floor for ten seconds.
 	 * Issues #1820 and #41.
 	 *
@@ -5893,6 +5921,10 @@ public:
 	static constexpr float WildMagicChancePercent = 5.0f;
 	static constexpr float WildMagicSecondsBetweenTriggers = 0.25f;
 
+	/** Echo Chamber's figures, ruled 2026-10-05. The least distance is a use aimed at the player's own position. */
+	static constexpr float EchoChamberSelfHitPercent = 10.0f;
+	static constexpr float EchoChamberLeastAimCm = 100.0f;
+
 	/** The player's sight while a travelling swarm covers them, a play-test value. */
 	static constexpr float SwarmOfLocustsSightCm = 400.0f;
 
@@ -7191,6 +7223,12 @@ public:
 
 	/** Every skill of this damage type that Wild Magic may trigger, in table order. */
 	static TArray<FCataclysmWeaponSkill> WildMagicPool(const UDataTable* Table, const FString& DamageType);
+
+	/** Whether Echo Chamber fires a copy of this skill: Wild Magic may trigger it, and it is a strike, a projectile or a debuff. */
+	static bool EchoChamberCopies(const FCataclysmWeaponSkill& Skill);
+
+	/** Whether a copy aimed this far from the player, of a skill with this radius, hits the player: the aim is within the radius. */
+	static bool EchoChamberHitsTheCaster(float AimDistanceCm, float RadiusCm);
 
 	/** How far a soul reaches, in centimetres. */
 	static float SoulHarvestRadiusCm();

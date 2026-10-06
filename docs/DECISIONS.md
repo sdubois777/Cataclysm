@@ -2,6 +2,158 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — Echo Chamber: every skill use fires a free copy of that skill in a random direction, and a copy aimed within its own radius hits the player for a tenth
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`EchoChamberKey`, the two
+figures, `EchoChamberCopies`, `EchoChamberHitsTheCaster`, `Built`, `KeysWithARule`);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`NoteSkillUseForEchoChamber`,
+`MakeTheEchoChamberCopy`, the console variable `Cataclysm.EchoChamberAngle`, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-05;
+the figures are under "Run" at the end of this entry.
+
+### The row
+
+`Chaos_Echo_Chamber`: "Every time you use an ability, a ghostly copy of that ability is fired in a random direction.
+The copy can hit enemies, but it can also hit you, dealing a small amount of damage. This creates a new layer of
+risk/reward to using skills."
+
+### An exception to an owner rule, and who made it
+
+**The owner's rule of 2026-08-20 is "A creature does not burn itself or its own side"**, recorded in
+`tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`. This row was the not-built example
+of two tests for exactly that reason: "blocked by an owner rule, not by missing code".
+
+**RULED 2026-10-05 by the coordinating session under the owner's delegation, a labelled judgement, after the owner
+said to keep going: the row's own sentence, "it can also hit you", is the row's stated exception to that rule, and
+the design decides yes.** The figure, which the row does not give ("a small amount"), is **10% of what the copy would
+deal to an enemy, only when the player stands inside the copy's own area.**
+
+**This is recorded as that session's judgement and not as the owner's decision.** The owner's rule is general and was
+set after the opposite had been tried; an exception to it is the kind of thing the owner may want to confirm. What
+the exception covers is narrow: direct damage from the player's own copied skill to the player, on floors carrying
+this row. It burns nobody: the hit carries no burn and no ailment, whatever the copied skill applies to enemies.
+
+### What the research settles, and what it does not
+
+The copy is a skill started without being pressed, which is the mechanism of the Wild Magic entry of 2026-10-04, and
+that entry's source is this one's: Path of Exile, `poedb.tw/us/Trigger`, fetched 2026-10-04, "Vaal skills,
+channelling skills, and skills with a reservation cannot be triggered". **That settles which skills can be copied at
+all.** It does not settle a copy that can hurt its own caster: no source was fetched for that, and the 10% and the
+rule for "inside its area" are this game's and are judgements.
+
+### Rulings and judgements
+
+By the coordinating session, 2026-10-05: the copy uses `UCataclysmTriggeredSkill` and a listener like Wild Magic's;
+the copy can hit the player; 10%; only inside the copy's own area; the row is `Built`.
+
+By the writing session, each a labelled judgement, 2026-10-05:
+
+- **Every skill use the player pays for, the basic attack excepted**, the line Wild Magic and the worn "on skill use"
+  rows draw. No roll and no wait: "every time".
+- **Which skills are copied:** the ones Wild Magic may trigger whose shape is a strike, a projectile or a debuff
+  (`EchoChamberCopies`). A self buff is not "fired" anywhere, and a copy of a movement skill would move the player.
+  On the table of 2026-10-05 that is 24 of the 56 named Demonic skills (13 strikes, 8 projectiles, 3 debuffs) and
+  War's Shield Bash.
+- **The copy is aimed as far from the player as the use was aimed, at a drawn angle.** A use aimed at the player's
+  own position is aimed one metre away (`EchoChamberLeastAimCm`).
+- **"Inside the copy's own area" is: the copy's aim point is within the skill's own radius of the player**
+  (`EchoChamberHitsTheCaster`). So a skill aimed close copies onto its caster and one aimed far does not, whichever
+  way the copy went. One rule for every shape, and the player can avoid it by aiming away. **The alternative not
+  taken:** a strike's area starts at the caster, so every strike's copy would hit the player and no projectile's
+  would; that punishes one kind of weapon on every press and gives the player nothing to do about it.
+- **What the copy "would deal to an enemy" is** the player's weapon damage at the skill's damage percent with the
+  player's own modifiers for that skill's tags (`UCataclysmSkillEffects::ModifiedDamage`). The player's defences then
+  reduce the tenth as an enemy's would. It is area damage, so it cannot be evaded; it cannot critically strike,
+  leeches nothing and is not retaliated against. It is ordinary damage and can kill.
+- **The angle can be pinned**, `Cataclysm.EchoChamberAngle`, in degrees.
+- **The panel:** "echo chamber: 3 copies fired, 1 hit you".
+
+### How it is built
+
+`OnSkillWasUsed` hands each skill use to `NoteSkillUseForEchoChamber` before Wild Magic's own checks. It finds the
+used skill's row among the skills of the player's damage type, keeps its name, the aim point and how far that is, and
+fires the copy on the next tick, for the reason Wild Magic waits one: a skill cannot be granted inside another
+skill's activation. `MakeTheEchoChamberCopy` triggers the row free and then, when the aim was within the skill's
+radius, deals the tenth with `ApplyDirectDamage` from the player to the player.
+
+**A copy is not a use.** It sends no skill-used notice, so a copy is not copied, rolls no Wild Magic, and feeds no "on
+skill use" row. On a floor carrying both rows one use gives one copy and at most one Wild Magic trigger, and neither
+acts on the other's skill.
+
+### Consequences, stated rather than changed
+
+- **Wasting Sickness does not roll for the self hit**, by the entry below: the player is not an enemy.
+- **Other rules that listen for a blow landing on the player see the self hit.** They were not read one by one. The
+  blow's attacker is the player, so a rule that asks who dealt it can tell; one that does not, cannot.
+- **A copy of a skill that burns or shreds does that to the enemies it reaches**, as the pressed skill does, for free.
+  That is the "reward" half of the row.
+- The Wild Magic entry's consequences for a triggered skill hold for a copy: a burn it leaves that kills after the
+  copy is gone names no killing skill; Fervour is earned and bought on its hits; it turns the character to face its
+  aim and plays an attack clip.
+- **The turn to face the copy's aim is visible and may be unwelcome**: every press is followed, one tick later, by
+  the character facing a random direction. Play has to say whether that reads as the row's chaos or as a fault.
+
+### The two tests that used this row as their not-built example
+
+`ThePanelMarksTheOnesThatDoNothing` and `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack` used `Chaos_Echo_Chamber`.
+Both now use `War_Supply_Lines`, "If the cart is destroyed, you lose": there is no way to lose a dungeon yet, which
+waits on issues #48 and #41. Their comments say so.
+
+### Tests
+
+Five new automation tests, `Cataclysm.DungeonModifierEffects.`:
+
+- `EchoChamberFiguresWhichSkillsItCopiesAndTheRowBuilt`: the figures; the area rule at, inside and beyond the radius;
+  on rows of the real table by name, a strike and a projectile are copied and a self buff, a movement skill and a
+  held strike are not.
+- `EchoChamberFiresAFreeCopyAsFarAsTheUseWasAimedAtTheDrawnAngle`: a use aimed 20 metres along X draws a copy 20
+  metres along Y at the pinned 90 degrees; fired, it pays no mana and sends no notice; too far to hit the player.
+- `EchoChamberACopyAimedWithinItsOwnRadiusHitsThePlayerAndOneAimedBeyondDoesNot`: the far one first, no hit and no
+  health lost; then a use aimed at the player's own feet, one hit, health lost, and no more than a tenth of what the
+  copy would deal to an enemy.
+- `EchoChamberCopiesNothingForACreatureASelfBuffAFloorWithoutTheRowOrABasicAttack`, with the same use in another slot
+  as its control.
+- `EchoChamberAndWildMagicEachActOnceOnOneUseAndNeitherActsOnTheOthersSkill`.
+
+**Python.** One new check, `test_echo_chamber_row_still_says_a_copy_in_a_random_direction_that_can_also_hit_you`,
+pins the phrases the readings rest on, "it can also hit you" among them. This row needs no workbook edit.
+
+### Run
+
+One window on 2026-10-05 for a stack of two: the Wasting Sickness and leech change (the entry below), then this one
+on top of it, at `feat/echo-chamber` ee9c7e1b. Development was 8f83b888, measured there at 3160 Unreal tests and 5712
+Python. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3167 tests performed, 3167 succeeded, 0 failed`; `Declared: 3167 tests in the tree at ee9c7e1b; 3167 performed, gap 0` |
+| Python, with continuous integration idle | `5705 passed, 8 skipped in 311.47s`; JUnit `tests="5713" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**No other rule's test failed because of the self hit.** That is what the whole suite can say about it; rules with no
+test for a blow the player deals themselves were not measured.
+
+**Guard proofs, at ee9c7e1b, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmDungeonGameMode.cpp`: the self hit no longer asks whether the aim was within the radius | `Cataclysm.DungeonModifierEffects.EchoChamberACopyAimedWithin` | 1 performed, 1 failed, 4 failed assertions: the far copy hit (1 against 0), health was 496.35 against 510, the near count read 2 against 1, the panel said "2 hit you" | 1 performed, 1 succeeded |
+| Pb | Same file: the basic attack is copied like any use | `Cataclysm.DungeonModifierEffects.EchoChamberCopiesNothing` | 1 performed, 1 failed, 1 failed assertion: "a basic attack is not copied" | 1 performed, 1 succeeded |
+| Pc | `CataclysmDungeonModifierEffects.cpp`: `EchoChamberCopies` no longer asks Wild Magic's rule | `Cataclysm.DungeonModifierEffects.EchoChamberFigures` | 1 performed, 1 failed, 1 failed assertion: "a held strike is not" | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 4, 1 and 1.
+
+**One size, measured in passing.** Pa's failing half printed the test player's health as 496.35 of 510 after one self
+hit from the copied strike: 13.65, about 2.7% of that player's maximum health. It is one skill on one test
+character and not a figure for play. **The self hit is ordinary damage and can kill a player low enough.**
+
+---
+
 ## 2026-10-05 — Wasting Sickness rolls only for a blow an enemy dealt, and leech is asked with the tags of the skill that dealt the hit
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (`NoteHitForWastingSickness`);

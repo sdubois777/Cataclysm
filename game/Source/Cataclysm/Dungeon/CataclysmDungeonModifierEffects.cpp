@@ -121,6 +121,7 @@ const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Crypt
 const TCHAR* UCataclysmDungeonModifierEffects::SoulChainsKey = TEXT("Death_Soul_Chains");
 const TCHAR* UCataclysmDungeonModifierEffects::LabrynthKey = TEXT("Chaos_The_Labrynth");
 const TCHAR* UCataclysmDungeonModifierEffects::WildMagicKey = TEXT("Chaos_Wild_Magic");
+const TCHAR* UCataclysmDungeonModifierEffects::EchoChamberKey = TEXT("Chaos_Echo_Chamber");
 
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
@@ -809,6 +810,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// WILD MAGIC, BUILT 2026-10-04: a skill use rolls to trigger a random different skill of the player's damage
 		// type. "Your class tree" is read as the damage type; see the key. Issues #1820 and #41.
 		|| RowKey == FName(WildMagicKey)
+		// ECHO CHAMBER, BUILT 2026-10-05: every skill use fires a free copy of that skill in a random direction, and
+		// the copy hits the player for a tenth when they stand inside its area. Issues #1820 and #41.
+		|| RowKey == FName(EchoChamberKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -993,6 +997,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SoulChainsKey),
 		FName(LabrynthKey),
 		FName(WildMagicKey),
+		FName(EchoChamberKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
@@ -3100,6 +3105,18 @@ const TCHAR* UCataclysmDungeonModifierEffects::WildMagicLeftOutName(ECataclysmWi
 	default:
 		return TEXT("unknown");
 	}
+}
+
+bool UCataclysmDungeonModifierEffects::EchoChamberCopies(const FCataclysmWeaponSkill& Skill)
+{
+	return WildMagicLeavesOut(Skill) == ECataclysmWildMagicLeftOut::InThePool
+		&& (Skill.Shape == ECataclysmSkillShape::Strike || Skill.Shape == ECataclysmSkillShape::Projectile
+			|| Skill.Shape == ECataclysmSkillShape::Debuff);
+}
+
+bool UCataclysmDungeonModifierEffects::EchoChamberHitsTheCaster(float AimDistanceCm, float RadiusCm)
+{
+	return RadiusCm > 0.0f && AimDistanceCm <= RadiusCm;
 }
 
 TArray<FCataclysmWeaponSkill> UCataclysmDungeonModifierEffects::WildMagicPool(const UDataTable* Table,
