@@ -13698,6 +13698,21 @@ bool FCataclysmHeldTriggerCooldownSkillTest::RunTest(const FString&)
 	TestFalse(TEXT("it started no cooldown on the heavy slot"),
 			  Rig.System->HasMatchingGameplayTag(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy)));
 	TestFalse(TEXT("and there is no second one to make"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+
+	// A HELD SKILL WHOSE COOLDOWN IS RUNNING IS STILL TRIGGERED, AND ITS COOLDOWN IS UNCHANGED. Ruled 2026-10-06. The
+	// pick is pinned to Quench, the heavy skill; a held cooldown tag with no charge recorded is a running cooldown.
+	const FGameplayTag HeavyCooldown = UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy);
+	Rig.System->AddLooseGameplayTag(HeavyCooldown);
+	if (!TestEqual(TEXT("control: with its cooldown running Quench has no use left"),
+				   Rig.System->SkillChargesHeld(ECataclysmAbilitySlot::Heavy, Pool[0].Tags), 0))
+	{
+		return false;
+	}
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("Quench is triggered while its cooldown runs"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	TestTrue(TEXT("and its cooldown is unchanged: still running, and still no use left"),
+			 Rig.System->HasMatchingGameplayTag(HeavyCooldown)
+				 && Rig.System->SkillChargesHeld(ECataclysmAbilitySlot::Heavy, Pool[0].Tags) == 0);
 	return true;
 }
 
