@@ -225,6 +225,12 @@ struct CATACLYSM_API FCataclysmSkillUsedNotice
 	 * aims the skill it triggers here, ruled 2026-10-04. Issue #41.
 	 */
 	FVector Aim = FVector::ZeroVector;
+
+	/**
+	 * Whether the skill used has a cooldown of its own, above nought: false for the basic attack and for an aura.
+	 * Ruled 2026-10-06, for rows about "your cooldown abilities". False when the caller does not say.
+	 */
+	bool bHasCooldown = false;
 };
 
 /**
@@ -403,7 +409,8 @@ public:
 	 */
 	static void NoteSkillUsed(AActor* User, const FString& SkillName,
 							  const FGameplayTagContainer& SkillTags,
-							  ECataclysmAbilitySlot Slot, const FVector* Aim = nullptr);
+							  ECataclysmAbilitySlot Slot, const FVector* Aim = nullptr,
+							  bool bHasCooldown = false);
 
 	/**
 	 * Announces a creature starting one of its abilities. Called by

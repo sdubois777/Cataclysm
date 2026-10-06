@@ -80,6 +80,11 @@ CONSTANTS = {
     # AND THE TWO THAT TRIGGER A DIFFERENT HELD SKILL, ruled 2026-10-06.
     "TriggerHeldSkillAction": "trigger_held_skill",
     "TriggerHeldSpellAction": "trigger_held_spell",
+    # AND THE FOUR THAT ROLL FOR THE USE IN HAND, ruled 2026-10-06.
+    "UseNoDamageAction": "use_no_damage",
+    "CooldownUseNoDamageAction": "cooldown_use_no_damage",
+    "UseIncreasedDamageAction": "use_increased_damage",
+    "CooldownUseIncreasedDamageAction": "cooldown_use_increased_damage",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -181,6 +186,15 @@ def test_the_generator_accepts_exactly_the_reflect_name_the_engine_has() -> None
 def test_the_generator_accepts_exactly_the_repeat_skill_name_the_engine_has() -> None:
     """Mechanism B2."""
     assert gen.REPEAT_SKILL_ACTION == engine_names()["RepeatSkillAction"]
+
+
+def test_the_generator_knows_exactly_the_use_outcome_names_the_engine_has() -> None:
+    """A chance per use, ruled 2026-10-06."""
+    names = engine_names()
+    assert gen.USE_NO_DAMAGE_ACTIONS == (
+        names["UseNoDamageAction"], names["CooldownUseNoDamageAction"])
+    assert gen.USE_INCREASED_DAMAGE_ACTIONS == (
+        names["UseIncreasedDamageAction"], names["CooldownUseIncreasedDamageAction"])
 
 
 def test_the_generator_accepts_exactly_the_trigger_held_names_the_engine_has() -> None:
