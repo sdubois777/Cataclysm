@@ -412,9 +412,16 @@ bool UCataclysmGameplayAbility::PoolCovers(
 const TCHAR* UCataclysmGameplayAbility::CostPaidFromEnergyShieldStat =
 	TEXT("skill_cost_paid_from_energy_shield");
 
+const TCHAR* UCataclysmGameplayAbility::CostPaidFromHealthWhenShortStat =
+	TEXT("skill_cost_paid_from_health_when_short");
+
 FGameplayAttribute UCataclysmGameplayAbility::PoolPaying(
-	const UAbilitySystemComponent* AbilitySystem, float Cost)
+	const UAbilitySystemComponent* AbilitySystem, float Cost, float* OutAmount)
 {
+	if (OutAmount)
+	{
+		*OutAmount = Cost;
+	}
 	const FGameplayAttribute Pool = CostPool(AbilitySystem);
 	if (PoolCovers(AbilitySystem, Pool, Cost))
 	{
@@ -430,6 +437,24 @@ FGameplayAttribute UCataclysmGameplayAbility::PoolPaying(
 		&& PoolCovers(AbilitySystem, Shield, Cost))
 	{
 		return Shield;
+	}
+
+	// AND HEALTH, AT THE ROW'S PRICE, WHEN MANA IS SHORT. Ruled 2026-10-06. See
+	// `CostPaidFromHealthWhenShortStat`. Only for a cost that was mana's to pay,
+	// and only when health stays above what is taken.
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float HealthForEachMana =
+		Cataclysm && Pool == UCataclysmVitalAttributeSet::GetManaAttribute()
+			? Cataclysm->StatForSkill(FName(CostPaidFromHealthWhenShortStat),
+									  FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+	if (HealthForEachMana > 0.0f && PoolCovers(AbilitySystem, Health, Cost * HealthForEachMana))
+	{
+		if (OutAmount)
+		{
+			*OutAmount = Cost * HealthForEachMana;
+		}
+		return Health;
 	}
 	return FGameplayAttribute();
 }
@@ -564,10 +589,14 @@ void UCataclysmGameplayAbility::ApplyCost(
 	// only on damage taken, does not restart, and emptying the shield this way
 	// is not "breaking" it, so Sacrificial Ward and anything else that answers a
 	// break never hears of it.
-	const FGameplayAttribute Pool = PoolPaying(AbilitySystem, Cost);
+	//
+	// WHAT IS TAKEN IS WHAT `PoolPaying` SAYS, which is the cost for every pool
+	// but health paid because mana was short. Ruled 2026-10-06.
+	float Charged = Cost;
+	const FGameplayAttribute Pool = PoolPaying(AbilitySystem, Cost, &Charged);
 	if (Pool.IsValid())
 	{
-		AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Cost);
+		AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Charged);
 	}
 }
 
