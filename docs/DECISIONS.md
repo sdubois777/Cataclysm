@@ -37,6 +37,8 @@ flags here rest on that decision.
   damage, which is the other row's.
 - **Blood Pyre gets no special case.** Its sentence says "standing in your own pyre does you no harm and doubles
   your health regeneration". With the first row worn the pyre harms its owner and still doubles their regeneration.
+- **The owner is not counted as an enemy standing in the zone, and the damage the owner takes carries the increase
+  for the enemies that are.**
 
 ### What the research settles, and what it does not
 
@@ -71,6 +73,10 @@ owner's decision.
 Whether a character's own zone killing them reads as fair in play, and whether Blood Pyre's "does you no harm"
 should outrank the first row. Both are as ruled above until played.
 
+**A movement skill's ground where it arrives hurts its user under the damage row.** That ground is under its owner
+the moment it is left, so Ashwalk, Infernal Plunge, Foul Wake and Vesselstep damage their user on the next sweep
+unless they step out.
+
 ### Tests
 
 Two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. A strike leaves a 4 metre zone
@@ -89,6 +95,9 @@ enemy stands inside as the control.
 ### Not yet run
 
 The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+**A behaviour with a test and no guard proof:** the owner being staggered once on entering and not again while
+staying. The proof written for it was dropped by the coordinating session to keep the window to eight proofs.
 
 ---
 
