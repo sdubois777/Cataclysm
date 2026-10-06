@@ -1011,20 +1011,36 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 void ACataclysmPlayerCharacter::OnSkillWasUsed(
 	const FCataclysmSkillUsedNotice& Notice)
 {
-	// NOT THE BASIC ATTACK. Ruled 2026-09-14: it is the one slot the design
-	// calls automatic and free, and a row generating resource on every use
-	// would generate constantly. The slot is on the notice, so this is one
-	// comparison rather than a guess about the skill's name.
-	if (Notice.User != this || Notice.Slot == ECataclysmAbilitySlot::BasicAttack)
+	if (Notice.User != this)
 	{
 		return;
 	}
+
+	// `skill_use` IS NOT RAISED FOR THE BASIC ATTACK. Ruled 2026-09-14: it is the
+	// one slot the design calls automatic and free, and a row generating
+	// resource on every use would generate constantly. The slot is on the
+	// notice, so this is one comparison rather than a guess about the skill's
+	// name.
+	//
+	// `attack_use` IS, ruled 2026-10-06: a row has to ask for it by that event,
+	// so no row written before it fires on the automatic swing. For the basic
+	// attack the row is asked against the attack's tags and the melee or ranged
+	// tag its shape gives; see `UCataclysmTriggeredSkill::BasicAttackUseTags`.
+	const bool bBasicAttack = Notice.Slot == ECataclysmAbilitySlot::BasicAttack;
 
 	if (UCataclysmAbilitySystemComponent* Acting =
 			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
 	{
 		// WITH THE SKILL IT IS ABOUT, so a row that repeats the skill just used knows which and where. Mechanism B2.
-		Acting->ActOnSkillUse(Notice.SkillName, Notice.SkillTags, Notice.Aim);
+		if (bBasicAttack)
+		{
+			const FGameplayTagContainer Asked = UCataclysmTriggeredSkill::BasicAttackUseTags(this, Notice.SkillTags);
+			Acting->ActOnSkillUse(Notice.SkillName, &Asked, Notice.Aim, /*bBasicAttack=*/true);
+		}
+		else
+		{
+			Acting->ActOnSkillUse(Notice.SkillName, Notice.SkillTags, Notice.Aim);
+		}
 
 		// AND ANY REPEAT A ROW ASKED FOR IS MADE ON THE NEXT TICK. This runs inside the used skill's activation,
 		// where a skill cannot be granted; Follow Through, Wild Magic and Echo Chamber wait a tick for the same reason.

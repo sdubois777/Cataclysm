@@ -2913,6 +2913,14 @@ class TestRepeatSkill:
                 out[0]["ValueHigh"], out[0]["FractionOf"]) == (
             "repeat_skill", "skill_use", 5.0, 15.0, "")
 
+    def test_a_repeat_row_may_be_written_on_the_event_that_includes_the_basic_attack(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "attack_use"}))
+        assert (out[0]["Action"], out[0]["ActionEvent"]) == ("repeat_skill", "attack_use")
+
+    def test_a_repeat_row_on_the_basic_attack_event_that_names_no_skill_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "basic_attack"}))
+
     def test_a_repeat_row_on_an_event_that_names_no_skill_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="names no skill to repeat"):
             gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "kill"}))

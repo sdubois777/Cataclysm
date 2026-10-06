@@ -74,9 +74,29 @@ public:
 	 * Makes the repeat a row action recorded on the character's ability system, and clears it: the skill of that
 	 * name, among the skills of the character's damage type, started free at the recorded aim and share.
 	 *
+	 * THE BASIC ATTACK IS NOT A ROW OF THAT TABLE, so its name is looked up among the skills the character holds
+	 * (`HeldBasicAttack`), which is where the weapon's own basic attack is.
+	 *
 	 * CALLED ON THE TICK AFTER THE USE, for the reason the class comment gives. @return whether a skill started.
 	 * False, with nothing left behind, when nothing was recorded, when the table has no such skill, when the rule
 	 * above leaves it out, or when the skill refuses itself.
 	 */
 	static bool MakePendingRepeat(AActor* Character);
+
+	/**
+	 * The basic attack the character holds, as its weapon slots built it through
+	 * `UCataclysmWeaponSkills::BasicAttackFor` and with its element tag; null when it holds none.
+	 */
+	static const FCataclysmWeaponSkill* HeldBasicAttack(const AActor* Character);
+
+	/**
+	 * The tags a row on `attack_use` is asked against for a use of the character's basic attack: the attack's own
+	 * tags, and `Type.Melee` for a Strike or `Type.Ranged` for a Projectile.
+	 *
+	 * ADDED FOR THE QUESTION AND NOT TO THE ATTACK. Ruled 2026-10-06. A Strike basic attack has carried `Type.Melee`
+	 * itself since issue #1564, so for it this adds nothing. A Projectile basic attack carries no `Type.Ranged`, and
+	 * giving it one would move every row scoped to ranged skills onto it; this lets a row on `attack_use` ask for a
+	 * ranged attack and changes the reach of no other row.
+	 */
+	static FGameplayTagContainer BasicAttackUseTags(const AActor* Character, const FGameplayTagContainer* OwnTags);
 };

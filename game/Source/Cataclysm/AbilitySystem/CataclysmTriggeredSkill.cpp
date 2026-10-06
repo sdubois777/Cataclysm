@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -74,6 +75,19 @@ bool UCataclysmTriggeredSkill::MakePendingRepeat(AActor* Character)
 	const float Share = System->PendingRepeatShare();
 	System->ClearPendingRepeat();
 
+	// THE BASIC ATTACK COMES FROM THE WEAPON AND NOT FROM THE TABLE. Copied, because starting it may change what the
+	// character holds.
+	if (Named == FName(UCataclysmWeaponSkills::BasicAttackName))
+	{
+		const FCataclysmWeaponSkill* Held = HeldBasicAttack(Character);
+		if (!Held)
+		{
+			return false;
+		}
+		const FCataclysmWeaponSkill Basic = *Held;
+		return RepeatsFromARow(Basic) && Trigger(Character, Basic, Aim, Share);
+	}
+
 	for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(
 			 UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character)))
 	{
@@ -83,4 +97,35 @@ bool UCataclysmTriggeredSkill::MakePendingRepeat(AActor* Character)
 		}
 	}
 	return false;
+}
+
+const FCataclysmWeaponSkill* UCataclysmTriggeredSkill::HeldBasicAttack(const AActor* Character)
+{
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Character ? Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	return Slots ? Slots->GetAvailableSkills().FindByPredicate([](const FCataclysmWeaponSkill& Skill)
+	{
+		return Skill.Slot == ECataclysmAbilitySlot::BasicAttack;
+	}) : nullptr;
+}
+
+FGameplayTagContainer UCataclysmTriggeredSkill::BasicAttackUseTags(const AActor* Character,
+																   const FGameplayTagContainer* OwnTags)
+{
+	FGameplayTagContainer Asked = OwnTags ? *OwnTags : FGameplayTagContainer();
+	const FCataclysmWeaponSkill* Held = HeldBasicAttack(Character);
+	FGameplayTag ByShape;
+	if (Held && Held->Shape == ECataclysmSkillShape::Strike)
+	{
+		ByShape = UCataclysmDamageCalculation::MeleeTag();
+	}
+	else if (Held && Held->Shape == ECataclysmSkillShape::Projectile)
+	{
+		ByShape = UCataclysmDamageCalculation::RangedTag();
+	}
+	if (ByShape.IsValid())
+	{
+		Asked.AddTag(ByShape);
+	}
+	return Asked;
 }
