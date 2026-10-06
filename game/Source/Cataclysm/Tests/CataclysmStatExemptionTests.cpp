@@ -4056,6 +4056,106 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `minions_leave_chaos_pools` is a flag on a commander, read when a minion of theirs is killed. Ruled 2026-10-06.
+	 *
+	 * TWO COMMANDERS A HUNDRED METRES APART, as `ProbeExplodesOnDeath` has. The plain one loses an imp and is left
+	 * no zone. The flagged one loses an imp and a ballista, each of which leaves a pool, and has a third imp
+	 * destroyed without being killed -- which is how one whose time ran out or one removed to make room goes --
+	 * and that one leaves none.
+	 */
+	void ProbeMinionsLeaveChaosPools(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Flagged(World, FVector(0, 100 * M, 0));
+		GrantFlat(Flagged.Actor, UCataclysmDamageCalculation::MinionsLeaveChaosPoolsStat, 1.0f);
+
+		const FVector KilledAt(1 * M, 100 * M, 0);
+		const FVector MachineAt(30 * M, 100 * M, 0);
+		const FVector RemovedAt(60 * M, 100 * M, 0);
+		ACataclysmMinion* PlainImp = ACataclysmMinion::Spawn(
+			Plain.Actor, FVector(1 * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+		ACataclysmMinion* Killed = ACataclysmMinion::Spawn(
+			Flagged.Actor, KilledAt, /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+		ACataclysmMinion* Machine = ACataclysmMinion::Spawn(
+			Flagged.Actor, MachineAt, /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Ballista"));
+		ACataclysmMinion* Removed = ACataclysmMinion::Spawn(
+			Flagged.Actor, RemovedAt, /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+		if (!Test.TestTrue(TEXT("set-up: four minions"), PlainImp && Killed && Machine && Removed))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmMinion* One : {PlainImp, Killed, Machine})
+			{
+				if (IsValid(One))
+				{
+					One->Destroy();
+				}
+			}
+		};
+		const float ImpsOwnBlow = Killed->OwnDamagePerHit;
+		const FVector KilledStood = Killed->GetActorLocation();
+		const FVector MachineStood = Machine->GetActorLocation();
+		const FVector RemovedStood = Removed->GetActorLocation();
+		if (!Test.TestTrue(TEXT("set-up: the imp has a blow of its own to take a share of"), ImpsOwnBlow > 0.0f))
+		{
+			return;
+		}
+
+		KillMinion(PlainImp);
+		KillMinion(Killed);
+		KillMinion(Machine);
+		Removed->Destroy();
+
+		const auto PoolsOf = [World](const AActor* Commander)
+		{
+			TArray<ACataclysmGroundZone*> Found;
+			for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+			{
+				if (IsValid(*It) && It->GetOwner() == Commander)
+				{
+					Found.Add(*It);
+				}
+			}
+			return Found;
+		};
+		const auto PoolAt = [](const TArray<ACataclysmGroundZone*>& Pools, const FVector& Where) -> ACataclysmGroundZone*
+		{
+			for (ACataclysmGroundZone* Pool : Pools)
+			{
+				if (FVector::Dist2D(Pool->GetActorLocation(), Where) < 100.0f)
+				{
+					return Pool;
+				}
+			}
+			return nullptr;
+		};
+
+		Test.TestEqual(TEXT("a commander without the flag is left no pool by a killed imp"), PoolsOf(Plain.Actor).Num(), 0);
+		const TArray<ACataclysmGroundZone*> Pools = PoolsOf(Flagged.Actor);
+		Test.TestEqual(TEXT("a flagged commander is left two pools: the killed imp's and the killed ballista's"), Pools.Num(), 2);
+		Test.TestNotNull(TEXT("a killed machine that carries the minion tag leaves one where it stood"), PoolAt(Pools, MachineStood));
+		Test.TestNull(TEXT("an imp destroyed without being killed leaves none"), PoolAt(Pools, RemovedStood));
+		const ACataclysmGroundZone* Pool = PoolAt(Pools, KilledStood);
+		if (!Test.TestNotNull(TEXT("the killed imp leaves one where it stood"), Pool))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("the pool is 3 metres in radius"), Pool->RadiusCm, 300.0f, 0.01f);
+		Test.TestEqual(TEXT("and lasts 4 seconds"), Pool->GetLifeSpan(), 4.0f, 0.01f);
+		Test.TestEqual(TEXT("and a sweep deals 10 of the imp's own blow"), Pool->DamagePerTick, ImpsOwnBlow * 0.1f, 0.001f);
+		Test.TestTrue(TEXT("as Chaos damage"), Pool->DamageType == FName(TEXT("Chaos")));
+	}
+
+	/**
 	 * A player character on its player state, for the potion probes below: only a
 	 * player character holds potions. Issue #806.
 	 */
@@ -6039,6 +6139,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_damages_its_owner"), &ProbeZoneDamagesItsOwner},
 			{TEXT("zone_applies_effects_to_owner"), &ProbeZoneAppliesEffectsToOwner},
 			{TEXT("zone_follows_owner_percent"), &ProbeZoneFollowsOwnerPercent},
+			{TEXT("minions_leave_chaos_pools"), &ProbeMinionsLeaveChaosPools},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 			{TEXT("skill_duration"), &ProbeSkillDuration},
