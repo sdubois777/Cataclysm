@@ -34,6 +34,7 @@ finished", against at least five that did not. Every failed test passed when run
   which is what the first build of every one of these floors already goes through (`UNavigationSystemV1::Build`). It
   waits for each running tile task and runs one itself when no worker has begun it.
 - **Its limit is 60 seconds on the clock**, not a count of ticks.
+- **Every wait that finishes logs its ticks and its seconds**, so a run's log says how long a rebuild really takes.
 - **When it does not finish it says what it saw**: the ticks run, the seconds, the build tasks left, and whether a
   build was still in progress. The four failures so far said none of this.
 - **The old wait is kept under the name `TickOnlyForTheNavigationMesh`**, used by one test as its control.
