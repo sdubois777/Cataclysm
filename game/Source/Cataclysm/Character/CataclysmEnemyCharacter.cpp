@@ -899,6 +899,24 @@ void ACataclysmEnemyCharacter::NoteGroundDown(float Percent, float UntilSeconds)
 	GroundDownUntil = FMath::Max(GroundDownUntil, UntilSeconds);
 }
 
+float ACataclysmEnemyCharacter::AilmentSlowMultiplier() const
+{
+	const float Slow = FMath::Clamp(
+		UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
+			GetAbilitySystemComponent(), ECataclysmAilmentRider::Speed),
+		0.0f, 99.0f);
+	return 1.0f - Slow / 100.0f;
+}
+
+float ACataclysmEnemyCharacter::AilmentWalkMultiplier() const
+{
+	const float Slow = FMath::Clamp(
+		UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
+			GetAbilitySystemComponent(), ECataclysmAilmentRider::MovementSpeed),
+		0.0f, 99.0f);
+	return 1.0f - Slow / 100.0f;
+}
+
 void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
@@ -916,7 +934,11 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 
 	// MULTIPLIED BY EVERYTHING AT ONCE, so a creature that is both inspired
 	// and crippled gets both. See SpeedMultiplier.
-	const float Wanted = DesignedWalkSpeedCmPerSecond * SpeedMultiplier();
+	//
+	// AND WHAT SLOWS ITS MOVEMENT ALONE, which `SpeedMultiplier` must not hold.
+	// See `AilmentWalkMultiplier`.
+	const float Wanted =
+		DesignedWalkSpeedCmPerSecond * SpeedMultiplier() * AilmentWalkMultiplier();
 
 	// ONLY ON A CHANGE. Assigning the same float every frame is harmless, and
 	// checking first says out loud that this is a state that changes rarely

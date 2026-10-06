@@ -5099,6 +5099,10 @@ AILMENT_RIDER_ACTIONS = (
     "ailment_damage_dealt",
     # Added to the carrier's healing received reduction, capped at 100.
     "ailment_healing_received",
+    # Taken off both the carrier's movement speed and its attack speed.
+    "ailment_speed",
+    # Taken off the carrier's movement speed alone.
+    "ailment_movement_speed",
 )
 
 #: The action that REPEATS THE SKILL JUST USED, FREE, with its value as the chance
