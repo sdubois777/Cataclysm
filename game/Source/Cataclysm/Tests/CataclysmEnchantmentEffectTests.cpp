@@ -12913,4 +12913,80 @@ bool FCataclysmRetaliationSelfDamageRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStarvationTenRowTest,
+	"Cataclysm.Enchantments.StarvationTenPiecesGainAFamishedStackPerKillRaisingAllLeechUpToTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Starvation (10-Piece Bonus): When you kill an enemy, gain a stack of
+ * 'Famished.' Each stack increases all of your leech by 5%. Stacks last 4
+ * seconds". Issue #1833, 2026-10-05: three own-stack rows on `kill`, one for
+ * each of `life_leech`, `mana_leech` and `energy_shield_leech`, 5 increased a
+ * stack for 4 seconds. THE CAP OF 10 IS A LABELLED JUDGEMENT of that day: the
+ * sentence states none and an own-stack row must.
+ *
+ * EACH STAT IS READ AS A SHARE OF ITSELF WITH NO STACK, so the set's two-piece
+ * 5% of leech cancels out. Six pieces hold no stack whatever is killed.
+ */
+bool FCataclysmStarvationTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Starvation = TEXT("Positive_Starvation_2_Piece_Bonus_You_have_5_life_m");
+	const FName Kill(TEXT("kill"));
+	const TCHAR* const Stats[] = {TEXT("life_leech"), TEXT("mana_leech"), TEXT("energy_shield_leech")};
+
+	for (const int32 Pieces : {6, 10})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, Starvation, Pieces);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+		const auto Leech = [ASC](const TCHAR* Stat)
+		{
+			return ASC->StatAppliedTo(FName(Stat), FGameplayTagContainer(), 100.0f);
+		};
+		TMap<FString, float> Plain;
+		for (const TCHAR* Stat : Stats)
+		{
+			Plain.Add(Stat, Leech(Stat));
+			if (!TestTrue(FString::Printf(TEXT("%d pieces: %s is something before any kill"), Pieces, Stat),
+					Plain[Stat] > 0.0f))
+			{
+				return false;
+			}
+		}
+		const auto Expect = [&](const TCHAR* What, int32 Stacks)
+		{
+			for (const TCHAR* Stat : Stats)
+			{
+				TestEqual(FString::Printf(TEXT("%d pieces, %s: %s is %d%% above itself. If not at ten pieces, "
+											   "DT_EnchantmentEffects may be older than the rows: run "
+											   "tools/generate_datatable_assets.py"),
+							  Pieces, What, Stat, 5 * Stacks),
+					Leech(Stat) / Plain[Stat], 1.0f + 0.05f * Stacks, 0.0005f);
+			}
+		};
+
+		ASC->ActOnEvent(Kill);
+		ASC->ActOnEvent(Kill);
+		Expect(TEXT("two kills"), Pieces == 10 ? 2 : 0);
+		for (int32 More = 0; More < 10; ++More)
+		{
+			ASC->ActOnEvent(Kill);
+		}
+		Expect(TEXT("twelve kills"), Pieces == 10 ? 10 : 0);
+		World->TimeSeconds += 3.9f;
+		Expect(TEXT("just inside four seconds"), Pieces == 10 ? 10 : 0);
+		World->TimeSeconds += 0.2f;
+		Expect(TEXT("just after four seconds"), 0);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
