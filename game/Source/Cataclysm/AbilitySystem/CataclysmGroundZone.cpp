@@ -13,6 +13,9 @@
 // floor rule's zones share, and a zone asks it before it burns.
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Components/SceneComponent.h"
+// For the walking speed of the character a following patch follows. Ruled 2026-10-06.
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "NiagaraComponent.h"
 #include "Engine/World.h"
 // For walking the level's patches to answer whether a character is standing in
@@ -274,14 +277,54 @@ void ACataclysmGroundZone::TravelAt(const FVector& CentimetresPerSecond)
 	TravelPerSecond = CentimetresPerSecond;
 
 	// ONLY A PATCH THAT ACTUALLY MOVES TICKS. Setting this to zero turns it
-	// back off, so a patch that stops travelling stops costing a frame.
-	SetActorTickEnabled(!TravelPerSecond.IsNearlyZero());
+	// back off, so a patch that stops travelling stops costing a frame. One
+	// that follows its owner goes on ticking for that.
+	SetActorTickEnabled(!TravelPerSecond.IsNearlyZero() || FollowsItsOwnerAtPercent > 0.0f);
+}
+
+void ACataclysmGroundZone::FollowItsOwnerAt(float PercentOfTheOwnersSpeed)
+{
+	FollowsItsOwnerAtPercent = FMath::Max(0.0f, PercentOfTheOwnersSpeed);
+	SetActorTickEnabled(!TravelPerSecond.IsNearlyZero() || FollowsItsOwnerAtPercent > 0.0f);
+}
+
+float ACataclysmGroundZone::WalkSpeedOf(const AActor* Who)
+{
+	const ACharacter* Walker = Cast<const ACharacter>(Who);
+	const UCharacterMovementComponent* Movement = Walker ? Walker->GetCharacterMovement() : nullptr;
+	return Movement ? Movement->MaxWalkSpeed : 0.0f;
+}
+
+void ACataclysmGroundZone::FollowStep(float StepSeconds)
+{
+	const AActor* Leader = GetOwner();
+	if (StepSeconds <= 0.0f || FollowsItsOwnerAtPercent <= 0.0f || !IsValid(Leader))
+	{
+		return;
+	}
+
+	// ALONG THE GROUND, so a patch does not climb to its owner's waist.
+	FVector ToOwner = Leader->GetActorLocation() - GetActorLocation();
+	ToOwner.Z = 0.0;
+	const double Away = ToOwner.Size();
+
+	// NO FURTHER THAN ITS OWNER, which is what "stops on reaching them" is: the step is the smaller of what the
+	// speed allows and what is left to cover.
+	const double Step = FMath::Min(
+		Away, static_cast<double>(WalkSpeedOf(Leader) * FollowsItsOwnerAtPercent / 100.0f * StepSeconds));
+	if (Step <= UE_KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
+	MoveBy(ToOwner / Away * Step);
 }
 
 void ACataclysmGroundZone::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	TravelStep(DeltaSeconds);
+	FollowStep(DeltaSeconds);
 }
 
 void ACataclysmGroundZone::TravelStep(float StepSeconds)
@@ -291,8 +334,11 @@ void ACataclysmGroundZone::TravelStep(float StepSeconds)
 		return;
 	}
 
-	const FVector Delta = TravelPerSecond * StepSeconds;
+	MoveBy(TravelPerSecond * StepSeconds);
+}
 
+void ACataclysmGroundZone::MoveBy(const FVector& Delta)
+{
 	// NOT SWEPT AGAINST THE WORLD, AND THAT IS NOT AN OVERSIGHT. This actor's
 	// root is a bare `USceneComponent` with no collision shape, so a swept move
 	// would test nothing and simply cost more. What stops a patch leaving the

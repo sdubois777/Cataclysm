@@ -551,6 +551,43 @@ public:
 	void TravelStep(float StepSeconds);
 
 	/**
+	 * Make this patch follow the character who left it, at this percent of that character's walking speed. Nought:
+	 * it stays. Ruled 2026-10-06: "Your persistent AOE zones follow you as you move at 50% of your movement speed".
+	 *
+	 * IT MOVES TOWARD WHERE ITS OWNER STANDS AND STOPS ON REACHING THEM. A lane keeps its shape and is moved by its
+	 * near end, which is where this actor is.
+	 *
+	 * THIS TURNS TICKING ON, as `TravelAt` does and for its reason: a patch that stays does not tick.
+	 */
+	void FollowItsOwnerAt(float PercentOfTheOwnersSpeed);
+
+	/**
+	 * Move the patch by one step of following. Does nothing if it does not follow. Public so a test can drive it,
+	 * for the reason `TravelStep` gives.
+	 */
+	void FollowStep(float StepSeconds);
+
+	/**
+	 * The walking speed a following patch reads for its owner, in centimetres a second.
+	 *
+	 * THE FIGURE THE CHARACTER'S OWN MOVEMENT COMPONENT HOLDS NOW, `MaxWalkSpeed`. The player writes its speed
+	 * there after every modifier, and a creature writes its designed speed there after what hastes and slows it,
+	 * so one read serves a player and a creature alike. AN OWNER THAT IS NOT A CHARACTER HAS NO SPEED AND ANSWERS
+	 * NOUGHT, so its patches stay where they were left.
+	 */
+	static float WalkSpeedOf(const AActor* Who);
+
+	/** The percent of its owner's walking speed at which this patch follows them. Nought: it does not. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground")
+	float FollowsItsOwnerAtPercent = 0.0f;
+
+	/**
+	 * Move the actor, its far end and its visual effects by one offset. What `TravelStep` and `FollowStep` share;
+	 * see `TravelStep`'s definition for why each of the three is carried by hand.
+	 */
+	void MoveBy(const FVector& Delta);
+
+	/**
 	 * How far along each axis this patch moves in a second. Zero: it does not.
 	 *
 	 * IN CENTIMETRES BECAUSE EVERY DISTANCE IN THIS FILE IS. `RadiusCm` above

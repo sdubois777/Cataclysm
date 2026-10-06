@@ -2998,6 +2998,8 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 		// The owner's decision of 2026-10-06.
 		Zone->bAlsoDamagesItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat), SkillTags, 0.0f) > 0.0f;
 		Zone->bAlsoLaysItsEffectsOnItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat), SkillTags, 0.0f) > 0.0f;
+		// AND WHETHER IT FOLLOWS THE CHARACTER WHO LEFT IT, at a percent of their walking speed. Ruled 2026-10-06.
+		Zone->FollowItsOwnerAt(ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat), SkillTags, 0.0f));
 	}
 
 	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's

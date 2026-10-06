@@ -455,6 +455,10 @@ INVENTORY = {
         "whether a zone also lays its effects on the character who left it (the owner's "
         "decision of 2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat), SkillTags, 0.0f'):
+        "the percent of its owner's walking speed at which a zone follows them "
+        "(ruled 2026-10-06), asked where the zone is left; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f'):
         "whether a zone staggers whoever enters it (ruled 2026-10-06), asked "
         "where the zone is left; a flag, not a modifier of a blow",
