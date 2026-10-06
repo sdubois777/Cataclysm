@@ -3730,6 +3730,139 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and with one after a second blink"), OnlyOne.LiveZonesAfterASecondBlink, 1);
 	}
 
+	/** One zone a use of a skill left its user: where, how wide, for how long, what a sweep deals and as what type. */
+	struct FLeftZone
+	{
+		FVector At = FVector::ZeroVector;
+		float RadiusCm = 0.0f;
+		float LastsSeconds = 0.0f;
+		float PerSweep = 0.0f;
+		FName DamageType;
+	};
+
+	/**
+	 * The zones one use of one skill left its user, nearest the origin first. For the two stats by which a row
+	 * gives a zone to a skill that states no ground. Ruled 2026-10-06.
+	 *
+	 * A USER AT THE ORIGIN AND ONE ENEMY 6 M TO ITS SIDE. The enemy is what a curse is laid on. It is outside
+	 * every radius the callers state, so nothing else here strikes it.
+	 *
+	 * `bOutUsed` SAYS THE SKILL RAN, because an empty answer is also what a skill that left nothing gives.
+	 */
+	TArray<FLeftZone> ZonesLeftByOneUse(TSubclassOf<UCataclysmSkillTemplate> Class, const TCHAR* ParamsCell,
+										const TCHAR* TagsCell,
+										TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry, bool& bOutUsed)
+	{
+		TArray<FLeftZone> Left;
+		bOutUsed = false;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return Left;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger User(World, FVector::ZeroVector);
+		FScopedSwinger Enemy(World, FVector(0.0f, 600.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Carry(Inputs);
+		if (Inputs.Num() > 0)
+		{
+			User.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+
+		const FGameplayAbilitySpecHandle Handle = User.AbilitySystem->GiveAbilityInSlot(
+			Class, ECataclysmAbilitySlot::Movement, /*Level=*/100, User.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? User.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSkillTemplate* Skill = Spec ? Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Skill)
+		{
+			return Left;
+		}
+		Skill->SkillName = TEXT("A skill a row may give a zone");
+		Skill->Params = UCataclysmSkillShapes::ParseParams(ParamsCell);
+		Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagsCell);
+		bOutUsed = User.AbilitySystem->TryActivateAbility(Handle);
+
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It) && It->GetOwner() == User.Actor)
+			{
+				FLeftZone One;
+				One.At = It->GetActorLocation();
+				One.RadiusCm = It->RadiusCm;
+				One.LastsSeconds = It->GetLifeSpan();
+				One.PerSweep = It->DamagePerTick;
+				One.DamageType = It->DamageType;
+				Left.Add(One);
+			}
+		}
+		Left.Sort([](const FLeftZone& A, const FLeftZone& B) { return A.At.SizeSquared2D() < B.At.SizeSquared2D(); });
+		return Left;
+	}
+
+	/**
+	 * `zone_at_start_and_end_seconds` is read by a Movement skill, where it began and where it arrived. A blink
+	 * that states no ground leaves none; the same blink by a caster carrying 4 leaves two zones lasting 4 seconds.
+	 */
+	void ProbeZoneAtStartAndEndSeconds(FAutomationTestBase& Test)
+	{
+		const TCHAR* Blink = TEXT("Mode=Blink; Range=8; Radius=3.5");
+		const TCHAR* Tags = TEXT("Item.Weapon.Wand, Element.Demonic, Slot.Movement");
+		bool bPlainUsed = false;
+		bool bCarryingUsed = false;
+		const TArray<FLeftZone> Plain = ZonesLeftByOneUse(UCataclysmMovementSkill::StaticClass(), Blink, Tags,
+			[](TMap<FName, FCataclysmStatInputs>&) {}, bPlainUsed);
+		const TArray<FLeftZone> Carrying = ZonesLeftByOneUse(UCataclysmMovementSkill::StaticClass(), Blink, Tags,
+			[](TMap<FName, FCataclysmStatInputs>& Inputs)
+			{
+				CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, 4.0f);
+			}, bCarryingUsed);
+		if (!Test.TestTrue(TEXT("both casters blinked"), bPlainUsed && bCarryingUsed))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a blink that states no ground leaves no zone"), Plain.Num(), 0);
+		if (!Test.TestEqual(TEXT("a carrying caster's blink leaves two"), Carrying.Num(), 2))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("one where it began"), Carrying[0].At.Size2D() < 100.0f);
+		Test.TestTrue(TEXT("and one where it arrived"), Carrying[1].At.Size2D() > 400.0f);
+		Test.TestEqual(TEXT("the first lasting the 4 seconds carried"), Carrying[0].LastsSeconds, 4.0f, 0.01f);
+		Test.TestEqual(TEXT("and the second too"), Carrying[1].LastsSeconds, 4.0f, 0.01f);
+	}
+
+	/**
+	 * `zone_at_impact_seconds` is read where a skill's blow lands. A charge that states no ground leaves none; the
+	 * same charge by a user carrying 3 leaves one zone, where it arrived, lasting 3 seconds.
+	 */
+	void ProbeZoneAtImpactSeconds(FAutomationTestBase& Test)
+	{
+		const TCHAR* Charge = TEXT("Mode=Charge; Range=8; Radius=1.5");
+		const TCHAR* Tags = TEXT("Item.Weapon.Sword, Element.Demonic, Keyword.Charge, Slot.Movement");
+		bool bPlainUsed = false;
+		bool bCarryingUsed = false;
+		const TArray<FLeftZone> Plain = ZonesLeftByOneUse(UCataclysmMovementSkill::StaticClass(), Charge, Tags,
+			[](TMap<FName, FCataclysmStatInputs>&) {}, bPlainUsed);
+		const TArray<FLeftZone> Carrying = ZonesLeftByOneUse(UCataclysmMovementSkill::StaticClass(), Charge, Tags,
+			[](TMap<FName, FCataclysmStatInputs>& Inputs)
+			{
+				CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, 3.0f);
+			}, bCarryingUsed);
+		if (!Test.TestTrue(TEXT("both users charged"), bPlainUsed && bCarryingUsed))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a charge that states no ground leaves no zone"), Plain.Num(), 0);
+		if (!Test.TestEqual(TEXT("a carrying user's charge leaves one"), Carrying.Num(), 1))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("where it arrived"), Carrying[0].At.Size2D() > 400.0f);
+		Test.TestEqual(TEXT("lasting the 3 seconds carried"), Carrying[0].LastsSeconds, 3.0f, 0.01f);
+	}
+
 	/**
 	 * A player character on its player state, for the potion probes below: only a
 	 * player character holds potions. Issue #806.
@@ -5709,6 +5842,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("only_one_persistent_area"), &ProbeOnlyOnePersistentArea},
 			{TEXT("zone_staggers_on_entry"), &ProbeZoneStaggersOnEntry},
 			{TEXT("zone_applies_own_ailment"), &ProbeZoneAppliesOwnAilment},
+			{TEXT("zone_at_start_and_end_seconds"), &ProbeZoneAtStartAndEndSeconds},
+			{TEXT("zone_at_impact_seconds"), &ProbeZoneAtImpactSeconds},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 			{TEXT("skill_duration"), &ProbeSkillDuration},
@@ -6307,6 +6442,132 @@ bool FCataclysmTargetInYourZoneTest::RunTest(const FString&)
 	InMine.Actor->SetActorLocation(FVector(100.0f, 0.0f, 0.0f));
 	Mine->Destroy();
 	TestFalse(TEXT("once the zone is gone, a blow on the enemy where it stood does not"), Strike(InMine).bWasCritical);
+	return true;
+}
+
+// A ROW GIVES A ZONE TO A SKILL THAT STATES NO GROUND. Ruled 2026-10-06: "Your movement ability leaves a persistent
+// AOE zone at both start and end locations", "Charge skills leave a persistent AOE zone at the impact point" and
+// "Your spells leave a persistent AOE zone at the impact point". Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmARowGivesAZoneTest,
+	"Cataclysm.StatExemption.ARowGivesAZoneOnlyToASkillThatStatesNoGround",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmARowGivesAZoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	const auto Nothing = [](TMap<FName, FCataclysmStatInputs>&) {};
+	const auto BothEnds4 = [](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, 4.0f);
+	};
+	const auto Impact3 = [](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, 3.0f);
+	};
+	const auto BothRows = [](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, 4.0f);
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, 3.0f);
+	};
+	const auto BothRowsAndOnlyOne = [](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, 4.0f);
+		CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, 3.0f);
+		CarryFlat(Inputs, UCataclysmDamageCalculation::OnlyOnePersistentAreaStat, 1.0f);
+	};
+	UClass* Movement = UCataclysmMovementSkill::StaticClass();
+	const TCHAR* MoveTags = TEXT("Item.Weapon.Wand, Element.Demonic, Slot.Movement");
+	const TCHAR* ChargeTags = TEXT("Item.Weapon.Sword, Element.Demonic, Keyword.Charge, Slot.Movement");
+	const TCHAR* SpellTags = TEXT("Item.Weapon.Wand, Element.Demonic, Type.Spell");
+	bool bUsed = false;
+
+	// THE ROW'S ZONE IS THE ZONE A SKILL STATING "1.5 M, 4 SECONDS, 10 OF A HIT" LEAVES. One blink states that
+	// ground and wears no row; the other states none and wears the row at 4 seconds.
+	const TArray<FLeftZone> Stated = ZonesLeftByOneUse(Movement,
+		TEXT("Mode=Blink; Range=8; Radius=3.5; GroundRadius=1.5; GroundDuration=4; GroundPercent=10"), MoveTags, Nothing, bUsed);
+	if (!TestTrue(TEXT("set-up: the blink that states ground ran and left two zones"), bUsed && Stated.Num() == 2))
+	{
+		return false;
+	}
+	const TArray<FLeftZone> Given = ZonesLeftByOneUse(Movement, TEXT("Mode=Blink; Range=8; Radius=3.5"), MoveTags, BothEnds4, bUsed);
+	if (!TestTrue(TEXT("the blink that states none ran"), bUsed)
+		|| !TestEqual(TEXT("and under the row it leaves two zones"), Given.Num(), 2))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the stated ground deals something a sweep"), Stated[0].PerSweep > 0.0f);
+	TestEqual(TEXT("the row's zone is 1.5 metres in radius"), Given[0].RadiusCm, 150.0f, 0.01f);
+	TestEqual(TEXT("which is the radius the stated ground has"), Given[0].RadiusCm, Stated[0].RadiusCm, 0.01f);
+	TestEqual(TEXT("and a sweep of it deals what a sweep of ground stating 10 deals"), Given[0].PerSweep, Stated[0].PerSweep, 0.001f);
+	TestEqual(TEXT("and it lasts as long"), Given[0].LastsSeconds, Stated[0].LastsSeconds, 0.01f);
+	TestTrue(TEXT("the row's zone carries the skill's own damage type"),
+			 Given[0].DamageType == UCataclysmDamageCalculation::DamageTypeFromTags(UCataclysmSkillShapes::TagsFromCell(MoveTags)));
+	TestFalse(TEXT("which is a type and not none"), Given[0].DamageType.IsNone());
+	TestTrue(TEXT("control: a skill's own ground is handed none, as before"), Stated[0].DamageType.IsNone());
+
+	// A SKILL THAT STATES GROUND KEEPS ITS OWN AND GETS NONE FROM EITHER ROW.
+	const TArray<FLeftZone> Kept = ZonesLeftByOneUse(Movement,
+		TEXT("Mode=Blink; Range=8; Radius=3.5; GroundRadius=1.5; GroundDuration=6; GroundPercent=10"), MoveTags, BothRows, bUsed);
+	if (TestTrue(TEXT("the blink that states ground ran under both rows"), bUsed)
+		&& TestEqual(TEXT("and still leaves its own two zones and no more"), Kept.Num(), 2))
+	{
+		TestEqual(TEXT("each lasting its own stated 6 seconds"), Kept[0].LastsSeconds, 6.0f, 0.01f);
+	}
+
+	// A CHARGE SKILL UNDER BOTH ROWS: one zone where it began, and two where it arrived, one from each row.
+	const TArray<FLeftZone> Charged = ZonesLeftByOneUse(Movement, TEXT("Mode=Charge; Range=8; Radius=1.5"), ChargeTags, BothRows, bUsed);
+	if (TestTrue(TEXT("the charge ran under both rows"), bUsed)
+		&& TestEqual(TEXT("and leaves three zones"), Charged.Num(), 3))
+	{
+		TestTrue(TEXT("one where it began"), Charged[0].At.Size2D() < 100.0f);
+		TestEqual(TEXT("lasting the 4 seconds of the start-and-end row"), Charged[0].LastsSeconds, 4.0f, 0.01f);
+		TestTrue(TEXT("and two where it arrived"), Charged[1].At.Size2D() > 400.0f && Charged[2].At.Size2D() > 400.0f);
+		TestEqual(TEXT("one of those lasting the 3 seconds of the impact row"),
+				  FMath::Min(Charged[1].LastsSeconds, Charged[2].LastsSeconds), 3.0f, 0.01f);
+		TestEqual(TEXT("and the other the 4 of the start-and-end row"),
+				  FMath::Max(Charged[1].LastsSeconds, Charged[2].LastsSeconds), 4.0f, 0.01f);
+	}
+
+	// AND WITH "ONLY ONE PERSISTENT AREA" WORN TOO, the ordinary rule ends each earlier one, and one is left.
+	const TArray<FLeftZone> OnlyOne = ZonesLeftByOneUse(Movement, TEXT("Mode=Charge; Range=8; Radius=1.5"), ChargeTags, BothRowsAndOnlyOne, bUsed);
+	TestTrue(TEXT("the charge ran under both rows and the only-one row"), bUsed);
+	TestEqual(TEXT("and is left with one zone"), OnlyOne.Num(), 1);
+
+	// THE IMPACT ROW ON THE OTHER KINDS OF SKILL. A projectile: where its flight ended.
+	const TArray<FLeftZone> Shot = ZonesLeftByOneUse(UCataclysmProjectileSkill::StaticClass(),
+		TEXT("Range=14; Radius=1.5; Pierce=0; Speed=0"), SpellTags, Impact3, bUsed);
+	if (TestTrue(TEXT("the projectile ran"), bUsed) && TestEqual(TEXT("and leaves one zone"), Shot.Num(), 1))
+	{
+		TestTrue(TEXT("away from its user"), Shot[0].At.Size2D() > 400.0f);
+	}
+	const TArray<FLeftZone> ShotPlain = ZonesLeftByOneUse(UCataclysmProjectileSkill::StaticClass(),
+		TEXT("Range=14; Radius=1.5; Pierce=0; Speed=0"), SpellTags, Nothing, bUsed);
+	TestTrue(TEXT("control: the projectile ran with no row"), bUsed);
+	TestEqual(TEXT("control: and leaves no zone"), ShotPlain.Num(), 0);
+
+	// A strike: under its user.
+	const TArray<FLeftZone> Struck = ZonesLeftByOneUse(UCataclysmStrikeSkill::StaticClass(),
+		TEXT("Radius=3; Angle=360"), SpellTags, Impact3, bUsed);
+	if (TestTrue(TEXT("the strike ran"), bUsed) && TestEqual(TEXT("and leaves one zone"), Struck.Num(), 1))
+	{
+		TestTrue(TEXT("under its user"), Struck[0].At.Size2D() < 100.0f);
+	}
+
+	// A curse: under the enemy it was laid on, which stands 6 metres to the side.
+	const TArray<FLeftZone> Cursed = ZonesLeftByOneUse(UCataclysmDebuffSkill::StaticClass(),
+		TEXT("Range=12; MaxTargets=1; EffectDuration=6; Effect=Shred"), SpellTags, Impact3, bUsed);
+	if (TestTrue(TEXT("the curse ran"), bUsed) && TestEqual(TEXT("and leaves one zone"), Cursed.Num(), 1))
+	{
+		TestTrue(TEXT("under the enemy it was laid on"), FVector::Dist2D(Cursed[0].At, FVector(0.0f, 600.0f, 0.0f)) < 100.0f);
+	}
+
+	// AND THE START-AND-END ROW IS READ BY A MOVEMENT SKILL ONLY: a strike under it leaves nothing.
+	const TArray<FLeftZone> StruckUnderTheOther = ZonesLeftByOneUse(UCataclysmStrikeSkill::StaticClass(),
+		TEXT("Radius=3; Angle=360"), SpellTags, BothEnds4, bUsed);
+	TestTrue(TEXT("the strike ran under the start-and-end row"), bUsed);
+	TestEqual(TEXT("and leaves no zone"), StruckUnderTheOther.Num(), 0);
 	return true;
 }
 

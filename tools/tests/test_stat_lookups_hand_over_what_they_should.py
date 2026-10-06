@@ -443,6 +443,10 @@ INVENTORY = {
         "the slow a zone lays on those inside (ruled 2026-10-06), asked "
         "where the zone is left; a zone is not a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(SecondsStat), SkillTags, 0.0f'):
+        "how long the zone a row gives a skill lasts (ruled 2026-10-06), one "
+        "of two stats, asked where the zone is left; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f'):
         "whether a zone staggers whoever enters it (ruled 2026-10-06), asked "
         "where the zone is left; a flag, not a modifier of a blow",

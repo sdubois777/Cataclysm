@@ -427,6 +427,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Ruled 2026-10-06.
 		TEXT("zone_staggers_on_entry"),
 		TEXT("zone_applies_own_ailment"),
+		// And two by which a row gives a zone to a skill that states no
+		// ground, each a number of seconds, read by
+		// UCataclysmSkillTemplate::LeaveRowZoneAt. Ruled 2026-10-06.
+		TEXT("zone_at_start_and_end_seconds"),
+		TEXT("zone_at_impact_seconds"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health
