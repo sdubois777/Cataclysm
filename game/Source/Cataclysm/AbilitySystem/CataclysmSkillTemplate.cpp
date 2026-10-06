@@ -2994,6 +2994,10 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 		{
 			Zone->OwnAilment = UCataclysmAilments::AilmentOfDamageType(DamageTypeName());
 		}
+		// AND WHETHER IT REACHES THE CHARACTER WHO LEFT IT: its damage under one row, its effects under another.
+		// The owner's decision of 2026-10-06.
+		Zone->bAlsoDamagesItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat), SkillTags, 0.0f) > 0.0f;
+		Zone->bAlsoLaysItsEffectsOnItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat), SkillTags, 0.0f) > 0.0f;
 	}
 
 	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's

@@ -236,6 +236,29 @@ public:
 	FName OwnAilment;
 
 	/**
+	 * Whether a sweep also damages the character who left this zone, when they stand in it. "Persistent AOE zones
+	 * also damage you if you stand in them". THE OWNER DECIDED ON 2026-10-06 that a character's own zones may hurt
+	 * them where a row's sentence says so.
+	 *
+	 * THE ZONE'S OWN SWEEP FIGURE, through the owner's defences, and it can kill.
+	 *
+	 * NOT `bBurnsEveryone`. That flag makes a zone reach every character of every side, which is what a floor
+	 * rule's patch is; this reaches one more character, the owner, and nobody else on the owner's side.
+	 */
+	UPROPERTY(Transient)
+	bool bAlsoDamagesItsOwner = false;
+
+	/**
+	 * Whether a sweep also lays this zone's effects on the character who left it, when they stand in it. "Your
+	 * persistent AOE zones apply their effects to you if you stand in them". The same decision of 2026-10-06.
+	 *
+	 * THE EFFECTS ARE the curse the zone carries, the slow, the stagger on entry and the ailment. Not the damage:
+	 * that is the flag above, and a row's own.
+	 */
+	UPROPERTY(Transient)
+	bool bAlsoLaysItsEffectsOnItsOwner = false;
+
+	/**
 	 * Also make this patch heal whoever left it faster while they stand in it.
 	 *
 	 * ONE ROW ASKS. The Fist's Blood Pyre: "standing in your own pyre does you
