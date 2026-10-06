@@ -19475,4 +19475,169 @@ bool FCataclysmRolledUseHitsAllTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledUseHitsItsUserTest,
+	"Cataclysm.Skills.AUseARowRolledToHitItsUserHitsNoEnemyAndItsUserTakesTheHitOrHalfOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Melee skills have a 10%-20% chance to hit you instead of the enemy" and "Spells have a 15%-25% chance to backfire
+ * dealing half damage to you", hand-built. The owner decided on 2026-10-06 that a character's own skills may hurt them
+ * where a row's sentence says so. ONE STRIKE WITH NO COOLDOWN, USED THREE TIMES, so each use is priced the same: plain,
+ * it costs the enemy a figure; rolled to hit its user, it costs the enemy nothing and its user that figure; rolled to
+ * backfire, its user half of it. The two fighters are built alike, so one's loss can be compared with the other's.
+ */
+bool FCataclysmRolledUseHitsItsUserTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("0"));
+	IConsoleVariable* CritRoll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+	const float CritRollWas = CritRoll ? CritRoll->GetFloat() : -1.0f;
+	if (CritRoll)
+	{
+		CritRoll->Set(100.0f, ECVF_SetByConsole);
+	}
+	ON_SCOPE_EXIT
+	{
+		if (CritRoll)
+		{
+			CritRoll->Set(CritRollWas, ECVF_SetByConsole);
+		}
+	};
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("Swing"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the critical strike roll can be pinned"), CritRoll)
+		|| !TestNotNull(TEXT("set-up: the strike"), Swing))
+	{
+		return false;
+	}
+	Swing->CooldownOverride = 0.0f;
+	Swing->ManaCostOverride = 0.0f;
+
+	const auto Use = [&](float& OutEnemyLost, float& OutCasterLost)
+	{
+		const float EnemyBefore = Enemy.Health();
+		const float CasterBefore = Caster.Health();
+		const bool bUsed = Activate(Caster, Swing);
+		OutEnemyLost = EnemyBefore - Enemy.Health();
+		OutCasterLost = CasterBefore - Caster.Health();
+		return bUsed;
+	};
+	float EnemyLost = 0.0f;
+	float CasterLost = 0.0f;
+
+	// PLAIN: the enemy is hurt and the user is not.
+	if (!TestTrue(TEXT("the plain swing is used"), Use(EnemyLost, CasterLost))
+		|| !TestTrue(TEXT("control: a plain swing hurts the enemy and not its user"), EnemyLost > 0.0f && CasterLost == 0.0f))
+	{
+		return false;
+	}
+	const float Whole = EnemyLost;
+
+	// ROLLED TO HIT ITS USER: nothing to the enemy, the whole of it to the user.
+	FCataclysmPoolAction Row = AUseRow(TEXT("Test:self"), 20.0f, /*bNoDamage=*/false, 0.0f, false, TEXT("skill_use"));
+	Row.bUseDealsIncreasedDamage = false;
+	Row.bUseHitsItsUser = true;
+	if (!TestEqual(TEXT("set-up: a row deals its user the whole hit unless it says otherwise"), Row.UseSelfHitSharePercent,
+				   100.0f, 0.001f))
+	{
+		return false;
+	}
+	Caster.AbilitySystem->SetPoolActions({Row});
+	TheRowsSeeAUseOf(Caster, Swing);
+	TestEqual(TEXT("the row records the whole hit for the use"), Caster.AbilitySystem->PendingUseSelfHitShare(), 100.0f,
+			  0.001f);
+	TestTrue(TEXT("the swing is used"), Use(EnemyLost, CasterLost));
+	if (!TestEqual(TEXT("a use that hits its user deals the enemy nothing"), EnemyLost, 0.0f, 0.01f))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("and deals its user what it dealt the enemy when it was plain"), CasterLost, Whole, Whole * 0.005f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and nothing is left for a later use"), Caster.AbilitySystem->PendingUseSelfHitShare(), 0.0f, 0.001f);
+
+	// A BACKFIRE: nothing to the enemy, half to the user.
+	Row.UseSelfHitSharePercent = UCataclysmAbilitySystemComponent::BackfireSharePercent;
+	Caster.AbilitySystem->SetPoolActions({Row});
+	TheRowsSeeAUseOf(Caster, Swing);
+	TestTrue(TEXT("the swing is used again"), Use(EnemyLost, CasterLost));
+	TestEqual(TEXT("a backfire deals the enemy nothing"), EnemyLost, 0.0f, 0.01f);
+	TestEqual(TEXT("and deals its user half"), CasterLost, Whole * 0.5f, Whole * 0.005f);
+
+	// AND THE NEXT USE, WHICH NO ROW ROLLED FOR, IS PLAIN AGAIN.
+	Caster.AbilitySystem->SetPoolActions({});
+	TestTrue(TEXT("the swing is used a last time"), Use(EnemyLost, CasterLost));
+	TestTrue(TEXT("it hurts the enemy and not its user"), EnemyLost > 0.0f && CasterLost == 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStackGrantScopeTest,
+	"Cataclysm.Skills.AStackARowGrantsOnAUseIsGainedOnlyWhenTheUsesTagsMatchTheGrantsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Spellblade's Will, six pieces: "When you use a melee attack, you gain a stack of Spellslinger ... and when you use a
+ * spell, you gain a stack of Dervish". A stack is gained on a KIND of use, and what the stack then raises has another
+ * scope or none. A row action is asked against the event's tags by its own required tags, a stack grant included; this
+ * shows it with a hand-made grant, since the loader gives a grant no tags of its own today.
+ */
+bool FCataclysmStackGrantScopeTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Melee = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("A melee attack"), TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* Spell = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"), TEXT("A spell"), TEXT("Type.Spell"));
+	if (!TestNotNull(TEXT("set-up: a melee attack"), Melee) || !TestNotNull(TEXT("set-up: a spell"), Spell))
+	{
+		return false;
+	}
+	const FName OnMelee(TEXT("Test:spellslinger"));
+	const FName OnAnyUse(TEXT("Test:any"));
+	const auto AGrant = [](FName Key, const TCHAR* TagCell)
+	{
+		FCataclysmPoolAction Grant;
+		Grant.Event = FName(TEXT("attack_use"));
+		Grant.StackKey = Key;
+		Grant.StackSeconds = 5.0f;
+		Grant.StackCap = 5;
+		Grant.TriggerKey = Key;
+		Grant.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		return Grant;
+	};
+	Caster.AbilitySystem->SetPoolActions({AGrant(OnMelee, TEXT("Type.Melee")), AGrant(OnAnyUse, TEXT(""))});
+
+	TheRowsSeeAUseOf(Caster, Melee);
+	if (!TestEqual(TEXT("a melee attack gains the stack kept to melee attacks"),
+				   Caster.AbilitySystem->OwnStacksHeld(OnMelee), 1))
+	{
+		return false;
+	}
+	TheRowsSeeAUseOf(Caster, Spell);
+	if (!TestEqual(TEXT("a spell does not"), Caster.AbilitySystem->OwnStacksHeld(OnMelee), 1))
+	{
+		return false;
+	}
+	TheRowsSeeAUseOf(Caster, Melee);
+	TestEqual(TEXT("a second melee attack gains a second"), Caster.AbilitySystem->OwnStacksHeld(OnMelee), 2);
+	TestEqual(TEXT("control: a grant with no tags of its own is gained on all three uses"),
+			  Caster.AbilitySystem->OwnStacksHeld(OnAnyUse), 3);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
