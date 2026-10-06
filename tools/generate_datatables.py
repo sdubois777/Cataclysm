@@ -5077,6 +5077,30 @@ MAX_DAMAGE_IMMUNITY_SECONDS = 10.0
 #: so the table says the same thing for every such row.
 CLEANSE_ACTION = "cleanse"
 
+#: The actions that are NO ACTION AT ALL: each hangs a number on an ailment the
+#: wearer applies, and names no event, because nothing fires it. Issue #1833,
+#: ruled 2026-10-06, for the sentences that move a number ON AN ENEMY while it
+#: carries an ailment: "Bleeding enemies take 20%-40% increased damage from all
+#: sources". The 2026-09-14 entry ruled these are a modifier carried with the
+#: ailment and not a condition on the attacker.
+#:
+#: THE AILMENT CELL NAMES THE AILMENT and is required; the value is the percent
+#: the carrier's number moves by, above 0 and up to 100. When the wearer applies
+#: that ailment to another character, as a new effect or a refresh, the game
+#: reads these rows and puts them on the character struck, where they count
+#: while it carries the ailment.
+#: `UCataclysmAbilitySystemComponent::AilmentRiderNamed` holds the same names.
+AILMENT_RIDER_ACTIONS = (
+    # Added to the damage the carrier takes from every source.
+    "ailment_damage_taken",
+    # Added to the armour the carrier has had removed, clamped at 100 with the rest.
+    "ailment_armor_removed",
+    # Taken off what the carrier's attacks are worth.
+    "ailment_damage_dealt",
+    # Added to the carrier's healing received reduction, capped at 100.
+    "ailment_healing_received",
+)
+
 #: The action that REPEATS THE SKILL JUST USED, FREE, with its value as the chance
 #: out of 100. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15%
 #: chance to cast a second time for free".
@@ -5327,6 +5351,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_cleanse_action(index, who, action, event, fraction_of, kind,
                               raw, headers)
         return
+    if action in AILMENT_RIDER_ACTIONS:
+        _check_ailment_rider_action(index, who, action, event, fraction_of,
+                                    kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -5342,7 +5370,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
             f"or {REFLECT_BLOCKED_ACTION}; or {CLEANSE_ACTION}; "
-            f"or {REPEAT_SKILL_ACTION}.")
+            f"or {REPEAT_SKILL_ACTION}; or a rider on an ailment, "
+            f"{', '.join(AILMENT_RIDER_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -5586,6 +5615,30 @@ def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} opens a no-damage window "
                 f"and states {column} {written!r}. Its value is seconds and "
                 f"nothing else, so the column must be empty.")
+
+
+def _check_ailment_rider_action(index: int, who: str, action: str, event: str,
+                                fraction_of: str, kind: str, raw,
+                                headers: dict[str, int]) -> None:
+    """Everything a rider on an ailment must not say. Issue #1833, ruled
+    2026-10-06. NO EVENT, because nothing fires a rider: the game reads it when
+    the wearer applies the ailment. A fraction, a value kind, a scale, tags and
+    a condition are each refused rather than dropped; the game reads none of
+    them on a rider. The Ailment and the value are checked where they are read.
+    """
+    for column, written in (("Action Event", event),
+                            ("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale"))),
+                            ("Required Tags",
+                             clean(_cell(raw, headers, "Required Tags"))),
+                            ("Condition", clean(_cell(raw, headers, "Condition")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} hangs a number on an "
+                f"ailment and states {column} {written!r}. A rider is read when "
+                f"its ailment is applied and by nothing else, so the column "
+                f"must be empty.")
 
 
 def _check_cleanse_action(index: int, who: str, action: str, event: str,
@@ -5911,7 +5964,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action != DAMAGE_IMMUNITY_ACTION \
                     and action != REFLECT_BLOCKED_ACTION \
                     and action != CLEANSE_ACTION \
-                    and action != REPEAT_SKILL_ACTION:
+                    and action != REPEAT_SKILL_ACTION \
+                    and action not in AILMENT_RIDER_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -6084,6 +6138,19 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} opens a no-damage "
                     f"window of {low:g} to {high:g} seconds. It lasts above 0 and "
                     f"up to {MAX_DAMAGE_IMMUNITY_SECONDS:g}.")
+
+        # A RIDER'S VALUE IS A PERCENT, above 0 and up to 100. Issue #1833.
+        if action in AILMENT_RIDER_ACTIONS:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} hangs {low:g} to "
+                    f"{high:g} per cent on an ailment. A rider moves a number by "
+                    f"above 0 and up to 100 per cent.")
+            if scale_max_steps:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} hangs a number on "
+                    f"an ailment and states Scale Max Steps. It has no stacks, "
+                    f"so it would be dropped.")
 
         # A CLEANSE'S VALUE IS 100, which the game does not read. Issue #1833.
         if action == CLEANSE_ACTION:
@@ -6542,11 +6609,12 @@ def enchantment_effects(book) -> list[dict]:
                     f"{ailment or '(none)'!r}, which {action} cannot. Known: "
                     f"{', '.join(known)}.")
         elif ailment:
-            if action not in REMAINING_DAMAGE_ACTIONS:
+            if action not in REMAINING_DAMAGE_ACTIONS \
+                    and action not in AILMENT_RIDER_ACTIONS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} names the ailment "
                     f"{ailment!r} on {action or stat!r}. Only "
-                    f"{', '.join(REMAINING_DAMAGE_ACTIONS + APPLY_STATUS_ACTIONS)} "
+                    f"{', '.join(REMAINING_DAMAGE_ACTIONS + APPLY_STATUS_ACTIONS + AILMENT_RIDER_ACTIONS)} "
                     f"read one, so it would be dropped.")
             if ailment not in AILMENTS:
                 raise DataError(
@@ -6557,6 +6625,11 @@ def enchantment_effects(book) -> list[dict]:
             raise DataError(
                 f"Enchantment Effects row {index}: {name} deals remaining damage on "
                 f"the event's target and names no Ailment. Name one of "
+                f"{', '.join(AILMENTS)}.")
+        elif action in AILMENT_RIDER_ACTIONS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} hangs a number on an "
+                f"ailment and names no Ailment. Name one of "
                 f"{', '.join(AILMENTS)}.")
 
         # A RANGE THE SENTENCE MARKS AS ROLLING DOWN IS WRITTEN THE OTHER WAY

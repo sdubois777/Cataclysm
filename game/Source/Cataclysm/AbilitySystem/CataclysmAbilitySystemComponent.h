@@ -844,6 +844,19 @@ public:
 	 * `REFLECT_BLOCKED_ACTION` and `NEARBY_ACTIONS`.
 	 */
 	static const TCHAR* ReflectBlockedAction;
+
+	/**
+	 * The four ailment rider action names, one per `ECataclysmAilmentRider` but
+	 * None. Issue #1833, ruled 2026-10-06. `AILMENT_RIDER_ACTIONS` in
+	 * `tools/generate_datatables.py` holds the same four.
+	 */
+	static const TCHAR* AilmentDamageTakenAction;
+	static const TCHAR* AilmentArmorRiderAction;
+	static const TCHAR* AilmentDamageDealtAction;
+	static const TCHAR* AilmentHealingReceivedAction;
+
+	/** Which rider an action name is, or None. */
+	static ECataclysmAilmentRider AilmentRiderNamed(const FString& Action);
 	static const TCHAR* SmiteNearbyByArmourAction;
 
 	/**
@@ -2554,6 +2567,43 @@ public:
 	 */
 	float ArmourRemovedPercentNow() const;
 
+	/**
+	 * `Applier` has just applied `Ailment` to this character, as a new effect or
+	 * as a refresh of one already running: take what `Applier`'s worn rows hang
+	 * on that ailment. Issue #1833, ruled 2026-10-06.
+	 *
+	 * THE RIDERS ARE THE CARRIER'S RECORD OF ONE APPLIER, PER AILMENT, and they
+	 * count only while the carrier holds the ailment's tag, which is asked when
+	 * they are read. So they end when the ailment ends, by time, by a cleanse or
+	 * by death, with nothing here to take them back.
+	 *
+	 * AN APPLIER WITH NOTHING TO HANG TAKES DOWN ONLY ITS OWN. Its application
+	 * leaves another character's riders standing, and removes its own: an item
+	 * taken off stops paying at the wearer's next application, and until then
+	 * the riders last the rest of the ailment, as ruled.
+	 *
+	 * NOT ON THE AILMENT'S OWN EFFECT, which is where a pin carries its
+	 * increase. A damage over time effect is periodic, and a periodic effect
+	 * EXECUTES its modifiers every tick rather than holding them, so a modifier
+	 * beside the damage would be added again each tick and never taken back.
+	 */
+	void ReceiveAilmentRiders(const FGameplayTag& Ailment,
+							  const UCataclysmAbilitySystemComponent* Applier);
+
+	/**
+	 * What the riders this character carries move one of its numbers by now, in
+	 * percent, summed over the ailments it holds at this moment.
+	 */
+	float AilmentRiderPercentNow(ECataclysmAilmentRider Kind) const;
+
+	/** The same for any ability system: nought for one that is not this class. */
+	static float AilmentRiderPercentOn(const UAbilitySystemComponent* Carrier,
+									   ECataclysmAilmentRider Kind);
+
+	/** What this character's worn rows hang on `Ailment`, for one kind, summed. */
+	float AilmentRiderPercentFor(const FGameplayTag& Ailment,
+								 ECataclysmAilmentRider Kind) const;
+
 	/** Whether a critical strike of `Striker`'s has got through to it. */
 	bool WasCriticallyStruckBy(const UAbilitySystemComponent* Striker) const;
 
@@ -2946,6 +2996,16 @@ protected:
 
 	/** What the placed stacks of one kind take away now, summed, unclamped. */
 	float PlacedPercentNow(bool bCutsDamage) const;
+
+	/** What one applier's worn rows hung on one ailment this character carries. */
+	struct FCarriedRiders
+	{
+		TWeakObjectPtr<const UCataclysmAbilitySystemComponent> Applier;
+		TMap<ECataclysmAilmentRider, float> Percent;
+	};
+
+	/** The riders this character carries, by the ailment's tag. See `ReceiveAilmentRiders`. */
+	TMap<FGameplayTag, FCarriedRiders> AilmentRiders;
 
 	/** One "every Nth" row's count, and the combat it was counted in, if any. */
 	struct FNthCount

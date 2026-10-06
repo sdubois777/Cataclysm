@@ -13349,4 +13349,270 @@ bool FCataclysmRepeatRowSelfBuffTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmAilmentRiderRowTest
+{
+	/** A creature three metres along X with a great deal of health and an attack worth 100. */
+	ACataclysmEnemyCharacter* Creature(UWorld* World, float Metres = 3.0f)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(Metres * 100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetHealth(100000.0f);
+			Made->SetAttackDamage(100.0f);
+		}
+		return Made;
+	}
+
+	UCataclysmAbilitySystemComponent* SystemOf(const AActor* Who)
+	{
+		return Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who));
+	}
+
+	FGameplayTag Ailment(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	/** `By` applies ten seconds of an ailment to `On`, at one point a tick. */
+	bool Ail(AActor* By, AActor* On, const FGameplayTag& Tag)
+	{
+		return UCataclysmSkillEffects::ApplyDamageOverTime(By, On, 1.0f, 10.0f, Tag,
+			/*bScalesWithInstigator=*/false);
+	}
+
+	/** What a plain blow of 100 does to this character's health: no evasion, no block, no critical strike. */
+	float TakenFromABlow(const UAbilitySystemComponent* Defender)
+	{
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		return UCataclysmDamageCalculation::Resolve(Blow, Defender, /*Tier=*/1,
+			/*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f, /*CritRoll=*/100.0f).DealtToHealth;
+	}
+
+	const TCHAR* StaleAsset =
+		TEXT(" If nothing, DT_EnchantmentEffects may be older than the rows: run "
+			 "tools/generate_datatable_assets.py");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedingDamageTakenRowTest,
+	"Cataclysm.Enchantments.TheBleedingRowRaisesWhatAnEnemyTakesOnlyWhileItCarriesTheWearersBleed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Bleeding enemies take 20%-40% increased damage from all sources". Issue #1833,
+ * ruled 2026-10-06: a rider on Bleed, `ailment_damage_taken` 20 to 40, WORN at
+ * the top of its roll. THE WHOLE LIFE OF A RIDER, read as what a plain blow of
+ * 100 takes from the creature, as a share of what it took with no bleed:
+ *
+ *   a bleed another character applied adds nothing;
+ *   the wearer's application adds 40, though it only refreshes that bleed;
+ *   a cleanse ends the bleed and the rider with it;
+ *   the wearer's bleed alone adds 40, and another character refreshing it leaves the 40;
+ *   and with the row gone from the wearer, its next application takes the 40 down.
+ */
+bool FCataclysmBleedingDamageTakenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmAilmentRiderRowTest;
+	FWorn Worn(TEXT("Positive_Bleeding_enemies_take_20_40_increased_damage_f"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	AActor* Wearer = Worn.Wearer->Actor;
+	ACataclysmEnemyCharacter* Enemy = Creature(Worn.World);
+	ACataclysmEnemyCharacter* Other = Creature(Worn.World, 6.0f);
+	const FGameplayTag Bleed = Ailment(TEXT("Keyword.DoT.Bleed"));
+	const UCataclysmAbilitySystemComponent* Its = Enemy ? SystemOf(Enemy) : nullptr;
+	if (!TestTrue(TEXT("two creatures and the bleed tag"), Its && Other && Bleed.IsValid()))
+	{
+		return false;
+	}
+	const float Plain = TakenFromABlow(Its);
+	if (!TestTrue(TEXT("a plain blow takes something"), Plain > 0.0f))
+	{
+		return false;
+	}
+	const auto Share = [&]() { return TakenFromABlow(Its) / Plain; };
+
+	TestTrue(TEXT("set-up: another character's bleed lands"), Ail(Other, Enemy, Bleed));
+	TestEqual(TEXT("a bleed another character applied adds nothing"), Share(), 1.0f, 0.001f);
+	TestTrue(TEXT("set-up: the wearer's bleed lands"), Ail(Wearer, Enemy, Bleed));
+	TestEqual(*(FString(TEXT("the wearer's application adds 40, though it only refreshes that bleed.")) + StaleAsset),
+		Share(), 1.4f, 0.001f);
+	UCataclysmDebuffs::Cleanse(Enemy);
+	if (!TestFalse(TEXT("set-up: a cleanse ends the bleed"), Its->HasMatchingGameplayTag(Bleed)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the rider ends with it"), Share(), 1.0f, 0.001f);
+	TestTrue(TEXT("set-up: another character's bleed lands again"), Ail(Other, Enemy, Bleed));
+	TestEqual(TEXT("and the ended rider does not come back under somebody else's bleed"), Share(), 1.0f, 0.001f);
+	UCataclysmDebuffs::Cleanse(Enemy);
+
+	Ail(Wearer, Enemy, Bleed);
+	TestEqual(TEXT("the wearer's bleed alone adds 40"), Share(), 1.4f, 0.001f);
+	Ail(Other, Enemy, Bleed);
+	TestEqual(TEXT("and another character refreshing it leaves the 40"), Share(), 1.4f, 0.001f);
+	Worn.ASC()->SetPoolActions({});
+	Ail(Wearer, Enemy, Bleed);
+	TestEqual(TEXT("with the row gone from the wearer, its next application takes the 40 down"),
+		Share(), 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAilmentArmourRowsTest,
+	"Cataclysm.Enchantments.TheBurnAndDiseaseArmourRowsRemoveTheirShareOfAnAilingEnemysArmour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies affected by your burn effects have 10%-20% reduced armor" and "Disease
+ * effects you apply also reduce enemy armor by 5%-15%". Issue #1833, ruled
+ * 2026-10-06: riders on Burn and on Disease, `ailment_armor_removed`, each WORN at
+ * the top of its roll. Read as the armour the creature has had removed, which is
+ * the one figure every armour reduction on a character adds into: nothing before,
+ * the row's share while it carries the wearer's ailment, nothing under the OTHER
+ * ailment, and nothing once the ailment is cleansed. A stack another row placed
+ * on it adds to the rider.
+ */
+bool FCataclysmAilmentArmourRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmAilmentRiderRowTest;
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		const TCHAR* Own;
+		const TCHAR* Unrelated;
+		float Share;
+	};
+	for (const FCase& Case : {
+			 FCase{TEXT("Positive_Enemies_affected_by_your_burn_effects_have_10_2"),
+				   TEXT("Keyword.DoT.Burn"), TEXT("Keyword.DoT.Disease"), 20.0f},
+			 FCase{TEXT("Positive_Disease_effects_you_apply_also_reduce_enemy_armo"),
+				   TEXT("Keyword.DoT.Disease"), TEXT("Keyword.DoT.Burn"), 15.0f}})
+	{
+		FWorn Worn(Case.Enchantment, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Enemy = Creature(Worn.World);
+		UCataclysmAbilitySystemComponent* Its = Enemy ? SystemOf(Enemy) : nullptr;
+		const FGameplayTag Own = Ailment(Case.Own);
+		const FGameplayTag Unrelated = Ailment(Case.Unrelated);
+		if (!TestTrue(TEXT("a creature and both tags"), Its && Own.IsValid() && Unrelated.IsValid()))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%s: nothing removed before any ailment"), Case.Own),
+			Its->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+		Ail(Worn.Wearer->Actor, Enemy, Unrelated);
+		TestEqual(FString::Printf(TEXT("%s: nothing under the other ailment"), Case.Own),
+			Its->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+		Ail(Worn.Wearer->Actor, Enemy, Own);
+		TestEqual(FString::Printf(TEXT("%s: the row's share while it carries the wearer's ailment.%s"),
+					  Case.Own, StaleAsset),
+			Its->ArmourRemovedPercentNow(), Case.Share, 0.001f);
+		Its->ReceivePlacedStack(FName(TEXT("Test:armour")), 30.0f, 5.0f, /*Cap=*/1, /*bCutsDamage=*/false);
+		TestEqual(FString::Printf(TEXT("%s: a placed stack of 30 adds to it"), Case.Own),
+			Its->ArmourRemovedPercentNow(), Case.Share + 30.0f, 0.001f);
+		UCataclysmDebuffs::Cleanse(Enemy);
+		TestEqual(FString::Printf(TEXT("%s: cleansed, only the placed stack is left"), Case.Own),
+			Its->ArmourRemovedPercentNow(), 30.0f, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPoisonedDamageDealtRowTest,
+	"Cataclysm.Enchantments.ThePoisonedRowTakesItsShareOffWhatAPoisonedEnemysAttacksAreWorth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Poisoned enemies deal 2%-4% less damage". Issue #1833, ruled 2026-10-06: a
+ * rider on Poison, `ailment_damage_dealt` 2 to 4, WORN at the top of its roll.
+ * Read as what the creature's attacks are worth, `WeaponDamageOf`, which is the
+ * figure a blow of its is priced from: 96% of what they were worth while it
+ * carries the wearer's poison, and the whole again once cleansed.
+ */
+bool FCataclysmPoisonedDamageDealtRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmAilmentRiderRowTest;
+	FWorn Worn(TEXT("Positive_Poisoned_enemies_deal_2_4_less_damage"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Enemy = Creature(Worn.World);
+	const UCataclysmAbilitySystemComponent* Its = Enemy ? SystemOf(Enemy) : nullptr;
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	if (!TestTrue(TEXT("a creature and the poison tag"), Its && Poison.IsValid()))
+	{
+		return false;
+	}
+	const float Plain = UCataclysmSkillEffects::WeaponDamageOf(Its);
+	if (!TestTrue(TEXT("set-up: its attacks are worth something"), Plain > 0.0f))
+	{
+		return false;
+	}
+	Ail(Worn.Wearer->Actor, Enemy, Poison);
+	TestEqual(*(FString(TEXT("poisoned by the wearer, its attacks are worth 96% of that.")) + StaleAsset),
+		UCataclysmSkillEffects::WeaponDamageOf(Its) / Plain, 0.96f, 0.0005f);
+	UCataclysmDebuffs::Cleanse(Enemy);
+	TestEqual(TEXT("cleansed, the whole again"), UCataclysmSkillEffects::WeaponDamageOf(Its) / Plain, 1.0f, 0.0005f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDiseaseHealingRowTest,
+	"Cataclysm.Enchantments.TheDiseaseHealingRowStopsADiseasedEnemyBeingHealedAtItsTopRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Disease effects reduce enemy healing by 50%-100%". Issue #1833, ruled
+ * 2026-10-06: a rider on Disease, `ailment_healing_received` 50 to 100, WORN at
+ * the top of its roll, 100, where the healing a diseased creature receives is
+ * nothing. Read through `UCataclysmRegeneration::TopUp`, the path regeneration,
+ * leech and an enemy's heals all take: a top-up of 1000 restores nothing while
+ * the creature carries the wearer's disease, and what it restored before once
+ * cleansed.
+ */
+bool FCataclysmDiseaseHealingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmAilmentRiderRowTest;
+	FWorn Worn(TEXT("Positive_Disease_effects_reduce_enemy_healing_by_50_100"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Enemy = Creature(Worn.World);
+	UCataclysmAbilitySystemComponent* Its = Enemy ? SystemOf(Enemy) : nullptr;
+	const FGameplayTag Disease = Ailment(TEXT("Keyword.DoT.Disease"));
+	if (!TestTrue(TEXT("a creature and the disease tag"), Its && Disease.IsValid()))
+	{
+		return false;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const auto Restored = [&]()
+	{
+		Its->SetNumericAttributeBase(Health, 50000.0f);
+		UCataclysmRegeneration::TopUp(*Its, Health, Maximum, 1000.0f);
+		return Its->GetNumericAttribute(Health) - 50000.0f;
+	};
+	const float Plain = Restored();
+	if (!TestTrue(TEXT("set-up: a top-up of 1000 restores something"), Plain > 0.0f))
+	{
+		return false;
+	}
+	Ail(Worn.Wearer->Actor, Enemy, Disease);
+	TestEqual(*(FString(TEXT("diseased by the wearer at the top roll, a top-up restores nothing.")) + StaleAsset),
+		Restored(), 0.0f, 0.5f);
+	UCataclysmDebuffs::Cleanse(Enemy);
+	TestEqual(TEXT("cleansed, what it restored before"), Restored(), Plain, 0.5f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

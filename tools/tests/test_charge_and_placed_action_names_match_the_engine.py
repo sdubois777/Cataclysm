@@ -69,6 +69,11 @@ CONSTANTS = {
     "CleanseAction": "cleanse",
     # AND THE REPEAT OF THE SKILL JUST USED, since mechanism B2.
     "RepeatSkillAction": "repeat_skill",
+    # AND THE FOUR RIDERS ON AN AILMENT, since issue #1833, 2026-10-06.
+    "AilmentDamageTakenAction": "ailment_damage_taken",
+    "AilmentArmorRiderAction": "ailment_armor_removed",
+    "AilmentDamageDealtAction": "ailment_damage_dealt",
+    "AilmentHealingReceivedAction": "ailment_healing_received",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -175,6 +180,13 @@ def test_the_generator_accepts_exactly_the_repeat_skill_name_the_engine_has() ->
 def test_the_generator_accepts_exactly_the_damage_immunity_name_the_engine_has() -> None:
     """Issue #1833 group E part 2."""
     assert gen.DAMAGE_IMMUNITY_ACTION == engine_names()["DamageImmunityAction"]
+
+
+def test_the_generator_accepts_exactly_the_ailment_rider_names_the_engine_has() -> None:
+    """Issue #1833, riders on an ailment."""
+    engine = {name for constant, name in engine_names().items()
+              if constant.startswith("Ailment")}
+    assert set(gen.AILMENT_RIDER_ACTIONS) == engine
 
 
 def test_the_generator_accepts_exactly_the_cleanse_name_the_engine_has() -> None:
