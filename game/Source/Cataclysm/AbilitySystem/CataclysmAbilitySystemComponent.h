@@ -590,6 +590,31 @@ public:
 					const AActor* EventTarget = nullptr);
 
 	/**
+	 * The `skill_use` event, with the skill it is about. Mechanism B2.
+	 *
+	 * `ActOnEvent` IS HANDED AN EVENT AND TAGS AND NOTHING ELSE, and a row that repeats the skill just used has to
+	 * know which skill that was and where it was aimed. This holds both for the length of the call, so a repeat row
+	 * can read them, and lets go of them after it. Any repeat a row asked for is left as the pending repeat.
+	 *
+	 * ONE REPEAT FOR ONE USE, ruled 2026-10-05: every row that passes its roll is counted, and one repeat is kept, at
+	 * the highest share among them. The caller makes it on the next tick
+	 * (`UCataclysmTriggeredSkill::MakePendingRepeat`), because this is called from inside the used skill's activation.
+	 */
+	void ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags, const FVector& Aim);
+
+	/** The skill a row asked to repeat and that has not been made yet, or none. */
+	FName PendingRepeatSkill() const { return PendingRepeatName; }
+	FVector PendingRepeatAim() const { return PendingRepeatAimPoint; }
+
+	/** The share of its damage the pending repeat deals: 1 is all of it. */
+	float PendingRepeatShare() const { return PendingRepeatDamageShare; }
+	void ClearPendingRepeat()
+	{
+		PendingRepeatName = NAME_None;
+		PendingRepeatDamageShare = 0.0f;
+	}
+
+	/**
 	 * How many stacks of one row's own this character holds now: nought once
 	 * the row's window has passed since the last grant. Issue #1833.
 	 */
@@ -820,6 +845,13 @@ public:
 	 */
 	static const TCHAR* ReflectBlockedAction;
 	static const TCHAR* SmiteNearbyByArmourAction;
+
+	/**
+	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
+	 * 2026-10-05. `tools/generate_datatables.py` holds the same name in `REPEAT_SKILL_ACTION`. See
+	 * `FCataclysmPoolAction::bRepeatSkill`.
+	 */
+	static const TCHAR* RepeatSkillAction;
 
 	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
@@ -3370,6 +3402,15 @@ protected:
 
 	/** The skill a Follow Through repeat waits to make, and until when. */
 	FGameplayAbilitySpecHandle PendingFollowThroughHandle;
+
+	/** The skill the `skill_use` event in hand is about, and where it was aimed. Set only inside `ActOnSkillUse`. */
+	FName SkillInHandName;
+	FVector SkillInHandAim = FVector::ZeroVector;
+
+	/** The repeat a row asked for and nobody has made yet. See `ActOnSkillUse`. */
+	FName PendingRepeatName;
+	FVector PendingRepeatAimPoint = FVector::ZeroVector;
+	float PendingRepeatDamageShare = 0.0f;
 	float PendingFollowThroughUntilSeconds = -1.0f;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */

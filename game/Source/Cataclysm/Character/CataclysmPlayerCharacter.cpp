@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
@@ -1022,7 +1023,16 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 	if (UCataclysmAbilitySystemComponent* Acting =
 			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
 	{
-		Acting->ActOnEvent(FName(TEXT("skill_use")), Notice.SkillTags);
+		// WITH THE SKILL IT IS ABOUT, so a row that repeats the skill just used knows which and where. Mechanism B2.
+		Acting->ActOnSkillUse(Notice.SkillName, Notice.SkillTags, Notice.Aim);
+
+		// AND ANY REPEAT A ROW ASKED FOR IS MADE ON THE NEXT TICK. This runs inside the used skill's activation,
+		// where a skill cannot be granted; Follow Through, Wild Magic and Echo Chamber wait a tick for the same reason.
+		if (!Acting->PendingRepeatSkill().IsNone())
+		{
+			GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(
+				this, [this]() { UCataclysmTriggeredSkill::MakePendingRepeat(this); }));
+		}
 	}
 }
 void ACataclysmPlayerCharacter::OnSomethingDied(
