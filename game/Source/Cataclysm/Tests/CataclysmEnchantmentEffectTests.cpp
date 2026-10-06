@@ -14637,4 +14637,65 @@ bool FCataclysmSpellbladesWillTwoRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReapersEmbraceTwoRowTest,
+	"Cataclysm.Enchantments.ReapersEmbraceTwoPiecesRaiseEveryHealByATenthAndHalveHealthRegeneration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Reaper's Embrace (2-Piece Bonus): You gain 10% more life from all sources",
+ * with the set's drawback, "All of your life regeneration effects are reduced by
+ * 50%". Issue #1833, ruled 2026-10-06: the bonus is read as healing, by the
+ * drawback beside it, and is `healing_received` more 10; the drawback is
+ * `health_regen` increased -50. A set is written whole, and both turn on at two
+ * pieces: one piece does neither.
+ *
+ * THE BONUS IS MEASURED ON A HEAL: `UCataclysmRegeneration::TopUp`, the function
+ * regeneration, leech, potions and worn rows all restore health through. THE
+ * DRAWBACK IS MEASURED ON A FIGURE HANDED IN, through `StatAppliedTo`, so the
+ * 100 is the base and not a fallback.
+ */
+bool FCataclysmReapersEmbraceTwoRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Bonus = TEXT("Positive_Reaper_s_Embrace_2_Piece_Bonus_You_gain_10_m");
+	const TCHAR* Drawback = TEXT("Negative_All_of_your_life_regeneration_effects_are_reduce");
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+
+	for (const int32 Pieces : {1, 2})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		for (int32 Index = 0; Index < Pieces; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer.Equipment->Equip(Carrying(TenBases[Index], Bonus, Drawback), Removed, AlsoRemoved, Slot);
+		}
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+		// THE BONUS: 100 of 1,000 health, and a heal of 100.
+		SetHealth(ASC, 1000.0f, 100.0f);
+		UCataclysmRegeneration::TopUp(*ASC, Health, MaxHealth, 100.0f);
+		TestEqual(FString::Printf(TEXT("%d pieces: a heal of 100 restores 110 only at two.%s"),
+					  Pieces, CataclysmRepeatRowsTest::OlderAsset),
+			HealthOf(ASC) - 100.0f, Pieces == 2 ? 110.0f : 100.0f, 0.01f);
+
+		// THE DRAWBACK: half of a regeneration of 100.
+		TestEqual(FString::Printf(TEXT("%d pieces: a health regeneration of 100 is 50 only at two.%s"),
+					  Pieces, CataclysmRepeatRowsTest::OlderAsset),
+			ASC->StatAppliedTo(FName(UCataclysmRegeneration::HealthRegenStat), FGameplayTagContainer(), 100.0f),
+			Pieces == 2 ? 50.0f : 100.0f, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
