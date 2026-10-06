@@ -7,8 +7,9 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:** `game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp` only: `WaitForTheNavigationMesh`,
 the old wait kept as `TickOnlyForTheNavigationMesh`, `FEveryWorkerHeld`, and one new test. No game code. Issue
 [#2222](https://github.com/sdubois777/Cataclysm/issues/2222).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **The cause below is read from the engine's source and is not yet shown by a run.**
+**Applied.** The Unreal compile, the automation suite and the guard proof ran on 2026-10-06; the figures are under
+"Run" at the end of this entry. **The cause below was read from the engine's source first, and the run then showed
+it**: with every worker thread held, 600 ticks did not finish a rebuild and the new wait did.
 
 ### What was happening
 
@@ -45,13 +46,54 @@ finished", against at least five that did not. Every failed test passed when run
 with work that waits to be let go, raises a pillar, and then: counting 600 ticks does NOT finish the rebuild; the new
 wait does; and the cell under the pillar is off the mesh. The workers are let go when the test's block ends.
 
-**A risk stated before the first run:** holding every worker thread is not something another test here does. If the
-engine cannot take a queued tile task back from its pool, the new wait would block and the run would hang. The test
-is run alone first for that reason.
+**A risk stated before the first run, which did not happen:** holding every worker thread is not something another
+test here does. If the engine could not take a queued tile task back from its pool, the new wait would block and the
+run would hang. The test was run alone first for that reason, and it ended.
 
-### Not yet run
+### Run
 
-The compile, the navigation group, a whole-suite run and the guard proofs.
+One turn on the machine on 2026-10-06, at `fix/navigation-wait-2222-2` d895ac97, on development fa887a5f. Every
+figure is a line the run printed, except the one marked as worked out.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 35 actions, 30 files compiled` |
+| The new test alone | `1 tests performed, 1 succeeded, 0 failed`, ended 33 s after it was started. It did not hang |
+| `Cataclysm.DungeonFloor.`, five times | `16 tests performed, 16 succeeded, 0 failed`, each of the five |
+| Whole Unreal suite | `3193 tests performed, 3193 succeeded, 0 failed`; `Declared: 3193 tests in the tree at d895ac97; 3193 performed, gap 0` |
+| `tools/tests` | `3929 passed, 8 skipped in 46.83s` |
+
+**How long the new wait took.** Every wait that finished logged its ticks and its seconds: 7 in each group run, 7
+in the whole suite and 1 in the run of the new test alone, 43 in all.
+
+| Run | Waits | Longest | Ticks, each |
+|---|---|---|---|
+| The new test alone | 1 | 0.0002 s | 3 |
+| Group runs 1 to 5 | 7 each | 0.0004 s, 0.0003 s, 0.0003 s, 0.0003 s, 0.0003 s | 3 |
+| Whole suite | 7 | 0.0003 s | 3 |
+
+No wait failed to finish. **The 60-second limit is far above what a rebuild takes**; it is a limit for a fault, not a
+budget.
+
+**Guard proof Pa, one anchor counted, the source hash the same before and after: PROVED.** The break removes the
+call to `EnsureBuildCompletion` from the new wait. Prefix `Cataclysm.DungeonFloor.TheNavigationWait`. With the break
+in: 1 performed, 1 failed, 2 failed assertions, the count registered before the run: "the wait finishes the rebuild
+while no worker is free" was false, and the cell under the pillar was still on the mesh. Restored: 1 performed, 1
+succeeded.
+
+**What the proof's failing run printed, which is the measurement this issue lacked:** "The navigation mesh did not
+finish building: 153523580 ticks in 60.000 s, 1 build tasks left, build in progress 1." With no worker free, a wait
+that only ticks ran 153,523,580 ticks in 60 seconds and the one tile task was never begun. **Worked out from that
+line and not printed: 600 such ticks last about 0.00023 seconds.** The old wait gave a worker thread about a quarter
+of a millisecond to begin and finish a tile.
+
+**What this run does not show.** One whole-suite run with none of these tests failing is not evidence by itself: at
+least five such runs happened before the change. The evidence is the new test, which fails without the blocking
+call, and the tick count above. **Which work keeps the workers busy in a whole-suite run was not looked for.**
+
+**The same wait elsewhere.** A search of `game/Source` for the navigation system's `Tick`,
+`IsNavigationBuildInProgress`, `GetNumRemaningBuildTasks` and `EnsureBuildCompletion` found no other test or game
+code that waits on a navigation build. Other kinds of wait on a count of ticks were not searched for.
 
 ---
 
