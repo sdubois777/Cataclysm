@@ -519,6 +519,31 @@ public:
 	static const TCHAR* BlockNegationChanceStat;
 
 	/**
+	 * The chance, in per cent, that a SPELL that hits the defender is absorbed and deals nothing. Ruled 2026-10-06:
+	 * "Spells that hit you have a 15%-30% chance to be absorbed dealing no damage". On the DEFENDER, no gameplay
+	 * attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. See `SpellIsAbsorbed`.
+	 */
+	static const TCHAR* SpellAbsorbChanceStat;
+
+	/**
+	 * The chance, in per cent, that a MELEE hit on the defender is reflected: the defender takes none of it and the
+	 * whole hit, before the defender's mitigation, is paid back as retaliation. Ruled 2026-10-06: "Melee attacks
+	 * that hit you have a 10%-20% chance to be reflected back as retaliation damage". See `MeleeIsReflected` and
+	 * `UCataclysmRetaliation::PayReflected`.
+	 */
+	static const TCHAR* MeleeReflectChanceStat;
+
+	/**
+	 * Rolls the defender's `spell_absorb_chance` against this blow. False, with no roll, for a blow that is not a
+	 * spell, for a tick of damage over time, and for a defender carrying none of the stat. `Cataclysm.SpellAbsorbRoll`
+	 * pins the roll. ONE ROLL FOR ONE INCOMING BLOW; the caller asks once.
+	 */
+	static bool SpellIsAbsorbed(const UAbilitySystemComponent* Defender, const FCataclysmIncomingHit& Hit);
+
+	/** The same for `melee_reflect_chance` and a melee blow. `Cataclysm.MeleeReflectRoll` pins the roll. */
+	static bool MeleeIsReflected(const UAbilitySystemComponent* Defender, const FCataclysmIncomingHit& Hit);
+
+	/**
 	 * The share a block removes from `Defender`'s hit: `BlockDamageReductionStat`
 	 * asked with the blow, `BlockDamageReduction` for a defender with no stat
 	 * line, held between 0 and `MaxBlockDamageReduction`.
