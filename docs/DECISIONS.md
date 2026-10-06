@@ -2,6 +2,61 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Two drawbacks roll for a skill to hit its own user: melee skills that hit you instead, and spells that backfire for half
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The two rows the entry "A row can roll for a use to hit its own user instead of any enemy, whole or by half" left
+to the session holding the design workbook, each as that entry's table states it. No engine code and no generator
+code is changed here.
+
+| Sentence | Action | Event | Chance | Required Tags | Its user takes |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Melee skills have a 10%-20% chance to hit you instead of the enemy | `use_hits_its_user` | `skill_use` | 10 to 20 | `Type.Melee` | the whole hit |
+| Spells have a 15%-25% chance to backfire dealing half damage to you | `use_backfires` | `skill_use` | 15 to 25 | `Type.Spell` | half |
+
+EnchantmentEffects 504 to 506, over 418 to 420 enchantments.
+
+### WHAT THIS RESTS ON
+
+**THE OWNER, 2026-10-06: a character's own skills may hurt them where a row's sentence says so.** These are the
+first two rows a character can wear that do it.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading is that entry's: "skills" and "spells" are `skill_use`, so a basic attack does not roll, as "Spells
+have a 10%-20% chance to cast a second time" already reads; "hit you instead of the enemy" is the whole of the hit
+and no enemy is hit; a backfire deals no enemy anything and its caster half.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A character wearing either row can kill itself with its own skill.** What its user takes is one whole use of
+  the skill, or half of one, reduced by the user's own defences. How large that is against a real character's
+  health is on the owner's play-check list, as that entry records.
+- **Both are drawbacks, and a drawback rolls its harshest figure at the top of its range**: 20 and 25.
+- **A melee spell rolls for both rows** when both are worn, and the larger share wins, as that entry states.
+
+### HOW THE ROWS ARE TESTED
+
+One test for each row, each wearing the real drawback at its harshest roll and handing the wearer's ability system
+a use through `ActOnSkillUse`, with `Cataclysm.UseOutcomeRoll` pinned. Each stops at the share the rows recorded
+for the use; what a use then does with the share is that entry's test.
+
+- `Cataclysm.Enchantments.TheMeleeSkillsHitYouInsteadRowRollsForAMeleeSkillAndRecordsTheWholeHit`: a roll of 19.9
+  records a share of 100 for a melee skill, and nothing for a spell or for a melee basic attack; a roll of 20
+  records nothing.
+- `Cataclysm.Enchantments.TheSpellsBackfireRowRollsForASpellAndRecordsHalfTheHit`: a roll of 24.9 records a share
+  of 50 for a spell and nothing for a melee skill; a roll of 25 records nothing.
+
+**Not tested here:** either row through a real use that deals damage, and a self hit that kills its user.
+
+---
+
 ## 2026-10-06 — A new condition, `target_in_your_zone`: the target stands in a ground zone the asker's skill left. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`

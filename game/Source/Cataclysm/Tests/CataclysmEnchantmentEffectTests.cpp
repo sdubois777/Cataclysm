@@ -15417,4 +15417,94 @@ bool FCataclysmBleedSpreadRowTest::RunTest(const FString&)
 	return true;
 }
 
+// THE TWO AUTHORED ROWS THAT ROLL FOR A USE TO HIT ITS OWN USER. Issue #1833, on the actions of the entry "A row can
+// roll for a use to hit its own user instead of any enemy, whole or by half", by the owner's decision of 2026-10-06.
+// Each test wears the real drawback at the top of its roll, which for a drawback is its harshest figure, and hands
+// its ability system a use as the player character hands it, with `Cataclysm.UseOutcomeRoll` pinned. Each stops at
+// the share the rows recorded for the use; what a use then does with it is that entry's test, with a row made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeSkillsHitYouRowTest,
+	"Cataclysm.Enchantments.TheMeleeSkillsHitYouInsteadRowRollsForAMeleeSkillAndRecordsTheWholeHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Melee skills have a 10%-20% chance to hit you instead of the enemy".
+ * `use_hits_its_user` on `skill_use`, 10 to 20, scoped to `Type.Melee`. The
+ * share recorded is 100: the whole hit. "Skills" is `skill_use`, so the basic
+ * attack does not roll.
+ */
+bool FCataclysmMeleeSkillsHitYouRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmUseOutcomeRowsTest;
+	FWorn Worn(TEXT("Negative_Melee_skills_have_a_10_20_chance_to_hit_you_in"), false);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.UseOutcomeRoll"), TEXT("19.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Strike = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Spell = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Spell, Type.Projectile"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Strike.Num() == 2 && Spell.Num() == 2))
+	{
+		return false;
+	}
+
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(*(FString(TEXT("a roll of 19.9 against the harshest roll of 20, a melee skill: the whole hit is its "
+							 "user's.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->PendingUseSelfHitShare(), 100.0f, 0.001f);
+	Use(Worn.ASC(), Spell, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(TEXT("a spell is not a melee skill"), Worn.ASC()->PendingUseSelfHitShare(), 0.0f, 0.001f);
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/true, /*bHasCooldown=*/false);
+	TestEqual(TEXT("a melee basic attack is not a skill, and does not roll"),
+		Worn.ASC()->PendingUseSelfHitShare(), 0.0f, 0.001f);
+	Roll.Set(TEXT("20"));
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(TEXT("a roll of 20 leaves the skill to hit the enemy"),
+		Worn.ASC()->PendingUseSelfHitShare(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellsBackfireRowTest,
+	"Cataclysm.Enchantments.TheSpellsBackfireRowRollsForASpellAndRecordsHalfTheHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Spells have a 15%-25% chance to backfire dealing half damage to you".
+ * `use_backfires` on `skill_use`, 15 to 25, scoped to `Type.Spell`. The share
+ * recorded is `BackfireSharePercent`, half.
+ */
+bool FCataclysmSpellsBackfireRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmUseOutcomeRowsTest;
+	FWorn Worn(TEXT("Negative_Spells_have_a_15_25_chance_to_backfire_dealing"), false);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.UseOutcomeRoll"), TEXT("24.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Strike = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Spell = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Spell, Type.Projectile"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Strike.Num() == 2 && Spell.Num() == 2))
+	{
+		return false;
+	}
+
+	Use(Worn.ASC(), Spell, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(*(FString(TEXT("a roll of 24.9 against the harshest roll of 25, a spell: half the hit is its "
+							 "caster's.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->PendingUseSelfHitShare(), UCataclysmAbilitySystemComponent::BackfireSharePercent, 0.001f);
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(TEXT("a melee skill is not a spell"), Worn.ASC()->PendingUseSelfHitShare(), 0.0f, 0.001f);
+	Roll.Set(TEXT("25"));
+	Use(Worn.ASC(), Spell, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(TEXT("a roll of 25 leaves the spell to hit the enemy"),
+		Worn.ASC()->PendingUseSelfHitShare(), 0.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
