@@ -18,7 +18,13 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 	// NOT HERE, AND ON PURPOSE: the two rows deleted with no successor, in
 	// b620c049 (block against area damage) and 261a4b2a (the two minion-count
 	// rows merged). There is no row for their names to mean.
+	//
+	// AND ONE ON 2026-10-06, the owner's approved reword: "Nearby enemies gain
+	// 20%-40% resistances" became "Enemies within 5 metres gain 20%-40%
+	// resistances", so that its row could state the distance it acts on.
 	static const TMap<FName, FName> Table = {
+		{TEXT("Negative_Nearby_enemies_gain_20_40_resistances"),
+		 TEXT("Negative_Enemies_within_5_metres_gain_20_40_resistances")},
 		{TEXT("Positive_Critical_hits_grant_a_stack_of_power_increasing"),
 		 TEXT("Positive_Critical_strikes_grant_a_stack_of_power_increasi")},
 		{TEXT("Positive_Your_first_critical_hit_against_each_enemy_deals"),

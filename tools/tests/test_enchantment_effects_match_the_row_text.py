@@ -135,6 +135,15 @@ TAKING = re.compile(
 LONGER_WHEN_NEGATIVE = {"crowd_control_resistance"}
 LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
 
+#: A stat on which a negative value is what the sentence says the ENEMY GAINS.
+#: "Enemies within 5 metres gain 20%-40% resistances" was ruled on 2026-10-05
+#: to be read on the wearer's side, as that much less `penetration`, so its
+#: row is negative and its sentence says "gain". Accepted on this stat only,
+#: and only for a sentence whose subject is enemies: "You gain 20% penetration"
+#: beside a negative value would be a sign error, and is still refused.
+GAINED_BY_ENEMIES_WHEN_NEGATIVE = {"penetration"}
+ENEMIES_GAIN = re.compile(r"^enemies\b.*\bgain\b", re.IGNORECASE)
+
 #: A sentence saying a stat is gone, which is what the `removed` kind is for.
 #: Issue #1791. The eleven sentences it was written for say it four ways: "You
 #: have no armor" and "You no longer regenerate mana", "Cannot block", "Can't
@@ -628,8 +637,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 493 over 407: three rows on three enchantments.
 #: AND 497 OVER 411 SINCE SPELLBLADE'S WILL'S TEN-PIECE ROW,
 #: issue #1833, 2026-10-06, from 496 over 410: one row on one enchantment.
-AUTHORED_ROWS = 497
-AUTHORED_ENCHANTMENTS = 411
+#: AND 498 OVER 412 SINCE THE REWORDED RESISTANCES ROW,
+#: issue #1833, 2026-10-06, from 497 over 411: one row on one enchantment.
+AUTHORED_ROWS = 498
+AUTHORED_ENCHANTMENTS = 412
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -784,6 +795,7 @@ def takes_something_away(stat: str, words: str, action: str = "") -> bool:
     this action when the row moves a pool."""
     return bool(TAKING.search(words)) or (
         stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words))) or (
+        stat in GAINED_BY_ENEMIES_WHEN_NEGATIVE and bool(ENEMIES_GAIN.search(words))) or (
         action == "health" and bool(DAMAGE.search(words)))
 
 
@@ -1398,6 +1410,19 @@ def test_longer_excuses_a_negative_value_on_one_stat_only():
         "debuff_duration_taken", "Debuffs on you last 20%-30% longer")
     assert not takes_something_away(
         "crowd_control_resistance", "CC effects applied to you are 40%-70% stronger")
+
+
+def test_enemies_gaining_excuses_a_negative_value_on_one_stat_only():
+    """The second widening this file allows, checked on made-up rows as the one
+    above is. Less penetration for the wearer is what "enemies gain resistances"
+    means; the same words on another stat, or a gain that is not the enemies',
+    stay refused."""
+    assert takes_something_away(
+        "penetration", "Enemies within 5 metres gain 20%-40% resistances")
+    assert not takes_something_away(
+        "armor", "Enemies within 5 metres gain 20%-40% resistances")
+    assert not takes_something_away(
+        "penetration", "You gain 20%-40% penetration against enemies")
 
 
 def test_a_sentence_that_drains_takes_something_away():

@@ -173,7 +173,7 @@ Negative_DoTs_last_2x_4x_as_long_on_you,DoTs last 2x-4x as long on you,Generic,3
 Negative_You_lose_10_20_movespeed,You lose 10%-20% movespeed,Generic,4.0,Stat.Utility.Movespeed,True,
 Negative_Each_minion_reserves_100_500_hp,Each minion reserves 100-500 hp,Generic,4.0,Type.Minion,True,
 Negative_You_take_5_15_damage_done_to_nearby_allies,You take 5%-15% damage done to nearby allies,Generic,4.0,,True,
-Negative_Nearby_enemies_gain_20_40_resistances,Nearby enemies gain 20%-40% resistances,Generic,3.0,,True,
+Negative_Enemies_within_5_metres_gain_20_40_resistances,Enemies within 5 metres gain 20%-40% resistances,Generic,3.0,,True,
 Negative_50_less_tick_rate_for_your_leech_effects,50% less tick rate for your leech effects,Generic,3.0,Stat.Recovery.Leech,True,
 Negative_Your_cooldown_abilities_have_a_25_chance_to_dea,Your cooldown abilities have a 25% chance to deal no damage,Generic,3.0,,True,
 Negative_Your_cooldowns_are_increased_by_100_200,Your cooldowns are increased by 100%-200%,Generic,2.0,,True,
