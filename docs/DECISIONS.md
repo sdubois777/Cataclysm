@@ -28,6 +28,7 @@ end of this entry when they have. **No row carries the flag yet**; the row is th
   deals.
 - **The pool is its commander's**, so the commander's zone rows apply to it.
 - **A minion that is dismissed or replaced rather than killed leaves no pool.**
+- **A pool's sweep is its commander's direct damage, the commander's zone rows reach it, and a thrall leaves none.**
 
 ### What the code answers to the three questions the ruling left open
 
