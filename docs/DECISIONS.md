@@ -2,6 +2,101 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — The navigation tests wait for the mesh by blocking on its tile builds, not by counting ticks: the intermittent "mesh rebuild finished" failures of issue #2222
+
+**Affects:** `game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp` only: `WaitForTheNavigationMesh`,
+the old wait kept as `TickOnlyForTheNavigationMesh`, `FEveryWorkerHeld`, and one new test. No game code. Issue
+[#2222](https://github.com/sdubois777/Cataclysm/issues/2222).
+**Applied.** The Unreal compile, the automation suite and the guard proof ran on 2026-10-06; the figures are under
+"Run" at the end of this entry. **The cause below was read from the engine's source first, and the run then showed
+it**: with every worker thread held, 600 ticks did not finish a rebuild and the new wait did.
+
+### What was happening
+
+Four whole-suite runs in two days failed one or two of the obstacle and shortcut navigation tests at "the mesh rebuild
+finished", against at least five that did not. Every failed test passed when run again alone, at the same binaries.
+
+### The cause, as read
+
+- **The wait counted 600 ticks and did not sleep.** `WaitForTheNavigationMesh` called the navigation system's `Tick`
+  up to 600 times in a loop and asked each time whether a build was in progress.
+- **The mesh's tiles are rebuilt on worker threads.** `FRecastNavMeshGenerator` starts each tile's task with
+  `StartBackgroundTask`, on the engine's thread pool, and a tick only collects the tasks that have finished.
+- **So 600 ticks is a count and not an amount of time.** The loop lasts as long as 600 calls take. When a worker
+  finishes the tile inside that time the test passes; when the workers are busy with something else it fails. A run
+  of the group alone leaves the workers idle. A whole-suite run does not.
+- **Nothing here says an earlier test leaves navigation state behind.** Each of these tests makes its own world and
+  its own navigation system. What differs between the two kinds of run is, by this reading, how busy the worker
+  threads are. **Which work keeps them busy in a whole run was not found.**
+
+### The change
+
+- **`WaitForTheNavigationMesh` blocks on the build.** After each tick it calls `ANavigationData::EnsureBuildCompletion`,
+  which is what the first build of every one of these floors already goes through (`UNavigationSystemV1::Build`). It
+  waits for each running tile task and runs one itself when no worker has begun it.
+- **Its limit is 60 seconds on the clock**, not a count of ticks.
+- **Every wait that finishes logs its ticks and its seconds**, so a run's log says how long a rebuild really takes.
+- **When it does not finish it says what it saw**: the ticks run, the seconds, the build tasks left, and whether a
+  build was still in progress. The four failures so far said none of this.
+- **The old wait is kept under the name `TickOnlyForTheNavigationMesh`**, used by one test as its control.
+
+### The test that makes the fault happen
+
+`Cataclysm.DungeonFloor.TheNavigationWaitFinishesWhenNoWorkerThreadIsFree` holds every thread of the engine's pool
+with work that waits to be let go, raises a pillar, and then: counting 600 ticks does NOT finish the rebuild; the new
+wait does; and the cell under the pillar is off the mesh. The workers are let go when the test's block ends.
+
+**A risk stated before the first run, which did not happen:** holding every worker thread is not something another
+test here does. If the engine could not take a queued tile task back from its pool, the new wait would block and the
+run would hang. The test was run alone first for that reason, and it ended.
+
+### Run
+
+One turn on the machine on 2026-10-06, at `fix/navigation-wait-2222-2` d895ac97, on development fa887a5f. Every
+figure is a line the run printed, except the one marked as worked out.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 35 actions, 30 files compiled` |
+| The new test alone | `1 tests performed, 1 succeeded, 0 failed`, ended 33 s after it was started. It did not hang |
+| `Cataclysm.DungeonFloor.`, five times | `16 tests performed, 16 succeeded, 0 failed`, each of the five |
+| Whole Unreal suite | `3193 tests performed, 3193 succeeded, 0 failed`; `Declared: 3193 tests in the tree at d895ac97; 3193 performed, gap 0` |
+| `tools/tests` | `3929 passed, 8 skipped in 46.83s` |
+
+**How long the new wait took.** Every wait that finished logged its ticks and its seconds: 7 in each group run, 7
+in the whole suite and 1 in the run of the new test alone, 43 in all.
+
+| Run | Waits | Longest | Ticks, each |
+|---|---|---|---|
+| The new test alone | 1 | 0.0002 s | 3 |
+| Group runs 1 to 5 | 7 each | 0.0004 s, 0.0003 s, 0.0003 s, 0.0003 s, 0.0003 s | 3 |
+| Whole suite | 7 | 0.0003 s | 3 |
+
+No wait failed to finish. **The 60-second limit is far above what a rebuild takes**; it is a limit for a fault, not a
+budget.
+
+**Guard proof Pa, one anchor counted, the source hash the same before and after: PROVED.** The break removes the
+call to `EnsureBuildCompletion` from the new wait. Prefix `Cataclysm.DungeonFloor.TheNavigationWait`. With the break
+in: 1 performed, 1 failed, 2 failed assertions, the count registered before the run: "the wait finishes the rebuild
+while no worker is free" was false, and the cell under the pillar was still on the mesh. Restored: 1 performed, 1
+succeeded.
+
+**What the proof's failing run printed, which is the measurement this issue lacked:** "The navigation mesh did not
+finish building: 153523580 ticks in 60.000 s, 1 build tasks left, build in progress 1." With no worker free, a wait
+that only ticks ran 153,523,580 ticks in 60 seconds and the one tile task was never begun. **Worked out from that
+line and not printed: 600 such ticks last about 0.00023 seconds.** The old wait gave a worker thread about a quarter
+of a millisecond to begin and finish a tile.
+
+**What this run does not show.** One whole-suite run with none of these tests failing is not evidence by itself: at
+least five such runs happened before the change. The evidence is the new test, which fails without the blocking
+call, and the tick count above. **Which work keeps the workers busy in a whole-suite run was not looked for.**
+
+**The same wait elsewhere.** A search of `game/Source` for the navigation system's `Tick`,
+`IsNavigationBuildInProgress`, `GetNumRemaningBuildTasks` and `EnsureBuildCompletion` found no other test or game
+code that waits on a navigation build. Other kinds of wait on a count of ticks were not searched for.
+
+---
+
 ## 2026-10-06 — A row can trigger a different held skill: one with a cooldown, free, or a spell that pays its cost and starts no cooldown; no row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bTriggerHeldSkill`
