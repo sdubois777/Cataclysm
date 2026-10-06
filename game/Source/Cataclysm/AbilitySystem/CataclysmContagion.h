@@ -252,4 +252,41 @@ public:
 	 */
 	static int32 SpreadOnDeath(AActor* Dying, AActor* Killer,
 							   float PinnedRoll = -1.0f);
+
+	/** How many enemies a Disease passes to by itself when its carrier dies. Issue #919. */
+	static constexpr int32 DiseaseSpreadsToByItself = 2;
+
+	/** How near the body a creature must stand to receive one, in metres: the project's "nearby". */
+	static constexpr float SpreadFromTheDyingMetres = 5.0f;
+
+	/**
+	 * Pass a dying creature's damage over time ailments to the enemies nearest
+	 * its body. Issue #919, the owner's "build it" of 2026-10-06, and issue
+	 * #1833 for the rows.
+	 *
+	 * THE DESIGN DOCUMENT'S OWN RULE FOR DISEASE, and for nothing else by
+	 * itself: "on the target's death it spreads its remaining duration to the 2
+	 * nearest enemies within 5 metres". A row adds to that count, and gives a
+	 * count to an ailment that has none: `ECataclysmAilmentRider::SpreadOnDeath`,
+	 * read off the DYING creature, where the applier's rows hung it when the
+	 * ailment was applied.
+	 *
+	 * A DIFFERENT THING FROM `SpreadOnDeath` ABOVE, AND BOTH RUN. That one is a
+	 * passive's chance, rolls per debuff, picks one creature at random within 6
+	 * metres and applies the designed effect afresh. This one is certain, picks
+	 * the nearest, and hands over a COPY: the same damage a second for the time
+	 * the original had left, from whoever applied it. So each hop is shorter
+	 * than the last, which is what ends a chain.
+	 *
+	 * WHO APPLIED IT DECIDES WHO IS AN ENEMY, and need not be a player or be
+	 * near. The search is asked of the applier with the body as its centre.
+	 *
+	 * THE BODY IS NEVER A RECIPIENT, whether or not it has been marked dead yet.
+	 *
+	 * NOR IS AN ENEMY THAT ALREADY CARRIES THE AILMENT. Ruled 2026-10-06: it is
+	 * passed over, not refreshed, and the next nearest takes its place.
+	 *
+	 * @return how many copies were applied
+	 */
+	static int32 SpreadFromTheDying(AActor* Dying);
 };
