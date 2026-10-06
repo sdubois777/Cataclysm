@@ -14698,4 +14698,139 @@ bool FCataclysmReapersEmbraceTwoRowTest::RunTest(const FString&)
 	return true;
 }
 
+// THE AUTHORED ROWS THAT ROLL FOR A USE TO DEAL NO DAMAGE. Issue #1833, on the actions of the entry "A row can
+// roll, once for a use". Each test wears the real drawback at the top of its roll, which for a drawback is its
+// harshest figure, and hands its ability system a use as the player character hands it (`ActOnSkillUse`), with
+// `Cataclysm.UseOutcomeRoll` pinned. Each stops at the answer the rows recorded; what a use then does with it is
+// that entry's tests', with rows made by hand.
+namespace CataclysmUseOutcomeRowsTest
+{
+	/** One use of a skill carrying these tags, handed to the wearer's rows. */
+	void Use(UCataclysmAbilitySystemComponent* System, const FGameplayTagContainer& Tags, bool bBasicAttack,
+			 bool bHasCooldown)
+	{
+		System->ActOnSkillUse(FName(TEXT("Carom")), &Tags, FVector(900.0f, 300.0f, 0.0f), bBasicAttack, bHasCooldown);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownAbilitiesNoDamageRowTest,
+	"Cataclysm.Enchantments.TheCooldownAbilitiesNoDamageRowRollsOnlyForASkillWithACooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your cooldown abilities have a 25% chance to deal no damage".
+ * `cooldown_use_no_damage` on `skill_use`, 25, no scope.
+ */
+bool FCataclysmCooldownAbilitiesNoDamageRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmUseOutcomeRowsTest;
+	FWorn Worn(TEXT("Negative_Your_cooldown_abilities_have_a_25_chance_to_dea"), false);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.UseOutcomeRoll"), TEXT("24.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2))
+	{
+		return false;
+	}
+
+	Use(Worn.ASC(), Melee, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestTrue(*(FString(TEXT("a roll of 24.9 against 25, a skill with a cooldown: the use deals no damage.")) +
+			   CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->PendingUseNoDamage());
+	Use(Worn.ASC(), Melee, /*bBasicAttack=*/false, /*bHasCooldown=*/false);
+	TestFalse(TEXT("a skill with no cooldown is not rolled for"), Worn.ASC()->PendingUseNoDamage());
+	Roll.Set(TEXT("25"));
+	Use(Worn.ASC(), Melee, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestFalse(TEXT("a roll of 25 leaves the use its damage"), Worn.ASC()->PendingUseNoDamage());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeSkillsMissRowTest,
+	"Cataclysm.Enchantments.TheStrikeSkillsMissRowRollsForAStrikeSkillAndNotForASpellOrABasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Strike skills have a 10%-20% chance to miss entirely regardless of other
+ * stats". `use_no_damage` on `skill_use`, 10 to 20, scoped to `Type.Strike`.
+ * "Skills" is `skill_use`, so the basic attack does not roll.
+ */
+bool FCataclysmStrikeSkillsMissRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmUseOutcomeRowsTest;
+	FWorn Worn(TEXT("Negative_Strike_skills_have_a_10_20_chance_to_miss_enti"), false);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.UseOutcomeRoll"), TEXT("19.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Strike = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Spell = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Spell, Type.Projectile"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Strike.Num() == 2 && Spell.Num() == 2))
+	{
+		return false;
+	}
+
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestTrue(*(FString(TEXT("a roll of 19.9 against the harshest roll of 20, a strike skill: it misses.")) +
+			   CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->PendingUseNoDamage());
+	Use(Worn.ASC(), Spell, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestFalse(TEXT("a spell is not a strike skill"), Worn.ASC()->PendingUseNoDamage());
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/true, /*bHasCooldown=*/false);
+	TestFalse(TEXT("a basic attack is not a skill, and does not roll"), Worn.ASC()->PendingUseNoDamage());
+	Roll.Set(TEXT("20"));
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestFalse(TEXT("a roll of 20 does not miss"), Worn.ASC()->PendingUseNoDamage());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectilesExplodeRowTest,
+	"Cataclysm.Enchantments.TheProjectilesExplodePrematurelyRowRollsForEveryProjectileUseTheBasicAttackIncluded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Projectiles have a 20%-35% chance to explode prematurely dealing no damage".
+ * `use_no_damage` on `attack_use`, 20 to 35, scoped to `Type.Projectile`. The
+ * sentence names no skill, so it is every paid use and a projectile basic attack
+ * rolls.
+ */
+bool FCataclysmProjectilesExplodeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmUseOutcomeRowsTest;
+	FWorn Worn(TEXT("Negative_Projectiles_have_a_20_35_chance_to_explode_pre"), false);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.UseOutcomeRoll"), TEXT("34.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Strike = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Thrown = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Projectile, Type.Ranged"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Strike.Num() == 2 && Thrown.Num() == 2))
+	{
+		return false;
+	}
+
+	Use(Worn.ASC(), Thrown, /*bBasicAttack=*/true, /*bHasCooldown=*/false);
+	TestTrue(*(FString(TEXT("a roll of 34.9 against the harshest roll of 35, a projectile basic attack: no damage.")) +
+			   CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->PendingUseNoDamage());
+	Use(Worn.ASC(), Thrown, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestTrue(TEXT("and a projectile skill alike"), Worn.ASC()->PendingUseNoDamage());
+	Use(Worn.ASC(), Strike, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestFalse(TEXT("a strike is not a projectile"), Worn.ASC()->PendingUseNoDamage());
+	Roll.Set(TEXT("35"));
+	Use(Worn.ASC(), Thrown, /*bBasicAttack=*/true, /*bHasCooldown=*/false);
+	TestFalse(TEXT("a roll of 35 leaves the projectile its damage"), Worn.ASC()->PendingUseNoDamage());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
