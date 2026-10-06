@@ -2,6 +2,66 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — "Nearby enemies gain 20%-40% resistances" is reworded to "Enemies within 5 metres gain 20%-40% resistances" and built: the wearer has that much less penetration against a character that near
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one sentence of the Enchantments sheet and one row of the Enchantment
+Effects sheet), `game/Data/EnchantmentsNegative.csv`, `game/Data/EnchantmentEffects.csv` and their assets,
+`game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp` (one alias), `tools/tests/enchantment_row_names.txt`,
+one new test in `CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Enemies within 5 metres gain 20%-40% resistances | `penetration` flat -20 to -40, under `target_within_metres` 5 |
+
+EnchantmentEffects 497 to 498, over 411 to 412 enchantments.
+
+### THE REWORD, AND WHY IT RENAMES A ROW
+
+- **Ruled 2026-10-05**: the sentence is read on the wearer's side, as less penetration against a character within 5
+  metres. A row under `target_within_metres` acts on a distance, and the row-text check refuses a distance its
+  sentence does not state, so the sentence had to state the 5 metres.
+- **The sentence was 39 characters.** A row's name is built from the first 48, so any words added to it renamed the
+  row, and a dropped item stores that name.
+- **THE OWNER APPROVED THE REWORD ON 2026-10-06.** The row is now
+  `Negative_Enemies_within_5_metres_gain_20_40_resistances`.
+- **THE ALIAS, by the owner's decision of 2026-09-30 on issue #1799**: `FCataclysmEnchantmentRenames::Aliases()`
+  gains the pair, so an item saved with `Negative_Nearby_enemies_gain_20_40_resistances` finds the row it means.
+  `tools/tests/enchantment_row_names.txt` records the same pair, written `old -> new`.
+
+### HOW IT WORKS
+
+- **`penetration` is asked at the damage step with the distance to the character struck**, so the condition is
+  judged for each blow. Against a target within 5 metres the wearer's penetration is 20 to 40 lower.
+- **Penetration below nought raises what the target resists.** `EffectiveResistanceUnderCap` takes penetration off
+  the target's resistance, so less than none adds to it, up to the target's cap. An enemy with 20 resistance stands
+  at 60 against a wearer at the harshest roll, and one with 50 stops at its cap of 70.
+- **The value is negative on a sentence that says "gain".** The row-text check refuses a negative value unless the
+  sentence's words take something away. It gains one widening, for `penetration` alone and only for a sentence whose
+  subject is enemies: the enemies' gain is the wearer's loss. A labelled judgement of the writing session, with a
+  test on made-up rows that the same words on another stat, or a gain that is the wearer's, stay refused.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **It acts on the wearer's own blows and nobody else's.** A minion's blow asks the minion's penetration, so a
+  minion standing within 5 metres of the enemy is not affected, and neither is a second player.
+- **It is measured from the wearer to the character struck**, not from the enemy to anything. An enemy the wearer
+  hits from 8 metres away gains nothing, however near it stands to something else.
+- **Damage over time ticks**: whether a tick asks penetration with a distance was not traced.
+- **Against an enemy already at its resistance cap it does nothing.**
+
+### Tests
+
+- `Cataclysm.Enchantments.TheEnemiesWithinFiveMetresGainResistancesRowTakesTheWearersPenetrationOnlyThatNear`: the
+  real row worn at its harshest roll; the wearer's penetration against a target 3 metres away is 40 less than
+  against one 8 metres away, and with no distance known none is taken; and the two figures above.
+- `test_enemies_gaining_excuses_a_negative_value_on_one_stat_only`, in the row-text check.
+
+---
+
 ## 2026-10-06 — A row can roll for a use to hit its own user instead of any enemy, whole or by half; and a stack a row grants can be kept to one kind of use. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bUseHitsItsUser`,

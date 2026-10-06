@@ -496,3 +496,4 @@ Positive_Spells_that_hit_you_have_a_15_30_chance_to_be#1,Positive_Spells_that_hi
 Positive_Melee_attacks_that_hit_you_have_a_10_20_chance#1,Positive_Melee_attacks_that_hit_you_have_a_10_20_chance,melee_reflect_chance,flat,10.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Melee_skills_have_a_10_20_chance_to_hit_all_en#1,Positive_Melee_skills_have_a_10_20_chance_to_hit_all_en,,,10.0,20.0,Type.Melee,,0.0,,0.0,use_hits_all_nearby,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Spellblade_s_Will_10_Piece_Bonus_Your_melee_a#1,Positive_Spellblade_s_Will_10_Piece_Bonus_Your_melee_a,,,25.0,25.0,Type.Melee,,0.0,,0.0,trigger_held_spell,attack_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Negative_Enemies_within_5_metres_gain_20_40_resistances#1,Negative_Enemies_within_5_metres_gain_20_40_resistances,penetration,flat,-20.0,-40.0,,target_within_metres,5.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
