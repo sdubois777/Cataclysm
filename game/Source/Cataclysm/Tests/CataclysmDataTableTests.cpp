@@ -675,7 +675,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 462 SINCE "YOUR MOVEMENT ABILITY HAS 2 CHARGES", issue #1833, from 461.
 	//
 	// AND 463 SINCE "YOU ARE CLEANSED EVERY 5 SECONDS", issue #1833, from 462.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    463)
+	//
+	// AND 467 SINCE THE FOUR SHARES OF THE WEARER'S OWN DAMAGE, issue #1833, from 463.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    467)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

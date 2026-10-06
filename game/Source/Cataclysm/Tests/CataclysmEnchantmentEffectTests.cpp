@@ -12807,4 +12807,110 @@ bool FCataclysmTimedCleanseRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnPointBlankDamageRowTest,
+	"Cataclysm.Enchantments.TheOwnPointBlankDamageRowTakesItsShareOfEveryPointBlankHitAndCannotKill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You take 10%-20% of the damage dealt by your own point blank AOE skills".
+ * Issue #1833, 2026-10-05: `health` at -10 to -20 per cent of `event_amount` on
+ * `hit_dealt`, scoped to `Type.AOE.PointBlank`, with a stated trigger cooldown
+ * of nought. WORN at the top of its roll, 20, by a wearer with 1000 health: a
+ * hit of 200 by a strike takes nothing, one by a point blank skill takes 40,
+ * and a second in the same moment takes 40 more, because a burst that strikes
+ * five enemies is five hits. A DRAIN CANNOT KILL, ruled 2026-09-14.
+ *
+ * THE EVENT IS RAISED BY HAND with the amount and tags the player character
+ * passes from a real hit; `test_pool_action_names_match_the_engine.py` holds
+ * that call to passing an amount.
+ */
+bool FCataclysmOwnPointBlankDamageRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Negative_You_take_10_20_of_the_damage_dealt_by_your_own"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Worn.ASC()->SetNumericAttributeBase(Health, 1000.0f);
+	const FGameplayTagContainer PointBlank = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.AOE.PointBlank"));
+	const FGameplayTagContainer Strike = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Strike, Type.Melee"));
+	if (!TestFalse(TEXT("Type.AOE.PointBlank is in the vocabulary"), PointBlank.IsEmpty()))
+	{
+		return false;
+	}
+	const FName HitDealt(TEXT("hit_dealt"));
+
+	Worn.ASC()->ActOnEvent(HitDealt, &Strike, 200.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("a strike's hit of 200 takes nothing"),
+		Worn.ASC()->GetNumericAttribute(Health), 1000.0f, 0.01f);
+	Worn.ASC()->ActOnEvent(HitDealt, &PointBlank, 200.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("a point blank hit of 200 takes 20% of it. If nothing, DT_EnchantmentEffects may be older "
+				   "than the rows: run tools/generate_datatable_assets.py"),
+		Worn.ASC()->GetNumericAttribute(Health), 960.0f, 0.01f);
+	Worn.ASC()->ActOnEvent(HitDealt, &PointBlank, 200.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("a second in the same moment takes 40 more"),
+		Worn.ASC()->GetNumericAttribute(Health), 920.0f, 0.01f);
+	Worn.ASC()->ActOnEvent(HitDealt, &PointBlank, 100000.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("and a hit whose share is past all the health left leaves 1"),
+		Worn.ASC()->GetNumericAttribute(Health), 1.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRetaliationSelfDamageRowsTest,
+	"Cataclysm.Enchantments.TheThreeRetaliationSelfDamageRowsTakeTheirShareOfWhatRetaliationDealt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your retaliation damage also applies to you at 25%-50% effectiveness", "Your
+ * retaliation damage also damages you at 20%-40% effectiveness" and "You take
+ * 10%-20% of the damage you reflect". Issue #1833, 2026-10-05: each is `health`
+ * at its negative share of `event_amount` on `retaliation_dealt`, with a stated
+ * trigger cooldown of nought. "The damage you reflect" is retaliation in this
+ * game, ruled the same day. Each WORN at the top of its roll by a wearer with
+ * 1000 health: a payment of 300 that took no health takes nothing, one that took
+ * 300 takes the share, and a second in the same moment takes it again, because
+ * retaliation with a radius pays several enemies at once.
+ */
+bool FCataclysmRetaliationSelfDamageRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		float Share;
+	};
+	const FName RetaliationDealt(TEXT("retaliation_dealt"));
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	for (const FCase& Case : {
+			 FCase{TEXT("Negative_Your_retaliation_damage_also_applies_to_you_at_2"), 50.0f},
+			 FCase{TEXT("Negative_Your_retaliation_damage_also_damages_you_at_20"), 40.0f},
+			 FCase{TEXT("Negative_You_take_10_20_of_the_damage_you_reflect"), 20.0f}})
+	{
+		FWorn Worn(Case.Enchantment, false);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		Worn.ASC()->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		Worn.ASC()->SetNumericAttributeBase(Health, 1000.0f);
+		const float Each = 300.0f * Case.Share / 100.0f;
+
+		Worn.ASC()->ActOnEvent(RetaliationDealt, nullptr, 300.0f, /*bLanded=*/false, nullptr);
+		TestEqual(FString::Printf(TEXT("%s: a payment that took no health takes nothing"), Case.Enchantment),
+			Worn.ASC()->GetNumericAttribute(Health), 1000.0f, 0.01f);
+		Worn.ASC()->ActOnEvent(RetaliationDealt, nullptr, 300.0f, /*bLanded=*/true, nullptr);
+		TestEqual(FString::Printf(TEXT("%s: a payment of 300 takes %.0f%% of it. If nothing, DT_EnchantmentEffects "
+									   "may be older than the rows: run tools/generate_datatable_assets.py"),
+					  Case.Enchantment, Case.Share),
+			Worn.ASC()->GetNumericAttribute(Health), 1000.0f - Each, 0.01f);
+		Worn.ASC()->ActOnEvent(RetaliationDealt, nullptr, 300.0f, /*bLanded=*/true, nullptr);
+		TestEqual(FString::Printf(TEXT("%s: a second in the same moment takes it again"), Case.Enchantment),
+			Worn.ASC()->GetNumericAttribute(Health), 1000.0f - 2.0f * Each, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -133,6 +133,53 @@ def test_the_parser_read_every_comparison_and_every_call(pool_reading,
         f"file cannot read. {PARSE_ADVICE}")
 
 
+#: `ActOnEvent(FName(TEXT("hit_dealt")), <tags>, <amount>, ...);`, up to the
+#: call's own semicolon. Comments are gone before this is matched.
+CALL_OF = r'(?<![:\w])ActOnEvent\(\s*FName\(\s*TEXT\("%s"\)\s*\)([^;]*)\)\s*;'
+
+
+def amounts_passed(event: str) -> list[str]:
+    """What every call firing `event` passes as its amount: its third argument,
+    or an empty string for a call that passes none."""
+    passed = []
+    for path in sorted(SOURCE.rglob("*.cpp")):
+        if "Tests" in path.relative_to(SOURCE).parts:
+            continue
+        for rest in re.findall(CALL_OF % re.escape(event), code_of(path)):
+            arguments = [part.strip() for part in rest.split(",")][1:]
+            passed.append(arguments[1] if len(arguments) > 1 else "")
+    return passed
+
+
+def carries_an_amount(event: str) -> bool:
+    """Whether some call firing `event` passes an amount that is not nought."""
+    return any(amount and not re.fullmatch(r"0(\.0*)?f?", amount)
+               for amount in amounts_passed(event))
+
+
+def test_every_event_a_row_may_take_a_share_of_is_fired_with_an_amount():
+    """Issue #1833, 2026-10-05. `EVENTS_WITH_AN_AMOUNT` lets a row take a share
+    of what its event carried. A name there that the game fires with no amount
+    is a row that validates, is built, and moves nothing. THE CONTROLS ARE IN
+    THE SAME TEST: `hit_taken` is fired with a literal nought and `kill` with
+    no amount at all, and the reader must say so for both, or it is reading the
+    wrong argument."""
+    assert amounts_passed("hit_taken"), (
+        f"no call firing hit_taken was read. {PARSE_ADVICE}")
+    assert not carries_an_amount("hit_taken"), (
+        f"hit_taken is fired with {amounts_passed('hit_taken')}, which this "
+        f"reader takes for an amount. {PARSE_ADVICE}")
+    assert amounts_passed("kill") and not carries_an_amount("kill"), (
+        f"kill is fired with {amounts_passed('kill')}. {PARSE_ADVICE}")
+
+    without = [event for event in gen.EVENTS_WITH_AN_AMOUNT
+               if not carries_an_amount(event)]
+    assert not without, (
+        f"{without} are in EVENTS_WITH_AN_AMOUNT and the game fires them with "
+        f"{[amounts_passed(event) for event in without]}, so a row taking a "
+        f"share of their amount would move nothing.")
+
+
 def test_every_pool_a_row_may_move_is_one_the_game_has_attributes_for(
         pool_reading):
     _, constants, compared = pool_reading
