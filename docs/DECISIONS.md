@@ -2,6 +2,107 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Five more rows that repeat a skill: spells, a duplicate at half damage, the heavy attack after standing still, an echo and the ultimate; and a chance of 100 is always
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset,
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (one comparison in `ActOnEvent`), five new
+tests in `CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+Five of the seven sentences the 2026-10-05 entry "A row can repeat the skill just used, free" lists, each with the
+row that entry gives it. Every row is `repeat_skill` on `skill_use`.
+
+| Sentence | Chance | Required Tags | Condition | Damage Share |
+| :-- | :-- | :-- | :-- | :-- |
+| Spells have a 10%-20% chance to cast a second time for free | 10 to 20 | `Type.Spell` | | |
+| Each skill has a 20%-40% chance to cast a duplicate at 50% damage | 20 to 40 | | | 50 |
+| Your heavy attack applies its full effect twice if you have not moved in the last 2 seconds | 100 | `Slot.Heavy` | `stationary_for_seconds` 2 | |
+| Your spells echo +1 time | 100 | `Type.Spell` | | |
+| Your ultimate ability applies its effect twice | 100 | `Slot.Ultimate` | | |
+
+EnchantmentEffects 479 to 484, over 393 to 398 enchantments.
+
+**Not here:** "Your melee attacks have a 12%-15% chance to trigger twice", which waits for the basic attack to raise
+an event that names a skill, and Spellblade's Will. Both are as the 2026-10-05 entry left them.
+
+### A CHANCE OF 100 IS ALWAYS: ONE LINE OF THE ENGINE CHANGED
+
+Three of the five sentences state no chance and are written as 100. The repeat was kept when
+`Roll < Action.Percent`, and the roll is `FMath::FRandRange(0.0f, 100.0f)`, which can return 100 itself, so a row
+that says "twice" would on that one roll have repeated nothing. The comparison is now
+`Action.Percent >= 100.0f || Roll < Action.Percent`. A status row's chance has been compared this way since it was
+built, for the reason its own comment gives. No row on `development` carried the action before this stack, so no
+worn row behaves differently for it. The three tests of the rows at 100 pin the roll at 100.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+- **The readings are the 2026-10-05 entry's.** "Echo", "applies its effect twice" and "applies its full effect
+  twice" are each a second free activation, by that entry's ruling; nothing here adds to it.
+- **"+1 time" is one repeat**, which is all one use can have: one repeat for one use is that entry's rule.
+- **"Have not moved in the last 2 seconds"** is the condition `stationary_for_seconds` at 2, judged when the skill
+  is used, from the same reading "While stationary for more than 3 seconds" asks. A character that has never been
+  sampled has no reading and the condition refuses it, as it does for every row that asks it.
+
+### HOW THE ROWS ARE TESTED
+
+One test for each row, each wearing the real row at the top of its roll and handing the wearer's ability system a
+skill use through `ActOnSkillUse`, as the test of the first row does and with the same limit: each stops at the
+recorded repeat.
+
+- `TheSpellsCastASecondTimeRowRepeatsASpellUnderItsTopRollAndNothingElse`: a roll of 19.9 repeats a spell and not a
+  melee skill; a roll of 20 repeats nothing.
+- `TheDuplicateRowRepeatsAnySkillUnderItsTopRollAtHalfItsDamage`: a roll of 39.9 records a repeat at a share of
+  0.5; a roll of 40 records none. This is the test of the Damage Share column from the sheet to the loader.
+- `TheHeavyAttackTwiceRowRepeatsAHeavyAttackOnlyAfterTwoSecondsStandingStill`: nothing after one second standing
+  still; a repeat after two and a half, at a roll of 100; nothing for a special skill; nothing after a step.
+- `TheSpellsEchoRowRepeatsEverySpellAndNothingElse` and `TheUltimateTwiceRowRepeatsEveryUltimateAndNothingElse`: a
+  repeat at a roll of 100 for a skill carrying the row's tag, and none for one that does not.
+
+### THE WORD THAT STATES 100
+
+`tools/tests/test_enchantment_effects_match_the_row_text.py` asks that a row's value can be read out of its own
+sentence. "Twice" already reads as 100 everywhere. "Echo" does not, so `STATED_BY_WORD` gains it for `repeat_skill`
+alone, for "Your spells echo +1 time".
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **Which skills these rows reach is the 2026-10-05 entry's list, not the sentence's.** An ultimate that is an
+  aura, a summon, a movement skill or channelled is not repeated: among the Demonic ultimates that leaves out
+  Living Pyre, Subjugate, Everywhere at Once and Pyroclasm, and The Whole Weight, which is held. A heavy attack
+  that is held, such as Backswing, is not repeated either. The use still records a repeat and it is refused when
+  it comes to be made.
+- **Worn together, the rows give one repeat for one use**, at the highest share among the rows that passed. A
+  character wearing the echo row and the half-damage row gets one whole repeat of a spell, and never two.
+- **The spell rows and the every-skill row overlap on a spell** in the same way: two chances at one repeat.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the layer below this one and the two above it, on `development` 0a3844e0. The
+builds, the whole suite and the Python of record are in the table of the entry below this one and were run with
+this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | 7882d9d4 | 228 tests performed, 220 succeeded, 8 failed: the eight row tests of the four layers; 19 failed assertions |
+| The asset, regenerated with the editor | 7882d9d4 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 479 to 484 |
+| Cataclysm.Enchantments., whole, with every asset built | eaec6b80 | 228 tests performed, 228 succeeded, 0 failed; 0 ensures |
+| Proof G: a repeat's chance of 100 rolled and not compared | eaec6b80 | PROVED: with the break in: 228 tests performed, 225 succeeded, 3 failed: TheHeavyAttackTwiceRowRepeatsAHeavyAttackOnlyAfterTwoSecondsStandingStill, TheSpellsEchoRowRepeatsEverySpellAndNothingElse, TheUltimateTwiceRowRepeatsEveryUltimateAndNothingElse \| restored: 228 tests performed, 228 succeeded, 0 failed |
+
+**The 19 assertions of the run against the old asset, by test**: every skill use 3; spells 2; the duplicate 2; the
+heavy attack 2; the echo 2; the ultimate 2; the melee attacks row 3; Spellblade's Will 3. Each test failed where it
+reads the recorded repeat or the recorded trigger, and passed every line that expects nothing to be recorded.
+
+Proof G kept its broken run's log and failed exactly the six assertions predicted, two in each of the three tests
+that pin the roll at 100: the repeat was not recorded, and its share was 0.000000 against 1.000000.
+
+**The engine code compiled on its first build.** Nothing of this layer was changed after it.
+
+---
+
 ## 2026-10-06 — The first row that repeats a skill, and a Damage Share column so a row can say how much of its damage the repeat deals
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (a new column, Damage Share, on the Enchantment Effects sheet, and one

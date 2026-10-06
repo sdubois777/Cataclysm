@@ -478,3 +478,8 @@ Positive_Disease_effects_reduce_enemy_healing_by_50_100#1,Positive_Disease_effec
 Positive_Poisoned_enemies_are_slowed_by_30_50#1,Positive_Poisoned_enemies_are_slowed_by_30_50,,,30.0,50.0,,,0.0,,0.0,ailment_speed,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Poison,0.0
 Positive_Bleeding_enemies_move_5_10_slower#1,Positive_Bleeding_enemies_move_5_10_slower,,,5.0,10.0,,,0.0,,0.0,ailment_movement_speed,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Bleed,0.0
 Positive_Every_skill_use_has_a_5_15_chance_to_cast_a_se#1,Positive_Every_skill_use_has_a_5_15_chance_to_cast_a_se,,,5.0,15.0,,,0.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Spells_have_a_10_20_chance_to_cast_a_second_ti#1,Positive_Spells_have_a_10_20_chance_to_cast_a_second_ti,,,10.0,20.0,Type.Spell,,0.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Each_skill_has_a_20_40_chance_to_cast_a_duplic#1,Positive_Each_skill_has_a_20_40_chance_to_cast_a_duplic,,,20.0,40.0,,,0.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,50.0
+Positive_Your_heavy_attack_applies_its_full_effect_twice#1,Positive_Your_heavy_attack_applies_its_full_effect_twice,,,100.0,100.0,Slot.Heavy,stationary_for_seconds,2.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Your_spells_echo_1_time#1,Positive_Your_spells_echo_1_time,,,100.0,100.0,Type.Spell,,0.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Your_ultimate_ability_applies_its_effect_twice#1,Positive_Your_ultimate_ability_applies_its_effect_twice,,,100.0,100.0,Slot.Ultimate,,0.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
