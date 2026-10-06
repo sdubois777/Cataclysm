@@ -14833,4 +14833,126 @@ bool FCataclysmProjectilesExplodeRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellsAbsorbedRowTest,
+	"Cataclysm.Enchantments.TheSpellsAbsorbedRowAbsorbsASpellUnderItsTopRollAndNeverAMeleeBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Spells that hit you have a 15%-30% chance to be absorbed dealing no damage".
+ * `spell_absorb_chance` flat 15 to 30, WORN at the top of its roll and asked the
+ * question the damage step asks, `UCataclysmDamageCalculation::SpellIsAbsorbed`,
+ * with `Cataclysm.SpellAbsorbRoll` pinned. What an absorbed blow then does is
+ * `Cataclysm.StatExemption.ASpellIsAbsorbedOnItsRollAndABlowThatIsNotASpellNever`'s.
+ */
+bool FCataclysmSpellsAbsorbedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Positive_Spells_that_hit_you_have_a_15_30_chance_to_be"), true);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.SpellAbsorbRoll"), TEXT("29.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	FCataclysmIncomingHit Spell;
+	Spell.Damage = 100.0f;
+	Spell.bIsSpell = true;
+	FCataclysmIncomingHit Melee;
+	Melee.Damage = 100.0f;
+	Melee.bIsMelee = true;
+
+	TestTrue(*(FString(TEXT("a roll of 29.9 against the top roll of 30: a spell is absorbed.")) +
+			   CataclysmRepeatRowsTest::OlderAsset),
+		UCataclysmDamageCalculation::SpellIsAbsorbed(Worn.ASC(), Spell));
+	TestFalse(TEXT("a melee blow is never absorbed"),
+		UCataclysmDamageCalculation::SpellIsAbsorbed(Worn.ASC(), Melee));
+	Roll.Set(TEXT("30"));
+	TestFalse(TEXT("a roll of 30 absorbs nothing"),
+		UCataclysmDamageCalculation::SpellIsAbsorbed(Worn.ASC(), Spell));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeReflectedRowTest,
+	"Cataclysm.Enchantments.TheMeleeAttacksReflectedRowReflectsAMeleeHitUnderItsTopRollAndNeverASpell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Melee attacks that hit you have a 10%-20% chance to be reflected back as
+ * retaliation damage". `melee_reflect_chance` flat 10 to 20, WORN at the top of
+ * its roll and asked `UCataclysmDamageCalculation::MeleeIsReflected`, with
+ * `Cataclysm.MeleeReflectRoll` pinned. What a reflected hit pays back is
+ * `Cataclysm.StatExemption.AReflectedMeleeHitIsNotTakenAndIsPaidBackWholeAsRetaliationIsPriced`'s.
+ */
+bool FCataclysmMeleeReflectedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Positive_Melee_attacks_that_hit_you_have_a_10_20_chance"), true);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.MeleeReflectRoll"), TEXT("19.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	FCataclysmIncomingHit Spell;
+	Spell.Damage = 100.0f;
+	Spell.bIsSpell = true;
+	FCataclysmIncomingHit Melee;
+	Melee.Damage = 100.0f;
+	Melee.bIsMelee = true;
+
+	TestTrue(*(FString(TEXT("a roll of 19.9 against the top roll of 20: a melee hit is reflected.")) +
+			   CataclysmRepeatRowsTest::OlderAsset),
+		UCataclysmDamageCalculation::MeleeIsReflected(Worn.ASC(), Melee));
+	TestFalse(TEXT("a spell is never reflected"),
+		UCataclysmDamageCalculation::MeleeIsReflected(Worn.ASC(), Spell));
+	Roll.Set(TEXT("20"));
+	TestFalse(TEXT("a roll of 20 reflects nothing"),
+		UCataclysmDamageCalculation::MeleeIsReflected(Worn.ASC(), Melee));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeSkillsHitAllRowTest,
+	"Cataclysm.Enchantments.TheMeleeSkillsHitAllRowRollsThreeMetresForAMeleeSkillAndNotForABasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Melee skills have a 10%-20% chance to hit all enemies within 3 meters".
+ * `use_hits_all_nearby` on `skill_use`, 10 to 20, scoped to `Type.Melee`, WORN
+ * at the top of its roll with `Cataclysm.UseOutcomeRoll` pinned. What a strike
+ * does with the 300 centimetres is
+ * `Cataclysm.Skills.AStrikeARowRolledToHitAllNearbyHitsEveryEnemyAroundItsUserAndTheNextStrikeDoesNot`'s.
+ */
+bool FCataclysmMeleeSkillsHitAllRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmUseOutcomeRowsTest;
+	FWorn Worn(TEXT("Positive_Melee_skills_have_a_10_20_chance_to_hit_all_en"), true);
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.UseOutcomeRoll"), TEXT("19.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Spell = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Spell, Type.Projectile"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2 && Spell.Num() == 2))
+	{
+		return false;
+	}
+
+	Use(Worn.ASC(), Melee, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(*(FString(TEXT("a roll of 19.9 against the top roll of 20, a melee skill: every enemy within 3 metres.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->PendingUseHitsAll(), 300.0f, 0.01f);
+	Use(Worn.ASC(), Spell, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(TEXT("a spell is not a melee skill"), Worn.ASC()->PendingUseHitsAll(), 0.0f, 0.01f);
+	Use(Worn.ASC(), Melee, /*bBasicAttack=*/true, /*bHasCooldown=*/false);
+	TestEqual(TEXT("a melee basic attack is not a skill, and does not roll"),
+		Worn.ASC()->PendingUseHitsAll(), 0.0f, 0.01f);
+	Roll.Set(TEXT("20"));
+	Use(Worn.ASC(), Melee, /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	TestEqual(TEXT("a roll of 20 hits only what the strike reaches"), Worn.ASC()->PendingUseHitsAll(), 0.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
