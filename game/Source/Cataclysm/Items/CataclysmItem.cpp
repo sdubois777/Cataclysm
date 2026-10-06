@@ -1437,6 +1437,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bOnlyASkillWithACooldown = bCooldownNoDamage || bCooldownIncrease;
 					Action.bUseHitsAllNearby = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction, ESearchCase::IgnoreCase);
+					// AND WHETHER THE USE HITS ITS OWN USER: the whole of its hit, or half for a backfire.
+					const bool bBackfires = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::UseBackfiresAction, ESearchCase::IgnoreCase);
+					Action.bUseHitsItsUser = bBackfires || Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::UseHitsItsUserAction, ESearchCase::IgnoreCase);
+					if (bBackfires)
+					{
+						Action.UseSelfHitSharePercent = UCataclysmAbilitySystemComponent::BackfireSharePercent;
+					}
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

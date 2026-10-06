@@ -3534,6 +3534,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::UseIncreasedDamageAction = TEXT("
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownUseIncreasedDamageAction =
 	TEXT("cooldown_use_increased_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction = TEXT("use_hits_all_nearby");
+const TCHAR* UCataclysmAbilitySystemComponent::UseHitsItsUserAction = TEXT("use_hits_its_user");
+const TCHAR* UCataclysmAbilitySystemComponent::UseBackfiresAction = TEXT("use_backfires");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -4329,6 +4331,7 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 	bPendingUseNoDamage = false;
 	PendingUseIncreasePercent = 0.0f;
 	PendingUseHitsAllCm = 0.0f;
+	PendingUseSelfHitSharePercent = 0.0f;
 	SkillInHandName = SkillName;
 	SkillInHandAim = Aim;
 	bSkillInHandHasCooldown = bHasCooldown;
@@ -4602,7 +4605,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// is: only when the event names a skill, once per row per event, rolled against the row's value. A row for
 		// cooldown abilities is not rolled at all for a skill without one. The use takes the answer as it is paid
 		// for; see `TakePendingUseNoDamage`.
-		if (Action.bUseDealsNoDamage || Action.bUseDealsIncreasedDamage || Action.bUseHitsAllNearby)
+		if (Action.bUseDealsNoDamage || Action.bUseDealsIncreasedDamage || Action.bUseHitsAllNearby
+			|| Action.bUseHitsItsUser)
 		{
 			if (bLanded && !SkillInHandName.IsNone() && !StackedThisEvent.Contains(Action.TriggerKey)
 				&& (!Action.bOnlyASkillWithACooldown || bSkillInHandHasCooldown) && TriggerReady(Action))
@@ -4615,6 +4619,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					if (Action.bUseDealsNoDamage)
 					{
 						bPendingUseNoDamage = true;
+					}
+					else if (Action.bUseHitsItsUser)
+					{
+						// THE LARGEST SHARE OF THE ROWS THAT PASSED. The use takes it and deals nobody else anything.
+						PendingUseSelfHitSharePercent =
+							FMath::Max(PendingUseSelfHitSharePercent, Action.UseSelfHitSharePercent);
 					}
 					else if (Action.bUseHitsAllNearby)
 					{

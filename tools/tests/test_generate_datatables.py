@@ -2965,6 +2965,13 @@ class TestRepeatSkill:
             gen.enchantment_effects(self.repeat(
                 tmp_path, {"Action": action, "Action Event": "skill_use"}))
 
+    @pytest.mark.parametrize("action", ["use_hits_its_user", "use_backfires"])
+    def test_a_row_that_rolls_a_use_hitting_its_user_is_carried_through(self, tmp_path, action):
+        out = gen.enchantment_effects(self.repeat(
+            tmp_path, {"Action": action, "Action Event": "skill_use"}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"]) == (action, "skill_use", 5.0, 15.0)
+
     def test_a_row_that_rolls_a_strike_hitting_all_nearby_is_carried_through(self, tmp_path):
         out = gen.enchantment_effects(self.repeat(
             tmp_path, {"Action": "use_hits_all_nearby", "Action Event": "skill_use"}))
