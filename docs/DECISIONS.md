@@ -54,6 +54,27 @@ uses no skill, so that a use then deals nothing is covered by that entry's tests
 - **A character wearing the cooldown row and the strike row rolls each for a strike skill with a cooldown**, and
   either passing is enough.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers below this one and the two above it, on `development` bae2f26c.
+The build, the whole suite and the Python of record are in the table of the entry "While below 50% HP, all
+skills cost HP instead of mana no longer converts the mana pool" and were run with this layer in the stack.
+**The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | b71a44e5 | 236 tests performed, 228 succeeded, 8 failed, this layer's among them; 4 of the 10 failed assertions are this layer's |
+| The asset, regenerated with the editor | b71a44e5 | rows 490 to 493 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of the heal's proof | 276116ba | 236 tests performed, 236 succeeded, 0 failed |
+
+**Each of the three tests fails against a table without its row and passes with it.** The four assertions:
+the cooldown row's recorded no-damage for a skill with a cooldown; the strike row's for a strike skill; and the
+projectile row's two, for a projectile basic attack and for a projectile skill. Every line that expects nothing
+recorded passed in both runs.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The
+mechanisms it is written on were proved by the session that built them.
+
 ---
 
 ## 2026-10-06 — Reaper's Embrace is partly built: two pieces raise every heal by a tenth and halve health regeneration, through a stat that can raise what a heal restores
