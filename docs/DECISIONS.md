@@ -29,18 +29,22 @@ The last two of the nine sentences that state a chance of their own:
 | "Melee skills have a 10%-20% chance to hit you instead of the enemy" | `use_hits_its_user` | `skill_use` | `Type.Melee` | the whole hit |
 | "Spells have a 15%-25% chance to backfire dealing half damage to you" | `use_backfires` | `skill_use` | `Type.Spell` | half |
 
-### Judgements by the writing session, each to be ruled by the coordinating session
+### Rulings by the coordinating session, each a labelled judgement under the owner's decision above, 2026-10-06
 
-- **"Hit you instead of the enemy" is the whole of the hit.** The sentence states no share, and its sibling states
-  "half" where it means half. The other reading would be a share such as Echo Chamber's tenth.
-- **A backfire deals nothing to enemies.** The sentence says only what happens to the caster. A backfire is read as
-  the spell failing, as "instead of the enemy" is for the melee row; the other reading is a spell that works and
-  also hurts its caster.
+- **"Hit you instead of the enemy" is the whole of the hit, through the user's own defences.** The sentence states no
+  share, and its sibling states "half" where it means half. It can kill, as Echo Chamber's self hit can. **It is on
+  the owner's play-check list as a tuning question.**
+- **A backfire deals nothing to enemies.** The spell fails and its caster takes half.
+- **The self hit lands when the use is paid for.** Echo Chamber's lands a tick later, because it is dealt where the
+  copy is made, which has to wait a tick to grant a skill. This one grants nothing, so it has nothing to wait for;
+  the tick would change no figure.
+
+### How it is priced and delivered, the writing session's judgement, accepted with the registration
+
 - **What the user takes is priced as Echo Chamber prices its self hit**: the use's own hit before any target's
   defences, the weapon's damage at the skill's damage percent with the user's modifiers for that skill, dealt as the
   user's own direct damage to themselves. Their own defences reduce it. It does not critically strike, leech, or
   draw retaliation, and it is delivered as area damage, which cannot be evaded, as that rule's is.
-- **It lands when the use is paid for**, not when the blow would have landed.
 - **A use with no damage of its own deals its user nothing**, and still deals no enemy anything.
 
 ### What the research settles, and what it does not
@@ -89,8 +93,8 @@ stack, and when you use a spell, you gain a stack of Dervish which increases you
 Two new automation tests.
 
 - `Cataclysm.Skills.AUseARowRolledToHitItsUserHitsNoEnemyAndItsUserTakesTheHitOrHalfOfIt`: one strike with no
-  cooldown used four times: plain; rolled to hit its user, the enemy takes nothing and the user takes what the enemy
-  took; a backfire, half; plain again.
+  cooldown used four times: plain; rolled to hit its user, the enemy takes nothing and the user, given full evasion
+  first, takes what the enemy took; a backfire, half; plain again.
 - `Cataclysm.Skills.AStackARowGrantsOnAUseIsGainedOnlyWhenTheUsesTagsMatchTheGrantsOwn`: a grant kept to melee
   attacks is gained on a melee attack and not on a spell; one with no tags is gained on both.
 
