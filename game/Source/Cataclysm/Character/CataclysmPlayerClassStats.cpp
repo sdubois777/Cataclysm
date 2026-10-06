@@ -244,6 +244,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// above zero, a skill cost the mana cannot cover is paid from the energy
 		// shield. Issue #1515.
 		TEXT("skill_cost_paid_from_energy_shield"),
+		// The flag that moves a skill's cost onto health and leaves the mana
+		// pool alone, read by UCataclysmGameplayAbility::CostPool. Issue #2228.
+		TEXT("skill_cost_paid_from_health"),
 		// No Second Wind's radius in metres, read by
 		// UCataclysmDebuffs::HoldAppliedNearbyStep: above zero, a Cripple or
 		// Weaken the holder applied does not run down on an enemy that near.

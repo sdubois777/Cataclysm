@@ -365,10 +365,25 @@ FGameplayAttribute UCataclysmGameplayAbility::CostPool(
 	//
 	// THE SAME NUMBER OUT OF A DIFFERENT POOL. The option converts the pool, not
 	// the price, so a skill that cost 40 mana costs 40 health.
-	return UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem)
+	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
+	{
+		return UCataclysmVitalAttributeSet::GetHealthAttribute();
+	}
+
+	// AND FOR A CHARACTER WHOSE COST MOVED AND WHOSE POOL DID NOT. Issue #2228.
+	// See `CostPaidFromHealthStat`. Asked with the character's state, so "while
+	// below 50% HP" is judged now.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	return Cataclysm
+			&& Cataclysm->StatForSkill(FName(CostPaidFromHealthStat),
+									   FGameplayTagContainer(), 0.0f) > 0.0f
 		? UCataclysmVitalAttributeSet::GetHealthAttribute()
 		: UCataclysmVitalAttributeSet::GetManaAttribute();
 }
+
+const TCHAR* UCataclysmGameplayAbility::CostPaidFromHealthStat =
+	TEXT("skill_cost_paid_from_health");
 
 bool UCataclysmGameplayAbility::PoolCovers(
 	const UAbilitySystemComponent* AbilitySystem, const FGameplayAttribute& Pool,

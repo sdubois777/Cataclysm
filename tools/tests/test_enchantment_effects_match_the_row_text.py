@@ -185,7 +185,12 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.I
 #: E part 4c, with "Your aura also applies its effect to all allies within
 #: range": above zero, the allies inside the wearer's aura share the immunities
 #: it gives its caster.
-FLAG_STATS = {"skill_locked", "mana_pool_becomes_health", "auras_end_at_death",
+#: `skill_cost_paid_from_health` TOOK THE PLACE OF `mana_pool_becomes_health`
+#: ON 2026-10-06, issue #2228: above zero, a skill's cost comes out of health
+#: and the mana pool is left alone. "While below 50% HP, all skills cost HP
+#: instead of mana" moved to it, and no enchantment row states the old stat any
+#: more, so `test_every_flag_stat_is_still_used` would refuse it here.
+FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death",
               "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay",
               "aura_shares_immunities_with_allies"}
 
