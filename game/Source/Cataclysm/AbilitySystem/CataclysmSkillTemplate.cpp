@@ -24,6 +24,7 @@
 #include "AbilitySystem/CataclysmHealthDebt.h"
 // For the stack a cost paid soon after the last one builds. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 // For binding together the creatures one throw pinned, so that killing any of
 // them frees the rest. The Spear's Skewer. Issue #37.
@@ -2953,6 +2954,13 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 	{
 		Zone->MorePerEnemyInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat), SkillTags, 0.0f);
 		Zone->SlowsThoseInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneSlowPercentStat), SkillTags, 0.0f);
+		// AND A STAGGER ON ENTRY, AND THE AILMENT OF THE SKILL'S OWN DAMAGE TYPE: burn for a Demonic skill, bleed for a
+		// War one, nothing for any other. Ruled 2026-10-06.
+		Zone->bStaggersThoseEntering = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f) > 0.0f;
+		if (ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat), SkillTags, 0.0f) > 0.0f)
+		{
+			Zone->OwnAilment = UCataclysmAilments::AilmentOfDamageType(DamageTypeName());
+		}
 	}
 
 	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's

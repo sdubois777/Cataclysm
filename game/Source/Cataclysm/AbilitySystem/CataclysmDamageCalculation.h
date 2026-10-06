@@ -601,6 +601,19 @@ public:
 	static const TCHAR* OnlyOnePersistentAreaStat;
 
 	/**
+	 * TWO MORE A GROUND ZONE READS WHERE A SKILL LEAVES IT, each a flag: above nought is yes. Ruled 2026-10-06.
+	 *
+	 * `zone_staggers_on_entry`: "Enemies that enter your persistent AOE zones are briefly staggered". The game's
+	 * own stagger at its own length, once for each enemy each time it enters.
+	 *
+	 * `zone_applies_own_ailment`: "Persistent AOE zones apply a DoT to enemies standing in them". The ailment of
+	 * the zone's own damage type, `UCataclysmAilments::AilmentOfDamageType`, at that ailment's ordinary figures, by
+	 * the zone's owner, once a sweep.
+	 */
+	static const TCHAR* ZoneStaggersOnEntryStat;
+	static const TCHAR* ZoneAppliesOwnAilmentStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *

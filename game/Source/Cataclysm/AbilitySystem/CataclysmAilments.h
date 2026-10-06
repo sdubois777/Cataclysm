@@ -179,6 +179,17 @@ public:
 	static const FCataclysmAilmentKind* KindNamed(const FString& Ailment);
 
 	/**
+	 * THE AILMENT THAT BELONGS TO A DAMAGE TYPE, or none. THE ONE PLACE THIS IS STATED IN CODE.
+	 *
+	 * DEMONIC IS BURN AND WAR IS BLEED, which the design document states: "how every War skill applies bleed and
+	 * every Demonic skill applies burn", and "burn, which is Demonic's damage over time effect in the same way bleed
+	 * is War's". EVERY OTHER TYPE HAS NONE: a labelled judgement by the coordinating session under the owner's
+	 * delegation, 2026-10-06. The design names no ailment for them, and a caller is to apply nothing rather than
+	 * pick one.
+	 */
+	static FName AilmentOfDamageType(FName DamageType);
+
+	/**
 	 * Where a chance to apply stops being a chance. Mirrors `AILMENT_CHANCE_CAP`
 	 * in `sim/cataclysm_sim/affixes.py`.
 	 */

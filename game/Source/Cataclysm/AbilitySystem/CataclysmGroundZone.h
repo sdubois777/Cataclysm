@@ -218,6 +218,24 @@ public:
 	static constexpr float SlowSeconds = 1.5f;
 
 	/**
+	 * Whether a sweep staggers whoever it finds inside that the sweep before did not. Ruled 2026-10-06: "Enemies
+	 * that enter your persistent AOE zones are briefly staggered", the game's own stagger at its own length, once
+	 * for each enemy each time it enters. AN ENEMY ALREADY STANDING WHERE THE ZONE IS LEFT COUNTS AS ENTERING on the
+	 * first sweep; one that leaves and comes back enters again.
+	 */
+	UPROPERTY(Transient)
+	bool bStaggersThoseEntering = false;
+
+	/**
+	 * The ailment each sweep lays on whoever stands inside, by name, or none. Ruled 2026-10-06: "Persistent AOE zones
+	 * apply a DoT to enemies standing in them" is the ailment of the zone's own damage type, at that ailment's
+	 * ordinary figures, applied by the zone's owner. Set where the zone is left, from
+	 * `UCataclysmAilments::AilmentOfDamageType`.
+	 */
+	UPROPERTY(Transient)
+	FName OwnAilment;
+
+	/**
 	 * Also make this patch heal whoever left it faster while they stand in it.
 	 *
 	 * ONE ROW ASKS. The Fist's Blood Pyre: "standing in your own pyre does you
@@ -362,6 +380,9 @@ public:
 	/** How many enemies the last sweep found. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	int32 LastSweepCount = 0;
+
+	/** Who the last sweep found, so the next can tell who has entered since. As `ACataclysmTerrain` keeps it. */
+	TArray<TWeakObjectPtr<AActor>> InsideLastSweep;
 
 	/** The status effect each sweep lays, or an invalid tag for none. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")

@@ -2,6 +2,136 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A zone staggers whoever enters it and lays the ailment of its own damage type; and terrain's half of two zone stats is tested. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp` (`AilmentOfDamageType`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (two stat names);
+`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`bStaggersThoseEntering`, `OwnAilment`,
+`InsideLastSweep`, `Sweep`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`LeaveGroundAlong`);
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (`StatsWithNoAttribute`); the probes and one test in
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses these stats yet**; the rows are the enchantment
+session's.
+
+### What it is for
+
+The second of four windows for the persistent-area sentences. Two more that are a stat a zone reads:
+
+| Sentence | Stat | A row |
+|---|---|---|
+| "Enemies that enter your persistent AOE zones are briefly staggered" | `zone_staggers_on_entry` | flat 1 |
+| "Persistent AOE zones apply a DoT to enemies standing in them" | `zone_applies_own_ailment` | flat 1 |
+
+And the test the change before this one owed: terrain's half of `persistent_area_duration` and
+`only_one_persistent_area`.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **"Briefly staggered" is the game's existing stagger at its existing length, once for each enemy each time it
+  enters.**
+- **An enemy already standing where a zone is left counts as entering on the first sweep.**
+- **The DoT is the ailment of the zone's own damage type**, applied with the game's ordinary figures for that
+  ailment by the zone's owner, once a sweep, to whoever stands in it.
+- **Demonic zones burn and War zones bleed**, which the design document states: "how every War skill applies bleed
+  and every Demonic skill applies burn", and "burn, which is Demonic's damage over time effect in the same way bleed
+  is War's".
+- **A zone of any other damage type applies nothing.** The design names no ailment for the other types. No War
+  skill leaves a zone today, so the War half is the mapping line only.
+
+### What the research settles, and what it does not
+
+No new source was read. The two sentences of the design document above settle Demonic and War. **Nothing settles the
+other types**; that half is the judgement above.
+
+### How it is built
+
+- **Two flags**, each asked once where a skill leaves the zone, with the skill's tags, and put on the zone.
+- **The stagger.** A zone now keeps who its last sweep found, as terrain already does. A sweep staggers each enemy
+  it finds that the sweep before did not, through `ApplyStagger` at its own length of one second. An enemy that
+  stays is not staggered again; one that leaves for a sweep and comes back is.
+- **The ailment** is held on the zone by name, taken from `UCataclysmAilments::AilmentOfDamageType`, **the one place
+  the mapping is stated in code**. Each sweep applies it through `UCataclysmAilments::Apply` at a magnitude of one,
+  which is one application at the row's own size: 25 a second for 4 seconds for a burn, before the owner's
+  damage-over-time stats.
+- **A second sweep on an enemy that already carries the ailment refreshes it and adds no second one.** That is the
+  ordinary rule for every effect a player applies, one stack; the probe counts one burn after two sweeps.
+- **The generator cannot refuse a row for a zone of another type.** The row is an unscoped stat on the wearer, and
+  which zone it reaches is decided when a skill is used, by that skill's damage type. So the rule is in the engine,
+  and a probe shows a Chaos zone whose owner carries the flag holds no ailment and sets nobody alight.
+
+### Consequences, stated rather than changed
+
+- **Most Demonic skills that leave ground already burn what they hit.** With this flag their zone also burns whoever
+  stands in it, at the ordinary figure and not at the skill's.
+- **A zone's own damage is unchanged.** The ailment is a second thing each sweep does.
+- **The stagger reaches whatever the stagger reaches**: it does not stop its target acting, and an owner that
+  carries a stagger health ceiling keeps to it.
+- **Until a row makes zones for other skills, both reach the 12 Demonic skills that leave ground.**
+
+### For the owner's play-check: a zone's ailment counts as its owner applying a damage over time
+
+Accepted by the coordinating session under the owner's delegation, 2026-10-06. **Read in the code, not run.**
+
+- **A zone's ailment is its owner's application.** In `UCataclysmSkillEffects::ApplyDamageOverTime` the instigator
+  is the zone's owner; what the owner's rows hang on that ailment goes onto its carrier on every application, a
+  refresh included; and the `dot_applied` event is raised on every application to another character, a refresh
+  included.
+- **So a row that stacks on `dot_applied` gains one stack a sweep for each enemy standing in the zone.** A zone
+  sweeps once a second. "Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds, stacking up to 5
+  times" would, by this reading, reach its cap of 5 after five sweeps with one enemy inside, and sooner with more.
+- **And a rider on the ailment holds for a zone's burn as for any other**, an ailment that passes on at its
+  carrier's death included.
+
+### Tests
+
+- `Cataclysm.StatExemption.ATerrainPieceLastsLessWithTheDurationStatAndANewOneEndsAnEarlierOne`: a strike raising a
+  wall for 8 seconds; with 50% less of the duration stat it lasts 4; a caster that may hold only one has one wall
+  after a second strike, where a plain caster has two.
+- `ProbeZoneStaggersOnEntry` and `ProbeZoneAppliesOwnAilment`, run by
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: the first sweep staggers, a second does not, a
+  third after leaving and coming back does; the mapping's three answers; a Demonic zone holds Burn, sets the enemy
+  alight and leaves one burn after two sweeps; a Chaos zone holds none.
+
+**Not tested:** a War zone, since no War skill leaves one; the stagger's own length.
+
+**Python.** No new test. The inventory of stat lookups gained two entries.
+
+### Run
+
+One window on 2026-10-06 for a stack of two, at `feat/zone-standing-condition-3` c0f5efad: the stagger on entry and
+the zone's own ailment (`feat/zone-entry-and-standing-2` 7092fea6), then the condition `target_in_your_zone`.
+Development was 6b349701. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3228 tests performed, 3228 succeeded, 0 failed`; `Declared: 3228 tests in the tree at c0f5efad; 3228 performed, gap 0` |
+| Python, with continuous integration idle | `5768 passed, 8 skipped in 357.79s`; JUnit `tests="5776" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at c0f5efad, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmGroundZone.cpp`: a sweep staggers everyone it finds | `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | 1 performed, 1 failed, 1 failed assertion: "and not again while it stays inside" | 1 performed, 1 succeeded |
+| Pb | `CataclysmAilments.cpp`: Demonic's ailment is named as Bleed | Same | 1 performed, 1 failed, 4 failed assertions: the mapping answered Bleed; the zone held Bleed; the enemy was not alight; it carried 0 burns after two sweeps against 1 | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplate.cpp`: terrain lasts its own time whatever the stat says | `Cataclysm.StatExemption.ATerrainPieceLastsLess` | 1 performed, 1 failed, 1 failed assertion: the wall lasted 8.000000 against 4.000000 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 4 and 1.
+
+**What the run settles of what this entry only predicted.** A second sweep leaves an enemy carrying one burn, not
+two. A stagger is laid on the first sweep, not on a second while the enemy stays, and again when it has left for a
+sweep and come back.
+
+**Not run:** what the heading "For the owner's play-check" above says of riders and of the applied-a-damage-over-time
+event; a War zone; any of this read from the effect table, since no row exists.
+
+---
+
 ## 2026-10-06 — Two rows pass an ailment on at a death: Disease to 1 to 3 more than its own two, and a Bleed to the nearest enemy
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),

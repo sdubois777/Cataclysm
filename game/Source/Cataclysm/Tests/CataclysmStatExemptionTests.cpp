@@ -54,6 +54,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "EngineUtils.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -3385,11 +3386,17 @@ namespace CataclysmStatExemptionTest
 		float TakenByTheCreature = -1.0f;
 		bool bCreatureCarriesTheSlow = false;
 		int32 FoundByTheSweep = -1;
+		FName ZonesOwnAilment;
+		bool bBurningAfterTheSweep = false;
+		int32 BurnsOnTheEnemyAfterTwoSweeps = -1;
+		bool bStaggeredByTheFirstSweep = false;
+		bool bStaggeredAgainWhileStaying = false;
+		bool bStaggeredOnComingBack = false;
 		int32 LiveZonesAfterASecondBlink = 0;
 	};
 
 	FZoneReading ReadABlinksZones(TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry,
-								  bool bWithACreature = false)
+								  bool bWithACreature = false, const TCHAR* Element = TEXT("Element.Demonic"))
 	{
 		FZoneReading Read;
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -3436,7 +3443,7 @@ namespace CataclysmStatExemptionTest
 			Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
 		}
 
-		const auto Blink = [&Caster](ECataclysmAbilitySlot Slot) -> bool
+		const auto Blink = [&Caster, Element](ECataclysmAbilitySlot Slot) -> bool
 		{
 			const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
 				UCataclysmMovementSkill::StaticClass(), Slot, /*Level=*/100, Caster.Actor);
@@ -3451,7 +3458,7 @@ namespace CataclysmStatExemptionTest
 			Slip->Params = UCataclysmSkillShapes::ParseParams(
 				TEXT("Mode=Blink; Range=8; Radius=3.5; GroundRadius=3.5; GroundDuration=6; GroundPercent=16.7"));
 			Slip->SkillTags = UCataclysmSkillShapes::TagsFromCell(
-				TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent"));
+				*FString::Printf(TEXT("Item.Weapon.Wand, %s, Type.AOE.Persistent"), Element));
 			return Caster.AbilitySystem->TryActivateAbility(Handle);
 		};
 		const auto LiveZones = [World, &Caster](ACataclysmGroundZone** OutAtTheOrigin = nullptr) -> int32
@@ -3508,6 +3515,31 @@ namespace CataclysmStatExemptionTest
 			Read.bEnemyIsSlowed = LeftSystem->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
 			Read.SlowStatedOnTheEnemy =
 				UCataclysmSkillEffects::StatedStrengthOn(Left.Actor, UCataclysmDebuffs::CrippleTag());
+
+			// THE ZONE'S OWN AILMENT, AND THE STAGGER ON ENTRY. Ruled 2026-10-06. The stagger is taken off by hand
+			// between sweeps, since nothing here moves time: an enemy that stays is not staggered again, and one that
+			// leaves for a sweep and comes back is.
+			Read.ZonesOwnAilment = AtTheOrigin->OwnAilment;
+			Read.bBurningAfterTheSweep = UCataclysmSkillEffects::HasTag(Left.Actor, UCataclysmSkillEffects::BurnTag());
+			const FGameplayTag Staggered = UCataclysmSkillEffects::StaggeredTag();
+			UAbilitySystemComponent* LeftMutable = UCataclysmTargeting::AbilitySystemOf(Left.Actor);
+			const auto ClearTheStagger = [LeftMutable, &Staggered]()
+			{
+				LeftMutable->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(Staggered));
+			};
+			Read.bStaggeredByTheFirstSweep = UCataclysmSkillEffects::IsStaggered(Left.Actor);
+			ClearTheStagger();
+			AtTheOrigin->Sweep();
+			Read.bStaggeredAgainWhileStaying = UCataclysmSkillEffects::IsStaggered(Left.Actor);
+			// AND HOW MANY BURNS THE ENEMY CARRIES AFTER TWO SWEEPS: the tag is held once for each running burn.
+			Read.BurnsOnTheEnemyAfterTwoSweeps = LeftMutable->GetTagCount(UCataclysmSkillEffects::BurnTag());
+			ClearTheStagger();
+			const FVector Stood = Left.Actor->GetActorLocation();
+			Left.Actor->SetActorLocation(Stood + FVector(0.0f, 5000.0f, 0.0f));
+			AtTheOrigin->Sweep();
+			Left.Actor->SetActorLocation(Stood);
+			AtTheOrigin->Sweep();
+			Read.bStaggeredOnComingBack = UCataclysmSkillEffects::IsStaggered(Left.Actor);
 		}
 		Read.LiveZonesAfterASecondBlink = Blink(ECataclysmAbilitySlot::Special) ? LiveZones() : -1;
 		return Read;
@@ -3611,6 +3643,70 @@ namespace CataclysmStatExemptionTest
 			Plain.CreatureSpeedAfter, 1.0f, 0.001f);
 		Test.TestEqual(TEXT("and a carrying caster's zone leaves it at 0.8 of its speed"),
 			Slowing.CreatureSpeedAfter, 0.8f, 0.001f);
+	}
+
+	/**
+	 * `zone_staggers_on_entry` is read where the zone is left and acted on by `ACataclysmGroundZone::Sweep`. An enemy
+	 * standing in a carrying caster's zone is staggered by the first sweep, not again while it stays, and again when
+	 * it has left for a sweep and come back. A plain zone staggers nobody.
+	 */
+	void ProbeZoneStaggersOnEntry(FAutomationTestBase& Test)
+	{
+		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FZoneReading Staggering = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneStaggersOnEntryStat, 1.0f);
+		});
+		if (!Test.TestTrue(TEXT("both zones' sweeps reached the enemy"),
+						   Plain.TakenByOneEnemy > 0.0f && Staggering.TakenByOneEnemy > 0.0f))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("a plain zone staggers nobody"),
+			Plain.bStaggeredByTheFirstSweep || Plain.bStaggeredOnComingBack);
+		if (!Test.TestTrue(TEXT("a carrying caster's zone staggers the enemy its first sweep finds"),
+						   Staggering.bStaggeredByTheFirstSweep))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("and not again while it stays inside"), Staggering.bStaggeredAgainWhileStaying);
+		Test.TestTrue(TEXT("and again when it has left for a sweep and come back"), Staggering.bStaggeredOnComingBack);
+	}
+
+	/**
+	 * `zone_applies_own_ailment` is read where the zone is left, and the zone then lays the ailment of its skill's
+	 * damage type each sweep. A Demonic skill's zone burns. A zone of a type with no ailment of its own lays none.
+	 */
+	void ProbeZoneAppliesOwnAilment(FAutomationTestBase& Test)
+	{
+		// THE ONE PLACE THE MAPPING IS STATED.
+		Test.TestEqual(TEXT("Demonic's ailment is Burn"), UCataclysmAilments::AilmentOfDamageType(FName(TEXT("Demonic"))),
+			FName(TEXT("Burn")));
+		Test.TestEqual(TEXT("War's ailment is Bleed"), UCataclysmAilments::AilmentOfDamageType(FName(TEXT("War"))),
+			FName(TEXT("Bleed")));
+		Test.TestTrue(TEXT("no other type has one"),
+			UCataclysmAilments::AilmentOfDamageType(FName(TEXT("Chaos"))).IsNone()
+				&& UCataclysmAilments::AilmentOfDamageType(NAME_None).IsNone());
+
+		const auto Carrying = [](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat, 1.0f);
+		};
+		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FZoneReading Demonic = ReadABlinksZones(Carrying);
+		const FZoneReading Chaos = ReadABlinksZones(Carrying, /*bWithACreature=*/false, TEXT("Element.Chaos"));
+		if (!Test.TestTrue(TEXT("all three zones' sweeps reached the enemy"),
+						   Plain.TakenByOneEnemy > 0.0f && Demonic.TakenByOneEnemy > 0.0f && Chaos.TakenByOneEnemy > 0.0f))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("a plain Demonic zone's sweep sets nobody alight"), Plain.bBurningAfterTheSweep);
+		Test.TestEqual(TEXT("a carrying caster's Demonic zone holds Burn"), Demonic.ZonesOwnAilment, FName(TEXT("Burn")));
+		Test.TestTrue(TEXT("and its sweep sets the enemy alight"), Demonic.bBurningAfterTheSweep);
+		Test.TestEqual(TEXT("and a second sweep leaves it carrying one burn, not two"),
+			Demonic.BurnsOnTheEnemyAfterTwoSweeps, 1);
+		Test.TestTrue(TEXT("a carrying caster's Chaos zone holds no ailment"), Chaos.ZonesOwnAilment.IsNone());
+		Test.TestFalse(TEXT("and its sweep sets nobody alight"), Chaos.bBurningAfterTheSweep);
 	}
 
 	/**
@@ -5611,6 +5707,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_damage_per_enemy_inside"), &ProbeZoneDamagePerEnemyInside},
 			{TEXT("zone_slow_percent"), &ProbeZoneSlowPercent},
 			{TEXT("only_one_persistent_area"), &ProbeOnlyOnePersistentArea},
+			{TEXT("zone_staggers_on_entry"), &ProbeZoneStaggersOnEntry},
+			{TEXT("zone_applies_own_ailment"), &ProbeZoneAppliesOwnAilment},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 			{TEXT("skill_duration"), &ProbeSkillDuration},
@@ -6009,6 +6107,122 @@ bool FCataclysmMeleeReflectChanceTest::RunTest(const FString&)
 	TaggedBlowOn(Attacker, Both, TEXT("Type.Melee"));
 	TestEqual(TEXT("a defender that reflects and retaliates sends back the reflection alone"),
 			  AttackerBefore - Attacker.Health(), SentBackByTheReflection, 0.01f);
+	return true;
+}
+
+// TERRAIN'S HALF OF TWO OF THE ZONE STATS. Ruled 2026-10-06: "persistent AOE effects" are ground zones and terrain, so
+// `persistent_area_duration` and `only_one_persistent_area` reach a terrain piece too, and the change that added them
+// tested only the ground zone's half. Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTerrainReadsTheZoneStatsTest,
+	"Cataclysm.StatExemption.ATerrainPieceLastsLessWithTheDurationStatAndANewOneEndsAnEarlierOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTerrainReadsTheZoneStatsTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	/** What two strikes that each raise a wall leave: how long the first lasts, and how many stand after each. */
+	struct FRead
+	{
+		bool bMade = false;
+		float FirstLastsSeconds = -1.0f;
+		int32 AfterOne = -1;
+		int32 AfterTwo = -1;
+	};
+	const auto TwoWalls = [](TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Caster(World, FVector::ZeroVector);
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Carry(Inputs);
+		if (Inputs.Num() > 0)
+		{
+			Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+		// UPTHRUST'S OWN SHAPE, without its burn and its launch: a strike that raises a wall for 8 seconds.
+		const auto RaiseAWall = [&Caster](ECataclysmAbilitySlot Slot) -> bool
+		{
+			const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), Slot, /*Level=*/100, Caster.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmStrikeSkill* Strike = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Strike)
+			{
+				return false;
+			}
+			Strike->SkillName = TEXT("A strike raising a wall");
+			Strike->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Radius=10; Angle=15; Terrain=Wall; TerrainSize=10; TerrainDuration=8"));
+			Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(
+				TEXT("Item.Weapon.Warhammer, Element.Demonic, Type.AOE.Persistent, Type.Melee"));
+			return Caster.AbilitySystem->TryActivateAbility(Handle);
+		};
+		const auto Standing = [World, &Caster](ACataclysmTerrain** OutOne = nullptr) -> int32
+		{
+			int32 Count = 0;
+			for (TActorIterator<ACataclysmTerrain> It(World); It; ++It)
+			{
+				if (IsValid(*It) && It->GetOwner() == Caster.Actor)
+				{
+					++Count;
+					if (OutOne)
+					{
+						*OutOne = *It;
+					}
+				}
+			}
+			return Count;
+		};
+
+		if (!RaiseAWall(ECataclysmAbilitySlot::Heavy))
+		{
+			return Read;
+		}
+		Read.bMade = true;
+		ACataclysmTerrain* First = nullptr;
+		Read.AfterOne = Standing(&First);
+		Read.FirstLastsSeconds = First ? First->GetLifeSpan() : -1.0f;
+		Read.AfterTwo = RaiseAWall(ECataclysmAbilitySlot::Special) ? Standing() : -1;
+		return Read;
+	};
+
+	const FRead Plain = TwoWalls([](TMap<FName, FCataclysmStatInputs>&) {});
+	const FRead Cut = TwoWalls([](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		FCataclysmStatModifier Half;
+		Half.Bucket = ECataclysmStatBucket::More;
+		Half.Source = ECataclysmModifierSource::Enchantment;
+		Half.Value = -50.0f;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::PersistentAreaDurationStat));
+		Line.Base = UCataclysmDamageCalculation::NormalPersistentAreaDuration;
+		Line.Modifiers = {Half};
+	});
+	const FRead OnlyOne = TwoWalls([](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmDamageCalculation::OnlyOnePersistentAreaStat, 1.0f);
+	});
+	if (!TestTrue(TEXT("set-up: each caster raised a wall"), Plain.bMade && Cut.bMade && OnlyOne.bMade)
+		|| !TestEqual(TEXT("set-up: a plain caster's two strikes leave one wall, then two"),
+					  Plain.AfterOne * 10 + Plain.AfterTwo, 12))
+	{
+		return false;
+	}
+
+	// THE DURATION STAT REACHES TERRAIN.
+	TestEqual(TEXT("a plain caster's wall lasts its stated 8 seconds"), Plain.FirstLastsSeconds, 8.0f, 0.01f);
+	TestEqual(TEXT("and with 50% less of the duration stat it lasts 4"), Cut.FirstLastsSeconds, 4.0f, 0.01f);
+
+	// AND SO DOES THE ONLY-ONE RULE: a new terrain piece ends the earlier one.
+	TestEqual(TEXT("a caster that may hold only one has one wall after the first strike"), OnlyOne.AfterOne, 1);
+	TestEqual(TEXT("and still one after the second"), OnlyOne.AfterTwo, 1);
 	return true;
 }
 

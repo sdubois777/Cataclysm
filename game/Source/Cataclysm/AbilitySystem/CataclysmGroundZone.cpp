@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -445,6 +446,29 @@ void ACataclysmGroundZone::Sweep()
 				Source, Target, Cripple, SlowSeconds,
 				Cap > 0.0f ? FMath::Min(SlowsThoseInsidePercent, Cap) : SlowsThoseInsidePercent);
 		}
+
+		// AND A STAGGER FOR WHOEVER WAS NOT INSIDE AT THE SWEEP BEFORE. Ruled 2026-10-06.
+		if (bStaggersThoseEntering && !InsideLastSweep.Contains(Target))
+		{
+			UCataclysmSkillEffects::ApplyStagger(Source, Target);
+		}
+
+		// AND THE AILMENT OF THE ZONE'S OWN DAMAGE TYPE, at that ailment's ordinary figures. Ruled 2026-10-06.
+		// A magnitude of one is one application at the row's own size, as a chance of up to a hundred gives.
+		if (!OwnAilment.IsNone())
+		{
+			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(OwnAilment.ToString()))
+			{
+				UCataclysmAilments::Apply(Source, Target, *Kind, /*Magnitude=*/1.0f);
+			}
+		}
+	}
+
+	// WHO WAS INSIDE, FOR THE NEXT SWEEP TO TELL WHO HAS ENTERED.
+	InsideLastSweep.Reset();
+	for (AActor* Target : Inside)
+	{
+		InsideLastSweep.Add(Target);
 	}
 
 	LastSweepCount = Inside.Num();

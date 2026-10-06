@@ -58,6 +58,8 @@ const TCHAR* UCataclysmDamageCalculation::PersistentAreaDurationStat = TEXT("per
 const TCHAR* UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat = TEXT("zone_damage_per_enemy_inside");
 const TCHAR* UCataclysmDamageCalculation::ZoneSlowPercentStat = TEXT("zone_slow_percent");
 const TCHAR* UCataclysmDamageCalculation::OnlyOnePersistentAreaStat = TEXT("only_one_persistent_area");
+const TCHAR* UCataclysmDamageCalculation::ZoneStaggersOnEntryStat = TEXT("zone_staggers_on_entry");
+const TCHAR* UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat = TEXT("zone_applies_own_ailment");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
 const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
