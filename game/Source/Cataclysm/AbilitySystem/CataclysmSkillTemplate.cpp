@@ -240,7 +240,9 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		const bool bRolledNoDamage = Cataclysm->TakePendingUseNoDamage();
 		const float RolledIncreasePercent = Cataclysm->TakePendingUseIncreasePercent();
 		ThisUseHitsAllWithinCm = Cataclysm->TakePendingUseHitsAllCm();
-		bThisUseDealsNoDamage = bThisUseDealsNoDamage || bRolledNoDamage;
+		const float RolledSelfHitSharePercent = Cataclysm->TakePendingUseSelfHitSharePercent();
+		// A USE THAT HITS ITS OWN USER HITS NOBODY ELSE: "instead of the enemy". The owner's decision of 2026-10-06.
+		bThisUseDealsNoDamage = bThisUseDealsNoDamage || bRolledNoDamage || RolledSelfHitSharePercent > 0.0f;
 		if (bThisUseDealsNoDamage)
 		{
 			LastNextUseIncreasePercent = 0.0f;
@@ -252,6 +254,27 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			if (DeliversDamageItself())
 			{
 				LastNextUseIncreasePercent += RolledIncreasePercent;
+			}
+		}
+		// AND ITS USER TAKES THE SHARE OF WHAT THE USE WOULD HAVE DEALT ONE ENEMY: the use's own priced hit, before
+		// any target's defences, as Echo Chamber prices its self hit. Dealt as the user's own direct damage to
+		// themselves with that rule's delivery, so their own defences reduce it and it neither critically strikes,
+		// leeches nor is retaliated against. Here, when the use is paid for, and not when its blow would have landed.
+		// A use with no damage of its own deals its user nothing.
+		if (RolledSelfHitSharePercent > 0.0f && GetDamagePercent() > 0.0f)
+		{
+			if (AActor* Self = Avatar())
+			{
+				const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
+					Cataclysm, UCataclysmSkillEffects::WeaponDamageOf(Cataclysm) * GetDamagePercent() / 100.0f,
+					SkillTags);
+				FCataclysmHitDelivery Delivery;
+				Delivery.bIsArea = true;
+				Delivery.bCannotCriticallyStrike = true;
+				Delivery.bCannotLeech = true;
+				Delivery.bCannotBeRetaliatedAgainst = true;
+				UCataclysmSkillEffects::ApplyDirectDamage(
+					Self, Self, ToAnEnemy * RolledSelfHitSharePercent / 100.0f, Delivery);
 			}
 		}
 
