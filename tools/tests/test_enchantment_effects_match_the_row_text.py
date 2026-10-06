@@ -72,8 +72,14 @@ MULTIPLYING_WORDS = {"double": 100.0, "doubled": 100.0, "twice": 100.0,
 
 #: A sentence worded as a multiplier, which is what the `more` bucket is for.
 MULTIPLIER = re.compile(
-    r"\b(more|less|double|doubled|twice|triple|tripled|quadrupled|halved|slowed|ignore|ignores)\b",
+    r"\b(more|less|double|doubled|twice|triple|tripled|quadrupled|halved|slowed|ignore|ignores"
+    r"|ratio)\b",
     re.IGNORECASE)
+
+#: `ratio` ADDED ON 2026-10-05, a labelled judgement recorded in docs/DECISIONS.md,
+#: for "Skills can spend HP instead of mana at a 3:1 ratio", issue #1833. A ratio
+#: is a multiplier: three for one is three times. It widens the MEANING of the
+#: pattern above, so it is written down here and not only made.
 
 #: A sentence worded as an increase, which is the `increased` bucket.
 #: THE VERB IN ALL THREE TENSES, not only the past participle. 13 enchantment
@@ -289,6 +295,13 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # "CLEANSED" IS 100 ON `cleanse`: "You are cleansed every 5 seconds" removes
     # all of what a cleanse removes, and the generator requires 100. Issue #1833.
     "cleanse": {"cleansed": 100.0},
+    # "RATIO" IS 200 ON `mana_cost`, for the one sentence that states a ratio:
+    # "Skills can spend HP instead of mana at a 3:1 ratio". Three for one is
+    # three times, which the more bucket writes as 200. The sentence's numbers
+    # are 3 and 1 and neither is the row's value, so no other way reads it. A
+    # second sentence at another ratio would fail here and be read again.
+    # Issue #1833, a labelled judgement of 2026-10-05.
+    "mana_cost": {"ratio": 200.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -594,8 +607,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-05, from 463 over 379: four rows on four enchantments.
 #: AND 470 OVER 384 SINCE STARVATION'S TEN-PIECE BONUS,
 #: issue #1833, 2026-10-05, from 467 over 383: three rows on one enchantment.
-AUTHORED_ROWS = 470
-AUTHORED_ENCHANTMENTS = 384
+#: AND 473 OVER 386 SINCE HEALTH PAID FOR MANA AND BRUTE'S HEART'S ARMOUR,
+#: issue #1833, 2026-10-05, from 470 over 384: three rows on two enchantments.
+AUTHORED_ROWS = 473
+AUTHORED_ENCHANTMENTS = 386
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
