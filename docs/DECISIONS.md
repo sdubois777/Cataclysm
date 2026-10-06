@@ -109,16 +109,14 @@ Three new automation tests.
 
 - `Cataclysm.Enchantments.AnAttackTriggersADifferentHeldSkillWithACooldownFree`: the pool for a Demonic Sword is
   Quench and Extinction; after a use of Quench it is Extinction; a roll at the chance records nothing; a roll below
-  it records one trigger, which is made, pays no mana, sends no notice and starts no cooldown.
+  it records one trigger, which is made, pays no mana, sends no notice and starts no cooldown; and with the heavy
+  slot's cooldown running, Quench is still triggered and the cooldown is still running afterwards.
 - `Cataclysm.Enchantments.ATriggeredSpellPaysItsCostStartsNoCooldownAndIsRefusedWithTooLittle`: a Demonic Wand's pool
   of spells is four; the triggered Malefice pays what Malefice costs, sends no notice and starts no cooldown; with no
   mana it is refused, no second one runs and no mana is taken.
 - `Cataclysm.Enchantments.WhenBothTriggerRowsPassOneSkillIsTriggeredAndTheSpellRowWinsWhenASpellIsHeld`: with both
   rows passing a Wand character gets one trigger and it pays; a Sword character gets the free one; the spell row
   alone gives a Sword character nothing.
-
-**Not tested:** a trigger of a skill whose cooldown is running. The cooldown check is skipped by the same line that
-skips it for every free start since Follow Through.
 
 **Python.** Five new checks: the generator's two action names equal the engine's; each action is carried through;
 each is refused on an event that names no skill.
