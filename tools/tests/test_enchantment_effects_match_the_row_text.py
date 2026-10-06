@@ -658,8 +658,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 502 over 416: two rows on two enchantments.
 #: AND 506 OVER 420 SINCE THE TWO ROWS THAT ROLL FOR A USE TO HIT ITS OWN USER,
 #: issue #1833, 2026-10-06, from 504 over 418: two rows on two enchantments.
-AUTHORED_ROWS = 506
-AUTHORED_ENCHANTMENTS = 420
+#: AND 507 OVER 421 SINCE THE ROW THAT MAKES A VOID SPLINTER DETONATE,
+#: issue #1833, 2026-10-06, from 506 over 420: one row on one enchantment.
+AUTHORED_ROWS = 507
+AUTHORED_ENCHANTMENTS = 421
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

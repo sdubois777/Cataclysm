@@ -15634,4 +15634,57 @@ bool FCataclysmVoidSplinterDetonatesTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidSplinterDetonationRowTest,
+	"Cataclysm.Enchantments.TheVoidSplinterDetonationRowDealsTwiceWhatWasLeftAtTheTopOfItsRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Void splinter stacks detonate for 50%-100% increased damage". Issue #1833,
+ * ruled 2026-10-06. `ailment_detonates_when_reapplied` on Void Splinter, 50 to
+ * 100, WORN at the top of its roll, so a second application deals twice what
+ * was left. Compared with a character that wears nothing and carries a
+ * hand-made row of 100, on a creature built alike; and taken off, a further
+ * application takes nothing at once.
+ */
+bool FCataclysmVoidSplinterDetonationRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmDetonationTest;
+	FWorn Worn(TEXT("Positive_Void_splinter_stacks_detonate_for_50_100_incre"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	CataclysmEnchantmentEffectTest::FWearer ByHand(Worn.World);
+	const FGameplayTag Tag = Ailment(TEXT("Keyword.DoT.VoidSplinter"));
+	ACataclysmEnemyCharacter* Theirs = Beside(Worn.World, 0.0f);
+	ACataclysmEnemyCharacter* Twin = Beside(Worn.World, 2.0f);
+	if (!TestTrue(TEXT("set-up: the void splinter tag is registered"), Tag.IsValid())
+		|| !TestNotNull(TEXT("set-up: the wearer's creature"), Theirs)
+		|| !TestNotNull(TEXT("set-up: its twin"), Twin)
+		|| !TestTrue(TEXT("set-up: each character splinters its creature"),
+					 Splinter(Worn.Wearer->Actor, Theirs, Tag) && Splinter(ByHand.Actor, Twin, Tag)))
+	{
+		return false;
+	}
+	ByHand.AbilitySystem->SetPoolActions({Detonates(Tag, 100.0f)});
+	const float ByHandLost = LostAtOnceWhenApplied(ByHand.Actor, Twin, Tag);
+	if (!TestTrue(TEXT("set-up: the hand-made row of 100 detonates the twin's"), ByHandLost > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(*(FString(TEXT("the wearer's percent is 200: the whole of what was left, raised by the row's 100.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		UCataclysmSkillEffects::DetonationPercentWhenReapplied(Worn.ASC(), Tag), 200.0f, 0.001f);
+	TestEqual(TEXT("applying it again takes at once what the hand-made row of 100 took from the twin"),
+		LostAtOnceWhenApplied(Worn.Wearer->Actor, Theirs, Tag), ByHandLost, ByHandLost * 0.005f);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off, a further application takes nothing at once"),
+		LostAtOnceWhenApplied(Worn.Wearer->Actor, Theirs, Tag), 0.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
