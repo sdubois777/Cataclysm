@@ -14553,4 +14553,86 @@ bool FCataclysmMeleeAttacksTwiceRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellbladesWillTwoRowTest,
+	"Cataclysm.Enchantments.SpellbladesWillTwoPiecesTriggerAHeldSkillOnAMeleeAttackAndHalveMeleeDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Spellblade's Will (2-Piece Bonus): Your melee attacks have a 25% chance to
+ * trigger an ability with a cooldown", with the set's drawback, "Melee damage is
+ * reduced by 50%". Issue #1833, ruled 2026-10-06. The bonus is
+ * `trigger_held_skill` on `attack_use`, 25, scoped to `Type.Melee`; the
+ * drawback is `attack_damage` at -50 scoped to `Type.Melee`. A set is written
+ * whole, and both turn on at two pieces: one piece does neither.
+ *
+ * THE BONUS IS READ AT THE RECORDED TRIGGER. Which held skill is then picked and
+ * made is `CataclysmHeldTriggerTest`'s, above, with rows made by hand.
+ */
+bool FCataclysmSpellbladesWillTwoRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Bonus = TEXT("Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at");
+	const TCHAR* Drawback = TEXT("Negative_Melee_damage_is_reduced_by_50");
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Ranged = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Projectile, Type.Ranged"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2 && Ranged.Num() == 2))
+	{
+		return false;
+	}
+	const FVector Aim(900.0f, 300.0f, 0.0f);
+	const FName Swing(TEXT("Quench"));
+	const FName Damage(TEXT("attack_damage"));
+
+	for (const int32 Pieces : {1, 2})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		for (int32 Index = 0; Index < Pieces; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer.Equipment->Equip(Carrying(TenBases[Index], Bonus, Drawback), Removed, AlsoRemoved, Slot);
+		}
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+		CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.TriggerHeldSkillRoll"), TEXT("24.9"));
+		if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+		{
+			return false;
+		}
+
+		// THE BONUS: a melee basic attack, as the player character hands it over.
+		ASC->ActOnSkillUse(Swing, &Melee, Aim, /*bBasicAttack=*/true);
+		TestTrue(FString::Printf(TEXT("%d pieces, a roll of 24.9 against 25, a melee basic attack: a trigger of a "
+									  "skill with a cooldown is recorded only at two.%s"), Pieces, CataclysmRepeatRowsTest::OlderAsset),
+			ASC->PendingHeldTriggerWantsACooldownSkill() == (Pieces == 2));
+		TestTrue(FString::Printf(TEXT("%d pieces: and it records the attack that was used only at two"), Pieces),
+			ASC->PendingHeldTriggerUsedSkill() == (Pieces == 2 ? Swing : FName()));
+		TestFalse(FString::Printf(TEXT("%d pieces: it is not a spell trigger"), Pieces),
+			ASC->PendingHeldTriggerWantsASpell());
+		ASC->ActOnSkillUse(Swing, &Ranged, Aim, /*bBasicAttack=*/true);
+		TestFalse(FString::Printf(TEXT("%d pieces: a ranged basic attack records nothing"), Pieces),
+			ASC->PendingHeldTriggerWantsACooldownSkill());
+		Roll.Set(TEXT("25"));
+		ASC->ActOnSkillUse(Swing, &Melee, Aim, /*bBasicAttack=*/true);
+		TestFalse(FString::Printf(TEXT("%d pieces: a roll of 25 records nothing"), Pieces),
+			ASC->PendingHeldTriggerWantsACooldownSkill());
+
+		// THE DRAWBACK: half of what a melee skill's attack damage is, and all of a ranged skill's.
+		TestEqual(FString::Printf(TEXT("%d pieces: a melee skill's attack damage of 100 is halved only at two.%s"),
+					  Pieces, CataclysmRepeatRowsTest::OlderAsset),
+			ASC->StatForSkill(Damage, Melee, 100.0f), Pieces == 2 ? 50.0f : 100.0f, 0.01f);
+		TestEqual(FString::Printf(TEXT("%d pieces: a ranged skill's attack damage of 100 is left alone"), Pieces),
+			ASC->StatForSkill(Damage, Ranged, 100.0f), 100.0f, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
