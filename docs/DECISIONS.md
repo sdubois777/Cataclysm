@@ -2,6 +2,100 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Two slows hung on an ailment: a poisoned enemy is slowed in both speeds, and a bleeding enemy in its movement alone
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`ECataclysmAilmentRider::Speed` and
+`MovementSpeed`), `CataclysmAbilitySystemComponent.h` and `.cpp` (two action names),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (`AilmentSlowMultiplier`,
+`AilmentWalkMultiplier`, `SpeedMultiplier`, `RefreshWalkSpeed`), `CataclysmBruteCharacter.cpp` (its walk speed),
+`tools/generate_datatables.py` (`AILMENT_RIDER_ACTIONS`), `docs/All_Things_Cataclysm.xlsx` (two rows of the
+Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset, two tests in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+Two more of the numbers a worn row can hang on an ailment the wearer applies, on the mechanism of the entry
+below this one.
+
+| Sentence | Row |
+| :-- | :-- |
+| Poisoned enemies are slowed by 30%-50% | `ailment_speed` 30 to 50 on Poison |
+| Bleeding enemies move 5%-10% slower | `ailment_movement_speed` 5 to 10 on Bleed |
+
+EnchantmentEffects 476 to 478, over 390 to 392.
+
+### WHAT WAS RULED, 2026-10-06, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **"SLOWED" IS BOTH SPEEDS.** A poisoned enemy walks slower and attacks slower by the row's percent, as Cripple
+   was read. The research of the entry below quotes Path of Exile's Maim, which slows movement alone; this
+   game's own slow, Cripple, has taken both since it was built, and the sentence uses its word.
+2. **"MOVE SLOWER" IS MOVEMENT ALONE**, as written. A bleeding enemy walks slower and attacks on the interval it
+   had.
+3. **A SEPARATE SLOW MULTIPLIES.** The poison's slow multiplies with Cripple and with Ground Down, by the
+   2026-09-24 ruling for Ground Down: an enemy crippled and poisoned at the top roll moves at 0.7 times 0.5.
+
+### HOW IT IS BUILT
+
+- **A creature's speed is not an attribute.** `ACataclysmEnemyCharacter::SpeedMultiplier` multiplies what acts on
+  both its walk speed and its attack interval, and its own rule is that anything naming BOTH belongs in it. The
+  poison's slow is a new factor there, `AilmentSlowMultiplier`.
+- **Nothing slowed a creature's movement alone before this.** `AilmentWalkMultiplier` multiplies the walk speed
+  in the two places a creature's walk speed is written, the base creature's and the Brute's, and is kept out of
+  `SpeedMultiplier`, so the attack interval never sees it. Feasting is the same rule from the other side: it
+  moves attacks and not walking.
+- **Neither can stop a creature.** Each takes at most 99 per cent.
+- **The generator** gains the two action names, under the checks every rider has: no event, an Ailment, a
+  percent above 0 and up to 100.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The movement slow reaches a creature's walk and a Brute's chase**, the two places a walk speed is written.
+- **A CHARGE IS NOT SLOWED, BY EITHER ROW.** Traced 2026-10-06. `ACataclysmEnemyCharacter::BeginCharge` is handed
+  a speed by its caller and moves the creature itself, a step at a time, reading neither the walk speed nor
+  `SpeedMultiplier`. Its three callers each pass a fixed figure: the Hellhound's rush, the Abyssal Warden's
+  stampede and the charge of the Inferno modifier. Cripple and Ground Down do not slow a charge either, for the
+  same reason, so the two rows behave as the slows before them do.
+- **Both end with the ailment**, by time, by a cleanse or by death, as every rider does.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one, on `development` 426c061d. The whole suite and
+the Python of record are in the generator check's table and were run with this layer in the stack. **The ids are
+the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, first | 39329cc9 | Build: Failed - 32 actions, 29 files compiled |
+| Build, after the two include lines | c9e522fd | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp |
+| Cataclysm.Enchantments. against the asset built before the two rows | c9e522fd | 214 tests performed, 212 succeeded, 2 failed: TheBleedingMoveRowSlowsABleedingEnemysWalkingAndNotItsAttacking, ThePoisonedSlowRowSlowsAPoisonedEnemysWalkingAndItsAttackingAlike; 3 failed assertions |
+| The asset, regenerated with the editor | c9e522fd | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 476 to 478 |
+| Whole suite | 87ffdee3 | 3186 tests performed, 3186 succeeded, 0 failed; declared 3186, gap 0; 0 ensures |
+| Proof D: a creature's speed not reading the slow that rides on its ailments | 87ffdee3 | PROVED: with the break in: 214 tests performed, 213 succeeded, 1 failed: ThePoisonedSlowRowSlowsAPoisonedEnemysWalkingAndItsAttackingAlike \| restored: 214 tests performed, 214 succeeded, 0 failed |
+| Proof E: a creature's walk speed written without the movement slow | 87ffdee3 | PROVED: with the break in: 214 tests performed, 213 succeeded, 1 failed: TheBleedingMoveRowSlowsABleedingEnemysWalkingAndNotItsAttacking \| restored: 214 tests performed, 214 succeeded, 0 failed |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted: D two, "poisoned by the wearer,
+it walks at half its speed" and "and takes twice as long between attacks"; E one, "bleeding from the wearer, it
+walks at nine tenths of its speed".
+
+**The two tests fail against a table without the rows and pass with them**, on the three assertions proofs D and
+E fail between them.
+
+**THE BUILD WAS REGISTERED AS SUCCEEDING AND IT FAILED.** The two tests of this layer use
+`ACataclysmImpCharacter` and `UCharacterMovementComponent`, and `CataclysmEnchantmentEffectTests.cpp` included
+the header of neither. The compiler printed 18 errors, every one in those two tests, lines 13630 to 13717, and
+none in any other file; the first was "error C2027: use of undefined type 'UCharacterMovementComponent'". The
+window stopped there and the fix was asked for before it was made: two lines,
+`#include "Character/CataclysmImpCharacter.h"` and `#include "GameFramework/CharacterMovementComponent.h"`, in
+that test file and nowhere else. The tests had been written and never compiled, and the rehearsal of this layer
+ran the Python suite alone, which reads a C++ file as text and cannot tell that a type is undefined.
+
+**After those two lines nothing was changed.** With the rows in the table every test passed on its first run.
+
+---
+
 ## 2026-10-06 — A worn row can hang a number on an ailment: five sentences that change an enemy while it carries the wearer's bleed, burn, disease or poison
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`ECataclysmAilmentRider`,

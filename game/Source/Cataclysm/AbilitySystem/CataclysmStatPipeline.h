@@ -3443,6 +3443,21 @@ enum class ECataclysmAilmentRider : uint8
 	 * "Disease effects reduce enemy healing by 50%-100%".
 	 */
 	HealingReceived UMETA(DisplayName = "Healing received, reduced"),
+
+	/**
+	 * Taken off BOTH the carrier's movement speed and its attack speed, a factor
+	 * of a creature's `SpeedMultiplier`, multiplying with Cripple and Ground
+	 * Down: "Poisoned enemies are slowed by 30%-50%". Ruled 2026-10-06: "slowed"
+	 * is both speeds, as Cripple was read.
+	 */
+	Speed UMETA(DisplayName = "Movement and attack speed, slowed"),
+
+	/**
+	 * Taken off the carrier's movement speed ALONE, and not its attacks:
+	 * "Bleeding enemies move 5%-10% slower". Ruled 2026-10-06: movement only, as
+	 * written.
+	 */
+	MovementSpeed UMETA(DisplayName = "Movement speed alone, slowed"),
 };
 
 /**
