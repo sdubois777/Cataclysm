@@ -2,6 +2,96 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Two rows pass an ailment on at a death: Disease to 1 to 3 more than its own two, and a Bleed to the nearest enemy
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+Two rows on the number the entry below this one lets a row hang on an ailment, `ailment_spread_on_death`. No engine
+code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Disease effects you apply spread to 1-3 nearby enemies when the afflicted enemy dies | `ailment_spread_on_death` 1 to 3 on Disease |
+| When a bleeding enemy dies, its bleed spreads to the nearest enemy within 5 metres | `ailment_spread_on_death` 1 on Bleed |
+
+EnchantmentEffects 502 to 504, over 416 to 418 enchantments.
+
+### WHAT WAS RULED, 2026-10-06
+
+- **THE OWNER: the Disease row ADDS to what Disease passes to by itself.** With the row a dying enemy's Disease
+  passes to 3 to 5 enemies: its own two and the row's 1 to 3.
+- **The coordinating session, under the owner's delegation: the Bleed row is one enemy, the nearest.** A Bleed
+  passes to nobody by itself, so the one is the row's.
+
+### HOW THE SENTENCES ARE READ
+
+- **"Nearby" and "within 5 metres" are the same reach**, the one every spread at a death has. The Bleed sentence
+  states it and the Disease sentence says "nearby", which has been 5 metres since 2026-09-11. Neither is a cell of
+  the row.
+- **"The nearest" is the count 1.** The row-text check learns that word for this action alone.
+- **"You apply" and "its bleed"**: the count is hung on the ailment when the WEARER applies it, and is read off
+  the dying enemy. A Bleed another character applied passes to nobody for the wearer's row.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The count is fixed when the ailment is applied**, at the roll of the item worn then, and lasts as long as the
+  ailment does, as every number hung on an ailment is. An item taken off stops adding at the wearer's next
+  application.
+- **A copy is handed the row's count again**, so with the Disease row a pack passes it along 3 to 5 at a time, and
+  with the Bleed row a Bleed moves from body to body one enemy at a time, each hop with less time left.
+- **A Bleed ticks whether or not its carrier moves**, today; the design document's rule that it ticks only while
+  the target moves is issue #918 and is not built.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheDiseaseSpreadRowAddsItsThreeToTheTwoADiseasedEnemysDeathAlreadyPassesTo`: the real row
+  worn at the top of its roll; of six creatures within 5 metres of the body, the five nearest receive the Disease
+  and the furthest does not.
+- `Cataclysm.Enchantments.TheBleedSpreadRowPassesADyingEnemysBleedToTheOneNearestWithinFiveMetres`: the real row
+  worn; of creatures 2, 3 and 6 metres from the body, the first receives the Bleed and the other two do not.
+
+Both call the spread itself and not a death; the test of the entry below this one is the one that goes through a
+death.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers below this one, on `development` 8c724dd0. The build, the
+whole suite and the Python of record are in the table of the entry "Nearby enemies gain 20%-40% resistances is
+reworded" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, FIRST RUN | cfd09737 | 242 tests performed, 238 succeeded, 4 failed; 8 failed assertions, 3 of them this layer's |
+| The same, run again after the Disease row test was corrected | 383ddd2c | 242 tests performed, 238 succeeded, 4 failed; 9 failed assertions, 4 of them this layer's |
+| The three enchantment assets, regenerated with the editor | d7628667 | effect rows 502 to 504 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of the layer below | 4c90f9a9 | 242 tests performed, 242 succeeded, 0 failed |
+
+**THE FIRST RUN DID NOT REACH THE SPREAD IN THE DISEASE ROW TEST, AND WHY IS NOT MEASURED.** It printed
+"Expected 'set-up: seven creatures and the disease tag' to be true." and returned. That one check covered seven
+creatures and a tag, so the run does not say which was missing. The test stood its six creatures half a metre apart
+on one side of the body; every other test of this stack stands them at least a metre apart and all of those were
+spawned. **The cause taken, a creature that is not spawned where it would overlap another, was inferred from that
+and was not measured in that run.**
+
+The test was changed in two ways, ruled by the coordinating session before the second run: the six stand on both
+sides of the body, at least a metre from each neighbour, at 1, 1.5, 2, 2.5, 3 and 3.5 metres; and the one check is
+seven, one for each creature with its place in the list, with the tag checked by itself. In the second run all of
+them passed and the test failed where a table without the row should make it fail.
+
+**Each test fails against a table without its row and passes with it**, on two assertions each: the Disease
+passed to 2 where 5 are expected, with 2 of the six carrying it where 5 are expected; the Bleed passed to nobody
+where 1 is expected, with the nearest not carrying it.
+
+**This layer changes no engine code and no generator code.** The guard proof of the count a row hangs on an
+ailment is in the entry below this one, and both of this layer's tests are the ones that noticed it.
+
+---
+
 ## 2026-10-06 — Disease passes to the two nearest enemies when its carrier dies, and a row can add to that or give another ailment a count; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmContagion.h` and `.cpp` (`SpreadFromTheDying`),

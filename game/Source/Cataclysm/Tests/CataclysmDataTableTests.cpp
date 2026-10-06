@@ -707,7 +707,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 498 SINCE THE REWORDED RESISTANCES ROW, issue #1833, from 497.
 	//
 	// AND 502 SINCE FOUR ROWS ON THE STATS A PERSISTENT AREA READS, issue #1833, from 498.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    502)
+	//
+	// AND 504 SINCE THE TWO ROWS THAT PASS AN AILMENT ON AT A DEATH, issue #1833, from 502.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    504)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

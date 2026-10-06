@@ -15328,4 +15328,93 @@ bool FCataclysmDiseaseSpreadPassesOverCarriersTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDiseaseSpreadRowTest,
+	"Cataclysm.Enchantments.TheDiseaseSpreadRowAddsItsThreeToTheTwoADiseasedEnemysDeathAlreadyPassesTo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Disease effects you apply spread to 1-3 nearby enemies when the afflicted
+ * enemy dies". Issue #1833, ruled 2026-10-06: the row ADDS its 1 to 3 to the 2
+ * Disease passes to by itself. WORN at the top of its roll, so 2 and 3: of six
+ * creatures within 5 metres of the body the five nearest receive it and the
+ * sixth does not. The count rides on the disease from when the wearer applied
+ * it, as every number hung on an ailment does.
+ */
+bool FCataclysmDiseaseSpreadRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSpreadOnDeathTest;
+	FWorn Worn(TEXT("Positive_Disease_effects_you_apply_spread_to_1_3_nearby_e"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayTag Disease = Ailment(TEXT("Keyword.DoT.Disease"));
+	ACataclysmEnemyCharacter* Dying = Beside(Worn.World, 0.0f);
+	TArray<ACataclysmEnemyCharacter*> Line;
+	// ON BOTH SIDES OF THE BODY, each at least a metre from its neighbour, at 1, 1.5, 2, 2.5, 3 and 3.5 metres.
+	// The first run of this test stood them half a metre apart on one side and its set-up failed.
+	for (const float FromTheBody : {-1.0f, 1.5f, -2.0f, 2.5f, -3.0f, 3.5f})
+	{
+		Line.Add(Beside(Worn.World, FromTheBody));
+	}
+	bool bAllStand = TestNotNull(TEXT("set-up: the creature that will die was spawned"), Dying);
+	for (int32 Index = 0; Index < Line.Num(); ++Index)
+	{
+		bAllStand &= TestNotNull(
+			*FString::Printf(TEXT("set-up: creature %d of the six beside the body was spawned"), Index), Line[Index]);
+	}
+	if (!TestTrue(TEXT("set-up: the disease tag is registered"), Disease.IsValid()) || !bAllStand
+		|| !TestTrue(TEXT("set-up: the wearer diseases the one that will die"),
+					 Ail(Worn.Wearer->Actor, Dying, Disease)))
+	{
+		return false;
+	}
+
+	TestEqual(*(FString(TEXT("the death passes the disease to five: the two it passes to by itself and the row's "
+							 "three.")) + CataclysmRepeatRowsTest::OlderAsset),
+		UCataclysmContagion::SpreadFromTheDying(Dying), 5);
+	TestEqual(TEXT("five of the six carry it"), Carrying(Line, Disease), 5);
+	TestFalse(TEXT("and the one left out is the furthest"), Carries(Line.Last(), Disease));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedSpreadRowTest,
+	"Cataclysm.Enchantments.TheBleedSpreadRowPassesADyingEnemysBleedToTheOneNearestWithinFiveMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When a bleeding enemy dies, its bleed spreads to the nearest enemy within 5
+ * metres". Issue #1833, ruled 2026-10-06: one, the nearest. A bleed passes to
+ * nobody by itself, so the one copy is the row's. Three creatures stand 2, 3 and
+ * 6 metres from the body: the first receives it and the other two do not.
+ */
+bool FCataclysmBleedSpreadRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSpreadOnDeathTest;
+	FWorn Worn(TEXT("Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayTag Bleed = Ailment(TEXT("Keyword.DoT.Bleed"));
+	ACataclysmEnemyCharacter* Dying = Beside(Worn.World, 0.0f);
+	ACataclysmEnemyCharacter* Two = Beside(Worn.World, 2.0f);
+	ACataclysmEnemyCharacter* Three = Beside(Worn.World, 3.0f);
+	ACataclysmEnemyCharacter* Six = Beside(Worn.World, 6.0f);
+	if (!TestTrue(TEXT("set-up: four creatures and the bleed tag"), Dying && Two && Three && Six && Bleed.IsValid())
+		|| !TestTrue(TEXT("set-up: the wearer bleeds the one that will die"), Ail(Worn.Wearer->Actor, Dying, Bleed)))
+	{
+		return false;
+	}
+
+	TestEqual(*(FString(TEXT("the death passes the bleed to one.")) + CataclysmRepeatRowsTest::OlderAsset),
+		UCataclysmContagion::SpreadFromTheDying(Dying), 1);
+	TestTrue(TEXT("the nearest, 2 metres from the body, carries it"), Carries(Two, Bleed));
+	TestFalse(TEXT("the next does not"), Carries(Three, Bleed));
+	TestFalse(TEXT("nor the one 6 metres away"), Carries(Six, Bleed));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

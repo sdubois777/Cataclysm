@@ -501,3 +501,5 @@ Negative_Persistent_AOE_effects_expire_40_60_faster#1,Negative_Persistent_AOE_ef
 Positive_Persistent_AOE_zones_deal_10_20_increased_dama#1,Positive_Persistent_AOE_zones_deal_10_20_increased_dama,zone_damage_per_enemy_inside,flat,10.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Your_persistent_AOE_zones_also_slow_enemies_with#1,Positive_Your_persistent_AOE_zones_also_slow_enemies_with,zone_slow_percent,flat,20.0,35.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_You_can_only_have_1_persistent_AOE_effect_active#1,Negative_You_can_only_have_1_persistent_AOE_effect_active,only_one_persistent_area,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Disease_effects_you_apply_spread_to_1_3_nearby_e#1,Positive_Disease_effects_you_apply_spread_to_1_3_nearby_e,,,1.0,3.0,,,0.0,,0.0,ailment_spread_on_death,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Disease,0.0
+Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to#1,Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to,,,1.0,1.0,,,0.0,,0.0,ailment_spread_on_death,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Bleed,0.0
