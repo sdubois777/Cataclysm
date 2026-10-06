@@ -3388,6 +3388,7 @@ namespace CataclysmStatExemptionTest
 		int32 FoundByTheSweep = -1;
 		FName ZonesOwnAilment;
 		bool bBurningAfterTheSweep = false;
+		int32 BurnsOnTheEnemyAfterTwoSweeps = -1;
 		bool bStaggeredByTheFirstSweep = false;
 		bool bStaggeredAgainWhileStaying = false;
 		bool bStaggeredOnComingBack = false;
@@ -3530,6 +3531,8 @@ namespace CataclysmStatExemptionTest
 			ClearTheStagger();
 			AtTheOrigin->Sweep();
 			Read.bStaggeredAgainWhileStaying = UCataclysmSkillEffects::IsStaggered(Left.Actor);
+			// AND HOW MANY BURNS THE ENEMY CARRIES AFTER TWO SWEEPS: the tag is held once for each running burn.
+			Read.BurnsOnTheEnemyAfterTwoSweeps = LeftMutable->GetTagCount(UCataclysmSkillEffects::BurnTag());
 			ClearTheStagger();
 			const FVector Stood = Left.Actor->GetActorLocation();
 			Left.Actor->SetActorLocation(Stood + FVector(0.0f, 5000.0f, 0.0f));
@@ -3700,6 +3703,8 @@ namespace CataclysmStatExemptionTest
 		Test.TestFalse(TEXT("a plain Demonic zone's sweep sets nobody alight"), Plain.bBurningAfterTheSweep);
 		Test.TestEqual(TEXT("a carrying caster's Demonic zone holds Burn"), Demonic.ZonesOwnAilment, FName(TEXT("Burn")));
 		Test.TestTrue(TEXT("and its sweep sets the enemy alight"), Demonic.bBurningAfterTheSweep);
+		Test.TestEqual(TEXT("and a second sweep leaves it carrying one burn, not two"),
+			Demonic.BurnsOnTheEnemyAfterTwoSweeps, 1);
 		Test.TestTrue(TEXT("a carrying caster's Chaos zone holds no ailment"), Chaos.ZonesOwnAilment.IsNone());
 		Test.TestFalse(TEXT("and its sweep sets nobody alight"), Chaos.bBurningAfterTheSweep);
 	}
