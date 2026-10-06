@@ -48,6 +48,27 @@ passes no amount; it proves itself on `hit_taken`, which passes a literal nought
 **A roll of 1 gives the harshest share**, the second number of each range, which is the rule of the roll
 direction entry of this date; no range here is marked to roll down.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in one window with the timed cleanse row below this layer and two layers above it, on
+`development` 6efeac81. The builds, both whole suites and the Python of record are in the timed cleanse entry's
+table and were all run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| This layer's two tests against the asset built before its rows | 43c17ee7 | both failed, inside "204 tests performed, 199 succeeded, 5 failed": the point blank test on 3 assertions and the retaliation test on 6 |
+| The asset, regenerated with the editor | 43c17ee7 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 463 to 467 |
+| Cataclysm.Enchantments. | eabbef30 | 204 tests performed, 204 succeeded, 0 failed; 0 ensures |
+| Proof B: a share of an event's amount made a share of nothing | eabbef30 | PROVED: with the break in: 204 tests performed, 201 succeeded, 3 failed: AFractionOfTheEventsAmountIsNotAFractionOfAPool, TheOwnPointBlankDamageRowTakesItsShareOfEveryPointBlankHitAndCannotKill, TheThreeRetaliationSelfDamageRowsTakeTheirShareOfWhatRetaliationDealt \| restored: 204 tests performed, 204 succeeded, 0 failed |
+| Python proof 2: the player character firing `hit_dealt` with a literal nought, in a copy | eabbef30 | PROVED: 1 failed, 3 passed \| restored: 4 passed; the one is test_every_event_a_row_may_take_a_share_of_is_fired_with_an_amount |
+
+Proof B kept its broken run's log and failed exactly the ten assertions predicted: one in the older test of a
+share of an amount, three in the point blank test and six in the retaliation test.
+
+**The two Unreal tests raise their event by hand**, with the amount and tags the game passes from a real hit or
+a real retaliation payment. What holds the game to passing an amount on those two events is the Python check,
+which Python proof 2 shows failing when the call passes nought.
+
 ---
 
 ## 2026-10-05 — "You are cleansed every 5 seconds" is built: the generator accepts the timed cleanse the game already had
