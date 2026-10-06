@@ -142,6 +142,14 @@ LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
 #: and only for a sentence whose subject is enemies: "You gain 20% penetration"
 #: beside a negative value would be a sign error, and is still refused.
 GAINED_BY_ENEMIES_WHEN_NEGATIVE = {"penetration"}
+
+#: A stat on which a negative value makes something END SOONER, so its sentence
+#: says "expire ... faster" rather than a word that takes away. "Persistent AOE
+#: effects expire 40%-60% faster" is 40% to 60% less `persistent_area_duration`.
+#: Accepted on this stat only: "faster" beside a negative value on a speed
+#: would be a sign error, and is still refused.
+EXPIRES_FASTER_WHEN_NEGATIVE = {"persistent_area_duration"}
+EXPIRES_FASTER = re.compile(r"\bexpires?\b.*\bfaster\b", re.IGNORECASE)
 ENEMIES_GAIN = re.compile(r"^enemies\b.*\bgain\b", re.IGNORECASE)
 
 #: A sentence saying a stat is gone, which is what the `removed` kind is for.
@@ -639,8 +647,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 496 over 410: one row on one enchantment.
 #: AND 498 OVER 412 SINCE THE REWORDED RESISTANCES ROW,
 #: issue #1833, 2026-10-06, from 497 over 411: one row on one enchantment.
-AUTHORED_ROWS = 498
-AUTHORED_ENCHANTMENTS = 412
+#: AND 502 OVER 416 SINCE FOUR ROWS ON THE STATS A PERSISTENT AREA READS,
+#: issue #1833, 2026-10-06, from 498 over 412: four rows on four enchantments.
+AUTHORED_ROWS = 502
+AUTHORED_ENCHANTMENTS = 416
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -796,6 +806,7 @@ def takes_something_away(stat: str, words: str, action: str = "") -> bool:
     return bool(TAKING.search(words)) or (
         stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words))) or (
         stat in GAINED_BY_ENEMIES_WHEN_NEGATIVE and bool(ENEMIES_GAIN.search(words))) or (
+        stat in EXPIRES_FASTER_WHEN_NEGATIVE and bool(EXPIRES_FASTER.search(words))) or (
         action == "health" and bool(DAMAGE.search(words)))
 
 
@@ -1423,6 +1434,18 @@ def test_enemies_gaining_excuses_a_negative_value_on_one_stat_only():
         "armor", "Enemies within 5 metres gain 20%-40% resistances")
     assert not takes_something_away(
         "penetration", "You gain 20%-40% penetration against enemies")
+
+
+def test_expiring_faster_excuses_a_negative_value_on_one_stat_only():
+    """The third widening this file allows, checked on made-up rows as the two
+    above are. Less time for an area is what "expire faster" means; "faster" on
+    a speed beside a negative value stays refused."""
+    assert takes_something_away(
+        "persistent_area_duration", "Persistent AOE effects expire 40%-60% faster")
+    assert not takes_something_away(
+        "projectile_speed", "Projectiles travel 30%-50% faster")
+    assert not takes_something_away(
+        "persistent_area_duration", "Persistent AOE effects are 40%-60% larger")
 
 
 def test_a_sentence_that_drains_takes_something_away():
