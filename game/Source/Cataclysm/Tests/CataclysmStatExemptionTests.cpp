@@ -5452,6 +5452,46 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmSkillTemplate::ManaPoolBecomesHealth(Fighter.AbilitySystem));
 	}
 
+	/**
+	 * `skill_cost_paid_from_health_when_short`, read by
+	 * `UCataclysmGameplayAbility::PoolPaying`. A character with no mana and 1,000
+	 * health: a cost of 20 finds no pool to pay it, and holding the stat at 3
+	 * health pays, and what is to be charged is 60.
+	 */
+	void ProbeCostPaidFromHealthWhenShort(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		float Charged = -1.0f;
+		const auto Paying = [World, &Charged](bool bHeld)
+		{
+			FScopedFighter Caster(World, /*AttackDamage=*/0.0f);
+			Caster.AbilitySystem->SetNumericAttributeBase(Vital::GetManaAttribute(), 0.0f);
+			Caster.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+			Caster.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1000.0f);
+			if (bHeld)
+			{
+				GrantFlats(Caster.Actor,
+					{{FName(UCataclysmGameplayAbility::CostPaidFromHealthWhenShortStat), 3.0f}});
+			}
+			return UCataclysmGameplayAbility::PoolPaying(Caster.AbilitySystem, 20.0f, &Charged);
+		};
+
+		Test.TestFalse(TEXT("with no mana, a plain caster finds nothing to pay 20 from"),
+					   Paying(false).IsValid());
+		Test.TestTrue(
+			TEXT("and one holding skill_cost_paid_from_health_when_short pays it from health, "
+				 "so UCataclysmGameplayAbility::PoolPaying really reads it"),
+			Paying(true) == Vital::GetHealthAttribute());
+		Test.TestEqual(TEXT("at three health for each point of mana: 60 for a cost of 20"),
+					   Charged, 60.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5485,6 +5525,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
 			{TEXT("skill_cost_paid_from_health"), &ProbeCostPaidFromHealth},
+			{TEXT("skill_cost_paid_from_health_when_short"), &ProbeCostPaidFromHealthWhenShort},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},

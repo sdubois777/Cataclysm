@@ -4109,8 +4109,11 @@ int32 UCataclysmAuraSkill::Pulse()
 		// AND THE ENERGY SHIELD WHEN CAST FROM WARD IS HELD, ruled on 2026-09-24:
 		// an upkeep is a skill's cost, so it may be paid from the shield too.
 		// Issue #1515. `PoolPaying` is what the activation asked.
+		//
+		// AND WHAT IS TAKEN IS WHAT `PoolPaying` SAYS, as the activation takes it.
+		float Charged = Cost;
 		const FGameplayAttribute Pool =
-			Cost > 0.0f ? PoolPaying(AbilitySystem, Cost) : CostPool(AbilitySystem);
+			Cost > 0.0f ? PoolPaying(AbilitySystem, Cost, &Charged) : CostPool(AbilitySystem);
 
 		if (Cost > 0.0f && !Pool.IsValid())
 		{
@@ -4129,7 +4132,7 @@ int32 UCataclysmAuraSkill::Pulse()
 		}
 		if (Cost > 0.0f)
 		{
-			AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Cost);
+			AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Charged);
 		}
 	}
 
