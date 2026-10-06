@@ -2,6 +2,48 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — "You are cleansed every 5 seconds" is built: the generator accepts the timed cleanse the game already had
+
+**Affects:** `tools/generate_datatables.py` (`CLEANSE_ACTION`, `_check_cleanse_action`),
+`docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv`
+and its asset, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(`Cataclysm.Enchantments.TheCleanseRowRemovesABurnFiveSecondsIntoAFightAndNotBefore`),
+`CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py` (`TestTheTimedCleanse`),
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS FOUND
+
+**The game could cleanse on a clock and no row could ask it to.** `UCataclysmAbilitySystemComponent::StepTimedGrants`
+has called `UCataclysmDebuffs::Cleanse` for an action flagged as a cleanse since 2026-09-26, with a test that
+builds the action by hand. The generator refused the action's name, so the sentence had text and no effect row.
+Found on 2026-10-05 by the survey of the 197 sentences with no effect row.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| You are cleansed every 5 seconds | action `cleanse` on `every_seconds`, every 5, value 100 |
+
+EnchantmentEffects 462 to 463, over 378 to 379. No engine change.
+
+- **The generator accepts `cleanse` on the timed event and on no other.** `StepTimedGrants` is the one place the
+  game reads the flag. The event loop in `ActOnEvent` has no case for it, so a cleanse on a kill or a block would
+  reach the pool path, find no pool of that name and do nothing; that row is refused and not written.
+- **Its value is 100 and the game does not read it.** A cleanse has no size. 100 is the figure a cooldown reset
+  that states no chance carries, so every such row says the same thing. A fraction, a value kind, a scale and
+  tags are each refused.
+- **What it removes** is what `UCataclysmDebuffs::Cleanse` removes: every damage over time, stun, debuff and fear
+  on the wearer that the wearer did not put there itself.
+
+**THE TIMER COUNTS ONLY IN COMBAT.** Every timed row counts whole periods of the current combat and starts again
+with each new one, ruled 2026-09-24. So the first cleanse is five seconds into a fight, and a debuff carried out
+of a fight stays until five seconds into the next one or until it ends by itself. The sentence does not say "in
+combat"; this is the timed event's rule and not a reading of this sentence.
+
+---
+
 ## 2026-10-05 — Echo Chamber: every skill use fires a free copy of that skill in a random direction, and a copy aimed within its own radius hits the player for a tenth
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`EchoChamberKey`, the two
