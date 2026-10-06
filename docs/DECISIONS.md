@@ -12,8 +12,8 @@ Decisions made outside the Google Drive documents, newest first.
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; and
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses these stats yet**; the rows are the enchantment
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses these stats yet**; the rows are the enchantment
 session's.
 
 ### What it is for
@@ -67,16 +67,23 @@ other types**; that half is the judgement above.
 - **Most Demonic skills that leave ground already burn what they hit.** With this flag their zone also burns whoever
   stands in it, at the ordinary figure and not at the skill's.
 - **A zone's own damage is unchanged.** The ailment is a second thing each sweep does.
-- **A zone's ailment is its owner's application, so it carries what the owner's rows hang on that ailment and it
-  raises the owner's "applied a damage over time" event.** Read in `UCataclysmSkillEffects::ApplyDamageOverTime`:
-  the instigator is the zone's owner; the applier's riders go onto the carrier on every application, a refresh
-  included; and `dot_applied` is raised on every application to another character, a refresh included. So each
-  sweep, for each enemy inside, counts as applying a damage over time: a row that stacks on that event stacks once
-  a sweep for each enemy standing there, and a rider such as "an ailment passes on at its carrier's death" holds for
-  a zone's burn as for any other. Read, not run.
 - **The stagger reaches whatever the stagger reaches**: it does not stop its target acting, and an owner that
   carries a stagger health ceiling keeps to it.
 - **Until a row makes zones for other skills, both reach the 12 Demonic skills that leave ground.**
+
+### For the owner's play-check: a zone's ailment counts as its owner applying a damage over time
+
+Accepted by the coordinating session under the owner's delegation, 2026-10-06. **Read in the code, not run.**
+
+- **A zone's ailment is its owner's application.** In `UCataclysmSkillEffects::ApplyDamageOverTime` the instigator
+  is the zone's owner; what the owner's rows hang on that ailment goes onto its carrier on every application, a
+  refresh included; and the `dot_applied` event is raised on every application to another character, a refresh
+  included.
+- **So a row that stacks on `dot_applied` gains one stack a sweep for each enemy standing in the zone.** A zone
+  sweeps once a second. "Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds, stacking up to 5
+  times" would, by this reading, reach its cap of 5 after five sweeps with one enemy inside, and sooner with more.
+- **And a rider on the ailment holds for a zone's burn as for any other**, an ailment that passes on at its
+  carrier's death included.
 
 ### Tests
 
@@ -92,9 +99,36 @@ other types**; that half is the judgement above.
 
 **Python.** No new test. The inventory of stat lookups gained two entries.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of two, at `feat/zone-standing-condition-3` c0f5efad: the stagger on entry and
+the zone's own ailment (`feat/zone-entry-and-standing-2` 7092fea6), then the condition `target_in_your_zone`.
+Development was 6b349701. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3228 tests performed, 3228 succeeded, 0 failed`; `Declared: 3228 tests in the tree at c0f5efad; 3228 performed, gap 0` |
+| Python, with continuous integration idle | `5768 passed, 8 skipped in 357.79s`; JUnit `tests="5776" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at c0f5efad, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmGroundZone.cpp`: a sweep staggers everyone it finds | `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | 1 performed, 1 failed, 1 failed assertion: "and not again while it stays inside" | 1 performed, 1 succeeded |
+| Pb | `CataclysmAilments.cpp`: Demonic's ailment is named as Bleed | Same | 1 performed, 1 failed, 4 failed assertions: the mapping answered Bleed; the zone held Bleed; the enemy was not alight; it carried 0 burns after two sweeps against 1 | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplate.cpp`: terrain lasts its own time whatever the stat says | `Cataclysm.StatExemption.ATerrainPieceLastsLess` | 1 performed, 1 failed, 1 failed assertion: the wall lasted 8.000000 against 4.000000 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 4 and 1.
+
+**What the run settles of what this entry only predicted.** A second sweep leaves an enemy carrying one burn, not
+two. A stagger is laid on the first sweep, not on a second while the enemy stays, and again when it has left for a
+sweep and come back.
+
+**Not run:** what the heading "For the owner's play-check" above says of riders and of the applied-a-damage-over-time
+event; a War zone; any of this read from the effect table, since no row exists.
 
 ---
 
