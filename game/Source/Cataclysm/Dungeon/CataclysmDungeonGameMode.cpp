@@ -18,6 +18,7 @@
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
@@ -867,6 +868,13 @@ static TAutoConsoleVariable<float> CVarBringCreaturesAngle(
 	TEXT("Pin the angle, in degrees, at which creatures a rule brings arrive beside their point. -1 draws it."),
 	ECVF_Cheat);
 
+/** Pins the angle Echo Chamber fires its copy at, in degrees. -1 draws it. Issue #41. */
+static TAutoConsoleVariable<float> CVarEchoChamberAngle(
+	TEXT("Cataclysm.EchoChamberAngle"),
+	-1.0f,
+	TEXT("Pin the angle, in degrees, at which Echo Chamber fires its copy of a skill. -1 draws it."),
+	ECVF_Cheat);
+
 /** Pins the roll a skill use makes under Wild Magic, 0 to 100: below 5 triggers. -1 rolls normally. Issue #41. */
 static TAutoConsoleVariable<float> CVarWildMagicRoll(
 	TEXT("Cataclysm.WildMagicRoll"),
@@ -1035,6 +1043,28 @@ namespace
 	{
 		const float Pinned = CVarBringCreaturesAngle.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? FMath::DegreesToRadians(Pinned) : FMath::FRandRange(0.0f, 2.0f * PI);
+	}
+
+	/** The angle Echo Chamber fires its copy at, in radians: the pinned one, or a draw. */
+	float DungeonGameModeEchoChamberAngle()
+	{
+		const float Pinned = CVarEchoChamberAngle.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? FMath::DegreesToRadians(Pinned) : FMath::FRandRange(0.0f, 2.0f * PI);
+	}
+
+	/** The row of this name among the skills of the character's damage type that Echo Chamber copies, if there is one. */
+	bool DungeonGameModeEchoChamberSkill(const AActor* Character, FName SkillName, FCataclysmWeaponSkill& Out)
+	{
+		for (FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(
+				 UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character)))
+		{
+			if (FName(*Skill.Name) == SkillName && UCataclysmDungeonModifierEffects::EchoChamberCopies(Skill))
+			{
+				Out = MoveTemp(Skill);
+				return true;
+			}
+		}
+		return false;
 	}
 
 	float DungeonGameModeWildMagicRoll()
@@ -11665,9 +11695,87 @@ void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Not
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::NoteSkillUseForEchoChamber(const FCataclysmSkillUsedNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE PLAYER'S OWN SKILL, NOT THE BASIC ATTACK, ON A FLOOR CARRYING THE ROW. "Every time you use an ability": no
+	// roll and no wait. A copy sends no notice, so it never reaches here and is never copied.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	FCataclysmWeaponSkill Skill;
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::EchoChamberKey)) || !Player || Notice.User != Player
+		|| Notice.Slot == ECataclysmAbilitySlot::BasicAttack
+		|| !DungeonGameModeEchoChamberSkill(Player, Notice.SkillName, Skill))
+	{
+		return;
+	}
+
+	// AS FAR FROM THE PLAYER AS THE USE WAS AIMED, AT A DRAWN ANGLE. The distance is kept, because it is what decides
+	// whether the copy hits the player. DRAWN NOW, FIRED ON THE NEXT TICK, for the reason Wild Magic waits one.
+	const FVector From = Player->GetActorLocation();
+	const float Angle = DungeonGameModeEchoChamberAngle();
+	EchoChamberPending = Notice.SkillName;
+	EchoChamberPendingAimCm =
+		FMath::Max(static_cast<float>(FVector::Dist2D(Notice.Aim, From)), Effects::EchoChamberLeastAimCm);
+	EchoChamberPendingAim = FVector(From.X + EchoChamberPendingAimCm * FMath::Cos(Angle),
+									From.Y + EchoChamberPendingAimCm * FMath::Sin(Angle), From.Z);
+	World->GetTimerManager().SetTimerForNextTick(
+		FTimerDelegate::CreateWeakLambda(this, [this]() { MakeTheEchoChamberCopy(); }));
+}
+
+bool ACataclysmDungeonGameMode::MakeTheEchoChamberCopy()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const FName Drawn = EchoChamberPending;
+	EchoChamberPending = NAME_None;
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	FCataclysmWeaponSkill Skill;
+	if (Drawn.IsNone() || !Player || !DungeonGameModeEchoChamberSkill(Player, Drawn, Skill)
+		|| !UCataclysmTriggeredSkill::Trigger(Player, Skill, EchoChamberPendingAim))
+	{
+		return false;
+	}
+	++EchoChamberCopiesMade;
+
+	// "IT CAN ALSO HIT YOU, DEALING A SMALL AMOUNT OF DAMAGE": a tenth of what the copy would deal to an enemy, only
+	// when the player stands inside the copy's area. Ruled 2026-10-05; see `EchoChamberKey`. Dealt as the player's own
+	// direct damage to themselves, which their defences reduce as an enemy's would.
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Player);
+	if (AbilitySystem && Effects::EchoChamberHitsTheCaster(EchoChamberPendingAimCm, Skill.Params.RadiusCm))
+	{
+		const float Percent = Skill.DamagePercent >= 0.0f
+			? Skill.DamagePercent
+			: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Skill.Slot).DamagePercent;
+		const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
+			AbilitySystem, UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem) * Percent / 100.0f, Skill.Tags);
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCannotLeech = true;
+		Delivery.bCannotBeRetaliatedAgainst = true;
+		if (UCataclysmSkillEffects::ApplyDirectDamage(Player, Player,
+													  ToAnEnemy * Effects::EchoChamberSelfHitPercent / 100.0f, Delivery))
+		{
+			++EchoChamberHitsOnThePlayer;
+		}
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Echo Chamber: copied %s on floor %d"), *Drawn.ToString(), FloorNumber);
+	RefreshFloorModifierPanel();
+	return true;
+}
+
 void ACataclysmDungeonGameMode::OnSkillWasUsed(const FCataclysmSkillUsedNotice& Notice)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ECHO CHAMBER FIRST, AND ON ITS OWN TEST: a skill use reaches every rule that wants it, and the returns below
+	// are about Wild Magic's own row.
+	NoteSkillUseForEchoChamber(Notice);
 
 	// THE PLAYER'S OWN SKILL, NOT THE BASIC ATTACK, ON A FLOOR CARRYING THE ROW, AND NOT INSIDE THE WAIT. The notice
 	// is sent for creatures too. A triggered skill sends none, so it never reaches here. Ruled 2026-10-04.
@@ -17278,6 +17386,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			TrickOrTreatIsHasting() ? TEXT(", hasted by a treat") : TEXT("")));
 	}
 
+	// AND ECHO CHAMBER: the copies fired and how many of them hit the player. Issues #1820 and #41.
+	const FName Echo(Effects::EchoChamberKey);
+	if (FloorBrief.Modifiers.Contains(Echo))
+	{
+		Counting.Add(Echo, FString::Printf(TEXT("echo chamber: %d copies fired, %d hit you"), EchoChamberCopiesMade,
+										   EchoChamberHitsOnThePlayer));
+	}
+
 	// AND WILD MAGIC: how many it has triggered, the last one, and how many skills it draws from. The pool's size is
 	// on the line because it is what the row can do for this player: one skill for a War weapon on 2026-10-04.
 	const FName Wild(Effects::WildMagicKey);
@@ -19836,6 +19952,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			TrickOrTreatPickups = 0;
 			TrickOrTreatRaised = 0;
 			TrickOrTreatHasteUntilSeconds = -1.0f;
+
+			// AND ECHO CHAMBER'S COUNTS AND ANYTHING DRAWN AND NOT YET FIRED. Issues #1820 and #41.
+			EchoChamberPending = NAME_None;
+			EchoChamberCopiesMade = 0;
+			EchoChamberHitsOnThePlayer = 0;
 
 			// AND WILD MAGIC'S COUNT, ITS LAST SKILL AND ANYTHING DRAWN AND NOT YET TRIGGERED. Issues #1820 and #41.
 			WildMagicPending = NAME_None;

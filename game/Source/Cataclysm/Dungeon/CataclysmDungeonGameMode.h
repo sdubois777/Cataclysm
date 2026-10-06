@@ -1971,6 +1971,22 @@ public:
 
 	/** Seconds until Wild Magic may trigger again; zero or less when it may. */
 	float WildMagicSecondsUntilNext() const;
+
+	/** The skill Echo Chamber will copy on the next tick, or none. */
+	FName EchoChamberPendingSkill() const { return EchoChamberPending; }
+
+	/**
+	 * Fires the pending copy at the point it was drawn for, and hits the player when they stand inside its area.
+	 * Called on the tick after the use, for the reason `MakeTheWildMagicTrigger` is; public so a test, whose world is
+	 * never ticked, can make it. @return whether a copy started.
+	 */
+	bool MakeTheEchoChamberCopy();
+
+	int32 EchoChamberCopiesFired() const { return EchoChamberCopiesMade; }
+	int32 EchoChamberSelfHits() const { return EchoChamberHitsOnThePlayer; }
+
+	/** Where the pending copy, or the last one fired, is aimed. */
+	FVector EchoChamberAimNow() const { return EchoChamberPendingAim; }
 	int32 TrickOrTreatRaisedCount() const { return TrickOrTreatRaised; }
 	bool TrickOrTreatIsHasting() const;
 
@@ -2651,6 +2667,9 @@ private:
 
 	/** A skill used anywhere on the floor. Wild Magic's roll. Issues #1820 and #41. */
 	void OnSkillWasUsed(const struct FCataclysmSkillUsedNotice& Notice);
+
+	/** Echo Chamber's half of a skill use: draws the copy that is fired on the next tick. Issues #1820 and #41. */
+	void NoteSkillUseForEchoChamber(const struct FCataclysmSkillUsedNotice& Notice);
 
 	/**
 	 * A cleanse, on every character cleansed: when it is the player, the dungeon stacks whose rows say they are
@@ -4287,6 +4306,13 @@ private:
 	int32 WildMagicTriggered = 0;
 	FName WildMagicLast;
 	float WildMagicNextAllowedSeconds = -1.0f;
+
+	/** Echo Chamber: the skill to copy next tick, where the copy is aimed and how far that is, and the two counts. */
+	FName EchoChamberPending;
+	FVector EchoChamberPendingAim = FVector::ZeroVector;
+	float EchoChamberPendingAimCm = 0.0f;
+	int32 EchoChamberCopiesMade = 0;
+	int32 EchoChamberHitsOnThePlayer = 0;
 
 	/**
 	 * Soul Harvest: each fed creature's souls and what they have added to it, and the souls
