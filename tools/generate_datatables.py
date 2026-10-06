@@ -3695,6 +3695,12 @@ CONDITIONS = {
     # `Stat.Offense.Global`, as do both other rows whose words use that phrase
     # about enemies.
     "target_is_staggered": None,
+    # "You deal 15%-30% increased damage to enemies standing in your persistent
+    # AOE zones" is `target_in_your_zone`: the character struck stands in a
+    # ground zone the wearer's own skill left. Ruled 2026-10-06. IT TAKES NO
+    # VALUE. It does not reach the zone's own damage, which is priced with no
+    # target.
+    "target_in_your_zone": None,
 
     # "Deal 30%-50% more damage to Boss enemies" is `target_is_boss`, and it
     # takes no value. Issue #1815. It is the mirror of `opponent_is_boss` above:
@@ -7382,6 +7388,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",
+    "target_in_your_zone",
     "target_is_staggered",
     "target_not_yet_crit_by_you",
     "target_not_yet_struck_by_you",

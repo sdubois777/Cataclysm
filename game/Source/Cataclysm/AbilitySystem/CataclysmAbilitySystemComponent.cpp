@@ -5,6 +5,9 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmAilments.h"
+// For the zones a target may stand in, which one target-side condition asks. Ruled 2026-10-06.
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "EngineUtils.h"
 // For the class resource a scaling bonus counts points of. Issue #980.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For the two ailment chances a condition asks whether this character has at
@@ -1427,6 +1430,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsHealth = false;
 	bool bWantsBoss = false;
 	bool bWantsHistory = false;
+	bool bWantsZone = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
@@ -1466,6 +1470,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 				bWantsHistory = true;
 				break;
+			// AND WHETHER THE TARGET STANDS IN ONE OF THE ASKER'S ZONES, LISTED HERE FOR THE REASON THE
+			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
+			case ECataclysmStatCondition::TargetStandsInYourZone:
+				bWantsZone = true;
+				break;
 			default:
 				break;
 			}
@@ -1480,7 +1489,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			bWantsAilments = true;
 		}
 
-		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory)
+		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1493,7 +1502,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// because nothing could do anything differently with the distinction: a
 	// lookup with no row asking has no condition to answer.
 	if (!Target
-		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory))
+		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone))
 	{
 		return State;
 	}
@@ -1524,6 +1533,24 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// character this one is striking. Answering it from here would read the
 	// ailments of the wrong character, which is the exact fault the separate
 	// names exist to prevent.
+	// WHETHER IT STANDS IN A ZONE THE ASKER'S SKILL LEFT. Ruled 2026-10-06. The world's ground zones are walked,
+	// as the zone's own regeneration rule walks them: no list of a character's zones is kept. Only when a row asks,
+	// so a character with no such row pays nothing. THE ASKER IS THE ABILITY SYSTEM'S AVATAR, which is the owner a
+	// skill's zone is given.
+	if (bWantsZone && State.AskingAbilitySystem)
+	{
+		const AActor* Asker = State.AskingAbilitySystem->GetAvatarActor();
+		const FVector Standing = Target->GetActorLocation();
+		for (TActorIterator<ACataclysmGroundZone> Zone(Target->GetWorld()); Asker && Zone; ++Zone)
+		{
+			if (Zone->GetOwner() == Asker && Zone->Covers(Standing))
+			{
+				State.bTargetStandsInYourZone = true;
+				break;
+			}
+		}
+	}
+
 	if (bWantsAilments)
 	{
 		State.TargetDebuffs = UCataclysmDebuffs::TagsOnActor(Target);
