@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Four stats a persistent area reads: how long it lasts, more damage for each enemy inside, a slow, and only one at a time; no row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (four stat names and one
+base); `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`MorePerEnemyInsidePercent`,
+`SlowsThoseInsidePercent`, `Sweep`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`
+(`LeaveGroundAlong`, `LeaveTerrainAlong`); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(`StatsWithNoAttribute`, `EngineSuppliedBases`); `tools/generate_datatables.py` (one engine-supplied base); the probes
+in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have. **No enchantment row uses these stats yet**; the rows are the enchantment
+session's.
+
+### What it is for
+
+Fourteen enchantment sentences are about persistent areas, and one was built (the first sweep's share).
+This is the first of four windows for the rest: the four that are a stat an area reads.
+
+| Sentence | Stat | A row |
+|---|---|---|
+| "Persistent AOE effects expire 40%-60% faster" | `persistent_area_duration`, based at 100 | `more` -40 to -60 |
+| "Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them" | `zone_damage_per_enemy_inside` | flat 10 to 20 |
+| "Your persistent AOE zones also slow enemies within them by 20%-35%" | `zone_slow_percent` | flat 20 to 35 |
+| "You can only have 1 persistent AOE effect active at a time" | `only_one_persistent_area` | flat 1 |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **"Persistent AOE effects" are ground zones and terrain**, for the duration row and the only-one row. Not auras and
+  not the tether.
+- **This window comes before the rows that make a zone for a skill that states none.** Until those are built, every
+  zone row reaches the skills that leave ground themselves: **12 on 2026-10-06, all Demonic**, and for the two rows
+  that reach terrain, 5 more.
+- **The two sentences that make a zone hurt or affect its own owner stay with the owner.**
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles any of the four**; each is the sentence's own figure.
+
+### How it is built
+
+- **Each stat is asked once, where a skill leaves the area**, with the skill's tags, as the first sweep's share is.
+  A sweep reads no stat: what a row gave is put on the zone when it is made.
+- **Duration.** A ground zone's stated time, and a terrain's after its own duration stat, is multiplied by the share.
+  A share of nought leaves no area.
+- **"Expire 40%-60% faster" is written as 40% to 60% less time.** A judgement by the writing session on what the row
+  should say: the other reading, a rate 40% to 60% higher, would be a duration divided by 1.4 to 1.6. The stat serves
+  either; the row decides.
+- **More for each enemy inside.** A sweep counts who it found and multiplies its figure by 1 plus the stat for each.
+  **It multiplies the figure the zone was priced at.** The sentence says "increased", and a zone's damage is fixed
+  when the zone is made with its owner's increases already in it, so this cannot join them; it is applied on top.
+  The count is the enemies in that sweep, the one being hurt included.
+- **The slow** is the Cripple debuff at the stat's size, laid by every sweep for 1.5 seconds, which is a sweep and a
+  half: it holds while its target stays and ends soon after it leaves. It is laid beside the zone's own curse, which
+  a zone holds one of. Cripple slows movement and attacks both.
+- **Only one.** Just before a new ground zone or terrain is made, every earlier one the same character's skills left
+  is ended. They are found by walking the world's zones and terrain for that owner, as the zone's own regeneration
+  rule already does; there is still no list of a character's areas. A floor rule's zone has another owner and is not
+  touched.
+
+### Consequences, stated rather than changed
+
+- **A blink or a swap leaves ground where it began and where it arrived, which is two zones.** With "only 1", the
+  one where it arrived ends the one where it began, so such a skill keeps its arrival zone only.
+- **A zone already on the ground is not changed** when its owner puts on or takes off a row: the stats are read when
+  the zone is made.
+- **The slow's size is whatever the Cripple debuff does with it**, including its cap of 80%.
+- **None of the four reaches a floor rule's zone or a creature's.** They are read from the character whose skill
+  leaves the area.
+
+### What is not here
+
+- The three sentences that need a zone to know who entered it or where a target stands, the four that make a zone
+  for a skill that states none, and the one that makes zones follow their owner: the next three windows.
+
+### Tests
+
+Four probes, run by `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, each on a caster that blinks
+with an enemy 2 m to each side:
+
+- `ProbePersistentAreaDuration`: a zone lasts its stated 6 seconds, and 3 with 50% less.
+- `ProbeZoneDamagePerEnemyInside`: with two enemies inside, 20 per enemy makes a sweep 1.4 times a plain one.
+- `ProbeZoneSlowPercent`: an enemy swept by a carrying caster's zone carries the Cripple tag; a plain zone's does not.
+- `ProbeOnlyOnePersistentArea`: a plain caster's blink leaves two zones and a second blink four; a carrying caster
+  has one after each.
+
+**Not tested:** terrain's half of the duration and of the only-one rule; the size of the slow as a speed.
+
+**Python.** No new test. The inventory of stat lookups gained four entries, one for each new call.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-06 — A defender can roll to absorb a spell or to reflect a melee hit, and a row can roll for a strike to hit every enemy within 3 metres; no row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (`SpellAbsorbChanceStat`,
