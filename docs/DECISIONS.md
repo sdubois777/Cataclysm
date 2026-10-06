@@ -16,8 +16,9 @@ pending held trigger, `TriggerHeldSkillAction`, `TriggerHeldSpellAction`, the co
 `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; and `tools/tests/test_generate_datatables.py` and
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses either action yet**; the rows are the enchantment session's.
+**Applied.** The Unreal compile, the automation suite, the Python suite and the guard proofs ran on 2026-10-06; the
+figures, two failures in tests this change does not touch, and one fault the proofs found are under "Run" at the end
+of this entry. **No enchantment row uses either action yet**; the rows are the enchantment session's.
 
 ### What it is for
 
@@ -123,9 +124,61 @@ Three new automation tests.
 **Python.** Five new checks: the generator's two action names equal the engine's; each action is carried through;
 each is refused on an event that names no skill.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06, in two turns, for a stack of two: the `attack_use` event (the entry below), then this
+change on top of it. Development was 98959d80. Every figure is a line the run printed.
+
+**First turn, at `feat/trigger-held-skill-2` 56b10cdc** (this layer was `feat/attack-use-event-2` c3d02107).
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3192 tests performed, 3190 succeeded, 2 failed: ARemovedObstacleGivesItsCellsBackToTheNavigationMesh, ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound`; `Declared: 3192 tests in the tree at 56b10cdc; 3192 performed, gap 0` |
+| The two failed tests, run again alone with no file changed | `2 tests performed, 2 succeeded, 0 failed` |
+| Python, with continuous integration idle | `5746 passed, 8 skipped in 315.36s`; JUnit `tests="5754" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**The two failures are not this change's, and their cause was not found.** Both are in
+`CataclysmDungeonNavigationTests.cpp`, in the `CataclysmEditor` module, where this stack changes no file; both say a
+navigation mesh rebuild did not finish in the time the test waits; and the six tests this stack adds are among the
+3190 that succeeded. Accepted by the coordinating session under the owner's delegation. Issue
+[#2222](https://github.com/sdubois777/Cataclysm/issues/2222), of which this is the fourth occurrence.
+
+**Second turn, at `feat/trigger-held-skill-3` 8b84d346** (this layer `feat/attack-use-event-3` 998c7048), after the
+one-line fix described below. **No second whole suite**: a labelled exception ruled by the coordinating session,
+because the change is one include of an engine header in a file that already compiled inside a merged compile unit,
+and each proof compiles that file on its own.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| `Cataclysm.Enchantments.`, whole | `220 tests performed, 220 succeeded, 0 failed` |
+| `Cataclysm.TriggeredSkill.`, whole | `4 tests performed, 4 succeeded, 0 failed` |
+| `tools/tests` | `3929 passed, 8 skipped in 43.87s` |
+
+No Python file changed between the two heads, so the Python figures of the first turn stand.
+
+The fix between the two turns is one include in `CataclysmTriggeredSkill.h`; the entry below describes the fault.
+
+### Guard proofs, at 8b84d346
+
+Each with one anchor counted and the source hash the same before and after.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa, first attempt | `CataclysmSkillTemplate.cpp`: `!CheckCost(Handle, ActorInfo)` in place of `!CommitAbilityCost(...)` | `Cataclysm.Enchantments.ATriggeredSpellPaysItsCost` | **NO MEASUREMENT.** The break's own text did not compile: `error C2660: 'UCataclysmGameplayAbility::CheckCost': function does not take 2 arguments` | not reached |
+| Pa | The same break with its third argument, `!CheckCost(Handle, ActorInfo, nullptr)`: a paying start checks its cost and does not pay it | Same | PROVED. 1 performed, 1 failed, 2 failed assertions: "it paid mana" was false, and what it paid was 0.000000 against 1.164596 | 1 performed, 1 succeeded |
+| Pb | `CataclysmTriggeredSkill.cpp`: the skill just used stays in the pool | `Cataclysm.Enchantments.AnAttackTriggersADifferentHeldSkill` | PROVED. 1 performed, 1 failed, 1 failed assertion: after a use of Quench the pool was "Quench, Extinction" against "Extinction" | 1 performed, 1 succeeded |
+| Pc | Same file: the spell row does not win when the cooldown row also passed | `Cataclysm.Enchantments.WhenBothTriggerRowsPass` | PROVED. 1 performed, 1 failed, 1 failed assertion: "it is the spell row's: it paid mana" was false | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 2, 1 and 1.
+
+**A figure the proofs printed:** a triggered Malefice cost the test character 1.164596 mana. Skills are granted at
+level 1, and the heavy slot's 15 mana is its cost at level 100.
+
+**Not run, because no row exists yet:** the loader reading either action from the effect table, and anything a worn
+row does in play.
 
 ---
 
