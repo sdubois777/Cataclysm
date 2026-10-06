@@ -3382,6 +3382,9 @@ namespace CataclysmStatExemptionTest
 		float SlowStatedOnTheEnemy = -1.0f;
 		float CreatureSpeedBefore = -1.0f;
 		float CreatureSpeedAfter = -1.0f;
+		float TakenByTheCreature = -1.0f;
+		bool bCreatureCarriesTheSlow = false;
+		int32 FoundByTheSweep = -1;
 		int32 LiveZonesAfterASecondBlink = 0;
 	};
 
@@ -3418,6 +3421,14 @@ namespace CataclysmStatExemptionTest
 		ACataclysmEnemyCharacter* Creature = bWithACreature
 			? World->SpawnActor<ACataclysmEnemyCharacter>(FVector(-150.0f, 0.0f, 0.0f), FRotator::ZeroRotator)
 			: nullptr;
+		if (Creature)
+		{
+			// ON THE MONSTERS' SIDE AND WITH HEALTH, as `SpawnEnemy` in CataclysmApplyStatusTests.cpp and
+			// `SpawnEnemyAt` in CataclysmBasicAttackTests.cpp make one. The first version of this probe did neither,
+			// and a creature spawned with no health set is counted dead, so no sweep found it.
+			Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Creature->SetHealth(1000.0f);
+		}
 		TMap<FName, FCataclysmStatInputs> Inputs;
 		Carry(Inputs);
 		if (Inputs.Num() > 0)
@@ -3472,14 +3483,26 @@ namespace CataclysmStatExemptionTest
 			Read.LastsSeconds = AtTheOrigin->GetLifeSpan();
 			const UAbilitySystemComponent* LeftSystem = UCataclysmTargeting::AbilitySystemOf(Left.Actor);
 			const float Before = LeftSystem->GetNumericAttribute(Vital::GetHealthAttribute());
+			const UAbilitySystemComponent* CreatureSystem =
+				Creature ? UCataclysmTargeting::AbilitySystemOf(Creature) : nullptr;
+			const float CreatureHealthBefore =
+				CreatureSystem ? CreatureSystem->GetNumericAttribute(Vital::GetHealthAttribute()) : 0.0f;
 			if (Creature)
 			{
 				Read.CreatureSpeedBefore = Creature->CrippleMultiplier();
 			}
 			AtTheOrigin->Sweep();
+			Read.FoundByTheSweep = AtTheOrigin->LastSweepCount;
 			if (Creature)
 			{
 				Read.CreatureSpeedAfter = Creature->CrippleMultiplier();
+			}
+			if (CreatureSystem)
+			{
+				// WHETHER THE SWEEP REACHED THE CREATURE AT ALL, so a speed that did not change names its cause.
+				Read.TakenByTheCreature =
+					CreatureHealthBefore - CreatureSystem->GetNumericAttribute(Vital::GetHealthAttribute());
+				Read.bCreatureCarriesTheSlow = CreatureSystem->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
 			}
 			Read.TakenByOneEnemy = Before - LeftSystem->GetNumericAttribute(Vital::GetHealthAttribute());
 			Read.bEnemyIsSlowed = LeftSystem->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
@@ -3574,6 +3597,16 @@ namespace CataclysmStatExemptionTest
 		{
 			return;
 		}
+		// THE SWEEP HAS TO HAVE REACHED THE CREATURE, or the speeds below say nothing about a slow.
+		if (!Test.TestEqual(TEXT("set-up: each sweep found three bodies, the two plain ones and the creature"),
+							Plain.FoundByTheSweep + Slowing.FoundByTheSweep, 6)
+			|| !Test.TestTrue(TEXT("set-up: each sweep hurt the creature"),
+							  Plain.TakenByTheCreature > 0.0f && Slowing.TakenByTheCreature > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("the creature swept by the carrying caster's zone carries the Cripple tag"),
+			Slowing.bCreatureCarriesTheSlow);
 		Test.TestEqual(TEXT("a plain zone's sweep leaves the creature at its whole speed"),
 			Plain.CreatureSpeedAfter, 1.0f, 0.001f);
 		Test.TestEqual(TEXT("and a carrying caster's zone leaves it at 0.8 of its speed"),

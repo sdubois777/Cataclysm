@@ -91,6 +91,14 @@ the result, a real creature's own speed multiplier at 0.8 after the sweep and at
 2026-10-06 by the coordinating session: the last, because a stated strength that nothing reads would be the same
 kind of fault.
 
+**The first run of that probe failed, and the fault was the probe's.** The creature read a speed of 1 after the
+sweep. Two assertions were added to say why: each sweep found two bodies and not three, so the creature was never
+swept. The probe had spawned an `ACataclysmEnemyCharacter` and done nothing else, and a creature spawned with no
+health set is counted dead, which no search finds. It is now put on the monsters' side and given health, as
+`SpawnEnemy` in `CataclysmApplyStatusTests.cpp` and `SpawnEnemyAt` in `CataclysmBasicAttackTests.cpp` do. With that,
+the probe shows a skill's ground zone sweeping a real creature: it is found, hurt, carries the tag, and moves at
+0.8.
+
 ### What is not here
 
 - The three sentences that need a zone to know who entered it or where a target stands, the four that make a zone
