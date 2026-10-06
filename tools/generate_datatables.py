@@ -7124,6 +7124,176 @@ def refuse_a_scale_nothing_asks_for(sheet: str, rows: list[dict]) -> list[str]:
     return problems
 
 
+#: The conditions that ask about A BLOW BEING TAKEN: what kind it is and who
+#: dealt it. Only a stat asked for at a defence step is handed that blow
+#: (`DefenderStat` in `CataclysmDamageCalculation.cpp`), so on any other stat a
+#: row under one of these is refused every time it is judged.
+CONDITIONS_OF_A_BLOW_TAKEN = frozenset({
+    "attacker_beyond_metres",
+    "hit_is_melee_attack",
+    "hit_is_ranged_attack",
+    "hit_is_spell",
+    "melee_hit_while_moving",
+    "opponent_carries_weaken",
+    "opponent_is_boss",
+    "opponent_is_crowd_controlled",
+    "opponent_is_staggered",
+    "opponent_within_metres",
+})
+
+#: The conditions that ask about A HIT BEING DEALT: the character struck, how
+#: many were struck together, and what the skill cost or how far its user moved
+#: before it. Only a stat asked for while a hit is priced is handed those.
+CONDITIONS_OF_A_HIT_DEALT = frozenset({
+    "enemies_hit_at_least",
+    "enemies_hit_at_most",
+    "metres_moved_before_attack",
+    "skill_health_cost_above",
+    "target_carries_a_dot",
+    "target_carries_any_debuff",
+    "target_carries_cripple",
+    "target_carries_cripple_and_weaken",
+    "target_carries_void_splinter",
+    "target_damaged_by_you_within_seconds",
+    "target_health_below",
+    "target_is_boss",
+    "target_is_not_boss",
+    "target_is_staggered",
+    "target_not_yet_crit_by_you",
+    "target_not_yet_struck_by_you",
+    "target_within_metres",
+})
+
+#: What a stat's asker hands the pipeline BEYOND the wearer's own state, for
+#: every stat a row may state under a condition.
+#:
+#: WHY A CONDITIONED ROW NEEDS THIS. `UCataclysmPlayerClassStats::ApplyTo` works
+#: out a gameplay attribute with an empty state, which refuses every condition.
+#: So a conditioned row reaches play ONLY where the consuming code asks the stat
+#: pipeline at the moment of use. Where it reads the attribute, the row is
+#: accepted, built, imported and dead. Found on 2026-10-05 writing Brute's
+#: Heart's six-piece bonus: a blow reads a defender's resistance from the
+#: attribute, so "resistances increased by 50% below half health" would have
+#: granted nothing. Issue #1833.
+#:
+#: AND WHY IT IS PER STAT AND NOT A FLAT LIST. A stat can be asked for and still
+#: be unable to judge a condition: `movement_speed` is asked with the wearer's
+#: state and no target, so a row on it under `target_is_boss` is as dead as one
+#: on a stat nothing asks for. Each stat is listed with what its asker passes:
+#: nothing more than the wearer's state, the blow being taken, or the hit being
+#: dealt. A condition outside those two sets asks only the wearer's state, which
+#: every asker has.
+#:
+#: A HAND LIST HELD BY MEASUREMENT, for the reason `STATS_WITH_AN_ASKER` gives:
+#: deriving it from call sites was tried and got three of eleven wrong.
+#: `tools/tests/test_every_conditioned_stat_has_an_asker.py` requires every name
+#: here to have a probe in `CataclysmStatExemptionTests.cpp`, or to be named there
+#: as read from the code and not yet probed.
+#:
+#: WHAT IT DOES NOT SAY. That every consumer of a stat asks. Three are known to
+#: have one that reads the attribute, each with an issue: a projectile skill's
+#: throw interval for `attack_speed` (#2233), damage priced outside a hit for
+#: `attack_damage` (#2234), and `dot_damage` judged once at application (#2235).
+ASKER_PASSES_NOTHING_MORE: frozenset[str] = frozenset()
+ASKER_PASSES_A_BLOW_TAKEN = frozenset({"blow_taken"})
+ASKER_PASSES_A_HIT_DEALT = frozenset({"hit_dealt"})
+CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
+    # Asked for at a defence step, with the blow being taken.
+    "armor": ASKER_PASSES_A_BLOW_TAKEN,
+    "block_chance": ASKER_PASSES_A_BLOW_TAKEN,
+    "damage_reduction": ASKER_PASSES_A_BLOW_TAKEN,
+    "damage_taken": ASKER_PASSES_A_BLOW_TAKEN,
+    "evasion": ASKER_PASSES_A_BLOW_TAKEN,
+    # Asked for while a hit is priced, with the character struck.
+    "armor_penetration": ASKER_PASSES_A_HIT_DEALT,
+    "attack_damage": ASKER_PASSES_A_HIT_DEALT,
+    "crit_chance": ASKER_PASSES_A_HIT_DEALT,
+    "crit_multiplier": ASKER_PASSES_A_HIT_DEALT,
+    "minion_damage": ASKER_PASSES_A_HIT_DEALT,
+    "penetration": ASKER_PASSES_A_HIT_DEALT,
+    "spell_damage": ASKER_PASSES_A_HIT_DEALT,
+    # Asked for with the wearer's own state and nothing else.
+    "area_of_effect": ASKER_PASSES_NOTHING_MORE,
+    "attack_speed": ASKER_PASSES_NOTHING_MORE,
+    "cooldown_reduction": ASKER_PASSES_NOTHING_MORE,
+    "cooldown_skip_chance": ASKER_PASSES_NOTHING_MORE,
+    "crowd_control_resistance": ASKER_PASSES_NOTHING_MORE,
+    "debuffs_do_not_expire": ASKER_PASSES_NOTHING_MORE,
+    "dot_damage": ASKER_PASSES_NOTHING_MORE,
+    "energy_shield_leech": ASKER_PASSES_NOTHING_MORE,
+    "fervour_loss_suppressed": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_cast": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_second": ASKER_PASSES_NOTHING_MORE,
+    "health_cost_suppressed": ASKER_PASSES_NOTHING_MORE,
+    "health_regen": ASKER_PASSES_NOTHING_MORE,
+    "knockback_suppressed": ASKER_PASSES_NOTHING_MORE,
+    "life_leech": ASKER_PASSES_NOTHING_MORE,
+    "mana_cost": ASKER_PASSES_NOTHING_MORE,
+    "mana_leech": ASKER_PASSES_NOTHING_MORE,
+    "mana_pool_becomes_health": ASKER_PASSES_NOTHING_MORE,
+    "movement_speed": ASKER_PASSES_NOTHING_MORE,
+    "movement_speed_reduction_suppressed": ASKER_PASSES_NOTHING_MORE,
+    "nova_damage_of_missing_health": ASKER_PASSES_NOTHING_MORE,
+    "retaliation": ASKER_PASSES_NOTHING_MORE,
+    "skill_charges_bonus": ASKER_PASSES_NOTHING_MORE,
+    "skill_locked": ASKER_PASSES_NOTHING_MORE,
+}
+
+
+def what_a_condition_needs(condition: str) -> str:
+    """What an asker must pass for this condition to be judged: "blow_taken",
+    "hit_dealt", or an empty string for the wearer's own state."""
+    if condition in CONDITIONS_OF_A_BLOW_TAKEN:
+        return "blow_taken"
+    if condition in CONDITIONS_OF_A_HIT_DEALT:
+        return "hit_dealt"
+    return ""
+
+
+def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[str]:
+    """A row may only carry a Condition on a stat whose asker can judge it.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE, the argument
+    `refuse_a_scale_nothing_asks_for` makes for a scale. A row with no stat is
+    an action, whose condition is judged where the action fires, and is skipped.
+    Both of a row's conditions are checked.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if not stat:
+            continue
+        for column in ("Condition", "Condition2"):
+            condition = str(row.get(column) or "").strip()
+            if not condition:
+                continue
+            if stat not in CONDITIONED_STATS_WITH_AN_ASKER:
+                problems.append(
+                    f"{sheet}/{row['Name']}: states {stat!r} under the condition "
+                    f"{condition!r}, and nothing is known to ask for that stat "
+                    f"through the stat pipeline. A gameplay attribute is worked "
+                    f"out with every condition refused, so where the consuming "
+                    f"code reads the attribute this row would grant NOTHING and "
+                    f"say nothing -- which is what a resistance row under "
+                    f"health_below would have done on 2026-10-05. Give the stat "
+                    f"a lookup where its value is used, and add it to "
+                    f"CONDITIONED_STATS_WITH_AN_ASKER here with a probe in "
+                    f"CataclysmStatExemptionTests.cpp; or take the condition off.")
+                continue
+            needs = what_a_condition_needs(condition)
+            if needs and needs not in CONDITIONED_STATS_WITH_AN_ASKER[stat]:
+                about = ("a blow being taken" if needs == "blow_taken"
+                         else "a hit being dealt")
+                problems.append(
+                    f"{sheet}/{row['Name']}: states {stat!r} under the condition "
+                    f"{condition!r}, which asks about {about}, and the code that "
+                    f"asks for {stat!r} does not hand that over. The condition "
+                    f"would be refused every time, so this row would grant "
+                    f"NOTHING and say nothing. CONDITIONED_STATS_WITH_AN_ASKER "
+                    f"says what each stat's asker passes.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -7325,6 +7495,7 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     # scaled row on a stat nothing asks for is accepted, built, imported and
     # dead, and this is the last moment anybody looks at it.
     problems.extend(refuse_a_scale_nothing_asks_for("PassiveEffects", effects))
+    problems.extend(refuse_a_condition_nothing_asks_for("PassiveEffects", effects))
 
     return problems
 
@@ -7423,6 +7594,8 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # sheets share the scale vocabulary, so a dead scaled row is as easy to
     # write here as there. Issue #1973.
     problems.extend(refuse_a_scale_nothing_asks_for("EnchantmentEffects", effects))
+    problems.extend(
+        refuse_a_condition_nothing_asks_for("EnchantmentEffects", effects))
 
     # AND A SCALE THAT COUNTS ENEMIES IN A RADIUS THIS SHEET CANNOT STATE.
     # Issue #1987. The refusal above asks whether anything asks for the row's
