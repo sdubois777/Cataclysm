@@ -50,6 +50,26 @@ three tests of the `attack_use` entry, which use a player character and rows mad
 - **A melee skill that may not be repeated is not**: held, channelled, movement, aura and summon skills are left
   out as for every repeat row.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one and the one above it, on `development` 0a3844e0.
+The builds, the whole suite and the Python of record are in the table of the entry "The first row that repeats a
+skill" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | 7882d9d4 | 228 tests performed, 220 succeeded, 8 failed, this layer's test among them; 3 of the 19 failed assertions are its own |
+| The asset, regenerated with the editor | 7882d9d4 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 484 to 485 |
+| Cataclysm.Enchantments., whole, with every asset built | eaec6b80 | 228 tests performed, 228 succeeded, 0 failed; 0 ensures |
+
+**The test fails against a table without the row and passes with it.** Its three failed assertions were the repeat
+recorded for a melee basic attack, that repeat's share, and the repeat recorded for a melee skill that is not the
+basic attack. Its two lines that expect nothing recorded, for a ranged basic attack and for a roll of 15, passed in
+both runs.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The event it is
+written on was proved by the session that built it.
+
 ---
 
 ## 2026-10-06 — Five more rows that repeat a skill: spells, a duplicate at half damage, the heavy attack after standing still, an echo and the ultimate; and a chance of 100 is always
