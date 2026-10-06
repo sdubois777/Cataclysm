@@ -108,6 +108,32 @@ tied to its tag instead; what a player sees is what was ruled.
 | Applying a debuff to an enemy reduces their damage output by 10%-20% | HELD: it names no ailment and no duration |
 | Enemies with Necrosis have 1%-2% less maximum health | HELD: dungeon rules derive a maximum from the current one and health is not given back |
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the generator check below this layer and the two slows above it, on
+`development` 426c061d. The builds, the whole suite and the Python of record are in the generator check's table
+and were run with this layer in the stack. An earlier window on `development` 2b87c355 ran this layer too;
+nothing measured there is quoted here. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| The asset | a13f66a3 | `DT_EnchantmentEffects.uasset` at 476 rows, the file built with the editor in the earlier window, carried over because this layer's `EnchantmentEffects.csv` is the same file byte for byte as the one it was built from |
+| Whole suite | 87ffdee3 | 3186 tests performed, 3186 succeeded, 0 failed; declared 3186, gap 0; 0 ensures |
+| Proof B: an applied ailment handing the carrier no riders | 87ffdee3 | PROVED: with the break in: 214 tests performed, 208 succeeded, 6 failed: TheBleedingMoveRowSlowsABleedingEnemysWalkingAndNotItsAttacking, TheBleedingRowRaisesWhatAnEnemyTakesOnlyWhileItCarriesTheWearersBleed, TheBurnAndDiseaseArmourRowsRemoveTheirShareOfAnAilingEnemysArmour, TheDiseaseHealingRowStopsADiseasedEnemyBeingHealedAtItsTopRoll, ThePoisonedRowTakesItsShareOffWhatAPoisonedEnemysAttacksAreWorth, ThePoisonedSlowRowSlowsAPoisonedEnemysWalkingAndItsAttackingAlike \| restored: 214 tests performed, 214 succeeded, 0 failed |
+| Proof C: an applier with nothing to hang taking down anybody's riders | 87ffdee3 | PROVED: with the break in: 214 tests performed, 213 succeeded, 1 failed: TheBleedingRowRaisesWhatAnEnemyTakesOnlyWhileItCarriesTheWearersBleed \| restored: 214 tests performed, 214 succeeded, 0 failed |
+| Python proof 2: a rider with no Ailment let through, in a copy | 87ffdee3 | PROVED: 1 failed, 461 passed \| restored: 462 passed; the one is test_a_rider_with_no_ailment_is_refused |
+
+Each proof kept its broken run's log and failed exactly the assertions predicted. B twelve: three in the bleed
+test, four in the armour test, one each in the poison and healing tests, and the three of the two slows above
+this layer, which ride on the same hand-over. C one, "and another character refreshing it leaves the 40".
+
+**This layer's four tests were not run against a table without its five rows in this window.** The asset was
+carried over, so the only run against an older table here is the one in the entry for the two slows, where these
+four passed and the two tests of that layer failed.
+
+**The first build failed in the top layer's test file and in nothing of this layer's.** This layer's code
+compiled in that build and was not changed after it.
+
 ---
 
 ## 2026-10-06 — The generator refuses a conditioned row the game cannot judge: a stat nothing asks for, or a condition its asker is not handed
