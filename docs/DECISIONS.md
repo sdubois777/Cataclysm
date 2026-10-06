@@ -49,6 +49,25 @@ and that a character holding no spell gets nothing are covered by the tests of t
   skill is left out, as for every triggered skill.
 - **The set's drawback halves the triggered spell too when it carries `Type.Melee`.**
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the five layers below this one, on `development` bae2f26c.
+The build, the whole suite and the Python of record are in the table of the entry "While below 50% HP, all
+skills cost HP instead of mana no longer converts the mana pool" and were run with this layer in the stack.
+**The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | b71a44e5 | 236 tests performed, 228 succeeded, 8 failed, this layer's among them; 1 of the 10 failed assertions are this layer's |
+| The asset, regenerated with the editor | b71a44e5 | rows 496 to 497 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of the heal's proof | 276116ba | 236 tests performed, 236 succeeded, 0 failed |
+
+**The test fails against a table without the row and passes with it**, on one assertion: at ten pieces a
+trigger of a spell is recorded. At nine pieces, and for the two-piece row's own trigger, it passed in both runs.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The
+mechanisms it is written on were proved by the session that built them.
+
 ---
 
 ## 2026-10-06 — Three benefits on the defender chances and the strike that hits all nearby: spells absorbed, melee hits reflected, and melee skills hitting everything within 3 metres
