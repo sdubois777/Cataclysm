@@ -2,6 +2,74 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — "Skills can spend HP instead of mana at a 3:1 ratio" is built: when mana is short a skill is paid for from health, at three health for each mana
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
+(`CostPaidFromHealthWhenShortStat`, `PoolPaying`, `ApplyCost`), `CataclysmSkillTemplates.cpp` (an aura's upkeep),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, `docs/All_Things_Cataclysm.xlsx` (one row of the
+Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset, one new test in
+`CataclysmSkillTemplateTests.cpp`, one probe in `CataclysmStatExemptionTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Skills can spend HP instead of mana at a 3:1 ratio | `skill_cost_paid_from_health_when_short` flat 3 |
+
+EnchantmentEffects 487 to 488, over 401 to 402 enchantments. The sentence was dropped on 2026-10-05 because the only
+stat then was `mana_pool_becomes_health`, which also converts the mana pool; the entry below this one is the stat
+that stopped being needed for.
+
+### WHAT WAS RULED, 2026-10-06, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **Three health for one mana.** The ratio is a price.
+2. **Only when mana is short.** "Can spend" is an option the skill takes when it must, as Cast from Ward's energy
+   shield is. A skill the mana held can pay for is paid for in mana.
+3. **After mana cost reductions.** The cost is the one this character pays.
+4. **Health must stay above what is taken**, as for every cost paid from health.
+
+### "PAID FROM HEALTH" NOW HAS TWO READINGS, ONE STAT EACH
+
+| Stat | Row | What it does |
+| :-- | :-- | :-- |
+| `skill_cost_paid_from_health` | "While below 50% HP, all skills cost HP instead of mana and cost 50% less" | Every cost comes out of health, one for one, whatever mana is held |
+| `skill_cost_paid_from_health_when_short` | "Skills can spend HP instead of mana at a 3:1 ratio" | A cost stays on mana while mana can pay it, and otherwise comes out of health at the stat's health for each mana |
+
+`mana_pool_becomes_health`, Water to Blood, is a third thing: it does the first and converts the pool.
+
+### HOW IT IS BUILT
+
+- **`UCataclysmGameplayAbility::PoolPaying` answers the pool and, now, what is to be charged.** It was "which pool
+  pays this cost"; a new last argument carries the amount, which is the cost for every pool but health paid because
+  mana was short, where it is the cost times the stat. The cast's payment and an aura's upkeep both take that
+  amount. The skill bar asks only whether a pool pays, and so shows such a skill as affordable.
+- **The order of the pools**: mana, then the energy shield when Cast from Ward is held, then health at the price.
+  The shield before health is a judgement of the writing session: a shield is not life.
+- **Only for a cost that was mana's to pay.** A character whose costs are already on health never reaches it.
+- **No ratio existed before this.** Every cost was the same number out of whichever pool.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A skill costing 40 with 39 mana held takes 120 health and no mana.** The whole cost moves; the mana held is not
+  spent first. This is the judgement Cast from Ward made for the shield, "the whole cost from one pool".
+- **An aura's upkeep is a skill's cost** and is paid the same way, at the same price, each pulse.
+- **Rock Bottom does not reach it**, as it does not reach any cost `ApplyCost` takes whole.
+- **A cost paid from health this way is not damage**: it is written onto the attribute, as the cost paid by a
+  character whose pool became health is.
+
+### Tests
+
+- `Cataclysm.Skills.TheWornRowForSpendingHealthWhenManaIsShortChargesThreeHealthForEachMana`: three casters wearing
+  the row, each with 1,000 maximum health and a skill costing 40. With mana to pay, 40 comes out of mana. With 10
+  mana, the cast is allowed, the 10 stays and 120 comes out of health. With 10 mana and 120 health, the cast is
+  refused and neither pool moves.
+- The probe for `skill_cost_paid_from_health_when_short` in `Cataclysm.StatExemption.`: a cost of 20 with no mana is
+  paid from health and 60 is to be charged.
+
+---
+
 ## 2026-10-06 — "While below 50% HP, all skills cost HP instead of mana" no longer converts the mana pool: a stat that moves a skill's cost onto health and does nothing else
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (`CostPaidFromHealthStat`,
