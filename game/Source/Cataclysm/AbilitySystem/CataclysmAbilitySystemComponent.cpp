@@ -4566,7 +4566,9 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				const float Pinned = CVarRepeatSkillRoll.GetValueOnAnyThread();
 				const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
-				if (Roll < Action.Percent)
+				// A CHANCE OF 100 IS ALWAYS, compared rather than rolled, because `FRandRange` can return 100
+				// itself. Three authored rows state no chance and are written as 100. As a status row's is.
+				if (Action.Percent >= 100.0f || Roll < Action.Percent)
 				{
 					const float Share = Action.RepeatSharePercent / 100.0f;
 					if (PendingRepeatName.IsNone() || Share > PendingRepeatDamageShare)
