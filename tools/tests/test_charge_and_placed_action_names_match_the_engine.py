@@ -64,6 +64,9 @@ CONSTANTS = {
     # AND THE REFLECT AND THE ARMOUR NOVA, since issue #1833 group E part 3.
     "ReflectBlockedAction": "reflect_blocked",
     "SmiteNearbyByArmourAction": "smite_nearby_by_armor",
+    # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
+    # generator accepted on 2026-10-05, issue #1833.
+    "CleanseAction": "cleanse",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -165,6 +168,11 @@ def test_the_generator_accepts_exactly_the_reflect_name_the_engine_has() -> None
 def test_the_generator_accepts_exactly_the_damage_immunity_name_the_engine_has() -> None:
     """Issue #1833 group E part 2."""
     assert gen.DAMAGE_IMMUNITY_ACTION == engine_names()["DamageImmunityAction"]
+
+
+def test_the_generator_accepts_exactly_the_cleanse_name_the_engine_has() -> None:
+    """Issue #1833, the timed cleanse."""
+    assert gen.CLEANSE_ACTION == engine_names()["CleanseAction"]
 
 
 def test_every_status_a_row_may_name_is_one_the_engine_applies() -> None:

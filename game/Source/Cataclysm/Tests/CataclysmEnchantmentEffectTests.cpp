@@ -12761,4 +12761,50 @@ bool FCataclysmAuraSharesImmunitiesRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTimedCleanseRowTest,
+	"Cataclysm.Enchantments.TheCleanseRowRemovesABurnFiveSecondsIntoAFightAndNotBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You are cleansed every 5 seconds". Issue #1833: the action `cleanse` on
+ * `every_seconds`, every 5. WORN, so the row is read from the built table: a
+ * burn another character put on the wearer is still there four seconds into a
+ * fight and gone at five. THE TIMER COUNTS ONLY IN COMBAT, as every timed row's
+ * does, so fifty seconds out of one remove nothing.
+ */
+bool FCataclysmTimedCleanseRowTest::RunTest(const FString&)
+{
+	CataclysmTimedRowTest::FFight Fight(*this, TEXT("Positive_You_are_cleansed_every_5_seconds"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Fight.ASC()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Burner = Fight.World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature to put the burn there"), Burner))
+	{
+		return false;
+	}
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	UCataclysmSkillEffects::ApplyDamageOverTime(Burner, Fight.Wearer->Actor, 1.0f, 600.0f, Burn,
+		/*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the wearer burns"), Fight.ASC()->HasMatchingGameplayTag(Burn)))
+	{
+		return false;
+	}
+	int32 Cleanses = 0;
+	for (const FCataclysmPoolAction& Action : Fight.ASC()->GetPoolActions())
+	{
+		Cleanses += Action.bCleanse ? 1 : 0;
+	}
+	TestEqual(TEXT("the worn row became one cleanse. If none, DT_EnchantmentEffects may be older than the "
+				   "rows: run tools/generate_datatable_assets.py"),
+		Cleanses, 1);
+	Fight.Until(4.0f);
+	TestTrue(TEXT("four seconds into the fight: still burning"), Fight.ASC()->HasMatchingGameplayTag(Burn));
+	Fight.Until(5.0f);
+	TestFalse(TEXT("five seconds in: cleansed"), Fight.ASC()->HasMatchingGameplayTag(Burn));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

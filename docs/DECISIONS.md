@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — "You are cleansed every 5 seconds" is built: the generator accepts the timed cleanse the game already had
+
+**Affects:** `tools/generate_datatables.py` (`CLEANSE_ACTION`, `_check_cleanse_action`),
+`docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv`
+and its asset, `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(`Cataclysm.Enchantments.TheCleanseRowRemovesABurnFiveSecondsIntoAFightAndNotBefore`),
+`CataclysmDataTableTests.cpp`, `tools/tests/test_generate_datatables.py` (`TestTheTimedCleanse`),
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS FOUND
+
+**The game could cleanse on a clock and no row could ask it to.** `UCataclysmAbilitySystemComponent::StepTimedGrants`
+has called `UCataclysmDebuffs::Cleanse` for an action flagged as a cleanse since 2026-09-26, with a test that
+builds the action by hand. The generator refused the action's name, so the sentence had text and no effect row.
+Found on 2026-10-05 by the survey of the 197 sentences with no effect row.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| You are cleansed every 5 seconds | action `cleanse` on `every_seconds`, every 5, value 100 |
+
+EnchantmentEffects 462 to 463, over 378 to 379. No engine change.
+
+- **The generator accepts `cleanse` on the timed event and on no other.** `StepTimedGrants` is the one place the
+  game reads the flag. The event loop in `ActOnEvent` has no case for it, so a cleanse on a kill or a block would
+  reach the pool path, find no pool of that name and do nothing; that row is refused and not written.
+- **Its value is 100 and the game does not read it.** A cleanse has no size. 100 is the figure a cooldown reset
+  that states no chance carries, so every such row says the same thing. A fraction, a value kind, a scale and
+  tags are each refused.
+- **What it removes** is what `UCataclysmDebuffs::Cleanse` removes: every damage over time, stun, debuff and fear
+  on the wearer that the wearer did not put there itself.
+
+**THE TIMER COUNTS ONLY IN COMBAT.** Every timed row counts whole periods of the current combat and starts again
+with each new one, ruled 2026-09-24. So the first cleanse is five seconds into a fight, and a debuff carried out
+of a fight stays until five seconds into the next one or until it ends by itself. The sentence does not say "in
+combat"; this is the timed event's rule and not a reading of this sentence.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in the elastic-burnell worktree, in one window with four layers stacked: this row, the four
+shares of the wearer's own damage, Starvation's ten-piece rows and Brute's Heart's armour, on `development`
+6efeac81. **The ids are the commits as they stood when each step ran.** The layers were put together again
+afterwards to carry each asset on its own layer, without changing any other file, so the same content sits under
+later ids.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, at the top of the stack as first written | 43c17ee7 | Build: Succeeded - 32 actions, 29 files compiled |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | 43c17ee7 | 204 tests performed, 199 succeeded, 5 failed: the five new tests of that group; 21 failed assertions; 0 ensures |
+| The assets, regenerated with the editor, each layer from its own CSV | 43c17ee7 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, four times: 463, 467, 470 and 473 rows |
+| Whole suite, first run | 61e37951 | 3173 tests performed, 3172 succeeded, 1 failed: TheWornRowForSpendingHealthInsteadOfManaChargesThreeTimesTheCostToHealth; declared 3173, gap 0; 0 ensures |
+| Rebuild after the fourth layer was written again without that row | eabbef30 | Build: Succeeded - 6 actions, 3 files compiled: Module.Cataclysm.13.cpp, Module.Cataclysm.27.cpp, Module.Cataclysm.29.cpp |
+| Cataclysm.Enchantments. | eabbef30 | 204 tests performed, 204 succeeded, 0 failed; 0 ensures |
+| Cataclysm.Skills. | eabbef30 | 268 tests performed, 268 succeeded, 0 failed; 0 ensures |
+| Whole suite | eabbef30 | 3172 tests performed, 3171 succeeded, 1 failed: ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound; declared 3172, gap 0; 0 ensures |
+| Cataclysm.DungeonFloor., once | eabbef30 | 15 tests performed, 15 succeeded, 0 failed |
+| Python of record, with ruff clean | eabbef30 | 5715 passed, 8 skipped in 316.20s; JUnit tests=5723 failures=0 errors=0 skipped=8 |
+| Proof A: a worn cleanse row not flagged as a cleanse | eabbef30 | PROVED: with the break in: 204 tests performed, 203 succeeded, 1 failed: TheCleanseRowRemovesABurnFiveSecondsIntoAFightAndNotBefore \| restored: 204 tests performed, 204 succeeded, 0 failed |
+| Python proof 1: the generator letting a cleanse hang on any event, in a copy | eabbef30 | PROVED: 1 failed, 453 passed \| restored: 454 passed; the one is test_a_cleanse_on_any_event_but_the_timed_one_is_refused |
+
+Proof A kept its broken run's log and failed exactly the two assertions predicted. The proofs of the other layers
+are in their own entries.
+
+**The first whole suite failed one test of the stack's making, and it was not predicted.** The fourth layer
+carried a second sentence, "Skills can spend HP instead of mana at a 3:1 ratio". Its test failed at its own
+set-up, and the cause was the row and not the test; the entry for Brute's Heart's armour records it. The
+coordinating session ruled the sentence out of the stack, the fourth layer was written again without it, and
+every run from the rebuild on is of the stack as it merged.
+
+**One other test failed once, and its cause was not found.**
+`Cataclysm.DungeonFloor.ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound` failed three
+assertions in the whole suite, the first "Expected 'the pit's mesh rebuild finished' to be true", and passed when
+its group of fifteen was run straight after. No layer here touches the dungeon floor or navigation. Its
+neighbour in the same file also failed once, in the window of the roll direction entry. Nothing was
+changed for it; it is recorded as one failure and one clean rerun.
+
+---
+
 ## 2026-10-05 — Echo Chamber: every skill use fires a free copy of that skill in a random direction, and a copy aimed within its own radius hits the player for a tenth
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`EchoChamberKey`, the two

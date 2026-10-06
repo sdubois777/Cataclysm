@@ -2736,7 +2736,7 @@ public:
 	 * - THE STACKS ARE THE DUNGEON'S. They stay on later floors, with the row or not, and clear when a floor's boss
 	 *   dies or the player dies, as Wasting Sickness's do, AND WHEN THE PLAYER IS CLEANSED, since 2026-09-26:
 	 *   `UCataclysmDebuffs::Cleanse`, heard by the dungeon game mode, which the enchantment "You are cleansed every 5
-	 *   seconds" will call when its row is written, and Grim Totems' Cleanse choice when that change moves.
+	 *   seconds" calls since its row was written on 2026-10-05, and Grim Totems' Cleanse choice when that change moves.
 	 */
 	static const TCHAR* RawSewageKey;
 
