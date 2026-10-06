@@ -84,6 +84,40 @@ are the rulings above.
 - **The generator** accepts the action `repeat_skill` on the event `skill_use` only, with a chance above 0 and up to
   100, and refuses a fraction, a value kind or a scale on it. It takes no trigger wait.
 
+### WHAT THE ROWS NEED
+
+For whoever writes the rows; ruled 2026-10-05 that this is the session holding the design workbook, as the first layer
+of its own window on top of this engine. Nothing below is in this change.
+
+- **A column for the share.** The Enchantment Effects sheet needs one new column, for example "Damage Share", stating
+  the percent of its damage the repeat deals: empty or 100 for the whole, 50 for "a duplicate at 50% damage".
+  `tools/generate_datatables.py` writes it to `game/Data/EnchantmentEffects.csv`, and should refuse it on any action
+  but `repeat_skill` and outside above 0 and up to 100. The row-text check will want "50" to appear in the sentence,
+  which it does.
+- **A field on `FCataclysmEnchantmentEffectRow`** (`game/Source/Cataclysm/Data/CataclysmDataRows.h`) of the same
+  name as the CSV column, defaulting to 0 or 100 as the generator writes an empty cell.
+- **One loader line.** In `UCataclysmItemModifiers::AccumulateEnchantmentsInto`
+  (`game/Source/Cataclysm/Items/CataclysmItem.cpp`), beside the line that sets `Action.bRepeatSkill`, set
+  `Action.RepeatSharePercent` from the new field, keeping 100 when the row states none.
+- **The test file that builds that table from CSV text:** `game/Source/Cataclysm/Tests/CataclysmEnchantmentSetTests.cpp`
+  (`EffectCsv`, read by `TableFrom<FCataclysmEnchantmentEffectRow>`). Its header line must gain the column, or the
+  table stops reading; its own comment records that a new field did this to six tests on 2026-10-05. It was the only
+  such file found by searching for `FCataclysmEnchantmentEffectRow>` on 2026-10-05.
+- **The files that read the real CSV and pin its size:** `CataclysmDataTableTests.cpp` (`CHECK_TABLE(...,
+  "EnchantmentEffects.csv", 462)`), `CataclysmEnchantmentEffectTests.cpp` and `CataclysmEnchantmentSetTests.cpp`
+  (`LoadCsv`), and in `tools/tests/test_enchantment_effects_match_the_row_text.py` the pinned `AUTHORED_ROWS`,
+  `AUTHORED_ENCHANTMENTS` and `STATED_RANGES`. `tools/tests/test_generate_datatables.py` builds made-up workbooks from
+  `TestScaleStepHigh.HEADER`, which gains the column too.
+- **A row's shape.** Action `repeat_skill`; Action Event `skill_use`; Value Low and High the chance, 100 and 100 for
+  a sentence with no chance; Required Tags the scope (`Type.Spell`, `Slot.Ultimate`, `Slot.Heavy`, or empty);
+  Condition `stationary_for_seconds` with 2 for the heavy attack row. No Fraction Of, Value Kind or Scale.
+- **The first row** is "Every skill use has a 5%-15% chance to cast a second time for free": 5 to 15, no scope.
+- **The six spell skills** the two spell rows reach today: Hex of Cinders, Malefice, Anathema, Whisper of Madness,
+  Quarry and Compel. A test of a spell row should use one of them; the others that carry `Type.Spell` (Foul Wake,
+  Vesselstep, Subjugate) are not repeated.
+- **A test that wears the real row** should send the skill-used notice and call
+  `UCataclysmTriggeredSkill::MakePendingRepeat`, as the tests here do, with `Cataclysm.RepeatSkillRoll` pinned.
+
 ### What is not here yet
 
 - **No row.** The first, "Every skill use has a 5%-15% chance to cast a second time for free", needs the workbook.
