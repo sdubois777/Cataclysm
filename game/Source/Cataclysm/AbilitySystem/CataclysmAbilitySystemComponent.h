@@ -638,6 +638,18 @@ public:
 		return Was;
 	}
 	float PendingUseHitsAll() const { return PendingUseHitsAllCm; }
+
+	/**
+	 * The share of its priced hit the use in hand deals ITS OWN USER, in per cent, when a row rolled that; nought
+	 * otherwise. The largest of the rows that passed. Taken by the use as the others are.
+	 */
+	float TakePendingUseSelfHitSharePercent()
+	{
+		const float Was = PendingUseSelfHitSharePercent;
+		PendingUseSelfHitSharePercent = 0.0f;
+		return Was;
+	}
+	float PendingUseSelfHitShare() const { return PendingUseSelfHitSharePercent; }
 	bool PendingUseNoDamage() const { return bPendingUseNoDamage; }
 	float PendingUseIncrease() const { return PendingUseIncreasePercent; }
 
@@ -945,6 +957,16 @@ public:
 
 	/** The action that rolls for a strike to hit every enemy nearby. Ruled 2026-10-06. See `bUseHitsAllNearby`. */
 	static const TCHAR* UseHitsAllNearbyAction;
+
+	/**
+	 * The two actions that roll for a use to hit its own user: the whole of its hit, and half of it. The owner's
+	 * decision of 2026-10-06 allows it where a row's sentence says so. See `FCataclysmPoolAction::bUseHitsItsUser`.
+	 */
+	static const TCHAR* UseHitsItsUserAction;
+	static const TCHAR* UseBackfiresAction;
+
+	/** The share a backfire deals its user, in per cent: "dealing half damage to you". */
+	static constexpr float BackfireSharePercent = 50.0f;
 
 	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
@@ -3565,6 +3587,7 @@ protected:
 	bool bPendingUseNoDamage = false;
 	float PendingUseIncreasePercent = 0.0f;
 	float PendingUseHitsAllCm = 0.0f;
+	float PendingUseSelfHitSharePercent = 0.0f;
 	float PendingFollowThroughUntilSeconds = -1.0f;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */

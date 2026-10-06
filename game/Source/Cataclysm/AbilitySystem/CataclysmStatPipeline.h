@@ -3999,6 +3999,20 @@ struct CATACLYSM_API FCataclysmPoolAction
 	float UseHitsAllMetres = 3.0f;
 
 	/**
+	 * Set, this action rolls `Percent` as a chance that the use in hand HITS ITS OWN USER and no enemy: the use
+	 * deals nothing to anyone else, and its user takes `UseSelfHitSharePercent` of what the use would have dealt one
+	 * enemy. The owner decided on 2026-10-06 that a character's own skills may hurt them where a row's sentence says
+	 * so. "Melee skills have a 10%-20% chance to hit you instead of the enemy" and "Spells have a 15%-25% chance to
+	 * backfire dealing half damage to you".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseHitsItsUser = false;
+
+	/** The share of the use's priced hit its user takes, in per cent: 100 for "hit you instead", 50 for "backfire". */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float UseSelfHitSharePercent = 100.0f;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
