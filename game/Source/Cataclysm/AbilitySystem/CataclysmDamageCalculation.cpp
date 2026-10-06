@@ -64,6 +64,7 @@ const TCHAR* UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat = TEXT("z
 const TCHAR* UCataclysmDamageCalculation::ZoneAtImpactSecondsStat = TEXT("zone_at_impact_seconds");
 const TCHAR* UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat = TEXT("zone_damages_its_owner");
 const TCHAR* UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat = TEXT("zone_applies_effects_to_owner");
+const TCHAR* UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat = TEXT("zone_follows_owner_percent");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
 const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =

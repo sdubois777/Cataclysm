@@ -3738,6 +3738,7 @@ namespace CataclysmStatExemptionTest
 		float LastsSeconds = 0.0f;
 		float PerSweep = 0.0f;
 		FName DamageType;
+		float FollowsAtPercent = 0.0f;
 	};
 
 	/**
@@ -3794,6 +3795,7 @@ namespace CataclysmStatExemptionTest
 				One.LastsSeconds = It->GetLifeSpan();
 				One.PerSweep = It->DamagePerTick;
 				One.DamageType = It->DamageType;
+				One.FollowsAtPercent = It->FollowsItsOwnerAtPercent;
 				Left.Add(One);
 			}
 		}
@@ -4024,6 +4026,33 @@ namespace CataclysmStatExemptionTest
 		Test.TestTrue(TEXT("and set alight"), Affected.bOwnerIsBurning);
 		Test.TestTrue(TEXT("and cursed"), Affected.bOwnerIsCursed);
 		Test.TestEqual(TEXT("and the sweep deals them no damage"), Affected.TakenByTheOwner, 0.0f, 0.001f);
+	}
+
+	/**
+	 * `zone_follows_owner_percent` is read where the zone is left. A blink that leaves ground leaves two zones that
+	 * stay; the same blink by a caster carrying 50 leaves two that follow at 50.
+	 */
+	void ProbeZoneFollowsOwnerPercent(FAutomationTestBase& Test)
+	{
+		const TCHAR* Blink = TEXT("Mode=Blink; Range=8; Radius=3.5; GroundRadius=3.5; GroundDuration=6; GroundPercent=16.7");
+		const TCHAR* Tags = TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent");
+		bool bPlainUsed = false;
+		bool bCarryingUsed = false;
+		const TArray<FLeftZone> Plain = ZonesLeftByOneUse(UCataclysmMovementSkill::StaticClass(), Blink, Tags,
+			[](TMap<FName, FCataclysmStatInputs>&) {}, bPlainUsed);
+		const TArray<FLeftZone> Carrying = ZonesLeftByOneUse(UCataclysmMovementSkill::StaticClass(), Blink, Tags,
+			[](TMap<FName, FCataclysmStatInputs>& Inputs)
+			{
+				CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat, 50.0f);
+			}, bCarryingUsed);
+		if (!Test.TestTrue(TEXT("both casters blinked and left two zones"),
+						   bPlainUsed && bCarryingUsed && Plain.Num() == 2 && Carrying.Num() == 2))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a plain caster's zone does not follow"), Plain[0].FollowsAtPercent, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("a carrying caster's first zone follows at the 50 carried"), Carrying[0].FollowsAtPercent, 50.0f, 0.001f);
+		Test.TestEqual(TEXT("and the second too"), Carrying[1].FollowsAtPercent, 50.0f, 0.001f);
 	}
 
 	/**
@@ -6009,6 +6038,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_at_impact_seconds"), &ProbeZoneAtImpactSeconds},
 			{TEXT("zone_damages_its_owner"), &ProbeZoneDamagesItsOwner},
 			{TEXT("zone_applies_effects_to_owner"), &ProbeZoneAppliesEffectsToOwner},
+			{TEXT("zone_follows_owner_percent"), &ProbeZoneFollowsOwnerPercent},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 			{TEXT("skill_duration"), &ProbeSkillDuration},
@@ -6733,6 +6763,84 @@ bool FCataclysmARowGivesAZoneTest::RunTest(const FString&)
 		TEXT("Radius=3; Angle=360"), SpellTags, BothEnds4, bUsed);
 	TestTrue(TEXT("the strike ran under the start-and-end row"), bUsed);
 	TestEqual(TEXT("and leaves no zone"), StruckUnderTheOther.Num(), 0);
+	return true;
+}
+
+// A ZONE FOLLOWS THE CHARACTER WHO LEFT IT. Ruled 2026-10-06: "Your persistent AOE zones follow you as you move at
+// 50% of your movement speed". Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAFollowingZoneTest,
+	"Cataclysm.StatExemption.AFollowingZoneWalksToItsOwnerAtAShareOfTheirSpeedAndStopsThere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAFollowingZoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE OWNER IS A CREATURE, because only a character has a walking speed to read. It walks 400 cm a second.
+	ACataclysmEnemyCharacter* Owner =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a creature to own the zones"), Owner)
+		|| !TestNotNull(TEXT("set-up: it has a movement component"), Owner->GetCharacterMovement()))
+	{
+		return false;
+	}
+	Owner->GetCharacterMovement()->MaxWalkSpeed = 400.0f;
+	TestEqual(TEXT("set-up: the speed a zone reads for it is that figure"), ACataclysmGroundZone::WalkSpeedOf(Owner), 400.0f, 0.001f);
+
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(Owner, FVector::ZeroVector, 200.0f, 10.0f, 1.0f);
+	ACataclysmGroundZone* Staying = ACataclysmGroundZone::Spawn(Owner, FVector::ZeroVector, 200.0f, 10.0f, 1.0f);
+	ACataclysmGroundZone* Lane = ACataclysmGroundZone::SpawnAlong(
+		Owner, FVector::ZeroVector, FVector(0.0f, 500.0f, 0.0f), 100.0f, 10.0f, 1.0f);
+	if (!TestNotNull(TEXT("set-up: a zone"), Zone) || !TestNotNull(TEXT("set-up: a second zone"), Staying)
+		|| !TestNotNull(TEXT("set-up: a lane"), Lane))
+	{
+		return false;
+	}
+	Zone->FollowItsOwnerAt(50.0f);
+	Lane->FollowItsOwnerAt(50.0f);
+	const FVector LaneShape = Lane->FarEnd - Lane->GetActorLocation();
+	const FVector ZoneBegan = Zone->GetActorLocation();
+
+	// WITH ITS OWNER STANDING ON IT, IT HAS NOWHERE TO GO.
+	Zone->FollowStep(1.0f);
+	TestEqual(TEXT("a following zone under its owner does not move"), Zone->TravelledCm, 0.0f, 0.01f);
+
+	// THE OWNER GOES 10 METRES AWAY. One second at half of 400 is 2 metres toward them.
+	Owner->SetActorLocation(FVector(1000.0f, 0.0f, Owner->GetActorLocation().Z));
+	Zone->FollowStep(1.0f);
+	Staying->FollowStep(1.0f);
+	Lane->FollowStep(1.0f);
+	TestEqual(TEXT("after one second the zone has moved 2 metres"), Zone->TravelledCm, 200.0f, 0.5f);
+	TestEqual(TEXT("toward its owner"), static_cast<float>(Zone->GetActorLocation().X - ZoneBegan.X), 200.0f, 0.5f);
+	TestEqual(TEXT("control: a zone that was not told to follow has not moved"), Staying->TravelledCm, 0.0f, 0.01f);
+	TestEqual(TEXT("the lane's near end has moved 2 metres too"), Lane->TravelledCm, 200.0f, 0.5f);
+	TestTrue(TEXT("and the lane has kept its shape"), (Lane->FarEnd - Lane->GetActorLocation()).Equals(LaneShape, 0.5));
+
+	// AND IT STOPS ON REACHING THEM: ten more seconds would carry it 20 metres, and it has 8 to go.
+	Zone->FollowStep(10.0f);
+	TestEqual(TEXT("it stops where its owner stands"), static_cast<float>(Zone->GetActorLocation().X), 1000.0f, 0.5f);
+	TestEqual(TEXT("having moved 10 metres in all and no further"), Zone->TravelledCm, 1000.0f, 0.5f);
+
+	// AN OWNER THAT IS NOT A CHARACTER HAS NO SPEED, so its zone stays.
+	FScopedSwinger Plain(World, FVector(0.0f, -3000.0f, 0.0f));
+	ACataclysmGroundZone* OfAPlainActor =
+		ACataclysmGroundZone::Spawn(Plain.Actor, FVector(500.0f, -3000.0f, 0.0f), 200.0f, 10.0f, 1.0f);
+	if (TestNotNull(TEXT("set-up: a zone owned by an actor that is no character"), OfAPlainActor))
+	{
+		OfAPlainActor->FollowItsOwnerAt(50.0f);
+		OfAPlainActor->FollowStep(1.0f);
+		TestEqual(TEXT("the speed read for an owner that is no character is nought"),
+				  ACataclysmGroundZone::WalkSpeedOf(Plain.Actor), 0.0f, 0.001f);
+		TestEqual(TEXT("so its zone has not moved"), OfAPlainActor->TravelledCm, 0.0f, 0.01f);
+	}
 	return true;
 }
 
