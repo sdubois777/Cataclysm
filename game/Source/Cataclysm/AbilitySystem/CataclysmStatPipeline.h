@@ -3494,6 +3494,16 @@ enum class ECataclysmAilmentRider : uint8
 	 * `UCataclysmContagion::SpreadFromTheDying`.
 	 */
 	SpreadOnDeath UMETA(DisplayName = "Spread on death, how many more"),
+
+	/**
+	 * THE INCREASE on what an ailment deals AT ONCE when the character whose
+	 * application is running applies it again: "Void splinter stacks detonate
+	 * for 50%-100% increased damage". Ruled 2026-10-06: the row is what makes
+	 * the ailment detonate at all. READ ON THE APPLIER when it applies the
+	 * ailment again, and never carried on the character struck. See
+	 * `UCataclysmSkillEffects::DetonationPercentWhenReapplied`.
+	 */
+	DetonatesWhenReapplied UMETA(DisplayName = "Detonates when reapplied, increased"),
 };
 
 /**

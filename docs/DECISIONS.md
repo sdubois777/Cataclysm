@@ -2,6 +2,131 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A Void Splinter can detonate: applied again by the character whose application is running, it deals what was left at once, when a row of that character says so; no row authored here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`DetonationPercentByItself`,
+`DetonationPercentWhenReapplied`, `ApplyShareOfHealthOverTime`), `CataclysmStatPipeline.h`
+(`ECataclysmAilmentRider::DetonatesWhenReapplied`), `CataclysmAbilitySystemComponent.h` and `.cpp`
+(`AilmentDetonatesWhenReappliedAction`), `tools/generate_datatables.py` (`AILMENT_DETONATION_ACTION`,
+`DETONATING_AILMENTS`), one new test in `CataclysmEnchantmentEffectTests.cpp`, one in
+`CataclysmRemainingDamageTests.cpp`, three in
+`tools/tests/test_generate_datatables.py`, `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHY THIS NEEDED A DESIGN
+
+"Void splinter stacks detonate for 50%-100% increased damage" assumes two things the game did not have. The design
+document gives a Void Splinter as 1% of current health a second for 4 seconds, one effect, and states that an enemy
+carries at most one stack of any effect the player applies. Nothing counted stacks and nothing detonated.
+
+### WHAT WAS DECIDED, AND BY WHOM
+
+- **THE OWNER, 2026-10-06: design the detonation.**
+- **The coordinating session, 2026-10-06, under the owner's delegation, each a labelled judgement:**
+  1. **The stack is the one running effect.** There is no counter. The one-stack rule stands, and a counted
+     alternative with a cap of 5 was refused.
+  2. **What detonates it is the same character applying it again** to an enemy that carries that character's
+     Void Splinter. Nothing detonates on expiry or on the enemy's death.
+  3. **What it deals is what the running one had left**, as one instance of the ailment's own damage, and the
+     running one ends. The new application then starts at its full duration.
+  4. **THE ROW IS WHAT MAKES IT DETONATE.** With no row a second application refreshes or replaces the first, as
+     it always has. With the row it deals 150% to 200% of what was left: the whole, raised by the row's 50 to 100.
+  5. **Built so one switch could make every Void Splinter detonate by itself**, with the row's figure then an
+     increase on that and nothing else to change. Whether it should is the owner's, and is not decided.
+
+### WHAT THE RESEARCH SETTLES, AND WHAT IT DOES NOT
+
+Fetched 2026-10-06, twice.
+
+- Path of Exile, Explosive Arrow, `poedb.tw/us/Explosive_Arrow`: "Maximum 20 Explosive Arrows stuck in an Enemy";
+  "the first one to explode will consume the others, adding their damage to its explosion"; "Explosion deals 6%
+  more Damage with Hits per Explosive Arrow on Target".
+- Path of Exile, Infernal Blow, `poedb.tw/us/Infernal_Blow`: "Upon reaching 6 charges, expiring, or the enemy's
+  death, the charged debuff is removed to damage that and other surrounding enemies"; "Debuff deals 66% of Damage
+  per Charge".
+
+**They settle** that a detonation removes the state it consumes and pays it out at once, and that a figure on a
+detonation scales the detonation itself. **They do not settle** anything specific to this game: both count
+stacks, which this game's one-stack rule forbids, and neither detonates a share of a living target's current
+health. Those are the judgements above.
+
+### HOW IT IS BUILT
+
+- **The switch.** `UCataclysmSkillEffects::DetonationPercentByItself` is 0: by itself the ailment does not
+  detonate. At 100 every Void Splinter would.
+- **The percent.** `DetonationPercentWhenReapplied` asks the APPLIER's rows for
+  `ECataclysmAilmentRider::DetonatesWhenReapplied` on the ailment. With a row it is 100 raised by the row's
+  figure; with none it is the switch's figure.
+- **Where.** `ApplyShareOfHealthOverTime`, before it compares the new application with the running one. Above
+  nought, `DealRemainingDamageOverTime` deals that percent of what the instigator's own running application had
+  left and ends it; the function then goes on and applies the new one.
+- **What "left" is** was ruled on 2026-10-01 for a share of health: what its remaining ticks would take if
+  nothing else struck, with a boss held at half its maximum health as its ticks hold it.
+- **The row action** is `ailment_detonates_when_reapplied`. It is written as the other numbers hung on an ailment
+  are: no event, an Ailment cell, a value above 0 up to 100. The generator accepts it on Void Splinter alone and
+  refuses every other number hung on an ailment on Void Splinter, because the function that applies a share of
+  health hands the character struck none.
+
+### THE FOUR THINGS A DETONATION IS, EACH A LABELLED JUDGEMENT UNDER THE OWNER'S DELEGATION
+
+The owner said "design it" on 2026-10-06. **Whether a Void Splinter should detonate by itself is still the
+owner's open question, so the switch stays at 0.**
+
+1. **WHAT "REMAINING DAMAGE" IS at the moment it is applied again: what the ticks it has left would take if
+   nothing else struck.** It is not a rate times the time left, because each tick takes its share of the health
+   held when it lands. For a share `s` with `n` ticks left on a target holding `H` health it is
+   `H x (1 - (1 - s)^n)`, and for a boss it stops at the line its ticks stop at. A Void Splinter a second and a
+   half in, on a target that had 1,000 health, has landed one tick and has three left: 990 x (1 - 0.99^3), about
+   29.4. This is what the code already held for a share of health, ruled 2026-10-01.
+2. **THE ROW'S 150 TO 200 PERCENT MULTIPLIES THAT FIGURE.** With the row at 100, that example deals about 58.8 at
+   once.
+3. **WHAT THE NEW APPLICATION THEN IS: a fresh Void Splinter at its full duration.** The detonated one has ended,
+   so the new one is applied to a target carrying none: four ticks, each of the health the target holds then,
+   ending four seconds after it was applied.
+4. **WITH NO ROW WORN, APPLYING IT AGAIN DOES WHAT IT DID BEFORE THIS CHANGE.** Nothing is dealt at once; a
+   stronger application replaces the running one and an equal or weaker one refreshes how long it lasts.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **The figure is asked of the applier when it applies the ailment again, and is not carried on the enemy.** The
+  other numbers hung on an ailment are fixed when the ailment is applied. This one is read at the moment it acts,
+  so an item taken off stops the detonation at the next application.
+- **A weaker application detonates too.** The detonation runs before the comparison of strengths, so the weaker
+  new one then starts on an enemy carrying none.
+- **Only the applier's own is detonated.** Another character's Void Splinter on the same enemy stands, and the
+  new application meets it as it always has.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A minion's Void Splinter is never detonated by its owner's row.** The row is asked of whoever applies the
+  ailment, and a minion wears nothing. THE OWNER, 2026-10-06: a minion's ailment carries none of the wearer's
+  enchantment bonus unless a row says so.
+- **A detonation is damage over time dealt at once**, with the tags the ailment's ticks carry, as every use of
+  `DealRemainingDamageOverTime` is.
+- **Applying it again at once loses nothing and gains the increase.** A Void Splinter that has dealt nothing has
+  all four ticks left, so two applications in a row deal one and a half to two times the whole ailment at once and
+  leave a new one running.
+
+### Tests
+
+- `Cataclysm.Enchantments.AVoidSplinterAppliedAgainByItsApplierDealsWhatWasLeftAtOnceOnlyWhenARowSaysSo`, with
+  rows made by hand: with no row the percent is 0 and a second application takes nothing at once; a row of 50
+  makes it 150 and takes something at once, the creature still carries a Void Splinter, and a third application
+  takes the same share of the health then held; a row of 100 takes four thirds of what a row of 50 took from a
+  creature built alike; another character's Void Splinter is not detonated; a row hung on another ailment leaves
+  the percent at 0.
+- `Cataclysm.RemainingDamage.AVoidSplinterDetonatedDealsWhatItsTicksLeftWouldTakeRaisedByTheRowAndANewOneRunsWhole`,
+  the figures, on a target of 1,000 health with no defences: a second and a half in, one tick has landed and what
+  is left reads 990 x (1 - 0.99^3); with no row a second application takes nothing at once; with a row of 100 it
+  takes twice what was left; the new one then has four ticks left of the health the target holds, those four land,
+  and it has ended four and a half seconds later.
+- Python: the row is carried through on Void Splinter, is refused on an ailment the game does not detonate, and
+  another number hung on Void Splinter is still refused; the generator's name equals the engine's.
+
+**Not tested:** a boss, and a detonation that kills its target.
+
+---
+
 ## 2026-10-06 — Two drawbacks roll for a skill to hit its own user: melee skills that hit you instead, and spells that backfire for half
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
