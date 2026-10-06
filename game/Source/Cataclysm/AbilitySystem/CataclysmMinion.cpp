@@ -7,6 +7,9 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the chaos pool a killed minion leaves its commander. Ruled 2026-10-06.
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -866,6 +869,10 @@ void ACataclysmMinion::HandleDeath()
 	// granted before this runs, and `CataclysmVitalAttributeSet.cpp` says why:
 	// a death handler may remove the actor, and the code that finds the
 	// commander cannot walk the ownership chain of one that is leaving.
+	// AND THE POOL IT LEAVES, where its commander's row says so. Ruled 2026-10-06. BEFORE THE EXPLOSION, which
+	// destroys this actor: a minion that explodes was killed too, and leaves its pool as well.
+	LeaveChaosPool();
+
 	if (ExplodesOnDeath())
 	{
 		Explode();
@@ -898,6 +905,33 @@ void ACataclysmMinion::HandleDeath()
 	}
 	SetActorEnableCollision(false);
 	SetLifeSpan(DeadBodySeconds);
+}
+
+ACataclysmGroundZone* ACataclysmMinion::LeaveChaosPool()
+{
+	// "YOUR MINIONS" ARE WHATEVER CARRIES `Type.Minion`. Ruled 2026-10-06. Every row of the minion type table
+	// carries it today, the Bolt Turret, the Ballista and the Spike Trap included; a minion with no type row has
+	// no tags and leaves nothing.
+	const FGameplayTag MinionTag = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Minion")), /*ErrorIfNotFound=*/false);
+	if (!IsValid(Summoner) || !MinionTag.IsValid() || !TypeTags.HasTag(MinionTag)
+		|| SummonerStat(Summoner, UCataclysmDamageCalculation::MinionsLeaveChaosPoolsStat) <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// A SHARE OF ITS OWN BLOW, the figure settled when it was summoned and the one its explosion is priced from.
+	// A sweep is dealt as direct damage by the commander, so nothing of the commander's raises it after this.
+	const float PerSweep = OwnDamagePerHit * ChaosPoolPercentOfOwnBlow / 100.0f;
+	if (PerSweep <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	static const FName Chaos(TEXT("Chaos"));
+	return UCataclysmSkillTemplate::LeaveAZoneFor(
+		Summoner, GetActorLocation(), GetActorLocation(), ChaosPoolRadiusCm, ChaosPoolSeconds, PerSweep,
+		TypeTags, /*HandedDamageType=*/Chaos, /*AilmentOfType=*/Chaos);
 }
 
 bool ACataclysmMinion::ExplodesOnDeath() const

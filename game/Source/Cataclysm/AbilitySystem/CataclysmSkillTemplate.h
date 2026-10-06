@@ -1352,6 +1352,26 @@ protected:
 	ACataclysmGroundZone* LeaveZoneAlong(const FVector& Start, const FVector& End, float RadiusCm, float Seconds,
 										 float PercentPerSweep, bool bTheSkillsOwnGround);
 
+public:
+	/**
+	 * Leave a ground zone for `ZoneOwner` and tell it everything its owner's rows add to a zone. What `LeaveZoneAlong`
+	 * does once a sweep is priced, and static so that something that is not a skill can leave a zone the same way:
+	 * a minion that dies leaves its commander a pool through this. Ruled 2026-10-06.
+	 *
+	 * IT ENDS THE OWNER'S EARLIER AREAS FIRST when the owner may hold only one, scales `Seconds` by the owner's
+	 * duration row, and reads each zone row -- more for each enemy inside, the slow, the stagger on entry, the
+	 * ailment, the two that reach the owner, the following and the first sweep -- with `SkillTags`.
+	 *
+	 * `HandedDamageType` is what the zone's sweeps deal as; none leaves it to deal its owner's.
+	 * `AilmentOfType` is the damage type whose ailment the zone lays where the ailment row is worn.
+	 */
+	static ACataclysmGroundZone* LeaveAZoneFor(AActor* ZoneOwner, const FVector& Start, const FVector& End,
+											   float RadiusCm, float Seconds, float PerSweep,
+											   const FGameplayTagContainer& SkillTags, FName HandedDamageType,
+											   FName AilmentOfType);
+
+protected:
+
 	/**
 	 * Leave persistent terrain, if this skill's `Terrain` cell names a kind.
 	 *
