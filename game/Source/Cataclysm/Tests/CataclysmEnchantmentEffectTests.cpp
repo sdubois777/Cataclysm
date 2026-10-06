@@ -13783,4 +13783,205 @@ bool FCataclysmEverySkillUseRepeatRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellsRepeatRowTest,
+	"Cataclysm.Enchantments.TheSpellsCastASecondTimeRowRepeatsASpellUnderItsTopRollAndNothingElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Spells have a 10%-20% chance to cast a second time for free". `repeat_skill`
+ * on `skill_use`, 10 to 20, scoped to `Type.Spell`, WORN at the top of its roll.
+ */
+bool FCataclysmSpellsRepeatRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmRepeatRowsTest;
+	FWorn Worn(TEXT("Positive_Spells_have_a_10_20_chance_to_cast_a_second_ti"), true);
+	FRepeatRollPinned Pinned(TEXT("19.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Spell = Tagged(TEXT("Type.Spell, Type.Projectile"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2 && Spell.Num() == 2))
+	{
+		return false;
+	}
+
+	Uses(Worn.ASC(), Spell);
+	TestEqual(*(FString(TEXT("a roll of 19.9 against the top roll of 20 repeats a spell.")) + OlderAsset),
+		Worn.ASC()->PendingRepeatSkill(), FName(TEXT("Carom")));
+	TestEqual(TEXT("at the whole of its damage"), Worn.ASC()->PendingRepeatShare(), 1.0f, 0.001f);
+	Uses(Worn.ASC(), Melee);
+	TestTrue(TEXT("a melee skill is not a spell, and is not repeated"), Worn.ASC()->PendingRepeatSkill().IsNone());
+	Pinned.Set(TEXT("20"));
+	Uses(Worn.ASC(), Spell);
+	TestTrue(TEXT("a roll of 20 repeats nothing"), Worn.ASC()->PendingRepeatSkill().IsNone());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDuplicateAtHalfRowTest,
+	"Cataclysm.Enchantments.TheDuplicateRowRepeatsAnySkillUnderItsTopRollAtHalfItsDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each skill has a 20%-40% chance to cast a duplicate at 50% damage".
+ * `repeat_skill` on `skill_use`, 20 to 40, with a Damage Share of 50, WORN at the
+ * top of its roll. The share is the column this row needed.
+ */
+bool FCataclysmDuplicateAtHalfRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmRepeatRowsTest;
+	FWorn Worn(TEXT("Positive_Each_skill_has_a_20_40_chance_to_cast_a_duplic"), true);
+	FRepeatRollPinned Pinned(TEXT("39.9"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = Tagged(TEXT("Type.Strike, Type.Melee"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2))
+	{
+		return false;
+	}
+
+	Uses(Worn.ASC(), Melee);
+	TestEqual(*(FString(TEXT("a roll of 39.9 against the top roll of 40 repeats the skill.")) + OlderAsset),
+		Worn.ASC()->PendingRepeatSkill(), FName(TEXT("Carom")));
+	TestEqual(TEXT("at half its damage"), Worn.ASC()->PendingRepeatShare(), 0.5f, 0.001f);
+	Pinned.Set(TEXT("40"));
+	Uses(Worn.ASC(), Melee);
+	TestTrue(TEXT("a roll of 40 repeats nothing"), Worn.ASC()->PendingRepeatSkill().IsNone());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavyTwiceRowTest,
+	"Cataclysm.Enchantments.TheHeavyAttackTwiceRowRepeatsAHeavyAttackOnlyAfterTwoSecondsStandingStill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your heavy attack applies its full effect twice if you have not moved in the
+ * last 2 seconds". `repeat_skill` on `skill_use`, always, scoped to `Slot.Heavy`
+ * under `stationary_for_seconds` 2. THE ROLL IS PINNED AT 100, the one roll a
+ * chance of 100 used to lose: "always" is compared and not rolled.
+ */
+bool FCataclysmHeavyTwiceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmRepeatRowsTest;
+	FWorn Worn(TEXT("Positive_Your_heavy_attack_applies_its_full_effect_twice"), true);
+	FRepeatRollPinned Pinned(TEXT("100"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Heavy = Tagged(TEXT("Slot.Heavy, Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Special = Tagged(TEXT("Slot.Special, Type.Strike, Type.Melee"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Heavy.Num() == 3 && Special.Num() == 3))
+	{
+		return false;
+	}
+
+	// STANDING STILL HAS TO BE STARTED: the first sample is when it begins.
+	Worn.ASC()->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(Worn.World, 1.0f);
+	Uses(Worn.ASC(), Heavy);
+	TestTrue(TEXT("one second standing still is not two: nothing is repeated"),
+		Worn.ASC()->PendingRepeatSkill().IsNone());
+
+	CataclysmTestWorld::RunClock(Worn.World, 1.5f);
+	Uses(Worn.ASC(), Heavy);
+	TestEqual(*(FString(TEXT("two and a half seconds standing still: the heavy attack is repeated, at a roll of 100.")) + OlderAsset),
+		Worn.ASC()->PendingRepeatSkill(), FName(TEXT("Carom")));
+	TestEqual(TEXT("at the whole of its damage"), Worn.ASC()->PendingRepeatShare(), 1.0f, 0.001f);
+	Uses(Worn.ASC(), Special);
+	TestTrue(TEXT("a special skill is not the heavy attack, and is not repeated"),
+		Worn.ASC()->PendingRepeatSkill().IsNone());
+
+	Worn.ASC()->NoteMovedMetres(1.0f);
+	Uses(Worn.ASC(), Heavy);
+	TestTrue(TEXT("a step taken: the heavy attack is not repeated"), Worn.ASC()->PendingRepeatSkill().IsNone());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellsEchoRowTest,
+	"Cataclysm.Enchantments.TheSpellsEchoRowRepeatsEverySpellAndNothingElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your spells echo +1 time". `repeat_skill` on `skill_use`, always, scoped to
+ * `Type.Spell`. The roll is pinned at 100, as for the heavy attack row.
+ */
+bool FCataclysmSpellsEchoRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmRepeatRowsTest;
+	FWorn Worn(TEXT("Positive_Your_spells_echo_1_time"), true);
+	FRepeatRollPinned Pinned(TEXT("100"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Melee = Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Spell = Tagged(TEXT("Type.Spell, Type.Projectile"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2 && Spell.Num() == 2))
+	{
+		return false;
+	}
+
+	Uses(Worn.ASC(), Spell);
+	TestEqual(*(FString(TEXT("a spell is repeated, at a roll of 100.")) + OlderAsset),
+		Worn.ASC()->PendingRepeatSkill(), FName(TEXT("Carom")));
+	TestEqual(TEXT("at the whole of its damage"), Worn.ASC()->PendingRepeatShare(), 1.0f, 0.001f);
+	Uses(Worn.ASC(), Melee);
+	TestTrue(TEXT("a melee skill is not a spell, and is not repeated"), Worn.ASC()->PendingRepeatSkill().IsNone());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUltimateTwiceRowTest,
+	"Cataclysm.Enchantments.TheUltimateTwiceRowRepeatsEveryUltimateAndNothingElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your ultimate ability applies its effect twice". `repeat_skill` on
+ * `skill_use`, always, scoped to `Slot.Ultimate`. The roll is pinned at 100, as
+ * for the heavy attack row.
+ */
+bool FCataclysmUltimateTwiceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmRepeatRowsTest;
+	FWorn Worn(TEXT("Positive_Your_ultimate_ability_applies_its_effect_twice"), true);
+	FRepeatRollPinned Pinned(TEXT("100"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Ultimate = Tagged(TEXT("Slot.Ultimate, Type.AOE.PointBlank"));
+	const FGameplayTagContainer Heavy = Tagged(TEXT("Slot.Heavy, Type.Strike, Type.Melee"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Ultimate.Num() == 2 && Heavy.Num() == 3))
+	{
+		return false;
+	}
+
+	Uses(Worn.ASC(), Ultimate);
+	TestEqual(*(FString(TEXT("an ultimate is repeated, at a roll of 100.")) + OlderAsset),
+		Worn.ASC()->PendingRepeatSkill(), FName(TEXT("Carom")));
+	TestEqual(TEXT("at the whole of its damage"), Worn.ASC()->PendingRepeatShare(), 1.0f, 0.001f);
+	Uses(Worn.ASC(), Heavy);
+	TestTrue(TEXT("a heavy attack is not an ultimate, and is not repeated"),
+		Worn.ASC()->PendingRepeatSkill().IsNone());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
