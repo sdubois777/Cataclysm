@@ -1352,6 +1352,28 @@ public:
 										   const FGameplayTag& EffectTag);
 
 	/**
+	 * The percent of what a running share of health ailment had left that it
+	 * deals AT ONCE, when the character that applied it applies it again with
+	 * no row saying so. NOUGHT: by itself the ailment does not detonate, and a
+	 * second application refreshes or replaces the first as it always has.
+	 * Ruled 2026-10-06: the row is what makes it detonate. THIS IS THE ONE
+	 * SWITCH: at 100 every Void Splinter would detonate by itself, and a row's
+	 * figure would be an increase on that, with nothing else to change.
+	 */
+	static constexpr float DetonationPercentByItself = 0.0f;
+
+	/**
+	 * The percent of what its running application has left that `Applier`
+	 * deals at once by applying `Ailment` again: nought when it does not
+	 * detonate. With a row of the applier's that hangs an increase on the
+	 * ailment, 100 raised by that increase, so "detonate for 50%-100%
+	 * increased damage" is 150 to 200. Asked of the applier now, so an item
+	 * taken off stops it at the next application.
+	 */
+	static float DetonationPercentWhenReapplied(const UAbilitySystemComponent* Applier,
+												const FGameplayTag& Ailment);
+
+	/**
 	 * What one tick of a share of current health deals, before the target's
 	 * armour and resistance. Issue #915.
 	 *

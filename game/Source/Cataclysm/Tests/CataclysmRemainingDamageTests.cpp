@@ -476,6 +476,76 @@ CATACLYSM_TEST(FCataclysmWholeDurationTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmDetonationFigureTest,
+	"Cataclysm.RemainingDamage.AVoidSplinterDetonatedDealsWhatItsTicksLeftWouldTakeRaisedByTheRowAndANewOneRunsWhole")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// THE FIGURES OF A DETONATION, ruled 2026-10-06, on a target of a thousand health with no defences. A Void
+	// Splinter of 1% of current health a second for four seconds, a second and a half in: one tick has landed,
+	// so the target has 990 and three ticks are left. WHAT IS LEFT is what those three would take if nothing
+	// else struck, 990 x (1 - 0.99^3), and not a rate times a time. A row of 100 deals twice that at once. Then a
+	// NEW one runs whole: four ticks left, which land, and it ends four seconds after it was applied.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Splinter = Tag(TEXT("Keyword.DoT.VoidSplinter"));
+	if (!TestTrue(TEXT("set-up: the void splinter tag exists"), Splinter.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Target(World);
+		const auto Apply = [&]()
+		{
+			return UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
+				Wearer.Actor, Target.Actor, 0.01f, 4.0f, Splinter);
+		};
+		if (!TestTrue(TEXT("set-up: a void splinter lands"), Apply()))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		if (!TestEqual(TEXT("set-up: one tick of one per cent has landed"), HealthOf(Target.Actor), 990.0f, 0.01f))
+		{
+			return false;
+		}
+		const float Left = 990.0f * (1.0f - FMath::Pow(0.99f, 3.0f));
+		TestEqual(TEXT("what is left is what its three ticks would take of the 990 it has"),
+			RemainingOn(Target.Actor, Splinter), Left, 0.01f);
+
+		// WITH NO ROW, APPLYING IT AGAIN DOES WHAT IT DID BEFORE: nothing at once, and it lasts four seconds more.
+		TestTrue(TEXT("with no row it is applied again"), Apply());
+		TestEqual(TEXT("and takes nothing at once"), HealthOf(Target.Actor), 990.0f, 0.01f);
+
+		FCataclysmPoolAction Row;
+		Row.Rider = ECataclysmAilmentRider::DetonatesWhenReapplied;
+		Row.Ailment = Splinter;
+		Row.Percent = 100.0f;
+		Wearer.AbilitySystem->SetPoolActions({Row});
+		const float LeftNow = RemainingOn(Target.Actor, Splinter);
+		TestTrue(TEXT("with the row it is applied again"), Apply());
+		const float After = 990.0f - 2.0f * LeftNow;
+		if (!TestEqual(TEXT("a row of 100 deals twice what was left, at once"), HealthOf(Target.Actor), After, 0.02f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("and a new one runs whole: four ticks of the health it has now"),
+			RemainingOn(Target.Actor, Splinter),
+			UCataclysmSkillEffects::ShareOfHealthOverTicks(0.01f, After, 1000.0f, /*bIsBoss=*/false, 4), 0.01f);
+
+		CataclysmTestWorld::RunClock(World, 4.5f);
+		TestEqual(TEXT("its four ticks land"), HealthOf(Target.Actor), After * FMath::Pow(0.99f, 4.0f), 0.05f);
+		TestFalse(TEXT("and it has ended, four seconds after it was applied"),
+			Running(Target.Actor, Splinter).IsValid());
+	}
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_DEV_AUTOMATION_TESTS

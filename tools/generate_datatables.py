@@ -5112,7 +5112,20 @@ AILMENT_RIDER_ACTIONS = (
     # HOW MANY more nearby enemies the ailment passes to when its carrier dies.
     # A count and not a percent; the same bound holds it, above 0 and up to 100.
     "ailment_spread_on_death",
+    # THE INCREASE on what the ailment deals at once when its applier applies it
+    # again. Read on the applier and not carried; on `DETONATING_AILMENTS` only.
+    "ailment_detonates_when_reapplied",
 )
+
+#: The rider that makes an ailment DETONATE, and the ailments it can be hung on.
+#: Ruled 2026-10-06 for "Void splinter stacks detonate for 50%-100% increased
+#: damage". The game reads it where a share of health ailment is applied
+#: (`UCataclysmSkillEffects::ApplyShareOfHealthOverTime`) and nowhere else, so on
+#: any other ailment the row would do nothing and is refused. And the other
+#: riders are refused on these ailments, because that function hands the
+#: character struck no riders.
+AILMENT_DETONATION_ACTION = "ailment_detonates_when_reapplied"
+DETONATING_AILMENTS = ("Void Splinter",)
 
 #: The action that REPEATS THE SKILL JUST USED, FREE, with its value as the chance
 #: out of 100. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15%
@@ -6697,7 +6710,14 @@ def enchantment_effects(book) -> list[dict]:
                     f"{ailment!r} on {action or stat!r}. Only "
                     f"{', '.join(REMAINING_DAMAGE_ACTIONS + APPLY_STATUS_ACTIONS + AILMENT_RIDER_ACTIONS)} "
                     f"read one, so it would be dropped.")
-            if ailment not in AILMENTS:
+            if action == AILMENT_DETONATION_ACTION:
+                if ailment not in DETONATING_AILMENTS:
+                    raise DataError(
+                        f"Enchantment Effects row {index}: {name} makes the ailment "
+                        f"{ailment!r} detonate. The game detonates only "
+                        f"{', '.join(DETONATING_AILMENTS)}, so the row would do "
+                        f"nothing.")
+            elif ailment not in AILMENTS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} names the ailment "
                     f"{ailment!r}, which is not one the game has. Known: "
