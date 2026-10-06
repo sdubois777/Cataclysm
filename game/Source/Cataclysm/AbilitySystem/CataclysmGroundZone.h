@@ -207,8 +207,9 @@ public:
 
 	/**
 	 * The slow each sweep lays on those inside, in per cent; nought lays none. Ruled 2026-10-06: "Your persistent AOE
-	 * zones also slow enemies within them by 20%-35%". A slow is the Cripple debuff at this size, laid for
-	 * `SlowSeconds`, so it lasts from one sweep to the next and ends soon after its target leaves.
+	 * zones also slow enemies within them by 20%-35%". A slow is the Cripple debuff STATED AT THIS SIZE, held to
+	 * the Cripple row's cap, and laid for `SlowSeconds`, so it lasts from one sweep to the next and ends soon after
+	 * its target leaves. A stronger cripple already on the target stands, as with every stated debuff.
 	 */
 	UPROPERTY(Transient)
 	float SlowsThoseInsidePercent = 0.0f;

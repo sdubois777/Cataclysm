@@ -3379,6 +3379,7 @@ namespace CataclysmStatExemptionTest
 		float LastsSeconds = -1.0f;
 		float TakenByOneEnemy = -1.0f;
 		bool bEnemyIsSlowed = false;
+		float SlowStatedOnTheEnemy = -1.0f;
 		int32 LiveZonesAfterASecondBlink = 0;
 	};
 
@@ -3466,6 +3467,8 @@ namespace CataclysmStatExemptionTest
 			AtTheOrigin->Sweep();
 			Read.TakenByOneEnemy = Before - LeftSystem->GetNumericAttribute(Vital::GetHealthAttribute());
 			Read.bEnemyIsSlowed = LeftSystem->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
+			Read.SlowStatedOnTheEnemy =
+				UCataclysmSkillEffects::StatedStrengthOn(Left.Actor, UCataclysmDebuffs::CrippleTag());
 		}
 		Read.LiveZonesAfterASecondBlink = Blink(ECataclysmAbilitySlot::Special) ? LiveZones() : -1;
 		return Read;
@@ -3525,13 +3528,18 @@ namespace CataclysmStatExemptionTest
 	/**
 	 * `zone_slow_percent` is read where the zone is left and laid by `ACataclysmGroundZone::Sweep` as the Cripple
 	 * debuff. An enemy swept by a carrying caster's zone is slowed; one swept by a plain caster's is not.
+	 *
+	 * AT THE SIZE THE STAT STATES, AND 20 IS USED BECAUSE THE CRIPPLE ROW'S OWN FIGURE IS 30. The first version of
+	 * this probe gave the stat 30 and asked only for the tag, and so passed against a slow that dropped its size.
+	 * A cripple that states nothing reads -1 and slows by the row's 30; one stating 20 slows by 20, which is a
+	 * speed of 0.8.
 	 */
 	void ProbeZoneSlowPercent(FAutomationTestBase& Test)
 	{
 		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {});
 		const FZoneReading Slowing = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>& Inputs)
 		{
-			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneSlowPercentStat, 30.0f);
+			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneSlowPercentStat, 20.0f);
 		});
 		if (!Test.TestTrue(TEXT("both zones' sweeps reached the enemy"),
 						   Plain.TakenByOneEnemy > 0.0f && Slowing.TakenByOneEnemy > 0.0f))
@@ -3540,6 +3548,8 @@ namespace CataclysmStatExemptionTest
 		}
 		Test.TestFalse(TEXT("a plain zone slows nobody"), Plain.bEnemyIsSlowed);
 		Test.TestTrue(TEXT("and a carrying caster's zone slows the enemy inside"), Slowing.bEnemyIsSlowed);
+		Test.TestEqual(TEXT("by the 20 per cent the stat states, and not the Cripple row's 30"),
+			Slowing.SlowStatedOnTheEnemy, 20.0f, 0.01f);
 	}
 
 	/**

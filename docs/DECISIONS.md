@@ -54,9 +54,10 @@ No new source was read. **Nothing read settles any of the four**; each is the se
   **It multiplies the figure the zone was priced at.** The sentence says "increased", and a zone's damage is fixed
   when the zone is made with its owner's increases already in it, so this cannot join them; it is applied on top.
   The count is the enemies in that sweep, the one being hurt included.
-- **The slow** is the Cripple debuff at the stat's size, laid by every sweep for 1.5 seconds, which is a sweep and a
-  half: it holds while its target stays and ends soon after it leaves. It is laid beside the zone's own curse, which
-  a zone holds one of. Cripple slows movement and attacks both.
+- **The slow** is the Cripple debuff stated at the stat's size, laid by every sweep for 1.5 seconds, which is a sweep
+  and a half: it holds while its target stays and ends soon after it leaves. It is laid beside the zone's own curse,
+  which a zone holds one of. Cripple slows movement and attacks both. The size is held to the Cripple row's cap of
+  80, and a stronger cripple already on the target stands.
 - **Only one.** Just before a new ground zone or terrain is made, every earlier one the same character's skills left
   is ended. They are found by walking the world's zones and terrain for that owner, as the zone's own regeneration
   rule already does; there is still no list of a character's areas. A floor rule's zone has another owner and is not
@@ -68,7 +69,8 @@ No new source was read. **Nothing read settles any of the four**; each is the se
   one where it arrived ends the one where it began, so such a skill keeps its arrival zone only.
 - **A zone already on the ground is not changed** when its owner puts on or takes off a row: the stats are read when
   the zone is made.
-- **The slow's size is whatever the Cripple debuff does with it**, including its cap of 80%.
+- **A zone's slow does not lengthen past its cap as an applied cripple does.** A cripple a character applies turns
+  what is over the cap into time; a zone's slow is laid afresh every sweep and is only held to the cap.
 - **None of the four reaches a floor rule's zone or a creature's.** They are read from the character whose skill
   leaves the area.
 

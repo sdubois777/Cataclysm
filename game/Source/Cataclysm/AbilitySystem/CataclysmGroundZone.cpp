@@ -432,10 +432,18 @@ void ACataclysmGroundZone::Sweep()
 
 		// AND A SLOW, IF A ROW GIVES THIS ZONE ONE. Ruled 2026-10-06. Beside the curse and not in its place: a zone
 		// carries one curse, and this is a second effect.
+		//
+		// STATED WITH ITS SIZE, through the call `UCataclysmAilments::Apply` itself uses for a cripple. The first
+		// version of this called `ApplyNamedEffect`, which for an effect whose row moves no attribute lays the tag
+		// alone and drops the size; every zone slow was then the Cripple row's own 30%, whatever the stat said.
+		// That call does not hold the size to the row's cap, so it is held here.
 		if (SlowsThoseInsidePercent > 0.0f)
 		{
-			UCataclysmSkillEffects::ApplyNamedEffect(
-				Source, Target, UCataclysmDebuffs::CrippleTag(), SlowSeconds, SlowsThoseInsidePercent);
+			const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+			const float Cap = UCataclysmSkillEffects::NumbersForEffectTag(Cripple).StrengthCap;
+			UCataclysmSkillEffects::ApplyTagForDuration(
+				Source, Target, Cripple, SlowSeconds,
+				Cap > 0.0f ? FMath::Min(SlowsThoseInsidePercent, Cap) : SlowsThoseInsidePercent);
 		}
 	}
 
