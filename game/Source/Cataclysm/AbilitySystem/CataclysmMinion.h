@@ -8,6 +8,7 @@
 
 struct FCataclysmHitDelivery;
 
+class ACataclysmGroundZone;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmVitalAttributeSet;
 class UCataclysmSummonSkill;
@@ -328,6 +329,33 @@ public:
 	 * Conduit keystone is what makes them count as the summoner's.
 	 */
 	static int32 DeathBlast(AActor* Lost, const AActor* Commander);
+
+	/**
+	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in
+	 * centimetres, how long it lasts in seconds, and the percent of the dead minion's own blow a sweep deals. Ruled
+	 * 2026-10-06 by the coordinating session under the owner's delegation; the row's sentence states none of them.
+	 *
+	 * 3 METRES IS Summon Imp's `Radius`. 4 SECONDS IS the commonest `GroundDuration` among the rows that leave
+	 * ground. 10 IS the share a row's zone deals, `UCataclysmSkillTemplate::RowZonePercentPerSweep`, which is the
+	 * smallest an authored row states.
+	 */
+	static constexpr float ChaosPoolRadiusCm = 300.0f;
+	static constexpr float ChaosPoolSeconds = 4.0f;
+	static constexpr float ChaosPoolPercentOfOwnBlow = 10.0f;
+
+	/**
+	 * Leave this minion's chaos pool where it stands, if its commander's row says so and it is a minion by its
+	 * type's tags. Called by `HandleDeath`, which is the one way a minion is killed.
+	 *
+	 * NOT CALLED FOR A MINION THAT IS REMOVED WITHOUT BEING KILLED. One whose time ran out, one the summon cap
+	 * removed to make room and one a closing rift took are destroyed without `HandleDeath`, and leave nothing.
+	 *
+	 * THE POOL IS ITS COMMANDER'S, so every row of the commander's that a zone reads reaches it, asked with the
+	 * dead minion's type tags. It deals Chaos damage.
+	 *
+	 * @return the pool, or null when none was left
+	 */
+	ACataclysmGroundZone* LeaveChaosPool();
 
 	/**
 	 * Remember what the skill that summoned this one states its explosion is,

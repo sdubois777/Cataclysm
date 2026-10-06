@@ -440,6 +440,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// And the percent of its owner's walking speed at which a zone
 		// follows them. Read where the zone is left. Ruled 2026-10-06.
 		TEXT("zone_follows_owner_percent"),
+		// And a flag on a commander: a minion of theirs that is killed
+		// leaves a chaos pool. Read by ACataclysmMinion::HandleDeath. Ruled
+		// 2026-10-06.
+		TEXT("minions_leave_chaos_pools"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health
