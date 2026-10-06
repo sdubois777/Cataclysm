@@ -744,7 +744,7 @@ public:
 	/**
 	 * The cleanse action name: a row whose Action is this cleanses its wearer, `UCataclysmDebuffs::Cleanse`. Ruled
 	 * 2026-09-26, for "You are cleansed every 5 seconds". The enchantment row and the name in
-	 * `tools/generate_datatables.py`'s action vocabulary are the enchantment session's, and are not written yet.
+	 * `tools/generate_datatables.py`'s action vocabulary, `CLEANSE_ACTION`, were written on 2026-10-05, issue #1833.
 	 */
 	static const TCHAR* CleanseAction;
 

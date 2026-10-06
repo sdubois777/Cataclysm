@@ -5061,6 +5061,22 @@ DAMAGE_IMMUNITY_ACTION = "damage_immunity"
 #: The longest no-damage window a row may open. A sanity bound.
 MAX_DAMAGE_IMMUNITY_SECONDS = 10.0
 
+#: The action that CLEANSES THE WEARER: it removes every damage over time, stun,
+#: debuff and fear on the wearer that the wearer did not put there itself, which
+#: is what `UCataclysmDebuffs::Cleanse` removes. Issue #1833, ruled 2026-09-26
+#: and written as a row on 2026-10-05: "You are cleansed every 5 seconds".
+#: `UCataclysmAbilitySystemComponent::CleanseAction` holds the same name.
+#:
+#: ON THE TIMED EVENT AND NO OTHER. `StepTimedGrants` is the one place the game
+#: reads the flag; the event loop in `ActOnEvent` has no case for it, so a
+#: cleanse on a kill or a block would fall through to the pool path and move
+#: nothing. Refused here rather than written and dropped.
+#:
+#: ITS VALUE IS 100 AND NOTHING ELSE. The game does not read it: a cleanse has
+#: no size. 100 is "all of it", as on a cooldown reset that states no chance,
+#: so the table says the same thing for every such row.
+CLEANSE_ACTION = "cleanse"
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -5282,6 +5298,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_reflect_blocked_action(index, who, action, event, fraction_of,
                                       kind, raw, headers)
         return
+    if action == CLEANSE_ACTION:
+        _check_cleanse_action(index, who, action, event, fraction_of, kind,
+                              raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -5296,7 +5316,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
-            f"or {REFLECT_BLOCKED_ACTION}.")
+            f"or {REFLECT_BLOCKED_ACTION}; or {CLEANSE_ACTION}.")
 
     known = granting_events()
     if not event:
@@ -5540,6 +5560,34 @@ def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} opens a no-damage window "
                 f"and states {column} {written!r}. Its value is seconds and "
                 f"nothing else, so the column must be empty.")
+
+
+def _check_cleanse_action(index: int, who: str, action: str, event: str,
+                          fraction_of: str, kind: str, raw,
+                          headers: dict[str, int]) -> None:
+    """Everything a cleanse row must say, and everything it must not. Issue
+    #1833. THE TIMED EVENT ONLY, because that is the one path on which the game
+    reads the flag; its period is checked where Every Seconds is read, and its
+    value where the value is read. A fraction, a value kind and a scale mean
+    nothing to a cleanse, and the timed event carries no tags for a scoped row
+    to match, so each is refused rather than dropped. A condition is judged on
+    the timed path as on any other, so it is allowed.
+    """
+    if event != TIMED_EVENT:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} cleanses on the event "
+            f"{event or '(none)'!r}. The game cleanses on {TIMED_EVENT} and on "
+            f"nothing else, so the row would do nothing.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale"))),
+                            ("Required Tags",
+                             clean(_cell(raw, headers, "Required Tags")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} cleanses and states "
+                f"{column} {written!r}. A cleanse has no size and its event no tags, so "
+                f"the column must be empty.")
 
 
 def _check_nth_action(index: int, who: str, action: str, event: str,
@@ -5811,7 +5859,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in REMAINING_DAMAGE_ACTIONS \
                     and action not in APPLY_STATUS_ACTIONS \
                     and action != DAMAGE_IMMUNITY_ACTION \
-                    and action != REFLECT_BLOCKED_ACTION:
+                    and action != REFLECT_BLOCKED_ACTION \
+                    and action != CLEANSE_ACTION:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5976,6 +6025,19 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} opens a no-damage "
                     f"window of {low:g} to {high:g} seconds. It lasts above 0 and "
                     f"up to {MAX_DAMAGE_IMMUNITY_SECONDS:g}.")
+
+        # A CLEANSE'S VALUE IS 100, which the game does not read. Issue #1833.
+        if action == CLEANSE_ACTION:
+            if not (low == 100 and high == 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} cleanses and "
+                    f"states the value {low:g} to {high:g}. A cleanse has no "
+                    f"size, so its value is 100 and nothing else.")
+            if scale_max_steps:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} cleanses and "
+                    f"states Scale Max Steps. It has no stacks, so it would be "
+                    f"dropped.")
 
         # A STATUS ACTION'S VALUE IS A CHANCE, above 0 and up to 100, or SECONDS,
         # above 0 and up to the bound. Issue #1833 group E part 1. Neither has
