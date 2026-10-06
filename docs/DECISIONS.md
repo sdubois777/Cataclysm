@@ -2,6 +2,198 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Four stats a persistent area reads: how long it lasts, more damage for each enemy inside, a slow, and only one at a time; no row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (four stat names and one
+base); `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`MorePerEnemyInsidePercent`,
+`SlowsThoseInsidePercent`, `Sweep`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`
+(`LeaveGroundAlong`, `LeaveTerrainAlong`); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(`StatsWithNoAttribute`, `EngineSuppliedBases`); `tools/generate_datatables.py` (one engine-supplied base); the probes
+in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses these stats yet**; the rows are the enchantment
+session's.
+
+### What it is for
+
+Fourteen enchantment sentences are about persistent areas, and one was built (the first sweep's share).
+This is the first of four windows for the rest: the four that are a stat an area reads.
+
+| Sentence | Stat | A row |
+|---|---|---|
+| "Persistent AOE effects expire 40%-60% faster" | `persistent_area_duration`, based at 100 | `more` -40 to -60 |
+| "Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them" | `zone_damage_per_enemy_inside` | flat 10 to 20 |
+| "Your persistent AOE zones also slow enemies within them by 20%-35%" | `zone_slow_percent` | flat 20 to 35 |
+| "You can only have 1 persistent AOE effect active at a time" | `only_one_persistent_area` | flat 1 |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **"Persistent AOE effects" are ground zones and terrain**, for the duration row and the only-one row. Not auras and
+  not the tether.
+- **This window comes before the rows that make a zone for a skill that states none.** Until those are built, every
+  zone row reaches the skills that leave ground themselves: **12 on 2026-10-06, all Demonic**, and for the two rows
+  that reach terrain, 5 more.
+- **The two sentences that make a zone hurt or affect its own owner stay with the owner.**
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles any of the four**; each is the sentence's own figure.
+
+### How it is built
+
+- **Each stat is asked once, where a skill leaves the area**, with the skill's tags, as the first sweep's share is.
+  A sweep reads no stat: what a row gave is put on the zone when it is made.
+- **Duration.** A ground zone's stated time, and a terrain's after its own duration stat, is multiplied by the share.
+  A share of nought leaves no area.
+- **"Expire 40%-60% faster" is written as 40% to 60% less time.** A judgement by the writing session on what the row
+  should say: the other reading, a rate 40% to 60% higher, would be a duration divided by 1.4 to 1.6. The stat serves
+  either; the row decides.
+- **More for each enemy inside.** A sweep counts who it found and multiplies its figure by 1 plus the stat for each.
+  **It multiplies the figure the zone was priced at.** The sentence says "increased", and a zone's damage is fixed
+  when the zone is made with its owner's increases already in it, so this cannot join them; it is applied on top.
+  The count is the enemies in that sweep, the one being hurt included.
+- **The slow** is the Cripple debuff stated at the stat's size, laid by every sweep for 1.5 seconds, which is a sweep
+  and a half: it holds while its target stays and ends soon after it leaves. It is laid beside the zone's own curse,
+  which a zone holds one of. Cripple slows movement and attacks both. The size is held to the Cripple row's cap of
+  80, and a stronger cripple already on the target stands.
+- **Only one.** Just before a new ground zone or terrain is made, every earlier one the same character's skills left
+  is ended. They are found by walking the world's zones and terrain for that owner, as the zone's own regeneration
+  rule already does; there is still no list of a character's areas. A floor rule's zone has another owner and is not
+  touched.
+
+### Consequences, stated rather than changed
+
+- **A blink or a swap leaves ground where it began and where it arrived, which is two zones.** With "only 1", the
+  one where it arrived ends the one where it began, so such a skill keeps its arrival zone only.
+- **A zone already on the ground is not changed** when its owner puts on or takes off a row: the stats are read when
+  the zone is made.
+- **A zone's slow does not lengthen past its cap as an applied cripple does.** A cripple a character applies turns
+  what is over the cap into time; a zone's slow is laid afresh every sweep and is only held to the cap.
+- **None of the four reaches a floor rule's zone or a creature's.** They are read from the character whose skill
+  leaves the area.
+
+### A fault found after the first window, and corrected before this merged
+
+**The first version of the slow dropped its size.** The sweep laid it with `ApplyNamedEffect`. For an effect whose row
+moves no attribute, which Cripple's is, that function lays the tag alone and does not carry the magnitude, so every
+zone slow was the Cripple row's own 30%, whatever the stat said. It is now laid with `ApplyTagForDuration` and its
+stated strength, the call `UCataclysmAilments::Apply` uses for a cripple.
+
+**Why the first window could not see it.** The probe gave the stat 30, which is the Cripple row's own figure, and
+asked only whether the enemy carried the tag. Both were true of the faulty version. The whole suite and three proofs
+passed with the fault in. It was found afterwards, while reading for the next change, and reported before any pull
+request for this layer was opened.
+
+**The probe now gives the stat 20** and asks for three things: the tag; a stated strength of 20 on the enemy; and
+the result, a real creature's own speed multiplier at 0.8 after the sweep and at 1 after a plain zone's. Ruled
+2026-10-06 by the coordinating session: the last, because a stated strength that nothing reads would be the same
+kind of fault.
+
+**The first run of that probe failed, and the fault was the probe's.** The creature read a speed of 1 after the
+sweep. Two assertions were added to say why: each sweep found two bodies and not three, so the creature was never
+swept. The probe had spawned an `ACataclysmEnemyCharacter` and done nothing else, and a creature spawned with no
+health set is counted dead, which no search finds. It is now put on the monsters' side and given health, as
+`SpawnEnemy` in `CataclysmApplyStatusTests.cpp` and `SpawnEnemyAt` in `CataclysmBasicAttackTests.cpp` do. With that,
+the probe shows a skill's ground zone sweeping a real creature: it is found, hurt, carries the tag, and moves at
+0.8.
+
+### What is not here
+
+- The three sentences that need a zone to know who entered it or where a target stands, the four that make a zone
+  for a skill that states none, and the one that makes zones follow their owner: the next three windows.
+
+### Tests
+
+Four probes, run by `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, each on a caster that blinks
+with an enemy 2 m to each side:
+
+- `ProbePersistentAreaDuration`: a zone lasts its stated 6 seconds, and 3 with 50% less.
+- `ProbeZoneDamagePerEnemyInside`: with two enemies inside, 20 per enemy makes a sweep 1.4 times a plain one.
+- `ProbeZoneSlowPercent`: an enemy swept by a zone whose owner carries 20 carries the Cripple tag stating 20, and a
+  creature swept by it is at 0.8 of its speed; a plain zone slows neither.
+- `ProbeOnlyOnePersistentArea`: a plain caster's blink leaves two zones and a second blink four; a carrying caster
+  has one after each.
+
+**Not tested:** terrain's half of the duration and of the only-one rule. Ruled 2026-10-06: the next zone change
+begins with a probe for each: a terrain piece lasting less with the stat, and a new terrain piece ending an earlier
+one.
+
+**Python.** No new test. The inventory of stat lookups gained four entries, one for each new call.
+
+### Run
+
+One window on 2026-10-06 for a stack of three, at `feat/zone-stats-2` 0ca651cc: the roll for a use
+(`feat/use-outcome-roll-2` 190b39b4), the two defender chances and the strike that hits all nearby
+(`feat/defender-chances-and-hit-all-2` 478a593c), then the four stats a persistent area reads. Development was
+f77a7e5b. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3207 tests performed, 3207 succeeded, 0 failed`; `Declared: 3207 tests in the tree at 0ca651cc; 3207 performed, gap 0` |
+| Python, with continuous integration idle | `5762 passed, 8 skipped in 312.75s`; JUnit `tests="5770" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 0ca651cc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+All three are under the prefix `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, the one test that
+runs every probe.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Pa | `CataclysmSkillTemplate.cpp`: a ground zone lasts its stated time whatever the stat says | 1 performed, 1 failed, 1 failed assertion: the carrying caster's zone lasted 6.000000 against 3.000000 | 1 performed, 1 succeeded |
+| Pb | `CataclysmGroundZone.cpp`: a sweep counts nobody inside | 1 performed, 1 failed, 1 failed assertion: the sweep was 1.000000 times a plain one against 1.400000 | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplate.cpp`: the only-one rule ends nobody's own zones | 1 performed, 1 failed, 2 failed assertions: the carrying caster was left with 2 zones against 1, and with 4 after a second blink against 1 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 2.
+
+**Not run, because no row exists yet:** any of the four stats read from the effect table, and anything a worn row
+does in play.
+
+### Run, second turn: the slow corrected
+
+At `feat/zone-stats-4` on development d45b89aa, on 2026-10-06. Every figure is a line a run printed. **There was no
+whole-suite run at this head in which every test passed.** The game change, one call in `ACataclysmGroundZone::Sweep`,
+went through the whole suite twice; each time every test passed but one, and neither failure was caused by the
+change.
+
+| Step | Printed |
+|---|---|
+| Build, at 1bf51b81 | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole suite, at 1bf51b81 | `3207 tests performed, 3206 succeeded, 1 failed: EveryStatWithNoAttributeIsActuallyRead`. One failed assertion: the creature's speed read 1.000000 against 0.800000. **The probe's fault**, described above: its creature had no health and was never swept |
+| The probe test alone, with two assertions added | `1 tests performed, 0 succeeded, 1 failed`: each sweep found 2 bodies, the two sweeps 4 against 6 |
+| The probe test alone, with the creature given a side and health | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole suite, at 648b3e58 | `3207 tests performed, 3206 succeeded, 1 failed: TheFogSpreadsOnItsCadenceFromPatchToPatchUpToItsCap`; `Declared: 3207 ... 3207 performed, gap 0`. One failed assertion: "the new patch is told apart from the old" was false |
+| The fog test alone, at the same binaries | `1 tests performed, 1 succeeded, 0 failed` |
+| `tools/tests`, at 648b3e58 | `3945 passed, 8 skipped in 58.55s` |
+| Ruff | `All checks passed!` |
+
+**The fog test's failure is not this change's.** It is a dungeon rule's test in another file; it passed in the whole
+suite at 0ca651cc and at 1bf51b81; no game file changed between 1bf51b81 and 648b3e58; and it passed alone. Accepted
+by the coordinating session under the owner's delegation. Issue
+[#2251](https://github.com/sdubois777/Cataclysm/issues/2251) has what was read of its cause.
+
+**Guard proofs at 648b3e58, each with one anchor counted and the source hash the same before and after, each PROVED.**
+Both under the prefix `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Pd | `CataclysmGroundZone.cpp`: the sweep's slow states no size | 1 performed, 1 failed, 2 failed assertions: the stated strength read -1.000000 against 20.000000, and the creature moved at 0.700000 against 0.800000 | 1 performed, 1 succeeded |
+| Pb, again | Same file: a sweep counts nobody inside | 1 performed, 1 failed, 1 failed assertion: the sweep was 1.000000 times a plain one against 1.400000 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 2 and 1. **Pd's figures are the first fault in small**: a slow that
+states nothing slows by the Cripple row's 30, a speed of 0.7, whatever the stat says.
+
+**What this probe closes.** It is the first test found to show a skill's ground zone sweeping a real
+`ACataclysmEnemyCharacter`: found, hurt, slowed. A search for an older one covered five test files
+(`CataclysmSkillTemplateTests.cpp`, whose 13 sweeps use plain test bodies, and the enemy modifier, death, hellhound
+and enchantment effect tests) and found none; it did not cover every file.
+
+---
+
 ## 2026-10-06 — A defender can roll to absorb a spell or to reflect a melee hit, and a row can roll for a strike to hit every enemy within 3 metres; no row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (`SpellAbsorbChanceStat`,
@@ -1986,6 +2178,8 @@ changed for it; it is recorded as one failure and one clean rerun.
 ---
 
 ## 2026-10-05 — Echo Chamber: every skill use fires a free copy of that skill in a random direction, and a copy aimed within its own radius hits the player for a tenth
+
+**The self hit is confirmed by the owner, 2026-10-06:** a character's own skills or zones may hurt them where a row's sentence says so; the 2026-08-20 own-side rule stays the default.
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (`EchoChamberKey`, the two
 figures, `EchoChamberCopies`, `EchoChamberHitsTheCaster`, `Built`, `KeysWithARule`);

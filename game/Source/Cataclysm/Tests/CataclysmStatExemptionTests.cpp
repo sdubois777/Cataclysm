@@ -3367,6 +3367,274 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * What one blink that leaves ground gave, for the four stats a persistent area reads. Ruled 2026-10-06.
+	 *
+	 * A CASTER AT THE ORIGIN WITH AN ENEMY 2 M TO EACH SIDE blinks 8 m. A blink leaves ground where it began and
+	 * where it arrived, so two zones; the one where it began covers both enemies, and is swept once here.
+	 */
+	struct FZoneReading
+	{
+		bool bMade = false;
+		int32 LiveZones = 0;
+		float LastsSeconds = -1.0f;
+		float TakenByOneEnemy = -1.0f;
+		bool bEnemyIsSlowed = false;
+		float SlowStatedOnTheEnemy = -1.0f;
+		float CreatureSpeedBefore = -1.0f;
+		float CreatureSpeedAfter = -1.0f;
+		float TakenByTheCreature = -1.0f;
+		bool bCreatureCarriesTheSlow = false;
+		int32 FoundByTheSweep = -1;
+		int32 LiveZonesAfterASecondBlink = 0;
+	};
+
+	FZoneReading ReadABlinksZones(TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry,
+								  bool bWithACreature = false)
+	{
+		FZoneReading Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		// NO CRITICAL STRIKES, so two sweeps can be compared. Pinned here by hand: `FPinnedRoll` is declared further down.
+		IConsoleVariable* CritRoll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+		const float CritRollWas = CritRoll ? CritRoll->GetFloat() : -1.0f;
+		if (CritRoll)
+		{
+			CritRoll->Set(100.0f, ECVF_SetByConsole);
+		}
+		ON_SCOPE_EXIT
+		{
+			if (CritRoll)
+			{
+				CritRoll->Set(CritRollWas, ECVF_SetByConsole);
+			}
+		};
+
+		FScopedSwinger Caster(World, FVector::ZeroVector);
+		FScopedSwinger Left(World, FVector(0.0f, 200.0f, 0.0f));
+		FScopedSwinger Right(World, FVector(0.0f, -200.0f, 0.0f));
+		// AND A REAL CREATURE 1.5 M BEHIND THE CASTER, when the caller reads a speed: only a creature has one. It is
+		// a third body inside the zone, so the probe that counts enemies does not ask for it.
+		ACataclysmEnemyCharacter* Creature = bWithACreature
+			? World->SpawnActor<ACataclysmEnemyCharacter>(FVector(-150.0f, 0.0f, 0.0f), FRotator::ZeroRotator)
+			: nullptr;
+		if (Creature)
+		{
+			// ON THE MONSTERS' SIDE AND WITH HEALTH, as `SpawnEnemy` in CataclysmApplyStatusTests.cpp and
+			// `SpawnEnemyAt` in CataclysmBasicAttackTests.cpp make one. The first version of this probe did neither,
+			// and a creature spawned with no health set is counted dead, so no sweep found it.
+			Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Creature->SetHealth(1000.0f);
+		}
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Carry(Inputs);
+		if (Inputs.Num() > 0)
+		{
+			Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+
+		const auto Blink = [&Caster](ECataclysmAbilitySlot Slot) -> bool
+		{
+			const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmMovementSkill::StaticClass(), Slot, /*Level=*/100, Caster.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmMovementSkill* Slip = Spec ? Cast<UCataclysmMovementSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Slip)
+			{
+				return false;
+			}
+			Slip->SkillName = TEXT("A blink leaving ground");
+			Slip->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Mode=Blink; Range=8; Radius=3.5; GroundRadius=3.5; GroundDuration=6; GroundPercent=16.7"));
+			Slip->SkillTags = UCataclysmSkillShapes::TagsFromCell(
+				TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent"));
+			return Caster.AbilitySystem->TryActivateAbility(Handle);
+		};
+		const auto LiveZones = [World, &Caster](ACataclysmGroundZone** OutAtTheOrigin = nullptr) -> int32
+		{
+			int32 Count = 0;
+			for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+			{
+				if (IsValid(*It) && It->GetOwner() == Caster.Actor && It->DamagePerTick > 0.0f)
+				{
+					++Count;
+					if (OutAtTheOrigin && It->GetActorLocation().Size2D() < 100.0f)
+					{
+						*OutAtTheOrigin = *It;
+					}
+				}
+			}
+			return Count;
+		};
+
+		if (!Blink(ECataclysmAbilitySlot::Movement))
+		{
+			return Read;
+		}
+		Read.bMade = true;
+		ACataclysmGroundZone* AtTheOrigin = nullptr;
+		Read.LiveZones = LiveZones(&AtTheOrigin);
+		if (AtTheOrigin)
+		{
+			Read.LastsSeconds = AtTheOrigin->GetLifeSpan();
+			const UAbilitySystemComponent* LeftSystem = UCataclysmTargeting::AbilitySystemOf(Left.Actor);
+			const float Before = LeftSystem->GetNumericAttribute(Vital::GetHealthAttribute());
+			const UAbilitySystemComponent* CreatureSystem =
+				Creature ? UCataclysmTargeting::AbilitySystemOf(Creature) : nullptr;
+			const float CreatureHealthBefore =
+				CreatureSystem ? CreatureSystem->GetNumericAttribute(Vital::GetHealthAttribute()) : 0.0f;
+			if (Creature)
+			{
+				Read.CreatureSpeedBefore = Creature->CrippleMultiplier();
+			}
+			AtTheOrigin->Sweep();
+			Read.FoundByTheSweep = AtTheOrigin->LastSweepCount;
+			if (Creature)
+			{
+				Read.CreatureSpeedAfter = Creature->CrippleMultiplier();
+			}
+			if (CreatureSystem)
+			{
+				// WHETHER THE SWEEP REACHED THE CREATURE AT ALL, so a speed that did not change names its cause.
+				Read.TakenByTheCreature =
+					CreatureHealthBefore - CreatureSystem->GetNumericAttribute(Vital::GetHealthAttribute());
+				Read.bCreatureCarriesTheSlow = CreatureSystem->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
+			}
+			Read.TakenByOneEnemy = Before - LeftSystem->GetNumericAttribute(Vital::GetHealthAttribute());
+			Read.bEnemyIsSlowed = LeftSystem->HasMatchingGameplayTag(UCataclysmDebuffs::CrippleTag());
+			Read.SlowStatedOnTheEnemy =
+				UCataclysmSkillEffects::StatedStrengthOn(Left.Actor, UCataclysmDebuffs::CrippleTag());
+		}
+		Read.LiveZonesAfterASecondBlink = Blink(ECataclysmAbilitySlot::Special) ? LiveZones() : -1;
+		return Read;
+	}
+
+	/** One flat line of one of the zone stats, on a base of nothing. */
+	void CarryFlat(TMap<FName, FCataclysmStatInputs>& Inputs, const TCHAR* Stat, float Value)
+	{
+		Inputs.FindOrAdd(FName(Stat)).Base = Value;
+	}
+
+	/**
+	 * `persistent_area_duration` is read by `UCataclysmSkillTemplate::LeaveGroundAlong` (and `LeaveTerrainAlong`)
+	 * where the area is left. A caster carrying it at its base of 100 with 50% less leaves a zone that lasts half
+	 * as long as a plain caster's.
+	 */
+	void ProbePersistentAreaDuration(FAutomationTestBase& Test)
+	{
+		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FZoneReading Cut = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			FCataclysmStatModifier Half;
+			Half.Bucket = ECataclysmStatBucket::More;
+			Half.Source = ECataclysmModifierSource::Enchantment;
+			Half.Value = -50.0f;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::PersistentAreaDurationStat));
+			Line.Base = UCataclysmDamageCalculation::NormalPersistentAreaDuration;
+			Line.Modifiers = {Half};
+		});
+		if (!Test.TestTrue(TEXT("both casters left a zone that lasts"), Plain.LastsSeconds > 0.0f && Cut.LastsSeconds > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("the plain caster's zone lasts its stated 6 seconds"), Plain.LastsSeconds, 6.0f, 0.01f);
+		Test.TestEqual(TEXT("and the carrying caster's lasts half of that"), Cut.LastsSeconds, 3.0f, 0.01f);
+	}
+
+	/**
+	 * `zone_damage_per_enemy_inside` is read where the zone is priced and applied by `ACataclysmGroundZone::Sweep`.
+	 * With two enemies inside, a zone whose owner carries 20 of it deals each of them 1.4 times a plain zone's sweep.
+	 */
+	void ProbeZoneDamagePerEnemyInside(FAutomationTestBase& Test)
+	{
+		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FZoneReading More = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat, 20.0f);
+		});
+		if (!Test.TestTrue(TEXT("both zones' sweeps hurt the enemy"), Plain.TakenByOneEnemy > 0.0f && More.TakenByOneEnemy > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("with two enemies inside, 20 per enemy makes a sweep 1.4 times a plain one"),
+			More.TakenByOneEnemy / Plain.TakenByOneEnemy, 1.4f, 0.01f);
+	}
+
+	/**
+	 * `zone_slow_percent` is read where the zone is left and laid by `ACataclysmGroundZone::Sweep` as the Cripple
+	 * debuff. An enemy swept by a carrying caster's zone is slowed; one swept by a plain caster's is not.
+	 *
+	 * AT THE SIZE THE STAT STATES, AND 20 IS USED BECAUSE THE CRIPPLE ROW'S OWN FIGURE IS 30. The first version of
+	 * this probe gave the stat 30 and asked only for the tag, and so passed against a slow that dropped its size.
+	 * A cripple that states nothing reads -1 and slows by the row's 30; one stating 20 slows by 20, which is a
+	 * speed of 0.8.
+	 */
+	void ProbeZoneSlowPercent(FAutomationTestBase& Test)
+	{
+		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {}, /*bWithACreature=*/true);
+		const FZoneReading Slowing = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmDamageCalculation::ZoneSlowPercentStat, 20.0f);
+		}, /*bWithACreature=*/true);
+		if (!Test.TestTrue(TEXT("both zones' sweeps reached the enemy"),
+						   Plain.TakenByOneEnemy > 0.0f && Slowing.TakenByOneEnemy > 0.0f))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("a plain zone slows nobody"), Plain.bEnemyIsSlowed);
+		Test.TestTrue(TEXT("and a carrying caster's zone slows the enemy inside"), Slowing.bEnemyIsSlowed);
+		Test.TestEqual(TEXT("by the 20 per cent the stat states, and not the Cripple row's 30"),
+			Slowing.SlowStatedOnTheEnemy, 20.0f, 0.01f);
+
+		// AND THE RESULT, NOT ONLY THE STATEMENT: a real creature's own speed multiplier, which is what its walk and
+		// its attacks are multiplied by. A stated strength nothing read would pass the line above.
+		if (!Test.TestEqual(TEXT("a creature in either zone is at its whole speed before the sweep"),
+							Plain.CreatureSpeedBefore + Slowing.CreatureSpeedBefore, 2.0f, 0.001f))
+		{
+			return;
+		}
+		// THE SWEEP HAS TO HAVE REACHED THE CREATURE, or the speeds below say nothing about a slow.
+		if (!Test.TestEqual(TEXT("set-up: each sweep found three bodies, the two plain ones and the creature"),
+							Plain.FoundByTheSweep + Slowing.FoundByTheSweep, 6)
+			|| !Test.TestTrue(TEXT("set-up: each sweep hurt the creature"),
+							  Plain.TakenByTheCreature > 0.0f && Slowing.TakenByTheCreature > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("the creature swept by the carrying caster's zone carries the Cripple tag"),
+			Slowing.bCreatureCarriesTheSlow);
+		Test.TestEqual(TEXT("a plain zone's sweep leaves the creature at its whole speed"),
+			Plain.CreatureSpeedAfter, 1.0f, 0.001f);
+		Test.TestEqual(TEXT("and a carrying caster's zone leaves it at 0.8 of its speed"),
+			Slowing.CreatureSpeedAfter, 0.8f, 0.001f);
+	}
+
+	/**
+	 * `only_one_persistent_area` is read where an area is left. A blink leaves two zones; a caster carrying the
+	 * flag is left with one after it, and with one after a second blink.
+	 */
+	void ProbeOnlyOnePersistentArea(FAutomationTestBase& Test)
+	{
+		const FZoneReading Plain = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>&) {});
+		const FZoneReading OnlyOne = ReadABlinksZones([](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmDamageCalculation::OnlyOnePersistentAreaStat, 1.0f);
+		});
+		if (!Test.TestTrue(TEXT("both casters blinked"), Plain.bMade && OnlyOne.bMade))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a plain caster's blink leaves two zones"), Plain.LiveZones, 2);
+		Test.TestEqual(TEXT("and four after a second blink"), Plain.LiveZonesAfterASecondBlink, 4);
+		Test.TestEqual(TEXT("a carrying caster is left with one"), OnlyOne.LiveZones, 1);
+		Test.TestEqual(TEXT("and with one after a second blink"), OnlyOne.LiveZonesAfterASecondBlink, 1);
+	}
+
+	/**
 	 * A player character on its player state, for the potion probes below: only a
 	 * player character holds potions. Issue #806.
 	 */
@@ -5235,6 +5503,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("non_critical_damage"), &ProbeNonCriticalDamage},
 			{TEXT("projectile_later_hit_damage"), &ProbeProjectileLaterHitDamage},
 			{TEXT("zone_first_sweep_damage"), &ProbeZoneFirstSweepDamage},
+			{TEXT("persistent_area_duration"), &ProbePersistentAreaDuration},
+			{TEXT("zone_damage_per_enemy_inside"), &ProbeZoneDamagePerEnemyInside},
+			{TEXT("zone_slow_percent"), &ProbeZoneSlowPercent},
+			{TEXT("only_one_persistent_area"), &ProbeOnlyOnePersistentArea},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 			{TEXT("skill_duration"), &ProbeSkillDuration},
