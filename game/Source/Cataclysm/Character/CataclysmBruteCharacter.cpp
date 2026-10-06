@@ -342,7 +342,10 @@ void ACataclysmBruteCharacter::ApplyChaseSpeed()
 	// Cripple, a Commander and a Vengeful Wraith's speed changed a Brute's
 	// attacks and never its walk.
 	const float Designed = IsChasing() ? ChaseSpeed : DesignedWalkSpeedCmPerSecond;
-	Movement->MaxWalkSpeed = Designed * SpeedMultiplier();
+	// AND WHAT SLOWS ITS MOVEMENT ALONE. Issue #1833, 2026-10-06. See
+	// `AilmentWalkMultiplier`: this is the second of the two places a creature's
+	// walk speed is written.
+	Movement->MaxWalkSpeed = Designed * SpeedMultiplier() * AilmentWalkMultiplier();
 }
 
 void ACataclysmBruteCharacter::RefreshWalkSpeed()
