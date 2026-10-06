@@ -36,6 +36,7 @@
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -15136,6 +15137,193 @@ bool FCataclysmFourZoneRowsTest::RunTest(const FString&)
 		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
 		TestEqual(FString::Printf(TEXT("%s, taken off: %s is %.0f again"), Case.Row, Case.Stat, Case.Fallback),
 			Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), Case.Fallback), Case.Fallback, 0.01f);
+	}
+	return true;
+}
+
+// AN AILMENT THAT PASSES ON WHEN ITS CARRIER DIES. Issue #919, the owner's "build it" of 2026-10-06, and issue
+// #1833 for the two rows that add to it. A line of creatures along X: the one that dies stands 10 metres out, and
+// the others are placed by how far they stand from its body.
+namespace CataclysmSpreadOnDeathTest
+{
+	using namespace CataclysmAilmentRiderRowTest;
+
+	/** A creature of the monsters' side, `FromTheBody` metres beyond the one that dies. */
+	ACataclysmEnemyCharacter* Beside(UWorld* World, float FromTheBody)
+	{
+		ACataclysmEnemyCharacter* Made = Creature(World, 10.0f + FromTheBody);
+		if (Made)
+		{
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		}
+		return Made;
+	}
+
+	bool Carries(const AActor* Who, const FGameplayTag& Tag)
+	{
+		const UCataclysmAbilitySystemComponent* System = SystemOf(Who);
+		return System && System->HasMatchingGameplayTag(Tag);
+	}
+
+	/** How many of these carry the ailment. */
+	int32 Carrying(const TArray<ACataclysmEnemyCharacter*>& Line, const FGameplayTag& Tag)
+	{
+		int32 Count = 0;
+		for (const ACataclysmEnemyCharacter* One : Line)
+		{
+			Count += Carries(One, Tag) ? 1 : 0;
+		}
+		return Count;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDiseaseSpreadsOnDeathTest,
+	"Cataclysm.Enchantments.ADiseasedEnemysDeathPassesItsDiseaseToTheTwoNearestWithinFiveMetresForTheTimeItHadLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * DISEASE'S OWN BEHAVIOUR, WITH NO ROW WORN. Issue #919, the design document:
+ * "on the target's death it spreads its remaining duration to the 2 nearest
+ * enemies within 5 metres". Ruled 2026-10-06: two, nearest first, the time the
+ * original had left at the same damage, with its applier as the source.
+ *
+ * THROUGH A REAL DEATH, `ACataclysmEnemyCharacter::HandleDeath`, so the place
+ * the spread is called from is what is tested. Four creatures stand 1, 2, 3 and
+ * 6 metres from the body: the first two receive the disease, the third is not
+ * among the two nearest, and the fourth is out of reach. A bleed on the same
+ * body passes to nobody, because no row is worn and only Disease spreads by
+ * itself. And the copies are not the applier applying anything: its
+ * `dot_applied` event is not raised by them.
+ */
+bool FCataclysmDiseaseSpreadsOnDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmSpreadOnDeathTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag Disease = Ailment(TEXT("Keyword.DoT.Disease"));
+	const FGameplayTag Bleed = Ailment(TEXT("Keyword.DoT.Bleed"));
+	ACataclysmEnemyCharacter* Dying = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* One = Beside(World, 1.0f);
+	ACataclysmEnemyCharacter* Two = Beside(World, 2.0f);
+	ACataclysmEnemyCharacter* Three = Beside(World, 3.0f);
+	ACataclysmEnemyCharacter* Six = Beside(World, 6.0f);
+	if (!TestTrue(TEXT("set-up: five creatures and two ailment tags"),
+				  Dying && One && Two && Three && Six && Disease.IsValid() && Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	// TEN SECONDS OF EACH AT ONE POINT A SECOND, AND FOUR SECONDS PASS.
+	if (!TestTrue(TEXT("set-up: the wearer diseases and bleeds the one that will die"),
+				  Ail(Wearer.Actor, Dying, Disease) && Ail(Wearer.Actor, Dying, Bleed)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 4.0f);
+
+	int32 ApplicationsAnnounced = 0;
+	const FDelegateHandle Listening = Wearer.AbilitySystem->OnActionEvent.AddLambda(
+		[&ApplicationsAnnounced](FName Event)
+		{
+			ApplicationsAnnounced += Event == FName(TEXT("dot_applied")) ? 1 : 0;
+		});
+	Dying->HandleDeath();
+	Wearer.AbilitySystem->OnActionEvent.Remove(Listening);
+
+	TestTrue(TEXT("the nearest creature, 1 metre from the body, carries the disease"), Carries(One, Disease));
+	TestTrue(TEXT("and the second nearest, 2 metres away"), Carries(Two, Disease));
+	TestFalse(TEXT("the third nearest does not: two is the count"), Carries(Three, Disease));
+	TestFalse(TEXT("nor the one 6 metres away"), Carries(Six, Disease));
+	TestEqual(TEXT("the bleed passed to nobody: no row is worn, and only Disease spreads by itself"),
+		Carrying({One, Two, Three, Six}, Bleed), 0);
+	TestEqual(TEXT("a copy is not the wearer applying a damage over time: dot_applied was not raised"),
+		ApplicationsAnnounced, 0);
+
+	// WHAT THE COPY IS: the same damage a second, for the six seconds the original had left, from the wearer.
+	UCataclysmSkillEffects::FRunningAilment Copy;
+	if (TestTrue(TEXT("the copy is a running disease"), UCataclysmSkillEffects::RunningAilmentOn(One, Disease, Copy)))
+	{
+		TestEqual(TEXT("at the original's one point a second"), Copy.DamagePerSecond, 1.0f, 0.001f);
+		TestEqual(TEXT("for the six seconds the original had left"), Copy.SecondsLeft, 6.0f, 0.3f);
+		TestTrue(TEXT("with the wearer as its source"), Copy.Applier.Get() == Wearer.Actor);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDiseaseSpreadPassesOverCarriersTest,
+	"Cataclysm.Enchantments.ADiseaseSpreadPassesOverAnEnemyThatAlreadyCarriesItAndACopyPassesOnAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * TWO RULINGS OF 2026-10-06, with no row worn.
+ *
+ * AN ENEMY THAT ALREADY CARRIES THE AILMENT IS PASSED OVER, NOT REFRESHED. The
+ * creature nearest the body is diseased four seconds after the one that dies,
+ * so it has ten seconds left where a copy would bring six. The two copies go to
+ * the next two nearest, and the nearest keeps its own ten.
+ *
+ * A COPY PASSES ON AGAIN WHEN ITS OWN CARRIER DIES. A fifth creature stands 6.5
+ * metres from the first body, out of its reach, and 3.5 metres from the third
+ * creature. When the third creature dies carrying its copy, the fifth is the
+ * only enemy near it that does not carry the disease, and receives it.
+ */
+bool FCataclysmDiseaseSpreadPassesOverCarriersTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmSpreadOnDeathTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag Disease = Ailment(TEXT("Keyword.DoT.Disease"));
+	ACataclysmEnemyCharacter* Dying = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* One = Beside(World, 1.0f);
+	ACataclysmEnemyCharacter* Two = Beside(World, 2.0f);
+	ACataclysmEnemyCharacter* Three = Beside(World, 3.0f);
+	ACataclysmEnemyCharacter* Far = Beside(World, 6.5f);
+	if (!TestTrue(TEXT("set-up: five creatures and the disease tag"),
+				  Dying && One && Two && Three && Far && Disease.IsValid())
+		|| !TestTrue(TEXT("set-up: the wearer diseases the one that will die"), Ail(Wearer.Actor, Dying, Disease)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 4.0f);
+	if (!TestTrue(TEXT("set-up: four seconds later the wearer diseases the nearest one too"),
+				  Ail(Wearer.Actor, One, Disease)))
+	{
+		return false;
+	}
+
+	Dying->HandleDeath();
+	TestTrue(TEXT("the second nearest receives a copy"), Carries(Two, Disease));
+	TestTrue(TEXT("and the third nearest, because the nearest already carried it and was passed over"),
+		Carries(Three, Disease));
+	UCataclysmSkillEffects::FRunningAilment Own;
+	if (TestTrue(TEXT("the nearest still carries its own"), UCataclysmSkillEffects::RunningAilmentOn(One, Disease, Own)))
+	{
+		TestEqual(TEXT("with the ten seconds it had, not the copy's six"), Own.SecondsLeft, 10.0f, 0.3f);
+	}
+	TestFalse(TEXT("the one 6.5 metres from the body is out of its reach"), Carries(Far, Disease));
+
+	// THE COPY PASSES ON AGAIN.
+	Three->HandleDeath();
+	UCataclysmSkillEffects::FRunningAilment Again;
+	if (TestTrue(TEXT("when the third dies carrying its copy, the one 3.5 metres from it receives the disease"),
+				 UCataclysmSkillEffects::RunningAilmentOn(Far, Disease, Again)))
+	{
+		TestEqual(TEXT("for the six seconds that copy had left"), Again.SecondsLeft, 6.0f, 0.3f);
+		TestTrue(TEXT("with the wearer as its source still"), Again.Applier.Get() == Wearer.Actor);
 	}
 	return true;
 }

@@ -2,6 +2,130 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Disease passes to the two nearest enemies when its carrier dies, and a row can add to that or give another ailment a count; no row authored here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmContagion.h` and `.cpp` (`SpreadFromTheDying`),
+`CataclysmSkillEffects.h` and `.cpp` (`FRunningAilment`, `RunningAilmentOn`, `ApplySpreadCopy`, and the
+`dot_applied` event in `ApplyDamageOverTime`), `CataclysmStatPipeline.h` (`ECataclysmAilmentRider::SpreadOnDeath`),
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`AilmentSpreadOnDeathAction`, `AilmentRiderPercentCarriedOn`),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp` (`HandleDeath`), `tools/generate_datatables.py`
+(`AILMENT_RIDER_ACTIONS`), `docs/Cataclysm_GDD_v2.md` (two sentences about Disease), one new test in
+`CataclysmEnchantmentEffectTests.cpp`, `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issues
+[#919](https://github.com/sdubois777/Cataclysm/issues/919) and
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS DECIDED, AND BY WHOM
+
+- **THE OWNER, 2026-10-06: build Disease's spread on death.** The design document has stated it since the ailments
+  were written, "on the target's death it spreads its remaining duration to nearby enemies", and nothing
+  implemented it; that is issue #919. The owner's answer, when asked whether to build it or leave it: build it,
+  and the enchantment row that spreads Disease adds to it.
+- **The coordinating session, 2026-10-06, under the owner's delegation, each a labelled judgement:**
+  1. **Two enemies.** The document says "nearby enemies" and gives no count, and a row has to add to something.
+     "Enemies" is plural, so two is the least the words allow.
+  2. **The nearest first, within 5 metres of the body**, the project's "nearby" since the judgement of 2026-09-11.
+  3. **A copy carries what the source has left**: the same damage a second, for the time it had left, with its
+     applier as the source.
+  4. **A copy can pass on again** when its own carrier dies, with no limit other than enemies running out. Each
+     hop has less time left than the last.
+  5. **An enemy that already carries the ailment is passed over, not refreshed.** The count is spent on the
+     nearest enemies the ailment is new to.
+
+### WHAT THE RESEARCH SETTLES, AND WHAT IT DOES NOT
+
+Fetched 2026-10-06, each page read twice.
+
+- Path of Exile, Contagion, `poedb.tw/us/Contagion`: "If an enemy dies while affected by Contagion, the debuff
+  spreads to other enemies", and "The duration of Contagion and associated degeneration effects (Essence Drain) is
+  not reset when spread to other enemies on death."
+- Path of Exile, Abberath's Hooves, `poedb.tw/us/Abberaths_Hooves`: "When you Kill an Ignited Enemy, inflict an
+  equivalent Ignite on each nearby Enemy".
+- `poewiki.net` and the Last Epoch wikis refused the fetch, so nothing was read there.
+
+**They settle the shape**: an ailment that moves at its carrier's death, as the same ailment and not a fresh one,
+keeping the time it had left. **They do not settle** the count, the distance, or whether a copy passes on again;
+those are the judgements above. Contagion passes to every enemy in its radius and this passes to two.
+
+### HOW IT IS BUILT
+
+- **Where.** `ACataclysmEnemyCharacter::HandleDeath` calls `UCataclysmContagion::SpreadFromTheDying`, outside the
+  block that asks who killed it: the rule asks who APPLIED the ailment. The ailments are read off the body's own
+  running effects, which a death leaves in place.
+- **Which ailments.** The five that state a damage a tick: Bleed, Poison, Disease, Necrosis and Burn. Disease passes
+  to two by itself. The others pass to nobody by themselves and only a row gives them a count.
+- **How many.** What the ailment passes to by itself, plus `ECataclysmAilmentRider::SpreadOnDeath` read off the
+  dying creature, rounded to the nearest whole number.
+- **To whom.** The enemies of whoever applied it, within 5 metres of the body, that do not already carry the
+  ailment, nearest first. The body is never one of them.
+- **What they receive.** `UCataclysmSkillEffects::ApplySpreadCopy`: the running effect's damage a second and the
+  seconds it had left, through `ApplyDamageOverTime` with the applier's damage over time stats left out, because
+  the figure copied already holds them.
+
+### THE SHAPE IS NOT THE ONE FIRST RULED, AND WHY
+
+The ruling of 2026-10-06 named an event raised at the death and an action that answers it. What is built is a
+**rider on the ailment**: a number the applier's rows hang on the ailment when it is applied, read at the death,
+the mechanism of the entry "A worn row can hang a number on an ailment". It does the same thing with what was
+already there:
+
+- no new event, and no answer for a caller to collect;
+- the count is fixed when the ailment is applied and lasts as long as it does, as every number hung on an ailment
+  is, including after the item is taken off;
+- a copy is handed the applier's riders as an application is, so a copy passes on again with the row's count.
+
+The event is still wanted for the Plague Doctor ten-piece bonus, whose explosion is not a number on an ailment; it
+comes with that row.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **A copy is not an application.** The applier's `dot_applied` event is not raised by a copy, so "Applying a DoT
+  to an enemy grants 5%-10% increased damage" gains no stack from a death. The ailment moved; nobody acted.
+- **A copy carries no damage type**, as the passive's spread (`SpreadOne`) carries none. An enemy holds one
+  resistance for every type, so for an enemy this changes nothing.
+- **A rolled count is rounded to the nearest whole number.**
+- **The spread is whoever-applied-it's, a minion's included, and a minion's is the base count only.** THE OWNER,
+  2026-10-06: a minion's ailment carries none of the wearer's enchantment bonus unless a row says so. A row's count
+  rides on the ailment only when the WEARER applies it, and a minion wears nothing, so a minion's Disease passes to
+  two and no row adds to it. **No minion was found that applies Disease today**: no row of the weapon skill table
+  pairs Disease with a minion or a summon, searched 2026-10-06. So this is tested as an applier wearing nothing,
+  which is what a minion is to this code, and not with a minion.
+
+### NOT BUILT, AND WHY
+
+- **Void Splinter is not passed on.** It states a share of health and has its own applier, which hands over no
+  riders. "Void splinter stacks spread to nearby enemies when the afflicted enemy dies" comes with the Void
+  Splinter work.
+- **Only an enemy's death passes anything on.** A diseased minion or player dying passes nothing: the call is in
+  the enemy's death and nowhere else.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **Disease now does more for every character that applies it**, with no enchantment: the Raw Sewage dungeon
+  modifier, the Of Rot gem and the chance to disease affix among them, wherever the diseased creature that dies is
+  an enemy of whoever applied it.
+- **The passive's spread (Empathic Link) still runs beside this.** A character with that node can pass a dying
+  enemy's Disease on twice: once certainly to the two nearest as a copy, and once by its chance to one at random as
+  a fresh application. A fresh application on a creature already carrying the copy replaces or refreshes it.
+- **A pack can pass one Disease along its whole length**, each hop with less time than the last, and nothing else
+  stops it. An enemy that received a copy and then dies passes it to the two nearest that do not carry it.
+- **Passing over a carrier means the spread never tops an enemy up.** An enemy carrying a Disease with one second
+  left is passed over like any other, and a copy with five seconds left goes to the next nearest.
+- **The design document** now gives the count and the distance in its Disease row, and counts two unbuilt
+  conditions where it counted three.
+
+### Tests
+
+- `Cataclysm.Enchantments.ADiseasedEnemysDeathPassesItsDiseaseToTheTwoNearestWithinFiveMetresForTheTimeItHadLeft`,
+  through a real death, with no row worn: creatures 1, 2, 3 and 6 metres from the body; the first two receive the
+  Disease and the others do not; a Bleed on the same body passes to nobody; the copy deals the original's one
+  point a second for the six seconds it had left, from the same applier; and no `dot_applied` is raised.
+- `Cataclysm.Enchantments.ADiseaseSpreadPassesOverAnEnemyThatAlreadyCarriesItAndACopyPassesOnAgain`, through two
+  real deaths: the nearest creature already carries a Disease with ten seconds left, so the two copies go to the
+  next two and the nearest keeps its ten; then one of those two dies, and its copy passes to the one enemy near it
+  that does not carry the Disease, for the six seconds the copy had left.
+
+---
+
 ## 2026-10-06 — Four rows on the stats a persistent area reads: areas that expire sooner, deal more for each enemy inside, slow those inside, and only one at a time
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),

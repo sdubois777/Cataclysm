@@ -186,6 +186,9 @@ namespace
 		bool bFound = false;
 	};
 
+	/** Set while `UCataclysmSkillEffects::ApplySpreadCopy` runs. See it. */
+	bool bApplyingASpreadCopy = false;
+
 	/**
 	 * The strongest application granting this tag on this target, if any.
 	 *
@@ -1729,7 +1732,9 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// to an enemy grants 5%-10% increased damage for 4 seconds". Raised on the
 	// instigator's own ability system, so a minion's is the minion's. One the
 	// character puts on itself is not applying one to an enemy.
-	if (Instigator != Target)
+	//
+	// NOT FOR A COPY A SPREAD MAKES. Issue #919. See `ApplySpreadCopy`.
+	if (Instigator != Target && !bApplyingASpreadCopy)
 	{
 		if (UCataclysmAbilitySystemComponent* Applier =
 				Cast<UCataclysmAbilitySystemComponent>(Source))
@@ -2079,6 +2084,44 @@ float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemCompon
 			AsEnemy && AsEnemy->IsBoss(), Ticks);
 	}
 	return FMath::Max(0.0f, PerTick) * static_cast<float>(Ticks);
+}
+
+bool UCataclysmSkillEffects::RunningAilmentOn(AActor* Carrier, const FGameplayTag& Ailment,
+											  FRunningAilment& Out)
+{
+	const UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Carrier);
+	const FRunningApplication Running = RunningApplicationOf(Defender, Ailment);
+	if (!Running.bFound || Running.Stated <= 0.0f || Running.SecondsLeft <= 0.0f)
+	{
+		return false;
+	}
+	const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Running.Handle);
+	if (!Active)
+	{
+		return false;
+	}
+	Out.Ailment = Ailment;
+	Out.DamagePerSecond = Running.Stated;
+	Out.SecondsLeft = Running.SecondsLeft;
+	Out.Applier = Active->Spec.GetContext().GetInstigator();
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplySpreadCopy(AActor* Applier, AActor* Target,
+											 const FRunningAilment& Running)
+{
+	if (!Applier || !Target || Running.DamagePerSecond <= 0.0f || Running.SecondsLeft <= 0.0f)
+	{
+		return false;
+	}
+
+	// THE FIGURE A SECOND AS THE FIGURE A TICK, AT THE PLAIN ONE SECOND A TICK.
+	// With `bScalesWithInstigator` off the two numbers handed in are used as
+	// they are, so the copy deals what the original dealt a second for the
+	// seconds it had left.
+	TGuardValue<bool> Copying(bApplyingASpreadCopy, true);
+	return ApplyDamageOverTime(Applier, Target, Running.DamagePerSecond, Running.SecondsLeft,
+							   Running.Ailment, /*bScalesWithInstigator=*/false);
 }
 
 int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, AActor* Target,
