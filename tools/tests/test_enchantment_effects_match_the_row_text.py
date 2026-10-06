@@ -289,6 +289,11 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # "CLEANSED" IS 100 ON `cleanse`: "You are cleansed every 5 seconds" removes
     # all of what a cleanse removes, and the generator requires 100. Issue #1833.
     "cleanse": {"cleansed": 100.0},
+    # "ECHO" IS 100 ON `repeat_skill`, whose value is a chance: "Your spells
+    # echo +1 time" repeats every time. Mechanism B2, ruled 2026-10-05: an
+    # echo is read as a second free activation. The two rows that say "twice"
+    # need no word here, because "twice" already reads as 100 everywhere.
+    "repeat_skill": {"echo": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -602,8 +607,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 476 over 390: two rows on two enchantments.
 #: AND 479 OVER 393 SINCE THE FIRST ROW THAT REPEATS A SKILL,
 #: issue #1833, 2026-10-06, from 478 over 392: one row on one enchantment.
-AUTHORED_ROWS = 479
-AUTHORED_ENCHANTMENTS = 393
+#: AND 484 OVER 398 SINCE FIVE MORE ROWS THAT REPEAT A SKILL,
+#: issue #1833, 2026-10-06, from 479 over 393: five rows on five enchantments.
+AUTHORED_ROWS = 484
+AUTHORED_ENCHANTMENTS = 398
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
