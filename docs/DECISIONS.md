@@ -12,8 +12,8 @@ table, `ConditionTakesAValue`, `WhatConditionDependsOn`, `ConditionHolds`, two c
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, one list in `CataclysmPassiveTreeTests.cpp`, and one
 list in `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No row carries the condition yet**; the row is the enchantment session's.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No row carries the condition yet**; the row is the enchantment session's.
 
 ### What it is for
 
@@ -30,17 +30,19 @@ lands on whoever stands in it.
   in no zone, and a zone that has ended all read false.
 - **Whether it compares a number:** no. It names a state.
 
-### Judgements by the writing session, for the coordinating session to rule
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
 
 - **Ground zones only, not terrain.** The sentence says "zones", terrain deals no damage, and the ruling that
-  "persistent AOE effects" include terrain was made for the duration row and the only-one row. Terrain could be
-  added: it already answers whether an actor stands in it.
-- **It does not raise the zone's own damage.** A zone is priced once, when it is left, with no target, so no
-  target-side condition reaches it. The sentence says "you deal", and what it raises is the owner's blows.
+  "persistent AOE effects" include terrain was made for the duration row and the only-one row. **Terrain could be
+  added**: `ACataclysmTerrain` already answers whether an actor stands in a piece of it. It is not, because nothing
+  in the sentence asks for it.
+- **A ZONE'S OWN SWEEP DAMAGE DOES NOT GET THE BONUS.** A zone's damage is priced once, when the zone is left, with
+  no target in hand, so no condition about the character struck reaches it. The sentence says "you deal": what the
+  bonus raises is the blows the zone's owner lands on whoever stands in it.
 
 ### What the research settles, and what it does not
 
-No new source was read. **Nothing read settles either judgement**; they are readings of the sentence.
+No new source was read. **Nothing read settles either ruling**; they are readings of the sentence.
 
 ### How it is built
 
@@ -72,9 +74,37 @@ control.
 **Python.** No new test. Three existing checks gained the name: the generator's condition tables, the list of
 conditions that compare nothing, and the list of conditions built ahead of their rows.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of two, at `feat/zone-standing-condition-3` c0f5efad: the stagger on entry and
+the zone's own ailment (`feat/zone-entry-and-standing-2` 7092fea6), then the condition `target_in_your_zone`.
+Development was 6b349701. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3228 tests performed, 3228 succeeded, 0 failed`; `Declared: 3228 tests in the tree at c0f5efad; 3228 performed, gap 0` |
+| Python, with continuous integration idle | `5768 passed, 8 skipped in 357.79s`; JUnit `tests="5776" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at c0f5efad, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+All three are under the prefix `Cataclysm.StatExemption.ABonusForEnemiesStandingInYourZones`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Pa | `CataclysmAbilitySystemComponent.cpp`: any zone counts, whoever owns it | 1 performed, 1 failed, 1 failed assertion: a blow on the enemy in a stranger's zone carried the bonus | 1 performed, 1 succeeded |
+| Pb | Same file: the lookup never learns a row asks about zones | 1 performed, 1 failed, 1 failed assertion: a blow on the enemy in the attacker's zone did not carry the bonus | 1 performed, 1 succeeded |
+| Pc | `CataclysmStatPipeline.cpp`: the condition reads the staggered field beside it | 1 performed, 1 failed, 1 failed assertion: the same | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1.
+
+**Two includes were added to `CataclysmAbilitySystemComponent.cpp` for what the new code names**:
+`AbilitySystem/CataclysmGroundZone.h` and `EngineUtils.h`. Pa and Pb each compiled that file on its own.
+
+**Not run, because no row exists yet:** the condition read from the effect table, and anything a worn row does in
+play.
 
 ---
 
