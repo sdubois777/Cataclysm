@@ -48,6 +48,26 @@ strike then hits everything around its user are covered by the three tests of th
 - **Only a Strike reads the 3 metres.** A melee movement skill rolls and nothing changes.
 - **The melee basic attack does not roll for the hit-all row**: "melee skills" is `skill_use`.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the four layers below this one and the one above it, on `development` bae2f26c.
+The build, the whole suite and the Python of record are in the table of the entry "While below 50% HP, all
+skills cost HP instead of mana no longer converts the mana pool" and were run with this layer in the stack.
+**The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the asset built before any row of the stack | b71a44e5 | 236 tests performed, 228 succeeded, 8 failed, this layer's among them; 3 of the 10 failed assertions are this layer's |
+| The asset, regenerated with the editor | b71a44e5 | rows 493 to 496 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of the heal's proof | 276116ba | 236 tests performed, 236 succeeded, 0 failed |
+
+**Each of the three tests fails against a table without its row and passes with it**, on one assertion each:
+a spell absorbed at a roll of 29.9, a melee hit reflected at a roll of 19.9, and 300 centimetres recorded for a
+melee skill at a roll of 19.9.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The
+mechanisms it is written on were proved by the session that built them.
+
 ---
 
 ## 2026-10-06 — Three drawbacks roll for a use to deal no damage: cooldown abilities, strike skills that miss, and projectiles that explode prematurely
