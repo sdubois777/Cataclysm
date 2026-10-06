@@ -121,9 +121,14 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// healing event that healed nobody.
 	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
 	{
+		// AND WHAT RIDES ON THE AILMENTS IT CARRIES, added and capped with it.
+		// Issue #1833, ruled 2026-10-06: "Disease effects reduce enemy healing by
+		// 50%-100%".
 		const float AmountReduction = FMath::Clamp(
 			AbilitySystem.GetNumericAttribute(
-				UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute()),
+				UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute())
+				+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
+					  &AbilitySystem, ECataclysmAilmentRider::HealingReceived),
 			0.0f, 100.0f);
 		Gain *= (100.0f - AmountReduction) / 100.0f;
 		if (Gain <= 0.0f)

@@ -596,8 +596,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-05, from 467 over 383: three rows on one enchantment.
 #: AND 471 OVER 385 SINCE BRUTE'S HEART'S ARMOUR BELOW HALF HEALTH,
 #: issue #1833, 2026-10-05, from 470 over 384: one row on one enchantment.
-AUTHORED_ROWS = 471
-AUTHORED_ENCHANTMENTS = 385
+#: AND 476 OVER 390 SINCE THE FIVE NUMBERS HUNG ON AN AILMENT,
+#: issue #1833, 2026-10-06, from 471 over 385: five rows on five enchantments.
+AUTHORED_ROWS = 476
+AUTHORED_ENCHANTMENTS = 390
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
