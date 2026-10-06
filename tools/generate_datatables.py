@@ -5103,6 +5103,9 @@ AILMENT_RIDER_ACTIONS = (
     "ailment_speed",
     # Taken off the carrier's movement speed alone.
     "ailment_movement_speed",
+    # HOW MANY more nearby enemies the ailment passes to when its carrier dies.
+    # A count and not a percent; the same bound holds it, above 0 and up to 100.
+    "ailment_spread_on_death",
 )
 
 #: The action that REPEATS THE SKILL JUST USED, FREE, with its value as the chance

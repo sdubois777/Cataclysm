@@ -400,6 +400,16 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		}
 	}
 
+	// AND ITS DISEASE PASSES TO THE TWO NEAREST ENEMIES, with whatever a row adds
+	// to that or gives another ailment. Issue #919, the design document's own
+	// rule for Disease, built 2026-10-06.
+	//
+	// OUTSIDE THE KILLER'S BLOCK ABOVE, because the rule asks who APPLIED the
+	// ailment and not who landed the last blow or who is watching. The ailments
+	// are read off this creature's own running effects, which `MarkDead` leaves
+	// in place.
+	UCataclysmContagion::SpreadFromTheDying(this);
+
 	// AND A CREATURE THAT DIES CURSED MAY RISE AS AN IMP FOR WHOEVER CURSED IT.
 	// Issue #1479, the Ritualist's starting node: "An enemy that dies carrying a
 	// curse you laid on it rises as a lesser imp that fights for you".

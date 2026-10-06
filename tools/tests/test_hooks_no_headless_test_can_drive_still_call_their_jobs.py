@@ -143,6 +143,9 @@ HOOKS = {
             "UCataclysmContagion::SpreadOnDeath":
                 "this creature's debuffs passing to whatever stands by its "
                 "body, issue #1060",
+            "UCataclysmContagion::SpreadFromTheDying":
+                "this creature's Disease passing to the two nearest enemies, "
+                "and whatever a row adds to that, issue #919",
             "UCataclysmEnemyModifiers::RallyAlliesOnDeath":
                 "a creature carrying the Horde Leader enemy modifier buffing "
                 "the rest of its pack as it dies, issue #742",

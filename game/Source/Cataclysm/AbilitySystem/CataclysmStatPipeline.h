@@ -3458,6 +3458,16 @@ enum class ECataclysmAilmentRider : uint8
 	 * written.
 	 */
 	MovementSpeed UMETA(DisplayName = "Movement speed alone, slowed"),
+
+	/**
+	 * HOW MANY nearby enemies the ailment passes to when its carrier dies, added
+	 * to what the ailment passes to by itself: "Disease effects you apply spread
+	 * to 1-3 nearby enemies when the afflicted enemy dies", and for a bleed,
+	 * which passes to nobody by itself, "its bleed spreads to the nearest enemy
+	 * within 5 metres". A count and not a percent. Ruled 2026-10-06. See
+	 * `UCataclysmContagion::SpreadFromTheDying`.
+	 */
+	SpreadOnDeath UMETA(DisplayName = "Spread on death, how many more"),
 };
 
 /**
