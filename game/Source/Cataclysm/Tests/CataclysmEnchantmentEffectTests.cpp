@@ -12989,4 +12989,57 @@ bool FCataclysmStarvationTenRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBrutesHeartSixRowTest,
+	"Cataclysm.Enchantments.BrutesHeartSixPiecesRaiseArmourByHalfOnlyBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Brute's Heart (6-Piece Bonus): When your health falls below 50%, you gain a
+ * powerful aura that taunts all nearby enemies and increases your armor and
+ * resistances by 50%". Issue #1833, ruled 2026-10-05: PARTLY BUILT. This is its
+ * armour: `armor` increased 50 under `health_below` 50. No taunt exists, and the
+ * resistances wait for a blow to ask for a resistance through the stat pipeline;
+ * `docs/DECISIONS.md` records both.
+ *
+ * WORN, AND READ AS A SHARE OF THE ARMOUR AT FULL HEALTH: two pieces add nothing
+ * at any health, six add nothing at half health exactly and half again below it.
+ */
+bool FCataclysmBrutesHeartSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* BrutesHeart = TEXT("Positive_Brute_s_Heart_2_Piece_Bonus_You_gain_25_incr");
+
+	for (const int32 Pieces : {2, 6})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, BrutesHeart, Pieces);
+		const auto Armour = [&Wearer]()
+		{
+			return Wearer.AbilitySystem->StatAppliedTo(FName(TEXT("armor")), FGameplayTagContainer(), 1000.0f);
+		};
+		SetHealth(Wearer.AbilitySystem, 1000.0f, 1000.0f);
+		const float AtFull = Armour();
+		if (!TestTrue(TEXT("armour is something at full health"), AtFull > 0.0f))
+		{
+			return false;
+		}
+		SetHealth(Wearer.AbilitySystem, 1000.0f, 500.0f);
+		TestEqual(FString::Printf(TEXT("%d pieces at half health exactly: no more armour"), Pieces),
+			Armour() / AtFull, 1.0f, 0.0005f);
+		SetHealth(Wearer.AbilitySystem, 1000.0f, 490.0f);
+		TestEqual(FString::Printf(TEXT("%d pieces below half health. If six add nothing, DT_EnchantmentEffects "
+									   "may be older than the rows: run tools/generate_datatable_assets.py"),
+					  Pieces),
+			Armour() / AtFull, Pieces == 6 ? 1.5f : 1.0f, 0.0005f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
