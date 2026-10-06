@@ -16350,6 +16350,96 @@ bool FCataclysmManaPoolBecomesHealthRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthCostRowKeepsTheManaPoolTest,
+	"Cataclysm.Skills.TheWornRowForPayingHealthBelowHalfHealthKeepsTheManaPoolWhenAttributesRefresh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * ISSUE #2228, REPRODUCED. "While below 50% HP, all skills cost HP instead of
+ * mana and cost 50% less" says where a skill's cost comes from. It does not say
+ * the wearer loses its mana pool.
+ *
+ * Until this test's fix the row was written on `mana_pool_becomes_health`, the
+ * Masochist's Water to Blood, which does two things: it moves a skill's cost
+ * onto health, and at an attribute refresh it adds the whole of maximum mana to
+ * maximum health and empties the mana pool. The second was asked with the
+ * wearer's state, so a refresh BELOW half health converted the pool, and a later
+ * refresh above half gave maximum mana back and left the mana held at nothing.
+ * The test of the row above this one refreshes at full health only and never
+ * saw it.
+ *
+ * SO: WORN, BELOW HALF HEALTH, WITH A FULL MANA POOL, AND REFRESHED. Maximum
+ * mana, maximum health and the mana held are each what they were, and the cost
+ * still comes out of health, which is the half of the sentence that was right.
+ */
+bool FCataclysmHealthCostRowKeepsTheManaPoolTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	UCataclysmEquipmentComponent* Equipment =
+		NewObject<UCataclysmEquipmentComponent>(Wearer.Actor);
+	Equipment->RegisterComponent();
+
+	FCataclysmItem Helm;
+	Helm.Base = FName(TEXT("Head_Helm"));
+	FCataclysmRolledEnchantment Rolled;
+	Rolled.Positive = FName(
+		TEXT("Positive_While_below_50_HP_all_skills_cost_HP_instead_o"));
+	Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
+	Helm.Enchantments.Add(Rolled);
+	Helm.EnchantmentCount = 1;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(Wearer.AbilitySystem);
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
+	const FGameplayAttribute MaxMana = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+	const auto Read = [&Wearer](const FGameplayAttribute& Attribute)
+	{
+		return Wearer.AbilitySystem->GetNumericAttribute(Attribute);
+	};
+
+	const float MaxHealthBefore = Read(MaxHealth);
+	const float MaxManaBefore = Read(MaxMana);
+	if (!TestTrue(TEXT("set-up: the wearer has a health pool and a mana pool"),
+				  MaxHealthBefore > 0.0f && MaxManaBefore > 0.0f))
+	{
+		return false;
+	}
+
+	// BELOW HALF HEALTH, WITH THE MANA POOL AT ITS OWN MAXIMUM.
+	Wearer.AbilitySystem->SetNumericAttributeBase(Health, MaxHealthBefore * 0.4f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(Mana, MaxManaBefore);
+	const float ManaBefore = Read(Mana);
+	if (!TestTrue(TEXT("set-up: below half health the row's condition holds, and a cost comes out of health"),
+				  UCataclysmGameplayAbility::CostPool(Wearer.AbilitySystem) == Health))
+	{
+		return false;
+	}
+
+	// THE REFRESH A CHANGED HELMET, A LEVEL GAINED OR A POINT SPENT MAKES.
+	Equipment->RefreshAttributes(Wearer.AbilitySystem);
+
+	TestEqual(TEXT("a refresh below half health leaves maximum mana what it was"),
+		Read(MaxMana), MaxManaBefore, 0.01f);
+	TestEqual(TEXT("and maximum health what it was"),
+		Read(MaxHealth), MaxHealthBefore, 0.01f);
+	TestEqual(TEXT("and the mana held what it was"),
+		Read(Mana), ManaBefore, 0.01f);
+	TestTrue(TEXT("and a cost still comes out of health"),
+		UCataclysmGameplayAbility::CostPool(Wearer.AbilitySystem) == Health);
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // Famine_Desperate_Measures, the dungeon floor rule. Issues #1820 and #41.
 //
