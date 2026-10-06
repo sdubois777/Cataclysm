@@ -109,7 +109,7 @@ public:
 	 * before any of this existed.
 	 */
 	static float AmountFor(const UAbilitySystemComponent* Defender,
-						   float DamageTaken);
+						   float DamageTaken, float PercentInPlaceOfTheStat = -1.0f);
 
 	/**
 	 * How far this character's retaliation reaches, in metres.
@@ -191,5 +191,14 @@ public:
 	 *                     mitigation, which is what the share is taken of
 	 */
 	static float Pay(UAbilitySystemComponent* Defender, AActor* Instigator,
-					 AActor* Attacker, float DamageTaken);
+					 AActor* Attacker, float DamageTaken, float PercentInPlaceOfTheStat = -1.0f);
+
+	/**
+	 * Pays a REFLECTED hit back: the whole of `DamageTaken`, which is the hit before the defender's mitigation,
+	 * priced and delivered exactly as retaliation is, with 100 in place of the defender's retaliation stat. Ruled
+	 * 2026-10-06, for "Melee attacks that hit you have a 10%-20% chance to be reflected back as retaliation
+	 * damage". The defender's own retaliation stat is not also paid for that hit: it took none of it.
+	 */
+	static float PayReflected(UAbilitySystemComponent* Defender, AActor* Instigator, AActor* Attacker,
+							  float DamageTaken);
 };

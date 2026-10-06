@@ -24,6 +24,18 @@ const TCHAR* UCataclysmDamageCalculation::BlockDamageReductionStat =
 	TEXT("block_damage_reduction");
 const TCHAR* UCataclysmDamageCalculation::BlockNegationChanceStat =
 	TEXT("block_negation_chance");
+const TCHAR* UCataclysmDamageCalculation::SpellAbsorbChanceStat = TEXT("spell_absorb_chance");
+const TCHAR* UCataclysmDamageCalculation::MeleeReflectChanceStat = TEXT("melee_reflect_chance");
+
+/** Pin the two rolls a defender makes against an incoming spell or melee hit, for tests. Ruled 2026-10-06. */
+static TAutoConsoleVariable<float> CVarSpellAbsorbRoll(
+	TEXT("Cataclysm.SpellAbsorbRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a defender makes against its chance to absorb a spell. Negative rolls for real."),
+	ECVF_Default);
+static TAutoConsoleVariable<float> CVarMeleeReflectRoll(
+	TEXT("Cataclysm.MeleeReflectRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a defender makes against its chance to reflect a melee hit. Negative rolls for real."),
+	ECVF_Default);
 
 /**
  * Pins the roll a block makes against its chance to negate the whole hit, 0 to
@@ -967,4 +979,34 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 	Result.DealtToHealth = FMath::Min(Damage, Vitals->GetHealth());
 	return Result;
+}
+
+namespace
+{
+	/** One roll of a defender's chance stat against this blow. A chance of 100 always passes, as block negation's. */
+	bool DefenderChancePasses(const UAbilitySystemComponent* Defender, const TCHAR* Stat,
+							  const FCataclysmIncomingHit& Hit, float Pinned)
+	{
+		const float Chance = DefenderStat(Defender, Stat, 0.0f, BlowOf(Hit));
+		if (Chance <= 0.0f)
+		{
+			return false;
+		}
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		return Chance >= 100.0f || Roll < Chance;
+	}
+}
+
+bool UCataclysmDamageCalculation::SpellIsAbsorbed(const UAbilitySystemComponent* Defender,
+												  const FCataclysmIncomingHit& Hit)
+{
+	return Hit.bIsSpell && !Hit.bIsDamageOverTime
+		&& DefenderChancePasses(Defender, SpellAbsorbChanceStat, Hit, CVarSpellAbsorbRoll.GetValueOnAnyThread());
+}
+
+bool UCataclysmDamageCalculation::MeleeIsReflected(const UAbilitySystemComponent* Defender,
+												   const FCataclysmIncomingHit& Hit)
+{
+	return Hit.bIsMelee && !Hit.bIsDamageOverTime
+		&& DefenderChancePasses(Defender, MeleeReflectChanceStat, Hit, CVarMeleeReflectRoll.GetValueOnAnyThread());
 }

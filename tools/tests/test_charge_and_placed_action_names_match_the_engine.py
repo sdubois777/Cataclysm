@@ -85,6 +85,7 @@ CONSTANTS = {
     "CooldownUseNoDamageAction": "cooldown_use_no_damage",
     "UseIncreasedDamageAction": "use_increased_damage",
     "CooldownUseIncreasedDamageAction": "cooldown_use_increased_damage",
+    "UseHitsAllNearbyAction": "use_hits_all_nearby",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -195,6 +196,11 @@ def test_the_generator_knows_exactly_the_use_outcome_names_the_engine_has() -> N
         names["UseNoDamageAction"], names["CooldownUseNoDamageAction"])
     assert gen.USE_INCREASED_DAMAGE_ACTIONS == (
         names["UseIncreasedDamageAction"], names["CooldownUseIncreasedDamageAction"])
+
+
+def test_the_generator_knows_exactly_the_hit_all_nearby_name_the_engine_has() -> None:
+    """Ruled 2026-10-06."""
+    assert gen.USE_HITS_ALL_NEARBY_ACTION == engine_names()["UseHitsAllNearbyAction"]
 
 
 def test_the_generator_accepts_exactly_the_trigger_held_names_the_engine_has() -> None:

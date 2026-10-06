@@ -1435,6 +1435,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bUseDealsIncreasedDamage = bCooldownIncrease || Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::UseIncreasedDamageAction, ESearchCase::IgnoreCase);
 					Action.bOnlyASkillWithACooldown = bCooldownNoDamage || bCooldownIncrease;
+					Action.bUseHitsAllNearby = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
