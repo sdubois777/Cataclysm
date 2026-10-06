@@ -58,6 +58,38 @@ EnchantmentEffects 502 to 504, over 416 to 418 enchantments.
 Both call the spread itself and not a death; the test of the entry below this one is the one that goes through a
 death.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers below this one, on `development` 8c724dd0. The build, the
+whole suite and the Python of record are in the table of the entry "Nearby enemies gain 20%-40% resistances is
+reworded" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, FIRST RUN | cfd09737 | 242 tests performed, 238 succeeded, 4 failed; 8 failed assertions, 3 of them this layer's |
+| The same, run again after the Disease row test was corrected | 383ddd2c | 242 tests performed, 238 succeeded, 4 failed; 9 failed assertions, 4 of them this layer's |
+| The three enchantment assets, regenerated with the editor | d7628667 | effect rows 502 to 504 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of the layer below | 4c90f9a9 | 242 tests performed, 242 succeeded, 0 failed |
+
+**THE FIRST RUN DID NOT REACH THE SPREAD IN THE DISEASE ROW TEST, AND WHY IS NOT MEASURED.** It printed
+"Expected 'set-up: seven creatures and the disease tag' to be true." and returned. That one check covered seven
+creatures and a tag, so the run does not say which was missing. The test stood its six creatures half a metre apart
+on one side of the body; every other test of this stack stands them at least a metre apart and all of those were
+spawned. **The cause taken, a creature that is not spawned where it would overlap another, was inferred from that
+and was not measured in that run.**
+
+The test was changed in two ways, ruled by the coordinating session before the second run: the six stand on both
+sides of the body, at least a metre from each neighbour, at 1, 1.5, 2, 2.5, 3 and 3.5 metres; and the one check is
+seven, one for each creature with its place in the list, with the tag checked by itself. In the second run all of
+them passed and the test failed where a table without the row should make it fail.
+
+**Each test fails against a table without its row and passes with it**, on two assertions each: the Disease
+passed to 2 where 5 are expected, with 2 of the six carrying it where 5 are expected; the Bleed passed to nobody
+where 1 is expected, with the nearest not carrying it.
+
+**This layer changes no engine code and no generator code.** The guard proof of the count a row hangs on an
+ailment is in the entry below this one, and both of this layer's tests are the ones that noticed it.
+
 ---
 
 ## 2026-10-06 — Disease passes to the two nearest enemies when its carrier dies, and a row can add to that or give another ailment a count; no row authored here
