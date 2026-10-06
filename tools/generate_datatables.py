@@ -5077,6 +5077,16 @@ MAX_DAMAGE_IMMUNITY_SECONDS = 10.0
 #: so the table says the same thing for every such row.
 CLEANSE_ACTION = "cleanse"
 
+#: The action that REPEATS THE SKILL JUST USED, FREE, with its value as the chance
+#: out of 100. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15%
+#: chance to cast a second time for free".
+#: `UCataclysmAbilitySystemComponent::RepeatSkillAction` holds the same name.
+REPEAT_SKILL_ACTION = "repeat_skill"
+
+#: The events a repeat may be written on: the ones that name a skill. `skill_use`
+#: is the only one today; the basic attack's own event carries no skill yet.
+REPEAT_SKILL_EVENTS = ("skill_use",)
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -5305,6 +5315,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_damage_immunity_action(index, who, action, event, fraction_of,
                                       kind, raw, headers)
         return
+    if action == REPEAT_SKILL_ACTION:
+        _check_repeat_skill_action(index, who, action, event, fraction_of,
+                                   kind, raw, headers)
+        return
     if action == REFLECT_BLOCKED_ACTION:
         _check_reflect_blocked_action(index, who, action, event, fraction_of,
                                       kind, raw, headers)
@@ -5327,7 +5341,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
-            f"or {REFLECT_BLOCKED_ACTION}; or {CLEANSE_ACTION}.")
+            f"or {REFLECT_BLOCKED_ACTION}; or {CLEANSE_ACTION}; "
+            f"or {REPEAT_SKILL_ACTION}.")
 
     known = granting_events()
     if not event:
@@ -5601,6 +5616,30 @@ def _check_cleanse_action(index: int, who: str, action: str, event: str,
                 f"the column must be empty.")
 
 
+def _check_repeat_skill_action(index: int, who: str, action: str, event: str,
+                               fraction_of: str, kind: str, raw,
+                               headers: dict[str, int]) -> None:
+    """Everything a repeat row must say, and everything it must not. Mechanism
+    B2. Its event must be one that names a skill, because the row repeats THAT
+    skill; the chance is checked where the value is read. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than
+    dropped.
+    """
+    if event not in REPEAT_SKILL_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} repeats a skill on the "
+            f"event {event or '(none)'!r}, which names no skill to repeat. "
+            f"Known: {', '.join(REPEAT_SKILL_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} repeats a skill and "
+                f"states {column} {written!r}. Its value is a chance and nothing "
+                f"else, so the column must be empty.")
+
+
 def _check_nth_action(index: int, who: str, action: str, event: str,
                       fraction_of: str, kind: str, raw,
                       headers: dict[str, int]) -> None:
@@ -5871,7 +5910,8 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in APPLY_STATUS_ACTIONS \
                     and action != DAMAGE_IMMUNITY_ACTION \
                     and action != REFLECT_BLOCKED_ACTION \
-                    and action != CLEANSE_ACTION:
+                    and action != CLEANSE_ACTION \
+                    and action != REPEAT_SKILL_ACTION:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -6026,6 +6066,14 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} reflects {low:g} to "
                     f"{high:g} per cent of what a block removed. It reflects above "
                     f"0 and up to 100.")
+
+        # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
+        if action == REPEAT_SKILL_ACTION:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} repeats a skill "
+                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                    f"and up to 100, and 100 is always.")
 
         # A NO-DAMAGE WINDOW'S VALUE IS SECONDS, above 0 and up to the bound.
         # Issue #1833 group E part 2.

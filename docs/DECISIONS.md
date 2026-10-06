@@ -2,6 +2,186 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — A row can repeat the skill just used, free: the engine and the generator for one action, `repeat_skill`, with no row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ActOnSkillUse`, the
+pending repeat, `RepeatSkillAction`, the console variable `Cataclysm.RepeatSkillRoll`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bRepeatSkill` and
+`RepeatSharePercent`); `game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.h` and `.cpp` (a damage share,
+`RepeatsFromARow`, `MakePendingRepeat`); `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and
+`CataclysmSkillTemplate.cpp` (`FreeRepeatDamageShare`); `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the loader);
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the skill-use hook); `tools/generate_datatables.py`
+(`REPEAT_SKILL_ACTION` and its checker); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmTriggeredSkillTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; and `tools/tests/test_generate_datatables.py` and
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses the action yet**: the first row and the column that lets a
+row state a damage share are added in a later turn with the design workbook.
+
+### What it is for
+
+Seven enchantment sentences ask for a skill to happen a second time, and none has an effect row:
+
+| Sentence | Scope | Chance | Share |
+|---|---|---|---|
+| "Every skill use has a 5%-15% chance to cast a second time for free" | every skill | 5 to 15 | whole |
+| "Spells have a 10%-20% chance to cast a second time for free" | `Type.Spell` | 10 to 20 | whole |
+| "Each skill has a 20%-40% chance to cast a duplicate at 50% damage" | every skill | 20 to 40 | half |
+| "Your spells echo +1 time" | `Type.Spell` | always | whole |
+| "Your ultimate ability applies its effect twice" | `Slot.Ultimate` | always | whole |
+| "Your heavy attack applies its full effect twice if you have not moved in the last 2 seconds" | `Slot.Heavy`, not moved for 2 s | always | whole |
+| "Your melee attacks have a 12%-15% chance to trigger twice" | `Type.Melee` | 12 to 15 | whole |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-05
+
+- **"Echo", "applies its effect twice", "trigger twice" and "applies its full effect twice" are each read as a second
+  free activation.** The data cannot tell a doubled effect from a second activation, and this is the reading taken.
+  So one action serves all seven.
+- **One repeat for one use.** Every row that passes its roll is counted, and one repeat is made, at the highest share
+  among them. No extra wait between repeats: one per use is the cap.
+- **The repeat is aimed at the same point as the use.**
+- **Self buffs are not repeated by this action.** On gear a character wears all the time, a second More modifier on
+  every press is too much. Wild Magic's own pool keeps its self buffs.
+- **The share reaches what the per-use multiplier reaches: hits, projectiles, rack throws and ground. It does not
+  reach damage over time**, which that multiplier has never reached.
+- **"Melee attacks" include the basic attack**, so the melee row waits: the basic attack's own event carries no skill
+  today. That change is sized with its row, not here.
+- **The two spell rows are built for the skills that carry `Type.Spell`**, which is 9 on 2026-10-05, all Demonic Wand
+  and Staff. Two are movement skills and one is a summon (Subjugate), which are not repeated; **so 6 today**: Hex of
+  Cinders, Malefice, Anathema, Whisper of Madness, Quarry and Compel. They widen as issue #2012 adds the tag.
+- **Through `UCataclysmTriggeredSkill::Trigger`**, not Follow Through's second activation of the held skill. A held
+  skill cannot be started again while it is running, and a projectile skill runs until its projectile lands.
+
+### What the research settles, and what it does not
+
+The sources are the two entries this builds on. Follow Through, 2026-09-25: Path of Exile's Multistrike, "Supported
+Skills Repeat 2 additional times". Wild Magic, 2026-10-04: `poedb.tw/us/Trigger`, "Vaal skills, channelling skills,
+and skills with a reservation cannot be triggered". **They settle that a repeat is not a use and that held, channelled
+and reserved skills are left out.** They do not settle one repeat a use, the share, or the reading of "twice"; those
+are the rulings above.
+
+### How it is built
+
+- **The event has to say which skill.** `ActOnEvent` is handed an event and tags. `ActOnSkillUse` holds the skill's
+  name and aim for the length of the `skill_use` event, so a repeat row can read them, and lets go of them after.
+- **A repeat row** is `FCataclysmPoolAction::bRepeatSkill`, with the row's value as its chance out of 100 and
+  `RepeatSharePercent` as the share. It keeps to the row's required tags and condition as every action does, so
+  "spells", "heavy attack" and "not moved for 2 seconds" need nothing new: `Type.Spell`, `Slot.Heavy` and
+  `stationary_for_seconds` exist.
+- **The pending repeat** is kept on the ability system: the skill's name, the aim and the highest share asked. A new
+  use begins with nothing pending.
+- **It is made on the next tick** by `UCataclysmTriggeredSkill::MakePendingRepeat`: the row of that name among the
+  skills of the character's damage type, started free at that aim and share. The `skill_use` event is raised from
+  inside the used skill's activation, where a skill cannot be granted.
+- **Which skills may be repeated** is `UCataclysmTriggeredSkill::RepeatsFromARow`: everything Wild Magic's rule lets
+  through, except a self buff. Its own named rule, so Wild Magic's pool does not change with it.
+- **The share** is `FreeRepeatDamageShare`, written into the per-use multiplier for a free start. Follow Through,
+  Wild Magic and Echo Chamber leave it at 1.
+- **A repeat is not a use.** It sends no skill-used notice, so no row, no Wild Magic roll and no Echo Chamber copy
+  acts on it; it spends no mana, cooldown, charge or next-use charge.
+- **The generator** accepts the action `repeat_skill` on the event `skill_use` only, with a chance above 0 and up to
+  100, and refuses a fraction, a value kind or a scale on it. It takes no trigger wait.
+
+### WHAT THE ROWS NEED
+
+For whoever writes the rows; ruled 2026-10-05 that this is the session holding the design workbook, as the first layer
+of its own window on top of this engine. Nothing below is in this change.
+
+- **A column for the share.** The Enchantment Effects sheet needs one new column, for example "Damage Share", stating
+  the percent of its damage the repeat deals: empty or 100 for the whole, 50 for "a duplicate at 50% damage".
+  `tools/generate_datatables.py` writes it to `game/Data/EnchantmentEffects.csv`, and should refuse it on any action
+  but `repeat_skill` and outside above 0 and up to 100. The row-text check will want "50" to appear in the sentence,
+  which it does.
+- **A field on `FCataclysmEnchantmentEffectRow`** (`game/Source/Cataclysm/Data/CataclysmDataRows.h`) of the same
+  name as the CSV column, defaulting to 0 or 100 as the generator writes an empty cell.
+- **One loader line.** In `UCataclysmItemModifiers::AccumulateEnchantmentsInto`
+  (`game/Source/Cataclysm/Items/CataclysmItem.cpp`), beside the line that sets `Action.bRepeatSkill`, set
+  `Action.RepeatSharePercent` from the new field, keeping 100 when the row states none.
+- **The test file that builds that table from CSV text:** `game/Source/Cataclysm/Tests/CataclysmEnchantmentSetTests.cpp`
+  (`EffectCsv`, read by `TableFrom<FCataclysmEnchantmentEffectRow>`). Its header line must gain the column, or the
+  table stops reading; its own comment records that a new field did this to six tests on 2026-10-05. It was the only
+  such file found by searching for `FCataclysmEnchantmentEffectRow>` on 2026-10-05.
+- **The files that read the real CSV and pin its size:** `CataclysmDataTableTests.cpp` (`CHECK_TABLE(...,
+  "EnchantmentEffects.csv", 462)`), `CataclysmEnchantmentEffectTests.cpp` and `CataclysmEnchantmentSetTests.cpp`
+  (`LoadCsv`), and in `tools/tests/test_enchantment_effects_match_the_row_text.py` the pinned `AUTHORED_ROWS`,
+  `AUTHORED_ENCHANTMENTS` and `STATED_RANGES`. `tools/tests/test_generate_datatables.py` builds made-up workbooks from
+  `TestScaleStepHigh.HEADER`, which gains the column too.
+- **A row's shape.** Action `repeat_skill`; Action Event `skill_use`; Value Low and High the chance, 100 and 100 for
+  a sentence with no chance; Required Tags the scope (`Type.Spell`, `Slot.Ultimate`, `Slot.Heavy`, or empty);
+  Condition `stationary_for_seconds` with 2 for the heavy attack row. No Fraction Of, Value Kind or Scale.
+- **The first row** is "Every skill use has a 5%-15% chance to cast a second time for free": 5 to 15, no scope.
+- **The six spell skills** the two spell rows reach today: Hex of Cinders, Malefice, Anathema, Whisper of Madness,
+  Quarry and Compel. A test of a spell row should use one of them; the others that carry `Type.Spell` (Foul Wake,
+  Vesselstep, Subjugate) are not repeated.
+- **A test that wears the real row** should send the skill-used notice and call
+  `UCataclysmTriggeredSkill::MakePendingRepeat`, as the tests here do, with `Cataclysm.RepeatSkillRoll` pinned.
+
+### What is not here yet
+
+- **No row.** The first, "Every skill use has a 5%-15% chance to cast a second time for free", needs the workbook.
+- **No way for a row to state a share.** `RepeatSharePercent` is 100 for every row the loader reads until a column
+  carries it; the tests set it by hand. The half-damage row needs that column.
+- **The basic attack**, and the melee row with it.
+- **Spellblade's Will.** Its bonuses trigger a different held skill, and one pays mana; that is a second action and
+  is sized after this.
+
+### Consequences, stated rather than changed
+
+- On a floor carrying Wild Magic or Echo Chamber, one press can give a repeat, a Wild Magic trigger and a copy. None
+  of the three sees the others.
+- The Wild Magic entry's consequences for a triggered skill hold: a burn a repeat leaves that kills after the repeat
+  is gone names no killing skill; Fervour is earned and bought on its hits; the character turns to face its aim.
+- A use of a skill that may not be repeated still records a pending repeat, which is refused when it comes to be
+  made. Nothing is left behind.
+
+### Tests
+
+Five new automation tests.
+
+- `Cataclysm.TriggeredSkill.AShareOfHalfDealsHalfTheDamage`: the same strike at two bodies, whole and at half; a later
+  free start with no share stated deals the whole again.
+- `Cataclysm.Enchantments.ARepeatRowRepeatsTheSkillJustUsedFreeAtTheSameAim`.
+- `Cataclysm.Enchantments.TwoRepeatRowsOnOneUseMakeOneRepeatAtTheHigherShare`, in both orders of the two rows.
+- `Cataclysm.Enchantments.ARepeatRowKeepsToItsChanceAndItsTagsAndIgnoresTheBasicAttack`, with the same row in scope as
+  its control.
+- `Cataclysm.Enchantments.ASelfBuffIsNotRepeatedByARowAndAMovementSkillIsNot`, with Wild Magic's own rule still
+  letting the self buff through as its control.
+
+**Python.** Four new checks: the generator's action name equals the engine's; a repeat row is carried through; one on
+an event that names no skill is refused; one with a fraction is refused.
+
+### Run
+
+One window on 2026-10-06 for a stack of two: the unarmed swing (the entry below), then this change on top of it, at
+`feat/repeat-skill-action-3` 3045071d. Development was 2b87c355. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3179 tests performed, 3179 succeeded, 0 failed`; `Declared: 3179 tests in the tree at 3045071d; 3179 performed, gap 0` |
+| Python, with continuous integration idle | `5719 passed, 8 skipped in 316.28s`; JUnit `tests="5727" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 3045071d, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmSkillTemplate.cpp`: a free start's share is not written into the per-use multiplier | `Cataclysm.TriggeredSkill.AShareOfHalf` | 1 performed, 1 failed, 1 failed assertion: the half strike dealt 250 against 125 | 1 performed, 1 succeeded |
+| Pb | `CataclysmAbilitySystemComponent.cpp`: the last row to pass its roll wins whatever its share | `Cataclysm.Enchantments.TwoRepeatRowsOnOneUse` | 1 performed, 1 failed, 1 failed assertion: with the whole row first and the half row second the repeat read 0.5 against 1 | 1 performed, 1 succeeded |
+| Pc | `CataclysmTriggeredSkill.cpp`: a self buff may be repeated | `Cataclysm.Enchantments.ASelfBuffIsNotRepeated` | 1 performed, 1 failed, 3 failed assertions: the rule answered yes for the self buff, its repeat was made, and a second copy ran | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 3.
+
+**What the run settles of what the entry says was only written.** A repeat row on a possessed player recorded the
+used skill, its aim and its share; the repeat was made on a real projectile skill, free, with no skill-used notice;
+and two rows on one use gave one repeat. **Not run, because no row exists yet:** the loader reading the action from
+the effect table, and anything a worn row does in play.
+
+---
+
 ## 2026-10-05 — A character whose weapon stands in the ground swings for a flat base of 6: the planted weapon's own lines are left out and everything worn elsewhere stays
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPlantedWeapon.h` and `.cpp` (`UnarmedAttackDamage`,
