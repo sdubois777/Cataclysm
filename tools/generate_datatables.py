@@ -5143,6 +5143,15 @@ USE_NO_DAMAGE_ACTIONS = ("use_no_damage", "cooldown_use_no_damage")
 #: `UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction` holds the name.
 USE_HITS_ALL_NEARBY_ACTION = "use_hits_all_nearby"
 
+#: The actions that roll for a use to hit its own user and no enemy. The owner
+#: decided on 2026-10-06 that a character's own skills may hurt them where a
+#: row's sentence says so. The first deals the user the whole of the use's hit:
+#: "Melee skills have a 10%-20% chance to hit you instead of the enemy". The
+#: second deals half: "Spells have a 15%-25% chance to backfire dealing half
+#: damage to you". `UCataclysmAbilitySystemComponent::UseHitsItsUserAction` and
+#: `UseBackfiresAction` hold the same names.
+USE_HITS_ITS_USER_ACTIONS = ("use_hits_its_user", "use_backfires")
+
 #: The same two for a use that deals increased damage: "Your cooldown abilities
 #: have a 5%-20% chance to deal 50%-200% increased damage". The engine has them
 #: (`UseIncreasedDamageAction`, `CooldownUseIncreasedDamageAction`). THE
@@ -5156,7 +5165,8 @@ USE_INCREASED_DAMAGE_ACTIONS = ("use_increased_damage",
 #: an event that names a skill, and its value is a chance and nothing else.
 SKILL_IN_HAND_ACTIONS = (REPEAT_SKILL_ACTION, TRIGGER_HELD_SKILL_ACTION,
                          TRIGGER_HELD_SPELL_ACTION) + USE_NO_DAMAGE_ACTIONS \
-    + USE_INCREASED_DAMAGE_ACTIONS + (USE_HITS_ALL_NEARBY_ACTION,)
+    + USE_INCREASED_DAMAGE_ACTIONS + (USE_HITS_ALL_NEARBY_ACTION,) \
+    + USE_HITS_ITS_USER_ACTIONS
 
 
 def takes_a_trigger_cooldown(action: str) -> bool:
