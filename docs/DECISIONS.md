@@ -2,6 +2,62 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Two slows hung on an ailment: a poisoned enemy is slowed in both speeds, and a bleeding enemy in its movement alone
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`ECataclysmAilmentRider::Speed` and
+`MovementSpeed`), `CataclysmAbilitySystemComponent.h` and `.cpp` (two action names),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (`AilmentSlowMultiplier`,
+`AilmentWalkMultiplier`, `SpeedMultiplier`, `RefreshWalkSpeed`), `CataclysmBruteCharacter.cpp` (its walk speed),
+`tools/generate_datatables.py` (`AILMENT_RIDER_ACTIONS`), `docs/All_Things_Cataclysm.xlsx` (two rows of the
+Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and its asset, two tests in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+Two more of the numbers a worn row can hang on an ailment the wearer applies, on the mechanism of the entry
+below this one.
+
+| Sentence | Row |
+| :-- | :-- |
+| Poisoned enemies are slowed by 30%-50% | `ailment_speed` 30 to 50 on Poison |
+| Bleeding enemies move 5%-10% slower | `ailment_movement_speed` 5 to 10 on Bleed |
+
+EnchantmentEffects 476 to 478, over 390 to 392.
+
+### WHAT WAS RULED, 2026-10-06, UNDER THE OWNER'S DELEGATION, EACH A LABELLED JUDGEMENT
+
+1. **"SLOWED" IS BOTH SPEEDS.** A poisoned enemy walks slower and attacks slower by the row's percent, as Cripple
+   was read. The research of the entry below quotes Path of Exile's Maim, which slows movement alone; this
+   game's own slow, Cripple, has taken both since it was built, and the sentence uses its word.
+2. **"MOVE SLOWER" IS MOVEMENT ALONE**, as written. A bleeding enemy walks slower and attacks on the interval it
+   had.
+3. **A SEPARATE SLOW MULTIPLIES.** The poison's slow multiplies with Cripple and with Ground Down, by the
+   2026-09-24 ruling for Ground Down: an enemy crippled and poisoned at the top roll moves at 0.7 times 0.5.
+
+### HOW IT IS BUILT
+
+- **A creature's speed is not an attribute.** `ACataclysmEnemyCharacter::SpeedMultiplier` multiplies what acts on
+  both its walk speed and its attack interval, and its own rule is that anything naming BOTH belongs in it. The
+  poison's slow is a new factor there, `AilmentSlowMultiplier`.
+- **Nothing slowed a creature's movement alone before this.** `AilmentWalkMultiplier` multiplies the walk speed
+  in the two places a creature's walk speed is written, the base creature's and the Brute's, and is kept out of
+  `SpeedMultiplier`, so the attack interval never sees it. Feasting is the same rule from the other side: it
+  moves attacks and not walking.
+- **Neither can stop a creature.** Each takes at most 99 per cent.
+- **The generator** gains the two action names, under the checks every rider has: no event, an Ailment, a
+  percent above 0 and up to 100.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The movement slow reaches a creature's walk and a Brute's chase**, the two places a walk speed is written.
+  Whether a movement made another way, such as a charge, is slowed by it was not traced.
+- **Both end with the ailment**, by time, by a cleanse or by death, as every rider does.
+
+---
+
 ## 2026-10-06 — A worn row can hang a number on an ailment: five sentences that change an enemy while it carries the wearer's bleed, burn, disease or poison
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`ECataclysmAilmentRider`,

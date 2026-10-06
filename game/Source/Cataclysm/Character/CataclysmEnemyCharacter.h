@@ -1152,8 +1152,26 @@ public:
 	float SpeedMultiplier() const
 	{
 		return CommanderMultiplier() * CrippleMultiplier() * WraithMultiplier()
-			* GroundDownMultiplier();
+			* GroundDownMultiplier() * AilmentSlowMultiplier();
 	}
+
+	/**
+	 * What rides on the ailments it carries takes off BOTH its speeds. Issue
+	 * #1833, ruled 2026-10-06: "Poisoned enemies are slowed by 30%-50%". It names
+	 * a slow and no one speed, so it is a factor of `SpeedMultiplier` above, by
+	 * that function's own rule, and A SEPARATE SLOW: it multiplies with Cripple
+	 * and Ground Down. Never below a hundredth of its speed.
+	 */
+	float AilmentSlowMultiplier() const;
+
+	/**
+	 * What rides on the ailments it carries takes off its MOVEMENT ALONE. Issue
+	 * #1833, ruled 2026-10-06: "Bleeding enemies move 5%-10% slower". It names
+	 * movement and not attacking, so it is NOT a factor of `SpeedMultiplier`: it
+	 * multiplies the walk speed where the walk speed is written, and the attack
+	 * interval never sees it. Feasting is the same rule from the other side.
+	 */
+	float AilmentWalkMultiplier() const;
 
 	/**
 	 * Ground Down, the Ravager's `Ravager_capstone_100` option 1. Issue #1515:

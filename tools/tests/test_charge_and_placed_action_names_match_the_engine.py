@@ -69,11 +69,14 @@ CONSTANTS = {
     "CleanseAction": "cleanse",
     # AND THE REPEAT OF THE SKILL JUST USED, since mechanism B2.
     "RepeatSkillAction": "repeat_skill",
-    # AND THE FOUR RIDERS ON AN AILMENT, since issue #1833, 2026-10-06.
+    # AND THE RIDERS ON AN AILMENT, since issue #1833, 2026-10-06: four, and
+    # the two speed riders after them.
     "AilmentDamageTakenAction": "ailment_damage_taken",
     "AilmentArmorRiderAction": "ailment_armor_removed",
     "AilmentDamageDealtAction": "ailment_damage_dealt",
     "AilmentHealingReceivedAction": "ailment_healing_received",
+    "AilmentSpeedAction": "ailment_speed",
+    "AilmentMovementSpeedAction": "ailment_movement_speed",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"

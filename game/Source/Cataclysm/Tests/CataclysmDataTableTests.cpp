@@ -683,7 +683,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 471 SINCE BRUTE'S HEART'S ARMOUR BELOW HALF HEALTH, issue #1833, from 470.
 	//
 	// AND 476 SINCE THE FIVE NUMBERS HUNG ON AN AILMENT, issue #1833, from 471.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    476)
+	//
+	// AND 478 SINCE THE TWO SLOWS HUNG ON AN AILMENT, issue #1833, from 476.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    478)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
