@@ -462,3 +462,7 @@ Positive_When_a_minion_dies_it_automatically_re_summons_a#1,Positive_When_a_mini
 Positive_Your_aura_also_applies_its_effect_to_all_allies#1,Positive_Your_aura_also_applies_its_effect_to_all_allies,aura_shares_immunities_with_allies,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_Your_movement_ability_has_2_charges#1,Positive_Your_movement_ability_has_2_charges,skill_charges_bonus,flat,1.0,1.0,Slot.Movement,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
 Positive_You_are_cleansed_every_5_seconds#1,Positive_You_are_cleansed_every_5_seconds,,,100.0,100.0,,,0.0,,0.0,cleanse,every_seconds,,0,0.0,0.0,5.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Negative_You_take_10_20_of_the_damage_dealt_by_your_own#1,Negative_You_take_10_20_of_the_damage_dealt_by_your_own,,,-10.0,-20.0,Type.AOE.PointBlank,,0.0,,0.0,health,hit_dealt,event_amount,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Negative_Your_retaliation_damage_also_applies_to_you_at_2#1,Negative_Your_retaliation_damage_also_applies_to_you_at_2,,,-25.0,-50.0,,,0.0,,0.0,health,retaliation_dealt,event_amount,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Negative_Your_retaliation_damage_also_damages_you_at_20#1,Negative_Your_retaliation_damage_also_damages_you_at_20,,,-20.0,-40.0,,,0.0,,0.0,health,retaliation_dealt,event_amount,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
+Negative_You_take_10_20_of_the_damage_you_reflect#1,Negative_You_take_10_20_of_the_damage_you_reflect,,,-10.0,-20.0,,,0.0,,0.0,health,retaliation_dealt,event_amount,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,
