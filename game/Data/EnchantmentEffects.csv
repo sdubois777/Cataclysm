@@ -505,3 +505,4 @@ Positive_Disease_effects_you_apply_spread_to_1_3_nearby_e#1,Positive_Disease_eff
 Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to#1,Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to,,,1.0,1.0,,,0.0,,0.0,ailment_spread_on_death,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Bleed,0.0
 Negative_Melee_skills_have_a_10_20_chance_to_hit_you_in#1,Negative_Melee_skills_have_a_10_20_chance_to_hit_you_in,,,10.0,20.0,Type.Melee,,0.0,,0.0,use_hits_its_user,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Spells_have_a_15_25_chance_to_backfire_dealing#1,Negative_Spells_have_a_15_25_chance_to_backfire_dealing,,,15.0,25.0,Type.Spell,,0.0,,0.0,use_backfires,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Void_splinter_stacks_detonate_for_50_100_incre#1,Positive_Void_splinter_stacks_detonate_for_50_100_incre,,,50.0,100.0,,,0.0,,0.0,ailment_detonates_when_reapplied,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Void Splinter,0.0
