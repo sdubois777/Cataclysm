@@ -2,6 +2,140 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A row can roll for a use to hit its own user instead of any enemy, whole or by half; and a stack a row grants can be kept to one kind of use. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bUseHitsItsUser`,
+`UseSelfHitSharePercent`); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`UseHitsItsUserAction`, `UseBackfiresAction`, `BackfireSharePercent`, what a use takes);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`CommitAndBegin`);
+`game/Source/Cataclysm/Items/CataclysmItem.cpp`; `tools/generate_datatables.py` (`USE_HITS_ITS_USER_ACTIONS`); the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; and two Python test files. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses either yet**; the rows are the enchantment session's.
+
+### The owner's decision this rests on
+
+**A character's own skills or zones may hurt them where a row's sentence says so.** Decided by the project owner on
+2026-10-06 and relayed by the coordinating session. The own-side rule of 2026-08-20 stays the default; a row's own
+sentence is the exception.
+
+### What it is for
+
+The last two of the nine sentences that state a chance of their own:
+
+| Sentence | Action | Event | Scope | Its user takes |
+|---|---|---|---|---|
+| "Melee skills have a 10%-20% chance to hit you instead of the enemy" | `use_hits_its_user` | `skill_use` | `Type.Melee` | the whole hit |
+| "Spells have a 15%-25% chance to backfire dealing half damage to you" | `use_backfires` | `skill_use` | `Type.Spell` | half |
+
+### Rulings by the coordinating session, each a labelled judgement under the owner's decision above, 2026-10-06
+
+- **"Hit you instead of the enemy" is the whole of the hit, through the user's own defences.** The sentence states no
+  share, and its sibling states "half" where it means half. It can kill, as Echo Chamber's self hit can. **It is on
+  the owner's play-check list as a tuning question.**
+- **A backfire deals nothing to enemies.** The spell fails and its caster takes half.
+- **The self hit lands when the use is paid for.** Echo Chamber's lands a tick later, because it is dealt where the
+  copy is made, which has to wait a tick to grant a skill. This one grants nothing, so it has nothing to wait for;
+  the tick would change no figure.
+
+### How it is priced and delivered, the writing session's judgement, accepted with the registration
+
+- **What the user takes is priced as Echo Chamber prices its self hit**: the use's own hit before any target's
+  defences, the weapon's damage at the skill's damage percent with the user's modifiers for that skill, dealt as the
+  user's own direct damage to themselves. Their own defences reduce it. It does not critically strike, leech, or
+  draw retaliation, and it is delivered as area damage, which cannot be evaded, as that rule's is.
+- **A use with no damage of its own deals its user nothing**, and still deals no enemy anything.
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles the share or whether a backfire still strikes**; they are the
+sentences' words and the judgements above.
+
+### How it is built
+
+- **A fourth roll for the use in hand**, beside no damage, an increase and hitting all nearby (the two entries of
+  2026-10-06 below). The roll is made when the use's notice reaches the rows and is taken by that same use.
+- **A use that rolled it deals no damage to anyone else**, through the switch the no-damage roll sets, and then
+  deals its user the share.
+- **The largest share wins** when several rows pass on one use.
+- **Two action names**, so neither row needs a column: `use_hits_its_user` at 100 and `use_backfires` at 50.
+
+### The stack grant's scope: Spellblade's Will, six pieces
+
+"When you use a melee attack, you gain a stack of Spellslinger which reduces the mana cost of your spells by 10% per
+stack, and when you use a spell, you gain a stack of Dervish which increases your attack speed for melee attacks by
+10% per stack."
+
+- **The owner decided on 2026-10-06 that "your spells" are the spells the character is running**; with none, the
+  bonus does nothing. So the six-piece is built as written.
+- **A stack is gained on one kind of use, and what it raises has another scope or none.** Spellslinger is gained on
+  a melee attack and lowers the mana cost of spells. Dervish is gained on a spell and raises attack speed, which is
+  read with no tags.
+- **The engine already keeps a grant to the event's tags.** `PoolActionAllowed` asks every row action, a stack grant
+  included, whether the event carries the action's required tags. What was missing is only that the loader gives a
+  stack grant no tags of its own: its comment reads "An own stack's tags scope its stat and not its grant". **No
+  engine logic is added for this.** A test shows it with a hand-made grant.
+- **What the rows need**, which is the enchantment session's: a column for the grant's own tags; the row field for
+  it; and one line in the loader in `CataclysmItem.cpp` that puts those tags on the stack grant's `RequiredTags`.
+  Then Spellslinger is a mana cost row scoped `Type.Spell`, scaled by its own stacks, granted on `attack_use` with
+  grant tags `Type.Melee`; and Dervish is an attack speed row with no scope, granted on `skill_use` with grant tags
+  `Type.Spell`. 5 stacks lasting 5 s, as already recorded.
+
+### Consequences, stated rather than changed
+
+- **A character can kill itself with its own skill.** The share is real damage.
+- **The self hit is dealt inside the use's own activation.** Echo Chamber's is dealt a tick later.
+- **Only a player character's uses roll**, as with the other rolls.
+
+### Tests
+
+Two new automation tests.
+
+- `Cataclysm.Skills.AUseARowRolledToHitItsUserHitsNoEnemyAndItsUserTakesTheHitOrHalfOfIt`: one strike with no
+  cooldown used four times: plain; rolled to hit its user, the enemy takes nothing and the user, given full evasion
+  first, takes what the enemy took; a backfire, half; plain again.
+- `Cataclysm.Skills.AStackARowGrantsOnAUseIsGainedOnlyWhenTheUsesTagsMatchTheGrantsOwn`: a grant kept to melee
+  attacks is gained on a melee attack and not on a spell; one with no tags is gained on both.
+
+**Python.** Three new checks: the generator's two names equal the engine's; each action is carried through.
+
+### Run
+
+One window on 2026-10-06 for a stack of two, at `feat/use-hits-its-user-5` 5c0072e7: the fog-spread test
+(`fix/fog-test-independent-of-the-draw-3` 5a93fb20), then a use that hits its own user. Development was 3de1c490.
+Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3220 tests performed, 3220 succeeded, 0 failed`; `Declared: 3220 tests in the tree at 5c0072e7; 3220 performed, gap 0` |
+| Python, with continuous integration idle | `5765 passed, 8 skipped in 369.16s`; JUnit `tests="5773" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 5c0072e7, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmSkillTemplate.cpp`: the share is ignored | `Cataclysm.Skills.AUseARowRolledToHitItsUser` | 1 performed, 1 failed, 1 failed assertion: a backfire dealt its user 250.000000 against 125.000000 | 1 performed, 1 succeeded |
+| Pb | Same file: a use that hits its user still hits the enemy | Same | 1 performed, 1 failed, 1 failed assertion: the enemy took 250.000000 against 0 | 1 performed, 1 succeeded |
+| Pc | `CataclysmAbilitySystemComponent.cpp`: a row action is not kept to the event's tags | `Cataclysm.Skills.AStackARowGrantsOnAUse` | 1 performed, 1 failed, 1 failed assertion: after a spell the melee stack read 2 against 1 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1.
+
+**The size of "hit you instead", in one measured example.** The test character's weapon deals 100 and its strike is
+in the heavy slot, which deals 250% of that. Plain, the strike took 250 from the enemy. Rolled to hit its user, it
+took 0 from the enemy and 250 from the user, who had full evasion; a backfire took 125. The test character has
+100,000 health, so this says what the hit is and not what it is to a real character: **it is one whole use of the
+skill, landed on the character who used it,** reduced by that character's own defences. How large that is against a
+real character's health was not measured; it is on the owner's play-check list.
+
+**Not run, because no row exists yet:** either action read from the effect table, and anything a worn row does in
+play. **Not run at all:** a roll made through the player character's hook, and a self hit that kills its user.
+
+---
+
 ## 2026-10-06 — The fog-spread test tells a new patch apart by which zone it is, not by where it is: a test that failed once in a whole-suite run
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` only. No game code. Issue
