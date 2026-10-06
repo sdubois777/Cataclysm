@@ -14955,4 +14955,79 @@ bool FCataclysmMeleeSkillsHitAllRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellbladesWillTenRowTest,
+	"Cataclysm.Enchantments.SpellbladesWillTenPiecesRollToTriggerAHeldSpellOnAMeleeAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Spellblade's Will (10-Piece Bonus): Your melee attacks have a 25% of
+ * triggering one of your spells. This does not put the spell on cooldown but
+ * does use it's mana cost". `trigger_held_spell` on `attack_use`, 25, scoped to
+ * `Type.Melee`. THE OWNER'S ANSWER OF 2026-10-06: "your spells" are the spells
+ * the character is running, and with none it does nothing; so the row is
+ * written and a character holding no spell gets nothing from it.
+ *
+ * NINE PIECES AND THEN TEN, each carrying the set's real first bonus and real
+ * drawback. At nine the two-piece row rolls and the ten-piece row does not; at
+ * ten both do. READ AT THE RECORDED TRIGGER, as the two-piece test is: which
+ * spell is picked, that it pays and that a character with no spell gets nothing
+ * are `CataclysmHeldTriggerTest`'s, with rows made by hand.
+ */
+bool FCataclysmSpellbladesWillTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Bonus = TEXT("Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at");
+	const TCHAR* Drawback = TEXT("Negative_Melee_damage_is_reduced_by_50");
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Strike, Type.Melee"));
+	const FGameplayTagContainer Ranged = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Projectile, Type.Ranged"));
+	if (!TestTrue(TEXT("set-up: the tags exist"), Melee.Num() == 2 && Ranged.Num() == 2))
+	{
+		return false;
+	}
+	const FVector Aim(900.0f, 300.0f, 0.0f);
+	const FName Swing(TEXT("Quench"));
+
+	for (const int32 Pieces : {9, 10})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		for (int32 Index = 0; Index < Pieces; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer.Equipment->Equip(Carrying(TenBases[Index], Bonus, Drawback), Removed, AlsoRemoved, Slot);
+		}
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+		CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.TriggerHeldSkillRoll"), TEXT("24.9"));
+		if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+		{
+			return false;
+		}
+
+		ASC->ActOnSkillUse(Swing, &Melee, Aim, /*bBasicAttack=*/true);
+		TestTrue(FString::Printf(TEXT("%d pieces: the two-piece row records a trigger of a skill with a cooldown"),
+					 Pieces),
+			ASC->PendingHeldTriggerWantsACooldownSkill());
+		TestTrue(FString::Printf(TEXT("%d pieces, a roll of 24.9 against 25, a melee basic attack: a trigger of a "
+									  "spell is recorded only at ten.%s"), Pieces, CataclysmRepeatRowsTest::OlderAsset),
+			ASC->PendingHeldTriggerWantsASpell() == (Pieces == 10));
+		ASC->ActOnSkillUse(Swing, &Ranged, Aim, /*bBasicAttack=*/true);
+		TestFalse(FString::Printf(TEXT("%d pieces: a ranged basic attack records no spell trigger"), Pieces),
+			ASC->PendingHeldTriggerWantsASpell());
+		Roll.Set(TEXT("25"));
+		ASC->ActOnSkillUse(Swing, &Melee, Aim, /*bBasicAttack=*/true);
+		TestFalse(FString::Printf(TEXT("%d pieces: a roll of 25 records no spell trigger"), Pieces),
+			ASC->PendingHeldTriggerWantsASpell());
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
