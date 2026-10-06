@@ -2,6 +2,88 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A zone follows the character who left it: one stat, `zone_follows_owner_percent`. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`FollowItsOwnerAt`,
+`FollowStep`, `WalkSpeedOf`, `FollowsItsOwnerAtPercent`, `MoveBy`; `TravelStep` now ends in `MoveBy`; `Tick`);
+`CataclysmSkillTemplate.cpp` (`LeaveZoneAlong` reads the stat); `CataclysmDamageCalculation.h` and `.cpp` (the stat
+name); `Character/CataclysmPlayerClassStats.cpp` (`StatsWithNoAttribute`); one probe and one test in
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; one inventory entry in
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have. **No row carries the stat yet**; the row is the enchantment session's.
+
+### What it is for
+
+"Your persistent AOE zones follow you as you move at 50% of your movement speed".
+
+**What the row needs:** `zone_follows_owner_percent`, flat 50.
+
+### Ruling, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+**Every zone the wearer owns moves toward where its owner stands, at half the owner's movement speed, and stops on
+reaching them. A lane keeps its shape and moves by its near end.**
+
+### What speed is read
+
+**The figure the owner's own movement component holds at that moment, `MaxWalkSpeed`.** The player character writes
+its speed there after every modifier, and a creature writes its designed speed there after what hastes and slows
+it. So one read serves both, and a slowed owner's zones follow more slowly.
+
+**An owner that is not a character has no speed, and its zones stay where they were left.** No skill is used by
+such an owner in play; a test's plain actor is one.
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles the ruling**; it is a reading of the sentence.
+
+### How it is built
+
+- **Read where the zone is left**, with the skill's tags, as the other zone stats are. A zone a row gives a skill
+  reads it too. A zone left before the row was worn does not follow, and one left while it was worn goes on
+  following after it is taken off.
+- **A following zone ticks**, as a travelling one does; a zone that stays still does not tick. Each tick it moves
+  along the ground toward its owner by the smaller of what the speed allows and what is left to cover.
+- **`TravelStep` and the new `FollowStep` share one function, `MoveBy`**, which carries the actor, the far end and
+  the visual effects together.
+- **It follows the ground position only**: the zone keeps its own height.
+
+### Consequences, stated rather than changed
+
+- **Every zone the wearer has out converges on them**, so two zones left apart end stacked on their owner, and an
+  enemy near the owner is swept by each.
+- **With the row that makes a zone damage its owner worn too, the zones walk onto their owner.** Read from the two
+  rules, not run.
+- **A zone does not follow where its owner blinks to in one step**; it walks there at its speed.
+
+### For the owner's play-check
+
+Whether zones stacking on their owner reads as intended, and whether half the owner's speed is slow enough for an
+enemy to be kept inside one.
+
+### Tests
+
+One probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: a blink's two zones follow at 50
+for a caster carrying 50 and at nought for a plain one.
+
+One new automation test,
+`Cataclysm.StatExemption.AFollowingZoneWalksToItsOwnerAtAShareOfTheirSpeedAndStopsThere`, with a creature walking
+400 cm a second as the owner: a zone under its owner does not move; with the owner 10 metres away it moves 2
+metres in a second, toward them; a zone not told to follow does not move; a lane's near end moves 2 metres and the
+lane keeps its shape; ten more seconds leave the zone where its owner stands, 10 metres from where it began and no
+further; and the zone of an owner that is no character does not move.
+
+**Not covered by a test:** the tick itself, since an automation test's world is not ticked; a player as the owner.
+
+**Python.** No new test. One existing inventory gained the lookup.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-06 — A zone reaches the character who left it where a row says so: two flags, `zone_damages_its_owner` and `zone_applies_effects_to_owner`. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`bAlsoDamagesItsOwner`,
