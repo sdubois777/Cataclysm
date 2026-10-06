@@ -1317,7 +1317,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							Data.EffectSpec.GetContext()
 								.GetInstigatorAbilitySystemComponent()),
 						Outcome.DealtToHealth + Outcome.AbsorbedByShield
-							+ Outcome.AbsorbedByMana);
+							+ Outcome.AbsorbedByMana,
+						AssetTags);
 				}
 
 				// AND A BLOW THAT GOT THROUGH TO A BOSS OPENS THE ATTACKER'S

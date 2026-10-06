@@ -42,7 +42,7 @@ float UCataclysmLeech::PaidInStep(const FCataclysmLeechPayment& Payment,
 }
 
 void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,
-							  float DamageTaken)
+							  float DamageTaken, const FGameplayTagContainer& SkillTags)
 {
 	if (DamageTaken <= 0.0f)
 	{
@@ -77,12 +77,11 @@ void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,
 	// were dropped in silence: "While below 50% HP your leech is doubled" and
 	// "While moving, your leech is increased by 20%-40%".
 	//
-	// AN EMPTY TAG CONTAINER, BECAUSE BOTH ROWS CARRY A CONDITION AND NOT A TAG,
-	// and `StatForSkill` evaluates the character's own state whatever the tags
-	// are. Scoping leech to a skill is a different problem and a harder one:
-	// `NoteHit` is handed a damage figure and does not know which skill caused
-	// the hit. Issue #947 names that as the one real obstacle in its list, and
-	// nothing here removes it.
+	// AND ASKED WITH THE TAGS OF THE SKILL THAT DEALT THE HIT, since 2026-10-05, the remainder of issue #947. Until
+	// then an empty container was passed, because `NoteHit` was handed a damage figure and did not know which skill
+	// caused the hit; a leech row scoped to a kind of skill by `RequiredTags` was therefore discarded in silence. No
+	// authored row was: 17 leech rows were counted on 2026-10-04 and none carries required tags. The one caller,
+	// `UCataclysmVitalAttributeSet`, has the damage effect's tags in hand, the same ones the critical strike reads use.
 	//
 	// TWO OF THE THREE UNBLOCK NO ROW AND ARE CHANGED FOR CONSISTENCY, which is
 	// the same judgement the coordinating session ruled for the three damage
@@ -93,10 +92,9 @@ void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,
 	// NO NULL CHECK ON `Cataclysm` HERE, BECAUSE THERE CANNOT BE ONE. The
 	// function returned above if the cast failed. A ternary here would read as
 	// though the pointer might be null and would be dead code saying so.
-	const auto Asked = [Cataclysm](const TCHAR* Stat, float FromAttribute)
+	const auto Asked = [Cataclysm, &SkillTags](const TCHAR* Stat, float FromAttribute)
 	{
-		return Cataclysm->StatForSkill(FName(Stat), FGameplayTagContainer(),
-									   FromAttribute);
+		return Cataclysm->StatForSkill(FName(Stat), SkillTags, FromAttribute);
 	};
 
 	const FSource Sources[] = {
@@ -153,6 +151,9 @@ void UCataclysmLeech::NoteRetaliation(UAbilitySystemComponent* Retaliator,
 	//
 	// FLOORED AT ZERO for the reason `NoteHit` floors it: nothing states
 	// negative life leech, and a negative figure would take health away.
+	//
+	// WITH NO TAGS, WHERE `NoteHit` NOW PASSES THE SKILL'S: a retaliation is not a skill and carries none, so a
+	// leech row scoped to a kind of skill does not reach it. Issue #947's remainder, 2026-10-05.
 	//
 	// AND ASKED FOR RATHER THAN READ, FOR THE SENTENCE ABOVE TO STAY TRUE.
 	// Issue #947. `NoteHit` now asks the pipeline for this stat, so a character

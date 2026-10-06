@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmLeech.generated.h"
 
@@ -123,8 +124,13 @@ public:
 	 *
 	 * ONE PAYMENT PER POOL THE ATTACKER LEECHES INTO, and none for a pool whose
 	 * leech is zero, which is every pool for almost every character.
+	 *
+	 * `SkillTags` ARE THE TAGS OF THE SKILL THAT DEALT THE HIT, and each leech stat is asked with them, so a row
+	 * giving leech to one kind of skill reaches only that kind. Issue #947. Required and not defaulted, so a new
+	 * caller has to say which skill it is speaking for; a caller with no skill passes an empty container.
 	 */
-	static void NoteHit(UAbilitySystemComponent* Attacker, float DamageTaken);
+	static void NoteHit(UAbilitySystemComponent* Attacker, float DamageTaken,
+						const FGameplayTagContainer& SkillTags);
 
 	/**
 	 * Start a payout on a character whose retaliation took this much. Issue

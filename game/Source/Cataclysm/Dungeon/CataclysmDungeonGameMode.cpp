@@ -16301,6 +16301,20 @@ void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
 		return;
 	}
 
+	// AND AN ENEMY MUST HAVE DEALT IT. Issue #1946, ruled 2026-10-05: the row says "Enemies have a chance to inflict",
+	// so only a blow whose attacker is a character on the monsters' side rolls. Until then nothing here read the
+	// attacker, and a blow the FLOOR dealt rolled too: a Blood Altar pulse, a second in Necrotic Ground's fog, an
+	// Artillery Strike landing. Those are dealt in the name of `ACataclysmFloorHazardSource`, which is on the monsters'
+	// side and is not a character, which is why the side alone cannot tell them apart.
+	//
+	// A TICK OF DAMAGE OVER TIME A CREATURE'S AILMENT DEALS STILL ROLLS, ruled the same day: its attacker is the
+	// creature. THE PLAYER'S OWN DAMAGE TO THEMSELVES DOES NOT: the player is a character and is not on that side.
+	const ACataclysmCharacterBase* Enemy = Cast<ACataclysmCharacterBase>(Notice.Attacker);
+	if (!Enemy || UCataclysmTeams::TeamOf(Enemy) != UCataclysmTeams::IdFor(ECataclysmTeam::Monsters))
+	{
+		return;
+	}
+
 	// ALREADY AT THE CAP COSTS A ROLL AND NOTHING ELSE, and the roll is still
 	// drawn so that pinning it in a test cannot change how many rolls happen.
 	const bool bInflicts =

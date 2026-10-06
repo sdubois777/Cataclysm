@@ -46016,4 +46016,82 @@ bool FCataclysmCryptquakeAgainstRockTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ISSUE #1946. Wasting Sickness's row says "Enemies have a chance to inflict". Until 2026-10-05 every blow that landed
+// on the player rolled, whoever dealt it, so a blow the floor dealt added stacks that last the dungeon.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingSicknessAttackerTest,
+	"Cataclysm.DungeonModifierEffects.WastingSicknessRollsForAnEnemysBlowAndNotForOneTheFloorOrThePlayerDealt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingSicknessAttackerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	// THE ROLL IS PINNED TO INFLICT, so every blow that rolls adds a stack and one that adds none did not roll.
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {WastingSickness};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("set-up: the floor carries Wasting Sickness"),
+					 Mode->FloorBrief.Modifiers.Contains(WastingSickness)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("set-up: no stack before any blow"), Mode->WastingSicknessStacksHeld(), 0);
+
+	// A BLOW THE FLOOR DEALT, as a Blood Altar's pulse and Necrotic Ground's fog deal theirs: it lands and rolls nothing.
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float BeforeTheFloor = Player.Read(Health);
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(ACataclysmFloorHazardSource::ForFloor(World), Player.Character, 5.0f,
+											  Delivery);
+	TestTrue(TEXT("set-up: the floor's blow landed on the player"), Player.Read(Health) < BeforeTheFloor);
+	TestEqual(TEXT("a blow the floor dealt adds no stack"), Mode->WastingSicknessStacksHeld(), 0);
+
+	// A BLOW THE PLAYER DEALT THEMSELVES: it lands and rolls nothing.
+	const float BeforeTheirOwn = Player.Read(Health);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Player.Character, 5.0f, Delivery);
+	TestTrue(TEXT("set-up: the player's own blow landed on them"), Player.Read(Health) < BeforeTheirOwn);
+	TestEqual(TEXT("a blow the player dealt themselves adds no stack"), Mode->WastingSicknessStacksHeld(), 0);
+
+	// AN ENEMY'S BLOW: it rolls, and the pinned roll inflicts.
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("a creature that can hit spawned"), Enemy))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the creature's blow landed on the player"),
+				  UCataclysmSkillEffects::ApplyHit(Enemy, Player.Character, 50.0f) > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("an enemy's blow adds a stack"), Mode->WastingSicknessStacksHeld(), 1);
+
+	// AND THE SAME ENEMY'S DIRECT DAMAGE, the route a tick of its ailment takes, rolls too.
+	UCataclysmSkillEffects::ApplyDirectDamage(Enemy, Player.Character, 5.0f, Delivery);
+	TestEqual(TEXT("damage an enemy deals without a swing adds a stack too"), Mode->WastingSicknessStacksHeld(), 2);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -2,6 +2,84 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-05 — Wasting Sickness rolls only for a blow an enemy dealt, and leech is asked with the tags of the skill that dealt the hit
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (`NoteHitForWastingSickness`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmLeech.h` and `.cpp` (`NoteHit` takes the skill's tags);
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (passes them); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmLeechTests.cpp` and `game/Source/Cataclysm/Tests/CataclysmFervourTests.cpp`.
+Issues [#1946](https://github.com/sdubois777/Cataclysm/issues/1946) and
+[#947](https://github.com/sdubois777/Cataclysm/issues/947).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have.
+
+Two small changes in one layer. Neither needs the other.
+
+### Wasting Sickness: only a blow an enemy dealt rolls (#1946)
+
+`Famine_Wasting_Sickness`: "Enemies have a chance to inflict a stacking debuff that reduces your max HP and max mana.
+This debuff is permanent for the duration of the dungeon and can only be removed by defeating a floor boss."
+`NoteHitForWastingSickness` checked that the floor carries the row, that the blow landed and that it landed on the
+player. **It never read who dealt it**, so a blow the floor dealt rolled too, and the stacks last the dungeon.
+
+**RULED 2026-10-05 by the coordinating session under the owner's delegation, a labelled judgement: option 1 of the
+issue.** Only a blow whose attacker is an enemy rolls, because the row says "Enemies have a chance to inflict". A tick
+of damage over time that a creature's ailment deals still rolls: its attacker is the creature.
+
+**"An enemy" in code is a character on the monsters' side** (`ACataclysmCharacterBase`, and
+`UCataclysmTeams::TeamOf` answering Monsters). The side alone cannot tell the cases apart:
+`ACataclysmFloorHazardSource`, in whose name the floor deals its damage, is on the monsters' side too, and is not a
+character. A labelled judgement, mine: a character rather than `ACataclysmEnemyCharacter` only, so a hostile minion's
+blow rolls as its summoner's would. The player's own damage to themselves does not roll.
+
+**This corrects two merged entries, which are not edited:**
+
+- 2026-09-16, the Blood Altar entry: "`Famine_Wasting_Sickness` counts any landed hit on the player, so on a floor
+  carrying both rules a pulse can add a Wasting Sickness stack -- as Artillery Strike's landing already can." **Neither
+  can any longer.** A pulse and an Artillery Strike landing are dealt by the floor.
+- 2026-09-17, the Necrotic Ground entry: "on a floor carrying both rows, each second in the fog is a 10% chance of a
+  Wasting Sickness stack". **It is not any longer.** The fog's burn is dealt by the floor.
+
+Every other blow the floor deals in the hazard source's name stops rolling the same way. They were not listed one by
+one: the rule is the attacker's kind, and the whole suite is what measures that no test depended on the old one.
+
+### Leech is asked with the skill's tags (#947)
+
+`UCataclysmLeech::NoteHit` asks the stat pipeline for life, mana and energy shield leech. It passed an empty tag
+container, because it was handed a damage figure and did not know which skill dealt the hit. **So a leech row scoped
+to a kind of skill by `RequiredTags` was discarded in silence.** No authored row was: 17 leech rows were counted on
+2026-10-04 (6 passive, 11 enchantment) and none carries required tags.
+
+`NoteHit` now takes the skill's tags, required and not defaulted, and passes them to `StatForSkill`. Its one caller in
+play, `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, passes the damage effect's asset tags, the same ones
+its critical strike reads use. **A retaliation still asks with no tags** (`NoteRetaliation`): it is not a skill and
+carries none, so a scoped row does not reach it. That is stated in the code and is a labelled judgement, mine.
+
+This is the remainder issue #947 was re-titled to. Attack speed is still read with no tags, on purpose (its own
+comment: a swing rate is not a skill). The eight per-damage-type bonuses the issue names were not measured here
+either.
+
+### Tests
+
+Two new automation tests.
+
+- `Cataclysm.DungeonModifierEffects.WastingSicknessRollsForAnEnemysBlowAndNotForOneTheFloorOrThePlayerDealt`: with
+  the roll pinned to inflict, a blow dealt in the hazard source's name lands and adds no stack; a blow the player
+  deals themselves lands and adds none; an enemy's swing adds one; the same enemy's direct damage, the route a tick
+  of its ailment takes, adds another.
+- `Cataclysm.Leech.ALeechRowScopedToAKindOfSkillReachesOnlyThatKind`: a synthetic row, 10% life leech requiring
+  `Type.Melee`; a ranged skill's hit starts no payment; a melee skill's hit starts one worth 10% of what it took; a
+  hit that names no skill starts none.
+
+`CataclysmFervourTests.cpp` changes in two lines only: its two direct calls of `NoteHit` pass an empty container.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-05 — A Cryptquake collapse always brings its creatures: when neither the drawn point nor the pit's centre has floor in reach, they come on the floor cells nearest the pit
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`BringCreaturesNear`, and the
