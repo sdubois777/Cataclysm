@@ -10,8 +10,9 @@ Decisions made outside the Google Drive documents, newest first.
 `tools/generate_datatables.py` (`ACTION_ONLY_EVENTS`, `REPEAT_SKILL_EVENTS`); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; and `tools/tests/test_generate_datatables.py`.
 Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses the event yet**; the row is the enchantment session's.
+**Applied.** The Unreal compile, the automation suite, the Python suite and the guard proofs ran on 2026-10-06; the
+figures, two failures in tests this change does not touch, and one fault the proofs found are under "Run" at the end
+of this entry. **No enchantment row uses the event yet**; the row is the enchantment session's.
 
 ### What it is for
 
@@ -79,9 +80,78 @@ Three new automation tests.
 
 **Python.** Two new checks: a repeat row may be written on `attack_use`; one on `basic_attack` is refused.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06, in two turns, for a stack of two: this change, then the trigger of a different held skill
+(the entry above) on top of it. Development was 98959d80. Every figure is a line the run printed.
+
+**First turn, at `feat/trigger-held-skill-2` 56b10cdc** (this layer was `feat/attack-use-event-2` c3d02107).
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3192 tests performed, 3190 succeeded, 2 failed: ARemovedObstacleGivesItsCellsBackToTheNavigationMesh, ARuntimeObstacleTakesItsCellsOffTheNavigationMeshAndAPathGoesRound`; `Declared: 3192 tests in the tree at 56b10cdc; 3192 performed, gap 0` |
+| The two failed tests, run again alone with no file changed | `2 tests performed, 2 succeeded, 0 failed` |
+| Python, with continuous integration idle | `5746 passed, 8 skipped in 315.36s`; JUnit `tests="5754" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**The two failures are not this change's, and their cause was not found.** Both are in
+`CataclysmDungeonNavigationTests.cpp`, in the `CataclysmEditor` module, where this stack changes no file; both say a
+navigation mesh rebuild did not finish in the time the test waits; and the six tests this stack adds are among the
+3190 that succeeded. Accepted by the coordinating session under the owner's delegation. Issue
+[#2222](https://github.com/sdubois777/Cataclysm/issues/2222), of which this is the fourth occurrence.
+
+**Second turn, at `feat/trigger-held-skill-3` 8b84d346** (this layer `feat/attack-use-event-3` 998c7048), after the
+one-line fix described below. **No second whole suite**: a labelled exception ruled by the coordinating session,
+because the change is one include of an engine header in a file that already compiled inside a merged compile unit,
+and each proof compiles that file on its own.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| `Cataclysm.Enchantments.`, whole | `220 tests performed, 220 succeeded, 0 failed` |
+| `Cataclysm.TriggeredSkill.`, whole | `4 tests performed, 4 succeeded, 0 failed` |
+| `tools/tests` | `3929 passed, 8 skipped in 43.87s` |
+
+No Python file changed between the two heads, so the Python figures of the first turn stand.
+
+### The fault the proofs found: a header that compiled only inside a merged compile unit
+
+`CataclysmTriggeredSkill.h` declared `static FGameplayTagContainer BasicAttackUseTags(...)` and did not include
+`GameplayTagContainer.h`. **The first build could not see it.** The build tool merges source files into larger compile
+units, and in that unit another file had already included the header. A guard proof's break makes
+`CataclysmTriggeredSkill.cpp` a changed file, the build tool then compiles it on its own, and the header failed:
+
+```
+CataclysmTriggeredSkill.h(127,31): error C3646: 'BasicAttackUseTags': unknown override specifier
+CataclysmTriggeredSkill.h(127,50): error C2059: syntax error: 'const'
+CataclysmTriggeredSkill.cpp(121,49): error C2039: 'BasicAttackUseTags': is not a member of 'UCataclysmTriggeredSkill'
+CataclysmTriggeredSkill.cpp(125,38): error C3861: 'HeldBasicAttack': identifier not found
+Result: Failed (OtherCompilationError)
+```
+
+It would have failed the same way for anyone who edited that file. **The fix is the include**, and proofs Pb and Pc
+below each compiled the file on its own with it in. The other headers this work and the work before it created or
+changed were checked by reading their include lists, not by compiling each alone; this was the only one.
+
+### Guard proofs
+
+Each with one anchor counted and the source hash the same before and after.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa, at 56b10cdc | `CataclysmAbilitySystemComponent.cpp`: `attack_use` is never raised | `Cataclysm.Enchantments.ASkillUseAlsoRaisesAttackUse` | PROVED. 1 performed, 1 failed, 1 failed assertion: "a row on attack_use records a heavy skill" was None against Carom | 1 performed, 1 succeeded |
+| Pb, first attempt, at 56b10cdc | `CataclysmTriggeredSkill.cpp`: `ByShape = FGameplayTag();` in place of the ranged tag | `Cataclysm.Enchantments.ABasicAttackIsAskedWith` | **NO MEASUREMENT.** The build failed; the compiler's message was not kept | not reached |
+| Pb, second attempt, at 56b10cdc | Same file: the Projectile comparison changed to `ECataclysmSkillShape::None` | Same | **NO MEASUREMENT.** The build failed with the errors quoted above, which are the header's and not the break's | not reached |
+| Pb, at 8b84d346 | The first break again | Same | PROVED. 1 performed, 1 failed, 1 failed assertion: "a row for ranged attacks records a Wand's basic attack" was None against Basic Attack | 1 performed, 1 succeeded |
+| Pc, at 8b84d346 | Same file: the basic attack is looked up in the weapon skill table, where it is not | `Cataclysm.Enchantments.AnAttackUseRowRepeatsTheBasicAttack` | PROVED. 1 performed, 1 failed, 1 failed assertion: "the repeat of the basic attack is made" was false | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1. Pa's file is the same at both heads. **Not proven, and
+not provable:** the melee tag added for a Strike basic attack, for the reason "A correction to what the ruling was
+asked on" gives.
+
+**Not run, because no row exists yet:** the loader reading a row on `attack_use`, and anything a worn row does in
+play.
 
 ---
 
