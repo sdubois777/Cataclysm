@@ -4174,13 +4174,18 @@ void UCataclysmAbilitySystemComponent::GrantOwnStack(FName StackKey,
 }
 
 void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags,
-													 const FVector& Aim)
+													 const FVector& Aim, bool bBasicAttack)
 {
 	// A NEW USE BEGINS WITH NOTHING PENDING: a repeat nobody made belongs to the use before, and is let go.
 	ClearPendingRepeat();
 	SkillInHandName = SkillName;
 	SkillInHandAim = Aim;
-	ActOnEvent(FName(TEXT("skill_use")), SkillTags);
+	// NOT `skill_use` FOR THE BASIC ATTACK, as ruled 2026-09-14. `attack_use` is for every paid use.
+	if (!bBasicAttack)
+	{
+		ActOnEvent(FName(TEXT("skill_use")), SkillTags);
+	}
+	ActOnEvent(FName(TEXT("attack_use")), SkillTags);
 	SkillInHandName = NAME_None;
 }
 

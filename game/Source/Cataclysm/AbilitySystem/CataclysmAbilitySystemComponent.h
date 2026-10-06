@@ -599,8 +599,14 @@ public:
 	 * ONE REPEAT FOR ONE USE, ruled 2026-10-05: every row that passes its roll is counted, and one repeat is kept, at
 	 * the highest share among them. The caller makes it on the next tick
 	 * (`UCataclysmTriggeredSkill::MakePendingRepeat`), because this is called from inside the used skill's activation.
+	 *
+	 * AND THE `attack_use` EVENT, RAISED AFTER IT FOR THE SAME USE. Ruled 2026-10-06, for "Your melee attacks have a
+	 * 12%-15% chance to trigger twice": `skill_use` leaves the basic attack out (ruled 2026-09-14) and stays as it
+	 * is, so `attack_use` is the event for EVERY paid use, the basic attack included. With `bBasicAttack` only
+	 * `attack_use` is raised. Both events of one use share the one pending repeat, so one use still gives one repeat.
 	 */
-	void ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags, const FVector& Aim);
+	void ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags, const FVector& Aim,
+					   bool bBasicAttack = false);
 
 	/** The skill a row asked to repeat and that has not been made yet, or none. */
 	FName PendingRepeatSkill() const { return PendingRepeatName; }

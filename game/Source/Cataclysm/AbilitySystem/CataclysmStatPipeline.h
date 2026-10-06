@@ -3871,7 +3871,7 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/**
 	 * Set, this action repeats the skill just used, free, with `Percent` as its chance out of 100, instead of moving
 	 * a pool. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15% chance to cast a second time for free".
-	 * Only on an event that names a skill, which is `skill_use`. See
+	 * Only on an event that names a skill, which is `skill_use` or `attack_use`. See
 	 * `UCataclysmAbilitySystemComponent::ActOnSkillUse` and `UCataclysmTriggeredSkill::MakePendingRepeat`.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")

@@ -5083,9 +5083,10 @@ CLEANSE_ACTION = "cleanse"
 #: `UCataclysmAbilitySystemComponent::RepeatSkillAction` holds the same name.
 REPEAT_SKILL_ACTION = "repeat_skill"
 
-#: The events a repeat may be written on: the ones that name a skill. `skill_use`
-#: is the only one today; the basic attack's own event carries no skill yet.
-REPEAT_SKILL_EVENTS = ("skill_use",)
+#: The events a repeat may be written on: the ones that name a skill.
+#: `skill_use` is every paid use but the basic attack; `attack_use` is every
+#: paid use, the basic attack included. `basic_attack` carries no skill.
+REPEAT_SKILL_EVENTS = ("skill_use", "attack_use")
 
 
 def takes_a_trigger_cooldown(action: str) -> bool:
@@ -5149,6 +5150,11 @@ ACTION_ONLY_EVENTS = (
     "critical_strike",
     "nearby_death",
     "skill_use",
+    # EVERY PAID USE, THE BASIC ATTACK INCLUDED, raised after `skill_use` with
+    # the skill in hand. Ruled 2026-10-06, for "Your melee attacks have a
+    # 12%-15% chance to trigger twice". A basic attack is asked with its own
+    # tags and Type.Melee or Type.Ranged by its shape.
+    "attack_use",
     "hit_dealt",
     # APPLYING A DAMAGE OVER TIME TO ANOTHER CHARACTER, a refresh included.
     # Issue #1833, for "Applying a DoT to an enemy grants 5%-10% increased

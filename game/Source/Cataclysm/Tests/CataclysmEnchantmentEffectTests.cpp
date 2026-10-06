@@ -34,6 +34,7 @@
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
@@ -13346,6 +13347,212 @@ bool FCataclysmRepeatRowSelfBuffTest::RunTest(const FString&)
 	ThePlayerUses(Rig.Player, SelfBuff->Name, SelfBuff->Tags, ECataclysmAbilitySlot::Support, Aim);
 	TestFalse(TEXT("the self buff's repeat is not made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
 	TestEqual(TEXT("and no second copy of it runs"), RepeatsRunning(Rig.System, SelfBuff->Name), 0);
+	return true;
+}
+
+// THE `attack_use` EVENT: every paid use, the basic attack included, with the skill in hand. Ruled 2026-10-06, for
+// "Your melee attacks have a 12%-15% chance to trigger twice". The rows are made by hand, as above. Issue #1833.
+namespace CataclysmAttackUseTest
+{
+	using namespace CataclysmSkillRepeatTest;
+
+	/** A repeat row on `attack_use`. */
+	FCataclysmPoolAction AnAttackRow(const TCHAR* Key, float SharePercent, const TCHAR* TagCell = TEXT(""))
+	{
+		FCataclysmPoolAction Action = ARepeatRow(Key, 15.0f, SharePercent, TagCell);
+		Action.Event = FName(TEXT("attack_use"));
+		return Action;
+	}
+
+	/** Gives the player this weapon and hands back a copy of the basic attack it then holds. */
+	bool HoldTheBasicAttackOf(ACataclysmPlayerCharacter* Player, const TCHAR* WeaponType, FCataclysmWeaponSkill& OutBasic)
+	{
+		UCataclysmWeaponSlotsComponent* Slots =
+			Player ? Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+		if (!Slots)
+		{
+			return false;
+		}
+		Slots->EquipWeaponType(WeaponType);
+		const FCataclysmWeaponSkill* Held = UCataclysmTriggeredSkill::HeldBasicAttack(Player);
+		if (!Held)
+		{
+			return false;
+		}
+		OutBasic = *Held;
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAttackUseBasicAttackTest,
+	"Cataclysm.Enchantments.AnAttackUseRowRepeatsTheBasicAttackFree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAttackUseBasicAttackTest::RunTest(const FString&)
+{
+	using namespace CataclysmAttackUseTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("0"));
+	FCataclysmWeaponSkill Basic;
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestTrue(TEXT("set-up: a Sword and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Sword"), Basic))
+		|| !TestEqual(TEXT("set-up: it carries the one name every basic attack has"), Basic.Name,
+					  FString(UCataclysmWeaponSkills::BasicAttackName)))
+	{
+		return false;
+	}
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(200.0f, 50.0f, 0.0f);
+
+	// A ROW ON `skill_use` STILL IGNORES THE BASIC ATTACK. This is the 2026-09-14 ruling, unchanged.
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:skill"), 15.0f, 100.0f)});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	if (!TestTrue(TEXT("a row on skill_use records nothing for the basic attack"), Rig.System->PendingRepeatSkill().IsNone()))
+	{
+		return false;
+	}
+
+	// A ROW ON `attack_use` RECORDS IT, AT ITS AIM.
+	Rig.System->SetPoolActions({AnAttackRow(TEXT("Test:attack"), 100.0f, TEXT("Type.Melee"))});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	if (!TestEqual(TEXT("a row on attack_use records the basic attack"), Rig.System->PendingRepeatSkill(),
+				   FName(UCataclysmWeaponSkills::BasicAttackName)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("at the point the swing was aimed"), Rig.System->PendingRepeatAim().Equals(Aim, 0.01f));
+
+	// AND IT IS MADE, FROM THE WEAPON'S OWN ROW, FREE AND NOT AS A USE.
+	const float ManaBefore = Rig.System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute());
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	if (!TestTrue(TEXT("the repeat of the basic attack is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it paid no mana"), Rig.System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute()),
+			  ManaBefore);
+	TestEqual(TEXT("and sent no skill-used notice, so a repeat is not repeated"),
+			  UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestFalse(TEXT("and there is no second one to make"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAttackUseEverySkillTest,
+	"Cataclysm.Enchantments.ASkillUseAlsoRaisesAttackUseAndOneUseStillGivesOneRepeat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAttackUseEverySkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmAttackUseTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("0"));
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+
+	// A SKILL THAT IS NOT THE BASIC ATTACK RAISES `attack_use` TOO.
+	Rig.System->SetPoolActions({AnAttackRow(TEXT("Test:attack"), 100.0f)});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	if (!TestEqual(TEXT("a row on attack_use records a heavy skill"), Rig.System->PendingRepeatSkill(),
+				   FName(*Rig.Projectile->Name)))
+	{
+		return false;
+	}
+
+	// A ROW ON EACH EVENT, BOTH PASSING ON ONE USE: one repeat, at the higher share, whichever event holds it.
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:skill"), 15.0f, 50.0f), AnAttackRow(TEXT("Test:attack"), 100.0f)});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("half on skill_use and whole on attack_use: the repeat is whole"), Rig.System->PendingRepeatShare(),
+			  1.0f, 0.001f);
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:skill"), 15.0f, 100.0f), AnAttackRow(TEXT("Test:attack"), 50.0f)});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("whole on skill_use and half on attack_use: the repeat is still whole"),
+			  Rig.System->PendingRepeatShare(), 1.0f, 0.001f);
+
+	TestTrue(TEXT("the repeat is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestFalse(TEXT("and there is no second one to make"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestEqual(TEXT("one repeat is running"), RepeatsRunning(Rig.System, Rig.Projectile->Name), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAttackUseShapeTagTest,
+	"Cataclysm.Enchantments.ABasicAttackIsAskedWithTheMeleeOrRangedTagOfItsShape",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAttackUseShapeTagTest::RunTest(const FString&)
+{
+	using namespace CataclysmAttackUseTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("0"));
+	FCataclysmWeaponSkill Basic;
+	const FGameplayTag Ranged = UCataclysmDamageCalculation::RangedTag();
+	const FName BasicName(UCataclysmWeaponSkills::BasicAttackName);
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestTrue(TEXT("set-up: the ranged tag exists"), Ranged.IsValid())
+		|| !TestTrue(TEXT("set-up: a Wand and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Wand"), Basic))
+		|| !TestTrue(TEXT("set-up: a Wand's basic attack is a projectile"), Basic.Shape == ECataclysmSkillShape::Projectile)
+		|| !TestFalse(TEXT("set-up: and carries no ranged tag of its own"), Basic.Tags.HasTag(Ranged)))
+	{
+		return false;
+	}
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+
+	// A PROJECTILE BASIC ATTACK IS A RANGED ATTACK TO A ROW ON `attack_use`, AND NOT A MELEE ONE.
+	Rig.System->SetPoolActions({AnAttackRow(TEXT("Test:ranged"), 100.0f, TEXT("Type.Ranged"))});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	if (!TestEqual(TEXT("a row for ranged attacks records a Wand's basic attack"), Rig.System->PendingRepeatSkill(),
+				   BasicName))
+	{
+		return false;
+	}
+	Rig.System->SetPoolActions({AnAttackRow(TEXT("Test:melee"), 100.0f, TEXT("Type.Melee"))});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("a row for melee attacks records nothing for it"), Rig.System->PendingRepeatSkill().IsNone());
+
+	// THE ATTACK'S OWN TAGS ARE UNTOUCHED: the tag was added for the question only.
+	const FCataclysmWeaponSkill* Held = UCataclysmTriggeredSkill::HeldBasicAttack(Rig.Player);
+	TestTrue(TEXT("the held basic attack still carries no ranged tag"), Held && !Held->Tags.HasTag(Ranged));
+
+	// A STRIKE BASIC ATTACK IS A MELEE ATTACK AND NOT A RANGED ONE.
+	if (!TestTrue(TEXT("set-up: a Sword and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Sword"), Basic)))
+	{
+		return false;
+	}
+	Rig.System->SetPoolActions({AnAttackRow(TEXT("Test:ranged"), 100.0f, TEXT("Type.Ranged"))});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("a row for ranged attacks records nothing for a Sword's basic attack"),
+			 Rig.System->PendingRepeatSkill().IsNone());
+	Rig.System->SetPoolActions({AnAttackRow(TEXT("Test:melee"), 100.0f, TEXT("Type.Melee"))});
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestEqual(TEXT("a row for melee attacks records it"), Rig.System->PendingRepeatSkill(), BasicName);
 	return true;
 }
 
