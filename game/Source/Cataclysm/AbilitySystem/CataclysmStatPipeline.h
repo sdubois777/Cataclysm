@@ -3987,6 +3987,18 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bOnlyASkillWithACooldown = false;
 
 	/**
+	 * Set, this action rolls `Percent` as a chance that the use in hand, when it is a strike, HITS EVERY ENEMY
+	 * WITHIN `UseHitsAllMetres` of its user, in every direction and with no limit on how many. Ruled 2026-10-06, for
+	 * "Melee skills have a 10%-20% chance to hit all enemies within 3 meters".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseHitsAllNearby = false;
+
+	/** How far "all enemies within" reaches, in metres. 3 is the one sentence's figure; no column carries another. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float UseHitsAllMetres = 3.0f;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833

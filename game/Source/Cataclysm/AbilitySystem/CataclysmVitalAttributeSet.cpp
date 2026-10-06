@@ -1184,7 +1184,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Cast<UCataclysmAbilitySystemComponent>(
 						GetOwningAbilitySystemComponent()))
 			{
-				if (Guarded->IsDamageImmune())
+				// A WORN ROW'S CHANCE THAT THIS BLOW DOES NOTHING TO ITS WEARER. Ruled 2026-10-06. "Spells that
+				// hit you have a 15%-30% chance to be absorbed dealing no damage", and "Melee attacks that hit you
+				// have a 10%-20% chance to be reflected back as retaliation damage": the wearer takes none of a
+				// reflected hit, and the whole of it before mitigation is paid back. ONE ROLL EACH FOR ONE BLOW.
+				// Not for a blow that was evaded, which did not hit; not for a tick; and a reflected hit is not
+				// reflected back, which the no-retaliation tag on it says. EMPTIED HERE, WHERE THE NO-DAMAGE
+				// WINDOW EMPTIES A BLOW, so everything after reads it as that window's blow is read.
+				const bool bMayBeTurned = !Resolved.bEvaded && Hit.Damage > 0.0f && !Guarded->IsDamageImmune();
+				const bool bAbsorbed = bMayBeTurned && UCataclysmDamageCalculation::SpellIsAbsorbed(Guarded, Hit);
+				const bool bReflected = bMayBeTurned && !bAbsorbed
+					&& !AssetTags.HasTag(UCataclysmDamageCalculation::NoRetaliationTag())
+					&& UCataclysmDamageCalculation::MeleeIsReflected(Guarded, Hit);
+				if (bReflected)
+				{
+					UCataclysmRetaliation::PayReflected(
+						Guarded, CataclysmDefendingBody(*this), Data.EffectSpec.GetContext().GetEffectCauser(),
+						Hit.Damage);
+				}
+				if (Guarded->IsDamageImmune() || bAbsorbed || bReflected)
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;

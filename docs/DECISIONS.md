@@ -2,6 +2,140 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A defender can roll to absorb a spell or to reflect a melee hit, and a row can roll for a strike to hit every enemy within 3 metres; no row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (`SpellAbsorbChanceStat`,
+`MeleeReflectChanceStat`, `SpellIsAbsorbed`, `MeleeIsReflected`, two console variables);
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (where a blow is emptied);
+`game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.h` and `.cpp` (`PayReflected`);
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (`StatsWithNoAttribute`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bUseHitsAllNearby`,
+`UseHitsAllMetres`); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`UseHitsAllNearbyAction`, what a use takes); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp`
+(`ThisUseHitsAllWithinCm`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`
+(`UCataclysmStrikeSkill::SwingOnce`); `game/Source/Cataclysm/Items/CataclysmItem.cpp`; `tools/generate_datatables.py`
+(`USE_HITS_ALL_NEARBY_ACTION`); the automation tests in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`
+and `CataclysmSkillTemplateTests.cpp`; and two Python test files. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses any of this yet**; the rows are the enchantment session's.
+
+### What it is for
+
+Three more of the nine sentences that state a chance of their own (the entry below has four):
+
+| Sentence | How a row states it |
+|---|---|
+| "Spells that hit you have a 15%-30% chance to be absorbed dealing no damage" | stat `spell_absorb_chance`, flat 15 to 30 |
+| "Melee attacks that hit you have a 10%-20% chance to be reflected back as retaliation damage" | stat `melee_reflect_chance`, flat 10 to 20 |
+| "Melee skills have a 10%-20% chance to hit all enemies within 3 meters" | action `use_hits_all_nearby` on `skill_use`, scoped `Type.Melee`, value 10 to 20 |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **The absorb is built although it reaches one enemy attack today.** It is one stat beside block negation, and it
+  widens as enemy attacks are tagged.
+- **A reflected hit is not taken by the player, and the whole hit before the player's mitigation is paid back as
+  retaliation, the way retaliation prices it. One roll for one incoming melee hit.**
+- **"Melee skills" is `skill_use`**, by the rule the entry below states: the basic attack does not roll.
+- **"Absorbed spell damage is converted to bonus damage on your next attack" is not in this work.**
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles either defender chance or the 3 metres**; each is the sentence's own
+figure and the rulings above.
+
+### How the two defender chances are built
+
+- **Two stats on the defender, with no gameplay attribute**, read with the blow, as block negation is.
+- **Rolled in the vital set, where the no-damage window empties a blow, and not inside `Resolve`.** A judgement by
+  the writing session: a blow emptied there is already read correctly by everything after it, so an absorbed or
+  reflected blow is treated as that window's blow is.
+- **Not rolled** for a blow that was evaded, for a tick of damage over time, for a blow worth nothing, or while the
+  no-damage window is open. A chance of 100 always passes.
+- **The absorb is asked first**; a blow that is absorbed is not also asked for a reflection. Only a blow carrying
+  `Type.Spell` can be absorbed, and only a melee blow reflected.
+- **A reflected hit is paid back by `UCataclysmRetaliation::PayReflected`**: retaliation's own pricing and delivery,
+  with 100 in place of the defender's retaliation stat. It raises `retaliation_dealt`, reaches retaliation's radius
+  when the defender has one, and cannot itself be retaliated against or reflected.
+- **A defender that also retaliates pays once for a reflected hit.** Retaliation is paid for what got through, and
+  none of a reflected hit did.
+
+### How the strike that hits everything nearby is built
+
+- **A third roll for the use in hand**, beside no damage and an increase, taken by the use the same way.
+- **`UCataclysmStrikeSkill::SwingOnce` then takes every enemy within that distance of the user**, or within the
+  skill's own reach when that is further, in every direction and with no limit on how many.
+- **Only a Strike reads it.** A melee movement skill rolls and nothing changes. A judgement by the writing session.
+- **The 3 metres is the action's own field, defaulting to 3**, since one sentence states it and no column carries a
+  distance for an action. A judgement by the writing session.
+- **A use that deals no damage hits nobody harder for having rolled this**; no damage still wins.
+
+### What the rows need
+
+- **The two stat rows can be written now**: flat, unscoped, no condition.
+- **The hit-all row can be written now**: Action `use_hits_all_nearby`, Action Event `skill_use`, Required Tags
+  `Type.Melee`, the chance in Value Low and Value High. No Fraction Of, no Value Kind, no Scale.
+
+### Consequences, stated rather than changed
+
+- **The absorb reaches one enemy attack on 2026-10-06**: the Succubus's Soulfire, the only enemy attack tagged
+  `Type.Spell`.
+- **A reflected hit kills nobody by being taken**: the wearer takes nothing, so a lethal melee hit that is reflected
+  is survived.
+- **An absorbed or a reflected blow still counts as a hit taken.** Read in
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`: `NoteHitTaken`, the "every Nth hit you take" count and
+  `NoteMeleeHitTaken` ask whether the blow was evaded and not what it dealt, so they count a blow these two chances
+  emptied as they count one the no-damage window emptied. So do the attacker's own hit counts. Read, not run: no
+  accessor reads those counts back without a row, so no test was added for it.
+- **The reflection is priced before the wearer's mitigation**, so armour does not lower what goes back.
+
+### Tests
+
+Three new automation tests, and two probes the stat list requires.
+
+- `Cataclysm.StatExemption.ASpellIsAbsorbedOnItsRollAndABlowThatIsNotASpellNever`.
+- `Cataclysm.StatExemption.AReflectedMeleeHitIsNotTakenAndIsPaidBackWholeAsRetaliationIsPriced`: what goes back equals
+  what a defender with 100 per cent retaliation sends back; a roll at the chance does not reflect; a spell is not
+  reflected; a defender that also retaliates pays once.
+- `Cataclysm.Skills.AStrikeARowRolledToHitAllNearbyHitsEveryEnemyAroundItsUserAndTheNextStrikeDoesNot`.
+- `ProbeSpellAbsorbChance` and `ProbeMeleeReflectChance`, run by
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**Python.** Two new checks: the generator's hit-all name equals the engine's, and a hit-all row is carried through.
+
+### Run
+
+One window on 2026-10-06 for a stack of three, at `feat/zone-stats-2` 0ca651cc: the roll for a use
+(`feat/use-outcome-roll-2` 190b39b4), the two defender chances and the strike that hits all nearby
+(`feat/defender-chances-and-hit-all-2` 478a593c), then the four stats a persistent area reads. Development was
+f77a7e5b. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3207 tests performed, 3207 succeeded, 0 failed`; `Declared: 3207 tests in the tree at 0ca651cc; 3207 performed, gap 0` |
+| Python, with continuous integration idle | `5762 passed, 8 skipped in 312.75s`; JUnit `tests="5770" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 0ca651cc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmVitalAttributeSet.cpp`: an absorbed spell is not emptied | `Cataclysm.StatExemption.ASpellIsAbsorbedOnItsRoll` | 1 performed, 1 failed, 1 failed assertion: on a roll of 29 against 30 the spell dealt 1000.000000 against 0 | 1 performed, 1 succeeded |
+| Pb | `CataclysmRetaliation.cpp`: a reflected hit is paid back at half | `Cataclysm.StatExemption.AReflectedMeleeHitIsNotTaken` | 1 performed, 1 failed, 1 failed assertion: 500.000000 went back against the 1000.000000 retaliation at 100 per cent sends | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplates.cpp`: the strike never takes the wider search | `Cataclysm.Skills.AStrikeARowRolledToHitAllNearby` | 1 performed, 1 failed, 1 failed assertion: "the enemy 2.5 m in front is hurt" was false | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1.
+
+**Figures the proofs printed.** A blow of 1000 from the test attacker: absorbed, it dealt 0; reflected, 1000 went
+back, the same as a defender with 100 per cent retaliation sends.
+
+**Not run, because no row exists yet:** either stat or the action read from the effect table, and anything a worn
+row does in play.
+
+---
+
 ## 2026-10-06 — A row can roll, once for a use, that the use deals no damage or deals increased damage: four actions, with no row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bUseDealsNoDamage`,
