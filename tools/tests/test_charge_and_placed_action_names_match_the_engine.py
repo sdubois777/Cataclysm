@@ -78,6 +78,7 @@ CONSTANTS = {
     "AilmentSpeedAction": "ailment_speed",
     "AilmentMovementSpeedAction": "ailment_movement_speed",
     "AilmentSpreadOnDeathAction": "ailment_spread_on_death",
+    "AilmentDetonatesWhenReappliedAction": "ailment_detonates_when_reapplied",
     # AND THE TWO THAT TRIGGER A DIFFERENT HELD SKILL, ruled 2026-10-06.
     "TriggerHeldSkillAction": "trigger_held_skill",
     "TriggerHeldSpellAction": "trigger_held_spell",

@@ -15507,4 +15507,131 @@ bool FCataclysmSpellsBackfireRowTest::RunTest(const FString&)
 	return true;
 }
 
+// A VOID SPLINTER THAT DETONATES WHEN IT IS APPLIED AGAIN. Issue #1833, ruled 2026-10-06 for "Void splinter stacks
+// detonate for 50%-100% increased damage": the stack is the one running effect; the character whose application is
+// running applies it again; what the running one had left is dealt at once, raised by the row; and with no row a
+// second application does what it always did. The rows here are made by hand; the authored row has its own test.
+namespace CataclysmDetonationTest
+{
+	using namespace CataclysmSpreadOnDeathTest;
+
+	/** One per cent of current health a tick for four seconds, which is the ailment's own row. */
+	bool Splinter(AActor* By, AActor* On, const FGameplayTag& Tag)
+	{
+		return UCataclysmSkillEffects::ApplyShareOfHealthOverTime(By, On, 0.01f, 4.0f, Tag);
+	}
+
+	float HealthOf(const AActor* Who)
+	{
+		const UCataclysmAbilitySystemComponent* System = SystemOf(Who);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
+	/** What `On` loses AT ONCE when `By` applies a Void Splinter to it. No clock runs, so no tick lands. */
+	float LostAtOnceWhenApplied(AActor* By, AActor* On, const FGameplayTag& Tag)
+	{
+		const float Before = HealthOf(On);
+		Splinter(By, On, Tag);
+		return Before - HealthOf(On);
+	}
+
+	/** A hand-made row that hangs this increase on the ailment's detonation. */
+	FCataclysmPoolAction Detonates(const FGameplayTag& Tag, float Increase)
+	{
+		FCataclysmPoolAction Row;
+		Row.Rider = ECataclysmAilmentRider::DetonatesWhenReapplied;
+		Row.Ailment = Tag;
+		Row.Percent = Increase;
+		return Row;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidSplinterDetonatesTest,
+	"Cataclysm.Enchantments.AVoidSplinterAppliedAgainByItsApplierDealsWhatWasLeftAtOnceOnlyWhenARowSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Four creatures built alike, each carrying a Void Splinter that has dealt
+ * nothing yet, so each has the same amount left. With no row, applying it again
+ * takes nothing at once. With a row of 50 it takes one and a half times what
+ * was left, and with a row of 100 twice, so the second is four thirds of the
+ * first: a comparison that holds whatever a creature's own defences take off.
+ * Another character's Void Splinter is not detonated. And the detonated one is
+ * replaced by a new one.
+ */
+bool FCataclysmVoidSplinterDetonatesTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmDetonationTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	FWearer Other(World);
+	const FGameplayTag Tag = Ailment(TEXT("Keyword.DoT.VoidSplinter"));
+	ACataclysmEnemyCharacter* Plain = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* Half = Beside(World, 2.0f);
+	ACataclysmEnemyCharacter* Whole = Beside(World, 4.0f);
+	ACataclysmEnemyCharacter* Theirs = Beside(World, 6.0f);
+	if (!TestTrue(TEXT("set-up: the void splinter tag is registered"), Tag.IsValid())
+		|| !TestNotNull(TEXT("set-up: the first creature"), Plain)
+		|| !TestNotNull(TEXT("set-up: the second creature"), Half)
+		|| !TestNotNull(TEXT("set-up: the third creature"), Whole)
+		|| !TestNotNull(TEXT("set-up: the fourth creature"), Theirs))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the wearer splinters three and the other character the fourth"),
+				  Splinter(Wearer.Actor, Plain, Tag) && Splinter(Wearer.Actor, Half, Tag)
+					  && Splinter(Wearer.Actor, Whole, Tag) && Splinter(Other.Actor, Theirs, Tag)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with no row the percent is nought: the ailment does not detonate by itself"),
+		UCataclysmSkillEffects::DetonationPercentWhenReapplied(Wearer.AbilitySystem, Tag), 0.0f, 0.001f);
+
+	// NO ROW: a second application takes nothing at once.
+	TestEqual(TEXT("with no row, applying it again takes nothing at once"),
+		LostAtOnceWhenApplied(Wearer.Actor, Plain, Tag), 0.0f, 0.001f);
+
+	// A ROW OF 50: one and a half times what was left.
+	Wearer.AbilitySystem->SetPoolActions({Detonates(Tag, 50.0f)});
+	TestEqual(TEXT("a row of 50 makes the percent 150"),
+		UCataclysmSkillEffects::DetonationPercentWhenReapplied(Wearer.AbilitySystem, Tag), 150.0f, 0.001f);
+	const float HealthAtFirst = HealthOf(Half);
+	const float AtHalf = LostAtOnceWhenApplied(Wearer.Actor, Half, Tag);
+	if (!TestTrue(TEXT("set-up: the creature has health to lose"), HealthAtFirst > 0.0f)
+		|| !TestTrue(TEXT("with a row, applying it again takes something at once"), AtHalf > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the creature carries a void splinter still: a new one runs"), Carries(Half, Tag));
+	// THE NEW ONE HAS ALL ITS TICKS LEFT, as the first had, so a third application takes the same share of the
+	// health the creature has by then.
+	const float HealthAtSecond = HealthOf(Half);
+	const float AtHalfAgain = LostAtOnceWhenApplied(Wearer.Actor, Half, Tag);
+	TestEqual(TEXT("a third application detonates the new one for the same share of the health then held"),
+		AtHalfAgain / HealthAtSecond, AtHalf / HealthAtFirst, 0.0001f);
+
+	// A ROW OF 100: twice what was left, so four thirds of the row of 50.
+	Wearer.AbilitySystem->SetPoolActions({Detonates(Tag, 100.0f)});
+	const float AtWhole = LostAtOnceWhenApplied(Wearer.Actor, Whole, Tag);
+	TestEqual(TEXT("a row of 100 takes four thirds of what a row of 50 took from a creature built alike"),
+		AtWhole, AtHalf * 4.0f / 3.0f, AtHalf * 0.005f);
+
+	// ANOTHER CHARACTER'S IS NOT DETONATED.
+	TestEqual(TEXT("the wearer's row does not detonate a void splinter another character applied"),
+		LostAtOnceWhenApplied(Wearer.Actor, Theirs, Tag), 0.0f, 0.001f);
+
+	// A ROW ON ANOTHER AILMENT DOES NOT DETONATE THIS ONE.
+	Wearer.AbilitySystem->SetPoolActions({Detonates(Ailment(TEXT("Keyword.DoT.Disease")), 100.0f)});
+	TestEqual(TEXT("a row hung on another ailment leaves this one's percent at nought"),
+		UCataclysmSkillEffects::DetonationPercentWhenReapplied(Wearer.AbilitySystem, Tag), 0.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
