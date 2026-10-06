@@ -39,6 +39,28 @@ queues to be leeched: 100 and 200.
 **Starvation's six-piece bonus is not built.** "5% damage reduction for each active unique instance of leech"
 needs a count of the leech payments a character holds, which nothing reads.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-05 in one window with two layers below this one and one above, on `development` 6efeac81. The
+builds, both whole suites and the Python of record are in the timed cleanse entry's table and were all run with
+this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| This layer's test against the asset built before its rows | 43c17ee7 | failed on 9 assertions, inside "204 tests performed, 199 succeeded, 5 failed": two kills, twelve kills and just inside four seconds, for each of the three kinds of leech |
+| The asset, regenerated with the editor | 43c17ee7 | `DT_EnchantmentEffects.uasset` and its entry in `datatable_asset_sources.json`, rows 467 to 470 |
+| Cataclysm.Enchantments. | eabbef30 | 204 tests performed, 204 succeeded, 0 failed; 0 ensures |
+| Proof C: life leech read from the attribute and not asked for, on Cataclysm.StatExemption. | eabbef30 | PROVED: with the break in: 3 tests performed, 2 succeeded, 1 failed: EveryStatTheDataScalesIsAskedForThroughThePipeline \| restored: 3 tests performed, 3 succeeded, 0 failed |
+| Python proof 3: `life_leech` taken off the list of stats something asks for, in a copy | eabbef30 | PROVED: 4 failed, 487 passed \| restored: 491 passed |
+
+Proof C kept its broken run's log and failed exactly the two assertions predicted, both in the life leech probe.
+Python proof 3's four are the check that the generator's list and the probe table are the same set, the check
+that no shipped row is refused, and two checks that run the generator against the real workbook.
+
+**The leech function gained a parameter while this layer waited.** `UCataclysmLeech::NoteHit` takes the tags of
+the skill that dealt the hit since the Wasting Sickness entry of this date, which merged first. The three probes
+pass an empty container, which is what a hit with no skill behind it passes.
+
 ---
 
 ## 2026-10-05 — Four drawbacks take a share of the wearer's own damage: a row may take a share of what a hit dealt or retaliation dealt
