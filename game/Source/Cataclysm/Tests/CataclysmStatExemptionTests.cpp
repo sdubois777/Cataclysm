@@ -5425,6 +5425,33 @@ namespace CataclysmStatExemptionTest
 					  WhenHurt.DealtToHealth > AtFull.DealtToHealth * 1.2f);
 	}
 
+	/**
+	 * `skill_cost_paid_from_health`, read by `UCataclysmGameplayAbility::CostPool`.
+	 * Issue #2228. Granted under `health_below` 50, as the one row that states it
+	 * is: a cost comes out of mana at full health and out of health below half,
+	 * and the mana pool's maximum is what it was either way.
+	 */
+	void ProbeCostPaidFromHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmGameplayAbility::CostPaidFromHealthStat,
+							 ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestTrue(TEXT("skill_cost_paid_from_health at full health: a cost comes out of mana"),
+					  UCataclysmGameplayAbility::CostPool(Fighter.AbilitySystem) == Vital::GetManaAttribute());
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("skill_cost_paid_from_health is asked for, so below half health a cost comes out of "
+						   "health"),
+					  UCataclysmGameplayAbility::CostPool(Fighter.AbilitySystem) == Vital::GetHealthAttribute());
+		Test.TestFalse(TEXT("and it is not the stat that converts the mana pool"),
+					   UCataclysmSkillTemplate::ManaPoolBecomesHealth(Fighter.AbilitySystem));
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5457,6 +5484,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_immunity_after_lethal_hit_seconds"), &ProbeImmuneAfterLethalHit},
 			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
+			{TEXT("skill_cost_paid_from_health"), &ProbeCostPaidFromHealth},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
