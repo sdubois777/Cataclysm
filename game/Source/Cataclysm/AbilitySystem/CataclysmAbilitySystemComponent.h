@@ -630,6 +630,14 @@ public:
 		PendingUseIncreasePercent = 0.0f;
 		return Was;
 	}
+	/** How far the use in hand hits every enemy, in centimetres, when a row rolled that; nought otherwise. */
+	float TakePendingUseHitsAllCm()
+	{
+		const float Was = PendingUseHitsAllCm;
+		PendingUseHitsAllCm = 0.0f;
+		return Was;
+	}
+	float PendingUseHitsAll() const { return PendingUseHitsAllCm; }
 	bool PendingUseNoDamage() const { return bPendingUseNoDamage; }
 	float PendingUseIncrease() const { return PendingUseIncreasePercent; }
 
@@ -934,6 +942,9 @@ public:
 	static const TCHAR* CooldownUseNoDamageAction;
 	static const TCHAR* UseIncreasedDamageAction;
 	static const TCHAR* CooldownUseIncreasedDamageAction;
+
+	/** The action that rolls for a strike to hit every enemy nearby. Ruled 2026-10-06. See `bUseHitsAllNearby`. */
+	static const TCHAR* UseHitsAllNearbyAction;
 
 	/**
 	 * How far "nearby" reaches for those two actions, five metres. A judgement
@@ -3553,6 +3564,7 @@ protected:
 	/** What the rows rolled for the use in hand. See `TakePendingUseNoDamage`. */
 	bool bPendingUseNoDamage = false;
 	float PendingUseIncreasePercent = 0.0f;
+	float PendingUseHitsAllCm = 0.0f;
 	float PendingFollowThroughUntilSeconds = -1.0f;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */

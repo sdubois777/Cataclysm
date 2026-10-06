@@ -4537,6 +4537,73 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * What one blow carrying these tags, from `Attacker`, takes from `Defender`'s health. The critical strike roll is
+	 * pinned by the caller. Ruled 2026-10-06, for the two chances a defender rolls against an incoming blow.
+	 */
+	float TaggedBlowOn(FScopedFighter& Attacker, FScopedFighter& Defender, const TCHAR* TagCell)
+	{
+		const float Before = Defender.Health();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 UCataclysmSkillShapes::TagsFromCell(TagCell), FCataclysmHitDelivery());
+		return Before - Defender.Health();
+	}
+
+	/** Gives a defender this much of one of the two chances, on a base of nothing. */
+	void CarryAChance(FScopedFighter& Defender, const TCHAR* Stat, float Chance)
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(Stat)).Base = Chance;
+		Defender.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	}
+
+	/**
+	 * `spell_absorb_chance` is read by `UCataclysmDamageCalculation::SpellIsAbsorbed`, asked in the vital set beside
+	 * the no-damage window. A defender carrying 100 of it takes nothing from a spell a plain defender is hurt by.
+	 */
+	void ProbeSpellAbsorbChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Carrying(World, /*AttackDamage=*/0.0f);
+		CarryAChance(Carrying, UCataclysmDamageCalculation::SpellAbsorbChanceStat, 100.0f);
+		Test.TestTrue(TEXT("a spell hurts the plain defender"), TaggedBlowOn(Attacker, Plain, TEXT("Type.Spell")) > 0.0f);
+		Test.TestEqual(TEXT("and takes nothing from the carrying one"),
+			TaggedBlowOn(Attacker, Carrying, TEXT("Type.Spell")), 0.0f, 0.001f);
+	}
+
+	/**
+	 * `melee_reflect_chance` is read by `UCataclysmDamageCalculation::MeleeIsReflected`, asked in the same place. A
+	 * defender carrying 100 of it takes nothing from a melee blow, and the attacker is hurt.
+	 */
+	void ProbeMeleeReflectChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Carrying(World, /*AttackDamage=*/0.0f);
+		CarryAChance(Carrying, UCataclysmDamageCalculation::MeleeReflectChanceStat, 100.0f);
+		Test.TestTrue(TEXT("a melee blow hurts the plain defender"),
+			TaggedBlowOn(Attacker, Plain, TEXT("Type.Melee")) > 0.0f);
+		const float AttackerBefore = Attacker.Health();
+		Test.TestEqual(TEXT("and takes nothing from the carrying one"),
+			TaggedBlowOn(Attacker, Carrying, TEXT("Type.Melee")), 0.0f, 0.001f);
+		Test.TestTrue(TEXT("and the attacker is hurt by what came back"), AttackerBefore - Attacker.Health() > 0.0f);
+	}
+
+	/**
 	 * `block_negation_chance` is read by `UCataclysmDamageCalculation::Resolve`
 	 * inside the block step. Issue #1833 group E part 2. A defender carrying 100
 	 * of it keeps nothing of a blocked blow, with the negation roll pinned at 0.
@@ -5133,6 +5200,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("knockback_suppressed"), &ProbeSetStance},
 			{TEXT("block_damage_reduction"), &ProbeBlockDamageReduction},
 			{TEXT("block_negation_chance"), &ProbeBlockNegationChance},
+			{TEXT("spell_absorb_chance"), &ProbeSpellAbsorbChance},
+			{TEXT("melee_reflect_chance"), &ProbeMeleeReflectChance},
 			{TEXT("self_buff_shared_within_metres"), &ProbeSelfBuffShared},
 			{TEXT("support_buff_shared_within_metres"), &ProbeSupportBuffShared},
 			{TEXT("nearby_allies_more_damage"), &ProbeNearbyAlliesMoreDamage},
@@ -5444,6 +5513,126 @@ bool FCataclysmMinionDurationFloorTest::RunTest(const FString&)
 					  Cut),
 				  Imp->GetLifeSpan(), 20.0f, 0.01f);
 	}
+	return true;
+}
+
+// THE TWO CHANCES A DEFENDER ROLLS AGAINST AN INCOMING BLOW. Ruled 2026-10-06: "Spells that hit you have a 15%-30%
+// chance to be absorbed dealing no damage" and "Melee attacks that hit you have a 10%-20% chance to be reflected back as
+// retaliation damage". Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellAbsorbChanceTest,
+	"Cataclysm.StatExemption.ASpellIsAbsorbedOnItsRollAndABlowThatIsNotASpellNever",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpellAbsorbChanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	FPinnedRoll Absorb(TEXT("Cataclysm.SpellAbsorbRoll"), 29.0f);
+	if (!TestNotNull(TEXT("set-up: the absorb roll can be pinned"), Absorb.Variable))
+	{
+		return false;
+	}
+	FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+	FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+	FScopedFighter Carrying(World, /*AttackDamage=*/0.0f);
+	CarryAChance(Carrying, UCataclysmDamageCalculation::SpellAbsorbChanceStat, 30.0f);
+
+	const float Whole = TaggedBlowOn(Attacker, Plain, TEXT("Type.Spell"));
+	if (!TestTrue(TEXT("control: a spell hurts a defender carrying none of the chance"), Whole > 0.0f))
+	{
+		return false;
+	}
+
+	// A ROLL BELOW THE CHANCE ABSORBS THE SPELL.
+	if (!TestEqual(TEXT("a roll of 29 against a chance of 30: the spell deals nothing"),
+				   TaggedBlowOn(Attacker, Carrying, TEXT("Type.Spell")), 0.0f, 0.001f))
+	{
+		return false;
+	}
+	// A ROLL AT THE CHANCE DOES NOT.
+	Absorb.Variable->Set(30.0f, ECVF_SetByConsole);
+	TestEqual(TEXT("a roll of 30 against a chance of 30: the spell deals the whole"),
+			  TaggedBlowOn(Attacker, Carrying, TEXT("Type.Spell")), Whole, 0.01f);
+	// A BLOW THAT IS NOT A SPELL IS NEVER ABSORBED, whatever the roll.
+	Absorb.Variable->Set(0.0f, ECVF_SetByConsole);
+	TestTrue(TEXT("a melee blow is not absorbed"), TaggedBlowOn(Attacker, Carrying, TEXT("Type.Melee")) > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeReflectChanceTest,
+	"Cataclysm.StatExemption.AReflectedMeleeHitIsNotTakenAndIsPaidBackWholeAsRetaliationIsPriced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMeleeReflectChanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	FPinnedRoll Reflect(TEXT("Cataclysm.MeleeReflectRoll"), 0.0f);
+	if (!TestNotNull(TEXT("set-up: the reflect roll can be pinned"), Reflect.Variable))
+	{
+		return false;
+	}
+	FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+
+	// WHAT RETALIATION AT 100 PER CENT SENDS BACK, which is the price a reflected hit is paid at.
+	FScopedFighter Retaliating(World, /*AttackDamage=*/0.0f);
+	Retaliating.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 100.0f);
+	float AttackerBefore = Attacker.Health();
+	const float TakenByTheRetaliator = TaggedBlowOn(Attacker, Retaliating, TEXT("Type.Melee"));
+	const float SentBackByRetaliation = AttackerBefore - Attacker.Health();
+	if (!TestTrue(TEXT("control: a retaliating defender is hurt and sends something back"),
+				  TakenByTheRetaliator > 0.0f && SentBackByRetaliation > 0.0f))
+	{
+		return false;
+	}
+
+	// A REFLECTED HIT: THE DEFENDER TAKES NONE OF IT, AND THE WHOLE OF IT GOES BACK AT THAT PRICE.
+	FScopedFighter Reflecting(World, /*AttackDamage=*/0.0f);
+	CarryAChance(Reflecting, UCataclysmDamageCalculation::MeleeReflectChanceStat, 20.0f);
+	AttackerBefore = Attacker.Health();
+	if (!TestEqual(TEXT("the reflecting defender takes none of the melee hit"),
+				   TaggedBlowOn(Attacker, Reflecting, TEXT("Type.Melee")), 0.0f, 0.001f))
+	{
+		return false;
+	}
+	const float SentBackByTheReflection = AttackerBefore - Attacker.Health();
+	TestEqual(TEXT("and sends back what retaliation at 100 per cent sends"), SentBackByTheReflection,
+			  SentBackByRetaliation, 0.01f);
+
+	// A ROLL AT THE CHANCE DOES NOT REFLECT, and a spell is never reflected.
+	Reflect.Variable->Set(20.0f, ECVF_SetByConsole);
+	AttackerBefore = Attacker.Health();
+	TestTrue(TEXT("a roll of 20 against a chance of 20: the hit is taken"),
+			 TaggedBlowOn(Attacker, Reflecting, TEXT("Type.Melee")) > 0.0f);
+	TestEqual(TEXT("and nothing goes back"), AttackerBefore - Attacker.Health(), 0.0f, 0.001f);
+	Reflect.Variable->Set(0.0f, ECVF_SetByConsole);
+	AttackerBefore = Attacker.Health();
+	TestTrue(TEXT("a spell is not reflected"), TaggedBlowOn(Attacker, Reflecting, TEXT("Type.Spell")) > 0.0f);
+	TestEqual(TEXT("and nothing goes back for it"), AttackerBefore - Attacker.Health(), 0.0f, 0.001f);
+
+	// A DEFENDER THAT ALSO RETALIATES PAYS ONCE FOR A REFLECTED HIT, not once for each.
+	FScopedFighter Both(World, /*AttackDamage=*/0.0f);
+	Both.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 100.0f);
+	CarryAChance(Both, UCataclysmDamageCalculation::MeleeReflectChanceStat, 20.0f);
+	AttackerBefore = Attacker.Health();
+	TaggedBlowOn(Attacker, Both, TEXT("Type.Melee"));
+	TestEqual(TEXT("a defender that reflects and retaliates sends back the reflection alone"),
+			  AttackerBefore - Attacker.Health(), SentBackByTheReflection, 0.01f);
 	return true;
 }
 

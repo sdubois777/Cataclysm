@@ -67,7 +67,7 @@ namespace
 }
 
 float UCataclysmRetaliation::AmountFor(const UAbilitySystemComponent* Defender,
-									   float DamageTaken)
+									   float DamageTaken, float PercentInPlaceOfTheStat)
 {
 	if (DamageTaken <= 0.0f)
 	{
@@ -78,7 +78,8 @@ float UCataclysmRetaliation::AmountFor(const UAbilitySystemComponent* Defender,
 		return 0.0f;
 	}
 
-	const float Percent = StatOfRetaliator(
+	// A REFLECTED HIT STATES ITS OWN SHARE, the whole of it, and does not read the defender's stat.
+	const float Percent = PercentInPlaceOfTheStat >= 0.0f ? PercentInPlaceOfTheStat : StatOfRetaliator(
 		Defender, AmountStat,
 		UCataclysmCombatAttributeSet::GetRetaliationAttribute());
 	if (Percent <= 0.0f)
@@ -169,11 +170,17 @@ TArray<AActor*> UCataclysmRetaliation::TargetsOf(
 	return Targets;
 }
 
+float UCataclysmRetaliation::PayReflected(UAbilitySystemComponent* Defender, AActor* Instigator, AActor* Attacker,
+										  float DamageTaken)
+{
+	return Pay(Defender, Instigator, Attacker, DamageTaken, /*PercentInPlaceOfTheStat=*/100.0f);
+}
+
 float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 								 AActor* Instigator, AActor* Attacker,
-								 float DamageTaken)
+								 float DamageTaken, float PercentInPlaceOfTheStat)
 {
-	const float Amount = AmountFor(Defender, DamageTaken);
+	const float Amount = AmountFor(Defender, DamageTaken, PercentInPlaceOfTheStat);
 	if (Amount <= 0.0f)
 	{
 		// A CHARACTER WITH NONE OF THE STAT SENDS NOTHING BACK. Three things

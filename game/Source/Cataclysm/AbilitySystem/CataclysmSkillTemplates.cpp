@@ -364,9 +364,16 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// swing's caster holds Every Swing Lands. The nearest are still taken first
 	// and the target limit still holds, so a one-target basic attack takes the
 	// nearest enemy in any direction rather than only in front.
-	const TArray<AActor*> Targets = UCataclysmTargeting::FindEnemiesInCone(
-		GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
-		ScaledRadiusCm(), ArcDegrees(), Params.MaxTargets);
+	//
+	// UNLESS A ROW ROLLED THAT THIS USE HITS EVERY ENEMY NEARBY. Ruled 2026-10-06. Then it is every enemy within
+	// that distance of the user, or within the skill's own reach when that is further, in every direction and with
+	// no limit on how many.
+	const TArray<AActor*> Targets = ThisUseHitsAllWithinCm > 0.0f
+		? UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Self->GetActorLocation(), FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
+		: UCataclysmTargeting::FindEnemiesInCone(
+			GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
+			ScaledRadiusCm(), ArcDegrees(), Params.MaxTargets);
 
 	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
 	// than tidy. Quench gives an enemy whose fire was just put out 50% more
