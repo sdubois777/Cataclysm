@@ -609,8 +609,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 478 over 392: one row on one enchantment.
 #: AND 484 OVER 398 SINCE FIVE MORE ROWS THAT REPEAT A SKILL,
 #: issue #1833, 2026-10-06, from 479 over 393: five rows on five enchantments.
-AUTHORED_ROWS = 484
-AUTHORED_ENCHANTMENTS = 398
+#: AND 485 OVER 399 SINCE THE MELEE ATTACKS ROW ON attack_use,
+#: issue #1833, 2026-10-06, from 484 over 398: one row on one enchantment.
+AUTHORED_ROWS = 485
+AUTHORED_ENCHANTMENTS = 399
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

@@ -483,3 +483,4 @@ Positive_Each_skill_has_a_20_40_chance_to_cast_a_duplic#1,Positive_Each_skill_ha
 Positive_Your_heavy_attack_applies_its_full_effect_twice#1,Positive_Your_heavy_attack_applies_its_full_effect_twice,,,100.0,100.0,Slot.Heavy,stationary_for_seconds,2.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Your_spells_echo_1_time#1,Positive_Your_spells_echo_1_time,,,100.0,100.0,Type.Spell,,0.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Your_ultimate_ability_applies_its_effect_twice#1,Positive_Your_ultimate_ability_applies_its_effect_twice,,,100.0,100.0,Slot.Ultimate,,0.0,,0.0,repeat_skill,skill_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Your_melee_attacks_have_a_12_15_chance_to_trig#1,Positive_Your_melee_attacks_have_a_12_15_chance_to_trig,,,12.0,15.0,Type.Melee,,0.0,,0.0,repeat_skill,attack_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
