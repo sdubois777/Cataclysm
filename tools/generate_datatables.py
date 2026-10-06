@@ -5116,6 +5116,22 @@ REPEAT_SKILL_ACTION = "repeat_skill"
 #: paid use, the basic attack included. `basic_attack` carries no skill.
 REPEAT_SKILL_EVENTS = ("skill_use", "attack_use")
 
+#: The actions that trigger a DIFFERENT skill the character holds, with the
+#: value as the chance. Ruled 2026-10-06, for Spellblade's Will. The first
+#: takes a held skill with a cooldown, free: "Your melee attacks have a 25%
+#: chance to trigger an ability with a cooldown". The second takes a held
+#: spell, which pays its cost and starts no cooldown: "Your melee attacks have
+#: a 25% of triggering one of your spells".
+#: `UCataclysmAbilitySystemComponent::TriggerHeldSkillAction` and
+#: `TriggerHeldSpellAction` hold the same names.
+TRIGGER_HELD_SKILL_ACTION = "trigger_held_skill"
+TRIGGER_HELD_SPELL_ACTION = "trigger_held_spell"
+
+#: Every action that acts on the skill of the use in hand. Each is written on
+#: an event that names a skill, and its value is a chance and nothing else.
+SKILL_IN_HAND_ACTIONS = (REPEAT_SKILL_ACTION, TRIGGER_HELD_SKILL_ACTION,
+                         TRIGGER_HELD_SPELL_ACTION)
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -5349,7 +5365,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_damage_immunity_action(index, who, action, event, fraction_of,
                                       kind, raw, headers)
         return
-    if action == REPEAT_SKILL_ACTION:
+    if action in SKILL_IN_HAND_ACTIONS:
         _check_repeat_skill_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
         return
@@ -5380,8 +5396,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
             f"or {REFLECT_BLOCKED_ACTION}; or {CLEANSE_ACTION}; "
-            f"or {REPEAT_SKILL_ACTION}; or a rider on an ailment, "
-            f"{', '.join(AILMENT_RIDER_ACTIONS)}.")
+            f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
+            f"or a rider on an ailment, {', '.join(AILMENT_RIDER_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -5687,6 +5703,10 @@ def _check_repeat_skill_action(index: int, who: str, action: str, event: str,
     skill; the chance is checked where the value is read. A fraction, a value
     kind and a scale each mean nothing here, so each is refused rather than
     dropped.
+
+    THE SAME FOR A ROW THAT TRIGGERS A DIFFERENT HELD SKILL, which needs the
+    skill of the use to leave it out. The messages say "repeats a skill" for
+    all three, and name the action.
     """
     if event not in REPEAT_SKILL_EVENTS:
         raise DataError(
@@ -5974,7 +5994,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != DAMAGE_IMMUNITY_ACTION \
                     and action != REFLECT_BLOCKED_ACTION \
                     and action != CLEANSE_ACTION \
-                    and action != REPEAT_SKILL_ACTION \
+                    and action not in SKILL_IN_HAND_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
@@ -6132,7 +6152,7 @@ def enchantment_effects(book) -> list[dict]:
                     f"0 and up to 100.")
 
         # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
-        if action == REPEAT_SKILL_ACTION:
+        if action in SKILL_IN_HAND_ACTIONS:
             if not (0 < low <= 100 and 0 < high <= 100):
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} repeats a skill "
