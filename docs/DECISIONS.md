@@ -11,8 +11,8 @@ Decisions made outside the Google Drive documents, newest first.
 `game/Source/Cataclysm/Tests/CataclysmLeechTests.cpp` and `game/Source/Cataclysm/Tests/CataclysmFervourTests.cpp`.
 Issues [#1946](https://github.com/sdubois777/Cataclysm/issues/1946) and
 [#947](https://github.com/sdubois777/Cataclysm/issues/947).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-05;
+the figures are under "Run" at the end of this entry.
 
 Two small changes in one layer. Neither needs the other.
 
@@ -74,9 +74,32 @@ Two new automation tests.
 
 `CataclysmFervourTests.cpp` changes in two lines only: its two direct calls of `NoteHit` pass an empty container.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-05 for a stack of two: this change, then Echo Chamber (the entry above) on top of it, at
+`feat/echo-chamber` ee9c7e1b; this layer was `fix/wasting-sickness-attacker-and-leech-tags` e724312f. Development was
+8f83b888, measured there at 3160 Unreal tests and 5712 Python. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3167 tests performed, 3167 succeeded, 0 failed`; `Declared: 3167 tests in the tree at ee9c7e1b; 3167 performed, gap 0` |
+| Python, with continuous integration idle | `5705 passed, 8 skipped in 311.47s`; JUnit `tests="5713" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**No existing test depended on a blow the floor dealt adding a Wasting Sickness stack**: the whole suite passed with
+the attacker check in.
+
+**Guard proofs, at ee9c7e1b, each with one anchor counted, each PROVED: failed with the break in and passed with it
+out.**
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| L1a | `CataclysmDungeonGameMode.cpp`: the attacker check never returns | `Cataclysm.DungeonModifierEffects.WastingSicknessRollsForAnEnemysBlow` | 1 performed, 1 failed, 4 failed assertions: the floor's blow gave 1 stack against 0, the player's own 2 against 0, the enemy's swing 3 against 1, its direct damage 4 against 2 | 1 performed, 1 succeeded |
+| L1b | `CataclysmLeech.cpp`: the stat is asked with an empty container | `Cataclysm.Leech.ALeechRowScoped` | 1 performed, 1 failed, 1 failed assertion: "a melee skill's hit starts one payment" was 0 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 4 and 1. L1a's failing half is the code as it was before this change,
+which is the evidence that a blow the floor dealt, and one the player dealt themselves, each rolled for a stack.
 
 ---
 
