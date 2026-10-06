@@ -62,6 +62,9 @@ No new source was read. **Nothing read settles the ruling**; it is a reading of 
 Whether zones stacking on their owner reads as intended, and whether half the owner's speed is slow enough for an
 enemy to be kept inside one.
 
+**A zone left while the following row is worn keeps following after the row comes off.** The stat is read once,
+where the zone is left.
+
 ### Tests
 
 One probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: a blink's two zones follow at 50
@@ -81,6 +84,9 @@ further; and the zone of an owner that is no character does not move.
 ### Not yet run
 
 The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+**A behaviour with a test and no guard proof:** the stat being read where the zone is left. The proof written for
+it was dropped by the coordinating session to keep the window to eight proofs.
 
 ---
 
