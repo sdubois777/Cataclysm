@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A killed minion leaves its commander a chaos pool: one flag, `minions_leave_chaos_pools`. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`LeaveChaosPool`, three constants,
+`HandleDeath`); `CataclysmSkillTemplate.h` and `.cpp` (`LeaveAZoneFor`, a static function split out of
+`LeaveZoneAlong`); `CataclysmDamageCalculation.h` and `.cpp` (the stat name);
+`Character/CataclysmPlayerClassStats.cpp` (`StatsWithNoAttribute`); one probe in
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have. **No row carries the flag yet**; the row is the enchantment session's.
+
+### What it is for
+
+"Your minions leave behind chaos pools when they die".
+
+**What the row needs:** `minions_leave_chaos_pools`, flat 1, no Required Tags.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **"Your minions" are whatever carries the tag `Type.Minion`.**
+- **The pool is 3 metres in radius**, which is Summon Imp's `Radius=3`; **lasts 4 seconds**, which is the commonest
+  `GroundDuration` among the twelve rows that leave ground (four of them); **sweeps once a second**; **deals Chaos
+  damage**; and **a sweep deals 10 of the dead minion's own attack hit**, the same smallest share a row's zone
+  deals.
+- **The pool is its commander's**, so the commander's zone rows apply to it.
+- **A minion that is dismissed or replaced rather than killed leaves no pool.**
+
+### What the code answers to the three questions the ruling left open
+
+- **The Bolt Turret and the Ballista carry `Type.Minion`, so they count.** Every one of the five rows of
+  `game/Data/MinionTypes.csv` carries it: Imp, Mote, BoltTurret, Ballista and SpikeTrap. A minion with no type row
+  has no tags and leaves nothing; no shipped skill summons one.
+- **A minion has one attack figure the code can read at its death: `ACataclysmMinion::OwnDamagePerHit`.** It is the
+  type's base damage raised by the commander's level, settled when the minion is summoned, and it is the figure the
+  minion's death explosion is priced from. The pool takes 10 of it.
+- **What the code distinguishes is `HandleDeath` from `Destroy`.** A minion whose health reaches nought goes through
+  `HandleDeath`, and that is where the pool is left. A minion whose time ran out and one a closing rift took are
+  destroyed without `HandleDeath`, and leave none. One the summon cap removes to make room is sent straight to
+  `Explode`, which ends in `Destroy`, also without `HandleDeath`, and leaves none.
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles the three figures**; each is a figure this game's own authored rows
+state, chosen by the coordinating session.
+
+### How it is built
+
+- **`HandleDeath` leaves the pool before anything else it does**, so a minion that explodes on death, which
+  destroys its body at once, leaves its pool as well.
+- **The pool is left through a new static function, `UCataclysmSkillTemplate::LeaveAZoneFor`.** It is the part of
+  `LeaveZoneAlong` that ends the owner's earlier areas where they may hold one, spawns the zone for the owner's
+  share of its stated time, and reads every zone row. A skill's zone and a pool now go through the same lines, so
+  a later zone row reaches both.
+- **The commander's zone rows are asked with the dead minion's type tags.** The five zone rows authored today state
+  no Required Tags, so each reaches a pool.
+- **A sweep is direct damage dealt by the commander**, as every ground zone's is. Nothing of the commander's raises
+  it after the pool is left: not their minion damage rows, and not their own damage rows.
+
+### Consequences, stated rather than changed
+
+- **A taken enemy, a thrall, is not an `ACataclysmMinion` and carries no type tags, so its death leaves no pool.**
+- **Under the only-one row, each pool ends the commander's earlier areas**, their skills' ground included.
+- **Under the row that makes zones follow their owner, pools walk to the commander.**
+- **A Horde of imps killed together leaves one pool each**, overlapping where they died together.
+
+### For the owner's play-check
+
+Three figures no sentence states: **3 metres**, **4 seconds**, and **10 of the dead minion's own hit a sweep**. And
+whether a pool should be raised by the commander's minion damage, which it is not.
+
+### Tests
+
+One probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. A commander without the flag is left
+no pool by a killed imp. A flagged commander is left two: one where a killed imp stood, 3 metres in radius, lasting
+4 seconds, dealing 10 of that imp's own blow a sweep as Chaos damage; and one where a killed ballista stood. A third
+imp of theirs destroyed without being killed leaves none.
+
+**Not covered by a test:** a minion that explodes; a thrall; the commander's zone rows on a pool; a sweep of a pool.
+
+**Python.** No new test and no inventory change: the flag is read through the minion file's existing helper.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs.
+
+---
+
 ## 2026-10-06 — A zone follows the character who left it: one stat, `zone_follows_owner_percent`. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`FollowItsOwnerAt`,

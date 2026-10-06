@@ -652,6 +652,12 @@ public:
 	static const TCHAR* ZoneFollowsOwnerPercentStat;
 
 	/**
+	 * `minions_leave_chaos_pools`: "Your minions leave behind chaos pools when they die". A flag on the commander:
+	 * above nought is yes. Read by `ACataclysmMinion::HandleDeath`. Ruled 2026-10-06.
+	 */
+	static const TCHAR* MinionsLeaveChaosPoolsStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *
