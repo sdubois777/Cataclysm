@@ -645,6 +645,13 @@ public:
 	static const TCHAR* ZoneAppliesEffectsToOwnerStat;
 
 	/**
+	 * `zone_follows_owner_percent`: "Your persistent AOE zones follow you as you move at 50% of your movement
+	 * speed". The percent of its owner's walking speed at which a zone moves toward where its owner stands; nought
+	 * is a zone that stays where it was left. Read where the zone is left. Ruled 2026-10-06.
+	 */
+	static const TCHAR* ZoneFollowsOwnerPercentStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *
