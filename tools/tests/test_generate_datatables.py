@@ -2941,6 +2941,30 @@ class TestRepeatSkill:
             gen.enchantment_effects(self.repeat(
                 tmp_path, {"Action": action, "Action Event": "kill"}))
 
+    @pytest.mark.parametrize("action", ["use_no_damage", "cooldown_use_no_damage"])
+    @pytest.mark.parametrize("event", ["skill_use", "attack_use"])
+    def test_a_row_that_rolls_a_use_dealing_no_damage_is_carried_through(
+            self, tmp_path, action, event):
+        out = gen.enchantment_effects(self.repeat(
+            tmp_path, {"Action": action, "Action Event": event}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            action, event, 5.0, 15.0, "")
+
+    def test_a_row_that_rolls_a_use_dealing_no_damage_needs_an_event_that_names_a_skill(
+            self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Action": "use_no_damage", "Action Event": "kill"}))
+
+    @pytest.mark.parametrize("action", ["use_increased_damage",
+                                        "cooldown_use_increased_damage"])
+    def test_a_row_that_rolls_increased_damage_is_refused_until_a_column_carries_the_increase(
+            self, tmp_path, action):
+        with pytest.raises(gen.DataError, match="no column carries that yet"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Action": action, "Action Event": "skill_use"}))
+
     def test_a_repeat_row_with_a_fraction_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="must be empty"):
             gen.enchantment_effects(self.repeat(tmp_path, {"Fraction Of": "maximum"}))

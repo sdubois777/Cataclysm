@@ -31,6 +31,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For turning an effect name into its tag, which is what a skill cell writing
 // Effect=Cripple does. Issue #1156.
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 // For asking whether two actors are on the same side, which is what an aura's
 // ally half is about. Issue #1182.
@@ -18944,6 +18945,258 @@ bool FCataclysmAuraWithNoImmunityTest::RunTest(const FString&)
 	Aura->Pulse();
 	TestEqual(TEXT("the imp inside holds no granted immunity"), GrantsOn(Imp), 0);
 	TestFalse(TEXT("and is not immune to a stun"), UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Stun")));
+	return true;
+}
+
+// A ROW'S ROLL FOR THE USE IN HAND: the use deals no damage, or deals increased damage. Ruled 2026-10-06, for "Your
+// cooldown abilities have a 25% chance to deal no damage", "Strike skills have a 10%-20% chance to miss entirely
+// regardless of other stats", "Projectiles have a 20%-35% chance to explode prematurely dealing no damage" and "Your
+// cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage". The rows are made by hand. Issue #1833.
+//
+// THE FIGHTERS HERE ARE NOT PLAYER CHARACTERS, so nothing carries a skill-used notice to the rows. Each test hands
+// the use to the rows itself, with `ActOnSkillUse`, as the player character's hook does, and then activates the skill.
+namespace CataclysmUseOutcomeTest
+{
+	/** A row that rolls for the use in hand, on `attack_use` unless told otherwise. */
+	FCataclysmPoolAction AUseRow(const TCHAR* Key, float Chance, bool bNoDamage, float IncreasePercent = 0.0f,
+								 bool bOnlyWithACooldown = false, const TCHAR* Event = TEXT("attack_use"))
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(Event);
+		Action.Percent = Chance;
+		Action.bUseDealsNoDamage = bNoDamage;
+		Action.bUseDealsIncreasedDamage = !bNoDamage;
+		Action.UseIncreasePercent = IncreasePercent;
+		Action.bOnlyASkillWithACooldown = bOnlyWithACooldown;
+		Action.TriggerKey = FName(Key);
+		return Action;
+	}
+
+	/** The use-outcome roll pinned, and put back to "rolled" afterwards. */
+	struct FUseOutcomeRollPinned
+	{
+		explicit FUseOutcomeRollPinned(const TCHAR* Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.UseOutcomeRoll"));
+			Set(Roll);
+		}
+
+		~FUseOutcomeRollPinned()
+		{
+			Set(TEXT("-1"));
+		}
+
+		void Set(const TCHAR* Roll)
+		{
+			if (Variable)
+			{
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/** Hands a use of this skill to the wearer's rows, as the player character's hook does. */
+	void TheRowsSeeAUseOf(CataclysmSkillTest::FScopedFighter& Caster, const UCataclysmSkillTemplate* Skill,
+						  bool bHasCooldown = true, bool bBasicAttack = false)
+	{
+		Caster.AbilitySystem->ActOnSkillUse(FName(*Skill->SkillName), &Skill->SkillTags, FVector::ZeroVector,
+											bBasicAttack, bHasCooldown);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledUseNoDamageTest,
+	"Cataclysm.Skills.AUseARowRolledToDealNoDamageDealsNoneAndTheNextUseDealsItsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRolledUseNoDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("25"));
+	UCataclysmStrikeSkill* First = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; Burn=1"), TEXT("First"), TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* Second = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"), TEXT("Second"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the first strike"), First) || !TestNotNull(TEXT("set-up: the second"), Second))
+	{
+		return false;
+	}
+	Caster.AbilitySystem->SetPoolActions({AUseRow(TEXT("Test:miss"), 25.0f, /*bNoDamage=*/true)});
+
+	// A ROLL AT THE CHANCE DOES NOT PASS.
+	TheRowsSeeAUseOf(Caster, First);
+	TestFalse(TEXT("a roll of 25 against a chance of 25 records nothing"), Caster.AbilitySystem->PendingUseNoDamage());
+
+	// A ROLL BELOW IT DOES, AND THE USE TAKES IT: no damage at all, its burn included.
+	Pinned.Set(TEXT("0"));
+	TheRowsSeeAUseOf(Caster, First);
+	if (!TestTrue(TEXT("a roll below the chance records that the use deals no damage"),
+				  Caster.AbilitySystem->PendingUseNoDamage()))
+	{
+		return false;
+	}
+	float Before = Enemy.Health();
+	TestTrue(TEXT("the strike is used"), Activate(Caster, First));
+	if (!TestTrue(TEXT("the use took what the row rolled"), First->bThisUseDealsNoDamage))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it deals no damage"), Before - Enemy.Health(), 0.0f, 0.01f);
+	TestEqual(TEXT("and sets nothing alight"), BurnPerTickOn(Enemy), -1.0f, 0.001f);
+	TestFalse(TEXT("and nothing is left for a later use"), Caster.AbilitySystem->PendingUseNoDamage());
+
+	// THE NEXT USE, WHICH NO ROW ROLLED FOR, DEALS ITS OWN.
+	Before = Enemy.Health();
+	TestTrue(TEXT("the second strike is used"), Activate(Caster, Second));
+	TestFalse(TEXT("it is not a use that deals no damage"), Second->bThisUseDealsNoDamage);
+	TestTrue(TEXT("and it hurts the enemy"), Before - Enemy.Health() > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledUseIncreaseTest,
+	"Cataclysm.Skills.AUseARowRolledToDealIncreasedDamageTakesTheIncreaseAndTwoRowsAdd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRolledUseIncreaseTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("0"));
+	UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("Plain"), TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* Raised = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"), TEXT("Raised"), TEXT("Type.Melee"));
+	Caster.GiveFervourForUltimates(1);
+	UCataclysmStrikeSkill* Missed = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Radius=4; Angle=360"), TEXT("Missed"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the plain strike"), Plain) || !TestNotNull(TEXT("set-up: the raised one"), Raised)
+		|| !TestNotNull(TEXT("set-up: the missed one"), Missed))
+	{
+		return false;
+	}
+	const FCataclysmPoolAction Hundred = AUseRow(TEXT("Test:hundred"), 20.0f, /*bNoDamage=*/false, 100.0f);
+	const FCataclysmPoolAction Fifty = AUseRow(TEXT("Test:fifty"), 20.0f, /*bNoDamage=*/false, 50.0f);
+
+	// A USE NO ROW ROLLED FOR TAKES NO INCREASE.
+	TestTrue(TEXT("the plain strike is used"), Activate(Caster, Plain));
+	TestEqual(TEXT("it takes no increase"), Plain->LastNextUseIncreasePercent, 0.0f, 0.001f);
+
+	// TWO ROWS PASS ON ONE USE: their increases add, and the use takes the sum.
+	Caster.AbilitySystem->SetPoolActions({Hundred, Fifty});
+	TheRowsSeeAUseOf(Caster, Raised);
+	TestEqual(TEXT("two rows of 100 and 50 record 150"), Caster.AbilitySystem->PendingUseIncrease(), 150.0f, 0.001f);
+	TestTrue(TEXT("the raised strike is used"), Activate(Caster, Raised));
+	if (!TestEqual(TEXT("the use took the 150 the rows rolled"), Raised->LastNextUseIncreasePercent, 150.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and nothing is left for a later use"), Caster.AbilitySystem->PendingUseIncrease(), 0.0f, 0.001f);
+
+	// A NO-DAMAGE ROW AND AN INCREASE ROW BOTH PASS: no damage wins, and the increase is not kept for later.
+	Caster.AbilitySystem->SetPoolActions({Hundred, AUseRow(TEXT("Test:miss"), 25.0f, /*bNoDamage=*/true)});
+	TheRowsSeeAUseOf(Caster, Missed);
+	const float Before = Enemy.Health();
+	TestTrue(TEXT("the third strike is used"), Activate(Caster, Missed));
+	TestTrue(TEXT("no damage wins over an increase"), Missed->bThisUseDealsNoDamage);
+	TestEqual(TEXT("it deals no damage"), Before - Enemy.Health(), 0.0f, 0.01f);
+	TestEqual(TEXT("and the increase is not kept for a later use"), Caster.AbilitySystem->PendingUseIncrease(), 0.0f,
+			  0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUseRowScopeTest,
+	"Cataclysm.Skills.ARowForCooldownAbilitiesRollsOnlyForASkillWithACooldownAndASkillUseRowNotForTheBasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUseRowScopeTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("0"));
+	UCataclysmStrikeSkill* Heavy = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("Heavy"), TEXT("Type.Melee, Type.Strike"));
+	UCataclysmStrikeSkill* Basic = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::BasicAttack, TEXT("Radius=4; Angle=360"), TEXT("Basic"), TEXT("Type.Melee"));
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: a heavy strike"), Heavy) || !TestNotNull(TEXT("set-up: a basic attack"), Basic)
+		|| !TestNotNull(TEXT("set-up: the world's combat events"), Events))
+	{
+		return false;
+	}
+
+	// A ROW FOR COOLDOWN ABILITIES IS NOT ROLLED FOR A SKILL WITHOUT A COOLDOWN.
+	Caster.AbilitySystem->SetPoolActions(
+		{AUseRow(TEXT("Test:cooldown"), 25.0f, /*bNoDamage=*/true, 0.0f, /*bOnlyWithACooldown=*/true)});
+	TheRowsSeeAUseOf(Caster, Basic, /*bHasCooldown=*/false, /*bBasicAttack=*/true);
+	if (!TestFalse(TEXT("a row for cooldown abilities records nothing for a skill without a cooldown"),
+				   Caster.AbilitySystem->PendingUseNoDamage()))
+	{
+		return false;
+	}
+	TheRowsSeeAUseOf(Caster, Heavy, /*bHasCooldown=*/true);
+	TestTrue(TEXT("and records for a skill with one"), Caster.AbilitySystem->PendingUseNoDamage());
+
+	// A ROW ON `skill_use` IS NOT ROLLED FOR THE BASIC ATTACK; ONE ON `attack_use` IS. The sentence's own word decides
+	// which event a row is written on: "skills" and "abilities" are `skill_use`.
+	Caster.AbilitySystem->SetPoolActions(
+		{AUseRow(TEXT("Test:skills"), 25.0f, /*bNoDamage=*/true, 0.0f, false, TEXT("skill_use"))});
+	TheRowsSeeAUseOf(Caster, Basic, /*bHasCooldown=*/false, /*bBasicAttack=*/true);
+	TestFalse(TEXT("a row on skill_use records nothing for the basic attack"), Caster.AbilitySystem->PendingUseNoDamage());
+	Caster.AbilitySystem->SetPoolActions({AUseRow(TEXT("Test:uses"), 25.0f, /*bNoDamage=*/true)});
+	TheRowsSeeAUseOf(Caster, Basic, /*bHasCooldown=*/false, /*bBasicAttack=*/true);
+	TestTrue(TEXT("a row on attack_use records for it"), Caster.AbilitySystem->PendingUseNoDamage());
+
+	// A ROW KEEPS TO ITS TAGS, as every action does: "Strike skills".
+	Caster.AbilitySystem->SetPoolActions({[]()
+	{
+		FCataclysmPoolAction Strikes = AUseRow(TEXT("Test:strikes"), 25.0f, /*bNoDamage=*/true);
+		Strikes.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Strike"));
+		return Strikes;
+	}()});
+	TheRowsSeeAUseOf(Caster, Basic, /*bHasCooldown=*/false, /*bBasicAttack=*/true);
+	TestFalse(TEXT("a row for strikes records nothing for a skill without the strike tag"),
+			  Caster.AbilitySystem->PendingUseNoDamage());
+	TheRowsSeeAUseOf(Caster, Heavy);
+	TestTrue(TEXT("and records for one that carries it"), Caster.AbilitySystem->PendingUseNoDamage());
+
+	// AND THE USE ITSELF SAYS WHETHER ITS SKILL HAS A COOLDOWN, which is what the hook hands on.
+	Caster.AbilitySystem->SetPoolActions({});
+	bool bHeard = false;
+	bool bHeardCooldown = false;
+	const FDelegateHandle Listening = Events->OnSkillUsed.AddLambda([&](const FCataclysmSkillUsedNotice& Notice)
+	{
+		bHeard = true;
+		bHeardCooldown = Notice.bHasCooldown;
+	});
+	ON_SCOPE_EXIT { Events->OnSkillUsed.Remove(Listening); };
+	TestTrue(TEXT("the heavy strike is used"), Activate(Caster, Heavy));
+	TestTrue(TEXT("its notice says it has a cooldown"), bHeard && bHeardCooldown);
+	bHeard = false;
+	TestTrue(TEXT("the basic attack is used"), Activate(Caster, Basic));
+	TestTrue(TEXT("its notice says it has none"), bHeard && !bHeardCooldown);
 	return true;
 }
 

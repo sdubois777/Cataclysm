@@ -3528,6 +3528,11 @@ float UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
 const TCHAR* UCataclysmAbilitySystemComponent::RepeatSkillAction = TEXT("repeat_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSkillAction = TEXT("trigger_held_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSpellAction = TEXT("trigger_held_spell");
+const TCHAR* UCataclysmAbilitySystemComponent::UseNoDamageAction = TEXT("use_no_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownUseNoDamageAction = TEXT("cooldown_use_no_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::UseIncreasedDamageAction = TEXT("use_increased_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownUseIncreasedDamageAction =
+	TEXT("cooldown_use_increased_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -3744,6 +3749,12 @@ static TAutoConsoleVariable<float> CVarRepeatSkillRoll(
 	ECVF_Default);
 
 /** The same, for a row that triggers a different held skill. Ruled 2026-10-06. */
+/** The same, for a row that rolls whether a use deals no damage or increased damage. Ruled 2026-10-06. */
+static TAutoConsoleVariable<float> CVarUseOutcomeRoll(
+	TEXT("Cataclysm.UseOutcomeRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a use-outcome enchantment makes against its chance. Negative rolls for real."),
+	ECVF_Default);
+
 static TAutoConsoleVariable<float> CVarTriggerHeldSkillRoll(
 	TEXT("Cataclysm.TriggerHeldSkillRoll"), -1.0f,
 	TEXT("Pins the 0-100 roll a trigger-held-skill enchantment makes against its chance. Negative rolls for real."),
@@ -4309,13 +4320,16 @@ void UCataclysmAbilitySystemComponent::GrantOwnStack(FName StackKey,
 }
 
 void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags,
-													 const FVector& Aim, bool bBasicAttack)
+													 const FVector& Aim, bool bBasicAttack, bool bHasCooldown)
 {
 	// A NEW USE BEGINS WITH NOTHING PENDING: a repeat nobody made belongs to the use before, and is let go.
 	ClearPendingRepeat();
 	ClearPendingHeldTrigger();
+	bPendingUseNoDamage = false;
+	PendingUseIncreasePercent = 0.0f;
 	SkillInHandName = SkillName;
 	SkillInHandAim = Aim;
+	bSkillInHandHasCooldown = bHasCooldown;
 	// NOT `skill_use` FOR THE BASIC ATTACK, as ruled 2026-09-14. `attack_use` is for every paid use.
 	if (!bBasicAttack)
 	{
@@ -4574,6 +4588,33 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						PendingRepeatName = SkillInHandName;
 						PendingRepeatAimPoint = SkillInHandAim;
 						PendingRepeatDamageShare = Share;
+					}
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
+		// A ROLL FOR THE USE IN HAND: IT DEALS NO DAMAGE, OR INCREASED DAMAGE. Ruled 2026-10-06. Asked as a repeat
+		// is: only when the event names a skill, once per row per event, rolled against the row's value. A row for
+		// cooldown abilities is not rolled at all for a skill without one. The use takes the answer as it is paid
+		// for; see `TakePendingUseNoDamage`.
+		if (Action.bUseDealsNoDamage || Action.bUseDealsIncreasedDamage)
+		{
+			if (bLanded && !SkillInHandName.IsNone() && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& (!Action.bOnlyASkillWithACooldown || bSkillInHandHasCooldown) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Pinned = CVarUseOutcomeRoll.GetValueOnAnyThread();
+				const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+				if (Roll < Action.Percent)
+				{
+					if (Action.bUseDealsNoDamage)
+					{
+						bPendingUseNoDamage = true;
+					}
+					else
+					{
+						PendingUseIncreasePercent += Action.UseIncreasePercent;
 					}
 					NoteTriggerFired(Action);
 				}

@@ -1419,6 +1419,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bTriggerHeldSpell = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::TriggerHeldSpellAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT ROLLS FOR THE USE IN HAND: no damage, or increased damage; for every skill
+					// its tags allow, or for a skill with a cooldown only. Ruled 2026-10-06. The value is the
+					// chance. The increase stays at nought until a column carries it.
+					const bool bCooldownNoDamage = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CooldownUseNoDamageAction, ESearchCase::IgnoreCase);
+					const bool bCooldownIncrease = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CooldownUseIncreasedDamageAction, ESearchCase::IgnoreCase);
+					Action.bUseDealsNoDamage = bCooldownNoDamage || Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::UseNoDamageAction, ESearchCase::IgnoreCase);
+					Action.bUseDealsIncreasedDamage = bCooldownIncrease || Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::UseIncreasedDamageAction, ESearchCase::IgnoreCase);
+					Action.bOnlyASkillWithACooldown = bCooldownNoDamage || bCooldownIncrease;
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

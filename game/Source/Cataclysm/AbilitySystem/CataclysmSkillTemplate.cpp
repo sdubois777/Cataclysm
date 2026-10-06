@@ -190,7 +190,8 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// AND WHERE IT IS AIMED, read as the skill's own body will read it. `Chaos_Wild_Magic` aims the skill it
 		// triggers at the same point. Issue #41.
 		const FVector AimedAt = AimPoint();
-		UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot, &AimedAt);
+		UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot, &AimedAt,
+											  /*bHasCooldown=*/GetBaseCooldown() > 0.0f);
 
 		PayHealthCost();
 	}
@@ -229,6 +230,12 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			bThisUseDealsNoDamage = Cataclysm->NextAttackIsNth();
 			Cataclysm->NoteNthEvent(ECataclysmEveryNth::Attack);
 		}
+		// AND WHAT A WORN ROW ROLLED FOR THIS USE, a few lines up, when the notice above reached the rows. Ruled
+		// 2026-10-06. BOTH ARE TAKEN WHATEVER HAPPENS NEXT, so neither is left for a later use. A use that deals no
+		// damage spends no next-use charge and takes no increase, as the Nth attack above does not.
+		const bool bRolledNoDamage = Cataclysm->TakePendingUseNoDamage();
+		const float RolledIncreasePercent = Cataclysm->TakePendingUseIncreasePercent();
+		bThisUseDealsNoDamage = bThisUseDealsNoDamage || bRolledNoDamage;
 		if (bThisUseDealsNoDamage)
 		{
 			LastNextUseIncreasePercent = 0.0f;
@@ -237,6 +244,10 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		else
 		{
 			SpendHeldNextUseCharges(Cataclysm);
+			if (DeliversDamageItself())
+			{
+				LastNextUseIncreasePercent += RolledIncreasePercent;
+			}
 		}
 
 		// AND THE TWO WINDOWS A SKILL USE OPENS FOR AN ENCHANTMENT. Issue
