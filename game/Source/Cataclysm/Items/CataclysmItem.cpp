@@ -1401,6 +1401,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bDamageImmunity = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::DamageImmunityAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
+					// stays at its default of 100 until the row can state one.
+					Action.bRepeatSkill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::RepeatSkillAction,
+						ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

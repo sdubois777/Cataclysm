@@ -351,4 +351,56 @@ bool FCataclysmTriggeredSkillRefusedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTriggeredSkillShareTest,
+	"Cataclysm.TriggeredSkill.AShareOfHalfDealsHalfTheDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTriggeredSkillShareTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTriggeredSkillTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE SAME STRIKE TWICE, ONCE AT EACH OF TWO BODIES OF THE SAME HEALTH: whole, then at a share of half.
+	FScopedBody Caster(World, FVector::ZeroVector, 10000.0f);
+	FScopedBody Left(World, FVector(0, 2 * M, 0), 10000.0f);
+	FScopedBody Right(World, FVector(0, -2 * M, 0), 10000.0f);
+	if (!TestTrue(TEXT("set-up: the whole strike starts"),
+				  UCataclysmTriggeredSkill::Trigger(Caster.Actor, ACleaveRow(TEXT("Whole")), Left.Actor->GetActorLocation())))
+	{
+		return false;
+	}
+	const float Whole = 10000.0f - Left.Health();
+	if (!TestTrue(FString::Printf(TEXT("set-up: the whole strike dealt damage (%.2f)"), Whole), Whole > 0.0f)
+		|| !TestEqual(TEXT("set-up: and did not reach the other body"), Right.Health(), 10000.0f))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the half strike starts"),
+				  UCataclysmTriggeredSkill::Trigger(Caster.Actor, ACleaveRow(TEXT("Half")), Right.Actor->GetActorLocation(),
+													0.5f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a share of half deals half of what the whole strike dealt"), 10000.0f - Right.Health(), Whole * 0.5f,
+			  0.01f);
+
+	// AND THE SHARE DOES NOT STAY BEHIND: the next free start with no share stated deals the whole again.
+	Left.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 10000.0f);
+	if (!TestTrue(TEXT("set-up: a third strike starts"),
+				  UCataclysmTriggeredSkill::Trigger(Caster.Actor, ACleaveRow(TEXT("Whole Again")),
+													Left.Actor->GetActorLocation())))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a later strike with no share stated deals the whole"), 10000.0f - Left.Health(), Whole, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
