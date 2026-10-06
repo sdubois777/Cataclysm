@@ -20,6 +20,7 @@
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
+#include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -3882,6 +3883,79 @@ namespace CataclysmStatExemptionTest
 							"stack of ten keeps forty"), KeptStacked, 40.0f, 0.01f);
 	}
 
+	/**
+	 * One of the three leech stats, scaled by own stacks, read by
+	 * `UCataclysmLeech::NoteHit` for every hit that took health. Issue #1833,
+	 * "Starvation (10-Piece Bonus)". Two attackers carry the line at a base of
+	 * 10 with 100 increased per own stack; one holds a stack. A hit of 1000
+	 * queues 100 for the one and 200 for the other, in the stat's own pool.
+	 */
+	void ProbeScaledLeech(FAutomationTestBase& Test, const TCHAR* Stat, ECataclysmLeechPool Pool)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(*FString::Printf(TEXT("Probe:%s"), Stat));
+		const auto Prepare = [&Key, Stat](FScopedFighter& Attacker)
+		{
+			FCataclysmStatModifier PerStack;
+			PerStack.Bucket = ECataclysmStatBucket::Increased;
+			PerStack.Source = ECataclysmModifierSource::Enchantment;
+			PerStack.Value = 100.0f;
+			PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+			PerStack.ScaleStep = 1.0f;
+			PerStack.ScaleMaxSteps = 10;
+			PerStack.StackKey = Key;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+			Line.Base = 10.0f;
+			Line.Modifiers = {PerStack};
+			Attacker.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		};
+		FScopedFighter Clean(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Stacked(World, /*AttackDamage=*/0.0f);
+		Prepare(Clean);
+		Prepare(Stacked);
+		Stacked.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/4.0f, /*Cap=*/10);
+
+		const auto Queued = [Pool](FScopedFighter& Attacker)
+		{
+			UCataclysmLeech::NoteHit(Attacker.AbilitySystem, 1000.0f);
+			float Total = 0.0f;
+			for (const FCataclysmLeechPayment& Payment : Attacker.AbilitySystem->GetLeechPayments())
+			{
+				Total += Payment.Pool == Pool ? Payment.Remaining : 0.0f;
+			}
+			return Total;
+		};
+		const float QueuedClean = Queued(Clean);
+		const float QueuedStacked = Queued(Stacked);
+		Test.TestEqual(FString::Printf(TEXT("%s with no stack leeches a tenth of the hit"), Stat),
+					   QueuedClean, 100.0f, 0.01f);
+		Test.TestEqual(FString::Printf(TEXT("%s is asked for, so one stack of a hundred increased "
+											"leeches twice that"), Stat),
+					   QueuedStacked, 200.0f, 0.01f);
+	}
+
+	void ProbeScaledLifeLeech(FAutomationTestBase& Test)
+	{
+		ProbeScaledLeech(Test, TEXT("life_leech"), ECataclysmLeechPool::Health);
+	}
+
+	void ProbeScaledManaLeech(FAutomationTestBase& Test)
+	{
+		ProbeScaledLeech(Test, TEXT("mana_leech"), ECataclysmLeechPool::Mana);
+	}
+
+	void ProbeScaledEnergyShieldLeech(FAutomationTestBase& Test)
+	{
+		ProbeScaledLeech(Test, TEXT("energy_shield_leech"), ECataclysmLeechPool::EnergyShield);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -3908,6 +3982,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("evasion"),                    &ProbeScaledEvasion},
 			{TEXT("block_damage_reduction"),     &ProbeScaledBlockDamageReduction},
 			{TEXT("resistance_cap"),             &ProbeScaledResistanceCap},
+			{TEXT("life_leech"),                 &ProbeScaledLifeLeech},
+			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
+			{TEXT("energy_shield_leech"),        &ProbeScaledEnergyShieldLeech},
 		};
 		return Made;
 	}
