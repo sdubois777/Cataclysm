@@ -486,3 +486,4 @@ Positive_Your_ultimate_ability_applies_its_effect_twice#1,Positive_Your_ultimate
 Positive_Your_melee_attacks_have_a_12_15_chance_to_trig#1,Positive_Your_melee_attacks_have_a_12_15_chance_to_trig,,,12.0,15.0,Type.Melee,,0.0,,0.0,repeat_skill,attack_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at#1,Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at,,,25.0,25.0,Type.Melee,,0.0,,0.0,trigger_held_skill,attack_use,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Melee_damage_is_reduced_by_50#1,Negative_Melee_damage_is_reduced_by_50,attack_damage,increased,-50.0,-50.0,Type.Melee,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Skills_can_spend_HP_instead_of_mana_at_a_3_1_rat#1,Positive_Skills_can_spend_HP_instead_of_mana_at_a_3_1_rat,skill_cost_paid_from_health_when_short,flat,3.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

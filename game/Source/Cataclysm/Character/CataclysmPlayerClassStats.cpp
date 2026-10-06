@@ -247,6 +247,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// The flag that moves a skill's cost onto health and leaves the mana
 		// pool alone, read by UCataclysmGameplayAbility::CostPool. Issue #2228.
 		TEXT("skill_cost_paid_from_health"),
+		// The health paid for each point of mana when mana cannot cover a
+		// skill's cost, read by UCataclysmGameplayAbility::PoolPaying. Ruled
+		// 2026-10-06: "Skills can spend HP instead of mana at a 3:1 ratio".
+		TEXT("skill_cost_paid_from_health_when_short"),
 		// No Second Wind's radius in metres, read by
 		// UCataclysmDebuffs::HoldAppliedNearbyStep: above zero, a Cripple or
 		// Weaken the holder applied does not run down on an enemy that near.

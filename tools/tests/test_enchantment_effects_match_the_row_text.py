@@ -618,8 +618,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 484 over 398: one row on one enchantment.
 #: AND 487 OVER 401 SINCE SPELLBLADE'S WILL'S FIRST BONUS AND ITS DRAWBACK,
 #: issue #1833, 2026-10-06, from 485 over 399: two rows on two enchantments.
-AUTHORED_ROWS = 487
-AUTHORED_ENCHANTMENTS = 401
+#: AND 488 OVER 402 SINCE THE ROW THAT PAYS A SKILL FROM HEALTH WHEN MANA IS SHORT,
+#: issue #1833, 2026-10-06, from 487 over 401: one row on one enchantment.
+AUTHORED_ROWS = 488
+AUTHORED_ENCHANTMENTS = 402
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
