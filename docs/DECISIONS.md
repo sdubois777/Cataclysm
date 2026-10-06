@@ -15,8 +15,8 @@ loader); `tools/generate_datatables.py` (`USE_NO_DAMAGE_ACTIONS`, `USE_INCREASED
 in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; and `tools/tests/test_generate_datatables.py` and
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses these actions yet**; the rows are the enchantment
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses these actions yet**; the rows are the enchantment
 session's.
 
 ### What it is for
@@ -105,9 +105,34 @@ Three new automation tests, on fighters that are not player characters; each han
 **Python.** Eight new checks: the generator's four names equal the engine's; a no-damage row is carried through on
 each event; one on an event that names no skill is refused; each increase action is refused.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of three, at `feat/zone-stats-2` 0ca651cc: the roll for a use
+(`feat/use-outcome-roll-2` 190b39b4), the two defender chances and the strike that hits all nearby
+(`feat/defender-chances-and-hit-all-2` 478a593c), then the four stats a persistent area reads. Development was
+f77a7e5b. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3207 tests performed, 3207 succeeded, 0 failed`; `Declared: 3207 tests in the tree at 0ca651cc; 3207 performed, gap 0` |
+| Python, with continuous integration idle | `5762 passed, 8 skipped in 312.75s`; JUnit `tests="5770" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 0ca651cc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmSkillTemplate.cpp`: the use does not take a rolled no-damage | `Cataclysm.Skills.AUseARowRolledToDealNoDamage` | 1 performed, 1 failed, 1 failed assertion: "the use took what the row rolled" was false | 1 performed, 1 succeeded |
+| Pb | `CataclysmAbilitySystemComponent.cpp`: a row for cooldown abilities rolls for any skill | `Cataclysm.Skills.ARowForCooldownAbilitiesRollsOnly` | 1 performed, 1 failed, 1 failed assertion: the row recorded for a skill without a cooldown | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplate.cpp`: the rolled increase is not added | `Cataclysm.Skills.AUseARowRolledToDealIncreasedDamage` | 1 performed, 1 failed, 1 failed assertion: the use took 0.000000 against 150.000000 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1.
+
+**Not run, because no row exists yet:** the loader reading any of the four actions from the effect table, and
+anything a worn row does in play. **Not run at all:** a roll made through the player character's hook; the tests hand
+the use to the rows themselves.
 
 ---
 
