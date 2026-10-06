@@ -11,8 +11,8 @@ Decisions made outside the Google Drive documents, newest first.
 `game/Source/Cataclysm/Items/CataclysmItem.cpp`; `tools/generate_datatables.py` (`USE_HITS_ITS_USER_ACTIONS`); the
 automation tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; and two Python test files. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses either yet**; the rows are the enchantment session's.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses either yet**; the rows are the enchantment session's.
 
 ### The owner's decision this rests on
 
@@ -100,9 +100,39 @@ Two new automation tests.
 
 **Python.** Three new checks: the generator's two names equal the engine's; each action is carried through.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of two, at `feat/use-hits-its-user-5` 5c0072e7: the fog-spread test
+(`fix/fog-test-independent-of-the-draw-3` 5a93fb20), then a use that hits its own user. Development was 3de1c490.
+Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3220 tests performed, 3220 succeeded, 0 failed`; `Declared: 3220 tests in the tree at 5c0072e7; 3220 performed, gap 0` |
+| Python, with continuous integration idle | `5765 passed, 8 skipped in 369.16s`; JUnit `tests="5773" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 5c0072e7, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmSkillTemplate.cpp`: the share is ignored | `Cataclysm.Skills.AUseARowRolledToHitItsUser` | 1 performed, 1 failed, 1 failed assertion: a backfire dealt its user 250.000000 against 125.000000 | 1 performed, 1 succeeded |
+| Pb | Same file: a use that hits its user still hits the enemy | Same | 1 performed, 1 failed, 1 failed assertion: the enemy took 250.000000 against 0 | 1 performed, 1 succeeded |
+| Pc | `CataclysmAbilitySystemComponent.cpp`: a row action is not kept to the event's tags | `Cataclysm.Skills.AStackARowGrantsOnAUse` | 1 performed, 1 failed, 1 failed assertion: after a spell the melee stack read 2 against 1 | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1.
+
+**The size of "hit you instead", in one measured example.** The test character's weapon deals 100 and its strike is
+in the heavy slot, which deals 250% of that. Plain, the strike took 250 from the enemy. Rolled to hit its user, it
+took 0 from the enemy and 250 from the user, who had full evasion; a backfire took 125. The test character has
+100,000 health, so this says what the hit is and not what it is to a real character: **it is one whole use of the
+skill, landed on the character who used it,** reduced by that character's own defences. How large that is against a
+real character's health was not measured; it is on the owner's play-check list.
+
+**Not run, because no row exists yet:** either action read from the effect table, and anything a worn row does in
+play. **Not run at all:** a roll made through the player character's hook, and a self hit that kills its user.
 
 ---
 
