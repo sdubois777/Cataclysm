@@ -711,7 +711,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 504 SINCE THE TWO ROWS THAT PASS AN AILMENT ON AT A DEATH, issue #1833, from 502.
 	//
 	// AND 506 SINCE THE TWO ROWS THAT ROLL FOR A USE TO HIT ITS OWN USER, issue #1833, from 504.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    506)
+	//
+	// AND 507 SINCE THE ROW THAT MAKES A VOID SPLINTER DETONATE, issue #1833, from 506.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    507)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
