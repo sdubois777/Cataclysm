@@ -57,5 +57,26 @@ public:
 	 *         no ability system, when called inside another ability's activation, and when the skill itself refuses
 	 *         (locked skills, an unmet `Requires`).
 	 */
-	static bool Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim);
+	static bool Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
+						float DamageShare = 1.0f);
+
+	/**
+	 * Whether a row action may repeat this skill. Mechanism B2, ruled 2026-10-05.
+	 *
+	 * WILD MAGIC'S RULE AND ONE MORE: every skill `UCataclysmDungeonModifierEffects::WildMagicLeavesOut` lets
+	 * through, EXCEPT A SELF BUFF. A second running copy of a self buff adds a second More modifier, and on gear that
+	 * is worn for a whole character that is on every press; Wild Magic's own pool keeps its self buffs. ITS OWN NAMED
+	 * RULE so that pool does not change when this one does.
+	 */
+	static bool RepeatsFromARow(const FCataclysmWeaponSkill& Skill);
+
+	/**
+	 * Makes the repeat a row action recorded on the character's ability system, and clears it: the skill of that
+	 * name, among the skills of the character's damage type, started free at the recorded aim and share.
+	 *
+	 * CALLED ON THE TICK AFTER THE USE, for the reason the class comment gives. @return whether a skill started.
+	 * False, with nothing left behind, when nothing was recorded, when the table has no such skill, when the rule
+	 * above leaves it out, or when the skill refuses itself.
+	 */
+	static bool MakePendingRepeat(AActor* Character);
 };

@@ -329,7 +329,11 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// distance moved before it and no next-use charge spent on it.
 		LastMetresMovedBeforeUse = -1.0f;
 		LastNextUseIncreasePercent = 0.0f;
-		LastNextUseMoreMultiplier = 1.0f;
+
+		// AND THE SHARE A FREE START WAS GIVEN, which is 1 for Follow Through, Wild Magic and Echo Chamber and less
+		// for a row that says so. Written into the per-use multiplier because every damage path of a use already
+		// reads that one.
+		LastNextUseMoreMultiplier = bFreeRepeat ? FreeRepeatDamageShare : 1.0f;
 	}
 
 	// THE BURST AT THE CASTER, AND THIS IS THE ONLY PLACE IT IS ASKED FOR.
@@ -525,6 +529,7 @@ void UCataclysmSkillTemplate::EndAbility(
 	// Cleared here rather than when it began because the aim is read after the
 	// wind-up, and the cost and cooldown checks before the activation.
 	bFreeRepeat = false;
+	FreeRepeatDamageShare = 1.0f;
 }
 
 bool UCataclysmSkillTemplate::CanActivateAbility(

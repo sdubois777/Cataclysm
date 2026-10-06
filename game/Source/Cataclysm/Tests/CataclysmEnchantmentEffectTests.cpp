@@ -32,6 +32,9 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -12758,6 +12761,310 @@ bool FCataclysmAuraSharesImmunitiesRowTest::RunTest(const FString&)
 		UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Stun")));
 	TestFalse(TEXT("and not to a knockdown, which the aura's row does not name"),
 		UCataclysmSkillTemplate::IsImmuneTo(Imp, TEXT("Knockdown")));
+	return true;
+}
+
+// MECHANISM B2: a row action that repeats the skill just used, free. "Every skill use has a 5%-15% chance to cast a
+// second time for free." The rows here are made by hand, as a row of the effect table would give them: no authored
+// row carries the action yet. Issue #1833.
+namespace CataclysmSkillRepeatTest
+{
+	/** A repeat row on `skill_use`: its chance, the share its repeat deals, and the skill tags it asks for. */
+	FCataclysmPoolAction ARepeatRow(const TCHAR* Key, float Chance, float SharePercent, const TCHAR* TagCell = TEXT(""))
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("skill_use"));
+		Action.Percent = Chance;
+		Action.bRepeatSkill = true;
+		Action.RepeatSharePercent = SharePercent;
+		Action.TriggerKey = FName(Key);
+		Action.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		return Action;
+	}
+
+	/** The repeat roll pinned, and put back to "rolled" afterwards. */
+	struct FRepeatRollPinned
+	{
+		explicit FRepeatRollPinned(const TCHAR* Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RepeatSkillRoll"));
+			Set(Roll);
+		}
+
+		~FRepeatRollPinned()
+		{
+			Set(TEXT("-1"));
+		}
+
+		void Set(const TCHAR* Roll)
+		{
+			if (Variable)
+			{
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/** Every named Demonic skill, from the real table. The test player's damage type is Demonic. */
+	TArray<FCataclysmWeaponSkill> EveryDemonicSkill()
+	{
+		return UCataclysmWeaponSkills::SkillsOfDamageType(UCataclysmWeaponSkills::LoadGeneratedTable(), TEXT("Demonic"));
+	}
+
+	const FCataclysmWeaponSkill* TheSkillNamed(const TArray<FCataclysmWeaponSkill>& Skills, const TCHAR* Name)
+	{
+		return Skills.FindByPredicate([Name](const FCataclysmWeaponSkill& Skill) { return Skill.Name == Name; });
+	}
+
+	/** Tells the world the player paid for this skill, aimed here, as `CommitAndBegin` does. */
+	void ThePlayerUses(ACataclysmPlayerCharacter* Player, const FString& Name, const FGameplayTagContainer& Tags,
+					   ECataclysmAbilitySlot Slot, const FVector& Aim)
+	{
+		UCataclysmCombatEvents::NoteSkillUsed(Player, Name, Tags, Slot, &Aim);
+	}
+
+	/** How many running skills of this name the character holds that no key finds: the repeats. */
+	int32 RepeatsRunning(const UCataclysmAbilitySystemComponent* System, const FString& Name,
+						 const UCataclysmSkillTemplate** OutOne = nullptr)
+	{
+		int32 Count = 0;
+		for (const FGameplayAbilitySpec& Spec : System->GetActivatableAbilities())
+		{
+			const UCataclysmSkillTemplate* Skill = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+			if (Skill && Spec.IsActive() && Skill->SkillName == Name
+				&& !Spec.GetDynamicSpecSourceTags().HasTagExact(CataclysmAbilitySlots::Tag(Skill->Slot)))
+			{
+				++Count;
+				if (OutOne)
+				{
+					*OutOne = Skill;
+				}
+			}
+		}
+		return Count;
+	}
+
+	/** A possessed player, its ability system, and the projectile skill the tests repeat. */
+	struct FRepeatRig
+	{
+		explicit FRepeatRig(UWorld* World)
+		{
+			Player = CataclysmKillCounterTest::SpawnPossessedPlayer(World);
+			ACataclysmPlayerState* State = Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+			System = State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+			Skills = EveryDemonicSkill();
+			Projectile = TheSkillNamed(Skills, TEXT("Carom"));
+		}
+
+		bool IsUsable() const { return Player && System && Projectile; }
+
+		ACataclysmPlayerCharacter* Player = nullptr;
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		TArray<FCataclysmWeaponSkill> Skills;
+		const FCataclysmWeaponSkill* Projectile = nullptr;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRepeatRowRepeatsTest,
+	"Cataclysm.Enchantments.ARepeatRowRepeatsTheSkillJustUsedFreeAtTheSameAim",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRepeatRowRepeatsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("0"));
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:repeat"), 15.0f, 100.0f)});
+
+	// THE USE RECORDS ONE REPEAT, OF THAT SKILL, AT THAT AIM. Nothing is started inside the use.
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("the used skill is the one to repeat"), Rig.System->PendingRepeatSkill(), FName(*Rig.Projectile->Name));
+	TestTrue(TEXT("at the point the use was aimed"), Rig.System->PendingRepeatAim().Equals(Aim, 0.01f));
+	TestEqual(TEXT("at the whole of its damage"), Rig.System->PendingRepeatShare(), 1.0f, 0.001f);
+	TestEqual(TEXT("and nothing is started yet"), RepeatsRunning(Rig.System, Rig.Projectile->Name), 0);
+
+	// MADE: FREE, NOT A USE, AIMED AT THE SAME POINT.
+	const float ManaBefore = Rig.System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute());
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	if (!TestTrue(TEXT("the repeat is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player)))
+	{
+		return false;
+	}
+	const UCataclysmSkillTemplate* Running = nullptr;
+	if (TestEqual(TEXT("one repeat is running"), RepeatsRunning(Rig.System, Rig.Projectile->Name, &Running), 1) && Running)
+	{
+		TestTrue(TEXT("it is a free start"), Running->bFreeRepeat);
+		TestTrue(TEXT("aimed where the use was aimed"), Running->FreeRepeatAim.Equals(Aim, 0.01f));
+		TestEqual(TEXT("at the whole of its damage"), Running->FreeRepeatDamageShare, 1.0f, 0.001f);
+	}
+	TestEqual(TEXT("it paid no mana"), Rig.System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute()),
+			  ManaBefore);
+	TestEqual(TEXT("and sent no skill-used notice, so a repeat is not repeated"),
+			  UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestTrue(TEXT("nothing is pending any more"), Rig.System->PendingRepeatSkill().IsNone());
+	TestFalse(TEXT("and with nothing pending nothing is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoRepeatRowsTest,
+	"Cataclysm.Enchantments.TwoRepeatRowsOnOneUseMakeOneRepeatAtTheHigherShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoRepeatRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("0"));
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+	const FCataclysmPoolAction Half = ARepeatRow(TEXT("Test:half"), 40.0f, 50.0f);
+	const FCataclysmPoolAction Whole = ARepeatRow(TEXT("Test:whole"), 15.0f, 100.0f);
+
+	// BOTH ROWS PASS THEIR ROLL ON ONE USE. One repeat is kept, at the higher share, whichever row is asked first.
+	Rig.System->SetPoolActions({Half, Whole});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("the half row first, the whole row second: the repeat is whole"), Rig.System->PendingRepeatShare(),
+			  1.0f, 0.001f);
+	Rig.System->SetPoolActions({Whole, Half});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("the whole row first, the half row second: the repeat is still whole"),
+			  Rig.System->PendingRepeatShare(), 1.0f, 0.001f);
+
+	// AND IT IS ONE REPEAT, NOT TWO.
+	TestTrue(TEXT("the repeat is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestFalse(TEXT("and there is no second one to make"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestEqual(TEXT("one repeat is running"), RepeatsRunning(Rig.System, Rig.Projectile->Name), 1);
+
+	// THE HALF ROW ALONE GIVES A REPEAT AT HALF.
+	Rig.System->SetPoolActions({Half});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("the half row alone: the repeat is at half"), Rig.System->PendingRepeatShare(), 0.5f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRepeatRowScopeTest,
+	"Cataclysm.Enchantments.ARepeatRowKeepsToItsChanceAndItsTagsAndIgnoresTheBasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRepeatRowScopeTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("15"));
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+	const FGameplayTagContainer Melee = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+	const FGameplayTagContainer Spell = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Spell"));
+	if (!TestTrue(TEXT("set-up: both tags exist"), Melee.Num() == 1 && Spell.Num() == 1))
+	{
+		return false;
+	}
+
+	// EACH CASE BELOW RECORDS NOTHING; the last is the control that the same use, in scope, records one.
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:chance"), 15.0f, 100.0f)});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Melee, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("a roll of 15 against a chance of 15 repeats nothing"), Rig.System->PendingRepeatSkill().IsNone());
+
+	Pinned.Set(TEXT("0"));
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:spells"), 20.0f, 100.0f, TEXT("Type.Spell"))});
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Melee, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("a row for spells repeats nothing for a melee skill"), Rig.System->PendingRepeatSkill().IsNone());
+
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Spell, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("a basic attack raises no skill use, so nothing is repeated"), Rig.System->PendingRepeatSkill().IsNone());
+
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Spell, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("control: the same row repeats a skill that carries its tag"), Rig.System->PendingRepeatSkill(),
+			  FName(*Rig.Projectile->Name));
+
+	// AND A SKILL THE TABLE DOES NOT HOLD IS RECORDED AND THEN NOT MADE.
+	ThePlayerUses(Rig.Player, TEXT("No Such Skill"), Spell, ECataclysmAbilitySlot::Heavy, Aim);
+	TestFalse(TEXT("a skill the table does not hold is not made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRepeatRowSelfBuffTest,
+	"Cataclysm.Enchantments.ASelfBuffIsNotRepeatedByARowAndAMovementSkillIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRepeatRowSelfBuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("0"));
+	const FCataclysmWeaponSkill* SelfBuff = TheSkillNamed(Rig.Skills, TEXT("Ashen Edge"));
+	const FCataclysmWeaponSkill* Movement = TheSkillNamed(Rig.Skills, TEXT("Flashpoint"));
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: Ashen Edge"), SelfBuff) || !TestNotNull(TEXT("set-up: Flashpoint"), Movement))
+	{
+		return false;
+	}
+
+	// THE RULE, ON ROWS OF THE REAL TABLE.
+	TestTrue(TEXT("a projectile may be repeated"), UCataclysmTriggeredSkill::RepeatsFromARow(*Rig.Projectile));
+	TestFalse(TEXT("a movement skill may not: Wild Magic's rule leaves it out"),
+			  UCataclysmTriggeredSkill::RepeatsFromARow(*Movement));
+	TestFalse(TEXT("a self buff may not, though Wild Magic's pool holds it"),
+			  UCataclysmTriggeredSkill::RepeatsFromARow(*SelfBuff));
+	TestEqual(TEXT("control: Wild Magic's own rule still lets the self buff through"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::WildMagicLeavesOut(*SelfBuff)),
+			  static_cast<int32>(ECataclysmWildMagicLeftOut::InThePool));
+
+	// AND IN PLAY: the use of a self buff is recorded, and the repeat is refused when it comes to be made.
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:repeat"), 15.0f, 100.0f)});
+	const FVector Aim = Rig.Player->GetActorLocation();
+	ThePlayerUses(Rig.Player, SelfBuff->Name, SelfBuff->Tags, ECataclysmAbilitySlot::Support, Aim);
+	TestFalse(TEXT("the self buff's repeat is not made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestEqual(TEXT("and no second copy of it runs"), RepeatsRunning(Rig.System, SelfBuff->Name), 0);
 	return true;
 }
 
