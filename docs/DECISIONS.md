@@ -17,8 +17,8 @@ Decisions made outside the Google Drive documents, newest first.
 (`USE_HITS_ALL_NEARBY_ACTION`); the automation tests in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`
 and `CataclysmSkillTemplateTests.cpp`; and two Python test files. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No enchantment row uses any of this yet**; the rows are the enchantment session's.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No enchantment row uses any of this yet**; the rows are the enchantment session's.
 
 ### What it is for
 
@@ -103,9 +103,36 @@ Three new automation tests, and two probes the stat list requires.
 
 **Python.** Two new checks: the generator's hit-all name equals the engine's, and a hit-all row is carried through.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of three, at `feat/zone-stats-2` 0ca651cc: the roll for a use
+(`feat/use-outcome-roll-2` 190b39b4), the two defender chances and the strike that hits all nearby
+(`feat/defender-chances-and-hit-all-2` 478a593c), then the four stats a persistent area reads. Development was
+f77a7e5b. Every figure is a line the run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 32 actions, 29 files compiled` |
+| Whole Unreal suite | `3207 tests performed, 3207 succeeded, 0 failed`; `Declared: 3207 tests in the tree at 0ca651cc; 3207 performed, gap 0` |
+| Python, with continuous integration idle | `5762 passed, 8 skipped in 312.75s`; JUnit `tests="5770" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 0ca651cc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile.
+
+| Proof | The break | Prefix | With the break in | Restored |
+|---|---|---|---|---|
+| Pa | `CataclysmVitalAttributeSet.cpp`: an absorbed spell is not emptied | `Cataclysm.StatExemption.ASpellIsAbsorbedOnItsRoll` | 1 performed, 1 failed, 1 failed assertion: on a roll of 29 against 30 the spell dealt 1000.000000 against 0 | 1 performed, 1 succeeded |
+| Pb | `CataclysmRetaliation.cpp`: a reflected hit is paid back at half | `Cataclysm.StatExemption.AReflectedMeleeHitIsNotTaken` | 1 performed, 1 failed, 1 failed assertion: 500.000000 went back against the 1000.000000 retaliation at 100 per cent sends | 1 performed, 1 succeeded |
+| Pc | `CataclysmSkillTemplates.cpp`: the strike never takes the wider search | `Cataclysm.Skills.AStrikeARowRolledToHitAllNearby` | 1 performed, 1 failed, 1 failed assertion: "the enemy 2.5 m in front is hurt" was false | 1 performed, 1 succeeded |
+
+Each count is the one registered before the run: 1, 1 and 1.
+
+**Figures the proofs printed.** A blow of 1000 from the test attacker: absorbed, it dealt 0; reflected, 1000 went
+back, the same as a defender with 100 per cent retaliation sends.
+
+**Not run, because no row exists yet:** either stat or the action read from the effect table, and anything a worn
+row does in play.
 
 ---
 
