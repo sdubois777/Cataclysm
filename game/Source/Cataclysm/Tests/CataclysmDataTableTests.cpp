@@ -695,7 +695,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 487 SINCE SPELLBLADE'S WILL'S FIRST BONUS AND ITS DRAWBACK, issue #1833, from 485.
 	//
 	// AND 488 SINCE THE ROW THAT PAYS A SKILL FROM HEALTH WHEN MANA IS SHORT, issue #1833, from 487.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    488)
+	//
+	// AND 490 SINCE REAPER'S EMBRACE'S FIRST BONUS AND ITS DRAWBACK, issue #1833, from 488.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    490)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

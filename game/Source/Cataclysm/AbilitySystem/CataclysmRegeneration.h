@@ -99,6 +99,23 @@ public:
 	static const TCHAR* EnergyShieldRegenStat;
 
 	/**
+	 * What a row does to the HEALTH every heal restores, up or down, as its own
+	 * multiplier. Ruled 2026-10-06 for "Reaper's Embrace (2-Piece Bonus): You
+	 * gain 10% more life from all sources", read as healing by the set's own
+	 * drawback: `healing_received` more 10.
+	 *
+	 * APPLIED IN `TopUp`, TO THE AMOUNT OFFERED, BEFORE `healing_received_reduction`
+	 * takes its share, and separate from it: that stat is a share from 0 to 100
+	 * that can only lower, is clamped as one, and is untouched by this. So 10%
+	 * more under a 50% reduction is 100 x 1.1 x 0.5.
+	 *
+	 * ASKED OF THE STAT PIPELINE WITH THE CHARACTER'S STATE, so a condition on a
+	 * row is judged at each heal. It has no gameplay attribute. HEALTH ONLY, as
+	 * the reduction is; and only what passes through `TopUp`.
+	 */
+	static const TCHAR* HealingReceivedStat;
+
+	/**
 	 * The stat saying this character's energy shield recharges before the
 	 * wait after being damaged has run out, at a reduced rate. Issue #1515.
 	 *
