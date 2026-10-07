@@ -519,3 +519,4 @@ Negative_Persistent_AOE_zones_also_damage_you_if_you_stan#1,Negative_Persistent_
 Positive_Your_persistent_AOE_zones_follow_you_as_you_move#1,Positive_Your_persistent_AOE_zones_follow_you_as_you_move,zone_follows_owner_percent,flat,50.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Your_minions_leave_behind_chaos_pools_when_they#1,Positive_Your_minions_leave_behind_chaos_pools_when_they,minions_leave_chaos_pools,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di#1,Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di,,,20.0,20.0,,,0.0,,0.0,blast_from_the_dying,afflicted_death,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Negative_Enemies_you_kill_explode_and_deal_5_10_of_thei#1,Negative_Enemies_you_kill_explode_and_deal_5_10_of_thei,,,-5.0,-10.0,,,0.0,,0.0,health,kill,event_amount,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
