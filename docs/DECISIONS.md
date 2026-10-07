@@ -46,12 +46,15 @@ fires none of the wearer's on-hit rows. The first part's entry records the rulin
 - `FCataclysmHitDelivery::bIsConsequenceOfADeath`, set by `ExplodeForOverkill`.
 - The effect is stamped under the name `Cataclysm.ConsequenceOfADeath`
   (`UCataclysmSkillEffects::ConsequenceOfADeathDataName`), a set-by-caller name and not a gameplay tag, as the
-  converted damage mark of 2026-10-06 is. **A judgement of the writing session:** the other blow flags travel as
-  gameplay tags, and a new gameplay tag has to be added to the Tags sheet of the design workbook, which this
-  session does not edit.
+  converted damage mark of 2026-10-06 is. The other blow flags travel as gameplay tags, and a new gameplay tag
+  has to be added to the Tags sheet of the design workbook, from which `game/Config/Tags/CataclysmTags.ini` is
+  generated and which this session does not edit. **Confirmed on 2026-10-07, a labelled judgement by the
+  coordinating session under the owner's delegation.** A gameplay tag would be the uniform form, and the mark can
+  become one if the Tags sheet gains it later.
 - `UCataclysmCombatEvents::NoteBlow` reads the stamp into `FCataclysmHitNotice::bConsequenceOfADeath`.
 - `ACataclysmPlayerCharacter::OnSomethingWasHit` returns for such a blow before it raises `hit_dealt`,
-  `first_hit_dealt` or `critical_strike`.
+  `first_hit_dealt` or `critical_strike`. **The third is withheld too, and nothing can show it today**: the
+  explosion cannot critically strike. It is withheld so the rule does not rest on that staying true.
 
 **It is not marked as damage over time**, as ruled: that would also change the energy shield's refill wait and
 every other rule about a tick.
@@ -66,7 +69,7 @@ every other rule about a tick.
   for hits, and the defender's own "when hit" rows, treat the explosion as any blow. Read by the writing session
   in the two files changed and not swept across every listener.
 
-### Judgements by the writing session, 2026-10-07, for the coordinating session to confirm
+### Judgements by the writing session, each confirmed on 2026-10-07 by the coordinating session under the owner's delegation
 
 - **The explosion is made last in the death listener**, after Long Hold's heal, the follow-through and the
   nearby-death rows for the same death, so a chain's deaths are heard after the first death is fully handled by
@@ -82,11 +85,29 @@ every other rule about a tick.
 - **A creature killed by damage shared through Sacrificial Bond explodes for nought.** Its last blow is copied
   from the bonded creature's, which was not lethal there. Read in the code and not run.
 
-### The Plague Doctor blast
+### The Plague Doctor blast, and what happens with both rows worn
 
-**Not checked.** The coordinating session asked whether the enchantment session's blast at an afflicted death
-(`blast_from_the_dying`) reaches `OnSomethingWasHit` as the wearer's hit. Its layer was not in git when this was
-written. If it does, the same mark goes on it, with a test.
+Read by the writing session on 2026-10-07 in the enchantment session's layer for the blast an afflicted death makes
+(`blast_from_the_dying`, `UCataclysmContagion::BlastAt`), and not run:
+
+- **The blast is announced as the wearer's hit.** Its blows are direct blows whose attacker is the wearer, not
+  ticks and not evaded, so `OnSomethingWasHit` passes its early returns for them.
+- **In play it fires no on-hit row all the same**, because the blast always runs while an event is running: from
+  the row loop of `ActOnEvent`, or from `DrainQueuedAfflictedDeaths`, which holds the same depth. `ActOnEvent`
+  answers nothing at that depth.
+- **Ruled 2026-10-07, a labelled judgement by the coordinating session under the owner's delegation: the blast's
+  delivery gets the same mark, with a test that calls the blast outside an event.** The reason recorded: the
+  ruling is that neither effect at a death is a blow the character struck. The mark states that. The depth rule
+  only happens to deliver it, and would stop delivering it the day a blast is called outside an event.
+
+**For the owner's play-check, with both rows worn:**
+
+- **A creature the blast kills does not explode for its overkill.** The blast's kill raises `kill` while an event
+  is running, so the wearer's kill rows are not heard for it.
+- **A creature the overkill explosion kills does blast, if it carried the wearer's ailment.** The explosion runs
+  outside any event, so its kill raises `kill` and `afflicted_death` at the top level.
+- **In a player's words: an exploding body can set off a plague blast, but a plague blast never sets off an
+  exploding body.**
 
 ### Tests
 
