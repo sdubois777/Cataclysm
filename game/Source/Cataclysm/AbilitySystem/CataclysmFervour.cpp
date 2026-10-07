@@ -276,7 +276,15 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	// under issue #1029; issue #1031 rewrote all twelve Masochist capstone
 	// options and that one no longer exists, so the maximum is simply the
 	// maximum again.
-	const float Wanted = FMath::Clamp(Before + Sign * Amount, 0.0f,
+	//
+	// AND A GAIN IS SCALED BY HOW FAST THE CLASS RESOURCE GENERATES, BEFORE THAT
+	// CLAMP. Ruled 2026-10-07, `class_resource_generation`. This one line carries
+	// both directions: a positive sign is damage taken or a cost paid, which is
+	// generation, and a negative one is healing, which is a loss and is handed
+	// back by the helper exactly as it came.
+	const float Moved = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
+		AbilitySystem, Sign * Amount);
+	const float Wanted = FMath::Clamp(Before + Moved, 0.0f,
 									  Resource->MaximumClassResourceAsked());
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))
@@ -388,7 +396,10 @@ float UCataclysmFervour::GainPerSecondStep(
 		return 0.0f;
 	}
 
-	const float Wanted = PerSecondAltogether * SecondsInStep;
+	// SCALED BY HOW FAST THE CLASS RESOURCE GENERATES, once for the whole sum
+	// and before the clamp below. Ruled 2026-10-07, `class_resource_generation`.
+	const float Wanted = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
+		AbilitySystem, PerSecondAltogether * SecondsInStep);
 
 	const FGameplayAttribute Pool =
 		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
@@ -568,8 +579,11 @@ float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
 	// pool in this file follows and for the reason they give:
 	// `ApplyModToAttribute` writes a base value and whether that reaches
 	// `PreAttributeChange` depends on whether an aggregator happens to exist.
+	//
+	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
 	const float Change =
-		FMath::Clamp(Before + PerCast, 0.0f, Resource->MaximumClassResourceAsked())
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCast),
+					 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -625,8 +639,11 @@ float UCataclysmFervour::GainOnDroppingLow(UAbilitySystemComponent* AbilitySyste
 
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every other write to the pool in
 	// this file follows and for the reason they give.
+	//
+	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
 	const float Change =
-		FMath::Clamp(Before + OnDropping, 0.0f, Resource->MaximumClassResourceAsked())
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDropping),
+					 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -848,9 +865,12 @@ float UCataclysmFervour::GainForEnemiesHit(UAbilitySystemComponent* AbilitySyste
 
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every write to the pool in this file
 	// follows; `GainForCast` gives the reason.
+	//
+	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
 	const float Change =
-		FMath::Clamp(Before + PerEnemy * static_cast<float>(EnemiesHit), 0.0f,
-					 Resource->MaximumClassResourceAsked())
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
+								  AbilitySystem, PerEnemy * static_cast<float>(EnemiesHit)),
+					 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -909,8 +929,11 @@ float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySyste
 
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every other write to the pool in
 	// this file follows and for the reason they give.
+	//
+	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
 	const float Change =
-		FMath::Clamp(Before + OnDeath, 0.0f, Resource->MaximumClassResourceAsked())
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath),
+					 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -958,8 +981,11 @@ float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* Ability
 
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every write to the pool in this
 	// file follows.
+	//
+	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
 	const float Change =
-		FMath::Clamp(Before + OnDeath, 0.0f, Resource->MaximumClassResourceAsked())
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath),
+					 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{

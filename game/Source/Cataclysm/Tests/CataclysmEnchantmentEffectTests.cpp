@@ -2418,6 +2418,164 @@ bool FCataclysmAnActionFiresOnItsOwnEventOnly::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmGenerationRateScalesARowsGrant,
+	"Cataclysm.Enchantments.GenerationRateScalesAPoolActionThatGrantsClassResourceAndNotOneThatTakesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGenerationRateScalesARowsGrant::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE EIGHTH PLACE THE CLASS RESOURCE IS GAINED. Ruled 2026-10-07:
+	// `ApplyPoolAction` scales a POSITIVE amount for the pool `class_resource`
+	// by `class_resource_generation`, and leaves a row that takes class resource
+	// away as it was.
+	//
+	// ON `block`, AND ONCE FOR ALL THREE AUTHORED ROWS. The rows that grant class
+	// resource wait on `block`, `skill_use` and `hit_dealt`; they differ only in
+	// the event, and every one reaches the same line in `ApplyPoolAction`.
+	//
+	// ONE WEARER ALIVE AT A TIME: `FWearer` spawns a plain actor on the origin, so
+	// each reading makes its own and destroys it before the next.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute MaximumPool = UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	struct FMoved
+	{
+		bool bSetUp = false;
+		float Resource = 0.0f;
+		float Health = 0.0f;
+	};
+
+	// A POOL OF 200 SO A PERCENTAGE OF THE MAXIMUM IS NOT THE PERCENTAGE ITSELF,
+	// and health at 100 of 500 so a health row has room to restore.
+	const auto BlockOnce = [&](const TCHAR* Who, const TOptional<float>& Increase, const TCHAR* PoolName,
+							   float Percent, float StartAt) -> FMoved
+	{
+		FMoved Out;
+		FWearer Wearer(World);
+		UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+		GivePools(ASC, /*Health=*/100.0f, /*MaxHealth=*/500.0f, /*Resource=*/StartAt, /*MaxResource=*/200.0f);
+		if (Increase.IsSet())
+		{
+			FCataclysmStatModifier Rate;
+			Rate.Bucket = ECataclysmStatBucket::Increased;
+			Rate.Source = ECataclysmModifierSource::Enchantment;
+			Rate.Value = Increase.GetValue();
+
+			TMap<FName, FCataclysmStatInputs> Stats;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(
+				FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat));
+			Line.Base = UCataclysmAbilitySystemComponent::NormalClassResourceGeneration;
+			Line.Modifiers = {Rate};
+			ASC.SetStatInputs(MoveTemp(Stats));
+		}
+		ASC.SetPoolActions({PoolAction(TEXT("block"), PoolName, Percent)});
+
+		const bool bMaximum = TestEqual(
+			*FString::Printf(TEXT("%s: set-up: the class resource maximum is 200"), Who),
+			ASC.GetNumericAttribute(MaximumPool), 200.0f, 0.01f);
+		const bool bStart = TestEqual(
+			*FString::Printf(TEXT("%s: set-up: the class resource starts where it was put"), Who),
+			ASC.GetNumericAttribute(Pool), StartAt, 0.01f);
+		const bool bHealth = TestEqual(
+			*FString::Printf(TEXT("%s: set-up: health starts at 100"), Who),
+			ASC.GetNumericAttribute(Health), 100.0f, 0.01f);
+		const bool bRate = TestEqual(
+			*FString::Printf(TEXT("%s: set-up: class_resource_generation reads 100 and its increase"), Who),
+			ASC.StatForSkill(FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat),
+							 FGameplayTagContainer(),
+							 UCataclysmAbilitySystemComponent::NormalClassResourceGeneration),
+			100.0f + Increase.Get(0.0f), 0.01f);
+		Out.bSetUp = bMaximum && bStart && bHealth && bRate;
+		if (!Out.bSetUp)
+		{
+			return Out;
+		}
+
+		ASC.NoteBlocked();
+		Out.Resource = ASC.GetNumericAttribute(Pool) - StartAt;
+		Out.Health = ASC.GetNumericAttribute(Health) - 100.0f;
+		return Out;
+	};
+
+	// A GRANT OF 10% OF THE MAXIMUM, FROM 50 OF 200.
+	const FMoved Control = BlockOnce(TEXT("a grant, the control"), TOptional<float>(),
+									 TEXT("class_resource"), 10.0f, 50.0f);
+	const FMoved Faster = BlockOnce(TEXT("a grant, increased by 40"), TOptional<float>(40.0f),
+									TEXT("class_resource"), 10.0f, 50.0f);
+	const FMoved Slower = BlockOnce(TEXT("a grant, decreased by 50"), TOptional<float>(-50.0f),
+									TEXT("class_resource"), 10.0f, 50.0f);
+	if (!Control.bSetUp || !Faster.bSetUp || !Slower.bSetUp)
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: the control's block grants a tenth of 200"), Control.Resource, 20.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("increased by 40, the grant is 1.4 times the control's"),
+			  Faster.Resource, Control.Resource * 1.4f, 0.01f);
+	TestEqual(TEXT("decreased by 50, the grant is half the control's"),
+			  Slower.Resource, Control.Resource * 0.5f, 0.01f);
+
+	// A ROW THAT TAKES CLASS RESOURCE AWAY IS NOT SCALED.
+	const FMoved DrainControl = BlockOnce(TEXT("a drain, the control"), TOptional<float>(),
+										  TEXT("class_resource"), -10.0f, 50.0f);
+	const FMoved DrainFaster = BlockOnce(TEXT("a drain, increased by 40"), TOptional<float>(40.0f),
+										 TEXT("class_resource"), -10.0f, 50.0f);
+	const FMoved DrainSlower = BlockOnce(TEXT("a drain, decreased by 50"), TOptional<float>(-50.0f),
+										 TEXT("class_resource"), -10.0f, 50.0f);
+	if (!DrainControl.bSetUp || !DrainFaster.bSetUp || !DrainSlower.bSetUp)
+	{
+		return false;
+	}
+	if (TestEqual(TEXT("set-up: the control's block takes a tenth of 200"), DrainControl.Resource, -20.0f, 0.01f))
+	{
+		TestEqual(TEXT("increased by 40, the row takes what the control's took"),
+				  DrainFaster.Resource, DrainControl.Resource, 0.01f);
+		TestEqual(TEXT("decreased by 50, the row takes what the control's took"),
+				  DrainSlower.Resource, DrainControl.Resource, 0.01f);
+	}
+
+	// A FASTER GRANT STILL STOPS AT THE MAXIMUM: from 190 of 200, twenty-eight
+	// is asked for and ten fit.
+	const FMoved NearFull = BlockOnce(TEXT("a grant near the maximum, increased by 40"), TOptional<float>(40.0f),
+									  TEXT("class_resource"), 10.0f, 190.0f);
+	if (!NearFull.bSetUp)
+	{
+		return false;
+	}
+	TestEqual(TEXT("a faster grant stops at the maximum"), NearFull.Resource, 10.0f, 0.01f);
+
+	// AND ONLY THE CLASS RESOURCE POOL. A health row on the same wearer restores
+	// what it did.
+	const FMoved HealthControl = BlockOnce(TEXT("a health row, the control"), TOptional<float>(),
+										   TEXT("health"), 10.0f, 50.0f);
+	const FMoved HealthFaster = BlockOnce(TEXT("a health row, increased by 40"), TOptional<float>(40.0f),
+										  TEXT("health"), 10.0f, 50.0f);
+	if (!HealthControl.bSetUp || !HealthFaster.bSetUp)
+	{
+		return false;
+	}
+	if (TestEqual(TEXT("set-up: the control's block restores a tenth of 500 health"),
+				  HealthControl.Health, 50.0f, 0.01f))
+	{
+		TestEqual(TEXT("the generation rate does not reach a health row"),
+				  HealthFaster.Health, HealthControl.Health, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmARestoreAddsAndADrainTakes,
 	"Cataclysm.Enchantments.ARestoreAddsToThePoolAndADrainTakesFromIt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

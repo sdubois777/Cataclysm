@@ -3396,6 +3396,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::NthSpellManaCostAction =
 	TEXT("nth_spell_mana_cost");
 const TCHAR* UCataclysmAbilitySystemComponent::AurasEndAtDeathStat =
 	TEXT("auras_end_at_death");
+const TCHAR* UCataclysmAbilitySystemComponent::ClassResourceGenerationStat =
+	TEXT("class_resource_generation");
 const TCHAR* UCataclysmAbilitySystemComponent::SelfBuffSharedWithinMetresStat =
 	TEXT("self_buff_shared_within_metres");
 const TCHAR* UCataclysmAbilitySystemComponent::SupportBuffSharedWithinMetresStat =
@@ -5284,6 +5286,33 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 	}
 }
 
+float UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
+	const UAbilitySystemComponent* AbilitySystem, float Change)
+{
+	// ONLY A GAIN. Ruled 2026-10-07: "generates faster" and "generates slower"
+	// are about what arrives, so a loss, a spend and a decay leave as they came.
+	if (Change <= 0.0f)
+	{
+		return Change;
+	}
+
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Asking)
+	{
+		return Change;
+	}
+
+	// NO TAGS: a generation rate is the character's and not a skill's. THE
+	// FALLBACK IS THE BASE, so a character nothing was recorded for gains at
+	// the normal rate rather than at none.
+	const float Percent = Asking->StatForSkill(
+		FName(ClassResourceGenerationStat), FGameplayTagContainer(), NormalClassResourceGeneration);
+
+	// NEVER BELOW NOUGHT: generating slower than not at all is not a loss.
+	return Change * FMath::Max(0.0f, Percent) / 100.0f;
+}
+
 void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags,
 	float EventAmount)
@@ -5318,7 +5347,16 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 		break;
 	}
 	(void)EventTags;
-	const float Amount = Base * Action.Percent / 100.0f;
+	float Amount = Base * Action.Percent / 100.0f;
+
+	// A ROW THAT GRANTS CLASS RESOURCE IS GENERATION TOO. Ruled 2026-10-07: the
+	// eighth place the pool is filled, beside the seven in `UCataclysmFervour`.
+	// Only this pool, and only a positive amount -- the helper leaves a row that
+	// takes class resource away exactly as it was.
+	if (Action.Pool == ClassResourcePoolName)
+	{
+		Amount = ClassResourceGainScaled(this, Amount);
+	}
 	if (FMath::IsNearlyZero(Amount))
 	{
 		return;
