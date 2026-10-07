@@ -17534,4 +17534,59 @@ bool FCataclysmAbsorbedDamageRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillExplosionRowTest,
+	"Cataclysm.Enchantments.TheOverkillExplosionRowHandsItsWearerTheWholeOfTheOverkillOnAKill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies killed by you explode for the overkill amount". Issue #1833, ruled
+ * 2026-10-07: `explode_victim_for_overkill` on `kill`, 100. The real row WORN:
+ * its wearer holds exactly one action of that kind on `kill`, with a share of
+ * 100, and none when the item is taken off. What the explosion then does is
+ * the tests of the entries that built it.
+ */
+bool FCataclysmOverkillExplosionRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_Enemies_killed_by_you_explode_for_the_overkill_a");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Kill(TEXT("kill"));
+	int32 OfItsKind = 0;
+	float Share = -1.0f;
+	for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+	{
+		if (Action.bExplodeVictimForOverkill && Action.Event == Kill)
+		{
+			++OfItsKind;
+			Share = Action.Percent;
+		}
+	}
+	TestEqual(*(FString(TEXT("worn: one action that explodes the victim for its overkill, on a kill.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		OfItsKind, 1);
+	TestEqual(TEXT("and its share is the whole of the overkill, 100"), Share, 100.0f, 0.01f);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	int32 Left = 0;
+	for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+	{
+		Left += Action.bExplodeVictimForOverkill ? 1 : 0;
+	}
+	TestEqual(TEXT("taken off: no such action is left"), Left, 0);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
