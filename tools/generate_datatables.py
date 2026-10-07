@@ -4403,6 +4403,13 @@ SCALES = {
     "floors_cleared": (0.0, 1000.0, "a number of dungeon floors cleared"),
     "armor": (0.0, 100_000.0, "an amount of armor"),
     "cataclysm_bosses_defeated": (0.0, 100.0, "a number of unique Cataclysm bosses"),
+
+    # "for each active unique instance of leech" is `leech_pools_in_flight` with
+    # a step of 1. Issue #1833, ruled 2026-10-07 for Starvation's six-piece
+    # bonus: one for each POOL the character is leeching into, health, mana and
+    # energy shield, so nought to three. Not one for each payment, which every
+    # hit starts and which has no bound.
+    "leech_pools_in_flight": (0.0, 3.0, "a number of pools being leeched into"),
 }
 
 
