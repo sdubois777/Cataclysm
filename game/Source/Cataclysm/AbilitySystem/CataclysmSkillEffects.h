@@ -1349,7 +1349,8 @@ public:
 	 */
 	static bool ApplyShareOfHealthOverTime(AActor* Instigator, AActor* Target,
 										   float SharePerTick, float DurationSeconds,
-										   const FGameplayTag& EffectTag);
+										   const FGameplayTag& EffectTag,
+										   bool bScalesWithInstigator = true);
 
 	/**
 	 * The percent of what a running share of health ailment had left that it
@@ -1459,8 +1460,15 @@ public:
 		/** The tag it grants, such as `Keyword.DoT.Disease`. */
 		FGameplayTag Ailment;
 
-		/** What it deals a second, as it was stated when it was applied. */
+		/**
+		 * What it deals a second, as it was stated when it was applied. For an
+		 * ailment that takes a share of health this is the SHARE a second, a
+		 * fraction, and `bShareOfHealth` says so.
+		 */
 		float DamagePerSecond = 0.0f;
+
+		/** Whether it takes a share of current health a tick, as a Void Splinter does. */
+		bool bShareOfHealth = false;
 
 		/** How long it has left. */
 		float SecondsLeft = 0.0f;

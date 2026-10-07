@@ -5127,6 +5127,13 @@ AILMENT_RIDER_ACTIONS = (
 AILMENT_DETONATION_ACTION = "ailment_detonates_when_reapplied"
 DETONATING_AILMENTS = ("Void Splinter",)
 
+#: The rider that passes an ailment on at a death, and the ailment it may name
+#: BESIDE the five in `AILMENTS`. Ruled 2026-10-06 for "Void splinter stacks
+#: spread to nearby enemies when the afflicted enemy dies". The other numbers
+#: hung on an ailment stay refused on Void Splinter: no sentence asks for one.
+AILMENT_SPREAD_ACTION = "ailment_spread_on_death"
+SPREADING_SHARE_AILMENTS = ("Void Splinter",)
+
 #: The action that REPEATS THE SKILL JUST USED, FREE, with its value as the chance
 #: out of 100. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15%
 #: chance to cast a second time for free".
@@ -6717,6 +6724,8 @@ def enchantment_effects(book) -> list[dict]:
                         f"{ailment!r} detonate. The game detonates only "
                         f"{', '.join(DETONATING_AILMENTS)}, so the row would do "
                         f"nothing.")
+            elif action == AILMENT_SPREAD_ACTION and ailment in SPREADING_SHARE_AILMENTS:
+                pass
             elif ailment not in AILMENTS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} names the ailment "

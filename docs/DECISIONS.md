@@ -2,6 +2,72 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A Void Splinter can pass on when its carrier dies, where a row gives it a count; no row authored here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`
+(`ApplyShareOfHealthOverTime`, `FRunningAilment::bShareOfHealth`, `RunningAilmentOn`, `ApplySpreadCopy`),
+`CataclysmContagion.cpp` (`SpreadFromTheDying`), `tools/generate_datatables.py` (`AILMENT_SPREAD_ACTION`,
+`SPREADING_SHARE_AILMENTS`), one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`tools/tests/test_generate_datatables.py`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHY THIS WAS LEFT OUT BEFORE
+
+The entry "Disease passes to the two nearest enemies when its carrier dies" built the spread for the five ailments
+that state a damage a tick and left Void Splinter out, for two reasons it gave: the function that applies a share
+of health handed the character struck none of the numbers a row hangs on an ailment, and it could not apply a copy
+without applying its applier's stats a second time. This entry closes both.
+
+### WHAT WAS RULED, 2026-10-06
+
+- **The coordinating session, under the owner's delegation, each a labelled judgement:** "stacks" is the one
+  running Void Splinter; "nearby" is every enemy within 5 metres of the body; a copy carries what the source has
+  left; an enemy that already carries the ailment is passed over; a copy passes on again.
+- **THE OWNER: a minion's ailment carries none of the wearer's enchantment bonus unless a row says so.** A count
+  rides on a Void Splinter only when the wearer applies it.
+
+### HOW IT IS BUILT
+
+- **The numbers a row hangs on the ailment are handed over.** `ApplyShareOfHealthOverTime` now gives the
+  character struck its instigator's riders, as `ApplyDamageOverTime` does, whether the application makes a new
+  effect or refreshes a stronger one.
+- **A copy is applied as it is.** The function takes `bScalesWithInstigator`, on by default. Off, the share and
+  the seconds handed in are used unchanged at one second a tick, because the figures of a running Void Splinter
+  already hold its applier's frequency and duration stats.
+- **The spread at a death reads a Void Splinter**, the sixth name in its list. By itself it passes to nobody; a
+  row's count is what passes it on.
+- **A copy never detonates.** The detonation of the entry "A Void Splinter can detonate" is skipped while a
+  spread is making a copy: nobody applied it.
+- **The generator lets the spread action, and no other number hung on an ailment, name Void Splinter.**
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **A copy is the same SHARE a second, not the same damage.** Each tick takes its share of the health the
+  character it is now on holds. So a copy on a creature with more health deals more than the original would have,
+  and on one with less, less. A boss is held at half its maximum health by it as by any Void Splinter.
+- **The other numbers hung on an ailment stay refused on Void Splinter in the generator**, though the game would
+  now hand them over. No sentence asks for one, and a row nobody asked for is not accepted ahead of its ruling.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **Every application of a Void Splinter now hands over riders**, the passive's spread (Empathic Link) included.
+  With no row that hangs a number on Void Splinter, that changes nothing.
+- **A count is fixed when the ailment is applied**, as every number hung on an ailment is, and a copy is handed
+  it again.
+- **A pack can pass one Void Splinter along its whole length**, each hop with less time left.
+
+### Tests
+
+- `Cataclysm.Enchantments.AVoidSplinterPassesToEveryEnemyARowCountsWithinFiveMetresForTheTimeItHadLeft`, with a
+  row made by hand: with no row a Void Splinter passes to nobody; with a count of 100 the one on a dying creature
+  passes to the three creatures 1, 2 and 3 metres from the body and not to the one 6 metres away; the copy takes a
+  share of health, at the original's one per cent a second, for the two and a half seconds the original had left,
+  with the wearer as its source; and the copy carries the count.
+- Python: the spread action may name Void Splinter, and another number hung on Void Splinter is still refused.
+
+**Not tested:** a copy passing on a second time through a second death, and a copy on a boss.
+
+---
+
 ## 2026-10-06 — A killed minion leaves its commander a chaos pool: one flag, `minions_leave_chaos_pools`. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`LeaveChaosPool`, three constants,
