@@ -10,8 +10,8 @@ more argument on `ApplyDamageOverTime`, the stamp in `ApplyTypedSpec`); `Catacly
 conversion marks its bleed); a comment in `Dungeon/CataclysmDungeonGameMode.cpp`; one changed and one new test in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, one new test in
 `CataclysmDamageConversionTests.cpp`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry.
 
 ### What it was, and why it changes
 
@@ -31,9 +31,13 @@ effect, and removes every other damage over time, curse and stun a character lai
 stated purpose is converted damage not yet taken. A drawback a row lays is not that, and a cleanse should answer a
 drawback's status as it answers an enemy's.
 
-**This narrows an earlier ruling.** The player cleanse was ruled on 2026-09-30 to remove what others put on the
-player and keep what the player put on itself, for the dungeon rule Grim Totems. The comment there now says what
-it keeps.
+**This supersedes one sentence of an earlier ruling.** The entry of 2026-09-26 for the choice screen and Grim Totems
+says, under "Cleansing the player": "The coordinating session ruled on 2026-09-30 that ... choosing Cleanse at a
+totem also runs the player cleanse ... which removes what others put on the player and keeps what the player put on
+itself." **"Keeps what the player put on itself" no longer holds**: a cleanse keeps converted damage not yet taken
+and nothing else the player put on itself. That ruling was the coordinating session's own, and it narrowed it on
+2026-10-06. The comment in `CataclysmDungeonGameMode.cpp` and the one in `CataclysmDebuffs.h` now state the new
+rule; `CataclysmDebuffs.cpp` states it where the effect is kept.
 
 ### The mark
 
@@ -88,9 +92,40 @@ No new source was read. Nothing read settles the ruling; it follows from the exc
 
 **Not covered by a test:** the stun and the two Brand Nova chains in the table.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| La | `CataclysmDamageConversion.cpp`: the conversion does not mark its bleed | `Cataclysm.DamageConversion.TheConvertedBleedIsKeptByACleanseBecauseItIsMarked` | 1 performed, 1 failed, 2 failed assertions: a cleanse removed 1 against 0, and the converted bleed was gone | 1 performed, 1 succeeded |
+| Lb | `CataclysmDebuffs.cpp`: the cleanse keeps every effect | `Cataclysm.Cleanse.ItRemovesWhatThePlayerLaidOnItselfThatIsNotConvertedDamage` | 1 performed, 1 failed, 6 failed assertions: it removed 0 against 2; the bleed and the Cripple stayed; the zone's curse, slow and ailment stayed on its owner | 1 performed, 1 succeeded |
+
+**Not run:** the stun and the two Brand Nova chains in the table above.
 
 ---
 
