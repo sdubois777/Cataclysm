@@ -125,6 +125,39 @@ owner's open question, so the switch stays at 0.**
 
 **Not tested:** a boss, and a detonation that kills its target.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the layer below this one and the two above it, on `development` 210f1267. The
+build, the whole suite and the Python of record are in the table of the entry "Two drawbacks roll for a skill to
+hit its own user" and were run with this layer in the stack. **The ids are the commits as they stood when each
+step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| First compile of this layer's engine code, in the build of the whole stack | b97776b7 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | b97776b7 | 248 tests performed, 243 succeeded, 5 failed; this layer's test in that group not among them |
+| Assets | 7f550389 | none built: this layer changes no table and carries the assets of the layer below |
+| Whole suite, in which both of this layer's tests ran | c07c8f46 | 3235 tests performed, 3235 succeeded, 0 failed |
+
+**Neither of this layer's tests needs a row**, so they pass against the older assets and have no failing half
+there. The failing halves are the guard proofs below.
+
+**One figure the run printed.** A hand-made row of 100 took 7880.796875 at once from a creature holding 100,000
+health and carrying a Void Splinter that had dealt nothing: twice the 3940.398 its four ticks would have taken.
+
+**C++ guard proofs, each with `prove_cpp_guard` on `Cataclysm.Enchantments.` at c07c8f46**, each restored to 248
+tests performed, 248 succeeded, 0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| A row no longer makes the ailment detonate for the whole of what was left (`Increase > 0.0f ? 0.0f :` in `DetonationPercentWhenReapplied`) | 248 performed, 2 failed | `AVoidSplinterAppliedAgainByItsApplierDealsWhatWasLeftAtOnceOnlyWhenARowSaysSo` 2: "a row of 50 makes the percent 150" was 0, and nothing was taken at once; the row test of the layer above 1, at its set-up |
+| The percent is worked out and nothing is dealt (`Detonation` multiplied by 0 in `ApplyShareOfHealthOverTime`) | 248 performed, 2 failed | the same engine test 1: nothing was taken at once; the row test of the layer above 1, at its set-up |
+
+Each proof failed on the tests and the number of assertions registered before the window.
+
+**The test of the figures, in `Cataclysm.RemainingDamage.`, is not under the prefix the proofs ran**, so neither
+proof says anything about it. It passed in the whole suite and has no failing half of its own.
+
 ---
 
 ## 2026-10-06 — Two drawbacks roll for a skill to hit its own user: melee skills that hit you instead, and spells that backfire for half
