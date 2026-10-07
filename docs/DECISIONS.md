@@ -60,11 +60,17 @@ owner's decision.
 
 ### Consequences, stated rather than changed
 
+- **A PLAYER OWNER CARRIES THE ZONE'S SLOW AND IS NOT SLOWED BY IT.** The slow is Cripple, and only a creature
+  reads Cripple for its speed (`ACataclysmEnemyCharacter::CrippleMultiplier`). A player's walking speed follows the
+  MovementSpeed attribute, which Cripple does not move. So under the second row a player standing in their own
+  slowing zone carries the Cripple tag, and conditions that ask whether they are crippled see it, and they walk and
+  attack at full speed. **That is a gap in the game and not a ruling**, issue [#2273](https://github.com/sdubois777/Cataclysm/issues/2273). This entry said the
+  zone "slows its owner by the row's own figure" until 2026-10-06; that was wrong for a player. The probe's owner
+  is a plain test actor and it checks that the owner carries the tag, nothing more. The stagger, the ailment and
+  the curse do not go through Cripple and are not affected.
 - **A movement skill's ground at the point of arrival is under its owner the moment it is left**, so under the
   first row Ashwalk, Infernal Plunge, Foul Wake and Vesselstep damage their user on the next sweep unless they
   step out. Read from the rows, not run.
-- **Under the second row a slowing zone slows its owner** by the row's own figure for the slow's 1.5 seconds,
-  renewed each sweep.
 - **The zone's ailment on its owner is its owner's own application**, so what the owner's rows hang on that ailment
   go onto the owner too. Read in the code, not run.
 
