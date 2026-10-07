@@ -448,6 +448,15 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// leaves a chaos pool. Read by ACataclysmMinion::HandleDeath. Ruled
 		// 2026-10-06.
 		TEXT("minions_leave_chaos_pools"),
+		// And three about damage over time on the character who carries
+		// them. Ruled 2026-10-06. A flag that refuses an ailment, asked with
+		// the ailment's tag by UCataclysmSkillEffects::ApplyDamageOverTime;
+		// the percent of a bleed tick the energy shield takes; and a flag
+		// that puts every tick to the mana first. The last two are read by
+		// UCataclysmDamageCalculation::Resolve.
+		TEXT("ailment_immunity"),
+		TEXT("bleed_damage_taken_from_energy_shield"),
+		TEXT("damage_over_time_taken_from_mana_first"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health

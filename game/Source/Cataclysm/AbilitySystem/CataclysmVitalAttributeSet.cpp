@@ -435,6 +435,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				FGameplayTagContainer Granted;
 				Data.EffectSpec.GetAllGrantedTags(Granted);
 				Hit.bIsBleed = Granted.HasTag(UCataclysmDebuffs::BleedTag());
+
+				// AND WHICH AILMENT IT IS, for a defender's row that names one.
+				// Ruled 2026-10-06. Every granted tag under the damage over time
+				// parent; a tick with no ailment grants none and carries none.
+				const FGameplayTag DamageOverTime =
+					UCataclysmDamageCalculation::DamageOverTimeTag();
+				for (const FGameplayTag& One : Granted)
+				{
+					if (DamageOverTime.IsValid() && One.MatchesTag(DamageOverTime))
+					{
+						Hit.DamageOverTimeTags.AddTag(One);
+					}
+				}
 			}
 
 			// AND WHETHER THE ATTACKER IS CHARMED BY THIS CREATURE. The Beguiling
@@ -1519,6 +1532,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				SetEnergyShield(FMath::Clamp(
 					GetEnergyShield() - Outcome.AbsorbedByShield,
 					0.0f, MaximumEnergyShieldAsked()));
+			}
+			// AND WHAT THE MANA TOOK IS TAKEN FROM THE MANA. Ruled 2026-10-06:
+			// "DoTs deal damage to your mana pool first". Nought for every blow
+			// but a damage over time tick on a character carrying
+			// `damage_over_time_taken_from_mana_first`; see step 7 of
+			// `UCataclysmDamageCalculation::Resolve`. This is the only damage a
+			// mana pool takes. Regeneration is not touched, and a skill whose
+			// cost the mana left cannot pay is refused as for any character
+			// short of mana.
+			if (Outcome.AbsorbedByMana > 0.0f)
+			{
+				SetMana(FMath::Clamp(GetMana() - Outcome.AbsorbedByMana,
+									 0.0f, GetMaxMana()));
 			}
 			// AND SOME OF IT MAY NOT REACH HEALTH AT ALL, ARRIVING AS BLEEDING
 			// INSTEAD. Issue #985, the Masochist's The Breaking Point. What is
