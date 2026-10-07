@@ -17589,4 +17589,50 @@ bool FCataclysmOverkillExplosionRowTest::RunTest(const FString&)
 	TestEqual(TEXT("taken off: no such action is left"), Left, 0);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotDurationOnTheWearerRowTest,
+	"Cataclysm.Enchantments.TheDotDurationRowMultipliesHowLongAnyDamageOverTimeLastsOnItsWearer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "DoTs on you have 100%-300% more duration", the owner's reword of 2026-10-07
+ * of "DoTs last 2x-4x as long on you": `debuff_duration_taken` more 100 to
+ * 300, scoped to `Keyword.DoT`. The real row WORN at its harshest roll, as a
+ * drawback is: a duration of 100 asked about a bleed becomes 400, and so does
+ * one asked about a burn; asked about nothing that is damage over time it
+ * stays 100.
+ */
+bool FCataclysmDotDurationOnTheWearerRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so. The name
+	// is the one the reword gave the row, written here by the script that derived it.
+	const TCHAR* const RowName = TEXT("Negative_DoTs_on_you_have_100_300_more_duration");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Bleed = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTagContainer Burn = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.DoT.Burn"));
+	if (!TestTrue(TEXT("set-up: the bleed tag exists"), Bleed.Num() == 1)
+		|| !TestTrue(TEXT("set-up: the burn tag exists"), Burn.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Stat(TEXT("debuff_duration_taken"));
+	TestEqual(*(FString(TEXT("worn: 100 of a bleed's duration becomes 400.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->StatAppliedTo(Stat, Bleed, 100.0f), 400.0f, 0.01f);
+	TestEqual(TEXT("and 100 of a burn's becomes 400"), Worn.ASC()->StatAppliedTo(Stat, Burn, 100.0f), 400.0f, 0.01f);
+	TestEqual(TEXT("asked about nothing that is damage over time, it stays 100"),
+		Worn.ASC()->StatAppliedTo(Stat, FGameplayTagContainer(), 100.0f), 100.0f, 0.01f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

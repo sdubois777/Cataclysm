@@ -169,7 +169,7 @@ Negative_Movement_abilities_cost_20_50_of_your_maximum,Movement abilities cost 2
 Negative_Cooldowns_are_increased_by_30_50,Cooldowns are increased by 30%-50%,Generic,3.0,Scope.Global,True,
 Negative_You_take_10_20_of_the_damage_you_reflect,You take 10%-20% of the damage you reflect,Generic,4.0,,True,
 Negative_Your_block_chance_is_reduced_by_20_40,Your block chance is reduced by 20%-40%,Generic,4.0,Stat.Defense.Block,True,
-Negative_DoTs_last_2x_4x_as_long_on_you,DoTs last 2x-4x as long on you,Generic,3.0,Keyword.DoT.Generic,True,
+Negative_DoTs_on_you_have_100_300_more_duration,DoTs on you have 100%-300% more duration,Generic,3.0,Keyword.DoT.Generic,True,
 Negative_You_lose_10_20_movespeed,You lose 10%-20% movespeed,Generic,4.0,Stat.Utility.Movespeed,True,
 Negative_Each_minion_reserves_100_500_hp,Each minion reserves 100-500 hp,Generic,4.0,Type.Minion,True,
 Negative_You_take_5_15_damage_done_to_nearby_allies,You take 5%-15% damage done to nearby allies,Generic,4.0,,True,
