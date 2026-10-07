@@ -16563,4 +16563,51 @@ bool FCataclysmPlagueDoctorTenRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKilledEnemiesExplodeOnYouRowTest,
+	"Cataclysm.Enchantments.TheKilledEnemiesExplodeOnYouRowTakesItsShareOfTheSlainEnemysMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies you kill explode and deal 5%-10% of their maximum HP as damage to
+ * you". Issue #1833, ruled 2026-10-07: `health` at -5 to -10 per cent of
+ * `event_amount` on `kill`, whose amount is the slain enemy's maximum health,
+ * with a stated trigger cooldown of nought. Nothing is done to enemies. WORN at
+ * the top of its roll, 10, by a wearer with 1000 health: a kill of an enemy
+ * with 2000 maximum health takes 200, a second in the same moment takes 200
+ * more, and a kill whose share is past all the health left leaves 1. A DRAIN
+ * CANNOT KILL, ruled 2026-09-14.
+ *
+ * THE EVENT IS RAISED BY HAND with the amount the player character passes from
+ * a real kill; `AKillIsHeardWithTheSlainEnemysMaximumHealthAsItsAmount` holds
+ * that the real kill passes it.
+ */
+bool FCataclysmKilledEnemiesExplodeOnYouRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Negative_Enemies_you_kill_explode_and_deal_5_10_of_thei"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Worn.ASC()->SetNumericAttributeBase(Health, 1000.0f);
+	const FName Kill(TEXT("kill"));
+
+	Worn.ASC()->ActOnEvent(Kill, nullptr, 0.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("a kill that carries no amount takes nothing"),
+		Worn.ASC()->GetNumericAttribute(Health), 1000.0f, 0.01f);
+	Worn.ASC()->ActOnEvent(Kill, nullptr, 2000.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("a kill of an enemy with 2000 maximum health takes 10% of that. If nothing, "
+				   "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		Worn.ASC()->GetNumericAttribute(Health), 800.0f, 0.01f);
+	Worn.ASC()->ActOnEvent(Kill, nullptr, 2000.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("a second in the same moment takes 200 more"),
+		Worn.ASC()->GetNumericAttribute(Health), 600.0f, 0.01f);
+	Worn.ASC()->ActOnEvent(Kill, nullptr, 1000000.0f, /*bLanded=*/true, nullptr);
+	TestEqual(TEXT("and a kill whose share is past all the health left leaves 1"),
+		Worn.ASC()->GetNumericAttribute(Health), 1.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
