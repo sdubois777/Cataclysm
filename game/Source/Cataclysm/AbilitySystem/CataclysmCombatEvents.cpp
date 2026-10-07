@@ -6,6 +6,8 @@
 // For the one question this file asks about a minion: whether its summoner
 // holds the keystone that makes its blows the summoner's. See NoteBlow.
 #include "AbilitySystem/CataclysmMinion.h"
+// For the name a blow that is the consequence of a death is stamped under.
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystemComponent.h"
@@ -175,6 +177,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 			{
 				Blow.KillingTags = EffectTags;
 				Blow.KillingTags.AppendTags(Granted);
+				// AND HOW FAR IT WENT PAST THE HEALTH HELD, for the same blow only. Ruled 2026-10-07.
+				Blow.Overkill = Outcome.Overkill;
 			}
 
 			Cataclysm->RecordLastBlow(MoveTemp(Blow));
@@ -208,6 +212,9 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	Notice.bIsRanged = Hit.bIsRanged;
 	Notice.bIsSpell = Hit.bIsSpell;
 	Notice.bFromBoss = Hit.bFromBoss;
+	// THE STAMP THE DELIVERY LEFT, read off the effect. Ruled 2026-10-07.
+	Notice.bConsequenceOfADeath = Data.EffectSpec.GetSetByCallerMagnitude(
+		FName(UCataclysmSkillEffects::ConsequenceOfADeathDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 	// THE SHARED READING, NOT A COPY KEPT HERE. Until this was moved, this file
 	// held its own `CombatEventsMetresBetween` and the passive tree had no
 	// distance at all. Adding one to the hit would have made two definitions of
@@ -262,10 +269,44 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 		Notice.SecondsSinceLastBlow =
 			static_cast<float>(World->GetTimeSeconds() - Blow.WorldSeconds);
 		Notice.KillingTags = &Blow.KillingTags;
+		Notice.Overkill = Blow.Overkill;
 	}
 
 	++Events->Deaths;
+
+	// COUNTED WHILE IT IS IN PROGRESS, so work a listener hands over waits until every listener has heard this
+	// death. See `AfterThisDeathIsHeard`. A death a listener causes from inside its own call is announced inside
+	// this one, and the count is then two.
+	++Events->DeathsBeingAnnounced;
 	Events->OnDeath.Broadcast(Notice);
+	--Events->DeathsBeingAnnounced;
+	Events->DoWorkAfterDeaths();
+}
+
+void UCataclysmCombatEvents::AfterThisDeathIsHeard(TFunction<void()> Work)
+{
+	if (!Work)
+	{
+		return;
+	}
+	if (DeathsBeingAnnounced == 0)
+	{
+		Work();
+		return;
+	}
+	WorkAfterDeaths.Add(MoveTemp(Work));
+}
+
+void UCataclysmCombatEvents::DoWorkAfterDeaths()
+{
+	// TAKEN OFF THE LIST BEFORE IT IS DONE, because the work may kill, and that death's own announcement comes
+	// back through here. It finds this piece already gone and does whatever is left.
+	while (DeathsBeingAnnounced == 0 && !WorkAfterDeaths.IsEmpty())
+	{
+		const TFunction<void()> Work = MoveTemp(WorkAfterDeaths[0]);
+		WorkAfterDeaths.RemoveAt(0);
+		Work();
+	}
 }
 
 void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillName,

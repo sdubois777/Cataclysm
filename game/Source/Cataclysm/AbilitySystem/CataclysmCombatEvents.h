@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "GameplayTagContainer.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Templates/Function.h"
 #include "CataclysmCombatEvents.generated.h"
 
 class ACataclysmCharacterBase;
@@ -103,6 +104,13 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bFromBoss = false;
 
 	/**
+	 * Whether the blow is the consequence of a death and not a blow its attacker struck: an overkill explosion.
+	 * Ruled 2026-10-07. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`. The attacker and the kill credit are
+	 * as for any blow; only the player's on-hit rows read this.
+	 */
+	bool bConsequenceOfADeath = false;
+
+	/**
 	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
 	 * missing. The number the enchantment and Demonic tree sessions call the
 	 * opponent's distance, which is the same from either side of the blow.
@@ -186,6 +194,12 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 */
 	float SecondsSinceLastBlow = -1.0f;
 
+	/**
+	 * How far the blow that killed went past the health the victim held. Ruled 2026-10-07. Nought for a death
+	 * with no lethal blow on record. See `FCataclysmLastBlow::Overkill`.
+	 */
+	float Overkill = 0.0f;
+
 	FVector Location = FVector::ZeroVector;
 
 	/**
@@ -263,6 +277,13 @@ struct CATACLYSM_API FCataclysmLastBlow
 
 	/** See the struct's comment. Empty unless the blow was lethal. */
 	FGameplayTagContainer KillingTags;
+
+	/**
+	 * `FCataclysmDamageResult::Overkill` of this blow, AND ONLY WHEN IT WAS LETHAL. Ruled 2026-10-07. A blow that
+	 * would have emptied health and did not kill -- one an Unholy Sigil held -- records nought here, as it
+	 * records no killing tags.
+	 */
+	float Overkill = 0.0f;
 
 	bool IsOnRecord() const { return WorldSeconds >= 0.0; }
 };
@@ -403,6 +424,28 @@ public:
 	static void NoteDeath(AActor* Victim);
 
 	/**
+	 * Hand over work to be done once the death now being announced has been heard by EVERY listener. Ruled
+	 * 2026-10-07. For work a listener does about a death that may itself kill: the explosion a slain enemy makes
+	 * for its overkill.
+	 *
+	 * WHY. The engine calls the listeners to a death in an order it does not guarantee. A listener that killed a
+	 * second creature from inside its own call would have that second death announced before the listeners after
+	 * it had heard the first, and eight of the dungeon's rules give a different result when they hear two deaths
+	 * the wrong way round. Work handed over here runs after `NoteDeath`'s broadcast has returned, so every
+	 * listener hears the first death wholly before the second, whatever order they were bound in.
+	 *
+	 * WHEN IT RUNS. While no death is being announced, in the order handed over. Called while no death is being
+	 * announced, the work is done at once. A death the work causes is announced in full from inside it, and work
+	 * handed over during THAT announcement runs when that announcement returns, so a chain nests one level for
+	 * each link and ends when a link kills nothing.
+	 *
+	 * WHAT IT DOES NOT ORDER. `NoteDeath` is called from `UCataclysmSkillEffects::MarkDead`, at the top of a
+	 * creature's `HandleDeath`. The rest of the first creature's `HandleDeath` -- drops, the ailment spread,
+	 * `afflicted_death` -- still runs after everything the work caused.
+	 */
+	void AfterThisDeathIsHeard(TFunction<void()> Work);
+
+	/**
 	 * Announces a skill paid for. Called by
 	 * `UCataclysmSkillTemplate::CommitAndBegin` once `CommitAbility` succeeds,
 	 * which every one of the eight skill shapes and the basic attack pass through.
@@ -434,7 +477,16 @@ public:
 	uint32 SkillUsesSent() const { return SkillUses; }
 
 private:
+	/** Do the work handed over, oldest first, unless a death is being announced. See `AfterThisDeathIsHeard`. */
+	void DoWorkAfterDeaths();
+
 	uint32 Hits = 0;
 	uint32 Deaths = 0;
 	uint32 SkillUses = 0;
+
+	/** How many death announcements are in progress, one inside another. See `AfterThisDeathIsHeard`. */
+	int32 DeathsBeingAnnounced = 0;
+
+	/** Work waiting for the announcements in progress to finish. See `AfterThisDeathIsHeard`. */
+	TArray<TFunction<void()>> WorkAfterDeaths;
 };

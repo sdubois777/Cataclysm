@@ -2,6 +2,279 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Overkill explosion, second part: a real kill explodes the body, chains run by themselves, and the explosion fires no on-hit row
+
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** This is
+the second of two layers. The first, in the entry below this one ("Overkill explosion, first part"),
+recorded a blow's overkill and wrote the explosion and its row action with nothing calling the explosion. **The two
+merge together or not at all.**
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the overkill on the last
+blow and on the death notice; the mark on the hit notice); `CataclysmSkillEffects.h` and `.cpp` (the mark on a
+delivery and its stamp on the effect); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the two
+listeners); four tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; and one line in
+`CataclysmContagion.cpp` (the mark on the Plague Doctor blast) and one condition in
+`CataclysmVitalAttributeSet.cpp` (the first-blow record).
+
+### What it does in play
+
+A player wearing a row for "Enemies killed by you explode for the overkill amount" kills an enemy. Every enemy of
+the player within 5 metres of the body takes the row's share of the overkill as one direct blow. If that blow
+kills, that body explodes too, for its own overkill, which is smaller. No row is authored; the row is the
+enchantment session's.
+
+### How it is built
+
+1. **The lethal blow's overkill is kept with the record of the last blow.** `UCataclysmCombatEvents::NoteBlow`
+   writes `FCataclysmDamageResult::Overkill` to `FCataclysmLastBlow::Overkill`, and only for the blow that kills,
+   beside the killing tags. A blow that would have emptied health and did not kill, one an Unholy Sigil held,
+   records nought.
+2. **The death notice carries it**: `FCataclysmDeathNotice::Overkill`, read from that record by `NoteDeath`. A
+   death with no lethal blow on record carries nought.
+3. **The player's death listener asks for the explosion and does not make it.**
+   `ACataclysmPlayerCharacter::OnSomethingDied` raises `kill` as before, takes what the rows recorded with
+   `TakePendingOverkillExplosionSharePercent`, and hands the announcer a piece of work: call
+   `UCataclysmSkillEffects::ExplodeForOverkill` with the player as the killer, the notice's victim and location,
+   the notice's overkill and the share.
+4. **The announcer makes it once every listener has heard the death.**
+   `UCataclysmCombatEvents::AfterThisDeathIsHeard` keeps the work, and `NoteDeath` does it after its broadcast
+   has returned. See "Every listener hears the first death before the second" below.
+5. **It is made outside the event, which is what lets a chain run.** `ActOnEvent` answers nothing while it is
+   already running. The explosion is made after `ActOnEvent` has returned, so a kill the explosion makes raises
+   `kill` at the top level, its row is heard, and that body explodes in turn. Ruled 2026-10-07: chains are
+   allowed.
+
+### Every listener hears the first death before the second
+
+**Ruled 2026-10-07, a labelled judgement by the coordinating session under the owner's delegation**, after the
+writing session reported that the order matters.
+
+**What was found.** Two things listen for a death: the player character and the dungeon game mode. The engine
+calls them in reverse order of binding and says it guarantees no order (`MulticastDelegateBase.h`, "call bound
+functions in reverse order"). An explosion made from inside the player's listener would announce the death it
+causes before any listener called after the player had heard the first death. Of the 36 rules the dungeon's
+listener calls, eight give a different result when they hear two deaths the wrong way round: Divine Resurgence,
+Epidemic, Demon Prince, Echoes of the Past, Hellfire, Soul Harvest, Blood-Forged Champions and Plague Harbingers.
+Divine Resurgence was read by the writing session: it counts a death as fallen and compares with the fallen plus
+those still standing, so a first death not yet heard leaves its total one short. The other seven were read by a
+second, read-only session and not by the writing session. None of it was run. Issue [#2290](https://github.com/sdubois777/Cataclysm/issues/2290) carries the
+detail.
+
+**What was built.** `UCataclysmCombatEvents::AfterThisDeathIsHeard(Work)`. `NoteDeath` counts the announcements in
+progress. Work handed over while one is in progress is kept, and done oldest first as soon as none is. Work handed
+over while none is in progress is done at once.
+
+**A death inside the work, and why it ends.** The explosion may kill. That death is announced in full from inside
+the work: every listener hears it, after every listener has heard the one before. Work handed over during that
+announcement is done when that announcement returns, still inside the first piece of work. So a chain nests one
+level for each link. A link is one creature dying; a dead creature is not struck again; so the chain is no longer
+than the creatures standing, and it ends at the first link that kills nothing. Each piece of work is taken off
+the list before it is done, so none is done twice.
+
+**What it does not order.** `NoteDeath` is called from `UCataclysmSkillEffects::MarkDead`, at the top of a
+creature's `HandleDeath`. The rest of the first creature's own `HandleDeath` still runs after the whole of the
+second creature's death: its drops, its experience, the ailment spread (`SpreadOnDeath`, `SpreadFromTheDying`),
+and `afflicted_death` with the blast a row makes on it. So the first body's ailments do not spread to a creature
+the explosion kills.
+
+**An existing fact this does not change.** Hellfire deals damage and Epidemic kills from inside the dungeon's own
+listener, so the dungeon rules called after them already hear a death they cause before they hear the first.
+
+**Whether the enchantment session's queue could use it.** `UCataclysmAbilitySystemComponent::
+DrainQueuedAfflictedDeaths` holds a blast until its wearer has finished acting on an event. This queue holds work
+until no death is being announced. Those are different conditions: `afflicted_death` is raised after the
+announcement has returned, so work handed over there would be done at once, inside the wearer's event. It could
+use this queue only if the queue also learned to wait for a wearer's event. Its code is not changed here.
+
+**The alternative not taken:** making the explosion on the next tick, which would also finish the first
+creature's `HandleDeath` first, at the cost of a frame for each link of a chain.
+
+### The mark: the explosion is the consequence of a death, and fires no on-hit row
+
+A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: an overkill explosion
+fires none of the wearer's on-hit rows. The first part's entry records the ruling and its reasons.
+
+- `FCataclysmHitDelivery::bIsConsequenceOfADeath`, set by `ExplodeForOverkill`.
+- The effect is stamped under the name `Cataclysm.ConsequenceOfADeath`
+  (`UCataclysmSkillEffects::ConsequenceOfADeathDataName`), a set-by-caller name and not a gameplay tag, as the
+  converted damage mark of 2026-10-06 is. The other blow flags travel as gameplay tags, and a new gameplay tag
+  has to be added to the Tags sheet of the design workbook, from which `game/Config/Tags/CataclysmTags.ini` is
+  generated and which this session does not edit. **Confirmed on 2026-10-07, a labelled judgement by the
+  coordinating session under the owner's delegation.** A gameplay tag would be the uniform form, and the mark can
+  become one if the Tags sheet gains it later.
+- `UCataclysmCombatEvents::NoteBlow` reads the stamp into `FCataclysmHitNotice::bConsequenceOfADeath`.
+- `ACataclysmPlayerCharacter::OnSomethingWasHit` returns for such a blow before it raises `hit_dealt`,
+  `first_hit_dealt` or `critical_strike`. **The third is withheld too, and nothing can show it today**: the
+  explosion cannot critically strike. It is withheld so the rule does not rest on that staying true.
+
+**And the explosion is not recorded as the attacker's first blow on what it strikes.** Ruled 2026-10-07, a
+labelled judgement by the coordinating session under the owner's delegation. The record of who has struck a
+character is not written from the hit notice: it is written on the target, in
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, by `NoteStruckBy`, and the notice only carries its answer
+away. So the mark read in `OnSomethingWasHit` alone did not cover it: an explosion would have been recorded as the
+wearer's first blow on a creature, and the wearer's next real hit on that creature would not have raised
+`first_hit_dealt`. The call to `NoteStruckBy` is now skipped for a blow carrying the stamp. Found by the
+enchantment session's reading; the writing session re-read both lines before changing them. It also means a
+condition that asks whether the target has been struck by the wearer answers no after an explosion alone.
+
+**The Boss clock is left as it was.** `NoteStruckABoss`, a few lines above in the same function, still stamps for
+an explosion that reaches a boss: damage dealt to a boss is engagement with it, whatever dealt it.
+
+**It is not marked as damage over time**, as ruled: that would also change the energy shield's refill wait and
+every other rule about a tick.
+
+**What the mark does not change:**
+
+- **The kill credit.** The blow's attacker is the killer as for any blow, so a creature the explosion kills is the
+  player's kill.
+- **The `kill` event**, which is raised for such a kill, with its rows. That is what makes the chain.
+- **Leech**, already off by `bCannotLeech`, and **retaliation**, already off by `bCannotBeRetaliatedAgainst`.
+- **Every other listener to a hit.** Only the player's on-hit rows read the mark. The dungeon rules that listen
+  for hits, and the defender's own "when hit" rows, treat the explosion as any blow. Read by the writing session
+  in the two files changed and not swept across every listener.
+
+### Judgements by the writing session, each confirmed on 2026-10-07 by the coordinating session under the owner's delegation
+
+- **The explosion was first written as the last thing the death listener did, and that was replaced.** It left
+  other listeners able to hear a chained death before the first. See "Every listener hears the first death
+  before the second".
+- **The share is taken straight after `kill` is raised**, so a share recorded for one kill cannot be spent on
+  another.
+- **Only a player character makes the explosion.** A minion's kill credited to the minion makes none; under Conduit
+  the kill is the summoner's and makes one.
+- **A kill made from inside an event makes none.** A blow a worn row fires from inside `ActOnEvent` (the Smite a
+  row fires) that kills raises `kill` while the event is running, which answers nothing, so no share is recorded.
+  That is the existing rule for every `kill` row and is not changed here.
+- **A creature killed by damage shared through Sacrificial Bond explodes for nought.** Its last blow is copied
+  from the bonded creature's, which was not lethal there. Read in the code and not run.
+
+### The Plague Doctor blast, and what happens with both rows worn
+
+Read by the writing session on 2026-10-07 in the enchantment session's layer for the blast an afflicted death makes
+(`blast_from_the_dying`, `UCataclysmContagion::BlastAt`), and not run:
+
+- **The blast is announced as the wearer's hit.** Its blows are direct blows whose attacker is the wearer, not
+  ticks and not evaded, so `OnSomethingWasHit` passes its early returns for them.
+- **In play it fires no on-hit row all the same**, because the blast always runs while an event is running: from
+  the row loop of `ActOnEvent`, or from `DrainQueuedAfflictedDeaths`, which holds the same depth. `ActOnEvent`
+  answers nothing at that depth.
+- **Ruled 2026-10-07, a labelled judgement by the coordinating session under the owner's delegation: the blast's
+  delivery gets the same mark, with a test that calls the blast outside an event.** The reason recorded: the
+  ruling is that neither effect at a death is a blow the character struck. The mark states that. The depth rule
+  only happens to deliver it, and would stop delivering it the day a blast is called outside an event.
+- **Built in this layer, once the blast had merged**: one line in `UCataclysmContagion::BlastAt`
+  (`CataclysmContagion.cpp`), setting `bIsConsequenceOfADeath` on its delivery. So a blast is also not recorded
+  as the wearer's first blow on what it strikes. Re-read on development 98cf1649: both callers of the blast, the
+  row loop of `ActOnEvent` and `DrainQueuedAfflictedDeaths`, still run it while the event depth is 1.
+
+**For the owner's play-check, with both rows worn:**
+
+- **A creature the blast kills does not explode for its overkill.** The blast's kill raises `kill` while an event
+  is running, so the wearer's kill rows are not heard for it.
+- **A creature the overkill explosion kills does blast, if it carried the wearer's ailment.** The explosion runs
+  outside any event, so its kill raises `kill` and `afflicted_death` at the top level.
+- **In a player's words: an exploding body can set off a plague blast, but a plague blast never sets off an
+  exploding body.**
+
+### Tests
+
+Four, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player character and real creatures:
+
+- `Cataclysm.OverkillExplosion.ARealKillExplodesTheBodyAndAChainOfThreeRunsByItself`. The player 2 m from a
+  creature with 50 health; a second with 20 health 3 m beyond it; a third with 1000 a further 3 m on; a fourth
+  30 m away. One blow. Without the row, in a world of its own: one death, the second and third lose nothing. With
+  the row: two deaths, the second is dead, the third lives and has lost exactly what a blow of the second
+  creature's overkill takes, the fourth loses nothing. Every expected figure is measured on the fourth creature
+  first, so no creature's defences are assumed to be nought.
+- `Cataclysm.OverkillExplosion.TheExplosionFiresNoneOfTheKillersOnHitRows`. Two rows on the killer each grant a
+  stack when `hit_dealt` and `first_hit_dealt` are heard. A blow on a creature that lives raises each once (the
+  control). The killing blow raises each once more. The explosion strikes a creature the player has never struck,
+  which is read off its health, and raises neither: two stacks of each, not three. Then the player strikes that
+  creature for real, and both events are raised: three stacks of each. The third `first_hit_dealt` is what shows
+  the explosion was not recorded as a first blow.
+
+- `Cataclysm.OverkillExplosion.WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath`. Two listeners
+  stand in for the player and the dungeon. One hands over work, on hearing the first creature die, that kills the
+  second. In two scenes, with that listener bound first and bound second, each listener heard two deaths (the
+  control) and heard the first and then the second. And work handed over while no death is being announced is
+  done at once.
+
+- `Cataclysm.OverkillExplosion.ABlastFromTheDyingIsNotABlowTheWearerStruckEither`. The blast is called outside an
+  event, which no play path does. A control blow raises `hit_dealt` and `first_hit_dealt` once each. The blast
+  strikes a creature, read off its health, and both stay at one. The wearer then strikes that creature for real
+  and both go to two.
+
+### Not covered by a test
+
+- **The real dungeon game mode as the second listener.** The order test uses two stand-in listeners.
+
+- **`critical_strike`**: the explosion cannot critically strike, so nothing can show the event withheld.
+- **A lethal damage over time tick** making the explosion through a real kill. The first part tests that a lethal
+  tick records its overkill; ruled 2026-10-07 that it counts.
+- **A blow an Unholy Sigil held, and a death through Sacrificial Bond.**
+- **A kill made from inside an event, a minion's kill, and Conduit.**
+- **The row read from the effect table**, since no row is authored.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Od | `CataclysmCombatEvents.cpp`: work handed over at a death is done at once | `Cataclysm.OverkillExplosion.WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath` | 1 performed, 1 failed, 1 failed assertion: in the scene with the listener that kills bound second, so called first, the other listener did not hear the first death and then the second | 1 performed, 1 succeeded |
+| Oc | `CataclysmPlayerCharacter.cpp`: the mark is not read by the hit listener | `Cataclysm.OverkillExplosion.TheExplosionFiresNoneOfTheKillersOnHitRows` | 1 performed, 1 failed, 2 failed assertions: `hit_dealt` was raised 3 times against 2, then 4 against 3 | 1 performed, 1 succeeded |
+| Oe | `CataclysmVitalAttributeSet.cpp`: the explosion is recorded as a first blow | the same test | 1 performed, 1 failed, 1 failed assertion: `first_hit_dealt` was raised 2 times against 3 | 1 performed, 1 succeeded |
+
+**The listener-order proof is stated by call order.** The engine calls listeners in reverse order of binding, so
+the listener that hears the second death first, with the queue bypassed, is the one called after the listener that
+kills: the one bound FIRST when the killer is bound second. Accepted as worded by the coordinating session on
+2026-10-07, a labelled judgement under the owner's delegation.
+
+**The mark on the Plague Doctor blast has a test, which passed, and no guard proof.** Accepted by the coordinating
+session on 2026-10-07, a labelled judgement under the owner's delegation; the second part's three proofs are the
+three above.
+
+**For the owner's play-check, accepted on 2026-10-07 as following from the first-blow ruling:** a condition that
+asks whether a target has been struck by the wearer answers no after an explosion or a blast alone. A wearer's
+"first hit against each enemy" row therefore still fires on a creature that only an explosion or a blast has
+touched.
+
+### A comment in a test file changed after the tested head
+
+**One comment in `CataclysmSkillTemplateTests.cpp` was corrected after the window, in a comment-only commit. No
+code and no assertion changed.** The comment above the chain test gave its three figures as 100, 50 and 30 "for a
+creature with no defences". The run printed the third figure as 40.000000 (in proof Oa: "the third takes exactly
+what a blow of the second creature's overkill takes" was expected to be 40.000000). The test asserts the measured
+figure and not the comment's, so it passed. The comment's arithmetic assumed the player's blow takes 100. The
+blow's own figure was not printed; 40 is what the test's arithmetic gives for a blow of 110 on creatures with no
+defences (110 - 50 = 60, then 60 - 20 = 40), and that is an inference and not a printed figure. The comment now
+says so.
+
+**Not run:** the real dungeon game mode as the second listener; a lethal damage over time tick making the
+explosion through a real kill; everything else under "Not covered by a test" above.
+
+---
+
 ## 2026-10-07 — Overkill explosion, first part: a blow records its overkill, and the explosion and its row action exist. Nothing calls the explosion at a kill in this part
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (the field
