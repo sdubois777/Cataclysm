@@ -1353,6 +1353,28 @@ public:
 										   bool bScalesWithInstigator = true);
 
 	/**
+	 * Above nought, every damage over time effect this character applies also
+	 * REFRESHES its other damage over time effects on that target. Ruled
+	 * 2026-10-06 for "Plague Doctor (6-Piece Bonus): When you apply a DoT to an
+	 * enemy, all other DoTs you have on that enemy have their duration
+	 * refreshed". A yes or a no, with no gameplay attribute. Asked with the tag
+	 * of the ailment being applied.
+	 */
+	static const TCHAR* DotApplicationRefreshesOthersStat;
+
+	/**
+	 * Give every damage over time effect `Owner` has on `Target`, other than the
+	 * one granting `Except`, the whole of ITS OWN duration again: the duration it
+	 * was applied with, counted from now. Never shorter than it has left. Its
+	 * figures, its ticks and its instigator stay as they were. Only an effect
+	 * that still has damage to deal is one; a slow or a mark is not.
+	 *
+	 * @return how many effects were given more time
+	 */
+	static int32 RefreshOtherDamageOverTime(const AActor* Owner, AActor* Target,
+											const FGameplayTag& Except);
+
+	/**
 	 * The percent of what a running share of health ailment had left that it
 	 * deals AT ONCE, when the character that applied it applies it again with
 	 * no row saying so. NOUGHT: by itself the ailment does not detonate, and a
