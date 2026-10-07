@@ -1118,14 +1118,14 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			if (OverkillShare > 0.0f)
 			{
 				const TWeakObjectPtr<ACataclysmPlayerCharacter> Killer(this);
-				const TWeakObjectPtr<const AActor> Slain(Notice.Victim);
+				const TWeakObjectPtr<const AActor> SlainActor(Notice.Victim);
 				const FVector At = Notice.Location;
 				const float Overkill = Notice.Overkill;
-				TFunction<void()> Explode = [Killer, Slain, At, Overkill, OverkillShare]()
+				TFunction<void()> Explode = [Killer, SlainActor, At, Overkill, OverkillShare]()
 				{
 					if (Killer.IsValid())
 					{
-						UCataclysmSkillEffects::ExplodeForOverkill(Killer.Get(), Slain.Get(), At, Overkill,
+						UCataclysmSkillEffects::ExplodeForOverkill(Killer.Get(), SlainActor.Get(), At, Overkill,
 																   OverkillShare);
 					}
 				};
