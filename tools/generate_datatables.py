@@ -5050,9 +5050,10 @@ APPLY_STATUSES = (
 #: drawbacks: "Taking a hit has a 15%-25% chance to trigger a random negative
 #: status effect on you" and the four beside it. The first two are the two
 #: above with the wearer as the character the status is laid on; the third
-#: applies it the value's number of times.
+#: applies it once at the value's multiple of its ordinary size. NO AILMENT IN
+#: THE GAME STACKS, so "1-4 stacks are applied to you" is read as size.
 #: `UCataclysmAbilitySystemComponent::ApplyStatusToSelfAction`,
-#: `ApplyStatusToSelfSecondsAction` and `ApplyStatusToSelfTimesAction` hold the
+#: `ApplyStatusToSelfSecondsAction` and `ApplyStatusToSelfSizedAction` hold the
 #: same names.
 #:
 #: THE RULE OF A TENTH IS NOT ASKED OF THEM. The owner's rule of 2026-09-02
@@ -5061,7 +5062,7 @@ APPLY_STATUSES = (
 APPLY_STATUS_TO_SELF_ACTIONS = (
     "apply_status_to_self",
     "apply_status_to_self_seconds",
-    "apply_status_to_self_times",
+    "apply_status_to_self_sized",
 )
 
 #: Every status action, on the other character or on the wearer.
@@ -5086,14 +5087,15 @@ APPLY_STATUSES_TO_SELF_FOR_SECONDS = (
     "Stun",
 )
 
-#: What `apply_status_to_self_times` names, and it names nothing else: the
+#: What `apply_status_to_self_sized` names, and it names nothing else: the
 #: ailment the wearer has just applied to another character. Only on
 #: `dot_applied`, which is the event that says one was.
 #: `UCataclysmAbilitySystemComponent::AppliedDotStatus` holds the name.
 APPLIED_DOT_STATUS = "Applied DoT"
 
-#: The most times `apply_status_to_self_times` may apply.
-MAX_STATUS_TIMES = 10
+#: The largest multiple of its ordinary size `apply_status_to_self_sized` may
+#: lay a status at.
+MAX_STATUS_SIZE = 10
 
 #: The statuses `apply_status_seconds` may name: the two whose duration a row
 #: may state in place of their own. Cripple keeps its row's strength for the
@@ -5712,10 +5714,10 @@ def _check_apply_status_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} lays a status on its "
                 f"wearer on the event {event or '(none)'!r}. Known for that: "
                 f"{', '.join(APPLY_STATUS_TO_SELF_EVENTS)}.")
-        if (action == "apply_status_to_self_times") != (event == "dot_applied"):
+        if (action == "apply_status_to_self_sized") != (event == "dot_applied"):
             raise DataError(
                 f"Enchantment Effects row {index}: {who} uses {action!r} on "
-                f"the event {event!r}. apply_status_to_self_times lays the "
+                f"the event {event!r}. apply_status_to_self_sized lays the "
                 f"ailment just applied to another, so it is written on "
                 f"dot_applied and nothing else is.")
     elif event not in APPLY_STATUS_EVENTS:
@@ -6338,14 +6340,14 @@ def enchantment_effects(book) -> list[dict]:
         # A STATUS ACTION'S VALUE IS A CHANCE, above 0 and up to 100, or SECONDS,
         # above 0 and up to the bound. Issue #1833 group E part 1. Neither has
         # stacks.
-        if action == "apply_status_to_self_times":
+        if action == "apply_status_to_self_sized":
             if not (low == int(low) and high == int(high)
-                    and 1 <= low <= MAX_STATUS_TIMES
-                    and 1 <= high <= MAX_STATUS_TIMES):
+                    and 1 <= low <= MAX_STATUS_SIZE
+                    and 1 <= high <= MAX_STATUS_SIZE):
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} lays a status on "
-                    f"its wearer {low:g} to {high:g} times. A count is a whole "
-                    f"number from 1 to {MAX_STATUS_TIMES}.")
+                    f"its wearer at {low:g} to {high:g} times its ordinary "
+                    f"size. A size is a whole number from 1 to {MAX_STATUS_SIZE}.")
         if action in ("apply_status", "apply_status_to_self"):
             if not (0 < low <= 100 and 0 < high <= 100):
                 raise DataError(
@@ -6816,7 +6818,7 @@ def enchantment_effects(book) -> list[dict]:
         if action in ALL_APPLY_STATUS_ACTIONS:
             known = {"apply_status_seconds": APPLY_STATUSES_FOR_SECONDS,
                      "apply_status_to_self_seconds": APPLY_STATUSES_TO_SELF_FOR_SECONDS,
-                     "apply_status_to_self_times": (APPLIED_DOT_STATUS,),
+                     "apply_status_to_self_sized": (APPLIED_DOT_STATUS,),
                      }.get(action, APPLY_STATUSES)
             if ailment not in known:
                 raise DataError(

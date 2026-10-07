@@ -63,7 +63,7 @@ CONSTANTS = {
     # event one of them waits on. Ruled 2026-10-06.
     "ApplyStatusToSelfAction": "apply_status_to_self",
     "ApplyStatusToSelfSecondsAction": "apply_status_to_self_seconds",
-    "ApplyStatusToSelfTimesAction": "apply_status_to_self_times",
+    "ApplyStatusToSelfSizedAction": "apply_status_to_self_sized",
     "StunStatus": "Stun",
     "AppliedDotStatus": "Applied DoT",
     "SkillEndEvent": "skill_end",
@@ -192,7 +192,7 @@ def test_the_generator_accepts_exactly_the_status_names_the_engine_has() -> None
                                              names["ApplyStatusSecondsAction"]}
     assert set(gen.APPLY_STATUS_TO_SELF_ACTIONS) == {
         names["ApplyStatusToSelfAction"], names["ApplyStatusToSelfSecondsAction"],
-        names["ApplyStatusToSelfTimesAction"]}
+        names["ApplyStatusToSelfSizedAction"]}
     assert names["StunStatus"] in gen.APPLY_STATUSES_TO_SELF_FOR_SECONDS
     assert gen.APPLIED_DOT_STATUS == names["AppliedDotStatus"]
     assert names["SkillEndEvent"] in gen.APPLY_STATUS_TO_SELF_EVENTS
