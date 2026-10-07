@@ -700,8 +700,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 519 over 432: one row on one enchantment.
 #: AND 521 OVER 434 SINCE THE ROW THAT MAKES A KILLED ENEMY EXPLODE ON ITS KILLER,
 #: issue #1833, 2026-10-06, from 520 over 433: one row on one enchantment.
-AUTHORED_ROWS = 521
-AUTHORED_ENCHANTMENTS = 434
+#: AND 522 OVER 435 SINCE THE ROW THAT PASSES A BURN ON WHEN IT IS APPLIED,
+#: issue #1833, 2026-10-06, from 521 over 434: one row on one enchantment.
+AUTHORED_ROWS = 522
+AUTHORED_ENCHANTMENTS = 435
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

@@ -725,7 +725,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 520 SINCE PLAGUE DOCTOR'S TEN-PIECE ROW, issue #1833, from 519.
 	//
 	// AND 521 SINCE THE ROW THAT MAKES A KILLED ENEMY EXPLODE ON ITS KILLER, issue #1833, from 520.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    521)
+	//
+	// AND 522 SINCE THE ROW THAT PASSES A BURN ON WHEN IT IS APPLIED, issue #1833, from 521.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    522)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
