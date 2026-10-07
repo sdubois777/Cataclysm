@@ -38,14 +38,41 @@ One enchantment sentence, in `game/Data/EnchantmentsPositive.csv` with no effect
   `UCataclysmCombatEvents::NoteBlow`, which announces every resolved blow, and
   `ACataclysmPlayerCharacter::OnSomethingWasHit` raises `hit_dealt` (and `first_hit_dealt`) for any blow of the
   player's that is not a tick and was not evaded. The explosion names no skill, so a row scoped to a skill's tags
-  is asked with none. **Nothing was done about it**: stopping it needs a mark on the hit notice, which is in the
-  files another session is editing. It is the same for every other direct blow in a player's name, the Smite a
-  worn row fires and a reflected block among them. **For the coordinating session to rule.**
+  is asked with none. **Nothing was done about it in this part**: stopping it needs a mark on the hit notice, which
+  is in the files another session is editing. It is the same for every other direct blow in a player's name, the
+  Smite a worn row fires and a reflected block among them. **Ruled on 2026-10-07; see "On-hit rows" below.**
 - **A direct blow can critically strike unless its delivery says not.** The writing session was told it cannot. The
   ruling is that the explosion never does, so `bCannotCriticallyStrike` is set on its delivery, as the reflected
   block sets it.
-- **Leech is not ruled and is left as any direct blow's**: the explosion sets no `bCannotLeech`, so a killer with
-  leech leeches from it. **For the coordinating session to rule.**
+- **Leech was not ruled when this part was written.** Ruled on 2026-10-07: the explosion does not leech, and
+  `bCannotLeech` is set on its delivery.
+
+### On-hit rows: none fire, and that is built in the second part. THIS PART IS NOT TO BE MERGED WITHOUT THE SECOND
+
+A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07. **An overkill explosion
+fires none of the wearer's on-hit rows: no `hit_dealt` and no `first_hit_dealt`.** Three reasons were recorded:
+
+- it is what was first ruled;
+- the other two effects at a death fire none in practice. Read by the writing session in
+  `ACataclysmPlayerCharacter::OnSomethingWasHit`: that function raises the two events only for a blow whose
+  attacker is the player, and returns early for damage over time and for an evaded blow. A ground zone's sweep is
+  delivered as damage over time, so it raises neither. A minion's death blast is dealt by the minion, so its
+  attacker is not the player, except under Conduit;
+- an explosion that fires on-hit rows on every enemy within 5 metres at every kill is a multiplier the sentence
+  does not ask for.
+
+**An earlier ruling of the same day said the opposite and was withdrawn.** It accepted the on-hit rows firing, on
+the writing session's statement that a zone's sweeps and a minion's death blast already fire them. That statement
+was wrong; the writing session had not read the function when it made it.
+
+**How it will be built, in the second part:** a mark on the delivery saying the blow is the consequence of a death
+and not a blow the character struck; the hit notice carries it; `OnSomethingWasHit` reads it and raises neither
+event. NOT by marking the explosion as damage over time, which would also change how the energy shield's refill
+wait and every other rule about a tick treat it. **What the mark does not change:** who is credited with a kill
+the explosion makes, the `kill` event, leech (already off), and retaliation (already off).
+
+**Until the second part lands, the explosion as written in this part does fire them.** Nothing calls the explosion
+in play in this part, so no player meets it; the two parts are two layers of one window and merge together.
 
 ### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
 
@@ -80,8 +107,10 @@ One enchantment sentence, in `game/Data/EnchantmentsPositive.csv` with no effect
 - **Five metres is larger than the game read**, and the whole overkill is more than three times its share.
 - **Each enemy's own block, armour, damage reduction and energy shield meet the explosion**, as they meet any
   blow. It is area damage, so it is not evaded.
-- **The killer's unscoped on-hit rows fire on every enemy the explosion strikes**, and the killer leeches from it,
-  unless the two questions above are ruled otherwise.
+- **The explosion fires none of the wearer's on-hit rows and does not leech**, as ruled on 2026-10-07. Whether an
+  explosion at a kill should count as the wearer's hit is the alternative not taken.
+- **"No type" is the killer's own type when the killer is a creature.** The delivery names no damage type, which is
+  untyped for a player and a creature's own type for a creature. Only a player's row raises this action today.
 
 ### Research
 
