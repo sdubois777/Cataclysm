@@ -16493,4 +16493,74 @@ bool FCataclysmBlastChainsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlagueDoctorTenRowTest,
+	"Cataclysm.Enchantments.PlagueDoctorsTenPiecesBlastFromAnEnemyThatDiesCarryingTheWearersAilment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT
+ * from you, it explodes and applies all of your DoTs to all nearby enemies".
+ * Issue #1833, ruled 2026-10-07: `blast_from_the_dying` on `afflicted_death`,
+ * 20, a judged number. NINE PIECES AND THEN TEN of the real set. At nine a
+ * creature that dies carrying the wearer's poison takes nothing from its
+ * neighbour; at ten the neighbour loses what a direct area hit of a fifth of
+ * the dead creature's maximum health takes from a creature built alike, and
+ * carries the poison.
+ */
+bool FCataclysmPlagueDoctorTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	using namespace CataclysmBlastFromTheDyingTest;
+	const TCHAR* Bonus = TEXT("Positive_Plague_Doctor_2_Piece_Bonus_Your_DoT_effects");
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	if (!TestTrue(TEXT("set-up: the poison tag is registered"), Poison.IsValid()))
+	{
+		return false;
+	}
+
+	for (const int32 Pieces : {9, 10})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, Bonus, Pieces);
+		ACataclysmEnemyCharacter* Control = Beside(World, -8.0f);
+		ACataclysmEnemyCharacter* Dying = Beside(World, 0.0f);
+		ACataclysmEnemyCharacter* Near = Beside(World, 2.0f);
+		if (!TestNotNull(TEXT("set-up: the control creature, 8 metres the other side"), Control)
+			|| !TestNotNull(TEXT("set-up: the creature that will die"), Dying)
+			|| !TestNotNull(TEXT("set-up: the creature 2 metres from it"), Near)
+			|| !TestTrue(TEXT("set-up: the wearer poisons the one that will die"), Ail(Wearer.Actor, Dying, Poison)))
+		{
+			return false;
+		}
+		const float ByControl = TakenByABlastOf(Wearer.Actor, Control, MaximumHealthOf(Dying) * 0.2f);
+		if (!TestTrue(TEXT("set-up: a direct area hit of a fifth of that maximum takes something"), ByControl > 0.0f))
+		{
+			return false;
+		}
+		const float Before = HealthNow(Near);
+		Dying->HandleDeath();
+		if (Pieces == 9)
+		{
+			TestEqual(TEXT("nine pieces: the death takes nothing from the creature beside it"),
+				Before - HealthNow(Near), 0.0f, 0.001f);
+			TestFalse(TEXT("nine pieces: and passes no poison on"), Carries(Near, Poison));
+		}
+		else
+		{
+			TestEqual(*(FString(TEXT("ten pieces: the creature beside the body loses what that hit took from the "
+									 "control.")) + CataclysmRepeatRowsTest::OlderAsset),
+				Before - HealthNow(Near), ByControl, ByControl * 0.005f);
+			TestTrue(TEXT("ten pieces: and carries the wearer's poison"), Carries(Near, Poison));
+		}
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
