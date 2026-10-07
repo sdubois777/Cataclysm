@@ -72,6 +72,50 @@ refreshes others when one is applied, so **nothing read settles this**; it is th
 
 **Not tested:** a Void Splinter among the others, and a minion.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one and the two above it, on `development` e49857f0.
+The build and the Python of record are in the table of the entry "A Void Splinter can pass on when its carrier
+dies" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| First compile of this layer's engine code, in the build of the whole stack | 5fb5e953 | Build: Succeeded - 33 actions, 30 files compiled |
+| Assets | ead0d062 | none built: this layer changes no table |
+| Whole suite, FIRST RUN | 7d662d94 | 3242 tests performed, 3241 succeeded, 1 failed: ApplyingADamageOverTimeEffectRefreshesTheAppliersOthersOnThatTargetOnlyWhenARowSaysSo |
+| Cataclysm.RemainingDamage. alone, after the test's set-up was corrected | c6088f3d | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.21.cpp; 9 tests performed, 9 succeeded, 0 failed |
+
+**THE FIRST RUN OF THIS LAYER'S TEST FAILED AT ITS OWN SET-UP, AND THE FAULT WAS THE TEST'S.** It printed
+"Expected 'set-up: four seconds in, the poison has six ticks left' to be 60.000000, but it was 70.000000" and
+returned before anything this layer built was exercised. The test waited exactly four seconds and expected the
+tick due at second four to have landed. **It had not landed:** three ticks had, and seven were left. The test this
+one was modelled on waits two and a half seconds, between ticks.
+
+The correction, ruled by the coordinating session before the rerun, is to the test only: the first wait is four
+and a half seconds, and no expected figure changed. The other waits in the tests of this stack were read before
+the rebuild: the probe of this stat in `Cataclysm.StatExemption.` also waits exactly four seconds, but it reads the
+seconds an effect has left and not its ticks, and it passed in the first run; the spread's test waits a second and
+a half; and this test's second wait now ends at six and a half seconds. **The whole suite was not run a second
+time**; the group was.
+
+**The probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` passed in the whole suite's first
+run**: a poison four seconds into ten had six seconds left after its applier applied a bleed, and ten when the
+applier held the stat.
+
+**C++ guard proofs, each with `prove_cpp_guard` at c6088f3d:**
+
+| The break | The tests run | With the break in | Restored | The test that noticed, and the failed assertions |
+| :-- | :-- | :-- | :-- | :-- |
+| The others are found and given no more time (`Longer` multiplied by 0 in `RefreshOtherDamageOverTime`) | `Cataclysm.RemainingDamage.` | 9 performed, 1 failed | 9 performed, 9 succeeded | this layer's test 4: the poison and the bleed read 60 where 100, then 40 where 80 and 40 where 100 |
+| The engine asks for another stat name than the row states | `Cataclysm.Enchantments.` | 252 performed, 1 failed | 252 performed, 252 succeeded | the six-piece row test of the layer above 1: six pieces read 0 where 1 |
+
+Each proof failed on the tests and the number of assertions registered before the window.
+
+**RULED AFTER THE REGISTRATION, 2026-10-06, by the coordinating session under the owner's delegation:** the
+judgements of this entry are accepted as written, and **a refresh does not raise `dot_applied`: a refresh is not an
+application.** `RefreshOtherDamageOverTime` raises no event. The application that caused the refresh raises its own
+`dot_applied`, once, as it always has.
+
 ---
 
 ## 2026-10-06 — "Void splinter stacks spread to nearby enemies when the afflicted enemy dies" is built as a row
