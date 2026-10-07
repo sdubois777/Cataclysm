@@ -32,6 +32,7 @@
 // For turning an effect name into its tag, which is what a skill cell writing
 // Effect=Cripple does. Issue #1156.
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 // For asking whether two actors are on the same side, which is what an aura's
 // ally half is about. Issue #1182.
@@ -21173,6 +21174,85 @@ bool FCataclysmWorkAfterADeathTest::RunTest(const FString&)
 	int32 Done = 0;
 	Events->AfterThisDeathIsHeard([&Done]() { ++Done; });
 	TestEqual(TEXT("work handed over while no death is being announced is done at once"), Done, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlastIsNotTheWearersBlowTest,
+	"Cataclysm.OverkillExplosion.ABlastFromTheDyingIsNotABlowTheWearerStruckEither",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Plague Doctor blast carries the same mark as the overkill explosion. The blast is called here OUTSIDE AN
+ * EVENT, which no play path does today: in play it runs while its wearer is acting on an event, and that alone
+ * keeps on-hit rows from firing. Called outside one, only the mark does.
+ *
+ * Two rows on the wearer each grant a stack when `hit_dealt` and `first_hit_dealt` are heard. THE CONTROL IS A
+ * BLOW THE PLAYER STRUCK, on a creature that lives: each event once. The blast then strikes a creature the player
+ * has never struck, read off its health, and raises neither. Then the player strikes that creature for real, and
+ * both are raised: the blast was not recorded as the player's first blow on it.
+ *
+ * STANDING: the player at the origin; the body the blast is centred on 2 m along +X; the creature it strikes 5 m
+ * along +X, so 3 m from the body and inside the blast's 5; the control creature 30 m along +Y.
+ */
+bool FCataclysmBlastIsNotTheWearersBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	const float Plenty = 1000.0f;
+	ACataclysmEnemyCharacter* Body = CreatureAt(World, FVector(2 * M, 0, 0), Plenty);
+	ACataclysmEnemyCharacter* Caught = CreatureAt(World, FVector(5 * M, 0, 0), Plenty);
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), Plenty);
+	if (!TestNotNull(TEXT("set-up: the body the blast is centred on"), Body)
+		|| !TestNotNull(TEXT("set-up: the creature the blast strikes"), Caught)
+		|| !TestNotNull(TEXT("set-up: the control creature"), Far))
+	{
+		return false;
+	}
+
+	const FName Hits(TEXT("Test:hits"));
+	const FName FirstHits(TEXT("Test:first-hits"));
+	Wearer.AbilitySystem->SetPoolActions({CountOn(TEXT("hit_dealt"), Hits),
+										  CountOn(TEXT("first_hit_dealt"), FirstHits)});
+
+	// THE CONTROL: a blow the player struck raises each event once.
+	UCataclysmSkillEffects::ApplyHit(Wearer.Character, Far, /*DamagePercent=*/100.0f);
+	if (!TestEqual(TEXT("control: a blow the player struck raises hit_dealt once"),
+				   Wearer.AbilitySystem->OwnStacksHeld(Hits), 1)
+		|| !TestEqual(TEXT("control: and first_hit_dealt once"), Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 1))
+	{
+		return false;
+	}
+
+	// THE BLAST, OUTSIDE ANY EVENT.
+	UCataclysmContagion::BlastFromTheDying(Wearer.Character, Body, /*Damage=*/50.0f, /*TheirAilments=*/nullptr);
+	if (!TestTrue(TEXT("set-up: the blast struck the creature 3 m from the body"), Plenty - HealthOf(Caught) > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the body the blast is centred on is not struck by it"), Plenty - HealthOf(Body), 0.0f, 0.001f);
+	TestEqual(TEXT("hit_dealt is still at one: the blast is not a blow the wearer struck"),
+			  Wearer.AbilitySystem->OwnStacksHeld(Hits), 1);
+	TestEqual(TEXT("first_hit_dealt is still at one"), Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 1);
+
+	// AND THE BLAST IS NOT RECORDED AS THE WEARER'S FIRST BLOW ON THAT CREATURE.
+	UCataclysmSkillEffects::ApplyHit(Wearer.Character, Caught, /*DamagePercent=*/100.0f);
+	TestEqual(TEXT("the wearer's real blow on the creature the blast struck raises hit_dealt: two now"),
+			  Wearer.AbilitySystem->OwnStacksHeld(Hits), 2);
+	TestEqual(TEXT("and first_hit_dealt, because the blast was not recorded as a first blow: two now"),
+			  Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 2);
 	return true;
 }
 
