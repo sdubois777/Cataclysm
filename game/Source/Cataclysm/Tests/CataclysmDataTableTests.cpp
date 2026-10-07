@@ -741,7 +741,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 540 SINCE THE OVERKILL EXPLOSION ROW, issue #1833, from 539.
 	//
 	// AND 541 SINCE THE REWORDED DURATION ROW, issue #1833, from 540.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    541)
+	//
+	// AND 543 SINCE THE TWO CLASS RESOURCE GENERATION ROWS, issue #1833, from 541.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    543)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

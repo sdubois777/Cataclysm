@@ -2,6 +2,45 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — The two rows on how fast class resource is generated are built
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The two rows the entry "Class resource generation rate" of 2026-10-07 left to the session holding the design
+workbook, each as that entry's table states it. The stat name was read in the merged code. No engine code and no
+generator code is changed here.
+
+| Sentence | Stat | Kind | Value |
+| :-- | :-- | :-- | :-- |
+| Your class resource generates 20%-40% faster | `class_resource_generation` | increased | 20 to 40 |
+| Your class resource generates 30%-50% slower | `class_resource_generation` | increased | -30 to -50 |
+
+EnchantmentEffects 541 to 543, over 454 to 456 enchantments.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the two sentences is that entry's: that the stat scales every gain of class resource and no loss,
+that "faster" and "slower" are an increase and a negative increase, that two worn rows add, and that **on a
+character with no generator the rows change only what an item row grants**, which today is a Berserker, a Bulwark
+or a Saboteur.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheTwoClassResourceGenerationRowsRaiseAndLowerTheRateTheGameAsksFor`: each real row
+  worn, the benefit at its best roll and the drawback at its harshest. The test first asserts that each name it
+  wears is a row of its table. A rate of 100 becomes 140 under the first and 50 under the second, and stays 100
+  when the item is taken off.
+
+**Not tested here:** a real gain of class resource from a worn row; that entry tests gains with the stat set by
+hand.
+
+---
+
 ## 2026-10-07 — "DoTs last 2x-4x as long on you" is reworded by the owner to "DoTs on you have 100%-300% more duration", and built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one sentence of the Enchantments sheet, one row of the Enchantment
