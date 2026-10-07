@@ -2,6 +2,163 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A row lays a status on its own wearer: three actions and the event `skill_end`. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`ApplyStatusToTheWearer`, three action names, two status names, `NoteDotApplied`, the event loop and the timed
+loop); `CataclysmStatPipeline.h` (`ECataclysmApplyStatus::Sized`, `FCataclysmPoolAction::bStatusOnTheWearer`);
+`CataclysmAilments.h` and `.cpp` (`KindWithTag`, one more argument on `ApplyRandomDebuff`);
+`CataclysmSkillEffects.cpp` (the ailment just applied is recorded before `dot_applied`);
+`CataclysmSkillTemplate.cpp` (`EndAbility` raises `skill_end`); `Items/CataclysmItem.cpp` (the loader);
+`tools/generate_datatables.py`; one test in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; a class
+of tests in `tools/tests/test_generate_datatables.py` and two pins in
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry. **No row is authored yet**; the rows are the enchantment session's.
+
+### What it is for
+
+Five drawbacks. The status actions the game had lay a status on the OTHER character of a hit; these lay one on the
+wearer, and three of the five have no blow at all.
+
+| Sentence | What the row needs |
+|---|---|
+| "Taking a hit has a 15%-25% chance to trigger a random negative status effect on you" | `apply_status_to_self`, event `hit_taken`, value 15 to 25, Ailment `Random Debuff` |
+| "Critical strikes have a 20%-35% chance to trigger a random debuff on you" | `apply_status_to_self`, event `critical_strike`, value 20 to 35, Ailment `Random Debuff` |
+| "Every 15 seconds a random debuff is applied to you" | `apply_status_to_self`, event `every_seconds`, Every Seconds 15, value 100, Ailment `Random Debuff` |
+| "After using a charge skill you are briefly stunned for 0.5-1 second" | `apply_status_to_self_seconds`, event `skill_end`, value 0.5 to 1, Ailment `Stun`, Required Tags `Keyword.Charge` |
+| "When you apply a DOT, 1-4 stacks are applied to you" | `apply_status_to_self_sized`, event `dot_applied`, value 1 to 4, Ailment `Applied DoT` |
+
+**Held, not built:** "Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to
+you". No list of buffs a row can grant at random exists; it is with the owner.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **The rule of a tenth is not asked.** The owner's rule of 2026-09-02 (issue #917) is about what a BLOW may lay on
+  its target. These sentences state their status without condition and three of the five have no blow. **The stun's
+  immunity window is kept**, so a wearer is not stunned back to back.
+- **"Critical strikes" are the wearer's own.**
+- **"1-4 stacks" is the SIZE of one application.** The ailment the wearer just applied to another is laid on the
+  wearer once, at 1 to 4 times its ordinary size. **No ailment in this game stacks**: a character carries one
+  effect for each ailment, and a repeat of the same size only refreshes it, so four applications would leave what
+  one leaves and the row's roll would change nothing. Real stacking is the alternative not taken; it would be a new
+  mechanism for every ailment.
+- **The row states no Trigger Cooldown**, because the sentence states none.
+- **A new event, `skill_end`**, raised when a skill's ability ends without being cancelled, with the skill's tags.
+  `skill_use` is raised when a skill is paid, before a charge has moved, and two charge skills are immune to crowd
+  control while they run. **A cancelled or interrupted charge does not stun**: the sentence says "after using".
+- **The random pool is kept as it stands**: Madness, Cripple, Weaken, Shred and Stun.
+- **Three actions and not two.** The third exists because a size is neither a chance nor a number of seconds.
+
+### For the owner's play-check
+
+- **The rule of a tenth is skipped for these rows**, beside the owner's own rule of 2026-09-02.
+- **"Stacks" read as size**, with real stacking as the alternative.
+- **Under a zone that lays its ailment, the size row fires once a sweep for each enemy inside.** A zone raises
+  `dot_applied` each sweep for each enemy, a refresh included, and the row has no trigger cooldown; each firing lays
+  the ailment on the wearer again at the row's size, which refreshes the one already there.
+- **What each debuff of the pool does to a player**, read in the code and not run:
+  - Madness, 3 seconds: the wearer and everyone else are hostile to each other, so the wearer's skills strike their
+    own minions and those minions attack the wearer. This is the debuff working as built.
+  - Weaken, 5 seconds: cuts the wearer's attack damage by 20 percent.
+  - Shred, 6 seconds: lowers the carrier's resistance to the SOURCE's element by 10. Laid by the wearer on
+    themselves, that is their resistance to their own weapon's element, which matters only against an enemy that
+    deals that element.
+  - Cripple, 4 seconds: slows the wearer's walking and attack rate by 30 percent, since the change for issue
+    #2273 that sits under this one. Before that change it did nothing to a player.
+  - Stun, 0.75 seconds.
+
+### How it is built
+
+- **`bStatusOnTheWearer` on an action** makes the status land on the wearer. Such a row needs no other character,
+  so the generator accepts it on `hit_taken`, `critical_strike`, `every_seconds`, `skill_end` and `dot_applied`.
+- **`apply_status_to_self_seconds` may also name `Stun`**, laid for the row's seconds as a designed stun: it skips
+  the stun's threshold of damage and keeps its immunity window.
+- **`apply_status_to_self_sized` names `Applied DoT` and nothing else, on `dot_applied` and nothing else.** The
+  ailment is recorded by name just before `dot_applied` is raised. The self-application raises no `dot_applied`:
+  that event is raised for another character only.
+- **`skill_end` is raised for every skill that ends without being cancelled**, a free repeat copy included.
+- **The self-laid ailment is the wearer's own application**: priced from the wearer's damage over time stats and
+  taken through the wearer's own defences.
+- **A cleanse removes what these rows lay**, since the change under this one that makes a cleanse keep only
+  converted damage.
+
+### Consequences, stated rather than changed
+
+- **The Void Splinter exception.** A wearer of the row that makes a Void Splinter detonate when applied again does
+  not come into this: Void Splinter is not laid through the function that raises `dot_applied`, so the size row
+  never fires for it. Read in the code, not run.
+- **On `hit_taken` the row waits the default quarter second between firings**, as every row on a hit-fired event
+  does; on a timer and on `skill_end` it always applies.
+
+### What the research settles, and what it does not
+
+No new source was read. Path of Exile and Last Epoch both stack damage over time ailments by instance; this game
+ruled one effect for each ailment on 2026-09-09 ("the strongest application of a lasting effect decides its size"),
+and reading "stacks" as size follows that ruling and no other game.
+
+### Tests
+
+One new automation test, `Cataclysm.StatExemption.ARowLaysAStatusOnItsOwnWearer`:
+
+- on a hit taken with a chance of 20, the wearer carries the debuff picked when the roll is under the chance and
+  nothing when it is over;
+- a pick that is a stun stuns the wearer though the event carried no damage;
+- a wearer is stunned once their charge skill has ended, and not after a skill without the charge keyword;
+- a wearer whose row rolled 4 carries a bleed four times as large as a wearer whose row rolled 1, each having
+  applied a bleed to another;
+- a cleanse takes a debuff the wearer's own row laid off the wearer.
+
+**Python.** A class of twelve cases on made-up rows in `tools/tests/test_generate_datatables.py`, and the engine's
+new names pinned to the generator's.
+
+**Not covered by a test:** the timed row; the critical strike row; a cancelled charge; a free repeat copy raising
+`skill_end`.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under `Cataclysm.StatExemption.ARowLaysAStatusOnItsOwnWearer`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Sa | `CataclysmAbilitySystemComponent.cpp`: the size row lays the ailment at its ordinary size whatever it rolled | 1 performed, 1 failed, 1 failed assertion: the wearer whose row rolled 4 carried a bleed of 20.000000 against 80.000000 | 1 performed, 1 succeeded |
+| Sb | `CataclysmSkillTemplate.cpp`: a skill that ends raises nothing | 1 performed, 1 failed, 1 failed assertion: the wearer was not stunned once their charge skill had ended | 1 performed, 1 succeeded |
+
+**The first attempt of this window failed to build on this layer**: `CataclysmAilments.h` named `FGameplayTag`
+without declaring it. One forward declaration was added.
+
+**Not run:** the timed row; the critical strike row; a cancelled charge; a free repeat copy raising `skill_end`; any
+of this read from the effect table, since no row exists.
+
+---
+
 ## 2026-10-06 — A cleanse keeps only converted damage not yet taken, and removes everything else a character laid on themselves
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (`Cleanse`);

@@ -11,6 +11,7 @@ class AActor;
 class UAbilitySystemComponent;
 class UGameplayAbility;
 struct FGameplayEffectSpec;
+struct FGameplayTag;
 struct FGameplayTagContainer;
 
 /**
@@ -320,10 +321,17 @@ public:
 	 * @param DealtToHealth  what the blow took from the target's health, which
 	 *                       the stun's own rule reads
 	 * @return the debuff applied, or null when none was
+	 * @param bWithoutABlow  true for a debuff no blow carries, such as one a row lays on its own wearer on a
+	 *                       timer. Ruled 2026-10-06: the stun is then a designed one, which skips its threshold
+	 *                       of damage and keeps its immunity window.
 	 */
 	static const FCataclysmAilmentKind* ApplyRandomDebuff(AActor* Instigator,
 														  AActor* Target,
-														  float DealtToHealth);
+														  float DealtToHealth,
+														  bool bWithoutABlow = false);
+
+	/** The ailment whose tag this is, or null. For naming what a damage over time just applied was. */
+	static const FCataclysmAilmentKind* KindWithTag(const FGameplayTag& Tag);
 
 	/**
 	 * Apply one ailment at a magnitude, as its row of

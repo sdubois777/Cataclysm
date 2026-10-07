@@ -572,8 +572,28 @@ void UCataclysmSkillTemplate::EndAbility(
 		}
 	}
 
+	// WHETHER THIS CALL IS THE ONE THAT ENDS IT. `EndAbility` may be called on an ability that has ended.
+	const bool bWasRunning = IsActive();
+
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);
+
+	// AND THE SKILL HAS ENDED, WHICH A ROW MAY WAIT ON. Ruled 2026-10-06, for "After using a charge skill you are
+	// briefly stunned": `skill_use` is raised when the skill is paid, before a charge has moved, and two charge
+	// skills are immune to crowd control while they run.
+	//
+	// AFTER THE ABILITY HAS ENDED, so that immunity is over when a row acts. NOT FOR A CANCELLED OR INTERRUPTED
+	// USE: the sentence says "after using". With the skill's own tags, so a row reaches the kind of skill its
+	// Required Tags name.
+	if (bWasRunning && !bWasCancelled)
+	{
+		if (UCataclysmAbilitySystemComponent* Ended = ActorInfo
+				? Cast<UCataclysmAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get()) : nullptr)
+		{
+			// The name is written out, as every event is where it is raised; `SkillEndEvent` holds the same.
+			Ended->ActOnEvent(FName(TEXT("skill_end")), &SkillTags);
+		}
+	}
 
 	// A FOLLOW THROUGH REPEAT IS ONE USE, so the flag goes with it. Issue #1515.
 	// Cleared here rather than when it began because the aim is read after the
