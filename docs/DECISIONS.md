@@ -12,7 +12,7 @@ merge together or not at all.**
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the overkill on the last
 blow and on the death notice; the mark on the hit notice); `CataclysmSkillEffects.h` and `.cpp` (the mark on a
 delivery and its stamp on the effect); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the two
-listeners); two tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`.
+listeners); three tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`.
 
 ### What it does in play
 
@@ -29,14 +29,63 @@ enchantment session's.
    records nought.
 2. **The death notice carries it**: `FCataclysmDeathNotice::Overkill`, read from that record by `NoteDeath`. A
    death with no lethal blow on record carries nought.
-3. **The player's death listener makes the explosion.** `ACataclysmPlayerCharacter::OnSomethingDied` raises `kill`
-   as before, takes what the rows recorded with `TakePendingOverkillExplosionSharePercent`, and, last of
-   everything it does for that death, calls `UCataclysmSkillEffects::ExplodeForOverkill` with itself as the
-   killer, the notice's victim and location, the notice's overkill and the share.
-4. **It is made outside the event, which is what lets a chain run.** `ActOnEvent` answers nothing while it is
+3. **The player's death listener asks for the explosion and does not make it.**
+   `ACataclysmPlayerCharacter::OnSomethingDied` raises `kill` as before, takes what the rows recorded with
+   `TakePendingOverkillExplosionSharePercent`, and hands the announcer a piece of work: call
+   `UCataclysmSkillEffects::ExplodeForOverkill` with the player as the killer, the notice's victim and location,
+   the notice's overkill and the share.
+4. **The announcer makes it once every listener has heard the death.**
+   `UCataclysmCombatEvents::AfterThisDeathIsHeard` keeps the work, and `NoteDeath` does it after its broadcast
+   has returned. See "Every listener hears the first death before the second" below.
+5. **It is made outside the event, which is what lets a chain run.** `ActOnEvent` answers nothing while it is
    already running. The explosion is made after `ActOnEvent` has returned, so a kill the explosion makes raises
    `kill` at the top level, its row is heard, and that body explodes in turn. Ruled 2026-10-07: chains are
    allowed.
+
+### Every listener hears the first death before the second
+
+**Ruled 2026-10-07, a labelled judgement by the coordinating session under the owner's delegation**, after the
+writing session reported that the order matters.
+
+**What was found.** Two things listen for a death: the player character and the dungeon game mode. The engine
+calls them in reverse order of binding and says it guarantees no order (`MulticastDelegateBase.h`, "call bound
+functions in reverse order"). An explosion made from inside the player's listener would announce the death it
+causes before any listener called after the player had heard the first death. Of the 36 rules the dungeon's
+listener calls, eight give a different result when they hear two deaths the wrong way round: Divine Resurgence,
+Epidemic, Demon Prince, Echoes of the Past, Hellfire, Soul Harvest, Blood-Forged Champions and Plague Harbingers.
+Divine Resurgence was read by the writing session: it counts a death as fallen and compares with the fallen plus
+those still standing, so a first death not yet heard leaves its total one short. The other seven were read by a
+second, read-only session and not by the writing session. None of it was run. The issue opened for it carries the
+detail.
+
+**What was built.** `UCataclysmCombatEvents::AfterThisDeathIsHeard(Work)`. `NoteDeath` counts the announcements in
+progress. Work handed over while one is in progress is kept, and done oldest first as soon as none is. Work handed
+over while none is in progress is done at once.
+
+**A death inside the work, and why it ends.** The explosion may kill. That death is announced in full from inside
+the work: every listener hears it, after every listener has heard the one before. Work handed over during that
+announcement is done when that announcement returns, still inside the first piece of work. So a chain nests one
+level for each link. A link is one creature dying; a dead creature is not struck again; so the chain is no longer
+than the creatures standing, and it ends at the first link that kills nothing. Each piece of work is taken off
+the list before it is done, so none is done twice.
+
+**What it does not order.** `NoteDeath` is called from `UCataclysmSkillEffects::MarkDead`, at the top of a
+creature's `HandleDeath`. The rest of the first creature's own `HandleDeath` still runs after the whole of the
+second creature's death: its drops, its experience, the ailment spread (`SpreadOnDeath`, `SpreadFromTheDying`),
+and `afflicted_death` with the blast a row makes on it. So the first body's ailments do not spread to a creature
+the explosion kills.
+
+**An existing fact this does not change.** Hellfire deals damage and Epidemic kills from inside the dungeon's own
+listener, so the dungeon rules called after them already hear a death they cause before they hear the first.
+
+**Whether the enchantment session's queue could use it.** `UCataclysmAbilitySystemComponent::
+DrainQueuedAfflictedDeaths` holds a blast until its wearer has finished acting on an event. This queue holds work
+until no death is being announced. Those are different conditions: `afflicted_death` is raised after the
+announcement has returned, so work handed over there would be done at once, inside the wearer's event. It could
+use this queue only if the queue also learned to wait for a wearer's event. Its code is not changed here.
+
+**The alternative not taken:** making the explosion on the next tick, which would also finish the first
+creature's `HandleDeath` first, at the cost of a frame for each link of a chain.
 
 ### The mark: the explosion is the consequence of a death, and fires no on-hit row
 
@@ -71,10 +120,9 @@ every other rule about a tick.
 
 ### Judgements by the writing session, each confirmed on 2026-10-07 by the coordinating session under the owner's delegation
 
-- **The explosion is made last in the death listener**, after Long Hold's heal, the follow-through and the
-  nearby-death rows for the same death, so a chain's deaths are heard after the first death is fully handled by
-  this listener. Other listeners to the first death, the dungeon's among them, may hear a chained death before
-  they hear the first.
+- **The explosion was first written as the last thing the death listener did, and that was replaced.** It left
+  other listeners able to hear a chained death before the first. See "Every listener hears the first death
+  before the second".
 - **The share is taken straight after `kill` is raised**, so a share recorded for one kill cannot be spent on
   another.
 - **Only a player character makes the explosion.** A minion's kill credited to the minion makes none; under Conduit
@@ -111,7 +159,7 @@ Read by the writing session on 2026-10-07 in the enchantment session's layer for
 
 ### Tests
 
-Two, in `CataclysmSkillTemplateTests.cpp`, each with a real player character and real creatures:
+Three, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player character and real creatures:
 
 - `Cataclysm.OverkillExplosion.ARealKillExplodesTheBodyAndAChainOfThreeRunsByItself`. The player 2 m from a
   creature with 50 health; a second with 20 health 3 m beyond it; a third with 1000 a further 3 m on; a fourth
@@ -124,7 +172,15 @@ Two, in `CataclysmSkillTemplateTests.cpp`, each with a real player character and
   control). The killing blow raises each once more. The explosion strikes a creature the player has never struck,
   which is read off its health, and raises neither: two stacks of each, not three.
 
+- `Cataclysm.OverkillExplosion.WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath`. Two listeners
+  stand in for the player and the dungeon. One hands over work, on hearing the first creature die, that kills the
+  second. In two scenes, with that listener bound first and bound second, each listener heard two deaths (the
+  control) and heard the first and then the second. And work handed over while no death is being announced is
+  done at once.
+
 ### Not covered by a test
+
+- **The real dungeon game mode as the second listener.** The order test uses two stand-in listeners.
 
 - **`critical_strike`**: the explosion cannot critically strike, so nothing can show the event withheld.
 - **A lethal damage over time tick** making the explosion through a real kill. The first part tests that a lethal

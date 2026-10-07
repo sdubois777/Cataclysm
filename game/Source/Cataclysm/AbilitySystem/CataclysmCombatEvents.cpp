@@ -273,7 +273,40 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 	}
 
 	++Events->Deaths;
+
+	// COUNTED WHILE IT IS IN PROGRESS, so work a listener hands over waits until every listener has heard this
+	// death. See `AfterThisDeathIsHeard`. A death a listener causes from inside its own call is announced inside
+	// this one, and the count is then two.
+	++Events->DeathsBeingAnnounced;
 	Events->OnDeath.Broadcast(Notice);
+	--Events->DeathsBeingAnnounced;
+	Events->DoWorkAfterDeaths();
+}
+
+void UCataclysmCombatEvents::AfterThisDeathIsHeard(TFunction<void()> Work)
+{
+	if (!Work)
+	{
+		return;
+	}
+	if (DeathsBeingAnnounced == 0)
+	{
+		Work();
+		return;
+	}
+	WorkAfterDeaths.Add(MoveTemp(Work));
+}
+
+void UCataclysmCombatEvents::DoWorkAfterDeaths()
+{
+	// TAKEN OFF THE LIST BEFORE IT IS DONE, because the work may kill, and that death's own announcement comes
+	// back through here. It finds this piece already gone and does whatever is left.
+	while (DeathsBeingAnnounced == 0 && !WorkAfterDeaths.IsEmpty())
+	{
+		const TFunction<void()> Work = MoveTemp(WorkAfterDeaths[0]);
+		WorkAfterDeaths.RemoveAt(0);
+		Work();
+	}
 }
 
 void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillName,
