@@ -6735,7 +6735,7 @@ bool FCataclysmEveryScaledStatIsAskedForTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryConditionedProbeTest,
-	"Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed",
+	"Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
