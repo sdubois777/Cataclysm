@@ -302,7 +302,8 @@ bool UCataclysmDebuffs::IsBleeding(const UAbilitySystemComponent* AbilitySystem)
 }
 
 float UCataclysmDebuffs::DurationOn(const UAbilitySystemComponent* Defender,
-								   float DurationSeconds)
+								   float DurationSeconds,
+								   const FGameplayTagContainer& AppliedTags)
 {
 	const FGameplayAttribute Attribute =
 		UCataclysmCombatAttributeSet::GetDebuffDurationTakenAttribute();
@@ -323,11 +324,16 @@ float UCataclysmDebuffs::DurationOn(const UAbilitySystemComponent* Defender,
 	// NO SKILL TAGS. This is the DEFENDER'S stat, and the skill in the
 	// attacker's hand is the wrong question to scope it by -- the same reason
 	// the retaliation and damage-taken readings pass none either.
+	//
+	// THE TAGS OF THE EFFECT BEING APPLIED INSTEAD. Ruled 2026-10-06. They say
+	// what is arriving and not what anybody is casting, so "Bleeding on you
+	// lasts 50%-100% longer" is a row requiring the bleed tag. Empty for a
+	// caller with none, and a row with no required tags applies either way.
 	const UCataclysmAbilitySystemComponent* Asking =
 		Cast<const UCataclysmAbilitySystemComponent>(Defender);
 	const float Held = Defender->GetNumericAttribute(Attribute);
 	const float Percent = Asking
-		? Asking->StatForSkill(FName(DurationStat), FGameplayTagContainer(),
+		? Asking->StatForSkill(FName(DurationStat), AppliedTags,
 							   Held)
 		: Held;
 
