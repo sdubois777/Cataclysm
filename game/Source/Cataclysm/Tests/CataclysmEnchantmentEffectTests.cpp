@@ -15966,4 +15966,74 @@ bool FCataclysmPlagueDoctorSixRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSixZoneRowsTest,
+	"Cataclysm.Enchantments.TheSixRowsOnZonesASkillLeavesAndWhatAZoneDoesEachGiveTheStatTheGameReads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Six rows on the stats of the dungeon session's four zone entries of
+ * 2026-10-06. Issue #1833. Each is WORN at the top of its roll and read as the
+ * game reads it: the three that give a skill a zone are scoped to a kind of
+ * skill, so each is read with that kind's tag and reads nought with none. Each
+ * reads nought again when taken off. What a skill or a zone then does with the
+ * stat is those entries' tests, with a stat line made by hand.
+ */
+bool FCataclysmSixZoneRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Row;
+		bool bBenefit;
+		const TCHAR* Stat;
+		/** The tag the row is scoped to, or nothing for a row with no scope. */
+		const TCHAR* Scope;
+		float Worn;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Your_movement_ability_leaves_a_persistent_AOE_zo"), true,
+		 TEXT("zone_at_start_and_end_seconds"), TEXT("Slot.Movement"), 5.0f},
+		{TEXT("Positive_Charge_skills_leave_a_persistent_AOE_zone_at_the"), true,
+		 TEXT("zone_at_impact_seconds"), TEXT("Keyword.Charge"), 6.0f},
+		{TEXT("Positive_Your_spells_leave_a_persistent_AOE_zone_at_the_i"), true,
+		 TEXT("zone_at_impact_seconds"), TEXT("Type.Spell"), 4.0f},
+		{TEXT("Negative_Persistent_AOE_zones_also_damage_you_if_you_stan"), false,
+		 TEXT("zone_damages_its_owner"), nullptr, 1.0f},
+		{TEXT("Positive_Your_persistent_AOE_zones_follow_you_as_you_move"), true,
+		 TEXT("zone_follows_owner_percent"), nullptr, 50.0f},
+		{TEXT("Positive_Your_minions_leave_behind_chaos_pools_when_they"), true,
+		 TEXT("minions_leave_chaos_pools"), nullptr, 1.0f},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FWorn Worn(Case.Row, Case.bBenefit);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(Case.Stat);
+		const FGameplayTagContainer Asked =
+			Case.Scope ? CataclysmRepeatRowsTest::Tagged(Case.Scope) : FGameplayTagContainer();
+		if (Case.Scope && !TestTrue(FString::Printf(TEXT("set-up: the tag %s exists"), Case.Scope), Asked.Num() == 1))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%s, worn: %s is %.0f.%s"), Case.Row, Case.Stat, Case.Worn,
+					  CataclysmRepeatRowsTest::OlderAsset),
+			Worn.ASC()->StatForSkill(Stat, Asked, 0.0f), Case.Worn, 0.01f);
+		if (Case.Scope)
+		{
+			TestEqual(FString::Printf(TEXT("%s: asked for a skill with no tag, %s is 0"), Case.Row, Case.Stat),
+				Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 0.0f, 0.01f);
+		}
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(FString::Printf(TEXT("%s, taken off: %s is 0 again"), Case.Row, Case.Stat),
+			Worn.ASC()->StatForSkill(Stat, Asked, 0.0f), 0.0f, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
