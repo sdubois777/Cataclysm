@@ -55,6 +55,28 @@ for the use; what a use then does with the share is that entry's test.
 
 **Not tested here:** either row through a real use that deals damage, and a self hit that kills its user.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers above this one, on `development` 210f1267. **The ids are the
+commits as they stood when each step ran.** This table carries the steps the four layers share. Every figure was
+registered before the window and each printed as registered.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack | b97776b7 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | b97776b7 | 248 tests performed, 243 succeeded, 5 failed; 7 failed assertions, 2 of them this layer's |
+| The three enchantment assets, regenerated with the editor | a0f45142 | effect rows 504 to 506 |
+| Whole suite, every asset built | c07c8f46 | 3235 tests performed, 3235 succeeded, 0 failed. 40 skipped part of what they check; 0 ensures |
+| Python of record, continuous integration idle | c07c8f46 | 5771 passed, 8 skipped in 361.62s; the JUnit file: tests 5779, failures 0, errors 0, skipped 8 |
+| Lint | c07c8f46 | All checks passed! |
+
+**Each of this layer's two tests fails against a table without its row and passes with it**, on one assertion
+each: the share recorded for a melee skill at a roll of 19.9 is 0 where 100 is expected, and the share recorded for
+a spell at a roll of 24.9 is 0 where 50 is expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The two actions
+were proved by the session that built them.
+
 ---
 
 ## 2026-10-06 — A new condition, `target_in_your_zone`: the target stands in a ground zone the asker's skill left. No row authored yet
