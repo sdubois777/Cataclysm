@@ -17635,4 +17635,58 @@ bool FCataclysmDotDurationOnTheWearerRowTest::RunTest(const FString&)
 		Worn.ASC()->StatAppliedTo(Stat, FGameplayTagContainer(), 100.0f), 100.0f, 0.01f);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassResourceGenerationRowsTest,
+	"Cataclysm.Enchantments.TheTwoClassResourceGenerationRowsRaiseAndLowerTheRateTheGameAsksFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your class resource generates 20%-40% faster" and "Your class resource
+ * generates 30%-50% slower". Issue #1833, ruled 2026-10-07:
+ * `class_resource_generation` increased 20 to 40, and increased -30 to -50.
+ * Each real row is WORN, the benefit at its best roll and the drawback at its
+ * harshest, and the stat is applied to a rate of 100: 140 for the first and 50
+ * for the second. What the rate then does to a gain is the tests of the entry
+ * that built the stat.
+ */
+bool FCataclysmClassResourceGenerationRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Table;
+		const TCHAR* Row;
+		bool bBenefit;
+		float OfAHundred;
+	};
+	const FCase Cases[] = {
+		{TEXT("EnchantmentsPositive.csv"), TEXT("Positive_Your_class_resource_generates_20_40_faster"), true, 140.0f},
+		{TEXT("EnchantmentsNegative.csv"), TEXT("Negative_Your_class_resource_generates_30_50_slower"), false, 50.0f},
+	};
+	const FName Stat(TEXT("class_resource_generation"));
+	for (const FCase& Case : Cases)
+	{
+		// THE NAME WORN IS LOOKED UP IN ITS TABLE FIRST, so a name that is not a row fails here and says so.
+		const UDataTable* Table = CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(Case.Table);
+		if (!TestNotNull(FString::Printf(TEXT("set-up: %s can be read"), Case.Table), Table)
+			|| !TestTrue(FString::Printf(TEXT("set-up: %s is a row of %s"), Case.Row, Case.Table),
+						 Table->GetRowMap().Contains(FName(Case.Row))))
+		{
+			return false;
+		}
+		FWorn Worn(Case.Row, Case.bBenefit);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%s, worn: a rate of 100 becomes %.0f.%s"), Case.Row, Case.OfAHundred,
+					  CataclysmRepeatRowsTest::OlderAsset),
+			Worn.ASC()->StatAppliedTo(Stat, FGameplayTagContainer(), 100.0f), Case.OfAHundred, 0.01f);
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(FString::Printf(TEXT("%s, taken off: a rate of 100 stays 100"), Case.Row),
+			Worn.ASC()->StatAppliedTo(Stat, FGameplayTagContainer(), 100.0f), 100.0f, 0.01f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
