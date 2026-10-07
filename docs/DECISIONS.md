@@ -2,6 +2,39 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Plague Doctor's ten-piece bonus is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row on the action the entry below this one adds. No engine code and no generator code is changed here.
+
+| Sentence | Action | Event | Value | Trigger Cooldown |
+| :-- | :-- | :-- | :-- | :-- |
+| Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT from you, it explodes and applies all of your DoTs to all nearby enemies | `blast_from_the_dying` | `afflicted_death` | 20 | 0 |
+
+EnchantmentEffects 519 to 520, over 432 to 433 enchantments. Plague Doctor now has all three of its bonuses.
+
+### THE NUMBER IS A JUDGEMENT, LABELLED
+
+The sentence states no figure. **Ruled 2026-10-06 and 2026-10-07 by the coordinating session under the owner's
+delegation: the explosion is 20 per cent of the dead enemy's maximum health.** The enchantment is listed in the
+row-text check's `JUDGED_NUMBERS` for that reason. **The cooldown is nought** so that a death the blast causes can
+blast in its turn within the same moment.
+
+### Tests
+
+- `Cataclysm.Enchantments.PlagueDoctorsTenPiecesBlastFromAnEnemyThatDiesCarryingTheWearersAilment`: nine pieces
+  of the real set and then ten. At nine a creature that dies carrying the wearer's poison takes nothing from the
+  creature 2 metres from it and passes no poison on. At ten that creature loses what a direct area hit of a fifth
+  of the dead creature's maximum health takes from a creature built alike, and carries the poison.
+
+---
+
 ## 2026-10-07 — An enemy that dies carrying the wearer's ailment can blast those near it for a share of its maximum health and pass the wearer's ailments to them; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmContagion.h` and `.cpp` (`BlastFromTheDying`),
