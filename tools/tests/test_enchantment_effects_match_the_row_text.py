@@ -214,7 +214,10 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.I
 FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death",
               "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay",
               "aura_shares_immunities_with_allies", "zone_staggers_on_entry",
-              "zone_applies_own_ailment"}
+              "zone_applies_own_ailment",
+              # JOINED 2026-10-06 with Plague Doctor's six-piece row: above nought,
+              # applying a damage over time effect refreshes the applier's others.
+              "dot_application_refreshes_others"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -673,8 +676,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 507 over 421: four rows on three enchantments.
 #: AND 512 OVER 425 SINCE THE ROW THAT PASSES A VOID SPLINTER ON AT A DEATH,
 #: issue #1833, 2026-10-06, from 511 over 424: one row on one enchantment.
-AUTHORED_ROWS = 512
-AUTHORED_ENCHANTMENTS = 425
+#: AND 513 OVER 426 SINCE PLAGUE DOCTOR'S SIX-PIECE ROW,
+#: issue #1833, 2026-10-06, from 512 over 425: one row on one enchantment.
+AUTHORED_ROWS = 513
+AUTHORED_ENCHANTMENTS = 426
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
