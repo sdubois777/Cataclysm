@@ -2,6 +2,39 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — "Void splinter stacks spread to nearby enemies when the afflicted enemy dies" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row on the action the entry below this one lets name a Void Splinter. No engine code and no generator code is
+changed here.
+
+| Sentence | Action | Ailment | Value |
+| :-- | :-- | :-- | :-- |
+| Void splinter stacks spread to nearby enemies when the afflicted enemy dies | `ailment_spread_on_death` | Void Splinter | 100 |
+
+EnchantmentEffects 511 to 512, over 424 to 425 enchantments.
+
+### THE NUMBER IS A JUDGEMENT, LABELLED
+
+The sentence states no number. **Ruled 2026-10-06 by the coordinating session under the owner's delegation:
+"nearby enemies" is every enemy within 5 metres of the body.** The row's value is how many enemies the ailment
+passes to, and 100 is written because it is the most the generator lets a number hung on an ailment be and no pack
+reaches it. The enchantment is listed in the row-text check's `JUDGED_NUMBERS` for that reason.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheVoidSplinterSpreadRowPassesADyingEnemysVoidSplinterToEveryEnemyWithinFiveMetres`: the
+  real row worn; of six creatures within 5 metres of the body all six receive the Void Splinter, and one 6 metres
+  away does not.
+
+---
+
 ## 2026-10-06 — A Void Splinter can pass on when its carrier dies, where a row gives it a count; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`

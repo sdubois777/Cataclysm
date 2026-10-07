@@ -715,7 +715,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 507 SINCE THE ROW THAT MAKES A VOID SPLINTER DETONATE, issue #1833, from 506.
 	//
 	// AND 511 SINCE THREE MORE PERSISTENT AREA SENTENCES, issue #1833, from 507.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    511)
+	//
+	// AND 512 SINCE THE ROW THAT PASSES A VOID SPLINTER ON AT A DEATH, issue #1833, from 511.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    512)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
