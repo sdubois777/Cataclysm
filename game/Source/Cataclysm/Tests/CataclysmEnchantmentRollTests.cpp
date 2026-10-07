@@ -53,7 +53,9 @@ namespace CataclysmEnchantmentRollTest
 	 * tools/tests/test_enchantment_effects_match_the_row_text.py, so the game
 	 * and the generator cannot read the sentences differently and both pass.
 	 */
-	constexpr int32 StatedRanges = 390;
+	// 391 SINCE 2026-10-07: the owner's reword of "DoTs last 2x-4x as long on
+	// you" to "DoTs on you have 100%-300% more duration" states one more.
+	constexpr int32 StatedRanges = 391;
 
 	/** Loads a generated table so tests read the real data, not a fixture. */
 	template <typename RowType>
