@@ -295,6 +295,8 @@ const TCHAR* UCataclysmSkillEffects::StaggerDurationStat =
 	TEXT("stagger_duration");
 
 const TCHAR* UCataclysmSkillEffects::DebuffDurationStat = TEXT("debuff_duration");
+const TCHAR* UCataclysmSkillEffects::DotApplicationRefreshesOthersStat =
+	TEXT("dot_application_refreshes_others");
 
 float UCataclysmSkillEffects::DebuffDurationMultiplierOf(const UAbilitySystemComponent* Source)
 {
@@ -1759,6 +1761,20 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// A ROW MAY MAKE THIS APPLICATION REFRESH THE INSTIGATOR'S OTHER DAMAGE OVER
+	// TIME EFFECTS ON THE TARGET. See `DotApplicationRefreshesOthersStat`. Not for
+	// a copy a spread makes, which nobody applied, and asked of the instigator's
+	// own rows, so a minion's application refreshes nothing of its owner's.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source);
+		if (Own && Own->StatForSkill(FName(DotApplicationRefreshesOthersStat),
+									 FGameplayTagContainer(EffectTag), 0.0f) > 0.0f)
+		{
+			RefreshOtherDamageOverTime(Instigator, Target, EffectTag);
+		}
+	}
+
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
 	if (Running.bFound && Running.Stated >= Stated)
 	{
@@ -1989,6 +2005,20 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 		}
 	}
 
+	// A ROW MAY MAKE THIS APPLICATION REFRESH THE INSTIGATOR'S OTHER DAMAGE OVER
+	// TIME EFFECTS ON THE TARGET. See `DotApplicationRefreshesOthersStat`. Not for
+	// a copy a spread makes, which nobody applied, and asked of the instigator's
+	// own rows, so a minion's application refreshes nothing of its owner's.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source);
+		if (Own && Own->StatForSkill(FName(DotApplicationRefreshesOthersStat),
+									 FGameplayTagContainer(EffectTag), 0.0f) > 0.0f)
+		{
+			RefreshOtherDamageOverTime(Instigator, Target, EffectTag);
+		}
+	}
+
 	if (Detonation > 0.0f
 		&& DealRemainingDamageOverTime(Instigator, Target, Detonation, EffectTag, /*bEndEach=*/true) > 0)
 	{
@@ -2044,6 +2074,54 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	return true;
+}
+
+int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AActor* Target,
+														 const FGameplayTag& Except)
+{
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	const UWorld* World = Defender ? Defender->GetWorld() : nullptr;
+	if (!Owner || !Defender || !World)
+	{
+		return 0;
+	}
+	const float Now = World->GetTimeSeconds();
+
+	// WHAT EACH NEEDS IS TAKEN FIRST, because moving an effect's start changes
+	// the list being read.
+	TArray<TPair<FActiveGameplayEffectHandle, float>> Moves;
+	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
+	{
+		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
+		if (!Active || Active->Spec.GetContext().GetInstigator() != Owner)
+		{
+			continue;
+		}
+		FGameplayTagContainer Granted;
+		Active->Spec.GetAllGrantedTags(Granted);
+		if (Except.IsValid() && Granted.HasTag(Except))
+		{
+			continue;
+		}
+		// ONLY AN EFFECT THAT STILL HAS DAMAGE TO DEAL. `RemainingDamageOverTime`
+		// is nought for anything that deals no damage a tick.
+		if (RemainingDamageOverTime(Defender, Handle) <= 0.0f)
+		{
+			continue;
+		}
+		// ITS OWN FULL DURATION: the one it was applied with, which the engine
+		// keeps, less what it has left.
+		const float Longer = Active->GetDuration() - Active->GetTimeRemaining(Now);
+		if (Longer > 0.0f)
+		{
+			Moves.Emplace(Handle, Longer);
+		}
+	}
+	for (const TPair<FActiveGameplayEffectHandle, float>& Move : Moves)
+	{
+		Defender->ModifyActiveEffectStartTime(Move.Key, Move.Value);
+	}
+	return Moves.Num();
 }
 
 float UCataclysmSkillEffects::DetonationPercentWhenReapplied(

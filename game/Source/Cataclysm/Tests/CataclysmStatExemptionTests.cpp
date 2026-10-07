@@ -6047,6 +6047,55 @@ namespace CataclysmStatExemptionTest
 					   Gained(true), 150.0f, 0.01f);
 	}
 
+	/**
+	 * `dot_application_refreshes_others`, read by `UCataclysmSkillEffects` where
+	 * a damage over time effect is applied. A poison of ten seconds, four seconds
+	 * in, has six left; when its applier then applies a bleed, it still has six,
+	 * and ten when the applier holds the stat.
+	 */
+	void ProbeDotApplicationRefreshesOthers(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FGameplayTag Poison =
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+		const FGameplayTag Bleed =
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+		if (!Test.TestTrue(TEXT("set-up: the two ailment tags"), Poison.IsValid() && Bleed.IsValid()))
+		{
+			return;
+		}
+
+		const auto PoisonLeft = [World, &Poison, &Bleed](bool bHeld)
+		{
+			FScopedFighter Applier(World, /*AttackDamage=*/0.0f);
+			FScopedFighter Struck(World, /*AttackDamage=*/0.0f);
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Actor, Struck.Actor, 1.0f, 10.0f, Poison,
+														/*bScalesWithInstigator=*/false);
+			CataclysmTestWorld::RunClock(World, 4.0f);
+			if (bHeld)
+			{
+				GrantFlats(Applier.Actor,
+						   {{FName(UCataclysmSkillEffects::DotApplicationRefreshesOthersStat), 1.0f}});
+			}
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Actor, Struck.Actor, 1.0f, 10.0f, Bleed,
+														/*bScalesWithInstigator=*/false);
+			UCataclysmSkillEffects::FRunningAilment Running;
+			return UCataclysmSkillEffects::RunningAilmentOn(Struck.Actor, Poison, Running) ? Running.SecondsLeft
+																						   : -1.0f;
+		};
+
+		Test.TestEqual(TEXT("a plain applier's poison has six seconds left after it applies a bleed"),
+					   PoisonLeft(false), 6.0f, 0.1f);
+		Test.TestEqual(TEXT("and ten when the applier holds dot_application_refreshes_others, so "
+							"UCataclysmSkillEffects really reads it"),
+					   PoisonLeft(true), 10.0f, 0.1f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -6082,6 +6131,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_cost_paid_from_health"), &ProbeCostPaidFromHealth},
 			{TEXT("skill_cost_paid_from_health_when_short"), &ProbeCostPaidFromHealthWhenShort},
 			{TEXT("healing_received"), &ProbeHealingReceived},
+			{TEXT("dot_application_refreshes_others"), &ProbeDotApplicationRefreshesOthers},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
