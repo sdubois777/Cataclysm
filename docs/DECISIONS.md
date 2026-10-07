@@ -2,6 +2,100 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "100% of your block value is added to your retaliation damage" is built as a row that pays the attacker what a block removed
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row, on an action that already exists. No engine code and no generator code is changed here.
+
+| Sentence | Action | Event | Value | Trigger Cooldown |
+| :-- | :-- | :-- | :-- | :-- |
+| 100% of your block value is added to your retaliation damage | `reflect_blocked` | `block` | 100 | 0.25, the default for a blow |
+
+EnchantmentEffects 522 to 523, over 435 to 436 enchantments.
+
+### WHAT WAS RULED, 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+Each a labelled judgement.
+
+- **"Block value" is what the block removed from that blow.** The engine has no other number by that name.
+- **It is written as `reflect_blocked` on `block` at 100**: at every block the attacker is paid the whole of what
+  the block removed, as retaliation pays, through the attacker's armour and resistance, and it is not retaliated
+  against.
+
+### WHAT WAS READ FIRST
+
+A blocked blow is retaliated against today **only when something of it got through**. Retaliation is paid inside
+the branch for a blow that took something from health, shield or mana (`CataclysmVitalAttributeSet.cpp`), and its
+size is a share of the blow before the defender's mitigation. A block that stopped a blow completely provokes none.
+The `block` event, with the attacker and what the block removed, is raised whether or not anything survived.
+
+### TWO DIFFERENCES FROM THE LITERAL READING, STATED
+
+1. **The blocked amount is not raised by the wearer's retaliation damage increases.** It is a share of what the
+   block removed and nothing else.
+2. **It is paid even when no retaliation was.** A fully blocked blow now pays the attacker the blocked amount,
+   where today it pays nothing.
+
+### THE LITERAL ALTERNATIVE, NOT TAKEN, AND WHY
+
+A flat addition inside `UCataclysmRetaliation::Pay`, so that the blocked amount joined the one retaliation
+payment and was raised with it. It was not taken because retaliation's amount is one share of the blow and no row
+can add to one payment; it would be engine work for one sentence, and it would pay nothing for a blow a block
+stopped completely, which is the case the sentence's player most often meets.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **At 100 this row does what "Reflect 20%-100% of damage blocked back at attackers" does at the top of its
+  roll.** They are two enchantments with one effect at that roll.
+- **Worn together, the two pay twice.** Each row answers the block for itself, so an attacker is paid what the
+  block removed by this row and 20 to 100 per cent of it again by the other.
+- **For the owner's play-check list:** whether a block that stops a blow completely should pay the attacker at
+  all, and whether the two rows should add.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheBlockValueRowPaysTheAttackerAllOfWhatABlockRemoved`: the real row worn; a real
+  blocked blow costs the attacker exactly what the block removed.
+
+**Not tested:** the two rows worn together.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 1 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | 3736413e | effect rows 522 to 523 |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**THE ENCHANTMENT CANNOT ROLL ON AN ITEM TODAY.** Its Weight in `EnchantmentsPositive.csv` is 0.0.
+`UCataclysmDropRoll::EnchantmentDrawWeight` prices a sheet weight that is not a whole number from 1 to 4 at
+nought, and a row priced at nought is left out of the draw (`CataclysmDropRoll.cpp`, "a zero takes the row out of
+the draw"). So the row is correct and unreachable until the weight changes. Read, not run. Two other enchantments
+carry a weight of nought: "Your HP regeneration continues at 50% effectiveness during combat" and "Class points
+spent in your primary tree are 10%-20% more effective". The weight was not changed here: ruled 2026-10-07, it is
+the owner's to decide.
+
+**The test fails against a table without its row and passes with it**: the attacker lost nothing where 500 was
+expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The action was
+proved by the layer that built it.
+
+**Accepted 2026-10-07 by the coordinating session:** worn with "Reflect 20%-100% of damage blocked back at
+attackers", both rows pay, so the attacker is paid twice.
+
+---
+
 ## 2026-10-07 — "Burn effects you apply spread to 1-2 nearby enemies" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
