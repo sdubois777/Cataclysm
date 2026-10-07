@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Burn effects you apply spread to 1-2 nearby enemies" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row on the number the entry below this one lets a row hang on an ailment. No engine code and no generator
+code is changed here.
+
+| Sentence | Action | Ailment | Value |
+| :-- | :-- | :-- | :-- |
+| Burn effects you apply spread to 1-2 nearby enemies | `ailment_spread_on_application` | Burn | 1 to 2 |
+
+EnchantmentEffects 521 to 522, over 434 to 435 enchantments.
+
+### HOW THE SENTENCE IS READ
+
+- **"You apply"**: the count is asked of the wearer when the wearer applies a burn. A burn another character or a
+  minion applies spreads nothing for the wearer's row.
+- **"1-2"** is how many enemies, rolled on the item.
+- **"Nearby"** is within 5 metres of the burned enemy, the nearest first.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheBurnSpreadRowPassesABurnTheWearerAppliesToTheTwoNearestWithinFiveMetres`: the real
+  row worn at the top of its roll; a burn the wearer applies to a creature also goes to the creatures 1 and 2
+  metres from it, and not to the ones 3 and 6 metres from it.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 2 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | 8c94b70b | effect rows 521 to 522 |
+| Whole suite, every asset built | e74285bb | 3260 tests performed, 3259 succeeded, 1 failed: this layer's test |
+| The test given its row's name, folded into this layer | 840e3f6f | the line below is its run |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**THE WHOLE SUITE'S ONE FAILURE WAS THIS LAYER'S TEST, AND THE FAULT WAS IN THE TEST.** At e74285bb, with every
+asset built, the suite printed "3260 tests performed, 3259 succeeded, 1 failed:
+TheBurnSpreadRowPassesABurnTheWearerAppliesToTheTwoNearestWithinFiveMetres", on "Expected 'the creature 1 metre
+from it is burned too. ...' to be true" and "Expected 'and the one 2 metres from it' to be true".
+
+**The cause, as counted.** The test wore `Positive_Burn_effects_you_apply_spread_to_1_2_nearby_ene`. The row's name
+is `Positive_Burn_effects_you_apply_spread_to_1_2_nearby_enem`. `EnchantmentsPositive.csv` holds the first 0 times
+and the second once. The name had been typed and not taken from the table. The wearer wore an enchantment no table
+holds, and nothing spread. Every `Positive_` and `Negative_` name in the test file was then compared with the two
+tables; this was the only one neither holds.
+
+**THE STEP AGAINST THE OLDER ASSETS CANNOT TELL A WRONG NAME FROM AN OLDER ASSET.** This test failed there on the
+same two assertions, as registered, and for the wrong reason. A test that wears a row fails alike whether the
+asset lacks the row or the name is not a row.
+
+**WHAT NOW CAN, IN THIS TEST.** Approved 2026-10-07 by the coordinating session, test only: the name gained its
+letter, and the test first reads `EnchantmentsPositive.csv` and asserts that the name it wears is a row of it. A
+wrong name now fails at that set-up line and says so. The test file has no helper that derives a row's name from
+its sentence, so the name is still typed. **The other row tests of this file do not carry that assertion.**
+
+**This layer changes no engine code and no generator code.** The guard proof of the layer below, which reads no
+count when an ailment is applied, fails its test on 2 assertions.
+
+---
+
 ## 2026-10-07 — An ailment can pass to enemies near its target when it is applied, where a row gives it a count; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`SpreadOnApplication`,
