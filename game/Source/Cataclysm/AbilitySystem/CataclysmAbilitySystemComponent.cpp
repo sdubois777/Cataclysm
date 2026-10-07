@@ -3455,6 +3455,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::AilmentSpreadOnDeathAction =
 	TEXT("ailment_spread_on_death");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentDetonatesWhenReappliedAction =
 	TEXT("ailment_detonates_when_reapplied");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentSpreadOnApplicationAction =
+	TEXT("ailment_spread_on_application");
 
 ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const FString& Action)
 {
@@ -3489,6 +3491,10 @@ ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const
 	if (Action.Equals(AilmentDetonatesWhenReappliedAction, ESearchCase::IgnoreCase))
 	{
 		return ECataclysmAilmentRider::DetonatesWhenReapplied;
+	}
+	if (Action.Equals(AilmentSpreadOnApplicationAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::SpreadOnApplication;
 	}
 	return ECataclysmAilmentRider::None;
 }
