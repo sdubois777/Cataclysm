@@ -17474,4 +17474,61 @@ bool FCataclysmStarvationSixRowTest::RunTest(const FString&)
 	}
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbsorbedDamageRowsTest,
+	"Cataclysm.Enchantments.TheTwoAbsorbedDamageRowsEachGiveTheCapTheGameAsksFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Damage absorbed by your energy shield is converted to bonus damage on your
+ * next attack" and "Absorbed spell damage is converted to bonus damage on your
+ * next attack". Issue #1833, ruled 2026-10-07: each is a cap of 100 on its own
+ * store, a stat with no attribute. Each real row is WORN and its stat read:
+ * 100 worn, and nought when taken off. What the two stores then do is the
+ * tests of the entry that built them.
+ */
+bool FCataclysmAbsorbedDamageRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Row;
+		const TCHAR* Stat;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Damage_absorbed_by_your_energy_shield_is_convert"),
+		 TEXT("shield_absorbed_damage_added_to_next_attack_cap_percent")},
+		{TEXT("Positive_Absorbed_spell_damage_is_converted_to_bonus_dama"),
+		 TEXT("spell_absorbed_damage_added_to_next_attack_cap_percent")},
+	};
+	// EVERY NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive))
+	{
+		return false;
+	}
+	for (const FCase& Case : Cases)
+	{
+		if (!TestTrue(FString::Printf(TEXT("set-up: %s is a row of EnchantmentsPositive.csv"), Case.Row),
+				Positive->GetRowMap().Contains(FName(Case.Row))))
+		{
+			return false;
+		}
+		FWorn Worn(Case.Row, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(Case.Stat);
+		TestEqual(FString::Printf(TEXT("%s, worn: %s is 100.%s"), Case.Row, Case.Stat,
+					  CataclysmRepeatRowsTest::OlderAsset),
+			Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 100.0f, 0.01f);
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(FString::Printf(TEXT("%s, taken off: %s is 0"), Case.Row, Case.Stat),
+			Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 0.0f, 0.01f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
