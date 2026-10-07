@@ -20841,6 +20841,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillAtARealKillTest,
  * blow takes, and what a direct blow delivered as the explosion's takes for each of the two overkills. So nothing
  * here assumes a creature's defences are nought.
  *
+ * THE THREE FIGURES, FALLING AT EACH STEP. For a creature with no defences, which is what the measurements give if
+ * a spawned creature has none:
+ *   1. the player's blow takes 100. The first creature held 50, so its overkill is 100 - 50 = 50.
+ *   2. the first body's explosion deals 50. The second creature held 20, so its overkill is 50 - 20 = 30.
+ *   3. the second body's explosion deals 30 to the third creature, which held 1000 and lives, so the chain ends.
+ * The test does not assert 100, 50 and 30 as written here: it asserts the third figure as measured, so that a
+ * creature's defences, if it has any, change the figures and not the result.
+ *
  * STANDING: the player at the origin; the first creature 2 m along +X with 50 health; the second 5 m along +X with
  * 20, so 3 m from the first; the third 8 m along +X with 1000, so 6 m from the first body and 3 m from the second;
  * the fourth 30 m along +Y, out of both explosions.
