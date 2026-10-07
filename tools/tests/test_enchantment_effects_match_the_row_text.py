@@ -376,6 +376,13 @@ JUDGED_NUMBERS = {
     # enemies": the explosion is 20 per cent of the dead enemy's maximum health,
     # ruled 2026-10-06 and 2026-10-07.
     "Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di",
+    # "Damage absorbed by your energy shield is converted to bonus damage on
+    # your next attack" and "Absorbed spell damage is converted to bonus damage
+    # on your next attack": the row's value is the most the store may add, as a
+    # share of the hit it is added to, and 100 is ruled 2026-10-07 in the entry
+    # "Absorbed damage stored".
+    "Positive_Damage_absorbed_by_your_energy_shield_is_convert",
+    "Positive_Absorbed_spell_damage_is_converted_to_bonus_dama",
 }
 
 #: Enchantments whose sentence states A TOTAL and whose row grants what is
@@ -721,8 +728,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 535 over 448: one row on one enchantment.
 #: AND 537 OVER 450 SINCE STARVATION'S SIX-PIECE ROW,
 #: issue #1833, 2026-10-06, from 536 over 449: one row on one enchantment.
-AUTHORED_ROWS = 537
-AUTHORED_ENCHANTMENTS = 450
+#: AND 539 OVER 452 SINCE THE TWO ABSORBED-DAMAGE ROWS,
+#: issue #1833, 2026-10-06, from 537 over 450: two rows on two enchantments.
+AUTHORED_ROWS = 539
+AUTHORED_ENCHANTMENTS = 452
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
