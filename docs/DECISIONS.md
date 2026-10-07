@@ -85,6 +85,40 @@ overkill needs the damage code to record it at the lethal blow.
 **Not tested here:** that the target either event carries is the enemy that died. The entry above this one tests
 it by where a blast lands.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the seven layers above this one, on `development` 06790eea. **The ids are the
+commits as they stood when each step ran**; the first two were local and were never pushed. This table carries the
+steps the eight layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack, the first compile of its engine code | 19356a30 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, FIRST RUN | 19356a30 | 264 tests performed, 257 succeeded, 7 failed; 23 failed assertions: the 21 registered, of six tests that wear a row, and 2 of a test of the layer above this one that needs no row |
+| The same, after the layer above gained its queue of deaths and a third test | 77c378c3 | Build: Succeeded - 33 actions, 30 files compiled; 265 tests performed, 259 succeeded, 6 failed; 21 failed assertions, the six tests that wear a row |
+| Assets | 9d6683cf | none built: this layer changes no table |
+| Whole suite, every asset built | e74285bb | 3260 tests performed, 3259 succeeded, 1 failed: the row test of the layer five above this one, which wore a name one letter short of its row's. 40 skipped part of what they check; 0 ensures |
+| Cataclysm.Enchantments. alone, after that one test was given its row's name | be112e78 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.28.cpp; 265 tests performed, 265 succeeded, 0 failed |
+| Python of record, continuous integration idle | be112e78 | 5798 passed, 8 skipped in 327.17s; the JUnit file: tests 5806, failures 0, errors 0, skipped 8 |
+| Lint | be112e78 | All checks passed! |
+
+**THE WHOLE SUITE WAS NOT RUN A SECOND TIME.** 3260 tests with none failing is the one run's 3259 and one group's
+rerun, and not one run. The two results that were not registered, and what was done about each, are recorded in
+the entries "An enemy that dies carrying the wearer's ailment can blast those near it" and the entry of the row "Burn effects you
+apply spread to 1-2 nearby enemies".
+
+**This layer's two tests need no row**, so they pass against the older assets. Their failing halves are these
+guard proofs, each with `prove_cpp_guard` on `Cataclysm.Enchantments.` at be112e78, each restored to 265 tests
+performed, 265 succeeded, 0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| `afflicted_death` carries an amount of nought (`&Theirs[Applier], 0.0f,` in `CataclysmContagion.cpp`) | 265 performed, 5 failed | 17 assertions: this layer's test of the event 1 (1.000000 where 100001.000000); the three blast tests of the layer above 5, 3 and 6; the ten-piece row test 2 |
+| The `kill` event carries an amount of nought (`Notice.KillingSkillTags, 0.0f,` in `CataclysmPlayerCharacter.cpp`) | 265 performed, 1 failed | this layer's test of the kill 1: 1.000000 where 51.000000 |
+
+Each proof failed on the tests and the number of assertions stated before it ran. The counts of the first were
+re-derived, and sent, after the third chain test was added and before any proof ran.
+
 ---
 
 ## 2026-10-06 — Damage over time on the wearer is scoped by ailment: two defender lookups asked with tags, and three new stats. No row authored yet
