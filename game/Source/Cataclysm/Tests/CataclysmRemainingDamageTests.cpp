@@ -546,6 +546,78 @@ CATACLYSM_TEST(FCataclysmDetonationFigureTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmApplicationRefreshesOthersTest,
+	"Cataclysm.RemainingDamage.ApplyingADamageOverTimeEffectRefreshesTheAppliersOthersOnThatTargetOnlyWhenARowSaysSo")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// PLAGUE DOCTOR'S SIX-PIECE BONUS, with the stat held by hand. Ruled 2026-10-06. Three effects of ten a tick
+	// for ten seconds on one target: the wearer's poison, the wearer's bleed and another character's burn. Four
+	// seconds in, each has six ticks left, 60. A PLAIN application of a disease leaves all three as they are. With
+	// the stat, an application of a necrosis gives the wearer's poison and bleed their own ten seconds again, 100
+	// each, and leaves the other character's burn at 60. And applying the poison again refreshes the bleed.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Poison = Tag(TEXT("Keyword.DoT.Poison"));
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Tag(TEXT("Keyword.DoT.Burn"));
+	const FGameplayTag Disease = Tag(TEXT("Keyword.DoT.Disease"));
+	const FGameplayTag Necrosis = Tag(TEXT("Keyword.DoT.Necrosis"));
+	if (!TestTrue(TEXT("set-up: the five ailment tags exist"),
+				  Poison.IsValid() && Bleed.IsValid() && Burn.IsValid() && Disease.IsValid() && Necrosis.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Other(World);
+		const FFighter Target(World);
+		if (!TestTrue(TEXT("set-up: the wearer's poison and bleed and another character's burn land"),
+					  TenATick(Wearer.Actor, Target.Actor, Poison) && TenATick(Wearer.Actor, Target.Actor, Bleed)
+						  && TenATick(Other.Actor, Target.Actor, Burn)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 4.0f);
+		if (!TestEqual(TEXT("set-up: four seconds in, the poison has six ticks left"),
+					   RemainingOn(Target.Actor, Poison), 60.0f, 0.01f))
+		{
+			return false;
+		}
+
+		// WITH NO ROW, ANOTHER APPLICATION REFRESHES NOTHING.
+		TestTrue(TEXT("with no row, the wearer applies a disease"), TenATick(Wearer.Actor, Target.Actor, Disease));
+		TestEqual(TEXT("and the poison still has six ticks left"), RemainingOn(Target.Actor, Poison), 60.0f, 0.01f);
+		TestEqual(TEXT("and the bleed"), RemainingOn(Target.Actor, Bleed), 60.0f, 0.01f);
+
+		// WITH THE STAT.
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmSkillEffects::DotApplicationRefreshesOthersStat)).Base = 1.0f;
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestTrue(TEXT("with the stat, the wearer applies a necrosis"), TenATick(Wearer.Actor, Target.Actor, Necrosis));
+		TestEqual(TEXT("the poison has its own ten seconds again: ten ticks"),
+			RemainingOn(Target.Actor, Poison), 100.0f, 0.01f);
+		TestEqual(TEXT("and the bleed"), RemainingOn(Target.Actor, Bleed), 100.0f, 0.01f);
+		TestEqual(TEXT("and the disease, which had lost nothing, is as it was"),
+			RemainingOn(Target.Actor, Disease), 100.0f, 0.01f);
+		TestEqual(TEXT("another character's burn is not refreshed"), RemainingOn(Target.Actor, Burn), 60.0f, 0.01f);
+
+		// AND THE EFFECTS KEEP THEIR OWN TICKS: two seconds on, each of the wearer's four has lost two.
+		CataclysmTestWorld::RunClock(World, 2.0f);
+		TestEqual(TEXT("two seconds on, the poison has eight ticks left"),
+			RemainingOn(Target.Actor, Poison), 80.0f, 0.01f);
+		TestTrue(TEXT("the wearer applies the poison again"), TenATick(Wearer.Actor, Target.Actor, Poison));
+		TestEqual(TEXT("which refreshes the bleed to ten ticks"), RemainingOn(Target.Actor, Bleed), 100.0f, 0.01f);
+		TestEqual(TEXT("and still not the other character's burn, which has four left"),
+			RemainingOn(Target.Actor, Burn), 40.0f, 0.01f);
+	}
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_DEV_AUTOMATION_TESTS
