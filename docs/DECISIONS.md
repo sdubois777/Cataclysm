@@ -161,9 +161,9 @@ the SPEND and released on the next attack, which follows this game's own Nothing
   hits spend it.
 - **The first target is the nearest only because `HitTargets` hits nearest first**, as the Nothing Wasted entry
   says of its own store.
-- **A wearer who is both immune to damage and absorbing the same spell fills the spell's store.** The absorb is
-  rolled first, and the store is filled where the roll comes up; whether the wearer is immune is asked after that,
-  in the condition that deals the blow nothing. Not changed. Read in the code, not run.
+- **A wearer who is immune to damage fills neither new store from a spell, whatever their absorb chance.** The
+  immunity is asked first: a spell may be absorbed only when the wearer is not immune, so the absorb is not rolled
+  for an immune wearer and nothing is stored. Read in the code; the spell test asserts it.
 
 ### Tests
 
