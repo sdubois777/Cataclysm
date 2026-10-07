@@ -35162,12 +35162,17 @@ bool FCataclysmCleanseKeepsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// THE MASOCHIST'S SHAPE: A BLEED WHOSE INSTIGATOR IS THE PLAYER, as `UCataclysmDamageConversion` applies it.
+	// THE MASOCHIST'S SHAPE: A BLEED WHOSE INSTIGATOR IS THE PLAYER AND WHICH IS MARKED AS CONVERTED DAMAGE, as
+	// `UCataclysmDamageConversion` applies it. THE MARK WAS ADDED TO THIS SET-UP ON 2026-10-06, when the cleanse was
+	// narrowed from "what the character laid on themselves" to "converted damage": without it this bleed is an
+	// ordinary self-laid one, which a cleanse now removes. The name and the assertions are what they were.
 	const FGameplayTag Commander =
 		UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Status.Buff.Commander")), false);
 	UCataclysmSkillEffects::ApplyTagForDuration(Imp, Player.Character, Commander, 60.0f);
 	UCataclysmSkillEffects::ApplyDamageOverTime(Player.Character, Player.Character, 1.0f, 60.0f,
-												UCataclysmDebuffs::BleedTag(), /*bScalesWithInstigator=*/false);
+												UCataclysmDebuffs::BleedTag(), /*bScalesWithInstigator=*/false,
+												/*DealtBy=*/nullptr, /*Skill=*/nullptr, NAME_None,
+												/*bIsConvertedDamage=*/true);
 	UCataclysmSkillEffects::ApplyDamageOverTime(Imp, Player.Character, 1.0f, 60.0f, UCataclysmSkillEffects::BurnTag(),
 												/*bScalesWithInstigator=*/false);
 	if (!TestTrue(TEXT("set-up: the player carries a buff"), PlayerCarries(Player, Commander))
@@ -35181,6 +35186,73 @@ bool FCataclysmCleanseKeepsTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("the creature's burn is gone"), PlayerCarries(Player, UCataclysmSkillEffects::BurnTag()));
 	TestTrue(TEXT("the buff stays"), PlayerCarries(Player, Commander));
 	TestTrue(TEXT("the player's own bleed stays"), PlayerCarries(Player, UCataclysmDebuffs::BleedTag()));
+	return true;
+}
+
+// A CLEANSE REMOVES WHAT A CHARACTER LAID ON THEMSELVES THAT IS NOT CONVERTED DAMAGE. Ruled 2026-10-06. Until then
+// it kept every effect the character had instigated. A bleed, a Cripple and a Weaken the player laid on themselves,
+// and what a zone lays on its own owner under "Your persistent AOE zones apply their effects to you": its curse, its
+// slow and its ailment.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCleanseRemovesSelfLaidTest,
+	"Cataclysm.Cleanse.ItRemovesWhatThePlayerLaidOnItselfThatIsNotConvertedDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCleanseRemovesSelfLaidTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	if (!TestTrue(TEXT("a possessed player"), Player.IsUsable()) || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	const FGameplayTag Weaken = UCataclysmDebuffs::WeakenTag();
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+
+	// A RAW BLEED AND A CRIPPLE THE PLAYER LAID ON THEMSELVES, with no mark.
+	UCataclysmSkillEffects::ApplyDamageOverTime(Player.Character, Player.Character, 1.0f, 60.0f, Bleed,
+												/*bScalesWithInstigator=*/false);
+	UCataclysmSkillEffects::ApplyTagForDuration(Player.Character, Player.Character, Cripple, 60.0f, 20.0f);
+	if (!TestTrue(TEXT("set-up: the player carries a bleed of their own"), PlayerCarries(Player, Bleed))
+		|| !TestTrue(TEXT("set-up: and a Cripple of their own"), PlayerCarries(Player, Cripple)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a cleanse removes both"), UCataclysmDebuffs::Cleanse(Player.Character), 2);
+	TestFalse(TEXT("the self-laid bleed is gone"), PlayerCarries(Player, Bleed));
+	TestFalse(TEXT("the self-laid Cripple is gone"), PlayerCarries(Player, Cripple));
+
+	// AND WHAT A ZONE LAYS ON ITS OWN OWNER: a curse, a slow and its ailment, each with the owner as its instigator.
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(
+		Player.Character, Player.Character->GetActorLocation(), 400.0f, 60.0f, 1.0f);
+	if (!TestNotNull(TEXT("set-up: a zone the player owns, under them"), Zone))
+	{
+		return false;
+	}
+	Zone->bAlsoLaysItsEffectsOnItsOwner = true;
+	Zone->SlowsThoseInsidePercent = 20.0f;
+	Zone->OwnAilment = FName(TEXT("Burn"));
+	Zone->AlsoApply(Weaken, 60.0f, 0.0f, NAME_None);
+	Zone->Sweep();
+	if (!TestTrue(TEXT("set-up: the sweep laid the zone's curse on its owner"), PlayerCarries(Player, Weaken))
+		|| !TestTrue(TEXT("set-up: and its slow"), PlayerCarries(Player, Cripple))
+		|| !TestTrue(TEXT("set-up: and its ailment"), PlayerCarries(Player, Burn)))
+	{
+		return false;
+	}
+	UCataclysmDebuffs::Cleanse(Player.Character);
+	TestFalse(TEXT("a cleanse takes the zone's curse off its owner"), PlayerCarries(Player, Weaken));
+	TestFalse(TEXT("and its slow"), PlayerCarries(Player, Cripple));
+	TestFalse(TEXT("and its ailment"), PlayerCarries(Player, Burn));
 	return true;
 }
 

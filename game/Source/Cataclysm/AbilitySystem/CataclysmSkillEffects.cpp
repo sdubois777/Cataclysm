@@ -318,6 +318,7 @@ const TCHAR* UCataclysmSkillEffects::KnockbackSuppressedStat =
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
+const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
 const TCHAR* UCataclysmSkillEffects::StatedMagnitudeDataName =
 	TEXT("Cataclysm.StatedMagnitude");
 
@@ -1314,6 +1315,12 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 									 StatedMagnitude);
 	}
 
+	// AND WHETHER IT IS CONVERTED DAMAGE NOT YET TAKEN, which a cleanse keeps. Ruled 2026-10-06.
+	if (Delivery.bIsConvertedDamage)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ConvertedDamageDataName), 1.0f);
+	}
+
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void
 	// Splinter carries. Issue #915. The target turns it into the tick's damage
 	// from the health it has when the tick lands.
@@ -1655,7 +1662,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	AActor* Instigator, AActor* Target, float DamagePerTick,
 	float DurationSeconds, const FGameplayTag& EffectTag,
 	bool bScalesWithInstigator, AActor* DealtBy, const UGameplayAbility* Skill,
-	FName DamageType)
+	FName DamageType, bool bIsConvertedDamage)
 {
 	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
 	{
@@ -1865,6 +1872,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsDamageOverTime = true;
 	Delivery.DamageType = DamageType;
+	Delivery.bIsConvertedDamage = bIsConvertedDamage;
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	return true;
