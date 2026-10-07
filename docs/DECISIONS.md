@@ -36,6 +36,29 @@ outcome of any run is recorded here.
    `class_points_spent` read an offset, and the engine and the generator both refused one anywhere else. That is
    a judgement of the writing session and is listed as one below.
 
+**Ruled after the layer was written, each a labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-07:**
+
+- **A trap's explosion does not take the armour reading; only its swing does. A row naming `Type.Deployable` on
+  `armor_penetration` is not read.** Both confirmed. Said here because a player will read "your traps ignore
+  armor" as covering the blast, and it does not.
+- **The two sentences in point 1 are HELD, and no row is to be written for either.** A row that keeps Cripple's
+  own 30% where its sentence states 20% to 35%, or lays one ordinary bleed where its sentence states 1-2, says
+  something its sentence does not. They wait for a status action on an enemy that carries a strength or a size.
+- **A trap for whoever writes the bleed row later: a value of 1 to 2 on `apply_status` is accepted by the
+  generator and means a 1% to 2% CHANCE**, not a size. The value of that action is its chance.
+- **"Each other trap" as Scale Offset 1 on `traps_active` is confirmed.** The offset existed for one scale,
+  `class_points_spent`, and is now allowed on a second. It is still refused on every other scale: the Python test
+  `test_an_offset_on_the_gadget_scale_is_refused` in `tools/tests/test_generate_datatables.py` passes a made-up
+  row with an offset on `gadgets_active` and requires the generator to refuse it, and the Unreal test of the
+  scales requires `ValidateModifier` to refuse the same.
+- **One guard cannot be proven and no proof is written for it: the `if (IsTrap())` gate on the armour reading in
+  `ACataclysmMinion::AttackTarget`.** With the gate removed a ballista's blow would still take nought, because
+  the row requires `Type.Trap` and is asked with the ballista's tags. The gate saves the lookup and states the
+  rule; a test cannot tell it is there.
+- **Four rows go to the session that writes rows after this layer merges**: the first four under "What the rows
+  need", with the tag on the Spike Trap. The fourth needs "doubles" added to the wording check's list first.
+
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the two scales, the two
 counts, the offset), `CataclysmAbilitySystemComponent.cpp` (the counting), `CataclysmMinion.h` and `.cpp`
 (`IsTrap`, and the armour reading in `AttackTarget`), `CataclysmSkillEffects.h` and `.cpp` (the figure on the
