@@ -97,7 +97,7 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     DIFFER, which is what shows `Probes` did not match another table's tail."""
     sizes = {accessor: len(table(accessor)) for accessor in TABLES}
 
-    assert sizes["ConditionedProbes"] == 8, sizes
+    assert sizes["ConditionedProbes"] == 9, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes
