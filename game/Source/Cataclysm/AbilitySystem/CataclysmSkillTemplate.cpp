@@ -2971,36 +2971,12 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 						* PercentPerSweep / 100.0f
 						* WithSpentIncrease(AbilitySystem);
 
-	// FOR THE SHARE OF ITS STATED TIME A ROW LEAVES IT, and with every earlier area ended first when the character
-	// may hold only one. Ruled 2026-10-06.
-	EndEarlierPersistentAreasIfOnlyOne(Self, AbilitySystem, SkillTags);
-	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
-		Self, Start, End, RadiusCm,
-		Seconds * PersistentAreaDurationMultiplier(AbilitySystem, SkillTags), PerTick,
+	ACataclysmGroundZone* Zone = LeaveAZoneFor(
+		Self, Start, End, RadiusCm, Seconds, PerTick, SkillTags,
 		// A ROW'S ZONE IS HANDED THE SKILL'S DAMAGE TYPE BY NAME. Ruled 2026-10-06. A skill's own ground is
 		// left without one, as it was before this, and deals its owner's.
-		/*bBurnsEveryone=*/false, bTheSkillsOwnGround ? FName() : DamageTypeName());
-
-	// AND WHAT A ROW ADDS TO EVERY SWEEP: more for each enemy inside, and a slow. Ruled 2026-10-06.
-	if (const UCataclysmAbilitySystemComponent* ZoneAsking =
-			Zone ? Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem) : nullptr)
-	{
-		Zone->MorePerEnemyInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat), SkillTags, 0.0f);
-		Zone->SlowsThoseInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneSlowPercentStat), SkillTags, 0.0f);
-		// AND A STAGGER ON ENTRY, AND THE AILMENT OF THE SKILL'S OWN DAMAGE TYPE: burn for a Demonic skill, bleed for a
-		// War one, nothing for any other. Ruled 2026-10-06.
-		Zone->bStaggersThoseEntering = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f) > 0.0f;
-		if (ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat), SkillTags, 0.0f) > 0.0f)
-		{
-			Zone->OwnAilment = UCataclysmAilments::AilmentOfDamageType(DamageTypeName());
-		}
-		// AND WHETHER IT REACHES THE CHARACTER WHO LEFT IT: its damage under one row, its effects under another.
-		// The owner's decision of 2026-10-06.
-		Zone->bAlsoDamagesItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat), SkillTags, 0.0f) > 0.0f;
-		Zone->bAlsoLaysItsEffectsOnItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat), SkillTags, 0.0f) > 0.0f;
-		// AND WHETHER IT FOLLOWS THE CHARACTER WHO LEFT IT, at a percent of their walking speed. Ruled 2026-10-06.
-		Zone->FollowItsOwnerAt(ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat), SkillTags, 0.0f));
-	}
+		/*HandedDamageType=*/bTheSkillsOwnGround ? FName() : DamageTypeName(),
+		/*AilmentOfType=*/DamageTypeName());
 
 	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's
 	// Foul Wake: "the ground you fled burns for 6 seconds and strips the Demonic
@@ -3034,7 +3010,52 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 		{
 			Zone->AlsoHealItsOwner(Params.OwnGroundRegenPercent / 100.0f);
 		}
+	}
 
+	return Zone;
+}
+
+ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
+	AActor* ZoneOwner, const FVector& Start, const FVector& End, float RadiusCm, float Seconds, float PerSweep,
+	const FGameplayTagContainer& SkillTags, FName HandedDamageType, FName AilmentOfType)
+{
+	if (!ZoneOwner)
+	{
+		return nullptr;
+	}
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(ZoneOwner);
+
+	// FOR THE SHARE OF ITS STATED TIME A ROW LEAVES IT, and with every earlier area ended first when the character
+	// may hold only one. Ruled 2026-10-06.
+	EndEarlierPersistentAreasIfOnlyOne(ZoneOwner, AbilitySystem, SkillTags);
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
+		ZoneOwner, Start, End, RadiusCm,
+		Seconds * PersistentAreaDurationMultiplier(AbilitySystem, SkillTags), PerSweep,
+		/*bBurnsEveryone=*/false, HandedDamageType);
+
+	// AND WHAT A ROW ADDS TO EVERY SWEEP: more for each enemy inside, and a slow. Ruled 2026-10-06.
+	if (const UCataclysmAbilitySystemComponent* ZoneAsking =
+			Zone ? Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem) : nullptr)
+	{
+		Zone->MorePerEnemyInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat), SkillTags, 0.0f);
+		Zone->SlowsThoseInsidePercent = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneSlowPercentStat), SkillTags, 0.0f);
+		// AND A STAGGER ON ENTRY, AND THE AILMENT OF THE SKILL'S OWN DAMAGE TYPE: burn for a Demonic skill, bleed for a
+		// War one, nothing for any other. Ruled 2026-10-06.
+		Zone->bStaggersThoseEntering = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f) > 0.0f;
+		if (ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat), SkillTags, 0.0f) > 0.0f)
+		{
+			Zone->OwnAilment = UCataclysmAilments::AilmentOfDamageType(AilmentOfType);
+		}
+		// AND WHETHER IT REACHES THE CHARACTER WHO LEFT IT: its damage under one row, its effects under another.
+		// The owner's decision of 2026-10-06.
+		Zone->bAlsoDamagesItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat), SkillTags, 0.0f) > 0.0f;
+		Zone->bAlsoLaysItsEffectsOnItsOwner = ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat), SkillTags, 0.0f) > 0.0f;
+		// AND WHETHER IT FOLLOWS THE CHARACTER WHO LEFT IT, at a percent of their walking speed. Ruled 2026-10-06.
+		Zone->FollowItsOwnerAt(ZoneAsking->StatForSkill(FName(UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat), SkillTags, 0.0f));
+	}
+
+	if (Zone)
+	{
 		// AND ITS FIRST SWEEP MAY DEAL LESS. Issue #1686: "Persistent AOE zones
 		// deal 20%-35% less damage on initial placement", read as the first
 		// sweep because a zone deals nothing at the instant it is placed. Asked
@@ -3047,7 +3068,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 				FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat),
 				SkillTags,
 				UCataclysmDamageCalculation::NormalZoneFirstSweepDamage);
-			Zone->DealsOnItsFirstSweep(PerTick * FMath::Max(0.0f, FirstSweepShare) / 100.0f);
+			Zone->DealsOnItsFirstSweep(PerSweep * FMath::Max(0.0f, FirstSweepShare) / 100.0f);
 		}
 	}
 
