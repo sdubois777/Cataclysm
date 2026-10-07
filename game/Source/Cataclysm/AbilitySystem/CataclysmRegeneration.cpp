@@ -228,7 +228,17 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	//
 	// A HEAL REFUSED ABOVE, by a held swing or by a full reduction, never
 	// reaches this line and leaves no overheal: nothing was offered.
-	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
+	//
+	// AND NOT THE CHARACTER'S OWN REGENERATION. Ruled 2026-10-07: "overheal
+	// converts" is a heal the character received beyond what fitted.
+	// Regeneration comes through here every step, at full health too, so
+	// counting it would make the row a second shield that refills by itself,
+	// which the sentence does not promise. Regeneration is known by the tag
+	// `ApplyStep` hands over with it, `Keyword.Regeneration`; leech carries
+	// `Keyword.Leech` and still counts.
+	const FGameplayTag OwnRegeneration = UCataclysmFervour::RegenerationTag();
+	const bool bIsOwnRegeneration = OwnRegeneration.IsValid() && Healing.HasTag(OwnRegeneration);
+	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute() && !bIsOwnRegeneration)
 	{
 		if (UCataclysmAbilitySystemComponent* Overhealed =
 				Cast<UCataclysmAbilitySystemComponent>(&AbilitySystem))

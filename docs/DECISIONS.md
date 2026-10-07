@@ -8,11 +8,14 @@ Decisions made outside the Google Drive documents, newest first.
 outcome of any Unreal run is recorded here. One Python dry run was made by the writing session and is described
 under "What the row needs".
 
-**Said first, because it is the largest effect of ruling 3 and a reader may not expect it: health regeneration
-fills the absorb.** A wearer standing at full health gains absorb at its regeneration rate until the cap is
-reached. So out of a fight the absorb is normally full, and in a fight it grows back whenever health is full. This
-follows from "every heal that goes through the ordinary top-up counts, leech and regeneration included". It is
-on the play-check list.
+**Said first: health regeneration does NOT fill the absorb. Every other heal that goes through the ordinary top-up
+does, leech included.** Ruled 2026-10-07 by the coordinating session, a labelled judgement under the owner's
+delegation. It replaces that session's first default, "leech and regeneration included", which it gave before it
+was known that regeneration calls the top-up every step, at full health too. As first written under that default,
+a wearer standing at full health gained absorb at its regeneration rate until the cap, so out of a fight the
+absorb was simply full. The reason recorded: "overheal converts" is a heal the character received beyond what
+fitted; counting regeneration would make the row a second shield that refills by itself, which the sentence does
+not promise. The alternative not taken, regeneration counting, is on the play-check list.
 
 **Also said first: "overheal" is measured where the heal stops, and that is not always maximum health.** A heal
 stops at the character's healing ceiling. For most characters that is maximum health. For a character who "cannot
@@ -85,9 +88,10 @@ shield.
    - A character holding 20% from overheal is raised to 25% by the clock.
 2. **Judgement of the coordinating session: the sentence's rolled value, 10 to 20, is the most the absorb can
    hold from overheal,** as a percentage of maximum health.
-3. **Judgement of the coordinating session: every heal that goes through the ordinary top-up counts,** leech and
-   regeneration included. Heals that do not go through it are not rerouted and do not count. A respawn's refill
-   must not count.
+3. **Judgement of the coordinating session: every heal that goes through the ordinary top-up counts, leech
+   included, EXCEPT the character's own health regeneration.** Heals that do not go through the top-up are not
+   rerouted and do not count. A respawn's refill must not count. (First given as "leech and regeneration
+   included"; replaced the same day, see the top of this entry.)
 4. **Judgement of the coordinating session: no duration.** "Temporary" is not a timer. The absorb lasts until
    damage removes it or a respawn clears it, as the clocked grant does.
 5. **Judgement of the coordinating session: how the row is stated was left to the writing session,** the smallest
@@ -104,7 +108,7 @@ absorb of the character healed, if that character carries the stat.
 
 | Way health is raised | Function | Passes through `TopUp` | Counted |
 |---|---|---|---|
-| Health regeneration | `UCataclysmRegeneration::ApplyStep` | Yes | Yes |
+| Health regeneration | `UCataclysmRegeneration::ApplyStep` | Yes | NO, by ruling. Known by the tag `Keyword.Regeneration` it carries |
 | Life leech | `UCataclysmLeech::PayOutStep` | Yes | Yes |
 | A potion's heal over time | `UCataclysmPotions::HealStep` | Yes | Yes |
 | A row's restore of the pool `health` | `UCataclysmAbilitySystemComponent::ApplyPoolAction` | Yes | Yes |
@@ -144,8 +148,12 @@ No row exists yet, so none of this can be seen in play until one is written.
 
 - A wearer at full health who is healed gains a pale gold segment on the shield bar, as large as the healing that
   did not fit. Further healing makes it larger, up to 10% to 20% of maximum health as rolled, and no further.
-- **Regeneration fills it.** Standing at full health, the segment grows at the health regeneration rate until it
-  reaches the cap. After a fight it refills by itself once health is full.
+- **Regeneration does not fill it.** Standing at full health with nothing healing the character, the segment does
+  not grow. The alternative not taken: regeneration counting, under which the segment would refill by itself
+  whenever health is full.
+- **Reserved health and a lowered healing ceiling.** Overheal is measured where healing stops, not at maximum
+  health. A character whose health is reserved, or whose healing is capped below maximum, keeps as absorb
+  everything a heal offers above that point.
 - **Leech fills it.** At full health, leech that would have been wasted becomes absorb.
 - **A potion fills it,** for the part of each step that does not fit.
 - A heal that fits wholly inside missing health gives no absorb.
@@ -155,8 +163,7 @@ No row exists yet, so none of this can be seen in play until one is written.
 - **Two sources, one amount, case two.** A character holding 20% from overheal is raised to 25% at the next
   12 second mark.
 - There is no timer on it. Out of a fight it stays.
-- After a death and respawn the segment is gone, and the respawn's refill does not bring it back. Regeneration
-  then starts to fill it again.
+- After a death and respawn the segment is gone, and the respawn's refill does not bring it back.
 - **To check: two worn copies add their caps.** The row is a `flat` line, and flat lines on one stat add. Two
   items rolled at 15 and 20 give a cap of 35% of maximum health.
 - **To check: a character with a healing ceiling.** With "cannot be healed above 50% of maximum health", a
@@ -167,7 +174,9 @@ No row exists yet, so none of this can be seen in play until one is written.
 
 ### Judgements by the writing session
 
-Each is a judgement by the writing session, for the coordinating session to confirm.
+Each was a judgement by the writing session, for the coordinating session to confirm. **All were confirmed on
+2026-10-07 as labelled judgements under the owner's delegation.** That health written directly is not counted was
+found by search and not by proof.
 
 1. **Overheal is what was offered less what fitted under the healing ceiling,** not what would pass maximum
    health. A judgement by the writing session, for the coordinating session to confirm. The other reading counts
@@ -214,9 +223,11 @@ Seven Unreal automation tests, appended to `game/Source/Cataclysm/Tests/Cataclys
 - `AHealThatFitsWhollyWithinMissingHealthGivesNoAbsorb`. Then the same wearer, at full health, keeps a heal.
 - `HoldingMoreThanTheCapFromAGrantAnOverhealChangesNothing`. Ruling 1, the first case, against a second wearer
   that holds nothing and keeps the same heal. The second case is tested too.
-- `LeechARowsRestoreAndRegenerationFillItAndAnEnergyShieldRestoreDoesNot`. Ruling 3. Leech through
-  `UCataclysmLeech::PayOutStep`, a row through a pool action and its event, regeneration through
-  `UCataclysmRegeneration::ApplyStep`. An energy shield restore that overflows gives nothing.
+- `LeechAndARowsRestoreFillItAndRegenerationAndAnEnergyShieldRestoreDoNot`. Ruling 3. Leech through
+  `UCataclysmLeech::PayOutStep` and a row through a pool action and its event fill it. Regeneration through
+  `UCataclysmRegeneration::ApplyStep` does not: a control half empty shows the step restores health, and the
+  wearer at full health holds nothing after one step and after three; then the same wearer, still at full
+  health, is paid a leech of 300 and holds 300. An energy shield restore that overflows gives nothing.
 - `ARespawnsRefillGivesNoAbsorb`. A real player character is killed and revived. The control is the same wearer
   healed through the top-up before the death and after the respawn.
 
@@ -236,7 +247,7 @@ new call of `StatForSkill`.
 - **A held swing that forbids healing.** Judgement 3 has no test.
 - **Two worn copies.** Judgement 6 has no test.
 - **The loader.** No test wears a real row, because none exists.
-- **Regeneration on a real timer.** The test calls one step by hand.
+- **Regeneration on a real timer.** The test calls each step by hand.
 
 ### What the row needs, for the session that writes rows
 

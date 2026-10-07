@@ -22316,7 +22316,7 @@ bool FCataclysmOverhealAbsorbOneAmountTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbKindsOfHealTest,
-	"Cataclysm.OverhealAbsorb.LeechARowsRestoreAndRegenerationFillItAndAnEnergyShieldRestoreDoesNot",
+	"Cataclysm.OverhealAbsorb.LeechAndARowsRestoreFillItAndRegenerationAndAnEnergyShieldRestoreDoNot",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -22399,7 +22399,8 @@ bool FCataclysmOverhealAbsorbKindsOfHealTest::RunTest(const FString&)
 	TestEqual(TEXT("and the rest of the row's restore becomes the wearer's absorb"), AbsorbHeldBy(Wearer),
 			  Restore - PlainRestored, 0.01f);
 
-	// REGENERATION. The control starts half empty, so what it gains is the whole step.
+	// REGENERATION DOES NOT COUNT, ruled 2026-10-07. The control starts half empty, so what it gains is the whole
+	// step and shows regeneration is running. The wearer stands at full health for three steps and gains nothing.
 	for (FScopedFighter* Each : Both)
 	{
 		Each->AbilitySystem->SetPoolActions(TArray<FCataclysmPoolAction>());
@@ -22417,8 +22418,23 @@ bool FCataclysmOverhealAbsorbKindsOfHealTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("control: and leaves a character without the stat no absorb"), AbsorbHeldBy(Plain), 0.0f);
-	TestEqual(TEXT("at full health, one second of regeneration becomes the wearer's absorb, all of it"),
-			  AbsorbHeldBy(Wearer), PlainRegenerated, 0.01f);
+	TestEqual(TEXT("at full health, one second of regeneration gives the wearer no absorb"), AbsorbHeldBy(Wearer),
+			  0.0f, 0.001f);
+	UCataclysmRegeneration::ApplyStep(Wearer.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/100.0f);
+	UCataclysmRegeneration::ApplyStep(Wearer.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("and none after three steps"), AbsorbHeldBy(Wearer), 0.0f, 0.001f);
+
+	// THE CONTROL FOR THAT: the same wearer, still at full health, is paid a leech of 300 and keeps all of it.
+	{
+		FCataclysmLeechPayment Owed;
+		Owed.Pool = ECataclysmLeechPool::Health;
+		Owed.Remaining = 300.0f;
+		Owed.SecondsLeft = 1.0f;
+		Wearer.AbilitySystem->AddLeechPayment(Owed);
+		UCataclysmLeech::PayOutStep(Wearer.Actor, /*SecondsInStep=*/1.0f);
+		TestEqual(TEXT("control: at full health a leech payment of 300 becomes the same wearer's absorb"),
+				  AbsorbHeldBy(Wearer), 300.0f, 0.01f);
+	}
 
 	// NOT COUNTED: A RESTORE OF THE ENERGY SHIELD THAT OVERFLOWS.
 	for (FScopedFighter* Each : Both)
