@@ -164,6 +164,21 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsBleed = false;
 
+	/**
+	 * Which ailment a damage-over-time tick is: the tags under `Keyword.DoT` its effect grants, so
+	 * `Keyword.DoT.Bleed` for a bleed. Empty for a hit, and for a tick with no ailment (a ground zone's, a dungeon
+	 * hazard's). Ruled 2026-10-06.
+	 *
+	 * WHAT IT IS FOR. The defender's stats about a tick are asked with these tags, so a row may require one:
+	 * "Bleed effects applied to you deal 30%-50% increased damage" is `damage_over_time_taken` requiring the bleed
+	 * tag. `Resolve` adds the `Keyword.DoT` parent to what it asks with, and the bleed tag where `bIsBleed` is set,
+	 * so a hit built by hand with only the two booleans is still asked as a bleed.
+	 *
+	 * FILLED WHERE `bIsBleed` IS, from the same granted tags, in `UCataclysmVitalAttributeSet`.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	FGameplayTagContainer DamageOverTimeTags;
+
 	/** 10% more damage to what reaches health. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsSlashing = false;
@@ -478,6 +493,10 @@ public:
 	 * stats are read, the way `ResistanceFor` beside it picks a resistance slot
 	 * from the hit's damage type.
 	 *
+	 * SINCE 2026-10-06 THE TICK'S STAT IS ASKED WITH THE TICK'S OWN TAGS, the ailment's and the `Keyword.DoT`
+	 * parent, so a row on `damage_over_time_taken` may require one of them. They are the tags of what is arriving
+	 * and not of a skill in the defender's hand. A row with no required tags reads as it did.
+	 *
 	 * NAMED CONSTANTS RATHER THAN LITERALS, because
 	 * `UCataclysmPlayerClassStats` names the same two strings in two maps and a
 	 * spelling that stopped matching would silently leave the stat with no base
@@ -656,6 +675,25 @@ public:
 	 * above nought is yes. Read by `ACataclysmMinion::HandleDeath`. Ruled 2026-10-06.
 	 */
 	static const TCHAR* MinionsLeaveChaosPoolsStat;
+
+	/**
+	 * THREE ABOUT DAMAGE OVER TIME ON THE CHARACTER WHO CARRIES THEM. Ruled 2026-10-06. None has an attribute.
+	 *
+	 * `ailment_immunity`: "Unaffected by bleeding". A flag, above nought is yes, asked with the tags of the ailment
+	 * being applied, so its row requires the bleed tag. Read by `UCataclysmSkillEffects::ApplyDamageOverTime`,
+	 * which then applies nothing at all. Converted damage not yet taken is not refused.
+	 *
+	 * `bleed_damage_taken_from_energy_shield`: "10%-20% of bleed damage you take is taken from your energy shield
+	 * instead of your health". The percent of a bleed tick the energy shield takes, as far as the shield has it.
+	 * Read in `Resolve`, and only for a bleed the shield would otherwise let through.
+	 *
+	 * `damage_over_time_taken_from_mana_first`: "DoTs deal damage to your mana pool first". A flag. Every damage
+	 * over time tick takes one point of mana for one point of damage, as far as the mana goes, before the shield
+	 * and health. Read in `Resolve`; `UCataclysmVitalAttributeSet` writes the mana.
+	 */
+	static const TCHAR* AilmentImmunityStat;
+	static const TCHAR* BleedDamageTakenFromEnergyShieldStat;
+	static const TCHAR* DamageOverTimeTakenFromManaFirstStat;
 
 	/**
 	 * Whether damage over time deals this character nothing at all.
