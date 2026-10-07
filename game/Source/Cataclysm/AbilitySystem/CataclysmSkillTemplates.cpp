@@ -24,6 +24,8 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For telling a player character's throw from any other, where Cripple is read. Issue #2273.
+#include "Character/CataclysmPlayerCharacter.h"
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
 #include "AbilitySystem/CataclysmTerrain.h"
@@ -1455,7 +1457,12 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 		return Stated;
 	}
 
-	return Stated / PerSecond;
+	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273.
+	const AActor* Thrower = Avatar();
+	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Thrower)
+		? UCataclysmSkillEffects::CrippleMultiplierOn(Thrower) : 1.0f;
+
+	return Stated / (PerSecond * Crippled);
 }
 
 AActor* UCataclysmProjectileSkill::NextThrowTarget()

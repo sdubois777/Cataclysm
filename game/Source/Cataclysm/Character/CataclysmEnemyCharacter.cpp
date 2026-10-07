@@ -799,6 +799,14 @@ float ACataclysmEnemyCharacter::WraithMultiplier() const
 
 float ACataclysmEnemyCharacter::CrippleMultiplier() const
 {
+	// ONE FUNCTION FOR A CREATURE AND A PLAYER, since issue #2273. The body that was here is
+	// `UCataclysmSkillEffects::CrippleMultiplierOn`, moved and not changed, so a creature's figures are what they
+	// were.
+	return UCataclysmSkillEffects::CrippleMultiplierOn(this);
+}
+
+float UCataclysmSkillEffects::CrippleMultiplierOn(const AActor* Carrier)
+{
 	// THE TAG IS THE SINGLE SOURCE OF TRUTH, exactly as it is for Commander
 	// above. `UCataclysmSkillEffects::ApplyNamedEffect` grants it for the
 	// row's own duration and the ability system takes it away when that
@@ -806,7 +814,7 @@ float ACataclysmEnemyCharacter::CrippleMultiplier() const
 	const FGameplayTag Cripple = UCataclysmSkillShapes::StatusTagFor(
 		TEXT("Cripple"));
 
-	if (!UCataclysmSkillEffects::HasTag(this, Cripple))
+	if (!Carrier || !UCataclysmSkillEffects::HasTag(Carrier, Cripple))
 	{
 		return 1.0f;
 	}
@@ -819,7 +827,7 @@ float ACataclysmEnemyCharacter::CrippleMultiplier() const
 	// THE ROW IS STILL THE ANSWER FOR AN APPLICATION THAT STATES NOTHING, so
 	// re-tuning the curse remains a data change and anything applying the tag
 	// by another route still slows a creature by the designed amount.
-	const float Stated = UCataclysmSkillEffects::StatedStrengthOn(this, Cripple);
+	const float Stated = UCataclysmSkillEffects::StatedStrengthOn(Carrier, Cripple);
 	const float Designed =
 		UCataclysmSkillEffects::NumbersForEffectTag(Cripple).Strength;
 

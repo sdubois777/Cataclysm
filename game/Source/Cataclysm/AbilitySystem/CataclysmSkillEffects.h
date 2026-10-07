@@ -1680,6 +1680,19 @@ public:
 								  const FGameplayTag& EffectTag);
 
 	/**
+	 * The share of its speed a character keeps while it carries Cripple: 1 with no Cripple, otherwise 1 less the
+	 * strongest stated strength, or less the row's own figure when the application stated none. Never nought,
+	 * because an attack interval divides by it.
+	 *
+	 * ONE READER FOR EVERY CHARACTER, since issue #2273. A creature multiplies its walking speed by it and divides
+	 * its seconds between attacks by it (`ACataclysmEnemyCharacter::SpeedMultiplier`). A player does the same for
+	 * its walking speed, its seconds between swings and its seconds between throws. Until that issue only a
+	 * creature read Cripple, and a player who carried it was not slowed. DEFINED IN CataclysmEnemyCharacter.cpp,
+	 * where the body has always been.
+	 */
+	static float CrippleMultiplierOn(const AActor* Carrier);
+
+	/**
 	 * The name the share of current health one tick of Void Splinter takes
 	 * travels under, on the effect itself. Issue #915.
 	 *

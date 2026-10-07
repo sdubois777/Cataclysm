@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For telling a player character's swing from any other, where Cripple is read. Issue #2273.
+#include "Character/CataclysmPlayerCharacter.h"
 #include "GameFramework/Actor.h"
 
 namespace
@@ -85,7 +87,14 @@ float UCataclysmBasicAttack::SecondsBetweenSwingsFor(
 	// it is what the character does between them. A modifier scoped to a tag
 	// therefore does not reach it, which is the same answer it got when this was
 	// a plain read of the attribute.
-	return SecondsBetweenSwings(AbilitySystem->StatForSkill(
+	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER. Issue #2273. A creature's attack interval is
+	// divided by the same share in `ACataclysmEnemyCharacter::SecondsBetweenAttacks`, and a creature does not come
+	// through here: the two callers are the player character and the player controller. The cast keeps it so.
+	const AActor* Swinger = AbilitySystem->GetAvatarActor();
+	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Swinger)
+		? UCataclysmSkillEffects::CrippleMultiplierOn(Swinger) : 1.0f;
+
+	return SecondsBetweenSwings(Crippled * AbilitySystem->StatForSkill(
 		FName(TEXT("attack_speed")), FGameplayTagContainer(),
 		AbilitySystem->GetNumericAttribute(Speed)));
 }

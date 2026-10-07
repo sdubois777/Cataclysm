@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A player who carries Cripple walks, swings and throws slower, as a creature does: one shared reader
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` (`CrippleMultiplierOn`, declared);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp` (its body, moved out of `CrippleMultiplier` and not
+changed); `Character/CataclysmPlayerCharacter.h` and `.cpp` (`RefreshMovementSpeed`, `OnCrippleChanged`, a tag
+listener); `AbilitySystem/CataclysmBasicAttack.cpp` (`SecondsBetweenSwingsFor`); `CataclysmSkillTemplates.cpp`
+(`UCataclysmProjectileSkill::SecondsBetweenThrows`); one test in
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`. Issue
+[#2273](https://github.com/sdubois777/Cataclysm/issues/2273).
+**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
+end of this entry when they have.
+
+### What was wrong
+
+**Only a creature read Cripple.** `ACataclysmEnemyCharacter::CrippleMultiplier` turns the Cripple a creature carries
+into a share of its speed, and that share multiplies its walking speed and divides its seconds between attacks. A
+player's walking speed follows the `movement_speed` stat and its swings the `attack_speed` stat, and Cripple moves
+neither. So a player who carried Cripple carried the tag, conditions that ask "is crippled" saw it, and the player
+walked and attacked at full speed. Found on 2026-10-06 while writing a zone's slow onto its own owner; read in the
+code and not reproduced before this change.
+
+### What a creature reads, exactly, and what a player now reads
+
+- **The share kept** is 1 with no Cripple. With one, it is 1 less the strongest strength an application stated, or
+  less the status row's own 30 when the application stated none; held between nought and 100 and never allowed to
+  reach nought, because an interval divides by it. The row's cap of 80 is held by whoever applies the Cripple, not
+  by the reader.
+- **A creature**: walking speed times the share; seconds between attacks divided by it. Unchanged.
+- **A player, since this change**: walking speed times the share; seconds between swings divided by it, which is
+  both the gate on the next swing and the rate the swing's animation plays at; seconds between throws of a skill
+  whose interval follows attack speed divided by it.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **The player reads the tag through the same function a creature does.** Not by naming a stat in the status row's
+  `MovesStat` column, for four reasons read in the code:
+  1. a player's `movement_speed` and `attack_speed` are asked through `StatForSkill`, which answers from the stat's
+     recorded inputs whenever there are any and does not look at the attribute, so a modifier on the attribute
+     would do nothing on a player wearing gear;
+  2. the two appliers that state a strength, the ailment and the ground zone, lay the tag with
+     `ApplyTagForDuration` and do not go through the path that reads `MovesStat`;
+  3. a row that moves two stats states twice its size, and a creature reads the stated size, so every creature
+     would be slowed twice as much;
+  4. three comments in the code record that Cripple names no stat on purpose.
+- **A player whose movement speed nothing may lower is not slowed on foot by Cripple, and still attacks slower.**
+  That flag is the stat `movement_speed_reduction_suppressed`, set by two Ravager passive rows:
+  `Ravager_keystone_spine_003` (while enemies are in reach) and `Ravager_keystone_d_kA`.
+- **The walking speed is refreshed when the Cripple tag is gained or lost.** It is a stored figure and gaining a tag
+  changes no attribute, so the player character listens for the tag.
+- **The attack share is applied for player characters only.**
+
+### What the callers are
+
+`UCataclysmBasicAttack::SecondsBetweenSwingsFor` has two callers outside the tests, the player character and the
+player controller. A creature does not come through it; its interval is `SecondsBetweenAttacks`. The new read
+there, and the one in `SecondsBetweenThrows`, check that the character is a player character, so a creature is
+never slowed twice.
+
+### Every source of Cripple, and which reach a player
+
+Read from the data and the code on 2026-10-06.
+
+| Source | Lays Cripple on | Reaches a player? |
+|---|---|---|
+| The affix row in `Affixes.csv` (1), the gem in `Gems.csv` (1) and 13 rows of `PassiveEffects.csv`, through `cripple_chance` | whoever the wearer's blow lands on | No, unless a player's blow lands on a player |
+| "Retaliation damage applies a 2-4 second slow to the attacker" | the attacker | Possibly: the dungeon rule Brand Nova's hit on the player may be retaliated against by the player's own retaliation. Read as a chain, not verified |
+| A ground zone's slow, `zone_slow_percent` | enemies inside | Yes, once a row makes a zone lay its effects on its owner (`zone_applies_effects_to_owner`); no such row is authored |
+| The random debuff pool of an enchantment row | the character the wearer struck | Yes, once a row lays it on its wearer; that work is not merged |
+
+No creature ability and no dungeon rule lays Cripple.
+
+### For the owner's play-check
+
+**This changes play for every source above that reaches a player.** A crippled player now walks and attacks slower
+by the Cripple's strength, 30 at the row's figure and up to 80. Whether a player slowed in both should also have
+its skills' wind-up slowed is not built and not ruled.
+
+### What the research settles, and what it does not
+
+No new source was read. The shape is this game's own: the player now reads what the creature has read since issue
+#1256.
+
+### Tests
+
+One new automation test,
+`Cataclysm.StatExemption.APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`. **It is the
+reproduction**: on the code before the fix it fails where a player carrying a Cripple of 20 is expected to walk at
+four fifths of their speed.
+
+- a player with no Cripple keeps the whole;
+- with a Cripple stating 20 the player walks at four fifths, and waits a quarter longer between swings and between
+  throws;
+- with the Cripple removed the player walks and swings at full rate again, so both edges of the tag are heard;
+- with the ailment's Cripple at its ordinary size, the row's 30, the three figures are at seven tenths;
+- a creature keeps four fifths under a Cripple of 20, as before, and the shared function answers the same for it;
+- a player carrying the Ravager's flag walks at full speed under Cripple and still waits a quarter longer between
+  swings.
+
+**Not covered by a test:** the swing animation's play rate; a player's blow landing on a player.
+
+### Not yet run
+
+The compile, the whole Unreal suite, the Python suite and the guard proofs. **The reproduction has not been shown
+failing yet**; a guard proof that takes the walking-speed read out will show it.
+
+---
+
 ## 2026-10-06 — Six more persistent area sentences are rows: zones a movement, charge or spell skill leaves, zones that damage their owner, zones that follow their owner, and minions that leave chaos pools
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (six rows of the Enchantment Effects sheet),
