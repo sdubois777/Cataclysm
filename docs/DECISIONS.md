@@ -53,6 +53,28 @@ EnchantmentEffects 540 to 541, over 453 to 454 enchantments.
 
 **Not tested here:** a real effect lasting longer on a wearer of the row; the alias loading a saved item.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 2 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | e77d672e | effect rows 540 to 541, and the table of negative enchantments with the reworded sentence |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**The test fails against tables without its row and passes with them**: a duration of 100 stayed 100 for a
+bleed and for a burn where 400 was expected.
+
+**The count of stated ranges, 391, held in both readers**: the Python pin in the Python of record, and the game's
+own in `Cataclysm.Enchantments.EveryRangeTheTablesStateIsFoundAndReplaced`, which reads the tables' text and so
+passed at every step.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.**
+
 ---
 
 ## 2026-10-07 — "Enemies killed by you explode for the overkill amount" is built as a row
