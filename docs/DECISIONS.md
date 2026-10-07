@@ -2,6 +2,372 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Two count scales, `traps_active` and `gadgets_active`, and a trap's blow ignores armour only by its summoner's row that names traps. Engine and generator only; no row authored
+
+**Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
+outcome of any run is recorded here.
+
+**Said first, because each may change what somebody decides.**
+
+1. **Two of the six sentences cannot be written in full with what exists.** "Traps apply a 20%-35% slow to
+   triggered enemies for 2-4 seconds" can state its 2 to 4 seconds and cannot state its 20% to 35%: the one slow a
+   row can lay for stated seconds is Cripple, at Cripple's own strength. "Traps apply 1-2 bleed stacks to all
+   enemies caught in their blast" can lay one bleed of ordinary size and cannot lay one at 1 to 2 times its size:
+   the only sized status action lays a status on the wearer. No action was added here. Both are under "What the
+   rows need".
+2. **Ten weapon skills carry `Type.Trap` today, so two of these rows already do something.** `War_Dagger_Heavy`,
+   `War_Spear_Heavy`, `War_Crossbow_Movement`, `War_Dagger_Movement`, `War_Spear_Movement`,
+   `War_2H_Crossbow_Special`, `War_Dagger_Special`, `War_Crossbow_Ultimate`, `War_Dagger_Ultimate` and
+   `War_Spear_Ultimate` have `Type.Trap` in the Tags column of `game/Data/WeaponSkills.csv`. A row requiring
+   `Type.Trap` on `attack_damage`, `spell_damage` or `armor_penetration` is asked with a skill's tags when the
+   wearer's own skill hits. So "Traps deal 20%-40% increased damage" and "Your traps ignore 20%-40% of enemy
+   armor" can reach the wearer's own hits with those ten skills today. The writing session read the tags and the
+   two askers; it did not check that each of the ten skills deals a hit. This layer does not change that. The
+   ruled rewrite of the first of them does: moved to `minion_damage`, it stops reaching those ten skills.
+3. **The existing row "Each active gadget increases your evasion chance by 5%-10%" still counts spike traps.** Its
+   scale, `deployables_active`, was not changed.
+4. **A trap's explosion does not take the armour reading.** Only its swing does. See "Not covered".
+5. **The writing session made "each other trap" an offset of 1 on `traps_active`.** Before this, only
+   `class_points_spent` read an offset, and the engine and the generator both refused one anywhere else. That is
+   a judgement of the writing session and is listed as one below.
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the two scales, the two
+counts, the offset), `CataclysmAbilitySystemComponent.cpp` (the counting), `CataclysmMinion.h` and `.cpp`
+(`IsTrap`, and the armour reading in `AttackTarget`), `CataclysmSkillEffects.h` and `.cpp` (the figure on the
+delivery and its stamp), `CataclysmVitalAttributeSet.cpp` (the read),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (three tests), `tools/generate_datatables.py`,
+and three files under `tools/tests`. No data row, no workbook cell and no file under `game/Data` is changed.
+
+### What was read before writing
+
+- `ACataclysmMinion::AttackTarget`, `MinionDelivery`, `IsDeployable` and `Explode` in `CataclysmMinion.cpp`.
+- `UCataclysmAbilitySystemComponent::StatNamingTagAppliedTo`, `MultiplierForStatAgainst`, `CurrentConditions`
+  where it counts machines, `ActOnEvent` and `PoolActionAllowed`.
+- `UCataclysmCommand::SummonerMultiplierFor` and `SummonerMultiplierAgainst`.
+- `UCataclysmStatPipeline`: `StackedValue`, the scale table, `ValidateModifier`, and the "more" bucket in
+  `Accumulate`.
+- `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` from where it reads `NoPenetrationTag` to where it
+  calls `Resolve`, and the armour step of `UCataclysmDamageCalculation::Resolve`.
+- `FCataclysmHitDelivery`, `ApplyTypedSpec`, and the stamps `ConsequenceOfADeathDataName` and
+  `CannotBeEvadedDataName`.
+- `UCataclysmPlayerClassStats::ApplyTo`, for which stats are recorded as a stat line.
+- In `tools/generate_datatables.py`: `SCALES`, `SCALES_THAT_TAKE_AN_OFFSET`, the status actions and their
+  events, and the trigger cooldown default.
+- `game/Data/EnchantmentEffects.csv`, `EnchantmentsPositive.csv`, `MinionTypes.csv`, `WeaponSkills.csv` and
+  `StatusEffects.csv`, read and not changed.
+- In this file, the section "Traps are a separate feature, for later" of 2026-09-11.
+
+### What it is for
+
+Seven sentences in `game/Data/EnchantmentsPositive.csv`, verbatim:
+
+- "Traps deal 20%-40% increased damage"
+- "Traps deal 15%-30% increased damage for each other trap currently active on the battlefield"
+- "Each active gadget increases trap damage by 10%-20%"
+- "Each gadget on the battlefield doubles the damage of all your traps"
+- "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds"
+- "Traps apply 1-2 bleed stacks to all enemies caught in their blast"
+- "Your traps ignore 20%-40% of enemy armor"
+
+No spike trap carries `Type.Trap` in `game/Data/MinionTypes.csv` on 2026-10-07. Another session adds it. Until it
+is there, nothing in this entry changes anything in play: no machine is a trap, both new counts of traps are
+nought, and `gadgets_active` equals `deployables_active`.
+
+### The owner's decision
+
+The owner decided on 2026-10-07, through the coordinating session, that of the trap feature **only the tag** is
+added now: `Type.Trap` on the Spike Trap's row of the "Minion Types" sheet. Arming, a trigger radius, charges,
+re-arming, expiry, chains, converting a skill slot into a trap, and any trap event are not allowed. The owner's
+ruling of 2026-09-11, "traps are a separate feature, for later", still holds for all of those.
+
+So a trap here is a machine with one more tag. It is placed, swings and expires as any machine does.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **Two count scales.** `traps_active` counts the wearer's machines that carry `Type.Trap`. `gadgets_active`
+   counts the wearer's machines that carry `Type.Deployable` and not `Type.Trap`.
+2. **A trap is not a gadget for the new scale.** The reason given: the design document treats traps and gadgets
+   as two things. The writing session found it does so in one place and not in another; see "For the owner's
+   play-check".
+3. **`deployables_active` is not changed.**
+4. **"Doubles" is additive.** Each gadget adds 100 per cent "more" to one sum. One gadget is twice, two are three
+   times, three are four times. It is not twice, four times, eight times. The reason recorded: the sentence does
+   not say which, and the compounding reading has no bound a row can state.
+5. **The armour reading.** A machine's blow takes its summoner's armour penetration only from a modifier that
+   names the machine's kind among its required tags, here `Type.Trap`. That does not cross the design rule that
+   a minion takes nothing of its summoner's unless a modifier names it. It is that rule.
+6. **"Traps deal 20%-40% increased damage" becomes one row**: `minion_damage`, increased, requiring `Type.Trap`.
+   Its present rows go with the rewrite, because no machine reads `spell_damage`.
+7. **"Triggered enemies" is read as the enemies the trap hit.** A status action on the event `deployable_hit`.
+8. **"1-2 bleed stacks" is one bleed at 1 to 2 times its size**, as ruled earlier for a wearer's row. There are
+   no ailment stacks.
+
+### How it is built
+
+**The counts.** `FCataclysmStatConditions` gains `TrapsActive` and `GadgetsActive` beside `DeployablesActive`.
+`CurrentConditions` fills all three in the one walk over what the character commands. The two new counts add up
+to the old one.
+
+**What a trap is.** `ACataclysmMinion::IsTrap()` is true for a minion that is a deployable and whose type tags
+also hold `Type.Trap` exactly. The tag is found by `TrapTag()`, written beside `DeployableTag()`.
+
+**The scales.** `ECataclysmStatScale::PerTrapActive` is named `traps_active` and `PerGadgetActive` is named
+`gadgets_active`. Each is the value times the whole steps of its count, by `StackedValue`, as
+`deployables_active` is.
+
+**"Each other trap".** `traps_active` reads the row's Scale Offset and takes it off the count before the steps.
+An offset of 1 leaves out the trap that is striking. One trap alone is worth nothing, and no trap is worth
+nothing, never a negative number. `ValidateModifier` now accepts an offset on `class_points_spent` and on
+`traps_active`, and still refuses it on every other scale. The generator's `SCALES_THAT_TAKE_AN_OFFSET` holds
+the same two names.
+
+**The counts are the summoner's.** A machine prices its blow in `AttackTarget` by asking
+`UCataclysmCommand::SummonerMultiplierAgainst(Summoner, "minion_damage", Target, TypeTags)`. That calls
+`MultiplierForStatAgainst` on the summoner's ability system, which builds its state with the summoner's own
+`CurrentConditions`. So a `minion_damage` row requiring `Type.Trap` with either scale is judged with the
+machine's tags and counted with the summoner's machines. The same holds for the `attack_damage` rows naming
+`Type.Deployable`, which `StatNamingTagAppliedTo` reads on the summoner's ability system.
+
+**"More" with a count is additive as the pipeline stands.** `Accumulate` works out a row's value first, as the
+value times its steps, and then multiplies once by one plus that value over 100. A "more" row of 100 with three
+gadgets is one plus 300 over 100, which is four times. Two separate "more" rows still multiply each other. The
+pipeline was not changed for this.
+
+**The armour reading.** In `AttackTarget`, where the blow is priced, a trap asks its summoner
+`StatNamingTagAppliedTo("armor_penetration", Type.Trap, 0, TypeTags, Target, age)`. That applies only the
+summoner's modifiers on `armor_penetration` whose required tags hold `Type.Trap`, to a figure of nought. The
+answer goes on the blow as `FCataclysmHitDelivery::NamedArmorPenetrationPercent`. `ApplyTypedSpec` stamps it on
+the effect under `UCataclysmSkillEffects::NamedArmorPenetrationDataName`, and stamps nothing when it is nought.
+`PostGameplayEffectExecute` adds the stamped figure to `FCataclysmIncomingHit::ArmorPenetration`.
+
+**Why it travels as a figure on the delivery.** `bCannotPenetrate` puts a tag on the effect that stops the
+attacker's figures reaching the blow, and a minion's blow carries it. Clearing it for a trap would let the
+weapon's piercing share and anything read later off the attacker through as well. A figure the caller worked out
+needs none of that. The two stamps read first, `ConsequenceOfADeathDataName` and `CannotBeEvadedDataName`, carry
+a fact from the delivery to the target the same way.
+
+**Where the read is.** The attacker's own armour penetration is read only inside a branch that needs the
+attacker to hold a combat attribute set. A minion holds none, so that branch does not run for its blow at all.
+The new read is outside that branch and outside the `bCanPenetrate` test, after both, so the earlier read cannot
+overwrite it.
+
+**Units and limits.** `ArmorPenetration` is per cent of the target's armour ignored. `Resolve` adds the piercing
+weapon's share and a critical strike's share, clamps the sum to between nought and 100, and multiplies the
+armour by one minus that over 100. A defender whose armour cannot be ignored (`armor_penetration_suppressed`,
+the Ravager's Ironhide) ignores this figure as it ignores any other.
+
+**What is unchanged.** `bCannotPenetrate` is set on every minion's blow as before and is read as before. A
+ballista's blow, an imp's blow, and a trap's blow whose summoner has no such row carry a figure of nought and
+are stamped with nothing.
+
+**The generator.** `SCALES` gains `traps_active` and `gadgets_active`, each with a step from above nought to 20,
+the bound `deployables_active` has. No action was added.
+
+### For the owner's play-check
+
+1. **"Each active gadget increases your evasion chance by 5%-10%" still counts spike traps**, because
+   `deployables_active` was not changed. "Each active gadget increases trap damage by 10%-20%" will not count
+   them. The same word, "gadget", then means two things in two rows. Which is meant is the owner's to settle.
+2. **The design document says both.** The Saboteur's Fervour row reads "Placing a trap or gadget", two things.
+   The Deployable shape's row reads "Places machines that stay where they are put. A turret, a ballista, a spike
+   trap", and calls what Iron Fortress deploys "its gadgets".
+3. **The engine already counts a trap as a gadget in one more place.** `ACataclysmMinion::HandleDeath` raises
+   `gadget_destroyed` for every deployable, and its comment says "A gadget is what `IsDeployable` says, traps
+   included". So "When any of your gadgets is destroyed..." fires for a spike trap. Not changed here.
+4. **"Doubles" is built as one gadget twice, two three times, three four times.** The other reading is twice,
+   four times, eight times.
+5. **"Each other trap" counts every other trap the wearer commands**, wherever it stands. The sentence says "on
+   the battlefield".
+6. **A trap's explosion does not ignore armour**, and its swing does.
+7. **Ten of the wearer's own skills are tagged `Type.Trap`** and take "Traps deal 20%-40% increased damage" and
+   "Your traps ignore 20%-40% of enemy armor" on their own hits today. The ruled rewrite of the first takes it
+   off them. Whether those ten skills are "traps" for these sentences is the owner's to settle.
+
+### Judgements by the writing session, not settled by the rulings
+
+Each is the writing session's own and has not been accepted by anyone.
+
+1. **A trap must also be a deployable.** `IsTrap()` needs both tags. A minion with `Type.Trap` and without
+   `Type.Deployable` is not counted and takes no armour reading. No type row is written that way.
+2. **"Each other trap" is an offset of 1 on `traps_active`, in the existing Scale Offset column.** The other
+   way was a third scale that takes one off by itself, as `PerEnemyStruckTogetherBeyondTheFirst` does. The
+   offset was chosen because the column exists and the ruling asked for two scales. It cost three changes: the
+   scale reads the offset, `ValidateModifier` allows it there, and the generator allows it there.
+3. **The words "each other" state an offset of 1.** `test_every_scale_offset_appears_in_the_words` wants every
+   offset to be a number in its sentence, and this sentence has no "1". The check now accepts an offset of 1 on
+   a sentence holding "each other", and nothing else new.
+4. **The largest offset is not narrowed for traps.** It stays at 230, the class point budget. An offset above
+   the number of traps counts nothing.
+5. **The armour figure is added to the hit's armour penetration, not written over it.** For a minion's blow the
+   figure before it is nought, so the two are the same today.
+6. **The armour reading passes the machine's age**, as the gadget damage read beside it does, so a row scaled by
+   `minion_seconds_active` would be judged. No row asks.
+7. **A row naming `Type.Deployable` on `armor_penetration` is not read by this layer.** The ruling names traps
+   only. No such row exists on 2026-10-07. For the coordinating session: a sentence "Gadgets ignore..." would
+   need a ruling and one more ask.
+8. **The explosion is left out.** The ruling says "where the machine's blow is priced", which is the swing.
+9. **The control in the armour test is a plain character with the armour penetration attribute**, striking with
+   the trap's own figure. It is checked against the trap's plain blow before it is used.
+
+### Research
+
+No source was read. No other game was looked up for this entry. The rulings fixed the shape, and the writing
+session followed the code that was already there.
+
+### Tests
+
+**Not run.** Three Unreal tests in `CataclysmEnchantmentEffectTests.cpp`. No minion type carries `Type.Trap`, so
+each gives the tag to a spike trap by hand.
+
+- `Cataclysm.Enchantments.TheTrapScaleCountsPastAnOffsetAndTheGadgetScaleLeavesTrapsOut`. The pipeline alone,
+  on a state of three traps and two gadgets. Both names are read. `traps_active` gives three steps, and two with
+  an offset of 1. One trap with that offset is nothing, and so is none. `gadgets_active` gives two steps.
+  `deployables_active` still gives five. A "more" row of 100 per gadget makes a base of 100 into 200 with one
+  gadget, 400 with three, and 100 with none. An offset is valid on `traps_active` and refused on
+  `gadgets_active`.
+- `Cataclysm.Enchantments.TheTrapAndGadgetScalesCountTheSummonersOwnMachinesOnATrapsBlow`. A real machine's
+  blow. Each summoner carries one `minion_damage` row requiring `Type.Trap`, written by hand. Every figure is a
+  ratio against the same trap's blow from a summoner with no row, which is the control. "Each other trap" at 30:
+  1.0, then 1.3 with a second trap, still 1.3 with a ballista and an untagged spike trap added, 1.6 with a third
+  trap, and the ballista's own blow unchanged. "Each gadget" at 20: 1.0, 1.2 with a ballista, still 1.2 with a
+  second trap, 1.4 with a bolt turret. "Doubles": 1.0, 2.0, 3.0, 4.0. The summoner with no row commands machines
+  of its own throughout, so each other summoner's first figure of 1.0 shows the count is its own. The three
+  counts are also read off the state.
+- `Cataclysm.Enchantments.ATrapsBlowIgnoresArmourOnlyByItsSummonersRowNamingTraps`. The real row, worn, at 40,
+  against a creature of 800 armour. The control is a plain character whose armour penetration attribute is 40,
+  striking with the trap's own figure; it is first checked to take what the plain trap's blow takes at no armour
+  penetration, against no armour and against 800. With the row the trap's blow takes more than without, and
+  takes what the control takes. Against no armour the row changes nothing. A ballista of the same summoner is
+  unchanged. A spike trap with no trap tag is unchanged. A trap whose summoner wears "Your skills ignore 10%-25%
+  of enemy armor", a row on the same stat with no required tag, is unchanged. A trap whose summoner's own armour
+  penetration attribute is 50 is unchanged.
+
+Three Python tests were added and were run with the suite; their result is in the report that came with the
+commit and not here. `test_an_offset_on_the_trap_scale_is_carried_through`,
+`test_an_offset_on_the_gadget_scale_is_refused`, and `test_each_other_states_an_offset_of_one_and_no_other`.
+`traps_active` and `gadgets_active` are on the list of scales built ahead of their rows in
+`test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`, and each leaves it with its rows.
+
+### Not covered
+
+- **The explosion.** `ACataclysmMinion::Explode` deals its damage with a delivery of its own and does not ask
+  for the armour reading. A spike trap that explodes ignores no armour with that blast.
+- **A defender whose armour cannot be ignored.** The code path is the one every armour penetration takes. No
+  test here strikes such a defender with a trap.
+- **A trap's blow that may otherwise penetrate.** There is none; every minion's blow is forbidden to. The new
+  figure would add to the attacker's own if one existed.
+- **The wearer's own skills tagged `Type.Trap`.** Unchanged by this layer and not tested here.
+- **A bound on the offset for traps.** See judgement 4.
+- **The rows.** None is written, so nothing here is reached in play.
+
+### What the rows need, for the session that writes rows
+
+Each shape below was passed alone through `gen.enchantment_effects` in a scratch workbook holding the real
+sentence, and each was accepted. That is one function. The whole generator, the DataTable import, and the checks
+in `tools/tests` that read `game/Data/EnchantmentEffects.csv` were not run on any of them. Cells not named are
+empty.
+
+**1. "Traps deal 20%-40% increased damage".** One row. Its two present rows, `attack_damage` and `spell_damage`,
+both requiring `Type.Trap`, are removed.
+
+| Column | Value |
+| :-- | :-- |
+| Stat | `minion_damage` |
+| Value Kind | `increased` |
+| Value Low, Value High | 20, 40 |
+| Required Tags | `Type.Trap` |
+
+Said plainly: the present rows reach the wearer's ten skills tagged `Type.Trap`, and this row does not.
+
+**2. "Traps deal 15%-30% increased damage for each other trap currently active on the battlefield".**
+
+| Column | Value |
+| :-- | :-- |
+| Stat | `minion_damage` |
+| Value Kind | `increased` |
+| Value Low, Value High | 15, 30 |
+| Required Tags | `Type.Trap` |
+| Scale | `traps_active` |
+| Scale Step | 1 |
+| Scale Offset | 1 |
+
+The Scale Offset column is how "each other" is stated. There is no other offset or "less one" column.
+
+**3. "Each active gadget increases trap damage by 10%-20%".**
+
+| Column | Value |
+| :-- | :-- |
+| Stat | `minion_damage` |
+| Value Kind | `increased` |
+| Value Low, Value High | 10, 20 |
+| Required Tags | `Type.Trap` |
+| Scale | `gadgets_active` |
+| Scale Step | 1 |
+
+**4. "Each gadget on the battlefield doubles the damage of all your traps".**
+
+| Column | Value |
+| :-- | :-- |
+| Stat | `minion_damage` |
+| Value Kind | `more` |
+| Value Low, Value High | 100, 100 |
+| Required Tags | `Type.Trap` |
+| Scale | `gadgets_active` |
+| Scale Step | 1 |
+
+**The checks on a row's words will refuse this row as they stand.** In
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `MULTIPLIER` matches the whole words "double",
+"doubled" and "twice" and does not match "doubles", so `test_a_more_row_is_worded_as_a_multiplier` names a
+"more" row on this sentence. `MULTIPLYING_WORDS`, which says "double" means 100, does not hold "doubles" either;
+the check that reads it was seen at one line and not traced. The row's session adds "doubles" as 100 to both.
+Not changed here. This is the only sentence in the two enchantment files that says "doubles".
+
+**5. "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds".** The nearest row that exists:
+
+| Column | Value |
+| :-- | :-- |
+| Action | `apply_status_seconds` |
+| Action Event | `deployable_hit` |
+| Ailment | `Cripple` |
+| Value Low, Value High | 2, 4 |
+| Required Tags | `Type.Trap` |
+| Value Kind, Fraction Of, Scale | empty; each is refused |
+| Trigger Cooldown | empty gives the default of 0.25 seconds; 0 is none |
+
+`deployable_hit` carries the machine's type tags and the enemy struck, and `PoolActionAllowed` refuses a row
+whose required tags the event's tags do not hold. So with `Type.Trap` required this fires for a trap's blow and
+not a ballista's. "Retaliation damage applies a 2-4 second slow to the attacker" is written the same way.
+
+**Could not be determined, and it is not a detail: the 20% to 35%.** Cripple slows movement and attack speed by
+its own row's 30 per cent. No column of this action states a strength, so the rolled 20 to 35 is not in the
+row, and the check that a row's numbers are its sentence's numbers was not run against it. Stating it needs a
+new action or a new column, and a ruling.
+
+**6. "Traps apply 1-2 bleed stacks to all enemies caught in their blast".** The nearest row that exists:
+
+| Column | Value |
+| :-- | :-- |
+| Action | `apply_status` |
+| Action Event | `deployable_hit` |
+| Ailment | `Bleed` |
+| Value Low, Value High | 100, 100 |
+| Required Tags | `Type.Trap` |
+| Value Kind, Fraction Of, Scale | empty; each is refused |
+| Trigger Cooldown | empty gives the default of 0.25 seconds; 0 is none |
+
+**Could not be determined, and it is not a detail: the 1 to 2 times.** `apply_status` takes a chance, here 100
+for always, and lays the status at its ordinary size. The one action that takes a size,
+`apply_status_to_self_sized`, lays a status on the wearer and is accepted only on `dot_applied`. A value of 1 to
+2 on `apply_status` is accepted by the generator and would be read as a chance of 1 to 2 per cent, which is
+wrong. Stating the ruled size on an enemy needs a new action, and a ruling. Also not read: who the engine
+credits with a bleed laid by this action on `deployable_hit`, the wearer or the machine. And "caught in their
+blast" is the enemy the swing hit; the explosion raises no `deployable_hit`.
+
+**"Your traps ignore 20%-40% of enemy armor".** Its existing row needs no change once this layer and the tag
+are in: `armor_penetration`, `flat`, 20 to 40, Required Tags `Type.Trap`.
+
+---
+
 ## 2026-10-07 — A dodge names its attacker and says melee or ranged, and a new action, `strike_target`, deals the other character of an event a hit that cannot be evaded. Engine and generator only; no row authored
 
 **Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No

@@ -108,7 +108,11 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: their rows while the design workbook is with another session, and leave with
 #: them.
 #: THE FOUR LEFT with their rows, issue #1833, and the list is empty again.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: TWO JOINED ON 2026-10-07, `traps_active` and `gadgets_active`, ruled that
+#: day and built ahead of their rows while the design workbook is with another
+#: session. `docs/DECISIONS.md` of that day gives the three sentences they are
+#: for and the shape of each row. Each leaves with its rows.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"traps_active", "gadgets_active"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

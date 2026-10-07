@@ -2217,6 +2217,38 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerLeechPoolInFlight
 		UMETA(DisplayName = "Per Leech Pool In Flight"),
+
+	/**
+	 * `Value` per whole `ScaleStep` traps the character commands now, past
+	 * `ScaleOffset`. Ruled 2026-10-07. A trap is a deployable machine whose
+	 * type also carries `Type.Trap` (`ACataclysmMinion::IsTrap`).
+	 *
+	 * "Traps deal 15%-30% increased damage for each other trap currently
+	 * active on the battlefield" is a step of 1 and an offset of 1. The row is
+	 * read on a trap's blow, the trap striking is one of the count, and it is
+	 * not another trap. One trap alone is worth nothing.
+	 *
+	 * ONLY THE TAG MAKES A TRAP. The owner decided on 2026-10-07 that of the
+	 * trap feature only the tag is added now. Nothing arms, triggers, re-arms
+	 * or expires differently, so "active" here means alive and commanded, as
+	 * it does for `PerDeployableActive`.
+	 */
+	PerTrapActive
+		UMETA(DisplayName = "Per Trap Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` gadgets the character commands now: its
+	 * deployable machines that are NOT traps. Ruled 2026-10-07: a trap is not
+	 * a gadget for this scale. "Each active gadget increases trap damage by
+	 * 10%-20%" is a step of 1.
+	 *
+	 * `PerDeployableActive` IS UNCHANGED AND STILL COUNTS BOTH. Its one row,
+	 * "Each active gadget increases your evasion chance by 5%-10%", therefore
+	 * still counts a trap. `docs/DECISIONS.md`, 2026-10-07, lists that for the
+	 * owner to settle.
+	 */
+	PerGadgetActive
+		UMETA(DisplayName = "Per Gadget Active"),
 };
 
 /**
@@ -2727,6 +2759,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * See `PerDeployableActive`.
 	 */
 	int32 DeployablesActive = 0;
+
+	/**
+	 * How many of those machines are traps, and how many are not. Ruled
+	 * 2026-10-07. The two add up to `DeployablesActive`. See `PerTrapActive`
+	 * and `PerGadgetActive`.
+	 */
+	int32 TrapsActive = 0;
+	int32 GadgetsActive = 0;
 
 	/** Seconds on the floor this character stands on, or -1. Issue #1833. */
 	float SecondsOnFloor = -1.0f;
@@ -3342,10 +3382,14 @@ struct CATACLYSM_API FCataclysmStatModifier
 	 * OF 100: 150 points spent are 50 counted, five steps. A reading at or below
 	 * the offset is worth nothing, never a negative number of steps.
 	 *
-	 * ONLY `PerClassPointSpent` READS IT, because only its sentences state a
-	 * threshold, and `ValidateModifier` refuses an offset on any other scale
-	 * rather than let it be dropped. Four of the five class point sentences
-	 * count points above a figure (issue #1815's held group).
+	 * `PerClassPointSpent` READS IT, because its sentences state a threshold,
+	 * and `ValidateModifier` refuses an offset on a scale that does not read
+	 * one rather than let it be dropped. Four of the five class point
+	 * sentences count points above a figure (issue #1815's held group).
+	 *
+	 * AND `PerTrapActive` READS IT, SINCE 2026-10-07. "For each other trap" is
+	 * an offset of 1: the trap striking is not counted. No other scale reads
+	 * one.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	float ScaleOffset = 0.0f;

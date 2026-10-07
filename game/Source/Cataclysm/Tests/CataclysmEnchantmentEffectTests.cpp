@@ -17735,4 +17735,475 @@ bool FCataclysmDotsTickFasterWhileMovingRowTest::RunTest(const FString&)
 		Worn.ASC()->StatAppliedTo(Stat, Burn, 100.0f), 100.0f, 0.01f);
 	return true;
 }
+namespace CataclysmTrapLayerTest
+{
+	/**
+	 * `Type.Trap`. Ruled 2026-10-07. No minion type row carried it on that day, so
+	 * each test below gives it to a machine by hand.
+	 */
+	FGameplayTag TheTrapTag()
+	{
+		return FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	}
+
+	/** A spike trap of this summoner's, carrying `Type.Trap` by hand. */
+	ACataclysmMinion* TrapOf(CataclysmDeployableTest::FSummoner& Summoner)
+	{
+		ACataclysmMinion* Made = Summoner.Make(TEXT("SpikeTrap"));
+		if (Made)
+		{
+			Made->TypeTags.AddTag(TheTrapTag());
+		}
+		return Made;
+	}
+
+	/** One modifier requiring `Type.Trap`, with a step of 1, as a row of this layer would be written. */
+	FCataclysmStatModifier TrapRow(ECataclysmStatBucket Bucket, float Value,
+								   ECataclysmStatScale Scale, float Offset = 0.0f)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = Bucket;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Value;
+		Row.Scale = Scale;
+		Row.ScaleStep = 1.0f;
+		Row.ScaleOffset = Offset;
+		Row.RequiredTags.AddTag(TheTrapTag());
+		return Row;
+	}
+
+	/** Gives this summoner one stat line, `minion_damage`, holding this one row and nothing else. */
+	void GiveMinionDamageRow(CataclysmDeployableTest::FSummoner& Summoner,
+							 const FCataclysmStatModifier& Row)
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Line = Lines.FindOrAdd(FName(TEXT("minion_damage")));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Row};
+		Summoner.ASC()->SetStatInputs(MoveTemp(Lines));
+	}
+
+	/**
+	 * Creatures to strike, one at a time. Each has the armour asked for and no
+	 * evasion, block or resistance, is struck once, and is destroyed before the
+	 * next is made, so no two ever stand on one spot.
+	 */
+	struct FRange
+	{
+		explicit FRange(UWorld* InWorld) : World(InWorld) {}
+
+		ACataclysmEnemyCharacter* Creature(float Armour) const
+		{
+			ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector(-2000.0f, 150.0f, 0.0f), FRotator::ZeroRotator);
+			if (!Made)
+			{
+				return nullptr;
+			}
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(10000.0f);
+			Made->SetArmour(Armour);
+			UAbilitySystemComponent* Its = Made->GetAbilitySystemComponent();
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), Armour);
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(
+				UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+			return Made;
+		}
+
+		static float HealthOf(const ACataclysmEnemyCharacter* Of)
+		{
+			return Of->GetAbilitySystemComponent()->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetHealthAttribute());
+		}
+
+		/** The health one blow from this machine takes off a fresh creature with this armour. */
+		float BlowFrom(ACataclysmMinion* Machine, float Armour) const
+		{
+			ACataclysmEnemyCharacter* Struck = Creature(Armour);
+			if (!Machine || !Struck)
+			{
+				return -1.0f;
+			}
+			const float Before = HealthOf(Struck);
+			Machine->AttackTarget(Struck);
+			const float Taken = Before - HealthOf(Struck);
+			Struck->Destroy();
+			return Taken;
+		}
+
+		/**
+		 * The control: the health a plain blow of this size takes off a fresh
+		 * creature with this armour, struck by a character whose armour
+		 * penetration ATTRIBUTE is this much and whose blow may penetrate. It
+		 * cannot critically strike, carries no weapon, and leeches nothing, as a
+		 * machine's blow does not.
+		 */
+		float PlainBlow(float Damage, float ArmourPenetration, float Armour) const
+		{
+			ACataclysmEnemyCharacter* Struck = Creature(Armour);
+			if (!Struck)
+			{
+				return -1.0f;
+			}
+			CataclysmEnchantmentEffectTest::FWearer Striker(World);
+			Striker.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), ArmourPenetration);
+			FCataclysmHitDelivery Plain;
+			Plain.bCannotCriticallyStrike = true;
+			Plain.bCarriesNoWeaponSubType = true;
+			Plain.bCannotLeech = true;
+			Plain.bCarriesNoAilmentChance = true;
+			const float Before = HealthOf(Struck);
+			UCataclysmSkillEffects::ApplyDirectDamage(Striker.Actor, Struck, Damage, Plain);
+			const float Taken = Before - HealthOf(Struck);
+			Struck->Destroy();
+			return Taken;
+		}
+
+		UWorld* World = nullptr;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapAndGadgetScaleArithmeticTest,
+	"Cataclysm.Enchantments.TheTrapScaleCountsPastAnOffsetAndTheGadgetScaleLeavesTrapsOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `traps_active` and `gadgets_active`, ruled 2026-10-07, in the pipeline alone.
+ * A state of three traps and two gadgets. `traps_active` counts three, and two
+ * with an offset of 1, which is how "for each other trap" is written. One trap
+ * with that offset is nothing, and so is none: never a negative count.
+ * `gadgets_active` counts two and `deployables_active` still counts five. A
+ * "more" row of 100 per gadget gives one sum: three gadgets make a base of 100
+ * into 400, which is four times and not the eight that doubling three times
+ * over would give. An offset is valid on `traps_active` and is still refused on
+ * `gadgets_active`.
+ */
+bool FCataclysmTrapAndGadgetScaleArithmeticTest::RunTest(const FString&)
+{
+	using namespace CataclysmTrapLayerTest;
+	using FPipeline = UCataclysmStatPipeline;
+	if (!TestTrue(TEXT("the trap tag exists"), TheTrapTag().IsValid()))
+	{
+		return false;
+	}
+
+	ECataclysmStatScale Read = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("a row may name traps_active"),
+		FPipeline::ScaleNamed(TEXT("traps_active"), Read) && Read == ECataclysmStatScale::PerTrapActive);
+	Read = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("a row may name gadgets_active"),
+		FPipeline::ScaleNamed(TEXT("gadgets_active"), Read) && Read == ECataclysmStatScale::PerGadgetActive);
+
+	FCataclysmStatConditions Field;
+	Field.TrapsActive = 3;
+	Field.GadgetsActive = 2;
+	Field.DeployablesActive = 5;
+
+	const FCataclysmStatModifier PerTrap =
+		TrapRow(ECataclysmStatBucket::Increased, 30.0f, ECataclysmStatScale::PerTrapActive);
+	const FCataclysmStatModifier PerOtherTrap =
+		TrapRow(ECataclysmStatBucket::Increased, 30.0f, ECataclysmStatScale::PerTrapActive, /*Offset=*/1.0f);
+	const FCataclysmStatModifier PerGadget =
+		TrapRow(ECataclysmStatBucket::Increased, 20.0f, ECataclysmStatScale::PerGadgetActive);
+	const FCataclysmStatModifier PerMachine =
+		TrapRow(ECataclysmStatBucket::Increased, 10.0f, ECataclysmStatScale::PerDeployableActive);
+
+	TestEqual(TEXT("three traps, no offset: three steps of 30"),
+		FPipeline::ScaledValue(PerTrap, Field), 90.0f, 0.001f);
+	TestEqual(TEXT("three traps, an offset of 1: two others, two steps of 30"),
+		FPipeline::ScaledValue(PerOtherTrap, Field), 60.0f, 0.001f);
+	TestEqual(TEXT("two gadgets: two steps of 20, the three traps left out"),
+		FPipeline::ScaledValue(PerGadget, Field), 40.0f, 0.001f);
+	TestEqual(TEXT("deployables_active is unchanged: all five machines, five steps of 10"),
+		FPipeline::ScaledValue(PerMachine, Field), 50.0f, 0.001f);
+
+	FCataclysmStatConditions OneTrap = Field;
+	OneTrap.TrapsActive = 1;
+	TestEqual(TEXT("one trap, an offset of 1: no other trap, nothing"),
+		FPipeline::ScaledValue(PerOtherTrap, OneTrap), 0.0f, 0.001f);
+	TestEqual(TEXT("and with no offset that one trap is one step"),
+		FPipeline::ScaledValue(PerTrap, OneTrap), 30.0f, 0.001f);
+	FCataclysmStatConditions NoTrap = Field;
+	NoTrap.TrapsActive = 0;
+	TestEqual(TEXT("no trap, an offset of 1: nothing, not a negative number of steps"),
+		FPipeline::ScaledValue(PerOtherTrap, NoTrap), 0.0f, 0.001f);
+
+	// "DOUBLES", RULED ADDITIVE ON 2026-10-07. One "more" row of 100 per gadget
+	// is one sum, so three gadgets are four times. The control is the same row
+	// with one gadget, which is twice.
+	const FCataclysmStatModifier Doubles =
+		TrapRow(ECataclysmStatBucket::More, 100.0f, ECataclysmStatScale::PerGadgetActive);
+	const FGameplayTagContainer AsATrap(TheTrapTag());
+	FCataclysmStatConditions Gadgets;
+	Gadgets.GadgetsActive = 1;
+	TestEqual(TEXT("one gadget doubles: a base of 100 is 200"),
+		FPipeline::Evaluate(100.0f, {Doubles}, AsATrap, Gadgets).Final, 200.0f, 0.01f);
+	Gadgets.GadgetsActive = 3;
+	TestEqual(TEXT("three gadgets are four times and not eight: a base of 100 is 400"),
+		FPipeline::Evaluate(100.0f, {Doubles}, AsATrap, Gadgets).Final, 400.0f, 0.01f);
+	Gadgets.GadgetsActive = 0;
+	TestEqual(TEXT("no gadget changes nothing: a base of 100 is 100"),
+		FPipeline::Evaluate(100.0f, {Doubles}, AsATrap, Gadgets).Final, 100.0f, 0.01f);
+
+	TestTrue(TEXT("an offset on traps_active is valid"),
+		FPipeline::ValidateModifier(PerOtherTrap).IsEmpty());
+	FCataclysmStatModifier OffsetGadget = PerGadget;
+	OffsetGadget.ScaleOffset = 1.0f;
+	TestFalse(TEXT("an offset on gadgets_active is still refused"),
+		FPipeline::ValidateModifier(OffsetGadget).IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapAndGadgetScalesOnABlowTest,
+	"Cataclysm.Enchantments.TheTrapAndGadgetScalesCountTheSummonersOwnMachinesOnATrapsBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The two scales on a real machine's blow. Ruled 2026-10-07. Each summoner
+ * carries one `minion_damage` row requiring `Type.Trap`, written by hand because
+ * no data row names either scale yet, and a spike trap given `Type.Trap` by
+ * hand strikes a creature with no armour. Every figure is a ratio against the
+ * blow of the same trap made by a summoner with no row.
+ *
+ * "For each other trap", 30 increased with an offset of 1: one trap alone is
+ * unchanged, two are 1.3 times, three are 1.6 times. A ballista and a spike trap
+ * with no trap tag are not traps and add nothing.
+ * "Each active gadget", 20 increased: a ballista makes it 1.2 times, a second
+ * trap adds nothing, a bolt turret makes it 1.4.
+ * "Doubles", 100 more per gadget: one ballista twice, two three times, three
+ * four times.
+ *
+ * THE COUNT IS THE SUMMONER'S. The plain summoner commands machines of its own
+ * throughout, and each other summoner's first trap is still unchanged.
+ */
+bool FCataclysmTrapAndGadgetScalesOnABlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmTrapLayerTest;
+	CataclysmDeployableTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World)
+		|| !TestTrue(TEXT("the trap tag exists"), TheTrapTag().IsValid()))
+	{
+		return false;
+	}
+	const FRange Range(Scope.World);
+
+	CataclysmDeployableTest::FSummoner Plain(Scope.World, nullptr);
+	ACataclysmMinion* PlainTrap = TrapOf(Plain);
+	const float PlainBlow = Range.BlowFrom(PlainTrap, /*Armour=*/0.0f);
+	if (!TestTrue(TEXT("a plain summoner's trap lands a blow"), PlainBlow > 0.0f))
+	{
+		return false;
+	}
+	const float PlainBallistaBlow = Range.BlowFrom(Plain.Make(TEXT("Ballista")), /*Armour=*/0.0f);
+	Plain.Make(TEXT("SpikeTrap"));
+
+	// WHAT THE STATE HOLDS, on the summoner that commands a tagged trap, a
+	// ballista and a spike trap with no trap tag.
+	const FCataclysmStatConditions PlainState = Plain.ASC()->CurrentConditions();
+	TestEqual(TEXT("three machines commanded"), PlainState.DeployablesActive, 3);
+	TestEqual(TEXT("one of them is a trap: the one carrying Type.Trap"), PlainState.TrapsActive, 1);
+	TestEqual(TEXT("two are gadgets: the ballista and the spike trap with no trap tag"),
+		PlainState.GadgetsActive, 2);
+
+	{
+		CataclysmDeployableTest::FSummoner EachOther(Scope.World, nullptr);
+		EachOther.Along = 10000.0f;
+		GiveMinionDamageRow(EachOther, TrapRow(ECataclysmStatBucket::Increased, 30.0f,
+			ECataclysmStatScale::PerTrapActive, /*Offset=*/1.0f));
+		ACataclysmMinion* First = TrapOf(EachOther);
+		TestEqual(TEXT("each other trap: one trap alone is unchanged, whatever the plain summoner commands"),
+			Range.BlowFrom(First, 0.0f) / PlainBlow, 1.0f, 0.001f);
+		TrapOf(EachOther);
+		TestEqual(TEXT("each other trap: two traps, one other, 1.3 times"),
+			Range.BlowFrom(First, 0.0f) / PlainBlow, 1.3f, 0.001f);
+		ACataclysmMinion* ItsBallista = EachOther.Make(TEXT("Ballista"));
+		EachOther.Make(TEXT("SpikeTrap"));
+		TestEqual(TEXT("each other trap: a ballista and a spike trap with no trap tag are no traps, still 1.3"),
+			Range.BlowFrom(First, 0.0f) / PlainBlow, 1.3f, 0.001f);
+		TrapOf(EachOther);
+		TestEqual(TEXT("each other trap: three traps, two others, 1.6 times"),
+			Range.BlowFrom(First, 0.0f) / PlainBlow, 1.6f, 0.001f);
+		if (TestTrue(TEXT("a plain ballista lands a blow"), PlainBallistaBlow > 0.0f))
+		{
+			TestEqual(TEXT("each other trap: the row requires Type.Trap, so the ballista's own blow is unchanged"),
+				Range.BlowFrom(ItsBallista, 0.0f) / PlainBallistaBlow, 1.0f, 0.001f);
+		}
+	}
+	{
+		CataclysmDeployableTest::FSummoner PerGadget(Scope.World, nullptr);
+		PerGadget.Along = 20000.0f;
+		GiveMinionDamageRow(PerGadget, TrapRow(ECataclysmStatBucket::Increased, 20.0f,
+			ECataclysmStatScale::PerGadgetActive));
+		ACataclysmMinion* ItsTrap = TrapOf(PerGadget);
+		TestEqual(TEXT("each gadget: a trap with no gadget is unchanged"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 1.0f, 0.001f);
+		PerGadget.Make(TEXT("Ballista"));
+		TestEqual(TEXT("each gadget: one ballista, 1.2 times"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 1.2f, 0.001f);
+		TrapOf(PerGadget);
+		TestEqual(TEXT("each gadget: a second trap is not a gadget, still 1.2"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 1.2f, 0.001f);
+		PerGadget.Make(TEXT("BoltTurret"));
+		TestEqual(TEXT("each gadget: a bolt turret as well, 1.4 times"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 1.4f, 0.001f);
+	}
+	{
+		CataclysmDeployableTest::FSummoner Doubling(Scope.World, nullptr);
+		Doubling.Along = 30000.0f;
+		GiveMinionDamageRow(Doubling, TrapRow(ECataclysmStatBucket::More, 100.0f,
+			ECataclysmStatScale::PerGadgetActive));
+		ACataclysmMinion* ItsTrap = TrapOf(Doubling);
+		TestEqual(TEXT("doubles: a trap with no gadget is unchanged"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 1.0f, 0.001f);
+		Doubling.Make(TEXT("Ballista"));
+		TestEqual(TEXT("doubles: one gadget, twice"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 2.0f, 0.001f);
+		Doubling.Make(TEXT("Ballista"));
+		TestEqual(TEXT("doubles: two gadgets, three times and not four"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 3.0f, 0.001f);
+		Doubling.Make(TEXT("BoltTurret"));
+		TestEqual(TEXT("doubles: three gadgets, four times and not eight"),
+			Range.BlowFrom(ItsTrap, 0.0f) / PlainBlow, 4.0f, 0.001f);
+		const FCataclysmStatConditions ItsState = Doubling.ASC()->CurrentConditions();
+		TestEqual(TEXT("doubles: that summoner commands three gadgets"), ItsState.GadgetsActive, 3);
+		TestEqual(TEXT("and one trap"), ItsState.TrapsActive, 1);
+		TestEqual(TEXT("which deployables_active still counts together: four"), ItsState.DeployablesActive, 4);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapArmourRowTest,
+	"Cataclysm.Enchantments.ATrapsBlowIgnoresArmourOnlyByItsSummonersRowNamingTraps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your traps ignore 20%-40% of enemy armor", WORN at the top of its roll, 40,
+ * and a spike trap given `Type.Trap` by hand striking a creature of 800 armour.
+ * Ruled 2026-10-07: a machine's blow takes its summoner's armour penetration
+ * only from a modifier naming the machine's kind.
+ *
+ * THE EXPECTED FIGURE IS MEASURED, NOT WORKED OUT. A plain character whose
+ * armour penetration attribute is the row's figure strikes an equal creature
+ * with a blow of the trap's own figure, `OwnDamagePerHit`, and the trap's blow
+ * must take what that blow takes. That control is itself checked first: at no
+ * armour penetration it must take what the plain summoner's trap takes, against
+ * no armour and against 800, or the two are not comparable and the test says
+ * so and stops.
+ *
+ * AND WHAT MUST NOT CHANGE. A ballista of the same summoner, which is no trap. A
+ * spike trap with no trap tag, which is every spike trap in the data today. A
+ * trap whose summoner wears "Your skills ignore 10%-25% of enemy armor", a row
+ * on the same stat with no required tag. A trap whose summoner's own armour
+ * penetration attribute is 50.
+ */
+bool FCataclysmTrapArmourRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmTrapLayerTest;
+	CataclysmDeployableTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World)
+		|| !TestTrue(TEXT("the trap tag exists"), TheTrapTag().IsValid()))
+	{
+		return false;
+	}
+	const FRange Range(Scope.World);
+	const float Armour = 800.0f;
+	const FName ArmourPenetration(TEXT("armor_penetration"));
+	const FGameplayTagContainer AsATrap(TheTrapTag());
+
+	// THE PLAIN SUMMONER'S TRAP AND BALLISTA, which are what "unchanged" means.
+	CataclysmDeployableTest::FSummoner Plain(Scope.World, nullptr);
+	ACataclysmMinion* PlainTrap = TrapOf(Plain);
+	const float Unarmoured = Range.BlowFrom(PlainTrap, 0.0f);
+	const float PlainTrapBlow = Range.BlowFrom(PlainTrap, Armour);
+	const float PlainBallistaBlow = Range.BlowFrom(Plain.Make(TEXT("Ballista")), Armour);
+	if (!TestTrue(
+			FString::Printf(TEXT("the armour bites: a plain trap takes %.3f with none and %.3f through 800"),
+				Unarmoured, PlainTrapBlow),
+			PlainTrapBlow > 0.0f && PlainTrapBlow < Unarmoured - 0.5f)
+		|| !TestTrue(TEXT("a plain ballista lands a blow"), PlainBallistaBlow > 0.0f))
+	{
+		return false;
+	}
+
+	// THE ROW, WORN, AND WHAT IT COMES TO FOR A TRAP.
+	CataclysmDeployableTest::FSummoner Rowed(Scope.World,
+		TEXT("Positive_Your_traps_ignore_20_40_of_enemy_armor"));
+	Rowed.Along = 10000.0f;
+	const float Named = Rowed.ASC()->StatNamingTagAppliedTo(
+		ArmourPenetration, TheTrapTag(), /*Figure=*/0.0f, AsATrap, /*Target=*/nullptr);
+	if (!TestEqual(TEXT("the worn row comes to 40 for a trap. If not, regenerate the DataTable assets"),
+			Named, 40.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// THE CONTROL, AND THE CHECK ON THE CONTROL.
+	const float TrapsOwnFigure = PlainTrap->OwnDamagePerHit;
+	const float ControlUnarmoured = Range.PlainBlow(TrapsOwnFigure, /*ArmourPenetration=*/0.0f, 0.0f);
+	const float ControlWithNone = Range.PlainBlow(TrapsOwnFigure, /*ArmourPenetration=*/0.0f, Armour);
+	const float ControlWithTheRows = Range.PlainBlow(TrapsOwnFigure, Named, Armour);
+	if (!TestEqual(TEXT("the control is comparable against no armour: a plain blow of the trap's own "
+						"figure takes what the plain trap's blow takes"),
+			ControlUnarmoured, Unarmoured, 0.01f)
+		|| !TestEqual(TEXT("the control is comparable against 800 armour: with no armour penetration "
+						   "it takes what the plain trap's blow takes"),
+			ControlWithNone, PlainTrapBlow, 0.01f)
+		|| !TestTrue(
+			FString::Printf(TEXT("the control moves: 40 armour penetration takes %.3f against %.3f"),
+				ControlWithTheRows, ControlWithNone),
+			ControlWithTheRows > ControlWithNone + 0.5f))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* RowedTrap = TrapOf(Rowed);
+	const float RowedTrapBlow = Range.BlowFrom(RowedTrap, Armour);
+	TestTrue(
+		FString::Printf(TEXT("with the row a trap's blow takes more through armour: %.3f against %.3f"),
+			RowedTrapBlow, PlainTrapBlow),
+		RowedTrapBlow > PlainTrapBlow + 0.5f);
+	TestEqual(TEXT("and it takes what a plain blow with 40 armour penetration takes"),
+		RowedTrapBlow, ControlWithTheRows, 0.01f);
+	TestEqual(TEXT("against no armour the row changes nothing"),
+		Range.BlowFrom(RowedTrap, 0.0f), Unarmoured, 0.01f);
+
+	TestEqual(TEXT("a ballista of the same summoner is no trap: its blow is unchanged"),
+		Range.BlowFrom(Rowed.Make(TEXT("Ballista")), Armour), PlainBallistaBlow, 0.01f);
+	TestEqual(TEXT("a spike trap with no trap tag is unchanged, which is every spike trap in the data today"),
+		Range.BlowFrom(Rowed.Make(TEXT("SpikeTrap")), Armour), PlainTrapBlow, 0.01f);
+
+	// A ROW ON THE SAME STAT THAT NAMES NO TRAP. First that it is live on its
+	// wearer: it has no condition, so it stands on the attribute at 25.
+	CataclysmDeployableTest::FSummoner Unscoped(Scope.World,
+		TEXT("Positive_Your_skills_ignore_10_25_of_enemy_armor"));
+	Unscoped.Along = 20000.0f;
+	if (TestEqual(TEXT("the row with no required tag is live on its wearer: 25 armour penetration"),
+			Unscoped.ASC()->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute()),
+			25.0f, 0.001f))
+	{
+		TestEqual(TEXT("and it does not reach that wearer's trap"),
+			Range.BlowFrom(TrapOf(Unscoped), Armour), PlainTrapBlow, 0.01f);
+	}
+
+	// AND THE SUMMONER'S OWN ATTRIBUTE, set by hand on a summoner with no row.
+	CataclysmDeployableTest::FSummoner Sharp(Scope.World, nullptr);
+	Sharp.Along = 30000.0f;
+	Sharp.ASC()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 50.0f);
+	if (TestEqual(TEXT("a summoner whose own armour penetration is 50"),
+			Sharp.ASC()->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute()),
+			50.0f, 0.001f))
+	{
+		TestEqual(TEXT("gives its trap none of it"),
+			Range.BlowFrom(TrapOf(Sharp), Armour), PlainTrapBlow, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -92,6 +92,25 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCannotBeEvaded = false;
 
 	/**
+	 * Per cent of the target's armour this blow ignores because a modifier NAMED the kind of thing that
+	 * struck it. Nought for every blow but one. Ruled 2026-10-07 for "Your traps ignore 20%-40% of enemy
+	 * armor": a trap's blow carries what its summoner's `armor_penetration` rows requiring `Type.Trap` come
+	 * to. `ACataclysmMinion::AttackTarget` is the one writer.
+	 *
+	 * IT IS NOT `bCannotPenetrate` TURNED OFF. A minion's blow still takes none of its attacker's two
+	 * penetration attributes and no piercing weapon's share; that flag is read exactly as before. This is a
+	 * figure the caller worked out, stamped on the effect under
+	 * `UCataclysmSkillEffects::NamedArmorPenetrationDataName` and added to
+	 * `FCataclysmIncomingHit::ArmorPenetration` by `UCataclysmVitalAttributeSet` whether or not the blow may
+	 * otherwise penetrate.
+	 *
+	 * THE SAME UNITS AND THE SAME LIMITS AS ANY ARMOUR PENETRATION. `UCataclysmDamageCalculation::Resolve`
+	 * clamps the whole share ignored to between nought and 100, and a defender whose armour cannot be ignored
+	 * (`armor_penetration_suppressed`, the Ravager's Ironhide) ignores this figure too.
+	 */
+	float NamedArmorPenetrationPercent = 0.0f;
+
+	/**
 	 * Whether this blow was struck by a worn row in answer to an event, and not by the character's own skill or
 	 * basic attack: the hit the action `strike_target` deals. Ruled 2026-10-07.
 	 *
@@ -1782,6 +1801,14 @@ public:
 	 * `FCataclysmHitDelivery::bCannotBeEvaded`.
 	 */
 	static const TCHAR* CannotBeEvadedDataName;
+
+	/**
+	 * The name an effect is stamped under when its blow ignores a share of armour that a modifier naming its
+	 * kind stated; the value is that share in per cent. Ruled 2026-10-07. A plain name and no gameplay tag, as
+	 * `CannotBeEvadedDataName` is. Read by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` before the
+	 * blow is resolved. See `FCataclysmHitDelivery::NamedArmorPenetrationPercent`.
+	 */
+	static const TCHAR* NamedArmorPenetrationDataName;
 
 	/**
 	 * The name an effect is stamped under when its blow is a row's answer to an event, with any value above
