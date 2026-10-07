@@ -437,6 +437,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// owner's decision of 2026-10-06.
 		TEXT("zone_damages_its_owner"),
 		TEXT("zone_applies_effects_to_owner"),
+		// And the percent of its owner's walking speed at which a zone
+		// follows them. Read where the zone is left. Ruled 2026-10-06.
+		TEXT("zone_follows_owner_percent"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health
