@@ -12,6 +12,8 @@
 // For finding the enemies standing in the radius, and for the ability system of
 // an actor.
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the dying enemy's maximum health, which `afflicted_death` carries.
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "Engine/World.h"
@@ -424,4 +426,59 @@ int32 UCataclysmContagion::SpreadFromTheDying(AActor* Dying)
 		}
 	}
 	return Copies;
+}
+
+int32 UCataclysmContagion::AnnounceAfflictedDeath(AActor* Dying)
+{
+	if (!Dying)
+	{
+		return 0;
+	}
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Dying);
+	const float Maximum = Its
+		? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+		: 0.0f;
+
+	// THE SIX AILMENTS THAT DEAL DAMAGE OVER TIME, the ones `SpreadFromTheDying`
+	// reads, kept in step with its list.
+	static const TCHAR* const Names[] = {
+		TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"), TEXT("Keyword.DoT.Disease"),
+		TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn"), TEXT("Keyword.DoT.VoidSplinter")};
+
+	// WHAT EACH CHARACTER HAS ON THE BODY IS GATHERED FIRST, because what a row
+	// does on hearing the event may change the body's effects.
+	TArray<AActor*> Appliers;
+	TMap<AActor*, FGameplayTagContainer> Theirs;
+	for (const TCHAR* Name : Names)
+	{
+		const FGameplayTag Ailment =
+			FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+		UCataclysmSkillEffects::FRunningAilment Running;
+		if (!Ailment.IsValid() || !UCataclysmSkillEffects::RunningAilmentOn(Dying, Ailment, Running))
+		{
+			continue;
+		}
+		AActor* Applier = Running.Applier.Get();
+		if (!Applier || Applier == Dying)
+		{
+			continue;
+		}
+		Appliers.AddUnique(Applier);
+		Theirs.FindOrAdd(Applier).AddTag(Ailment);
+	}
+
+	int32 Heard = 0;
+	for (AActor* Applier : Appliers)
+	{
+		UCataclysmAbilitySystemComponent* Hearing =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Applier));
+		if (!Hearing)
+		{
+			continue;
+		}
+		Hearing->ActOnEvent(FName(TEXT("afflicted_death")), &Theirs[Applier], Maximum,
+							/*bLanded=*/true, Dying);
+		++Heard;
+	}
+	return Heard;
 }

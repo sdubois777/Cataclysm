@@ -2,6 +2,125 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Two events carry who died and how much health it had: the kill event gains both, and `afflicted_death` is raised on whoever has an ailment on an enemy that dies; no row authored here
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the `kill` event),
+`game/Source/Cataclysm/AbilitySystem/CataclysmContagion.h` and `.cpp` (`AnnounceAfflictedDeath`),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp` (`HandleDeath`), `tools/generate_datatables.py`
+(`ACTION_ONLY_EVENTS`, `EVENTS_WITH_AN_AMOUNT`), two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`tools/tests/test_pool_action_names_match_the_engine.py`,
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT IT IS FOR
+
+Sentences sized by an enemy that died. "Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT
+from you, it explodes and applies all of your DoTs to all nearby enemies" needs to hear a death that was not a
+kill; and a sentence that explodes a slain enemy needs the kill to say who was slain. Neither event said either.
+
+### WHAT WAS DECIDED, 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+- **One session owns both events**, the one writing the ailment rows.
+- **The `kill` event carries the slain enemy as its target and that enemy's MAXIMUM health as its amount**, and
+  nothing changes for the rows already written on it.
+- **`afflicted_death` is raised on each character that has a damage over time ailment running on an enemy when
+  it dies**, with the dead enemy as the target, its maximum health as the amount, and that character's ailments
+  on the body as the tags.
+
+### HOW IT IS BUILT
+
+- **`kill`.** `ACataclysmPlayerCharacter` raises it when it hears a death announced as its own, as before, and now
+  passes the victim and the victim's maximum health.
+- **`afflicted_death`.** `UCataclysmContagion::AnnounceAfflictedDeath`, called by
+  `ACataclysmEnemyCharacter::HandleDeath` just before the spread at a death. It reads the six ailments that deal
+  damage over time off the body, groups them by who applied the running application of each, and raises the event
+  once on each such character.
+- **Both join the generator's `EVENTS_WITH_AN_AMOUNT`**, so a row on either may take a share of the amount.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **`afflicted_death` is for whoever APPLIED an ailment, not for whoever killed.** The killer hears it only if an
+  ailment of theirs is on the body. An overkill or on-kill sentence is the `kill` event's.
+- **An ailment counts for the character whose application is running.** No ailment in this game stacks: one
+  effect of a tag runs on a target, a weaker or equal application refreshes it and a stronger one replaces it. So
+  when two characters have applied the same ailment, one of them hears the death for it.
+- **A minion hears it for its own ailments and has no rows to answer with.** THE OWNER, 2026-10-06: a minion's
+  ailment carries none of the wearer's enchantment bonus unless a row says so.
+- **Only an enemy's death raises it**, as only an enemy's death passes an ailment on.
+- **Before the spread at a death**, so what a row does on hearing it lands before the ailments pass on by
+  themselves.
+
+### WHAT READS THE NEW THINGS TODAY
+
+**Nothing.** The ten rows on `kill` take a share of the wearer's own pool, grant a stack or reset a cooldown; none
+takes a share of the event's amount, and none asks anything about the target. No row is on `afflicted_death`.
+
+### THE KILL NOTICE HOLDS NO OVERKILL AMOUNT
+
+`FCataclysmDeathNotice` says who died, who killed, with what skill and tags, and where. It does not say how much
+damage was dealt beyond what the enemy had left, and nothing in the engine records that. A sentence sized by
+overkill needs the damage code to record it at the lethal blow.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A row on `kill` or `afflicted_death` may now take a share of the dead enemy's maximum health.** The generator
+  accepts it where it refused it.
+- **A Python check used `kill` as its example of an event fired with no amount.** It uses `dot_applied` now.
+
+### Tests
+
+- `Cataclysm.Enchantments.AnEnemysDeathIsHeardByWhoeverHasAnAilmentOnItWithItsMaximumHealthAndTheirOwnAilments`,
+  through a real death, with rows made by hand: a creature carrying the wearer's poison and another character's
+  burn dies; the wearer's row that restores the whole of the event's amount restores the creature's maximum health;
+  the wearer's stack kept to poison is granted and its stack kept to burn is not; the other character's stack kept
+  to burn is granted; and a creature that dies carrying nothing is heard by nobody.
+- `Cataclysm.Enchantments.AKillIsHeardWithTheSlainEnemysMaximumHealthAsItsAmount`, through a real player character
+  and a real kill: a row that restores the whole of the kill's amount restores the slain creature's maximum
+  health, 50.
+- **An existing row before and after:**
+  `Cataclysm.Enchantments.AnAuthoredKillRowFromTheBuiltTableRestoresOnlyBelowItsHealthLine` wears the real row
+  "Killing an enemy while below 30% HP instantly restores 15%-25% of your maximum HP" on a real player and makes
+  real kills. It is unchanged by this entry and is run with it.
+
+**Not tested here:** that the target either event carries is the enemy that died. The entry above this one tests
+it by where a blast lands.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the seven layers above this one, on `development` 06790eea. **The ids are the
+commits as they stood when each step ran**; the first two were local and were never pushed. This table carries the
+steps the eight layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack, the first compile of its engine code | 19356a30 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, FIRST RUN | 19356a30 | 264 tests performed, 257 succeeded, 7 failed; 23 failed assertions: the 21 registered, of six tests that wear a row, and 2 of a test of the layer above this one that needs no row |
+| The same, after the layer above gained its queue of deaths and a third test | 77c378c3 | Build: Succeeded - 33 actions, 30 files compiled; 265 tests performed, 259 succeeded, 6 failed; 21 failed assertions, the six tests that wear a row |
+| Assets | 9d6683cf | none built: this layer changes no table |
+| Whole suite, every asset built | e74285bb | 3260 tests performed, 3259 succeeded, 1 failed: the row test of the layer five above this one, which wore a name one letter short of its row's. 40 skipped part of what they check; 0 ensures |
+| Cataclysm.Enchantments. alone, after that one test was given its row's name | be112e78 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.28.cpp; 265 tests performed, 265 succeeded, 0 failed |
+| Python of record, continuous integration idle | be112e78 | 5798 passed, 8 skipped in 327.17s; the JUnit file: tests 5806, failures 0, errors 0, skipped 8 |
+| Lint | be112e78 | All checks passed! |
+
+**THE WHOLE SUITE WAS NOT RUN A SECOND TIME.** 3260 tests with none failing is the one run's 3259 and one group's
+rerun, and not one run. The two results that were not registered, and what was done about each, are recorded in
+the entries "An enemy that dies carrying the wearer's ailment can blast those near it" and the entry of the row "Burn effects you
+apply spread to 1-2 nearby enemies".
+
+**This layer's two tests need no row**, so they pass against the older assets. Their failing halves are these
+guard proofs, each with `prove_cpp_guard` on `Cataclysm.Enchantments.` at be112e78, each restored to 265 tests
+performed, 265 succeeded, 0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| `afflicted_death` carries an amount of nought (`&Theirs[Applier], 0.0f,` in `CataclysmContagion.cpp`) | 265 performed, 5 failed | 17 assertions: this layer's test of the event 1 (1.000000 where 100001.000000); the three blast tests of the layer above 5, 3 and 6; the ten-piece row test 2 |
+| The `kill` event carries an amount of nought (`Notice.KillingSkillTags, 0.0f,` in `CataclysmPlayerCharacter.cpp`) | 265 performed, 1 failed | this layer's test of the kill 1: 1.000000 where 51.000000 |
+
+Each proof failed on the tests and the number of assertions stated before it ran. The counts of the first were
+re-derived, and sent, after the third chain test was added and before any proof ran.
+
+---
+
 ## 2026-10-06 — Damage over time on the wearer is scoped by ailment: two defender lookups asked with tags, and three new stats. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`
