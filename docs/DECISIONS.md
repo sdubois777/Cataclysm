@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Twelve rows on statuses and damage over time on the wearer, a zone that applies its effects to its owner, and a cooldown ability that may deal increased damage
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (twelve rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The rows the dungeon session's entries of 2026-10-06 and 2026-10-07 left to the session holding the design
+workbook, each as those entries' tables state it. Every stat and action name was read in the merged code and not
+taken from a message. No engine code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Taking a hit has a 15%-25% chance to trigger a random negative status effect on you | `apply_status_to_self` on `hit_taken`, 15 to 25, Ailment `Random Debuff` |
+| Critical strikes have a 20%-35% chance to trigger a random debuff on you | `apply_status_to_self` on `critical_strike`, 20 to 35, Ailment `Random Debuff` |
+| Every 15 seconds a random debuff is applied to you | `apply_status_to_self` on `every_seconds`, Every Seconds 15, 100, Ailment `Random Debuff` |
+| After using a charge skill you are briefly stunned for 0.5-1 second | `apply_status_to_self_seconds` on `skill_end`, 0.5 to 1, Ailment `Stun`, Required Tags `Keyword.Charge` |
+| When you apply a DOT, 1-4 stacks are applied to you | `apply_status_to_self_sized` on `dot_applied`, 1 to 4, Ailment `Applied DoT` |
+| Bleed effects applied to you deal 30%-50% increased damage | `damage_over_time_taken` increased 30 to 50, Required Tags `Keyword.DoT.Bleed` |
+| Bleeding on you lasts 50%-100% longer | `debuff_duration_taken` increased 50 to 100, Required Tags `Keyword.DoT.Bleed` |
+| Unaffected by bleeding | `ailment_immunity` flat 1, Required Tags `Keyword.DoT.Bleed` |
+| 10%-20% of bleed damage you take is taken from your energy shield instead of your health | `bleed_damage_taken_from_energy_shield` flat 10 to 20 |
+| DoTs deal damage to your mana pool first | `damage_over_time_taken_from_mana_first` flat 1 |
+| Your persistent AOE zones apply their effects to you if you stand in them | `zone_applies_effects_to_owner` flat 1 |
+| Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage | `cooldown_use_increased_damage` on `skill_use`, 5 to 20, Scale Step 50, Scale Step High 200 |
+
+EnchantmentEffects 523 to 535, over 436 to 448 enchantments.
+
+### TWO ROWS NOT WRITTEN, AND WHY
+
+The generator refused each, so neither is a row yet.
+
+- **"DoTs last 2x-4x as long on you"**, given as `debuff_duration_taken` more 100 to 300 on `Keyword.DoT`. The
+  generator reads no range in the words "2x-4x", and refuses a row whose range its sentence does not state. It
+  needs a generator rule that reads "Nx-Mx" first.
+- **"DoTs on you tick twice as fast while moving"**, given as `damage_over_time_taken` more 100 under
+  `while_moving`. The generator refuses a condition on a stat until that stat is listed as asked for with its
+  condition judged, with a probe in `CataclysmStatExemptionTests.cpp`. That is engine-side work.
+
+### THE STUN-DURATION CHECK READS AN EFFECT ROW'S DURATION FROM ITS ENCHANTMENT'S SENTENCE
+
+`tools/tests/test_stun_durations_are_stated.py` requires every row that applies a stun to state how long, in
+words. The row for "After using a charge skill you are briefly stunned for 0.5-1 second" names Stun in its Ailment
+column and holds no sentence; the sentence, with its duration, is the enchantment's own row in
+`EnchantmentsNegative.csv`. The check now reads an effect row's duration there. An effect row whose enchantment
+states no duration, or is in neither table, is still reported, and
+`test_an_effect_row_is_excused_only_by_a_sentence_that_states_the_duration` holds that with made-up rows.
+
+### TWO ADDITIONS TO THE ROW-TEXT CHECK, STATED
+
+- **Three stats join the yes-or-no stats**, whose 1 no sentence states: `ailment_immunity`,
+  `damage_over_time_taken_from_mana_first` and `zone_applies_effects_to_owner`.
+- **"Applied" is 100 on `apply_status_to_self`**, whose value is a chance. "Every 15 seconds a random debuff is
+  applied to you" states no chance, so it is applied every time, as "reset" is 100 on the cooldown reset actions.
+  On that action alone.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the twelve sentences is those entries': which statuses "a random debuff" draws from, how long a
+"brief" stun is, what "1-4 stacks" sizes, how a bleed is told from another effect on the wearer, and that the zone
+row waited for a player to be slowed by Cripple, issue #2273.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheSixStatRowsOnDamageOverTimeAndZonesOnTheWearerEachGiveTheFigureTheGameAsksFor`: six
+  rows worn and read. The two that raise a figure make 150 and 200 of a bleed's 100 and leave a burn's at 100; the
+  four flat rows read 1, 20, 1 and 1, the bleed immunity only when asked about a bleed.
+- `Cataclysm.Enchantments.TheSixActionRowsOnAStatusOnTheWearerAndACooldownAbilityEachHandOverTheirAction`: six
+  rows worn; each hands its wearer exactly one action of its kind on the event it states, the timed one every
+  fifteen seconds, and none is left when the item is taken off.
+
+**Not tested here:** any of the twelve doing its work in play from a worn row; the dungeon session's entries test
+each stat and action with a line or a row made by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 13 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | e74285bb | effect rows 523 to 535 |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**The two tests fail against a table without their rows and pass with them**: 6 assertions of the stat test, one
+a row, and 7 of the action test, one a row and the seconds of the timed row.
+
+**A GUARD WAS CHANGED, ACCEPTED 2026-10-07 BY THE COORDINATING SESSION.** The change to
+`tools/tests/test_stun_durations_are_stated.py` described above was found by the first Python run of this layer,
+which printed "2 failed, 5794 passed, 8 skipped": the stale-asset test, and that check reporting the row of "After
+using a charge skill you are briefly stunned for 0.5-1 second". **What the check now cannot see:** an effect row
+that names Stun and whose own row would have had to state a duration, when its enchantment's sentence states one.
+It trusts the sentence. It still reports an effect row whose enchantment states none or is in neither table.
+**The alternative not taken** was an exemption by row name, which would have excused that one row whatever its
+sentence came to say.
+
+**Ruled the same day:** "applied" is 100 on `apply_status_to_self` alone, with a test on made-up sentences that the
+word is not read as 100 on any other action or stat,
+`test_applied_states_every_time_only_on_the_action_that_lays_a_status_on_its_wearer`; and the three stats join the
+yes-or-no stats.
+
+**The two rows not written**, ruled the same day: "DoTs last 2x-4x as long on you" waits for a generator rule that
+reads "Nx-Mx" as a range, this session's next stack; "DoTs on you tick twice as fast while moving" waits for the
+dungeon session to list `damage_over_time_taken` as a stat asked with a condition, with its probe.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.**
+
+---
+
 ## 2026-10-07 — "100% of your block value is added to your retaliation damage" is built as a row that pays the attacker what a block removed
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
