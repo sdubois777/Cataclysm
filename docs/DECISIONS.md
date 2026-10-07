@@ -29,7 +29,9 @@ reaching them. A lane keeps its shape and moves by its near end.**
 
 **The figure the owner's own movement component holds at that moment, `MaxWalkSpeed`.** The player character writes
 its speed there after every modifier, and a creature writes its designed speed there after what hastes and slows
-it. So one read serves both, and a slowed owner's zones follow more slowly.
+it. So one read serves both, and an owner whose walking speed is lowered is followed more slowly. **Cripple does
+not lower a player's walking speed today** (issue [#2273](https://github.com/sdubois777/Cataclysm/issues/2273)), so a crippled player's zones follow at the
+player's full figure.
 
 **An owner that is not a character has no speed, and its zones stay where they were left.** No skill is used by
 such an owner in play; a test's plain actor is one.
