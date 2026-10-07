@@ -217,7 +217,10 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               "zone_applies_own_ailment",
               # JOINED 2026-10-06 with Plague Doctor's six-piece row: above nought,
               # applying a damage over time effect refreshes the applier's others.
-              "dot_application_refreshes_others"}
+              "dot_application_refreshes_others",
+              # TWO MORE JOINED 2026-10-06 with their rows: a zone that also damages
+              # its owner, and minions that leave a chaos pool where they die.
+              "zone_damages_its_owner", "minions_leave_chaos_pools"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -678,8 +681,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 511 over 424: one row on one enchantment.
 #: AND 513 OVER 426 SINCE PLAGUE DOCTOR'S SIX-PIECE ROW,
 #: issue #1833, 2026-10-06, from 512 over 425: one row on one enchantment.
-AUTHORED_ROWS = 513
-AUTHORED_ENCHANTMENTS = 426
+#: AND 519 OVER 432 SINCE SIX ROWS ON ZONES A SKILL LEAVES AND WHAT A ZONE DOES,
+#: issue #1833, 2026-10-06, from 513 over 426: six rows on six enchantments.
+AUTHORED_ROWS = 519
+AUTHORED_ENCHANTMENTS = 432
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
