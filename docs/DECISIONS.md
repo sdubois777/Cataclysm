@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-07 — Absorbed damage stored: what the energy shield absorbs, and what an absorbed spell would have dealt, are each kept and added to the next attack. Engine and stat names only; not built or run
+## 2026-10-07 — Absorbed damage stored: what the energy shield absorbs, and what an absorbed spell would have dealt, are each kept and added to the next attack. Engine and stat names only
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (two stat names, two
 stores, `NoteShieldAbsorbedDamage`, `NoteSpellAbsorbedDamage`, `SpendStoredAbsorbedDamage`, and the clearing on
@@ -13,8 +13,8 @@ both are spent); `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp
 and two probes in `CataclysmStatExemptionTests.cpp`; the inventory in
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Not built and not run.** The C++ has not been compiled, no automation test has been run and no guard proof has
-been run. **No row is authored**; the rows are the enchantment session's.
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** **No row is authored**; the
+rows are the enchantment session's.
 
 ### What it is for
 
@@ -167,7 +167,7 @@ the SPEND and released on the next attack, which follows this game's own Nothing
 
 ### Tests
 
-**None has been run.** In `CataclysmSkillTemplateTests.cpp`, after the last test in the file, using Nothing
+**All of them ran and passed in the window of 2026-10-07; see "Run".** In `CataclysmSkillTemplateTests.cpp`, after the last test in the file, using Nothing
 Wasted's own helpers. Every stat is given by hand, so none can see a missing or wrong row.
 
 - `Cataclysm.AbsorbedDamageStored.WhatTheShieldAbsorbsIsStoredForItsWearerAndForNobodyElse`: a shield of 40 under a
@@ -195,10 +195,35 @@ When the rows land, that change must add a test that wears each real row.
 
 ### Run
 
-**Not run.** No Unreal compile, no automation test and no guard proof has been run for this change. The Python
-suite, the lint and `tools/check_resolved_cpp.py --changed` were run by the writing session after this entry was
-written; their output is in that session's hand-over and not here, because nothing may be recorded before the run
-that proves it.
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Aa | `CataclysmVitalAttributeSet.cpp`: the shield's store is never filled | `Cataclysm.AbsorbedDamageStored.WhatTheShieldAbsorbsIsStoredForItsWearerAndForNobodyElse` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| Ab | `CataclysmSkillEffects.cpp`: only a melee hit spends the two stores | `Cataclysm.AbsorbedDamageStored.ARangedHitSpendsTheTwoNewStoresAndLeavesNothingWastedsForAMeleeHit` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+**Not run:** a guard proof for the absorbed spell's store, which has tests and no proof; any of this read from the
+effect table, since no row exists.
 
 ---
 
