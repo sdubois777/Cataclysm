@@ -82,10 +82,14 @@ leaves Nothing Wasted's store exactly where it was.
 - **The largest total is one hit at four times its own damage**: the hit itself, Nothing Wasted at 100%, the
   shield's store at 100% and the spell's store at 100%. That needs a melee hit, all three worn, and each store
   holding at least the hit's damage.
-- **Every hit that is not a spell or a tick spends the two new stores**, not only a skill the player pressed. See
-  "Consequences" below: a Smite a worn row fires is such a hit.
-- **A wand's or a staff's basic attack spends them.** It is a projectile that carries no spell tag. The nine skills
-  tagged as spells do not.
+- **A proc can spend the store before the player's own next attack does.** Every hit through `ApplyHit` that is not
+  a spell or a tick spends the two new stores, and three of those are not something the player presses: a Smite a
+  worn row fires, the Shoulder Through follow-up, and the buried weapon's hop. Ruled on 2026-10-07 by the
+  coordinating session under the owner's delegation to stay as built, because Nothing Wasted and the next-use
+  charges are spent the same way. **The alternative not taken:** spend only on a hit of a skill the player used,
+  which needs a mark on the hit's delivery.
+- **A wand's, a staff's or a crossbow's basic attack spends them**, though it reads as a spell to a player. It is a
+  projectile whose skill carries no `Type.Spell` tag. The nine skills tagged as spells do not spend them.
 - **Nothing expires.** A store filled at the start of a floor is still there at the end of it.
 - **The second sentence can fire against one enemy attack today.** See the count below.
 
@@ -157,6 +161,9 @@ the SPEND and released on the next attack, which follows this game's own Nothing
   hits spend it.
 - **The first target is the nearest only because `HitTargets` hits nearest first**, as the Nothing Wasted entry
   says of its own store.
+- **A wearer who is both immune to damage and absorbing the same spell fills the spell's store.** The absorb is
+  rolled first, and the store is filled where the roll comes up; whether the wearer is immune is asked after that,
+  in the condition that deals the blow nothing. Not changed. Read in the code, not run.
 
 ### Tests
 
