@@ -3430,6 +3430,12 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusSecondsAction =
 	TEXT("apply_status_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfAction = TEXT("apply_status_to_self");
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSecondsAction = TEXT("apply_status_to_self_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfTimesAction = TEXT("apply_status_to_self_times");
+const TCHAR* UCataclysmAbilitySystemComponent::StunStatus = TEXT("Stun");
+const TCHAR* UCataclysmAbilitySystemComponent::AppliedDotStatus = TEXT("Applied DoT");
+const TCHAR* UCataclysmAbilitySystemComponent::SkillEndEvent = TEXT("skill_end");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageTakenAction = TEXT("ailment_damage_taken");
@@ -4068,6 +4074,17 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			else if (Action.bCleanse)
 			{
 				UCataclysmDebuffs::Cleanse(GetAvatarActor());
+			}
+			else if (Action.ApplyStatus != ECataclysmApplyStatus::None && Action.bStatusOnTheWearer)
+			{
+				// "EVERY 15 SECONDS A RANDOM DEBUFF IS APPLIED TO YOU". Ruled 2026-10-06. The chance form rolls
+				// here as it does on an event; a row written for a timer states 100.
+				const float Pinned = CVarStatusRoll.GetValueOnAnyThread();
+				if (Action.ApplyStatus != ECataclysmApplyStatus::Chance || Action.Percent >= 100.0f
+					|| (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) < Action.Percent)
+				{
+					ApplyStatusToTheWearer(Action);
+				}
 			}
 			// A COOLDOWN RESET ON A CLOCK. Issue #1833: "Every 20 seconds all
 			// your skill cooldowns are instantly reset".
@@ -4739,6 +4756,24 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// an event naming that character. A chance row rolls its value; a
 		// seconds row always applies. The cooldown starts only when the status
 		// was applied, as a random damage over time's does below.
+		// A STATUS LAID ON THE WEARER NEEDS NO OTHER CHARACTER. Ruled 2026-10-06. Only the chance form rolls; the
+		// seconds form and the times form always apply.
+		if (Action.ApplyStatus != ECataclysmApplyStatus::None && Action.bStatusOnTheWearer)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Pinned = CVarStatusRoll.GetValueOnAnyThread();
+				const bool bComesUp = Action.ApplyStatus != ECataclysmApplyStatus::Chance
+					|| Action.Percent >= 100.0f
+					|| (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) < Action.Percent;
+				if (bComesUp && ApplyStatusToTheWearer(Action))
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
 		if (Action.ApplyStatus != ECataclysmApplyStatus::None)
 		{
 			AActor* Other = const_cast<AActor*>(EventTarget);
@@ -4863,6 +4898,62 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 		}
 	}
 	return true;
+}
+
+bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPoolAction& Action)
+{
+	AActor* Wearer = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	if (!Wearer)
+	{
+		return false;
+	}
+
+	// THE AILMENT JUST APPLIED TO ANOTHER, THE VALUE'S NUMBER OF TIMES. "When you apply a DOT, 1-4 stacks are
+	// applied to you". Each is one application at the ailment's ordinary size, by the wearer, on the wearer; how
+	// the applications combine is the ailment's own rule. None of them raises `dot_applied`, which is raised for
+	// another character only.
+	if (Action.ApplyStatus == ECataclysmApplyStatus::Times)
+	{
+		const FCataclysmAilmentKind* Applied = UCataclysmAilments::KindNamed(LastAppliedDotAilment);
+		if (!Applied)
+		{
+			return false;
+		}
+		bool bAny = false;
+		for (int32 Time = 0; Time < FMath::RoundToInt(Action.Percent); ++Time)
+		{
+			bAny |= UCataclysmAilments::Apply(Wearer, Wearer, *Applied, /*Magnitude=*/1.0f);
+		}
+		return bAny;
+	}
+
+	const bool bSeconds = Action.ApplyStatus == ECataclysmApplyStatus::Seconds;
+	if (Action.StatusName.Equals(StaggerStatus, ESearchCase::IgnoreCase))
+	{
+		return UCataclysmSkillEffects::ApplyStagger(Wearer, Wearer,
+			bSeconds ? Action.Percent : UCataclysmSkillEffects::StaggerSeconds);
+	}
+	if (Action.StatusName.Equals(StunStatus, ESearchCase::IgnoreCase))
+	{
+		// A DESIGNED STUN, which skips the stun's own threshold of damage and keeps its immunity window. For the
+		// row's seconds; the generator accepts Stun on the seconds action only.
+		return bSeconds && UCataclysmSkillEffects::ApplyStun(Wearer, Wearer, Action.Percent,
+			/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+	}
+	if (Action.StatusName.Equals(RandomDebuffStatus, ESearchCase::IgnoreCase))
+	{
+		return UCataclysmAilments::ApplyRandomDebuff(Wearer, Wearer, /*DealtToHealth=*/0.0f,
+			/*bWithoutABlow=*/true) != nullptr;
+	}
+	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(Action.StatusName);
+	if (!Kind)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("A status action names %s, which is not a status the game has."), *Action.StatusName);
+		return false;
+	}
+	return UCataclysmAilments::Apply(Wearer, Wearer, *Kind, /*Magnitude=*/1.0f,
+		/*Skill=*/nullptr, NAME_None, bSeconds ? Action.Percent : 0.0f);
 }
 
 bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction& Action,

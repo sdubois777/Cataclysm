@@ -59,6 +59,14 @@ CONSTANTS = {
     "ApplyStatusSecondsAction": "apply_status_seconds",
     "StaggerStatus": "Stagger",
     "RandomDebuffStatus": "Random Debuff",
+    # AND THE THREE THAT LAY A STATUS ON THE WEARER, their two statuses and the
+    # event one of them waits on. Ruled 2026-10-06.
+    "ApplyStatusToSelfAction": "apply_status_to_self",
+    "ApplyStatusToSelfSecondsAction": "apply_status_to_self_seconds",
+    "ApplyStatusToSelfTimesAction": "apply_status_to_self_times",
+    "StunStatus": "Stun",
+    "AppliedDotStatus": "Applied DoT",
+    "SkillEndEvent": "skill_end",
     # AND THE NO-DAMAGE WINDOW, since issue #1833 group E part 2.
     "DamageImmunityAction": "damage_immunity",
     # AND THE REFLECT AND THE ARMOUR NOVA, since issue #1833 group E part 3.
@@ -182,6 +190,13 @@ def test_the_generator_accepts_exactly_the_status_names_the_engine_has() -> None
     names = engine_names()
     assert set(gen.APPLY_STATUS_ACTIONS) == {names["ApplyStatusAction"],
                                              names["ApplyStatusSecondsAction"]}
+    assert set(gen.APPLY_STATUS_TO_SELF_ACTIONS) == {
+        names["ApplyStatusToSelfAction"], names["ApplyStatusToSelfSecondsAction"],
+        names["ApplyStatusToSelfTimesAction"]}
+    assert names["StunStatus"] in gen.APPLY_STATUSES_TO_SELF_FOR_SECONDS
+    assert gen.APPLIED_DOT_STATUS == names["AppliedDotStatus"]
+    assert names["SkillEndEvent"] in gen.APPLY_STATUS_TO_SELF_EVENTS
+    assert names["SkillEndEvent"] in gen.ACTION_ONLY_EVENTS
 
 
 def test_the_generator_accepts_exactly_the_reflect_name_the_engine_has() -> None:
