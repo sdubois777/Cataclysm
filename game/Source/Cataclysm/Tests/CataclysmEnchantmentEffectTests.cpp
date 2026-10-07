@@ -37,6 +37,7 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmContagion.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -15684,6 +15685,93 @@ bool FCataclysmVoidSplinterDetonationRowTest::RunTest(const FString&)
 	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
 	TestEqual(TEXT("taken off, a further application takes nothing at once"),
 		LostAtOnceWhenApplied(Worn.Wearer->Actor, Theirs, Tag), 0.0f, 0.001f);
+	return true;
+}
+
+// THREE MORE PERSISTENT AREA ROWS. Issue #1833, on the two flag stats and the condition of the dungeon session's
+// entries of 2026-10-06, "A zone can stagger whoever enters it" and "A row can ask whether the target is standing
+// in one of your ground zones". What a zone then does with each flag is those entries' tests, with rows made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZoneFlagRowsTest,
+	"Cataclysm.Enchantments.TheZoneStaggerRowAndTheZoneAilmentRowEachSetTheFlagAZoneReads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies that enter your persistent AOE zones are briefly staggered" is
+ * `zone_staggers_on_entry` flat 1, and "Persistent AOE zones apply a DoT to
+ * enemies standing in them" is `zone_applies_own_ailment` flat 1. Each is WORN
+ * and read as a zone reads it, and reads nought again when taken off.
+ */
+bool FCataclysmZoneFlagRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Row;
+		const TCHAR* Stat;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Enemies_that_enter_your_persistent_AOE_zones_are"), TEXT("zone_staggers_on_entry")},
+		{TEXT("Positive_Persistent_AOE_zones_apply_a_DoT_to_enemies_stan"), TEXT("zone_applies_own_ailment")},
+	};
+	for (const FCase& Case : Cases)
+	{
+		FWorn Worn(Case.Row, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(Case.Stat);
+		TestEqual(FString::Printf(TEXT("%s, worn: %s is 1.%s"), Case.Row, Case.Stat, CataclysmRepeatRowsTest::OlderAsset),
+			Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 1.0f, 0.01f);
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(FString::Printf(TEXT("%s, taken off: %s is 0 again"), Case.Row, Case.Stat),
+			Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 0.0f, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageInYourZonesRowTest,
+	"Cataclysm.Enchantments.TheDamageInYourZonesRowRaisesABlowOnlyOnACreatureStandingInTheWearersZone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You deal 15%-30% increased damage to enemies standing in your persistent AOE
+ * zones". Issue #1833, ruled 2026-10-06: `attack_damage` and `spell_damage`
+ * increased, 15 to 30, under `target_in_your_zone`. WORN by a real player at
+ * the top of its roll, 30: its blow on a creature standing in a zone the wearer
+ * owns is 1.3 times its blow on a creature standing in none.
+ */
+bool FCataclysmDamageInYourZonesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_You_deal_15_30_increased_damage_to_enemies_sta"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready()))
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(
+		Striker.Character, Striker.First->GetActorLocation(), /*RadiusCm=*/150.0f, /*Duration=*/10.0f,
+		/*DamagePerTick=*/1.0f);
+	if (!TestNotNull(TEXT("set-up: the wearer's zone"), Zone)
+		|| !TestTrue(TEXT("set-up: the first creature stands in it"), Zone->Covers(Striker.First->GetActorLocation()))
+		|| !TestFalse(TEXT("set-up: the second does not"), Zone->Covers(Striker.Second->GetActorLocation())))
+	{
+		return false;
+	}
+	const float InTheZone = Blow(Striker, Striker.First, false, false);
+	const float Outside = Blow(Striker, Striker.Second, false, false);
+	if (!TestTrue(*FString::Printf(TEXT("a blow on the creature outside took %.2f"), Outside), Outside > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the blow on the creature in the wearer's zone is 1.3 times it. If not, DT_EnchantmentEffects "
+				   "may be older than the rows: run tools/generate_datatable_assets.py"),
+		InTheZone, 1.3f * Outside, 0.05f);
 	return true;
 }
 
