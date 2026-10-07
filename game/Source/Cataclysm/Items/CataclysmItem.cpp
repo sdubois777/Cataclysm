@@ -1473,6 +1473,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bReflectBlocked = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::ReflectBlockedAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT BLASTS FROM AN ENEMY THAT DIED. Ruled 2026-10-07.
+					Action.bBlastFromTheDying = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::BlastFromTheDyingAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

@@ -16203,4 +16203,294 @@ bool FCataclysmKillEventCarriesTheSlainTest::RunTest(const FString&)
 	return true;
 }
 
+// THE BLAST FROM AN ENEMY THAT DIED CARRYING THE WEARER'S AILMENT. Ruled 2026-10-07, for "Plague Doctor (10-Piece
+// Bonus): When an enemy dies while affected by a DoT from you, it explodes and applies all of your DoTs to all
+// nearby enemies". Issue #1833. The row is made by hand; the authored row has its own test.
+namespace CataclysmBlastFromTheDyingTest
+{
+	using namespace CataclysmDeathEventsTest;
+
+	/** A hand-made row that blasts for this share of the dead enemy's maximum health. */
+	FCataclysmPoolAction Blasts(float Percent)
+	{
+		FCataclysmPoolAction Row;
+		Row.Event = FName(TEXT("afflicted_death"));
+		Row.bBlastFromTheDying = true;
+		Row.Percent = Percent;
+		Row.TriggerKey = FName(TEXT("Test:blast"));
+		return Row;
+	}
+
+	float HealthNow(const AActor* Who)
+	{
+		const UCataclysmAbilitySystemComponent* System = SystemOf(Who);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
+	/** What `Damage` takes from `On` as the blast delivers it: the control every blast is compared with. */
+	float TakenByABlastOf(AActor* By, AActor* On, float Damage)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		Delivery.bCannotBeRetaliatedAgainst = true;
+		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCarriesNoWeaponSubType = true;
+		Delivery.bCannotLeech = true;
+		const float Before = HealthNow(On);
+		UCataclysmSkillEffects::ApplyDirectDamage(By, On, Damage, Delivery);
+		return Before - HealthNow(On);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlastFromTheDyingTest,
+	"Cataclysm.Enchantments.AnAfflictedEnemysDeathBlastsThoseWithinFiveMetresAndPassesTheWearersAilmentsToThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A creature of 100,000 maximum health carries the wearer's poison and another
+ * character's burn, and dies two and a half seconds in. With a row of 20, the
+ * creatures 2 and 4 metres from the body each lose what a direct area hit of
+ * 20,000 takes from a creature built alike, and the one 7 metres away loses
+ * nothing. Those two then carry the wearer's poison, for the seven and a half
+ * seconds it had left, and not the other character's burn. No `dot_applied` is
+ * raised: a copy is not an application.
+ */
+bool FCataclysmBlastFromTheDyingTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmBlastFromTheDyingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	FWearer Other(World);
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	const FGameplayTag Burn = Ailment(TEXT("Keyword.DoT.Burn"));
+	ACataclysmEnemyCharacter* Control = Beside(World, -8.0f);
+	ACataclysmEnemyCharacter* Dying = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* Two = Beside(World, 2.0f);
+	ACataclysmEnemyCharacter* Four = Beside(World, 4.0f);
+	ACataclysmEnemyCharacter* Seven = Beside(World, 7.0f);
+	if (!TestTrue(TEXT("set-up: the poison tag is registered"), Poison.IsValid())
+		|| !TestTrue(TEXT("set-up: the burn tag is registered"), Burn.IsValid())
+		|| !TestNotNull(TEXT("set-up: the control creature, 8 metres the other side"), Control)
+		|| !TestNotNull(TEXT("set-up: the creature that will die"), Dying)
+		|| !TestNotNull(TEXT("set-up: the creature 2 metres from it"), Two)
+		|| !TestNotNull(TEXT("set-up: the creature 4 metres from it"), Four)
+		|| !TestNotNull(TEXT("set-up: the creature 7 metres from it"), Seven))
+	{
+		return false;
+	}
+	const float Maximum = MaximumHealthOf(Dying);
+	if (!TestTrue(TEXT("set-up: the creature that will die has a maximum health"), Maximum > 0.0f)
+		|| !TestTrue(TEXT("set-up: the wearer poisons it and the other character burns it"),
+					 Ail(Wearer.Actor, Dying, Poison) && Ail(Other.Actor, Dying, Burn)))
+	{
+		return false;
+	}
+	Wearer.AbilitySystem->SetPoolActions({Blasts(20.0f)});
+	// TWO AND A HALF SECONDS, BETWEEN TICKS: the poison has seven and a half left.
+	CataclysmTestWorld::RunClock(World, 2.5f);
+
+	const float ByControl = TakenByABlastOf(Wearer.Actor, Control, Maximum * 0.2f);
+	if (!TestTrue(TEXT("set-up: a direct area hit of a fifth of that maximum takes something from a creature built "
+					   "alike"), ByControl > 0.0f))
+	{
+		return false;
+	}
+	int32 ApplicationsAnnounced = 0;
+	const FDelegateHandle Listening = Wearer.AbilitySystem->OnActionEvent.AddLambda(
+		[&ApplicationsAnnounced](FName Event)
+		{
+			ApplicationsAnnounced += Event == FName(TEXT("dot_applied")) ? 1 : 0;
+		});
+	const float TwoBefore = HealthNow(Two);
+	const float FourBefore = HealthNow(Four);
+	const float SevenBefore = HealthNow(Seven);
+	Dying->HandleDeath();
+	Wearer.AbilitySystem->OnActionEvent.Remove(Listening);
+
+	TestEqual(TEXT("the creature 2 metres from the body loses what that hit took from the control"),
+		TwoBefore - HealthNow(Two), ByControl, ByControl * 0.005f);
+	TestEqual(TEXT("and so does the one 4 metres from it"), FourBefore - HealthNow(Four), ByControl,
+		ByControl * 0.005f);
+	TestEqual(TEXT("the one 7 metres from it loses nothing"), SevenBefore - HealthNow(Seven), 0.0f, 0.001f);
+
+	TestTrue(TEXT("the creature 2 metres away now carries the wearer's poison"), Carries(Two, Poison));
+	TestTrue(TEXT("and the one 4 metres away"), Carries(Four, Poison));
+	TestFalse(TEXT("the one 7 metres away does not"), Carries(Seven, Poison));
+	TestFalse(TEXT("the other character's burn is not passed on by the wearer's row"), Carries(Two, Burn));
+	UCataclysmSkillEffects::FRunningAilment Copy;
+	if (TestTrue(TEXT("the copy is a running poison"), UCataclysmSkillEffects::RunningAilmentOn(Two, Poison, Copy)))
+	{
+		TestEqual(TEXT("for the seven and a half seconds the original had left"), Copy.SecondsLeft, 7.5f, 0.1f);
+		TestTrue(TEXT("with the wearer as its source"), Copy.Applier.Get() == Wearer.Actor);
+	}
+	TestEqual(TEXT("a copy is not the wearer applying a damage over time: dot_applied was not raised"),
+		ApplicationsAnnounced, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlastChainOfThreeTest,
+	"Cataclysm.Enchantments.ThreeDeathsInARowEachBlastForAShareOfTheirOwnMaximumHealthAndStrikeEachEnemyOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Five creatures in a row at 0, 3, 6, 7.5 and 9 metres. The first has 100,000
+ * maximum health, the second 1,000 and the third 100; all three carry the
+ * wearer's poison. The first dies. Its blast of 20,000 reaches only the second
+ * and kills it. THE SECOND'S DEATH IS HEARD WHILE THE WEARER IS ACTING ON THE
+ * FIRST, so it waits, and then blasts for a fifth of 1,000: that reaches the
+ * third, which dies, and the witness at 7.5 metres. The third's death waits in
+ * its turn and blasts for a fifth of 100: that reaches the witness and the
+ * fourth creature at 9 metres. So the witness loses one hit of 200 and one of
+ * 20, the fourth one hit of 20, and each carries the poison of the death that
+ * reached it.
+ */
+bool FCataclysmBlastChainOfThreeTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmBlastFromTheDyingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	ACataclysmEnemyCharacter* Control = Beside(World, -8.0f);
+	ACataclysmEnemyCharacter* First = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* Second = Beside(World, 3.0f);
+	ACataclysmEnemyCharacter* Third = Beside(World, 6.0f);
+	ACataclysmEnemyCharacter* Witness = Beside(World, 7.5f);
+	ACataclysmEnemyCharacter* Fourth = Beside(World, 9.0f);
+	if (!TestTrue(TEXT("set-up: the poison tag is registered"), Poison.IsValid())
+		|| !TestNotNull(TEXT("set-up: the control creature, 8 metres the other side"), Control)
+		|| !TestNotNull(TEXT("set-up: the first creature"), First)
+		|| !TestNotNull(TEXT("set-up: the second creature, 3 metres on"), Second)
+		|| !TestNotNull(TEXT("set-up: the third creature, 6 metres on"), Third)
+		|| !TestNotNull(TEXT("set-up: the witness, 7.5 metres on"), Witness)
+		|| !TestNotNull(TEXT("set-up: the fourth creature, 9 metres on"), Fourth))
+	{
+		return false;
+	}
+	Second->SetHealth(1000.0f);
+	Third->SetHealth(100.0f);
+	if (!TestEqual(TEXT("set-up: the first creature's maximum health"), MaximumHealthOf(First), 100000.0f, 0.5f)
+		|| !TestEqual(TEXT("set-up: the second creature's maximum health"), MaximumHealthOf(Second), 1000.0f, 0.5f)
+		|| !TestEqual(TEXT("set-up: the third creature's maximum health"), MaximumHealthOf(Third), 100.0f, 0.5f)
+		|| !TestTrue(TEXT("set-up: the wearer poisons the first"), Ail(Wearer.Actor, First, Poison))
+		|| !TestTrue(TEXT("set-up: the wearer poisons the second"), Ail(Wearer.Actor, Second, Poison))
+		|| !TestTrue(TEXT("set-up: the wearer poisons the third"), Ail(Wearer.Actor, Third, Poison)))
+	{
+		return false;
+	}
+	Wearer.AbilitySystem->SetPoolActions({Blasts(20.0f)});
+	const float ByTwoHundred = TakenByABlastOf(Wearer.Actor, Control, 200.0f);
+	const float ByTwenty = TakenByABlastOf(Wearer.Actor, Control, 20.0f);
+	if (!TestTrue(TEXT("set-up: a direct area hit of 200 takes at least the third creature's 100"),
+				  ByTwoHundred >= 100.0f)
+		|| !TestTrue(TEXT("set-up: a direct area hit of 20 takes something"), ByTwenty > 0.0f))
+	{
+		return false;
+	}
+
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> SecondKept(Second);
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> ThirdKept(Third);
+	const float WitnessBefore = HealthNow(Witness);
+	const float FourthBefore = HealthNow(Fourth);
+	First->HandleDeath();
+
+	TestTrue(TEXT("the first blast killed the second creature"),
+		!SecondKept.IsValid() || UCataclysmSkillEffects::IsDead(SecondKept.Get()));
+	TestTrue(TEXT("the second's blast killed the third creature"),
+		!ThirdKept.IsValid() || UCataclysmSkillEffects::IsDead(ThirdKept.Get()));
+	TestFalse(TEXT("the witness is alive"), UCataclysmSkillEffects::IsDead(Witness));
+	TestFalse(TEXT("the fourth creature is alive"), UCataclysmSkillEffects::IsDead(Fourth));
+	TestEqual(TEXT("the witness loses one hit of a fifth of the second's maximum and one of a fifth of the "
+				   "third's, each once, and nothing of the first blast"),
+		WitnessBefore - HealthNow(Witness), ByTwoHundred + ByTwenty, (ByTwoHundred + ByTwenty) * 0.005f);
+	TestEqual(TEXT("the fourth loses one hit of a fifth of the THIRD's maximum, once, and nothing of the two "
+				   "blasts it stood outside"),
+		FourthBefore - HealthNow(Fourth), ByTwenty, ByTwenty * 0.005f);
+	TestTrue(TEXT("the witness carries the wearer's poison, from the second's death"), Carries(Witness, Poison));
+	TestTrue(TEXT("the fourth carries the wearer's poison, from the third's death"), Carries(Fourth, Poison));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlastChainsTest,
+	"Cataclysm.Enchantments.AnEnemyTheBlastKillsBlastsInItsTurnForAShareOfItsOwnMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three creatures in a row, 3 metres apart, so the third is 6 metres from the
+ * first and out of its reach. The first has 100,000 maximum health and the
+ * second 1,000; both carry the wearer's poison, each from an application of the
+ * wearer's own. The first dies: its blast of a fifth of 100,000 kills the
+ * second, whose death is heard in its turn, and ITS blast is a fifth of 1,000.
+ * The third loses what a direct area hit of 200 takes from a creature built
+ * alike, once, and nothing of the first blast; and it receives the second's
+ * poison.
+ */
+bool FCataclysmBlastChainsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmBlastFromTheDyingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	ACataclysmEnemyCharacter* Control = Beside(World, -8.0f);
+	ACataclysmEnemyCharacter* First = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* Second = Beside(World, 3.0f);
+	ACataclysmEnemyCharacter* Third = Beside(World, 6.0f);
+	if (!TestTrue(TEXT("set-up: the poison tag is registered"), Poison.IsValid())
+		|| !TestNotNull(TEXT("set-up: the control creature, 8 metres the other side"), Control)
+		|| !TestNotNull(TEXT("set-up: the first creature"), First)
+		|| !TestNotNull(TEXT("set-up: the second creature, 3 metres on"), Second)
+		|| !TestNotNull(TEXT("set-up: the third creature, 6 metres on"), Third))
+	{
+		return false;
+	}
+	Second->SetHealth(1000.0f);
+	if (!TestEqual(TEXT("set-up: the first creature's maximum health"), MaximumHealthOf(First), 100000.0f, 0.5f)
+		|| !TestEqual(TEXT("set-up: the second creature's maximum health"), MaximumHealthOf(Second), 1000.0f, 0.5f)
+		|| !TestTrue(TEXT("set-up: the wearer poisons the first and the second"),
+					 Ail(Wearer.Actor, First, Poison) && Ail(Wearer.Actor, Second, Poison)))
+	{
+		return false;
+	}
+	Wearer.AbilitySystem->SetPoolActions({Blasts(20.0f)});
+	const float ByControl = TakenByABlastOf(Wearer.Actor, Control, 200.0f);
+	if (!TestTrue(TEXT("set-up: a direct area hit of 200 takes something from a creature built alike"),
+				  ByControl > 0.0f))
+	{
+		return false;
+	}
+
+	const TWeakObjectPtr<ACataclysmEnemyCharacter> SecondKept(Second);
+	const float ThirdBefore = HealthNow(Third);
+	First->HandleDeath();
+
+	TestTrue(TEXT("the first blast killed the second creature"),
+		!SecondKept.IsValid() || UCataclysmSkillEffects::IsDead(SecondKept.Get()));
+	TestFalse(TEXT("the third creature is alive"), UCataclysmSkillEffects::IsDead(Third));
+	TestEqual(TEXT("the third loses what a hit of a fifth of the SECOND's maximum takes, once, and nothing of the "
+				   "first blast, which it stood outside"),
+		ThirdBefore - HealthNow(Third), ByControl, ByControl * 0.005f);
+	TestTrue(TEXT("and it receives the second's poison"), Carries(Third, Poison));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
