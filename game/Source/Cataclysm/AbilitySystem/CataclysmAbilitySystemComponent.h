@@ -1240,6 +1240,55 @@ public:
 	/** What Nothing Wasted holds now, for the line above the skill bar. */
 	float StoredMitigatedDamageNow() const { return StoredMitigatedDamage; }
 
+	/**
+	 * Two more stores of the same shape as Nothing Wasted's, each under its own
+	 * cap stat with no attribute. Ruled 2026-10-07 under the owner's delegation.
+	 *
+	 * "Damage absorbed by your energy shield is converted to bonus damage on
+	 * your next attack" is the first, and "Absorbed spell damage is converted to
+	 * bonus damage on your next attack" the second. A row states the stat flat
+	 * 100; above nought means the row is worn, and the value is the most the
+	 * store may add as a share of the hit it is added to.
+	 *
+	 * SEPARATE FROM EACH OTHER AND FROM NOTHING WASTED'S. The shield was left
+	 * out of that store on 2026-09-24 and still is: it fills this one instead.
+	 */
+	static const TCHAR* ShieldAbsorbedAddedCapStat;
+	static const TCHAR* SpellAbsorbedAddedCapStat;
+
+	/**
+	 * Add what the energy shield absorbed from a blow on THIS character to its
+	 * store, if it wears the first row. Every blow the shield absorbs from,
+	 * ticks included. No time limit and no ceiling on the store: the spend's
+	 * cap is the only bound. Death clears it.
+	 */
+	void NoteShieldAbsorbedDamage(float Absorbed);
+
+	/**
+	 * Add what an absorbed spell would have dealt to THIS character, after its
+	 * own defences, to its store, if it wears the second row. Called only for
+	 * a spell `spell_absorb_chance` turned aside; not for immunity and not for
+	 * a reflected hit.
+	 */
+	void NoteSpellAbsorbedDamage(float WouldHaveDealt);
+
+	/**
+	 * Spend both stores on a blow about to be sent for `HitDamage`, and answer
+	 * what is added to it: each store, up to its own stat's share of
+	 * `HitDamage`. Each cap is measured against `HitDamage` itself, never
+	 * against a figure another store has already been added to. A store whose
+	 * row is worn is emptied either way, so anything above its cap is lost and
+	 * the next target of the same use gets nothing.
+	 *
+	 * THE CALLER DECIDES WHICH BLOW: any hit that is not a spell and not a
+	 * tick, the basic attack included. SPENT WHEN SENT, as Nothing Wasted's is.
+	 */
+	float SpendStoredAbsorbedDamage(float HitDamage);
+
+	/** What each store holds now, for the line above the skill bar. */
+	float StoredShieldAbsorbedDamageNow() const { return StoredShieldAbsorbedDamage; }
+	float StoredSpellAbsorbedDamageNow() const { return StoredSpellAbsorbedDamage; }
+
 	/** The shield rate this character's last regeneration step gave it, per
 	 *  second, which Shared Blood's minions share. Issue #1515. */
 	void NoteShieldRechargeRate(float PerSecond) { LastShieldRate = PerSecond; }
@@ -3244,6 +3293,12 @@ protected:
 
 	/** Nothing Wasted's store. Issue #1515. */
 	float StoredMitigatedDamage = 0.0f;
+
+	/** What the energy shield absorbed, kept for the next attack. See `ShieldAbsorbedAddedCapStat`. */
+	float StoredShieldAbsorbedDamage = 0.0f;
+
+	/** What absorbed spells would have dealt, kept for the next attack. See `SpellAbsorbedAddedCapStat`. */
+	float StoredSpellAbsorbedDamage = 0.0f;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

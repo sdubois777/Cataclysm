@@ -19644,4 +19644,738 @@ bool FCataclysmStackGrantScopeTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Absorbed damage stored for the next attack. Ruled 2026-10-07 under the owner's
+// delegation. Two stores beside Nothing Wasted's, each under its own cap stat:
+//
+//   "Damage absorbed by your energy shield is converted to bonus damage on your
+//   next attack"  -- `shield_absorbed_damage_added_to_next_attack_cap_percent`
+//   "Absorbed spell damage is converted to bonus damage on your next attack"
+//                 -- `spell_absorbed_damage_added_to_next_attack_cap_percent`
+//
+// EVERY STAT IS GIVEN BY HAND, as a row will give it: neither sentence has a row
+// yet, so none of these can see a missing or wrong one.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. No two are within two
+// metres of each other unless a swing has to reach.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmAbsorbedStoredTest
+{
+	using namespace CataclysmNothingWastedTest;
+
+	/** These stats, each flat, on a base of nothing. Replaces whatever the fighter wore. */
+	void Wear(FScopedFighter& Who, const TMap<FName, float>& Flats)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		for (const TPair<FName, float>& Each : Flats)
+		{
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+			Flat.Value = Each.Value;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(Each.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		}
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	FName ShieldCap() { return FName(UCataclysmAbilitySystemComponent::ShieldAbsorbedAddedCapStat); }
+	FName SpellCap() { return FName(UCataclysmAbilitySystemComponent::SpellAbsorbedAddedCapStat); }
+	FName MeleeCap() { return FName(UCataclysmAbilitySystemComponent::MitigatedAddedCapStat); }
+	FName AbsorbChance() { return FName(UCataclysmDamageCalculation::SpellAbsorbChanceStat); }
+
+	/** An energy shield of this much, under a maximum nothing here reaches. */
+	void SetShield(FScopedFighter& Who, float Shield)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100000.0f);
+		Who.Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Shield);
+	}
+
+	float ShieldHeldBy(const FScopedFighter& Who)
+	{
+		return Who.Get(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	}
+
+	float ShieldStore(const FScopedFighter& Who)
+	{
+		return Who.AbilitySystem->StoredShieldAbsorbedDamageNow();
+	}
+
+	float SpellStore(const FScopedFighter& Who)
+	{
+		return Who.AbilitySystem->StoredSpellAbsorbedDamageNow();
+	}
+
+	FGameplayTagContainer Spell()
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(UCataclysmSkillEffects::SpellTag());
+		return Tags;
+	}
+
+	FGameplayTagContainer Ranged()
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(UCataclysmDamageCalculation::RangedTag());
+		return Tags;
+	}
+
+	/** Pins `Cataclysm.SpellAbsorbRoll` until it goes out of scope. A roll below the chance absorbs. */
+	struct FPinnedAbsorbRoll
+	{
+		explicit FPinnedAbsorbRoll(float Roll)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.SpellAbsorbRoll")))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+		~FPinnedAbsorbRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShieldAbsorbedStoredTest,
+	"Cataclysm.AbsorbedDamageStored.WhatTheShieldAbsorbsIsStoredForItsWearerAndForNobodyElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The first store fills by exactly what the energy shield absorbed, from a hit
+ * the shield takes part of, from one it takes whole, and from a tick. A
+ * character without the stat takes the same blow on the same shield and stores
+ * nothing.
+ *
+ * STANDING: the wearer at the origin, the enemy 3 m along X, the plain character
+ * 20 m along Y. Nobody swings; every blow is `ApplyHit` by hand.
+ */
+bool FCataclysmShieldAbsorbedStoredTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Wear(Holder, {{ShieldCap(), 100.0f}});
+	Defences(Holder, 0.0f, 0.0f);
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	SetShield(Holder, 40.0f);
+	SetShield(Plain, 40.0f);
+
+	TestEqual(TEXT("before anything, nothing is stored"), ShieldStore(Holder), 0.0f);
+
+	// THE CONTROL: the same blow on the same shield, without the stat.
+	const float PlainTaken = Hit(Enemy, Plain, Melee());
+	const float PlainAbsorbed = 40.0f - ShieldHeldBy(Plain);
+	if (!TestTrue(TEXT("control: the plain character's shield absorbed part of the blow and "
+					   "health took the rest, which every figure below depends on"),
+				  PlainAbsorbed > 1.0f && PlainTaken > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a character without the stat stores nothing"), ShieldStore(Plain), 0.0f);
+
+	// A BLOW THE SHIELD TAKES PART OF.
+	const float Taken = Hit(Enemy, Holder, Melee());
+	const float Absorbed = 40.0f - ShieldHeldBy(Holder);
+	TestEqual(TEXT("the wearer's shield absorbed what the plain character's did"),
+			  Absorbed, PlainAbsorbed, 0.01f);
+	TestEqual(TEXT("and its health took what the plain character's did: storing changes "
+				   "nothing about the blow"),
+			  Taken, PlainTaken, 0.01f);
+	TestEqual(TEXT("the store holds exactly what the shield absorbed"),
+			  ShieldStore(Holder), Absorbed, 0.01f);
+	TestEqual(TEXT("which is the 40 the shield held"), ShieldStore(Holder), 40.0f, 0.01f);
+
+	// A BLOW THE SHIELD TAKES WHOLE.
+	SetShield(Holder, 1000.0f);
+	const float TakenBehindTheShield = Hit(Enemy, Holder, Melee());
+	const float AbsorbedWhole = 1000.0f - ShieldHeldBy(Holder);
+	if (!TestTrue(TEXT("set-up: a shield of 1000 absorbs from the next blow"), AbsorbedWhole > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("health takes nothing behind a shield that large"), TakenBehindTheShield, 0.0f, 0.01f);
+	TestEqual(TEXT("and the store grows by exactly what the shield absorbed"),
+			  ShieldStore(Holder), 40.0f + AbsorbedWhole, 0.01f);
+
+	// A TICK COUNTS.
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
+	const float StoredBeforeTick = ShieldStore(Holder);
+	const float ShieldBeforeTick = ShieldHeldBy(Holder);
+	Hit(Enemy, Holder, FGameplayTagContainer(), Tick);
+	const float AbsorbedFromTick = ShieldBeforeTick - ShieldHeldBy(Holder);
+	if (!TestTrue(TEXT("set-up: the shield absorbs from a damage over time tick"), AbsorbedFromTick > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tick adds exactly what the shield absorbed of it"),
+			  ShieldStore(Holder), StoredBeforeTick + AbsorbedFromTick, 0.01f);
+
+	// AND NEITHER OTHER STORE HEARD OF ANY OF IT.
+	TestEqual(TEXT("Nothing Wasted's store is empty: the shield does not fill it"), Stored(Holder), 0.0f);
+	TestEqual(TEXT("and so is the absorbed spell store"), SpellStore(Holder), 0.0f);
+
+	TestEqual(TEXT("the line above the skill bar reads a store as a whole number and names it"),
+			  UCataclysmSkillBar::StoredAttackDamageLine(123.4f, TEXT("shield")),
+			  FString(TEXT("Next attack +123 (shield)")));
+	TestEqual(TEXT("reads less than one point as one, not as nothing"),
+			  UCataclysmSkillBar::StoredAttackDamageLine(0.3f, TEXT("spell")),
+			  FString(TEXT("Next attack +1 (spell)")));
+	TestEqual(TEXT("and says nothing when nothing is stored"),
+			  UCataclysmSkillBar::StoredAttackDamageLine(0.0f, TEXT("shield")), FString());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellAbsorbedStoredTest,
+	"Cataclysm.AbsorbedDamageStored.AnAbsorbedSpellIsStoredAsWhatItWouldHaveDealtAndNothingElseIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The second store fills, when `spell_absorb_chance` turns a spell aside, by
+ * what that spell deals to a twin with the same armour and damage reduction and
+ * no absorb. A spell that is not absorbed, a blow that is not a spell, a wearer
+ * of the absorb without this stat, and a spell emptied by the no-damage window
+ * all store nothing.
+ *
+ * NOT COVERED: a reflected hit. `bReflected` is only ever true when `bAbsorbed`
+ * is false, and the store is filled on `bAbsorbed` alone.
+ *
+ * STANDING: the wearer at the origin, the enemy 3 m along X, and the twin, the
+ * character with the absorb alone and the immune one 20 m, 40 m and 60 m along
+ * Y. Nobody swings.
+ */
+bool FCataclysmSpellAbsorbedStoredTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	FPinnedAbsorbRoll Roll(29.0f);
+	if (!TestNotNull(TEXT("set-up: the absorb roll can be pinned"), Roll.Variable)
+		|| !TestTrue(TEXT("set-up: Type.Spell is in the vocabulary"),
+					 UCataclysmSkillEffects::SpellTag().IsValid()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Twin(World, FVector(0, 20 * M, 0));
+	FScopedFighter AbsorbOnly(World, FVector(0, 40 * M, 0));
+	FScopedFighter Immune(World, FVector(0, 60 * M, 0));
+	Wear(Holder, {{AbsorbChance(), 30.0f}, {SpellCap(), 100.0f}});
+	Wear(AbsorbOnly, {{AbsorbChance(), 30.0f}});
+	Wear(Immune, {{AbsorbChance(), 30.0f}, {SpellCap(), 100.0f}});
+	Defences(Enemy, 0.0f, 0.0f);
+	for (FScopedFighter* Defender : {&Holder, &Twin, &AbsorbOnly, &Immune})
+	{
+		Defences(*Defender, 1000.0f, 20.0f);
+	}
+
+	// THE CONTROL: what the spell deals after these defences, with no absorb.
+	const float Whole = Hit(Enemy, Twin, Spell());
+	if (!TestTrue(TEXT("control: the spell hurts a twin with the same defences and no absorb"),
+				  Whole > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the twin, which absorbed nothing, stores nothing"), SpellStore(Twin), 0.0f);
+
+	// A ROLL OF 29 AGAINST A CHANCE OF 30: ABSORBED, AND STORED.
+	if (!TestEqual(TEXT("an absorbed spell deals the wearer nothing"),
+				   Hit(Enemy, Holder, Spell()), 0.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the store holds what the spell would have dealt after the wearer's defences"),
+			  SpellStore(Holder), Whole, 0.01f);
+	TestEqual(TEXT("the shield store is empty: nothing was taken from a shield"), ShieldStore(Holder), 0.0f);
+	TestEqual(TEXT("and Nothing Wasted's is empty"), Stored(Holder), 0.0f);
+
+	// THE ABSORB WITHOUT THE STAT STORES NOTHING.
+	TestEqual(TEXT("a character with the absorb and not the stat also takes nothing"),
+			  Hit(Enemy, AbsorbOnly, Spell()), 0.0f, 0.001f);
+	TestEqual(TEXT("and stores nothing"), SpellStore(AbsorbOnly), 0.0f);
+
+	// A BLOW THAT IS NOT A SPELL IS NOT ABSORBED AND NOT STORED.
+	TestTrue(TEXT("a melee blow on the wearer gets through"), Hit(Enemy, Holder, Melee()) > 1.0f);
+	TestEqual(TEXT("and leaves the store as it was"), SpellStore(Holder), Whole, 0.01f);
+
+	// A ROLL AT THE CHANCE: NOT ABSORBED, NOT STORED.
+	Roll.Variable->Set(30.0f, ECVF_SetByConsole);
+	TestEqual(TEXT("a roll of 30 against a chance of 30: the spell deals the whole"),
+			  Hit(Enemy, Holder, Spell()), Whole, 0.01f);
+	TestEqual(TEXT("and a spell that is not absorbed leaves the store as it was"),
+			  SpellStore(Holder), Whole, 0.01f);
+
+	// THE NO-DAMAGE WINDOW EMPTIES THE SPELL, AND THAT IS NOT AN ABSORB.
+	Roll.Variable->Set(29.0f, ECVF_SetByConsole);
+	Immune.AbilitySystem->GrantDamageImmunity(3.0f);
+	if (!TestTrue(TEXT("set-up: the no-damage window is open"), Immune.AbilitySystem->IsDamageImmune()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a spell on an immune wearer deals nothing"), Hit(Enemy, Immune, Spell()), 0.0f, 0.001f);
+	TestEqual(TEXT("and stores nothing: immunity turned it aside, not the absorb"),
+			  SpellStore(Immune), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbsorbedStoredSpentTest,
+	"Cataclysm.AbsorbedDamageStored.TheNextHitThatIsNeitherASpellNorATickSpendsItUpToItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A spell and a tick each deal what a plain character's does and leave the
+ * store. The next blow that is neither adds the store and empties it. A store
+ * above the hit adds exactly the hit's own damage at a cap of 100, and half of
+ * it at a cap of 50, and the rest is lost.
+ *
+ * EVERY FIGURE IS AGAINST A CONTROL: a plain character striking the same target
+ * with the same tags.
+ *
+ * STANDING: the wearer at the origin, the enemy 3 m along X, and the target and
+ * the plain character 20 m and 40 m along Y. Nobody swings.
+ */
+bool FCataclysmAbsorbedStoredSpentTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	if (!TestTrue(TEXT("set-up: Type.Spell and Type.Ranged are in the vocabulary"),
+				  UCataclysmSkillEffects::SpellTag().IsValid()
+					  && UCataclysmDamageCalculation::RangedTag().IsValid()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Target(World, FVector(0, 20 * M, 0));
+	FScopedFighter Plain(World, FVector(0, 40 * M, 0));
+	Wear(Holder, {{ShieldCap(), 100.0f}});
+	for (FScopedFighter* Each : {&Holder, &Enemy, &Target, &Plain})
+	{
+		Defences(*Each, 0.0f, 0.0f);
+	}
+
+	SetShield(Holder, 40.0f);
+	Hit(Enemy, Holder, Melee());
+	const float Kept = ShieldStore(Holder);
+	if (!TestTrue(TEXT("set-up: something is stored"), Kept > 1.0f))
+	{
+		return false;
+	}
+
+	// A SPELL DOES NOT SPEND IT.
+	const float PlainSpell = Hit(Plain, Target, Spell());
+	TestEqual(TEXT("the wearer's spell deals what a plain character's does"),
+			  Hit(Holder, Target, Spell()), PlainSpell, 0.01f);
+	TestEqual(TEXT("and leaves the store as it was"), ShieldStore(Holder), Kept, 0.01f);
+
+	// A TICK DOES NOT SPEND IT.
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
+	const float PlainTick = Hit(Plain, Target, FGameplayTagContainer(), Tick);
+	TestEqual(TEXT("the wearer's tick deals what a plain character's does"),
+			  Hit(Holder, Target, FGameplayTagContainer(), Tick), PlainTick, 0.01f);
+	TestEqual(TEXT("and leaves the store as it was"), ShieldStore(Holder), Kept, 0.01f);
+
+	// THE NEXT BLOW THAT IS NEITHER SPENDS IT. No tags at all: not melee either.
+	const float PlainHit = Hit(Plain, Target, FGameplayTagContainer());
+	if (!TestTrue(TEXT("set-up: the store is below one plain hit, so the cap does not bind here"),
+				  PlainHit > 1.0f && Kept < PlainHit))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the next hit that is not a spell and not a tick deals the plain hit and the store"),
+			  Hit(Holder, Target, FGameplayTagContainer()), PlainHit + Kept, 0.01f);
+	TestEqual(TEXT("and the store is then empty"), ShieldStore(Holder), 0.0f);
+	TestEqual(TEXT("so the hit after it is plain"),
+			  Hit(Holder, Target, FGameplayTagContainer()), PlainHit, 0.01f);
+
+	// A STORE ABOVE THE HIT ADDS THE HIT'S OWN DAMAGE AND THE REST IS LOST.
+	const float PlainRanged = Hit(Plain, Target, Ranged());
+	for (int32 Each = 0; Each < 20 && ShieldStore(Holder) <= PlainRanged * 2.0f; ++Each)
+	{
+		SetShield(Holder, 1000.0f);
+		Hit(Enemy, Holder, Melee());
+	}
+	if (!TestTrue(TEXT("set-up: the store is well above one hit's damage"),
+				  PlainRanged > 1.0f && ShieldStore(Holder) > PlainRanged * 2.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at a cap of 100 a ranged hit deals exactly twice its plain damage"),
+			  Hit(Holder, Target, Ranged()), PlainRanged * 2.0f, 0.01f);
+	TestEqual(TEXT("and what was above that is lost, not kept"), ShieldStore(Holder), 0.0f);
+
+	// AND THE CAP IS THE STAT'S OWN FIGURE.
+	Wear(Holder, {{ShieldCap(), 50.0f}});
+	for (int32 Each = 0; Each < 20 && ShieldStore(Holder) <= PlainRanged * 2.0f; ++Each)
+	{
+		SetShield(Holder, 1000.0f);
+		Hit(Enemy, Holder, Melee());
+	}
+	if (!TestTrue(TEXT("set-up: the store is well above one hit's damage again"),
+				  ShieldStore(Holder) > PlainRanged * 2.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at a cap of 50 the same hit deals one and a half times its plain damage"),
+			  Hit(Holder, Target, Ranged()), PlainRanged * 1.5f, 0.01f);
+	TestEqual(TEXT("and the store is empty again"), ShieldStore(Holder), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbsorbedStoredFirstTargetTest,
+	"Cataclysm.AbsorbedDamageStored.OnlyTheFirstTargetOfAnAttackGetsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A 360 degree strike on two enemies adds the store to the nearer and not the
+ * farther, as Nothing Wasted's does and for the same reason: the first blow
+ * empties it, and `HitTargets` hits nearest first.
+ *
+ * STANDING: the wearer at the origin, the nearer enemy 2 m along X, the farther
+ * 4 m along Y, both inside the swing's 6 m, and the enemy that fills the store
+ * 30 m along Y, outside it.
+ */
+bool FCataclysmAbsorbedStoredFirstTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(2 * M, 0, 0));
+	FScopedFighter Far(World, FVector(0, 4 * M, 0));
+	FScopedFighter Enemy(World, FVector(0, 30 * M, 0));
+	Wear(Holder, {{ShieldCap(), 100.0f}});
+	for (FScopedFighter* Each : {&Holder, &Near, &Far, &Enemy})
+	{
+		Defences(*Each, 0.0f, 0.0f);
+	}
+
+	SetShield(Holder, 40.0f);
+	Hit(Enemy, Holder, Melee());
+	const float Kept = ShieldStore(Holder);
+	if (!TestTrue(TEXT("set-up: something is stored"), Kept > 1.0f))
+	{
+		return false;
+	}
+
+	UCataclysmStrikeSkill* Sweep = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Sweep"), TEXT("Type.Melee"));
+	if (!Sweep)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+	Near.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	Far.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	TestEqual(TEXT("the swing strikes both"), Sweep->SwingOnce(), 2);
+
+	const float Swing = Pool - Far.Health();
+	if (!TestTrue(TEXT("control: the farther enemy took the swing"), Swing > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the nearer enemy takes the swing and the store"),
+			  Pool - Near.Health(), Swing + Kept, 0.01f);
+	TestEqual(TEXT("and the store is empty, so the farther took the swing alone"),
+			  ShieldStore(Holder), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbsorbedStoredBasicAndProjectileTest,
+	"Cataclysm.AbsorbedDamageStored.ABasicAttackSpendsItAndSoDoesAProjectile",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Next attack" is not melee only and does not leave the basic attack out,
+ * ruled 2026-10-07. A strike in the basic attack slot spends the store through
+ * `UCataclysmSkillTemplate::HitTargets`, and a flying projectile spends it
+ * through `ACataclysmProjectile::HitOne`. Each is shown by damage dealt against
+ * a plain character using the same skill on a target of its own.
+ *
+ * STANDING: the wearer at the origin with its target 3 m along X; the plain
+ * character 80 m along Y with its target 3 m along X from there; the enemy that
+ * fills the store 40 m along Y. Each swing reaches 4 m and each projectile
+ * flies 12 m along X, so each reaches its own target and nothing else.
+ */
+bool FCataclysmAbsorbedStoredBasicAndProjectileTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(3 * M, 0, 0));
+	FScopedFighter Enemy(World, FVector(0, 40 * M, 0));
+	FScopedFighter Plain(World, FVector(0, 80 * M, 0));
+	FScopedFighter PlainTarget(World, FVector(3 * M, 80 * M, 0));
+	Wear(Holder, {{ShieldCap(), 100.0f}});
+	for (FScopedFighter* Each : {&Holder, &Target, &Enemy, &Plain, &PlainTarget})
+	{
+		Defences(*Each, 0.0f, 0.0f);
+	}
+
+	UCataclysmStrikeSkill* HolderBasic = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::BasicAttack, TEXT("Radius=4; Angle=360"),
+		TEXT("Basic"), TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* PlainBasic = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::BasicAttack, TEXT("Radius=4; Angle=360"),
+		TEXT("Basic"), TEXT("Type.Melee"));
+	UCataclysmProjectileSkill* HolderBolt = GrantSkill<UCataclysmProjectileSkill>(
+		Holder, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Test Bolt"), TEXT("Type.Projectile"));
+	UCataclysmProjectileSkill* PlainBolt = GrantSkill<UCataclysmProjectileSkill>(
+		Plain, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Test Bolt"), TEXT("Type.Projectile"));
+	if (!HolderBasic || !PlainBasic || !HolderBolt || !PlainBolt)
+	{
+		AddError(TEXT("Could not grant the basic attacks and the projectiles."));
+		return false;
+	}
+
+	// THE BASIC ATTACK.
+	SetShield(Holder, 40.0f);
+	Hit(Enemy, Holder, Melee());
+	const float KeptForTheSwing = ShieldStore(Holder);
+	TestEqual(TEXT("the plain character's basic attack strikes its target"), PlainBasic->SwingOnce(), 1);
+	TestEqual(TEXT("the wearer's basic attack strikes its target"), HolderBasic->SwingOnce(), 1);
+	const float PlainSwing = Pool - PlainTarget.Health();
+	if (!TestTrue(TEXT("set-up: something is stored, and it is below one plain basic attack"),
+				  KeptForTheSwing > 1.0f && KeptForTheSwing < PlainSwing))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's basic attack deals the plain one's damage and the store"),
+			  Pool - Target.Health(), PlainSwing + KeptForTheSwing, 0.01f);
+	TestEqual(TEXT("and the store is then empty"), ShieldStore(Holder), 0.0f);
+
+	// A PROJECTILE THAT FLIES.
+	SetShield(Holder, 40.0f);
+	Hit(Enemy, Holder, Melee());
+	const float KeptForTheBolt = ShieldStore(Holder);
+	Target.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	PlainTarget.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	TestTrue(TEXT("the plain character's projectile is fired"), Activate(Plain, PlainBolt));
+	TestTrue(TEXT("the wearer's projectile is fired"), Activate(Holder, HolderBolt));
+	ACataclysmProjectile* PlainFlying = PlainBolt->InFlight;
+	ACataclysmProjectile* HolderFlying = HolderBolt->InFlight;
+	if (!PlainFlying || !HolderFlying)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+	TestEqual(TEXT("the store waits while the projectile is in the air: it is spent at the hit"),
+			  ShieldStore(Holder), KeptForTheBolt, 0.01f);
+	CataclysmProjectileTest::FlyToCompletion(PlainFlying);
+	CataclysmProjectileTest::FlyToCompletion(HolderFlying);
+	const float PlainBoltDealt = Pool - PlainTarget.Health();
+	if (!TestTrue(TEXT("set-up: something is stored, and it is below one plain projectile hit"),
+				  KeptForTheBolt > 1.0f && KeptForTheBolt < PlainBoltDealt))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's projectile deals the plain one's damage and the store"),
+			  Pool - Target.Health(), PlainBoltDealt + KeptForTheBolt, 0.01f);
+	TestEqual(TEXT("and the store is then empty"), ShieldStore(Holder), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThreeStoresOnOneHitTest,
+	"Cataclysm.AbsorbedDamageStored.AllThreeStoresWornTakeOneHitToFourTimesItsOwnDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Nothing Wasted and both new stores worn, each at a cap of 100 and each
+ * holding more than twice the hit. One melee hit of 100 deals 400: itself and
+ * three caps, each measured against the hit's own damage. Ruled 2026-10-07.
+ *
+ * STANDING: the wearer at the origin, the enemy 3 m along X, and the target and
+ * the plain character 20 m and 40 m along Y. Nobody swings.
+ */
+bool FCataclysmThreeStoresOnOneHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	FPinnedAbsorbRoll Roll(0.0f);
+	if (!TestNotNull(TEXT("set-up: the absorb roll can be pinned"), Roll.Variable)
+		|| !TestTrue(TEXT("set-up: Type.Spell is in the vocabulary"),
+					 UCataclysmSkillEffects::SpellTag().IsValid()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Target(World, FVector(0, 20 * M, 0));
+	FScopedFighter Plain(World, FVector(0, 40 * M, 0));
+	Wear(Holder, {{MeleeCap(), 100.0f}, {ShieldCap(), 100.0f}, {SpellCap(), 100.0f}, {AbsorbChance(), 30.0f}});
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+
+	// NOTHING WASTED'S, BEHIND ARMOUR AND WITH NO SHIELD.
+	Defences(Holder, 1000.0f, 20.0f);
+	for (int32 Each = 0; Each < 20 && Stored(Holder) <= WeaponDamage * 2.0f; ++Each)
+	{
+		Hit(Enemy, Holder, Melee());
+	}
+	// THE SHIELD'S, WITH NO ARMOUR.
+	Defences(Holder, 0.0f, 0.0f);
+	for (int32 Each = 0; Each < 20 && ShieldStore(Holder) <= WeaponDamage * 2.0f; ++Each)
+	{
+		SetShield(Holder, 1000.0f);
+		Hit(Enemy, Holder, Melee());
+	}
+	// THE ABSORBED SPELLS', WITH NO SHIELD LEFT TO MATTER: the spell is emptied
+	// before a shield is touched.
+	for (int32 Each = 0; Each < 20 && SpellStore(Holder) <= WeaponDamage * 2.0f; ++Each)
+	{
+		Hit(Enemy, Holder, Spell());
+	}
+	if (!TestTrue(TEXT("set-up: each of the three stores is well above one hit's damage"),
+				  Stored(Holder) > WeaponDamage * 2.0f && ShieldStore(Holder) > WeaponDamage * 2.0f
+					  && SpellStore(Holder) > WeaponDamage * 2.0f))
+	{
+		return false;
+	}
+
+	const float PlainHit = Hit(Plain, Target, Melee());
+	const float Dealt = Hit(Holder, Target, Melee());
+	TestEqual(TEXT("one melee hit deals four times its own damage: itself and three caps of 100%"),
+			  Dealt, PlainHit * 4.0f, 0.01f);
+	TestEqual(TEXT("which is 400 for a weapon of 100"), Dealt, WeaponDamage * 4.0f, 0.01f);
+	TestEqual(TEXT("Nothing Wasted's store is empty"), Stored(Holder), 0.0f);
+	TestEqual(TEXT("the shield store is empty"), ShieldStore(Holder), 0.0f);
+	TestEqual(TEXT("and the absorbed spell store is empty"), SpellStore(Holder), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNothingWastedStaysMeleeOnlyTest,
+	"Cataclysm.AbsorbedDamageStored.ARangedHitSpendsTheTwoNewStoresAndLeavesNothingWastedsForAMeleeHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Nothing Wasted is unchanged. Its store does not fill from the shield, a
+ * ranged hit that is not a spell spends the two new stores and leaves it, and
+ * the melee hit after that spends it.
+ *
+ * STANDING: the wearer at the origin, the enemy 3 m along X, and the target and
+ * the plain character 20 m and 40 m along Y. Nobody swings.
+ */
+bool FCataclysmNothingWastedStaysMeleeOnlyTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	FPinnedAbsorbRoll Roll(0.0f);
+	if (!TestNotNull(TEXT("set-up: the absorb roll can be pinned"), Roll.Variable)
+		|| !TestTrue(TEXT("set-up: Type.Spell and Type.Ranged are in the vocabulary"),
+					 UCataclysmSkillEffects::SpellTag().IsValid()
+						 && UCataclysmDamageCalculation::RangedTag().IsValid()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Target(World, FVector(0, 20 * M, 0));
+	FScopedFighter Plain(World, FVector(0, 40 * M, 0));
+	Wear(Holder, {{MeleeCap(), 100.0f}, {ShieldCap(), 100.0f}, {SpellCap(), 100.0f}, {AbsorbChance(), 30.0f}});
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+
+	// NOTHING WASTED'S STORE, FROM ARMOUR, WITH NO SHIELD.
+	Defences(Holder, 1000.0f, 20.0f);
+	Hit(Enemy, Holder, Melee());
+	const float KeptForMelee = Stored(Holder);
+	if (!TestTrue(TEXT("set-up: armour and damage reduction removed something"), KeptForMelee > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with no shield, the shield store is empty"), ShieldStore(Holder), 0.0f);
+
+	// THE SHIELD'S STORE, WITH NO ARMOUR: Nothing Wasted's does not move.
+	Defences(Holder, 0.0f, 0.0f);
+	SetShield(Holder, 20.0f);
+	Hit(Enemy, Holder, Melee());
+	const float KeptFromShield = ShieldStore(Holder);
+	TestEqual(TEXT("the shield store holds the 20 the shield absorbed"), KeptFromShield, 20.0f, 0.01f);
+	TestEqual(TEXT("and Nothing Wasted's store did not fill from the shield"),
+			  Stored(Holder), KeptForMelee, 0.01f);
+
+	// THE ABSORBED SPELL'S STORE.
+	Hit(Enemy, Holder, Spell());
+	const float KeptFromSpell = SpellStore(Holder);
+	if (!TestTrue(TEXT("set-up: an absorbed spell is stored"), KeptFromSpell > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and Nothing Wasted's store did not fill from the spell"),
+			  Stored(Holder), KeptForMelee, 0.01f);
+
+	// A RANGED HIT THAT IS NOT A SPELL.
+	const float PlainRanged = Hit(Plain, Target, Ranged());
+	if (!TestTrue(TEXT("control: a plain ranged hit hurts"), PlainRanged > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a ranged hit deals its own damage and both new stores, each up to the hit"),
+			  Hit(Holder, Target, Ranged()),
+			  PlainRanged + FMath::Min(KeptFromShield, PlainRanged) + FMath::Min(KeptFromSpell, PlainRanged),
+			  0.01f);
+	TestEqual(TEXT("the shield store is empty"), ShieldStore(Holder), 0.0f);
+	TestEqual(TEXT("the absorbed spell store is empty"), SpellStore(Holder), 0.0f);
+	TestEqual(TEXT("and Nothing Wasted's store is exactly as it was: a ranged hit does not spend it"),
+			  Stored(Holder), KeptForMelee, 0.01f);
+
+	// AND THE MELEE HIT AFTER IT.
+	const float PlainMelee = Hit(Plain, Target, Melee());
+	if (!TestTrue(TEXT("set-up: Nothing Wasted's store is below one plain melee hit"),
+				  KeptForMelee < PlainMelee))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the next melee hit deals its own damage and Nothing Wasted's store"),
+			  Hit(Holder, Target, Melee()), PlainMelee + KeptForMelee, 0.01f);
+	TestEqual(TEXT("and that store is then empty"), Stored(Holder), 0.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

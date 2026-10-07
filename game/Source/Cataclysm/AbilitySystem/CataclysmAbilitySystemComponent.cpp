@@ -2425,6 +2425,11 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// blow spends it or the character dies. Issue #1515.
 	StoredMitigatedDamage = 0.0f;
 
+	// AND THE TWO STORES OF ABSORBED DAMAGE, which wait the same way for the
+	// next attack. Ruled 2026-10-07.
+	StoredShieldAbsorbedDamage = 0.0f;
+	StoredSpellAbsorbedDamage = 0.0f;
+
 	// THE HEALTH DEBT, WHAT IS OWED AND WHEN IT FALLS DUE TOGETHER, the pair
 	// `UCataclysmHealthDebt::ClearOnKill` writes. Issue #1013, answered by the
 	// same ruling: every character, The Reckoning included. That keystone's debt
@@ -4163,6 +4168,68 @@ float UCataclysmAbilitySystemComponent::SpendStoredMitigatedDamage(float HitDama
 	}
 	const float Added = FMath::Min(StoredMitigatedDamage, HitDamage * CapPercent / 100.0f);
 	StoredMitigatedDamage = 0.0f;
+	return Added;
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::ShieldAbsorbedAddedCapStat =
+	TEXT("shield_absorbed_damage_added_to_next_attack_cap_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::SpellAbsorbedAddedCapStat =
+	TEXT("spell_absorbed_damage_added_to_next_attack_cap_percent");
+
+void UCataclysmAbilitySystemComponent::NoteShieldAbsorbedDamage(float Absorbed)
+{
+	if (Absorbed <= 0.0f
+		|| StatForSkill(FName(ShieldAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f)
+			   <= 0.0f)
+	{
+		return;
+	}
+	StoredShieldAbsorbedDamage += Absorbed;
+}
+
+void UCataclysmAbilitySystemComponent::NoteSpellAbsorbedDamage(float WouldHaveDealt)
+{
+	if (WouldHaveDealt <= 0.0f
+		|| StatForSkill(FName(SpellAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f)
+			   <= 0.0f)
+	{
+		return;
+	}
+	StoredSpellAbsorbedDamage += WouldHaveDealt;
+}
+
+float UCataclysmAbilitySystemComponent::SpendStoredAbsorbedDamage(float HitDamage)
+{
+	if (HitDamage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// EACH STORE UNDER ITS OWN CAP, AND EACH CAP AGAINST THE HIT'S OWN DAMAGE,
+	// so wearing both adds up to twice the hit and neither cap grows with what
+	// the other added. A store whose row is no longer worn is left as it is,
+	// as Nothing Wasted's is.
+	float Added = 0.0f;
+	if (StoredShieldAbsorbedDamage > 0.0f)
+	{
+		const float CapPercent =
+			StatForSkill(FName(ShieldAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f);
+		if (CapPercent > 0.0f)
+		{
+			Added += FMath::Min(StoredShieldAbsorbedDamage, HitDamage * CapPercent / 100.0f);
+			StoredShieldAbsorbedDamage = 0.0f;
+		}
+	}
+	if (StoredSpellAbsorbedDamage > 0.0f)
+	{
+		const float CapPercent =
+			StatForSkill(FName(SpellAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f);
+		if (CapPercent > 0.0f)
+		{
+			Added += FMath::Min(StoredSpellAbsorbedDamage, HitDamage * CapPercent / 100.0f);
+			StoredSpellAbsorbedDamage = 0.0f;
+		}
+	}
 	return Added;
 }
 

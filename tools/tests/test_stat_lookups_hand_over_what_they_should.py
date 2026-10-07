@@ -85,6 +85,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: flag by which a target refuses an ailment, and changed what two existing
 #: lookups hand over: the defender's stats and the duration of an effect on a
 #: character are now asked with the tags of what arrives.
+#: Absorbed damage stored added two more on 2026-10-07, the caps of the two
+#: stores, each asked where its store fills and where it is spent.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -577,6 +579,16 @@ INVENTORY = {
      'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
         "Nothing Wasted's cap, asked of the holder as damage is stored and as "
         'a melee hit spends it; a share of the hit, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ShieldAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f'):
+        "the cap of the store of what the energy shield absorbed, asked of the "
+        'wearer as it is stored and as the next attack spends it; a share of '
+        'the hit, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SpellAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f'):
+        "the cap of the store of absorbed spell damage, asked of the wearer as "
+        'it is stored and as the next attack spends it; a share of the hit, '
+        'not a blow modifier',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(RendPercentStat), FGameplayTagContainer(), 0.0f'):
         "Rendering Blows' share, asked of the striker as a count of landed "

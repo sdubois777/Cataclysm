@@ -318,6 +318,16 @@ FString UCataclysmSkillBar::StoredDamageLine(float Stored)
 						   FMath::Max(1, FMath::RoundToInt(Stored)));
 }
 
+FString UCataclysmSkillBar::StoredAttackDamageLine(float Stored, const TCHAR* From)
+{
+	if (Stored <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Next attack +%d (%s)"),
+						   FMath::Max(1, FMath::RoundToInt(Stored)), From);
+}
+
 FString UCataclysmSkillBar::NextSpellCooldownLine(float Seconds)
 {
 	if (Seconds <= 0.0f)
