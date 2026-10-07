@@ -101,6 +101,8 @@ CONSTANTS = {
     # AND THE TWO THAT MAKE A USE HIT ITS OWN USER, by the owner's decision of 2026-10-06.
     "UseHitsItsUserAction": "use_hits_its_user",
     "UseBackfiresAction": "use_backfires",
+    # AND THE ONE THAT EXPLODES A KILLED ENEMY FOR ITS OVERKILL, ruled 2026-10-07.
+    "ExplodeVictimForOverkillAction": "explode_victim_for_overkill",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -226,6 +228,11 @@ def test_the_generator_knows_exactly_the_hit_its_user_names_the_engine_has() -> 
     names = engine_names()
     assert gen.USE_HITS_ITS_USER_ACTIONS == (
         names["UseHitsItsUserAction"], names["UseBackfiresAction"])
+
+
+def test_the_generator_accepts_exactly_the_overkill_explosion_name_the_engine_has() -> None:
+    """Ruled 2026-10-07."""
+    assert gen.OVERKILL_EXPLOSION_ACTION == engine_names()["ExplodeVictimForOverkillAction"]
 
 
 def test_the_generator_knows_exactly_the_hit_all_nearby_name_the_engine_has() -> None:

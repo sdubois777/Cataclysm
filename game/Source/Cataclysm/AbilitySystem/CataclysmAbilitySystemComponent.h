@@ -653,6 +653,43 @@ public:
 	bool PendingUseNoDamage() const { return bPendingUseNoDamage; }
 	float PendingUseIncrease() const { return PendingUseIncreasePercent; }
 
+	/**
+	 * The share of its overkill the enemy just killed explodes for, in per cent, when a worn row says so; nought
+	 * otherwise. Read once and cleared. Ruled 2026-10-07, for "Enemies killed by you explode for the overkill
+	 * amount". See `FCataclysmPoolAction::bExplodeVictimForOverkill`.
+	 *
+	 * WHY THE ROW DOES NOT EXPLODE ANYTHING ITSELF. `ActOnEvent` runs its rows one level deep and no deeper, so a
+	 * kill made from inside it reaches no row. An enemy the explosion kills is a kill of its own and must explode
+	 * in turn, so the explosion is made AFTER the loop has returned. The loop keeps the share here, the largest
+	 * of the rows that asked, and the caller takes it.
+	 *
+	 * WHAT THE SECOND PART MUST DO, at the one place the wearer raises `kill`. NOT BUILT YET.
+	 *   1. Raise the event as now: `ActOnEvent(FName(TEXT("kill")), ...)`.
+	 *   2. When that has returned, call this.
+	 *   3. If the answer is above nought, call `UCataclysmSkillEffects::ExplodeForOverkill` with the wearer as
+	 *      the killer, the death notice's victim and location, the overkill of the blow that killed, and this
+	 *      share. That overkill is `FCataclysmDamageResult::Overkill` of the lethal blow, which the death notice
+	 *      does not carry yet: it has to be kept on the last blow on record and copied to the notice.
+	 * Taken before the explosion and not after, so an enemy the explosion kills finds nothing left over from the
+	 * kill before it and records its own.
+	 *
+	 * NOUGHT, AND NOTHING CLEARED, WHILE THE EVENT LOOP IS RUNNING. A judgement by the writing session. A row
+	 * that acts inside the loop can kill, and that death reaches the kill site while the rows of the first kill
+	 * are still being read. Its `kill` event reaches no row, as the one level rules, so it explodes nothing; and
+	 * what the first kill recorded stays here for the first kill to take.
+	 */
+	float TakePendingOverkillExplosionSharePercent()
+	{
+		if (PoolActionDepth > 0)
+		{
+			return 0.0f;
+		}
+		const float Was = PendingOverkillExplosionSharePercent;
+		PendingOverkillExplosionSharePercent = 0.0f;
+		return Was;
+	}
+	float PendingOverkillExplosionShare() const { return PendingOverkillExplosionSharePercent; }
+
 	/** The skill a row asked to repeat and that has not been made yet, or none. */
 	FName PendingRepeatSkill() const { return PendingRepeatName; }
 	FVector PendingRepeatAim() const { return PendingRepeatAimPoint; }
@@ -1012,6 +1049,13 @@ public:
 	 */
 	static const TCHAR* UseHitsItsUserAction;
 	static const TCHAR* UseBackfiresAction;
+
+	/**
+	 * The action that makes an enemy the wearer kills explode for its overkill, with the value as the share in
+	 * per cent. Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name as
+	 * `OVERKILL_EXPLOSION_ACTION`. See `FCataclysmPoolAction::bExplodeVictimForOverkill`.
+	 */
+	static const TCHAR* ExplodeVictimForOverkillAction;
 
 	/** The share a backfire deals its user, in per cent: "dealing half damage to you". */
 	static constexpr float BackfireSharePercent = 50.0f;
@@ -3729,6 +3773,9 @@ protected:
 	float PendingUseHitsAllCm = 0.0f;
 	float PendingUseSelfHitSharePercent = 0.0f;
 	float PendingFollowThroughUntilSeconds = -1.0f;
+
+	/** What the rows recorded for the kill in hand. See `TakePendingOverkillExplosionSharePercent`. */
+	float PendingOverkillExplosionSharePercent = 0.0f;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */
 	TMap<TWeakObjectPtr<const AActor>, float> ShoulderedThroughUntil;

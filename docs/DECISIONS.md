@@ -2,6 +2,220 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Overkill explosion, first part: a blow records its overkill, and the explosion and its row action exist. Nothing calls the explosion at a kill yet; not built or run
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (the field
+`FCataclysmDamageResult::Overkill`, written beside the clamp at the end of `Resolve`);
+`CataclysmVitalAttributeSet.cpp` (one line that empties it for a blow that no longer empties health);
+`CataclysmSkillEffects.h` and `.cpp` (`ExplodeForOverkill` and `OverkillExplosionRadiusCm`);
+`CataclysmStatPipeline.h` (`FCataclysmPoolAction::bExplodeVictimForOverkill`);
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`ExplodeVictimForOverkillAction`, the pending share,
+`TakePendingOverkillExplosionSharePercent`, and the case in `ActOnEvent`);
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the loader); `tools/generate_datatables.py`
+(`OVERKILL_EXPLOSION_ACTION` and its checks); four tests in
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; `tools/tests/test_generate_datatables.py` and
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`.
+**Not built and not run.** The C++ has not been compiled, no automation test has been run and no guard proof has
+been run. **No row is authored. Nothing in the game calls the explosion**: see "Not built yet: the second part".
+
+### What it is for
+
+One enchantment sentence, in `game/Data/EnchantmentsPositive.csv` with no effect row:
+
+> "Enemies killed by you explode for the overkill amount"
+
+| What the row needs | |
+|---|---|
+| Action | `explode_victim_for_overkill` |
+| Action Event | `kill`, and no other |
+| Value Low, Value High | 100, 100: the share of the overkill, in per cent |
+| Fraction Of, Value Kind, Scale | empty; each is refused |
+
+### Where the code did not match what the writing session was told, said first
+
+- **The explosion fires the killer's on-hit rows that carry no tag scope.** The writing session was told a direct
+  blow fires no on-hit rows. Read in the code, it does: `UCataclysmSkillEffects::ApplyDirectDamage` reaches
+  `UCataclysmCombatEvents::NoteBlow`, which announces every resolved blow, and
+  `ACataclysmPlayerCharacter::OnSomethingWasHit` raises `hit_dealt` (and `first_hit_dealt`) for any blow of the
+  player's that is not a tick and was not evaded. The explosion names no skill, so a row scoped to a skill's tags
+  is asked with none. **Nothing was done about it**: stopping it needs a mark on the hit notice, which is in the
+  files another session is editing. It is the same for every other direct blow in a player's name, the Smite a
+  worn row fires and a reflected block among them. **For the coordinating session to rule.**
+- **A direct blow can critically strike unless its delivery says not.** The writing session was told it cannot. The
+  ruling is that the explosion never does, so `bCannotCriticallyStrike` is set on its delivery, as the reflected
+  block sets it.
+- **Leech is not ruled and is left as any direct blow's**: the explosion sets no `bCannotLeech`, so a killer with
+  leech leeches from it. **For the coordinating session to rule.**
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **The overkill is the blow's damage where health takes the remainder, less the health the enemy held, never
+   below nought.** Written in `UCataclysmDamageCalculation::Resolve` beside the clamp that writes `DealtToHealth`,
+   on a new field. Nought for every blow that does not exceed the health held. Nothing else in the calculation
+   changes: leech and everything that reads `DealtToHealth` are untouched. A labelled judgement by the coordinating
+   session under the owner's delegation, 2026-10-07.
+2. **The reach is 5 metres from the body.** The project's "nearby" at a death. The Path of Exile pages read give 2
+   metres. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+3. **The share is 100: the whole overkill.** The game read gives 30%. A labelled judgement by the coordinating
+   session under the owner's delegation, 2026-10-07.
+4. **Direct damage of no damage type, dealt by the killer**, delivered as area damage and never retaliated against,
+   as `ACataclysmMinion::DeathBlast` delivers a blast at a death. It cannot critically strike. **The alternative
+   not taken:** the killing blow's own damage type. A labelled judgement by the coordinating session under the
+   owner's delegation, 2026-10-07.
+5. **Enemies of the killer only, and the body itself is left out.** It does not hit the killer or the killer's
+   side. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+6. **Chains are allowed and bound themselves.** An enemy the explosion kills has its own overkill and explodes in
+   turn. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+7. **A lethal damage over time tick counts**, by the owner's rule of 2026-09-14 that a kill finished by damage over
+   time is credited to the character. A labelled judgement by the coordinating session under the owner's
+   delegation, 2026-10-07.
+8. **The death notice's killer decides whose kill it is.** A labelled judgement by the coordinating session under
+   the owner's delegation, 2026-10-07. Who that is today is under "Whose kill it is".
+
+### For the owner's play-check
+
+- **The worst case of a chain.** Each link's damage is at most the overkill before it, so a chain's total is
+  bounded by the first overkill times the number of enemies within reach, and it ends when an explosion kills
+  nobody. One very large blow on a weak enemy in a tight pack of weak enemies clears the pack.
+- **Five metres is larger than the game read**, and the whole overkill is more than three times its share.
+- **Each enemy's own block, armour, damage reduction and energy shield meet the explosion**, as they meet any
+  blow. It is area damage, so it is not evaded.
+- **The killer's unscoped on-hit rows fire on every enemy the explosion strikes**, and the killer leeches from it,
+  unless the two questions above are ruled otherwise.
+
+### Research
+
+Read by the coordinating session and handed to the writing session, which did not fetch the pages again.
+
+Read, with text: https://poe2db.tw/us/Overkill ("Overkill damage is any damage from a Hit in excess of the enemy's
+remaining Life when it is killed."; Trampletoe: "Deal 30% of Overkill damage to enemies within 2 metres of the enemy
+killed"), https://poedb.tw/us/Overkill_damage (Herald of Ash: "if you kill an enemy, other enemies near them will be
+burned based on the overkill damage."), https://poedb.tw/us/Explode ("Enemies you Kill have a (10—15)% chance to
+Explode, dealing a tenth of their maximum Life as Physical Damage"). NOT read: Last Epoch, maxroll.
+
+**What the pages settle:** overkill is defined from a hit; the explosion is centred on the body; a small radius; a
+share.
+
+**What is this game's judgement:** 5 metres, the whole overkill, a tick counting, chains.
+
+### What the later steps do to the overkill
+
+Read in code, not run. `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` has steps after `Resolve` returns.
+
+- **The bleed conversion** acts only on a character whose ability system is converting damage to bleeding, the
+  window the Masochist's passive opens: a player. So it does not come into an enemy's death.
+  `UCataclysmDamageConversion::ConvertIfActive` asks that flag; the writing session did not search for everything
+  that sets it.
+- **Sacrificial Bond's sharing** is applied to the figure already clamped to the enemy's remaining health, so a
+  shared blow is never lethal and a lethal blow has nothing shared.
+- **So the overkill is the blow's damage before the clamp less the health the enemy had.**
+- **The steps that empty or lower a blow** (the boss's floor on a share tick, the Sacrificial Ward, an immune,
+  absorbing or reflecting wearer, the two saves that leave one point, and a creature no damage reaches) each leave
+  `DealtToHealth` below the health held. One line after all of them sets the overkill to nought for such a blow,
+  since a blow that deals nothing kills nothing.
+- **Two steps keep a creature alive and leave the overkill on the blow**: Sacrificial Bond's sharing and the Unholy
+  Sigil, which both act after the result is fixed. The blow is not lethal and is announced as not lethal. **So the
+  second part must take the overkill only from the blow the death followed**, and never read a blow's overkill as
+  a sign that it killed.
+
+### Whose kill it is, read on this branch and not run
+
+- **A kill by the player's minion**: the minion's, unless the summoner holds the Conduit keystone
+  (`minion_hits_count_as_yours`), and then the summoner's. `UCataclysmCombatEvents::AttackerOf`,
+  `CataclysmCombatEvents.cpp` lines 64 to 112; `NoteBlow` writes it to the last blow at line 163 and `NoteDeath`
+  reads it as the killer at line 249.
+- **A kill by a sweep of the player's ground zone**: the zone's owner, so the player for a zone a player's skill
+  laid. `ACataclysmGroundZone` deals the sweep with `AActor* Source = GetOwner()` as the instigator
+  (`CataclysmGroundZone.cpp` lines 374 and 466) and names no other dealer, so `AttackerOf` answers the instigator.
+- **A kill by a damage over time tick the player applied**: the player. The effect's context is made with the
+  applier as instigator (`UCataclysmSkillEffects::ApplyDamageOverTime`, `CataclysmSkillEffects.cpp` line 1951 once this change is in), every tick goes through `NoteBlow`, and
+  `AttackerOf` answers that instigator; for a burn a minion applied the minion rule above holds.
+
+### How it is built
+
+- **The field.** `Result.Overkill` is written on the line after `Result.DealtToHealth`, from the same damage and the
+  same health. A blow on a character already at nought records none.
+- **The explosion.** `UCataclysmSkillEffects::ExplodeForOverkill(Killer, Victim, At, Overkill, SharePercent)` finds
+  the killer's enemies within `OverkillExplosionRadiusCm` of `At` with the search every skill uses, leaves the
+  victim out, and sends each `Overkill * SharePercent / 100` through `ApplyDirectDamage`. It returns how many it
+  sent a blow at. A target is asked again whether it is still there and alive before it is struck.
+- **The row action only records.** `ActOnEvent` runs its rows one level deep, and a kill made from inside it
+  reaches no row. So the case for `bExplodeVictimForOverkill` keeps the row's share as a pending value, the largest
+  of the rows that asked, and explodes nothing. `TakePendingOverkillExplosionSharePercent` hands it over once.
+- **A new `kill` event starts from nought**, so a share nobody took is not carried into the next kill.
+- **The generator** carries `explode_victim_for_overkill` through on `kill`, refuses it on any other event, takes a
+  value above 0 and up to 1000 (`MAX_OVERKILL_EXPLOSION_SHARE`, a bound for typing mistakes as `MAX_USE_INCREASE`
+  is), and refuses a Fraction Of, a Value Kind or a Scale. It is not an action that waits, so a Trigger Cooldown is
+  refused by the rule already there.
+
+### Judgements by the writing session, 2026-10-07, for the coordinating session to confirm
+
+- **A blow on a character whose health is already nought records no overkill.** A judgement by the writing session:
+  it kills nothing.
+- **One line empties the overkill after all the defender's own steps, and not one line in each step.** A judgement
+  by the writing session: a step added later is covered, and two lines guarding one thing cannot each be
+  guard-proven.
+- **The explosion carries no weapon sub-type** (`bCarriesNoWeaponSubType`). A judgement by the writing session, so
+  that what is sent is the overkill and not the overkill through the killer's weapon.
+- **"No damage type" is written as no type on the delivery**, which asks the attacker. A player's blow is untyped.
+  A creature that killed while wearing the row would give its own type. A judgement by the writing session; no
+  creature wears a row.
+- **Of two rows, the larger share is kept**, as a use that hits its own user keeps the largest. A judgement by the
+  writing session; there is one sentence.
+- **The take answers nought, and clears nothing, while the event loop is running.** A judgement by the writing
+  session. A row acting inside the loop can kill; that death reaches the kill site while the first kill's rows are
+  still being read. Its own `kill` event reaches no row, by the one-level rule, so it explodes nothing, and what
+  the first kill recorded stays for the first kill.
+- **No roll and no trigger cooldown.** A judgement by the writing session: the sentence states neither.
+
+### Not built yet: the second part
+
+It waits because another session is editing the death notice and the kill event, and this change touches neither
+`CataclysmCombatEvents.h` or `.cpp` nor `CataclysmPlayerCharacter.cpp`.
+
+- **The field on the death notice, carried from the last blow.** `FCataclysmLastBlow` keeps the overkill of the
+  blow when it is lethal, and `NoteDeath` copies it to `FCataclysmDeathNotice`.
+- **The call at the kill site after the event loop returns.** Where the player raises `kill`: raise it, then call
+  `TakePendingOverkillExplosionSharePercent`, and if the answer is above nought call `ExplodeForOverkill` with the
+  notice's victim, location and overkill. The header comment of the take function says the same.
+- **The automatic chain**, which follows from that call: the explosion's own kills come back to the same place.
+- **Tests through a real kill**, a chain among them, and a test that wears the real row once it is authored.
+
+### Tests
+
+**None of the Unreal tests has been run.** Four, at the end of `CataclysmSkillTemplateTests.cpp`, on the rig the
+absorbed-damage tests use. A fighter of that rig has no team and so is every other fighter's enemy; an ally of
+the killer is made by `SetOwner`.
+
+- `Cataclysm.OverkillExplosion.ABlowRecordsHowFarItWentPastTheHealthHeld`: against the same blow on a character
+  with health to spare, a blow on 40 health records the rest as overkill; a smaller blow, an exactly lethal one
+  and one on a character at nought record none; a lethal tick records the figure the lethal hit did.
+- `Cataclysm.OverkillExplosion.TheExplosionDealsItsShareToEnemiesNearTheBodyAndToNobodyElse`: against a plain
+  direct blow of the overkill, an enemy 3 metres from the body takes that; one 6 metres away, the victim, the
+  killer 4 metres away and the killer's ally 3 metres away take nothing; half at a share of 50; nobody at an
+  overkill or a share of nought. A control first strikes the body and the bystander, with no victim named and no
+  ally made, so each is shown to stand inside the reach.
+- `Cataclysm.OverkillExplosion.AChainOfThreeByHandDealsLessAtEachLink`: an explosion of 100 at the first body
+  empties an enemy holding 40; that blow's recorded overkill is the rest; a second explosion called by hand at the
+  second body deals the third exactly that smaller figure. **Each link is called by the test.**
+- `Cataclysm.OverkillExplosion.TheRowOnlyRecordsItsShareForTheKillSiteToTake`: raising `kill` on a wearer records
+  the row's share, hurts nobody, and is taken once; a character without the row and another event record nothing;
+  a share nobody took is not carried into the next kill; of two rows the larger is kept.
+
+In `tools/tests/test_generate_datatables.py`, `TestOverkillExplosion`: made-up rows carried through on `kill` and
+at the bound, and refused on six other events, at three shares outside the bound, with a fraction, a value kind or
+a scale, and with a trigger cooldown. `test_charge_and_placed_action_names_match_the_engine.py` holds the name to
+the engine's.
+
+### Run
+
+**Not run.** No Unreal compile, no automation test and no guard proof has been run for this change. The Python
+suite, the lint and `tools/check_resolved_cpp.py --changed` were run by the writing session after this entry was
+written; their output is in that session's hand-over and not here, because nothing may be recorded before the run
+that proves it.
+
+---
+
 ## 2026-10-07 — Absorbed damage stored: what the energy shield absorbs, and what an absorbed spell would have dealt, are each kept and added to the next attack. Engine and stat names only; not built or run
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (two stat names, two

@@ -3042,6 +3042,72 @@ class TestReflectAndTheBlockCount:
         with pytest.raises(gen.DataError, match="from 2"):
             gen.enchantment_effects(self.wave(tmp_path, {"Every Nth": 1}))
 
+class TestOverkillExplosion:
+    """A row that makes an enemy its wearer kills explode for its overkill.
+    Ruled 2026-10-07: "Enemies killed by you explode for the overkill amount".
+    The value is the share of the overkill, in per cent, and the event is
+    `kill` and no other."""
+
+    WORDS = "Enemies killed by you explode for the overkill amount"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnKill, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def explode(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "explode_victim_for_overkill", "Action Event": "kill",
+                  "Value Low": 100, "Value High": 100}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "overkill.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_row_is_carried_through_on_kill_with_its_share_and_nothing_else(self, tmp_path):
+        out = gen.enchantment_effects(self.explode(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["Scale"],
+                out[0]["TriggerCooldown"]) == (
+            "explode_victim_for_overkill", "kill", 100.0, 100.0, "", "", 0.0)
+
+    @pytest.mark.parametrize("event", ["hit_dealt", "critical_strike", "skill_use",
+                                       "block", "timed", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only a kill has a victim"):
+            gen.enchantment_effects(self.explode(tmp_path, {"Action Event": event}))
+
+    def test_a_share_at_the_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.explode(
+            tmp_path, {"Value Low": gen.MAX_OVERKILL_EXPLOSION_SHARE,
+                       "Value High": gen.MAX_OVERKILL_EXPLOSION_SHARE}))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (1000.0, 1000.0)
+
+    # ONE NUMBER EACH, because the sentence states no range and a range is
+    # refused for that before the share is looked at.
+    @pytest.mark.parametrize("low, high", [(0, 0), (-5, -5), (1001, 1001)])
+    def test_a_share_of_nought_or_past_the_bound_is_refused(self, tmp_path, low, high):
+        with pytest.raises(gen.DataError, match="The share is above 0 and up to 1000"):
+            gen.enchantment_effects(self.explode(
+                tmp_path, {"Value Low": low, "Value High": high}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError, match="a share of the overkill and nothing else"):
+            gen.enchantment_effects(self.explode(tmp_path, {column: written}))
+
+    def test_a_trigger_cooldown_is_refused_because_the_sentence_has_none(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Trigger Cooldown"):
+            gen.enchantment_effects(self.explode(tmp_path, {"Trigger Cooldown": 1}))
+
+
 class TestUseIncreaseSize:
     """The size of a use's rolled increase is the row's Scale Step and Scale Step
     High. Ruled 2026-10-06: "Your cooldown abilities have a 5%-20% chance to deal

@@ -1104,6 +1104,44 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 	return true;
 }
 
+int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* Victim, const FVector& At,
+												 float Overkill, float SharePercent)
+{
+	const float Damage = Overkill * SharePercent / 100.0f;
+	if (!IsValid(Killer) || Overkill <= 0.0f || SharePercent <= 0.0f || Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Killer->GetWorld(), Killer, At, OverkillExplosionRadiusCm);
+
+	// AREA DAMAGE, NOT RETALIATED AGAINST, as `ACataclysmMinion::DeathBlast` delivers a blast at a death. AND
+	// NEVER A CRITICAL STRIKE, said here because a direct blow in a player's name is rolled for one otherwise.
+	// AND NO WEAPON SUB-TYPE, so what is sent is the overkill and not the overkill through the killer's weapon.
+	// No damage type is written: `NAME_None` asks the attacker, and a player's blow is untyped.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+
+	int32 Struck = 0;
+	for (AActor* Target : Caught)
+	{
+		// ASKED AGAIN, because a blow earlier in this loop may have killed it through a chain.
+		if (!IsValid(Target) || Target == Victim || IsDead(Target))
+		{
+			continue;
+		}
+		if (ApplyDirectDamage(Killer, Target, Damage, Delivery))
+		{
+			++Struck;
+		}
+	}
+	return Struck;
+}
+
 const TCHAR* UCataclysmSkillEffects::PointBlankAreaTagName =
 	TEXT("Type.AOE.PointBlank");
 const TCHAR* UCataclysmSkillEffects::SpellTagName = TEXT("Type.Spell");
