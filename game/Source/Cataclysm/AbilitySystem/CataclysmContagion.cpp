@@ -482,3 +482,94 @@ int32 UCataclysmContagion::AnnounceAfflictedDeath(AActor* Dying)
 	}
 	return Heard;
 }
+
+int32 UCataclysmContagion::BlastFromTheDying(AActor* Wearer, AActor* Dead, float Damage,
+											 const FGameplayTagContainer* TheirAilments)
+{
+	if (!Wearer || !Dead || Damage <= 0.0f)
+	{
+		return 0;
+	}
+	return BlastAt(Wearer, ReadForABlast(Wearer, Dead, TheirAilments), Damage);
+}
+
+FCataclysmBlastRead UCataclysmContagion::ReadForABlast(AActor* Wearer, AActor* Dead,
+													   const FGameplayTagContainer* TheirAilments)
+{
+	FCataclysmBlastRead Read;
+	if (!Wearer || !Dead)
+	{
+		return Read;
+	}
+	Read.Position = Dead->GetActorLocation();
+	Read.Dead = Dead;
+
+	// WHAT THE WEARER HAD RUNNING ON THE BODY IS READ BEFORE ANY BLAST, because
+	// a blast can kill, and by the time a waiting blast runs the body's effects
+	// may be gone.
+	if (TheirAilments)
+	{
+		for (const FGameplayTag& Ailment : *TheirAilments)
+		{
+			UCataclysmSkillEffects::FRunningAilment Running;
+			if (UCataclysmSkillEffects::RunningAilmentOn(Dead, Ailment, Running)
+				&& Running.Applier.Get() == Wearer)
+			{
+				Read.Carried.Add(Running);
+			}
+		}
+	}
+	return Read;
+}
+
+int32 UCataclysmContagion::BlastAt(AActor* Wearer, const FCataclysmBlastRead& Read, float Damage)
+{
+	if (!Wearer || Damage <= 0.0f)
+	{
+		return 0;
+	}
+	const TArray<UCataclysmSkillEffects::FRunningAilment>& Carried = Read.Carried;
+
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Wearer->GetWorld(), Wearer, Read.Position,
+		SpreadFromTheDyingMetres * CentimetresPerMetre);
+	// THE POINTER IS COMPARED AND NOT READ.
+	Caught.Remove(Read.Dead.Get(/*bEvenIfPendingKill=*/true));
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+	for (AActor* Target : Caught)
+	{
+		// ONE THAT IS DEAD BY NOW IS NOT STRUCK. A death this blast causes does
+		// not blast inside it: it waits until the wearer has finished acting, see
+		// `UCataclysmAbilitySystemComponent::QueueAfflictedDeath`. This stays for
+		// a wearer whose blast is called outside an event.
+		if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(Target))
+		{
+			continue;
+		}
+		UCataclysmSkillEffects::ApplyDirectDamage(Wearer, Target, Damage, Delivery);
+	}
+
+	// THEN THE COPIES, TO THOSE THE BLAST LEFT ALIVE.
+	for (AActor* Target : Caught)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!IsValid(Target) || !Its || UCataclysmSkillEffects::IsDead(Target))
+		{
+			continue;
+		}
+		for (const UCataclysmSkillEffects::FRunningAilment& Running : Carried)
+		{
+			if (!Its->HasMatchingGameplayTag(Running.Ailment))
+			{
+				UCataclysmSkillEffects::ApplySpreadCopy(Wearer, Target, Running);
+			}
+		}
+	}
+	return Caught.Num();
+}

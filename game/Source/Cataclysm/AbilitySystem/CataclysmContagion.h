@@ -5,10 +5,31 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+// For `UCataclysmSkillEffects::FRunningAilment`, which a blast read at a death holds.
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "CataclysmContagion.generated.h"
 
 class AActor;
 class UAbilitySystemComponent;
+
+/**
+ * What a blast from a dying enemy needs, READ AT THE DEATH. Ruled 2026-10-07.
+ *
+ * A blast may run after the death that causes it has been handled: one heard
+ * while its wearer is already acting on an event waits until that has finished.
+ * So everything is read here, and nothing is read from the dead enemy later.
+ */
+struct FCataclysmBlastRead
+{
+	/** Where the body was. */
+	FVector Position = FVector::ZeroVector;
+
+	/** The dead enemy, ONLY TO LEAVE IT OUT of those the blast catches. Never read. */
+	TWeakObjectPtr<AActor> Dead;
+
+	/** The wearer's ailments that were running on the body, each with what it had left. */
+	TArray<UCataclysmSkillEffects::FRunningAilment> Carried;
+};
 
 /**
  * A lasting harmful effect passing from the character carrying it to an enemy.
@@ -307,4 +328,43 @@ public:
 	 * @return how many characters heard it
 	 */
 	static int32 AnnounceAfflictedDeath(AActor* Dying);
+
+	/**
+	 * The blast of "Plague Doctor (10-Piece Bonus)". Ruled 2026-10-07.
+	 *
+	 * FIRST THE BLAST: `Damage` to every enemy of `Wearer` within 5 metres of
+	 * `Dead`, the body left out, each struck once. It is the wearer's direct
+	 * area damage, so it goes through the target's defences as any area hit
+	 * does; it is not retaliated against, does not critically strike, does not
+	 * leech, and is raised by none of the wearer's increases: the figure is a
+	 * share of the dead enemy's health and nothing of the wearer's.
+	 *
+	 * THEN THE COPIES: each ailment in `TheirAilments` that `Wearer` had running
+	 * on the body is put on each of those enemies still alive, as a spread copy
+	 * with what it had left. An enemy already carrying that ailment is passed
+	 * over. An enemy the blast killed receives nothing.
+	 *
+	 * A COPY IS A SPREAD COPY: it raises no `dot_applied`, refreshes nothing, and
+	 * a Void Splinter copy detonates nothing.
+	 *
+	 * @return how many enemies the blast struck
+	 */
+	static int32 BlastFromTheDying(AActor* Wearer, AActor* Dead, float Damage,
+								   const FGameplayTagContainer* TheirAilments);
+
+	/**
+	 * The first half of `BlastFromTheDying`: where `Dead` is and which of
+	 * `TheirAilments` `Wearer` has running on it, with what each has left.
+	 * Called at the death.
+	 */
+	static FCataclysmBlastRead ReadForABlast(AActor* Wearer, AActor* Dead,
+											 const FGameplayTagContainer* TheirAilments);
+
+	/**
+	 * The second half: the blast and then the copies, from what was read. It
+	 * reads nothing from the dead enemy.
+	 *
+	 * @return how many enemies the blast struck
+	 */
+	static int32 BlastAt(AActor* Wearer, const FCataclysmBlastRead& Read, float Damage);
 };

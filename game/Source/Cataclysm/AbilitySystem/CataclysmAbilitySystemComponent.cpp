@@ -1,9 +1,13 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For ON_SCOPE_EXIT, which drains the queued deaths after the depth guard ends.
+#include "Misc/ScopeExit.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the blast an action deals from an enemy that died.
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmAilments.h"
 // For the zones a target may stand in, which one target-side condition asks. Ruled 2026-10-06.
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -3438,6 +3442,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::AppliedDotStatus = TEXT("Applied 
 const TCHAR* UCataclysmAbilitySystemComponent::SkillEndEvent = TEXT("skill_end");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
+const TCHAR* UCataclysmAbilitySystemComponent::BlastFromTheDyingAction = TEXT("blast_from_the_dying");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageTakenAction = TEXT("ailment_damage_taken");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentArmorRiderAction = TEXT("ailment_armor_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageDealtAction = TEXT("ailment_damage_dealt");
@@ -4413,6 +4418,87 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 	SkillInHandName = NAME_None;
 }
 
+/**
+ * A death heard at depth one, kept for its blast. Ruled 2026-10-07. Everything
+ * here was read at the death; nothing is read from the dead enemy afterwards.
+ */
+struct FCataclysmQueuedAfflictedDeath
+{
+	/** The dead enemy's maximum health, the event's amount. */
+	float Maximum = 0.0f;
+
+	/** Where the body was and what of the wearer's it carried. */
+	FCataclysmBlastRead Read;
+
+	/** The worn blast rows that were allowed to fire on this death, judged then. */
+	TArray<FCataclysmPoolAction> Blasts;
+};
+
+void UCataclysmAbilitySystemComponent::QueueAfflictedDeath(
+	FName Event, const FGameplayTagContainer* EventTags, float EventAmount,
+	const AActor* EventTarget)
+{
+	AActor* Dead = const_cast<AActor*>(EventTarget);
+	AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	if (!Dead || !Self || EventAmount <= 0.0f)
+	{
+		return;
+	}
+	TSharedPtr<FCataclysmQueuedAfflictedDeath> Queued;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (!Action.bBlastFromTheDying || Action.Event != Event
+			|| !PoolActionAllowed(Action, EventTags, EventTarget)
+			|| !EventThresholdCrossed(Action, EventAmount))
+		{
+			continue;
+		}
+		if (!Queued)
+		{
+			Queued = MakeShared<FCataclysmQueuedAfflictedDeath>();
+			Queued->Maximum = EventAmount;
+			Queued->Read = UCataclysmContagion::ReadForABlast(Self, Dead, EventTags);
+		}
+		Queued->Blasts.Add(Action);
+	}
+	if (Queued)
+	{
+		QueuedAfflictedDeaths.Add(Queued);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::DrainQueuedAfflictedDeaths()
+{
+	// ONLY THE OUTERMOST CALL DRAINS, after its depth guard has ended.
+	while (PoolActionDepth == 0 && !QueuedAfflictedDeaths.IsEmpty())
+	{
+		AActor* Self = GetAvatarActor();
+		if (!Self)
+		{
+			// THE WEARER IS GONE: what waited is dropped. Ruled 2026-10-07.
+			QueuedAfflictedDeaths.Reset();
+			return;
+		}
+		const TSharedPtr<FCataclysmQueuedAfflictedDeath> Next = QueuedAfflictedDeaths[0];
+		QueuedAfflictedDeaths.RemoveAt(0);
+
+		// AT DEPTH ONE AGAIN, so a death this blast causes joins the queue
+		// rather than blasting inside it.
+		TGuardValue<int32> Depth(PoolActionDepth, 1);
+		TSet<FName> FiredThisDeath;
+		for (const FCataclysmPoolAction& Action : Next->Blasts)
+		{
+			const float Blast = Next->Maximum * Action.Percent / 100.0f;
+			if (Blast > 0.0f && !FiredThisDeath.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				FiredThisDeath.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				UCataclysmContagion::BlastAt(Self, Next->Read, Blast);
+			}
+		}
+	}
+}
+
 void UCataclysmAbilitySystemComponent::ActOnEvent(
 	FName Event, const FGameplayTagContainer* EventTags, float EventAmount,
 	bool bLanded, const AActor* EventTarget)
@@ -4426,8 +4512,19 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	// rather than left to hold by accident.
 	if (PoolActionDepth > 0 || PoolActions.IsEmpty())
 	{
+		// ONE EVENT IS KEPT RATHER THAN DROPPED: the death of an enemy carrying
+		// this character's ailment, for a row that blasts on it. An enemy a
+		// blast kills dies inside the call that blasts, and the sentence says
+		// it explodes too. See `PoolActionDepth`.
+		if (PoolActionDepth > 0 && bLanded && Event == FName(TEXT("afflicted_death")))
+		{
+			QueueAfflictedDeath(Event, EventTags, EventAmount, EventTarget);
+		}
 		return;
 	}
+	// DECLARED BEFORE THE GUARD SO IT RUNS AFTER IT: the queued deaths are
+	// acted on once this call is at depth nought again.
+	ON_SCOPE_EXIT { DrainQueuedAfflictedDeaths(); };
 	TGuardValue<int32> Depth(PoolActionDepth, 1);
 
 	// A COPY, because applying one writes an attribute, and an attribute write
@@ -4615,6 +4712,24 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						Action.Ailment, /*bEndEach=*/false);
 				}
 				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// A BLAST FROM AN ENEMY THAT DIED CARRYING THE WEARER'S AILMENT. Ruled
+		// 2026-10-07. Landed only, once per row per event, and only for an event
+		// that names who died and carries its maximum health. What the blast and
+		// the copies are is `UCataclysmContagion::BlastFromTheDying`'s.
+		if (Action.bBlastFromTheDying)
+		{
+			AActor* Dead = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			const float Blast = EventAmount * Action.Percent / 100.0f;
+			if (bLanded && Dead && Self && Blast > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				UCataclysmContagion::BlastFromTheDying(Self, Dead, Blast, EventTags);
 			}
 			continue;
 		}
