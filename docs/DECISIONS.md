@@ -2,6 +2,174 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A player who carries Cripple walks, swings and throws slower, as a creature does: one shared reader
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` (`CrippleMultiplierOn`, declared);
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp` (its body, moved out of `CrippleMultiplier` and not
+changed); `Character/CataclysmPlayerCharacter.h` and `.cpp` (`RefreshMovementSpeed`, `OnCrippleChanged`, a tag
+listener); `AbilitySystem/CataclysmBasicAttack.cpp` (`SecondsBetweenSwingsFor`); `CataclysmSkillTemplates.cpp`
+(`UCataclysmProjectileSkill::SecondsBetweenThrows`); one test in
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`. Issue
+[#2273](https://github.com/sdubois777/Cataclysm/issues/2273).
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry.
+
+### What was wrong
+
+**Only a creature read Cripple.** `ACataclysmEnemyCharacter::CrippleMultiplier` turns the Cripple a creature carries
+into a share of its speed, and that share multiplies its walking speed and divides its seconds between attacks. A
+player's walking speed follows the `movement_speed` stat and its swings the `attack_speed` stat, and Cripple moves
+neither. So a player who carried Cripple carried the tag, conditions that ask "is crippled" saw it, and the player
+walked and attacked at full speed. Found on 2026-10-06 while writing a zone's slow onto its own owner; read in the
+code and not reproduced before this change.
+
+### What a creature reads, exactly, and what a player now reads
+
+- **The share kept** is 1 with no Cripple. With one, it is 1 less the strongest strength an application stated, or
+  less the status row's own 30 when the application stated none; held between nought and 100 and never allowed to
+  reach nought, because an interval divides by it. The row's cap of 80 is held by whoever applies the Cripple, not
+  by the reader.
+- **A creature**: walking speed times the share; seconds between attacks divided by it. Unchanged.
+- **A player, since this change**: walking speed times the share; seconds between swings divided by it, which is
+  both the gate on the next swing and the rate the swing's animation plays at; seconds between throws of a skill
+  whose interval follows attack speed divided by it.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **The player reads the tag through the same function a creature does.** Not by naming a stat in the status row's
+  `MovesStat` column, for four reasons read in the code:
+  1. a player's `movement_speed` and `attack_speed` are asked through `StatForSkill`, which answers from the stat's
+     recorded inputs whenever there are any and does not look at the attribute, so a modifier on the attribute
+     would do nothing on a player wearing gear;
+  2. the two appliers that state a strength, the ailment and the ground zone, lay the tag with
+     `ApplyTagForDuration` and do not go through the path that reads `MovesStat`;
+  3. a row that moves two stats states twice its size, and a creature reads the stated size, so every creature
+     would be slowed twice as much;
+  4. three comments in the code record that Cripple names no stat on purpose.
+- **A player whose movement speed nothing may lower is not slowed on foot by Cripple, and still attacks slower.**
+  That flag is the stat `movement_speed_reduction_suppressed`, set by two Ravager passive rows:
+  `Ravager_keystone_spine_003` (while enemies are in reach) and `Ravager_keystone_d_kA`.
+- **The walking speed is refreshed when the Cripple tag is gained or lost.** It is a stored figure and gaining a tag
+  changes no attribute, so the player character listens for the tag.
+- **The attack share is applied for player characters only.**
+
+### What the callers are
+
+`UCataclysmBasicAttack::SecondsBetweenSwingsFor` has two callers outside the tests, the player character and the
+player controller. A creature does not come through it; its interval is `SecondsBetweenAttacks`. The new read
+there, and the one in `SecondsBetweenThrows`, check that the character is a player character, so a creature is
+never slowed twice.
+
+### Every source of Cripple, and which reach a player
+
+Read from the data and the code on 2026-10-06.
+
+| Source | Lays Cripple on | Reaches a player? |
+|---|---|---|
+| The affix row in `Affixes.csv` (1), the gem in `Gems.csv` (1) and 13 rows of `PassiveEffects.csv`, through `cripple_chance` | whoever the wearer's blow lands on | No, unless a player's blow lands on a player |
+| "Retaliation damage applies a 2-4 second slow to the attacker" | the attacker | Possibly: the dungeon rule Brand Nova's hit on the player may be retaliated against by the player's own retaliation. Read as a chain, not verified |
+| A ground zone's slow, `zone_slow_percent` | enemies inside | Yes, once a row makes a zone lay its effects on its owner (`zone_applies_effects_to_owner`); no such row is authored |
+| The random debuff pool of an enchantment row | the character the wearer struck | Yes, once a row lays it on its wearer; that work is not merged |
+
+No creature ability and no dungeon rule lays Cripple.
+
+### For the owner's play-check
+
+**This changes play for every source above that reaches a player.** A crippled player now walks and attacks slower
+by the Cripple's strength, 30 at the row's figure and up to 80. Whether a player slowed in both should also have
+its skills' wind-up slowed is not built and not ruled.
+
+### What the research settles, and what it does not
+
+No new source was read. The shape is this game's own: the player now reads what the creature has read since issue
+#1256.
+
+### Tests
+
+One new automation test,
+`Cataclysm.StatExemption.APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`. **It is the
+reproduction**: on the code before the fix it fails where a player carrying a Cripple of 20 is expected to walk at
+four fifths of their speed.
+
+- a player with no Cripple keeps the whole;
+- with a Cripple stating 20 the player walks at four fifths, and waits a quarter longer between swings and between
+  throws;
+- with the Cripple removed the player walks and swings at full rate again, so both edges of the tag are heard;
+- with the ailment's Cripple at its ordinary size, the row's 30, the three figures are at seven tenths;
+- a creature keeps four fifths under a Cripple of 20, as before, and the shared function answers the same for it;
+- a player carrying the Ravager's flag walks at full speed under Cripple and still waits a quarter longer between
+  swings.
+
+**Not covered by a test:** the swing animation's play rate; a player's blow landing on a player.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under `Cataclysm.StatExemption.APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Ca | `CataclysmPlayerCharacter.cpp`: the player's walking speed does not read Cripple | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| Cb | `CataclysmBasicAttack.cpp`: the player's swing does not read Cripple | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+
+### The reproduction of issue #2273
+
+**The reproduction could not be run on development 2d2a260b as it was written**: the test calls
+`UCataclysmSkillEffects::CrippleMultiplierOn`, which does not exist before the fix, so it does not compile there.
+Accepted by the coordinating session on 2026-10-07: **the failing half of proof Ca stands in for it, because its
+break restores exactly the code as it was, the player's walking speed not reading Cripple.** Proof Cb does the same
+for the swing. With the code as it was, the run printed:
+
+```
+Expected 'a player carrying a Cripple of 20 walks at four fifths of their speed' to be 320.000000, but it was 400.000000 and outside tolerance 0.500000.
+Expected 'a player carrying the row's Cripple walks at seven tenths' to be 280.000000, but it was 400.000000 and outside tolerance 0.500000.
+Expected 'and waits a quarter longer between swings' to be 1.250000, but it was 1.000000 and outside tolerance 0.001000.
+Expected 'and swings at seven tenths of the rate' to be 1.428571, but it was 1.000000 and outside tolerance 0.001000.
+Expected 'and still waits a quarter longer between swings' to be 1.250000, but it was 1.000000 and outside tolerance 0.001000.
+```
+
+So a crippled player walked at 400 and swung once a second, their full figures, which is the fault.
+
+### The test-only correction after the second attempt
+
+The second attempt's whole suite printed `3248 tests performed, 3247 succeeded, 1 failed`, and the one failed
+assertion was this test's set-up, `Expected 'set-up: the player walks, swings and throws at some rate' to be true.`
+**The cause was read in the code and not shown by that run**: a player's attack speed attribute starts at nought,
+because a worn weapon supplies it, and the test's player wears none, so its seconds between swings was nought.
+The correction, to the test file only: each of the test's two players is given an attack speed of 1 a second before
+anything is read, and the set-up assertion is split into three, for walking, swinging and throwing. No assertion's
+meaning changed. The third attempt printed the test passing, and the two proofs above.
+
+**Not run:** the swing animation's play rate; a player's blow landing on a player; the throw proof (the throw's read
+has a test and no proof).
+
+---
+
 ## 2026-10-06 — Six more persistent area sentences are rows: zones a movement, charge or spell skill leaves, zones that damage their owner, zones that follow their owner, and minions that leave chaos pools
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (six rows of the Enchantment Effects sheet),
