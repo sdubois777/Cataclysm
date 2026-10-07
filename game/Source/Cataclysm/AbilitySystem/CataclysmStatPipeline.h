@@ -3556,6 +3556,12 @@ enum class ECataclysmApplyStatus : uint8
 	 * applies a 2-4 second slow to the attacker".
 	 */
 	Seconds UMETA(DisplayName = "Always, for the value in seconds"),
+
+	/**
+	 * The value is how many times it is applied, rounded, and it always applies: "When you apply a DOT, 1-4
+	 * stacks are applied to you". Ruled 2026-10-06. Only for a status laid on the wearer.
+	 */
+	Times UMETA(DisplayName = "Always, the value's number of times"),
 };
 
 /**
@@ -3959,6 +3965,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FString StatusName;
+
+	/**
+	 * Set, a status action lays its status on THE WEARER and not on the other character of its event. Ruled
+	 * 2026-10-06, for five drawbacks: "Taking a hit has a 15%-25% chance to trigger a random negative status effect
+	 * on you" and the four beside it. See `UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer`.
+	 *
+	 * SUCH A ROW NEEDS NO OTHER CHARACTER, so it may wait on an event that names none: a hit taken, a timer, a
+	 * skill ending.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bStatusOnTheWearer = false;
 
 	/**
 	 * Set, this action opens the wearer's no-damage window for `Percent` seconds
