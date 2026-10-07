@@ -383,6 +383,11 @@ JUDGED_NUMBERS = {
     # "Absorbed damage stored".
     "Positive_Damage_absorbed_by_your_energy_shield_is_convert",
     "Positive_Absorbed_spell_damage_is_converted_to_bonus_dama",
+    # "Enemies killed by you explode for the overkill amount": the row's value
+    # is the share of the overkill the explosion deals, and "the overkill
+    # amount" is all of it, 100. Ruled 2026-10-07 in the entry "Overkill
+    # explosion, first part".
+    "Positive_Enemies_killed_by_you_explode_for_the_overkill_a",
 }
 
 #: Enchantments whose sentence states A TOTAL and whose row grants what is
@@ -730,8 +735,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 536 over 449: one row on one enchantment.
 #: AND 539 OVER 452 SINCE THE TWO ABSORBED-DAMAGE ROWS,
 #: issue #1833, 2026-10-06, from 537 over 450: two rows on two enchantments.
-AUTHORED_ROWS = 539
-AUTHORED_ENCHANTMENTS = 452
+#: AND 540 OVER 453 SINCE THE OVERKILL EXPLOSION ROW,
+#: issue #1833, 2026-10-06, from 539 over 452: one row on one enchantment.
+AUTHORED_ROWS = 540
+AUTHORED_ENCHANTMENTS = 453
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
