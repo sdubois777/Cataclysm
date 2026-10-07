@@ -10,8 +10,8 @@ Decisions made outside the Google Drive documents, newest first.
 `Character/CataclysmPlayerClassStats.cpp` (`StatsWithNoAttribute`); one probe in
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No row carries the flag yet**; the row is the enchantment session's.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No row carries the flag yet**; the row is the enchantment session's.
 
 ### What it is for
 
@@ -84,9 +84,34 @@ imp of theirs destroyed without being killed leaves none.
 
 **Python.** No new test and no inventory change: the flag is read through the minion file's existing helper.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of four, at `feat/minions-leave-chaos-pools-2` 4eba8aec: rows that make a zone,
+zones that reach their owner, zones that follow their owner, and chaos pools, in that order. Development was
+cd2ad0d9. Every figure is a line the run printed. **The stack had not been compiled before this window, and the
+first build and the first suite run both passed; no correction was made to any file.**
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3237 tests performed, 3237 succeeded, 0 failed`; `Declared: 3237 tests in the tree at 4eba8aec; 3237 performed, gap 0` |
+| Python, with continuous integration idle | `5771 passed, 8 skipped in 330.95s`; JUnit `tests="5779" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 4eba8aec, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+All three are under the prefix `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Ba | `CataclysmMinion.cpp`: a killed minion leaves nothing | 1 performed, 1 failed, 3 failed assertions: the flagged commander had 0 pools against 2, and none where the ballista or the imp stood | 1 performed, 1 succeeded |
+| Bb | Same file: a commander without the flag is left a pool too | 1 performed, 1 failed, 1 failed assertion: the plain commander had 1 pool against 0 | 1 performed, 1 succeeded |
+| Bc | Same file: a sweep of the pool deals the minion's whole blow | 1 performed, 1 failed, 1 failed assertion: a sweep was 220.500000 against 22.050001 | 1 performed, 1 succeeded |
+
+**Not run:** a minion that explodes; a thrall; a sweep of a pool; the commander's zone rows on a pool; any of this
+read from the effect table, since no row exists.
 
 ---
 
