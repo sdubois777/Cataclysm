@@ -521,3 +521,4 @@ Positive_Your_minions_leave_behind_chaos_pools_when_they#1,Positive_Your_minions
 Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di#1,Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di,,,20.0,20.0,,,0.0,,0.0,blast_from_the_dying,afflicted_death,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Enemies_you_kill_explode_and_deal_5_10_of_thei#1,Negative_Enemies_you_kill_explode_and_deal_5_10_of_thei,,,-5.0,-10.0,,,0.0,,0.0,health,kill,event_amount,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Burn_effects_you_apply_spread_to_1_2_nearby_enem#1,Positive_Burn_effects_you_apply_spread_to_1_2_nearby_enem,,,1.0,2.0,,,0.0,,0.0,ailment_spread_on_application,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Burn,0.0
+Positive_100_of_your_block_value_is_added_to_your_retali#1,Positive_100_of_your_block_value_is_added_to_your_retali,,,100.0,100.0,,,0.0,,0.0,reflect_blocked,block,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.25,0.0,,0.0
