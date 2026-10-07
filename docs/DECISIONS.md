@@ -2,6 +2,133 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A cleanse keeps only converted damage not yet taken, and removes everything else a character laid on themselves
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (`Cleanse`);
+`CataclysmSkillEffects.h` and `.cpp` (`ConvertedDamageDataName`, `FCataclysmHitDelivery::bIsConvertedDamage`, one
+more argument on `ApplyDamageOverTime`, the stamp in `ApplyTypedSpec`); `CataclysmDamageConversion.cpp` (the
+conversion marks its bleed); a comment in `Dungeon/CataclysmDungeonGameMode.cpp`; one changed and one new test in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, one new test in
+`CataclysmDamageConversionTests.cpp`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry.
+
+### What it was, and why it changes
+
+A cleanse removes every damage over time, `Status.Debuff` curse, stun and fear on a character. **Until this change
+it left any of those whose instigator was the character itself.** The reason written beside it was one case: the
+Masochist's damage conversion lays a bleed on its own character, and removing that would delete damage converted and
+not yet taken.
+
+That exception was wider than its reason. A drawback that lays a status on its own wearer, and a zone that lays its
+effects on its own owner, are instigated by the character too, so "You are cleansed every 5 seconds" did not remove
+them. Found on 2026-10-06 while writing the first of those.
+
+### Ruling, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+**A cleanse keeps only the bleed the damage conversion lays, told apart by a mark the conversion puts on its
+effect, and removes every other damage over time, curse and stun a character laid on themselves.** The exception's
+stated purpose is converted damage not yet taken. A drawback a row lays is not that, and a cleanse should answer a
+drawback's status as it answers an enemy's.
+
+**This supersedes one sentence of an earlier ruling.** The entry of 2026-09-26 for the choice screen and Grim Totems
+says, under "Cleansing the player": "The coordinating session ruled on 2026-09-30 that ... choosing Cleanse at a
+totem also runs the player cleanse ... which removes what others put on the player and keeps what the player put on
+itself." **"Keeps what the player put on itself" no longer holds**: a cleanse keeps converted damage not yet taken
+and nothing else the player put on itself. That ruling was the coordinating session's own, and it narrowed it on
+2026-10-06. The comment in `CataclysmDungeonGameMode.cpp` and the one in `CataclysmDebuffs.h` now state the new
+rule; `CataclysmDebuffs.cpp` states it where the effect is kept.
+
+### The mark
+
+A number stamped on the effect under the plain name `Cataclysm.ConvertedDamage`, where an application's stated size
+is already stamped. No gameplay tag was added. The effect's source object was not used: it already means "dealt
+by".
+
+### Every self-laid effect found, and what a cleanse does to it
+
+Read in the code on 2026-10-06 by a second reading, not run, except the first two rows, which the tests below cover.
+
+| Self-laid effect | Before | After |
+|---|---|---|
+| The Masochist's converted bleed | kept | kept, by the mark |
+| A zone's curse, slow and ailment on its own owner (`zone_applies_effects_to_owner`) | kept | removed |
+| A stun a player lays on themselves when a hit of their own on themselves (a backfire, Echo Chamber's copy, Brand Nova) deals a tenth of their health with a blunt weapon | kept | removed |
+| The wearer's own "critical strike applies" and "retaliation applies" rows landing on themselves through Brand Nova's hit | kept | removed |
+
+Nothing but the converted bleed is stored damage, so nothing else is kept.
+
+### Consequences, stated rather than changed
+
+- **This changes what layer D's effects do under a cleanse**: a zone's curse, slow and ailment on its owner are now
+  removed by one. The stagger is not something a cleanse removes, before or after.
+- **A known fault this narrowing keeps, issue [#2275](https://github.com/sdubois777/Cataclysm/issues/2275).** A
+  character carries one effect for each ailment. An enemy's bleed that is weaker than a running converted bleed has
+  no effect of its own; it only lengthens the marked one, and a cleanse keeps that. The same issue records that
+  converted damage can be lost to that one slot.
+- **A raw bleed a character lays on themselves with no mark is removed.** No code lays one today outside a test.
+
+### An existing test's set-up changed
+
+`Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself` laid a raw bleed on the player by the player and
+asserted a cleanse keeps it. That is no longer true by design. **Its set-up now passes the mark**, as the
+conversion does; its name and its assertions are what they were. Accepted by the coordinating session before it
+was changed.
+
+### What the research settles, and what it does not
+
+No new source was read. Nothing read settles the ruling; it follows from the exception's own stated purpose.
+
+### Tests
+
+- **Changed:** `Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself`, as above.
+- **New:** `Cataclysm.Cleanse.ItRemovesWhatThePlayerLaidOnItselfThatIsNotConvertedDamage`. A cleanse removes a raw
+  bleed and a Cripple the player laid on themselves, two effects; and takes a zone's curse, slow and ailment off the
+  zone's own owner.
+- **New, the control on the mark:**
+  `Cataclysm.DamageConversion.TheConvertedBleedIsKeptByACleanseBecauseItIsMarked`. A blow converted by the real
+  conversion leaves a bleed; a cleanse removes nothing and the bleed is still there. With the mark dropped from the
+  conversion this fails.
+
+**Not covered by a test:** the stun and the two Brand Nova chains in the table.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| La | `CataclysmDamageConversion.cpp`: the conversion does not mark its bleed | `Cataclysm.DamageConversion.TheConvertedBleedIsKeptByACleanseBecauseItIsMarked` | 1 performed, 1 failed, 2 failed assertions: a cleanse removed 1 against 0, and the converted bleed was gone | 1 performed, 1 succeeded |
+| Lb | `CataclysmDebuffs.cpp`: the cleanse keeps every effect | `Cataclysm.Cleanse.ItRemovesWhatThePlayerLaidOnItselfThatIsNotConvertedDamage` | 1 performed, 1 failed, 6 failed assertions: it removed 0 against 2; the bleed and the Cripple stayed; the zone's curse, slow and ailment stayed on its owner | 1 performed, 1 succeeded |
+
+**Not run:** the stun and the two Brand Nova chains in the table above.
+
+---
+
 ## 2026-10-06 — The size of a use's rolled damage increase is the row's Scale Step and Scale Step High: no new column. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmItem.cpp` (`AccumulateEnchantmentsInto` fills

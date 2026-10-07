@@ -147,7 +147,10 @@ float UCataclysmDamageConversion::ConvertIfActive(
 	const bool bApplied = UCataclysmSkillEffects::ApplyDamageOverTime(
 		Character, Character, ToHealth / BleedingSeconds, BleedingSeconds,
 		UCataclysmDebuffs::BleedTag(),
-		/*bScalesWithInstigator=*/false);
+		/*bScalesWithInstigator=*/false, /*DealtBy=*/nullptr, /*Skill=*/nullptr, NAME_None,
+		// MARKED AS CONVERTED DAMAGE, which is what a cleanse keeps. Ruled 2026-10-06. Until then a cleanse kept
+		// everything a character had laid on themselves, and this bleed was kept for that reason.
+		/*bIsConvertedDamage=*/true);
 
 	if (!bApplied)
 	{
