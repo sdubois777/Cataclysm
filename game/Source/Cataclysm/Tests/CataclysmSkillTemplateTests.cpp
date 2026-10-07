@@ -21056,4 +21056,111 @@ bool FCataclysmOverkillFiresNoOnHitRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWorkAfterADeathTest,
+	"Cataclysm.OverkillExplosion.WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two listeners to a death, standing in for the player and the dungeon. One of them, on hearing the first
+ * creature die, hands over work that kills the second. EACH LISTENER MUST HEAR THE FIRST DEATH AND THEN THE
+ * SECOND, in both orders of binding: the one that hands the work over bound first, and bound second.
+ *
+ * THE ENGINE CALLS LISTENERS IN REVERSE ORDER OF BINDING, so in one of the two scenes the listener that hands
+ * the work over is called BEFORE the other. That is the scene the queue protects: with the work done at once, the
+ * other listener hears the second death before it has heard the first.
+ *
+ * THE CONTROL IS IN THE TEST: the count of deaths each listener heard is two in every scene, so "the first then
+ * the second" is a statement about order and not about one death going unheard.
+ *
+ * STANDING: the first creature at the origin, the second 3 m along +X. Nobody swings; each death is `MarkDead`.
+ */
+bool FCataclysmWorkAfterADeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	const auto Scene = [this](const TCHAR* Which, bool bTheOneThatKillsIsBoundFirst)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Which), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: the announcements"), Which), Events))
+		{
+			return;
+		}
+		FScopedFighter First(World, FVector::ZeroVector);
+		FScopedFighter Second(World, FVector(3 * M, 0, 0));
+		AActor* const FirstBody = First.Actor;
+		AActor* const SecondBody = Second.Actor;
+
+		TArray<const AActor*> HeardByTheOneThatKills;
+		TArray<const AActor*> HeardByTheOther;
+		const auto BindTheOneThatKills = [&]()
+		{
+			Events->OnDeath.AddLambda(
+				[&HeardByTheOneThatKills, Events, FirstBody, SecondBody](const FCataclysmDeathNotice& Notice)
+				{
+					HeardByTheOneThatKills.Add(Notice.Victim);
+					if (Notice.Victim == FirstBody)
+					{
+						Events->AfterThisDeathIsHeard([SecondBody]() { UCataclysmSkillEffects::MarkDead(SecondBody); });
+					}
+				});
+		};
+		const auto BindTheOther = [&]()
+		{
+			Events->OnDeath.AddLambda(
+				[&HeardByTheOther](const FCataclysmDeathNotice& Notice) { HeardByTheOther.Add(Notice.Victim); });
+		};
+		if (bTheOneThatKillsIsBoundFirst)
+		{
+			BindTheOneThatKills();
+			BindTheOther();
+		}
+		else
+		{
+			BindTheOther();
+			BindTheOneThatKills();
+		}
+
+		UCataclysmSkillEffects::MarkDead(FirstBody);
+		Events->OnDeath.Clear();
+
+		if (!TestEqual(*FString::Printf(TEXT("%s: control: the listener that kills heard two deaths"), Which),
+					   HeardByTheOneThatKills.Num(), 2)
+			|| !TestEqual(*FString::Printf(TEXT("%s: control: the other listener heard two deaths"), Which),
+						  HeardByTheOther.Num(), 2))
+		{
+			return;
+		}
+		TestTrue(*FString::Printf(TEXT("%s: the listener that kills heard the first death and then the second"), Which),
+				 HeardByTheOneThatKills[0] == FirstBody && HeardByTheOneThatKills[1] == SecondBody);
+		TestTrue(*FString::Printf(TEXT("%s: the other listener heard the first death and then the second"), Which),
+				 HeardByTheOther[0] == FirstBody && HeardByTheOther[1] == SecondBody);
+	};
+
+	Scene(TEXT("the listener that kills bound first, so called last"), true);
+	Scene(TEXT("the listener that kills bound second, so called first"), false);
+
+	// AND WORK HANDED OVER WHILE NO DEATH IS BEING ANNOUNCED IS DONE AT ONCE.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: the announcements"), Events))
+	{
+		return false;
+	}
+	int32 Done = 0;
+	Events->AfterThisDeathIsHeard([&Done]() { ++Done; });
+	TestEqual(TEXT("work handed over while no death is being announced is done at once"), Done, 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

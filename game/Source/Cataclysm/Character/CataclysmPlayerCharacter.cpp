@@ -31,8 +31,6 @@
 #include "AbilitySystem/CataclysmSwingTiming.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
-// For making the overkill explosion last, whichever way the death listener returns.
-#include "Misc/ScopeExit.h"
 // For the slain enemy's maximum health, which the kill event carries.
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -1073,22 +1071,6 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 void ACataclysmPlayerCharacter::OnSomethingDied(
 	const FCataclysmDeathNotice& Notice)
 {
-	// THE EXPLOSION A WORN ROW ASKED FOR AT THIS KILL, MADE LAST, when everything else this function does for the
-	// death is done. Ruled 2026-10-07: "Enemies killed by you explode for the overkill amount". The share is taken
-	// below, straight after the `kill` event that recorded it. IT IS MADE HERE AND NOT INSIDE THE EVENT, because
-	// the explosion may kill, that kill raises `kill` again, and `ActOnEvent` answers nothing while it is already
-	// running; made here, the second kill's row is heard and its body explodes in turn, for its own, smaller
-	// overkill.
-	float OverkillShare = 0.0f;
-	ON_SCOPE_EXIT
-	{
-		if (OverkillShare > 0.0f)
-		{
-			UCataclysmSkillEffects::ExplodeForOverkill(this, Notice.Victim, Notice.Location, Notice.Overkill,
-													   OverkillShare);
-		}
-	};
-
 	// THE WORN ROWS FIRST, BEFORE THE KILLER TEST BELOW, because one of them
 	// fires on a death this character did NOT cause. Issue #1815.
 	if (UCataclysmAbilitySystemComponent* Acting =
@@ -1123,9 +1105,39 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
 							   /*bLanded=*/true, Notice.Victim);
 
-			// WHAT THE ROWS RECORDED FOR THIS KILL, taken at once so no later kill can find it. See the top of
-			// this function for where it is spent.
-			OverkillShare = Acting->TakePendingOverkillExplosionSharePercent();
+			// THE EXPLOSION A WORN ROW ASKED FOR AT THIS KILL. Ruled 2026-10-07: "Enemies killed by you explode
+			// for the overkill amount". What the rows recorded is taken at once, so no later kill can find it.
+			//
+			// IT IS NOT MADE HERE. IT IS HANDED TO THE ANNOUNCER, WHICH MAKES IT ONCE EVERY LISTENER HAS HEARD
+			// THIS DEATH. See `UCataclysmCombatEvents::AfterThisDeathIsHeard`. Two reasons. The explosion may
+			// kill, that kill raises `kill` again, and `ActOnEvent` answers nothing while it is already running;
+			// made after it has returned, the second kill's row is heard and its body explodes in turn, for its
+			// own, smaller overkill. And the dungeon's rules must hear this death before the one the explosion
+			// causes, whichever of the two listeners the engine calls first.
+			const float OverkillShare = Acting->TakePendingOverkillExplosionSharePercent();
+			if (OverkillShare > 0.0f)
+			{
+				const TWeakObjectPtr<ACataclysmPlayerCharacter> Killer(this);
+				const TWeakObjectPtr<const AActor> Slain(Notice.Victim);
+				const FVector At = Notice.Location;
+				const float Overkill = Notice.Overkill;
+				TFunction<void()> Explode = [Killer, Slain, At, Overkill, OverkillShare]()
+				{
+					if (Killer.IsValid())
+					{
+						UCataclysmSkillEffects::ExplodeForOverkill(Killer.Get(), Slain.Get(), At, Overkill,
+																   OverkillShare);
+					}
+				};
+				if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
+				{
+					Events->AfterThisDeathIsHeard(MoveTemp(Explode));
+				}
+				else
+				{
+					Explode();
+				}
+			}
 
 			// AND AN ENEMY ITS NECROSIS KILLED MAY RISE FOR IT. Issue #1833 group E
 			// part 4b: "Enemies killed by necrosis rise as temporary minions for 5-10
