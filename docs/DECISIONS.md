@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — The size of a use's rolled damage increase is the row's Scale Step and Scale Step High: no new column. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmItem.cpp` (`AccumulateEnchantmentsInto` fills
+`FCataclysmPoolAction::UseIncreasePercent`); `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (that
+field's comment); `tools/generate_datatables.py` (`USE_INCREASED_DAMAGE_ACTIONS`, `MAX_USE_INCREASE`, the step-pair
+rules in `enchantment_effects`); one test in `game/Source/Cataclysm/Tests/CataclysmEnchantmentRollTests.cpp`; one
+class of tests in `tools/tests/test_generate_datatables.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry. **No row is authored yet**; the row is the enchantment session's.
+
+### What it is for
+
+"Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage". The engine half landed on
+2026-10-06 with the roll for a use's outcome: the action `cooldown_use_increased_damage` rolls the row's value as a
+chance and, when it comes up, adds `UseIncreasePercent` to that use's increased damage. Nothing filled that field,
+and the generator refused the two increase actions for that reason.
+
+**What the row needs:** action `cooldown_use_increased_damage`, event `skill_use`, value 5 to 20, Scale Step 50,
+Scale Step High 200, no Scale.
+
+### Ruling, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+**The size of the increase is carried by the row's existing `Scale Step` and `Scale Step High`.** Three ways were
+put: that pair; a second row carrying a new stat; and a new pair of columns. The pair was chosen because it adds no
+column to the effect table, so the hand-made effect tables in the tests are not rewritten, and no stat.
+
+**ON THESE TWO ACTIONS THE PAIR IS THE SIZE OF THE INCREASE AND IS NOT A STEP.** `use_increased_damage` and
+`cooldown_use_increased_damage` state no Scale and nothing steps. That is the fault of this choice: the column's
+name says "step". The struct's comment, the generator's comment and this entry each say so.
+
+### The chance and the size roll together
+
+**Both ranges are read with the item's one roll for that half**, which is the owner's one-roll rule: an item rolls
+one number for each half of an enchantment pair, and every range the sentence states reads it. So the 20% chance
+always comes with 200%, and the 5% chance with 50%. No item has a high chance of a small increase.
+
+### How it is built
+
+- **The loader fills `UseIncreasePercent` from `UCataclysmItemModifiers::RolledScaleStep`**, the function that
+  already rolls a step, for an action that rolls a use's increase and for no other.
+- **The generator accepts the two actions with the pair stated**, which it refused outright before. On those two
+  actions it requires both ends, refuses a Scale, requires the low end above nought and below the high end, bounds
+  the high end at 1000, and requires the pair to be a range the sentence states, as it requires of a step's range.
+- **One generator rule is relaxed, for these two actions only:** "a row that states Scale Step High and no scale
+  would be dropped". On every other action that rule stands, and a Scale Step stated with no Scale is still not
+  read.
+- **The comment in `CataclysmItem.cpp` that said the increase "stays at nought until a column carries it" is
+  corrected** in this change.
+
+### What the research settles, and what it does not
+
+No new source was read; this is where a number is stored, not a formula. The increase is added to the use's
+increased damage as the next-use charges are, which the entry for the use-outcome roll states.
+
+### Tests
+
+One new automation test, `Cataclysm.Enchantments.AUsesRolledIncreaseTakesItsSizeFromTheRowsStepPair`: a made-up
+effect row for the real enchantment loads as an action for skills with a cooldown only; at the top roll its chance
+is 20 and its increase 200; at the bottom roll they are 5 and 50.
+
+**Python.** A new class of seven cases in `tools/tests/test_generate_datatables.py`, each on made-up rows: the row
+is carried through on either action; a row missing either end is refused; a row stating a Scale is refused; a size
+the sentence does not state is refused; ends the wrong way round are refused. The test that pinned the old refusal
+is replaced by one that a row with no size is refused, and one that the pair on another action is refused.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Under `Cataclysm.Enchantments.AUsesRolledIncreaseTakesItsSizeFromTheRowsStepPair`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Ua | `CataclysmItem.cpp`: the increase's size is never filled | 1 performed, 1 failed, 2 failed assertions: the increase was 0.000000 against 200.000000, and against 50.000000 | 1 performed, 1 succeeded |
+
+**Not run:** the row read from the effect table, since no row exists; a use dealing the increase in play, which the
+entry for the use-outcome roll covers with a hand-set figure.
+
+---
+
 ## 2026-10-06 — A player who carries Cripple walks, swings and throws slower, as a creature does: one shared reader
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` (`CrippleMultiplierOn`, declared);
