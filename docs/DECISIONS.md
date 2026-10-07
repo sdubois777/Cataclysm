@@ -15,15 +15,20 @@ outcome of any run is recorded here.
    enemies caught in their blast" can lay one bleed of ordinary size and cannot lay one at 1 to 2 times its size:
    the only sized status action lays a status on the wearer. No action was added here. Both are under "What the
    rows need".
-2. **Ten weapon skills carry `Type.Trap` today, so two of these rows already do something.** `War_Dagger_Heavy`,
+2. **Ten weapon skills carry `Type.Trap` today, but none of them deals a hit of the wearer's own today.**
+   `War_Dagger_Heavy`,
    `War_Spear_Heavy`, `War_Crossbow_Movement`, `War_Dagger_Movement`, `War_Spear_Movement`,
    `War_2H_Crossbow_Special`, `War_Dagger_Special`, `War_Crossbow_Ultimate`, `War_Dagger_Ultimate` and
    `War_Spear_Ultimate` have `Type.Trap` in the Tags column of `game/Data/WeaponSkills.csv`. A row requiring
    `Type.Trap` on `attack_damage`, `spell_damage` or `armor_penetration` is asked with a skill's tags when the
    wearer's own skill hits. So "Traps deal 20%-40% increased damage" and "Your traps ignore 20%-40% of enemy
-   armor" can reach the wearer's own hits with those ten skills today. The writing session read the tags and the
-   two askers; it did not check that each of the ten skills deals a hit. This layer does not change that. The
-   ruled rewrite of the first of them does: moved to `minion_damage`, it stops reaching those ten skills.
+   armor" WOULD reach the wearer's own hit with any of those ten skills that dealt one. **Read by the reviewing
+   session on 2026-10-07: none does today.** Nine of the ten have an empty Shape column, and
+   `CataclysmWeaponSkills.cpp` gives the shape `None` no ability class, so there is no skill to use. The tenth,
+   `War_Spear_Ultimate` (Iron Fortress), is the shape `Deployable`, and its damage is its machines' blows, asked
+   with the machine's tags. So the two rows change no blow today. **The consequence that is real: when one of the
+   nine is given a shape of its own and deals the wearer's own hit, the present rows would reach that hit, and the
+   ruled rewrite to `minion_damage` would not.** Issue #2284 carries the same reading.
 3. **The existing row "Each active gadget increases your evasion chance by 5%-10%" still counts spike traps.** Its
    scale, `deployables_active`, was not changed.
 4. **A trap's explosion does not take the armour reading.** Only its swing does. See "Not covered".
@@ -179,9 +184,11 @@ the bound `deployables_active` has. No action was added.
 5. **"Each other trap" counts every other trap the wearer commands**, wherever it stands. The sentence says "on
    the battlefield".
 6. **A trap's explosion does not ignore armour**, and its swing does.
-7. **Ten of the wearer's own skills are tagged `Type.Trap`** and take "Traps deal 20%-40% increased damage" and
-   "Your traps ignore 20%-40% of enemy armor" on their own hits today. The ruled rewrite of the first takes it
-   off them. Whether those ten skills are "traps" for these sentences is the owner's to settle.
+7. **Ten of the wearer's own skills are tagged `Type.Trap`.** None deals a hit of the wearer's own today (nine
+   have no shape yet; the tenth deals its damage through machines). When one is given a shape, "Traps deal
+   20%-40% increased damage" as rewritten to `minion_damage` will not reach its own hit, and "Your traps ignore
+   20%-40% of enemy armor" will. Whether a skill the player casts and that is tagged a trap counts as a trap for
+   these sentences is the owner's to settle before those skills are built.
 
 ### Judgements by the writing session, not settled by the rulings
 
@@ -277,7 +284,8 @@ both requiring `Type.Trap`, are removed.
 | Value Low, Value High | 20, 40 |
 | Required Tags | `Type.Trap` |
 
-Said plainly: the present rows reach the wearer's ten skills tagged `Type.Trap`, and this row does not.
+Said plainly: the present rows would reach the wearer's own hit with a skill tagged `Type.Trap`, and this row
+does not. No such hit exists today; see the top of this entry.
 
 **2. "Traps deal 15%-30% increased damage for each other trap currently active on the battlefield".**
 
