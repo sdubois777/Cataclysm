@@ -322,6 +322,7 @@ const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
 const TCHAR* UCataclysmSkillEffects::ConsequenceOfADeathDataName = TEXT("Cataclysm.ConsequenceOfADeath");
+const TCHAR* UCataclysmSkillEffects::CannotBeEvadedDataName = TEXT("Cataclysm.CannotBeEvaded");
 const TCHAR* UCataclysmSkillEffects::StatedMagnitudeDataName =
 	TEXT("Cataclysm.StatedMagnitude");
 
@@ -1386,6 +1387,12 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsConsequenceOfADeath)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ConsequenceOfADeathDataName), 1.0f);
+	}
+
+	// AND WHETHER IT CANNOT BE EVADED, which the target reads before it rolls its evasion. Ruled 2026-10-07.
+	if (Delivery.bCannotBeEvaded)
+	{
+		Spec.SetSetByCallerMagnitude(FName(CannotBeEvadedDataName), 1.0f);
 	}
 
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void

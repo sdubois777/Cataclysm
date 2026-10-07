@@ -5302,6 +5302,48 @@ OVERKILL_EXPLOSION_EVENTS = ("kill",)
 #: overkill, 100.
 MAX_OVERKILL_EXPLOSION_SHARE = 1000.0
 
+#: The action that DEALS A DIRECT HIT TO THE OTHER CHARACTER OF ITS EVENT, with
+#: its value as the hit's size: a percentage of the wearer's attack damage.
+#: Ruled 2026-10-07: "When you evade a ranged attack, throw an attack dealing
+#: 20-70% of your attack damage at that enemy". The hit cannot be evaded and is
+#: otherwise an ordinary hit of the wearer's.
+#: `UCataclysmAbilitySystemComponent::StrikeTargetAction` holds the same name.
+STRIKE_TARGET_ACTION = "strike_target"
+
+#: The events a strike may hang on: every one the game raises with a LIVING
+#: CHARACTER OTHER THAN THE WEARER as its other character. The enemy the wearer
+#: struck, the enemy a deployable struck, the attacker retaliation was paid to,
+#: and the attacker whose blow was blocked, taken in melee or evaded.
+#: `tools/tests/test_pool_action_names_match_the_engine.py` reads the calls of
+#: `ActOnEvent` and fails if a name here is raised with no character, or if the
+#: game raises an event with a character that is neither here nor in
+#: `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`.
+STRIKE_TARGET_EVENTS = (
+    "hit_dealt",
+    "first_hit_dealt",
+    "critical_strike",
+    "deployable_hit",
+    "retaliation_dealt",
+    "block",
+    "melee_hit_taken",
+    "dodge",
+)
+
+#: The events that carry a character a strike cannot land on, each with why.
+#: `kill` and `afflicted_death` carry an enemy that has just died, and the
+#: action does not strike the dead. `gadget_destroyed` carries the wearer's own
+#: machine.
+EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
+    "kill",
+    "afflicted_death",
+    "gadget_destroyed",
+)
+
+#: The most a strike may be, in per cent of attack damage. A bound for typing
+#: mistakes, the figure `MAX_NEARBY_PERCENT` gives a nearby smite; the one
+#: sentence is 20 to 70.
+MAX_STRIKE_TARGET_PERCENT = 1000.0
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -5313,7 +5355,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS
             or action in REMAINING_DAMAGE_ACTIONS or action in ALL_APPLY_STATUS_ACTIONS
             or action == DAMAGE_IMMUNITY_ACTION or action == REFLECT_BLOCKED_ACTION
-            or action == BLAST_FROM_THE_DYING_ACTION)
+            or action == BLAST_FROM_THE_DYING_ACTION
+            or action == STRIKE_TARGET_ACTION)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -5575,6 +5618,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_overkill_explosion_action(index, who, action, event,
                                          fraction_of, kind, raw, headers)
         return
+    if action == STRIKE_TARGET_ACTION:
+        _check_strike_target_action(index, who, action, event, fraction_of,
+                                    kind, raw, headers)
+        return
     if action in AILMENT_RIDER_ACTIONS:
         _check_ailment_rider_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
@@ -5596,6 +5643,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {REFLECT_BLOCKED_ACTION}; or {BLAST_FROM_THE_DYING_ACTION}; "
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
+            f"or {STRIKE_TARGET_ACTION}; "
             f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
             f"or a rider on an ailment, {', '.join(AILMENT_RIDER_ACTIONS)}.")
 
@@ -5880,6 +5928,32 @@ def _check_overkill_explosion_action(index: int, who: str, action: str,
                 f"for its overkill and states {column} {written!r}. Its value is "
                 f"a share of the overkill and nothing else, so the column must "
                 f"be empty.")
+
+
+def _check_strike_target_action(index: int, who: str, action: str, event: str,
+                                fraction_of: str, kind: str, raw,
+                                headers: dict[str, int]) -> None:
+    """Everything a strike row must say, and everything it must not. Ruled
+    2026-10-07. The event must name a living character other than the wearer,
+    because that character is who is struck; the size is checked where the
+    value is read. A fraction, a value kind and a scale each mean nothing here,
+    so each is refused rather than dropped.
+    """
+    if event not in STRIKE_TARGET_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} strikes the other "
+            f"character of the event {event or '(none)'!r}. Only an event that "
+            f"names a living character other than the wearer has one to "
+            f"strike: {', '.join(STRIKE_TARGET_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} strikes the other "
+                f"character of its event and states {column} {written!r}. Its "
+                f"value is a percentage of attack damage and nothing else, so "
+                f"the column must be empty.")
 
 
 def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
@@ -6260,6 +6334,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != BLAST_FROM_THE_DYING_ACTION \
                     and action != CLEANSE_ACTION \
                     and action != OVERKILL_EXPLOSION_ACTION \
+                    and action != STRIKE_TARGET_ACTION \
                     and action not in SKILL_IN_HAND_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
@@ -6436,6 +6511,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"enemy for {low:g} to {high:g} per cent of its overkill. "
                     f"The share is above 0 and up to "
                     f"{MAX_OVERKILL_EXPLOSION_SHARE:g}.")
+
+        # A STRIKE'S VALUE IS A PERCENTAGE OF THE WEARER'S ATTACK DAMAGE, above
+        # 0 and up to the bound. Ruled 2026-10-07.
+        if action == STRIKE_TARGET_ACTION:
+            if not (0 < low <= MAX_STRIKE_TARGET_PERCENT
+                    and 0 < high <= MAX_STRIKE_TARGET_PERCENT):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} strikes for "
+                    f"{low:g} to {high:g} per cent of attack damage. A strike "
+                    f"is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
 
         # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
         if action in SKILL_IN_HAND_ACTIONS:

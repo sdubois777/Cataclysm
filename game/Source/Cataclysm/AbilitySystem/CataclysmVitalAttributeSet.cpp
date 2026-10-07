@@ -511,6 +511,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Hit.bFromBoss = Striker->IsBoss();
 			}
 
+			// AND WHETHER THE BLOW ITSELF SAYS IT CANNOT BE EVADED. Ruled 2026-10-07.
+			// `FCataclysmHitDelivery::bCannotBeEvaded` is stamped on the effect by
+			// `UCataclysmSkillEffects::ApplyTypedSpec`, and the one blow that sets it
+			// is the direct hit the action `strike_target` deals.
+			//
+			// AFTER THE CAST ABOVE AND JOINED TO IT, because that block assigns the
+			// flag and this must not be overwritten by it. The melee keystone
+			// further down joins the flag the same way.
+			Hit.bCannotBeEvaded = Hit.bCannotBeEvaded
+				|| Data.EffectSpec.GetSetByCallerMagnitude(
+					   FName(UCataclysmSkillEffects::CannotBeEvadedDataName),
+					   /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+
 			// AND WHETHER WHOEVER THREW IT IS STAGGERED, for "Staggered enemies
 			// deal 15%-30% increased damage to you". Issue #45.
 			//
@@ -1851,7 +1864,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			{
 				if (Outcome.bEvaded)
 				{
-					Cataclysm->NoteEvaded();
+					// WITH WHO THREW THE BLOW AND WHETHER IT WAS MELEE, ruled
+					// 2026-10-07: "When you evade a ranged attack, throw an attack
+					// dealing 20-70% of your attack damage at that enemy". The same
+					// `AttackerOf` the block above passes, so a minion's blow names
+					// the minion, or its summoner when the summoner holds Conduit.
+					Cataclysm->NoteEvaded(
+						UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
+						Hit.bIsMelee);
 				}
 
 				// AND WHETHER IT LANDED, which only a row's own stack asks. Issue
