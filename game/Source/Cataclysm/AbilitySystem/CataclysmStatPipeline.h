@@ -3504,6 +3504,15 @@ enum class ECataclysmAilmentRider : uint8
 	 * `UCataclysmSkillEffects::DetonationPercentWhenReapplied`.
 	 */
 	DetonatesWhenReapplied UMETA(DisplayName = "Detonates when reapplied, increased"),
+
+	/**
+	 * HOW MANY enemies near the target the ailment also goes to WHEN IT IS
+	 * APPLIED: "Burn effects you apply spread to 1-2 nearby enemies". A count
+	 * and not a percent. Ruled 2026-10-06. READ ON THE APPLIER when it applies
+	 * the ailment, and a copy it makes spreads no further on application. See
+	 * `UCataclysmSkillEffects::SpreadOnApplication`.
+	 */
+	SpreadOnApplication UMETA(DisplayName = "Spread on application, how many"),
 };
 
 /**

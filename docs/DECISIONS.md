@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — An ailment can pass to enemies near its target when it is applied, where a row gives it a count; no row authored here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`SpreadOnApplication`,
+`ApplyDamageOverTime`), `CataclysmStatPipeline.h` (`ECataclysmAilmentRider::SpreadOnApplication`),
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`AilmentSpreadOnApplicationAction`),
+`tools/generate_datatables.py` (`AILMENT_RIDER_ACTIONS`), one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT IT IS FOR
+
+"Burn effects you apply spread to 1-2 nearby enemies". The sentence names no death, so the spread is at the
+application, and not the spread at a death of the entry "Disease passes to the two nearest enemies when its
+carrier dies".
+
+### WHAT WAS RULED, 2026-10-06, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+- **Built, on application.**
+- **With a guard: a copy made by a spread spreads no further.** Without it one application would cross a whole
+  pack, each copy spreading in its turn.
+
+### WHAT THE RESEARCH SETTLES, AND WHAT IT DOES NOT
+
+No new source was read for this entry. Of the pages read on 2026-10-06, Path of Exile's Abberath's Hooves
+(`poedb.tw/us/Abberaths_Hooves`) inflicts "an equivalent Ignite on each nearby Enemy" at a kill, which settles
+that a burn passed on is the same burn and not a fresh one. **Nothing read settles** a spread at the moment of
+application, its count or its reach; those are the sentence's words and the judgements below.
+
+### HOW IT IS BUILT
+
+- **A number a row hangs on an ailment, `ailment_spread_on_application`**, written as the others are: no event,
+  an Ailment cell, a value above 0. It is a count. It is read on the character applying the ailment, where the
+  application is announced in `ApplyDamageOverTime`, and is not carried on the character struck.
+- **`UCataclysmSkillEffects::SpreadOnApplication`** puts a spread copy on that many of the applier's enemies
+  within 5 metres of the target that do not already carry the ailment, nearest first, the target left out.
+- **Not for a copy a spread makes**, of any kind: the spread at a death, the blast of Plague Doctor's ten-piece
+  bonus, or this one.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **"Nearby" is 5 metres from the target**, the reach every spread of an ailment has, and the nearest are taken
+  first.
+- **Every application by the wearer spreads, a refresh included**, as a refresh counts as applying a damage over
+  time effect everywhere else. An enemy that already carries the ailment is passed over, so burning the same
+  target again reaches the next nearest enemies and not the same ones.
+- **A copy is the same damage a second for the same time** as the application it was made from, with the wearer
+  as its source. It is not an application: it raises no `dot_applied` and refreshes nothing under Plague Doctor's
+  six-piece bonus.
+- **A rolled count is rounded to the nearest whole number.**
+- **The five ailments that state a damage a tick can be given a count; a Void Splinter cannot.** It is applied by
+  another function, and no sentence asks for it.
+- **A minion's application spreads nothing.** The count is asked of whoever applies the ailment. THE OWNER,
+  2026-10-06.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A copy does hand over the other numbers the wearer's rows hang on the ailment**, as every spread copy does. So
+  with a row that passes a burn on at a death as well, a copy made here can pass on when its carrier dies.
+- **Repeated burning of one target walks outward through a pack**, two enemies an application at the top of the
+  roll, as far as 5 metres from that target.
+
+### Tests
+
+- `Cataclysm.Enchantments.AnAilmentAppliedPassesToTheNearestEnemiesARowCountsAndACopyPassesNoFurther`, with a row
+  made by hand: with no row a burn goes to its target and not to the creature 1 metre from it; with a count of 2 a
+  burn applied to a creature also goes to the creatures 1 and 2 metres from it and not to the ones 3 and 6 metres
+  from it; one `dot_applied` is announced, the wearer's own; a copy deals the same one point a second for the same
+  ten seconds with the wearer as its source; and applied again, the one 3 metres away receives it and the one 6
+  metres away does not.
+
+**A copy made here goes through `ailment_immunity`**, as every spread copy does: `ApplySpreadCopy` calls
+`ApplyDamageOverTime`, which asks the target's immunity first. An application the target's immunity refuses
+returns before the event and so spreads nothing.
+
+**Not tested:** a copy made here passing on at a death, a copy refused by an immunity, and a minion.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the older assets | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed; this layer's test not among them |
+| Assets | 92ddf6da | none built: this layer changes no table |
+
+**This layer's test needs no row**, so it passes against the older assets. Its failing half is this guard proof,
+with `prove_cpp_guard` on `Cataclysm.Enchantments.` at be112e78, restored to 265 tests performed, 265 succeeded,
+0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| The count is read as the kind None when an ailment is applied (`CataclysmSkillEffects.cpp`) | 265 performed, 2 failed | 6 assertions: this layer's test 4 (neither nearest creature burned; no running copy; the third not burned at the second application); the burn row test of the layer above 2 |
+
+**Not proved by a break: that a copy spreads no further.** No single line holds it. The test's creature 3 metres
+from the target, which a copy on the creature 1 metre away would have reached, is what holds it.
+
+**Accepted 2026-10-07 by the coordinating session**, each a labelled judgement: the judgements above as written.
+**FOR THE OWNER'S PLAY-CHECK LIST: every application spreads, a refresh included.** The worst case, by reasoning
+and not run: a ground zone that applies a burn at each of its sweeps is an application each sweep on every enemy
+standing in it. With a count of two, each sweep passes the burn to the two nearest enemies within 5 metres of
+each enemy in the zone that do not carry it yet. A pack standing within 5 metres of the zone's enemies is all
+burning after a few sweeps, though only some of it stands in the zone. It stops there: a copy passes no further,
+so an enemy more than 5 metres from every enemy in the zone is never reached.
+
+---
+
 ## 2026-10-07 — "Enemies you kill explode and deal 5%-10% of their maximum HP as damage to you" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
