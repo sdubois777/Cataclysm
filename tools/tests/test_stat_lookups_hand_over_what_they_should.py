@@ -419,6 +419,11 @@ INVENTORY = {
         "Diminishing Returns' share off each drink, asked of the drinker as a "
         'potion is drunk (issue #806); a potion is not a skill, so no tags',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(DotApplicationRefreshesOthersStat), FGameplayTagContainer(EffectTag), 0.0f'):
+        "Plague Doctor's six-piece flag (ruled 2026-10-06), asked of the applier "
+        'where a damage over time effect is applied, with the tag of the ailment '
+        'applied; whether it holds, not a modifier of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Set Stance's flag, asked of the target of a knockback before it is "
         'moved (issue #1755); whether it holds, not a modifier of a blow',
