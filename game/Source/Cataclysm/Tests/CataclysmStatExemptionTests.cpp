@@ -7637,7 +7637,7 @@ bool FCataclysmStatusOnTheWearerTest::RunTest(const FString&)
 }
 
 // DAMAGE OVER TIME ON THE WEARER, SCOPED BY AILMENT. Ruled 2026-10-06, for seven drawbacks: "Bleed effects applied to
-// you deal 30%-50% increased damage", "Bleeding on you lasts 50%-100% longer", "DoTs last 2x-4x as long on you", "DoTs
+// you deal 30%-50% increased damage", "Bleeding on you lasts 50%-100% longer", "DoTs on you have 100%-300% more duration", "DoTs
 // on you tick twice as fast while moving", "Unaffected by bleeding", "10%-20% of bleed damage you take is taken from
 // your energy shield instead of your health" and "DoTs deal damage to your mana pool first". Issue #1833.
 
@@ -7752,7 +7752,7 @@ bool FCataclysmDamageOverTimeOnTheWearerByAilmentTest::RunTest(const FString&)
 		TestEqual(TEXT("and an effect asked about with no tags alike"), UCataclysmDebuffs::DurationOn(Wearer.AbilitySystem, 10.0f), 15.0f, 0.001f);
 	}
 
-	// "BLEEDING ON YOU LASTS 50%-100% LONGER" AND "DoTs LAST 2x-4x AS LONG ON YOU", each at its most: an increase of
+	// "BLEEDING ON YOU LASTS 50%-100% LONGER" AND "DoTs ON YOU HAVE 100%-300% MORE DURATION", each at its most: an increase of
 	// 100 requiring the bleed tag and 300 more requiring the parent. A bleed lasts 8 times as long, a burn 4 times,
 	// and a Cripple as long as it did.
 	{

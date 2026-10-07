@@ -737,8 +737,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 537 over 450: two rows on two enchantments.
 #: AND 540 OVER 453 SINCE THE OVERKILL EXPLOSION ROW,
 #: issue #1833, 2026-10-06, from 539 over 452: one row on one enchantment.
-AUTHORED_ROWS = 540
-AUTHORED_ENCHANTMENTS = 453
+#: AND 541 OVER 454 SINCE THE REWORDED DURATION ROW,
+#: issue #1833, 2026-10-06, from 540 over 453: one row on one enchantment.
+AUTHORED_ROWS = 541
+AUTHORED_ENCHANTMENTS = 454
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -802,7 +804,11 @@ SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18]
 #: `UCataclysmItemValues::EnchantmentRanges`, is held to the same number by
 #: `Cataclysm.Enchantments.EveryRangeTheTablesStateIsFoundAndReplaced`, so the
 #: generator and the game cannot read the sentences differently.
-STATED_RANGES = 390
+#:
+#: 391 SINCE 2026-10-07, when the owner's reword of "DoTs last 2x-4x as long on
+#: you" to "DoTs on you have 100%-300% more duration" made that sentence state
+#: a range a reader reads.
+STATED_RANGES = 391
 
 
 def read(path: pathlib.Path) -> list[dict]:
