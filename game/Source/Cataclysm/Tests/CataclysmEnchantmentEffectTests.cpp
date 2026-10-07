@@ -17789,9 +17789,9 @@ namespace CataclysmTrapLayerTest
 	 * evasion, block or resistance, is struck once, and is destroyed before the
 	 * next is made, so no two ever stand on one spot.
 	 */
-	struct FRange
+	struct FTrapTestRange
 	{
-		explicit FRange(UWorld* InWorld) : World(InWorld) {}
+		explicit FTrapTestRange(UWorld* InWorld) : World(InWorld) {}
 
 		ACataclysmEnemyCharacter* Creature(float Armour) const
 		{
@@ -17989,7 +17989,7 @@ bool FCataclysmTrapAndGadgetScalesOnABlowTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const FRange Range(Scope.World);
+	const FTrapTestRange Range(Scope.World);
 
 	CataclysmDeployableTest::FSummoner Plain(Scope.World, nullptr);
 	ACataclysmMinion* PlainTrap = TrapOf(Plain);
@@ -18109,7 +18109,7 @@ bool FCataclysmTrapArmourRowTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const FRange Range(Scope.World);
+	const FTrapTestRange Range(Scope.World);
 	const float Armour = 800.0f;
 	const FName ArmourPenetration(TEXT("armor_penetration"));
 	const FGameplayTagContainer AsATrap(TheTrapTag());

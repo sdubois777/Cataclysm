@@ -109,7 +109,7 @@ So a trap here is a machine with one more tag. It is placed, swings and expires 
 to the old one.
 
 **What a trap is.** `ACataclysmMinion::IsTrap()` is true for a minion that is a deployable and whose type tags
-also hold `Type.Trap` exactly. The tag is found by `TrapTag()`, written beside `DeployableTag()`.
+also hold `Type.Trap` exactly. The tag is found by `TagOfATrap()`, written beside `DeployableTag()`.
 
 **The scales.** `ECataclysmStatScale::PerTrapActive` is named `traps_active` and `PerGadgetActive` is named
 `gadgets_active`. Each is the value times the whole steps of its count, by `StackedValue`, as

@@ -402,7 +402,7 @@ namespace
 	}
 
 	/** The tag that makes a machine a trap. Ruled 2026-10-07. See `IsTrap`. */
-	FGameplayTag TrapTag()
+	FGameplayTag TagOfATrap()
 	{
 		return FGameplayTag::RequestGameplayTag(
 			FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
@@ -417,7 +417,7 @@ bool ACataclysmMinion::IsDeployable() const
 
 bool ACataclysmMinion::IsTrap() const
 {
-	const FGameplayTag Trap = TrapTag();
+	const FGameplayTag Trap = TagOfATrap();
 	return IsDeployable() && Trap.IsValid() && TypeTags.HasTagExact(Trap);
 }
 
@@ -796,7 +796,7 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			{
 				BlowDelivery.NamedArmorPenetrationPercent =
 					NamingTraps->StatNamingTagAppliedTo(
-						FName(TEXT("armor_penetration")), TrapTag(), /*Figure=*/0.0f,
+						FName(TEXT("armor_penetration")), TagOfATrap(), /*Figure=*/0.0f,
 						TypeTags, Target, GetGameTimeSinceCreation());
 			}
 		}
