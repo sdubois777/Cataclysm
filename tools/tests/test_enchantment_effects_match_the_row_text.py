@@ -717,8 +717,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 522 over 435: one row on one enchantment.
 #: AND 535 OVER 448 SINCE TWELVE ROWS ON STATUSES AND DAMAGE OVER TIME ON THE WEARER,
 #: issue #1833, 2026-10-06, from 523 over 436: twelve rows on twelve enchantments.
-AUTHORED_ROWS = 535
-AUTHORED_ENCHANTMENTS = 448
+#: AND 536 OVER 449 SINCE THE BLEED LEECH ROW,
+#: issue #1833, 2026-10-06, from 535 over 448: one row on one enchantment.
+AUTHORED_ROWS = 536
+AUTHORED_ENCHANTMENTS = 449
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
