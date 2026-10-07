@@ -1079,6 +1079,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		Damage *= 1.0f + SubtypeBonus / 100.0f;
 	}
 	Result.DealtToHealth = FMath::Min(Damage, Vitals->GetHealth());
+	// AND HOW FAR IT WENT PAST THAT HEALTH. Ruled 2026-10-07. See `FCataclysmDamageResult::Overkill`. Nothing
+	// above or below reads it, and a blow on a character already at nought has none.
+	Result.Overkill = Vitals->GetHealth() > 0.0f
+		? FMath::Max(0.0f, Damage - Vitals->GetHealth())
+		: 0.0f;
 	return Result;
 }
 

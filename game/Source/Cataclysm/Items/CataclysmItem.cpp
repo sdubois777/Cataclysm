@@ -1467,6 +1467,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.UseSelfHitSharePercent = UCataclysmAbilitySystemComponent::BackfireSharePercent;
 					}
+					// AND WHETHER AN ENEMY THE WEARER KILLS EXPLODES FOR ITS OVERKILL. Ruled 2026-10-07. The value
+					// is the share of the overkill, in per cent.
+					Action.bExplodeVictimForOverkill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

@@ -877,6 +877,40 @@ public:
 								  FCataclysmDamageResult* OutResolved = nullptr);
 
 	/**
+	 * How far an overkill explosion reaches from the body, in centimetres: five metres.
+	 *
+	 * THE PROJECT'S "NEARBY" AT A DEATH, the figure `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`
+	 * holds for a row's "nearby enemies". A labelled judgement of 2026-10-07: the Path of Exile pages read give
+	 * about 2 metres ("Deal 30% of Overkill damage to enemies within 2 metres of the enemy killed").
+	 */
+	static constexpr float OverkillExplosionRadiusCm = 500.0f;
+
+	/**
+	 * "Enemies killed by you explode for the overkill amount." Ruled 2026-10-07.
+	 *
+	 * Every enemy OF THE KILLER within `OverkillExplosionRadiusCm` of `At`, the victim itself left out, takes
+	 * `Overkill * SharePercent / 100` as one direct blow dealt by the killer: area damage, so it is not evaded;
+	 * never retaliated against; never a critical strike; carrying no weapon sub-type; and of no damage type of
+	 * its own, so a player's is untyped as every player's blow is. The killer's increases do not scale it. The
+	 * enemy's own block, armour, damage reduction and energy shield meet it as they meet any blow.
+	 *
+	 * IT DOES NOT HIT THE KILLER OR THE KILLER'S SIDE: the search is the one every skill uses for enemies.
+	 *
+	 * NOTHING CALLS THIS AT A KILL YET. That is the second part; see
+	 * `UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`.
+	 *
+	 * A CHAIN BOUNDS ITSELF. An enemy this kills has its own overkill, which is less than what this dealt it,
+	 * and when the second part is wired it explodes in turn. So a target is asked again whether it is still
+	 * there and alive before it is struck: an explosion further down the chain may have killed it first.
+	 *
+	 * @param Victim  the enemy killed, which takes nothing. May be null.
+	 * @param At      where the body is.
+	 * @return how many enemies a blow was sent at. Nought for an overkill or a share of nought.
+	 */
+	static int32 ExplodeForOverkill(AActor* Killer, const AActor* Victim, const FVector& At, float Overkill,
+									float SharePercent);
+
+	/**
 	 * Set a target alight, for the duration and share the DoTs sheet states.
 	 *
 	 * ONE STACK ONLY, which the design states for every effect a player can

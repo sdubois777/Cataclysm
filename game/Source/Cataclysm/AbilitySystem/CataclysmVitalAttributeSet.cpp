@@ -1278,6 +1278,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Resolved.AbsorbedByMana = 0.0f;
 			}
 
+			// AND A BLOW THAT NO LONGER EMPTIES HEALTH HAS NO OVERKILL. Ruled 2026-10-07. Every step above that
+			// lowers `Resolved.DealtToHealth` leaves it below the health held: the boss's floor on a share tick,
+			// the Sacrificial Ward, an immune, absorbing or reflecting wearer, the two saves that leave one
+			// point, and a creature no damage reaches. ONE LINE AFTER ALL OF THEM rather than one in each, so a
+			// step added later is covered without having to know of this. A blow that deals nothing kills
+			// nothing.
+			if (Resolved.DealtToHealth <= 0.0f || Resolved.DealtToHealth < GetHealth())
+			{
+				Resolved.Overkill = 0.0f;
+			}
+
 			// EVERYTHING BELOW READS THIS, so the second check reaches the health
 			// write, the floating number, the leech and everything else that asks
 			// what the blow dealt.

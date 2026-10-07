@@ -380,6 +380,28 @@ struct CATACLYSM_API FCataclysmDamageResult
 	float DealtToHealth = 0.0f;
 
 	/**
+	 * How far the blow went past the health the defender held: the damage that reached the health step, less that
+	 * health, and never below nought. Ruled 2026-10-07, for "Enemies killed by you explode for the overkill
+	 * amount".
+	 *
+	 * NOUGHT FOR EVERY BLOW THAT DOES NOT EXCEED THE DEFENDER'S HEALTH, an exactly lethal one included, and for a
+	 * blow on a character whose health is already nought, which kills nothing. `DealtToHealth` is the same blow
+	 * clamped to that health, so the two add up to what reached the health step. A lethal damage over time tick
+	 * records it as a hit does.
+	 *
+	 * NOTHING IN THE CALCULATION READS IT. Leech, the floating number and everything else go on reading
+	 * `DealtToHealth`.
+	 *
+	 * IT IS NOT BY ITSELF A SIGN THAT THE BLOW KILLED. `UCataclysmVitalAttributeSet` empties it for a blow that
+	 * no longer empties health once its own steps have run (an immune, absorbing or reflecting wearer, a blow
+	 * saved at one point, a creature no damage reaches), but two later steps there leave `DealtToHealth` as it
+	 * is and still keep the creature alive: Sacrificial Bond's sharing and the Unholy Sigil. A reader that wants
+	 * the overkill of a KILL takes it from the blow the death followed.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float Overkill = 0.0f;
+
+	/**
 	 * How much of the hit the armour step took away, and how much the two
 	 * damage reduction lines took away between them: each is the damage before
 	 * its own step less the damage after it. Issue #1515, for Nothing Wasted,

@@ -5276,6 +5276,25 @@ SKILL_IN_HAND_ACTIONS = (REPEAT_SKILL_ACTION, TRIGGER_HELD_SKILL_ACTION,
     + USE_INCREASED_DAMAGE_ACTIONS + (USE_HITS_ALL_NEARBY_ACTION,) \
     + USE_HITS_ITS_USER_ACTIONS
 
+#: The action that makes an enemy the wearer kills EXPLODE FOR ITS OVERKILL, with
+#: its value as the share of the overkill each enemy near the body takes, in
+#: per cent. Ruled 2026-10-07: "Enemies killed by you explode for the overkill
+#: amount", whose row states 100.
+#: `UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction` holds the
+#: same name.
+#:
+#: ON `kill` AND NO OTHER EVENT. The event loop only records the share; the kill
+#: site takes it once the loop has returned and makes the explosion with the
+#: death's victim, place and overkill. No other event has a victim or an
+#: overkill, so the row would be recorded and never taken.
+OVERKILL_EXPLOSION_ACTION = "explode_victim_for_overkill"
+OVERKILL_EXPLOSION_EVENTS = ("kill",)
+
+#: The most an overkill explosion's share may be, in per cent. A bound for
+#: typing mistakes, as `MAX_USE_INCREASE` is; the one sentence is the whole
+#: overkill, 100.
+MAX_OVERKILL_EXPLOSION_SHARE = 1000.0
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -5545,6 +5564,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_cleanse_action(index, who, action, event, fraction_of, kind,
                               raw, headers)
         return
+    if action == OVERKILL_EXPLOSION_ACTION:
+        _check_overkill_explosion_action(index, who, action, event,
+                                         fraction_of, kind, raw, headers)
+        return
     if action in AILMENT_RIDER_ACTIONS:
         _check_ailment_rider_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
@@ -5565,6 +5588,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(ALL_APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
             f"or {REFLECT_BLOCKED_ACTION}; or {BLAST_FROM_THE_DYING_ACTION}; "
             f"or {CLEANSE_ACTION}; "
+            f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
             f"or a rider on an ailment, {', '.join(AILMENT_RIDER_ACTIONS)}.")
 
@@ -5823,6 +5847,32 @@ def _check_blast_from_the_dying_action(index: int, who: str, action: str,
                 f"Enchantment Effects row {index}: {who} blasts from an enemy "
                 f"that died and states {column} {written!r}. Its value is a "
                 f"share and nothing else, so the column must be empty.")
+
+
+def _check_overkill_explosion_action(index: int, who: str, action: str,
+                                     event: str, fraction_of: str, kind: str,
+                                     raw, headers: dict[str, int]) -> None:
+    """Everything an overkill explosion row must say, and everything it must
+    not. Ruled 2026-10-07. ON `kill` ONLY, because that is the one event whose
+    raiser takes what the row records; the share is checked where the value is
+    read. A fraction, a value kind and a scale each mean nothing here, so each
+    is refused rather than dropped.
+    """
+    if event not in OVERKILL_EXPLOSION_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} explodes a killed enemy "
+            f"for its overkill on the event {event or '(none)'!r}. Only a kill "
+            f"has a victim and an overkill: "
+            f"{', '.join(OVERKILL_EXPLOSION_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} explodes a killed enemy "
+                f"for its overkill and states {column} {written!r}. Its value is "
+                f"a share of the overkill and nothing else, so the column must "
+                f"be empty.")
 
 
 def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
@@ -6202,6 +6252,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != REFLECT_BLOCKED_ACTION \
                     and action != BLAST_FROM_THE_DYING_ACTION \
                     and action != CLEANSE_ACTION \
+                    and action != OVERKILL_EXPLOSION_ACTION \
                     and action not in SKILL_IN_HAND_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
@@ -6367,6 +6418,17 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} blasts for {low:g} "
                     f"to {high:g} per cent of a dead enemy's maximum health. It "
                     f"blasts for above 0 and up to 100.")
+
+        # AN OVERKILL EXPLOSION'S VALUE IS A SHARE OF THE OVERKILL, above 0 and
+        # up to the bound. Ruled 2026-10-07.
+        if action == OVERKILL_EXPLOSION_ACTION:
+            if not (0 < low <= MAX_OVERKILL_EXPLOSION_SHARE
+                    and 0 < high <= MAX_OVERKILL_EXPLOSION_SHARE):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} explodes a killed "
+                    f"enemy for {low:g} to {high:g} per cent of its overkill. "
+                    f"The share is above 0 and up to "
+                    f"{MAX_OVERKILL_EXPLOSION_SHARE:g}.")
 
         # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
         if action in SKILL_IN_HAND_ACTIONS:
