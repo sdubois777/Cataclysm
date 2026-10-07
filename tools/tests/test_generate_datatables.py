@@ -2555,7 +2555,7 @@ class TestAStatusLaidOnTheWearer:
 
     def dot(self, tmp_path, changes):
         values = {"Enchantment": self.DOT, "Effect": self.DOT_WORDS,
-                  "Action": "apply_status_to_self_times", "Action Event": "dot_applied",
+                  "Action": "apply_status_to_self_sized", "Action Event": "dot_applied",
                   "Ailment": "Applied DoT", "Value Low": 1, "Value High": 4}
         values.update(changes)
         return self.book(tmp_path, values)
@@ -2577,11 +2577,11 @@ class TestAStatusLaidOnTheWearer:
             "apply_status_to_self_seconds", "skill_end", 0.5, 1.0, "Stun",
             "Keyword.Charge")
 
-    def test_a_times_row_on_a_dot_applied_is_carried_through_and_waits_for_nothing(self, tmp_path):
+    def test_a_sized_row_on_a_dot_applied_is_carried_through_and_waits_for_nothing(self, tmp_path):
         out = gen.enchantment_effects(self.dot(tmp_path, {}))
         assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
                 out[0]["ValueHigh"], out[0]["Ailment"], out[0]["TriggerCooldown"]) == (
-            "apply_status_to_self_times", "dot_applied", 1.0, 4.0, "Applied DoT", 0.0)
+            "apply_status_to_self_sized", "dot_applied", 1.0, 4.0, "Applied DoT", 0.0)
 
     def test_a_timed_row_is_carried_through(self, tmp_path):
         out = gen.enchantment_effects(self.book(tmp_path, {
@@ -2607,7 +2607,7 @@ class TestAStatusLaidOnTheWearer:
                 "Action": "apply_status_seconds", "Action Event": "hit_dealt",
                 "Ailment": "Stun", "Value Low": 0.5, "Value High": 1}))
 
-    def test_the_times_action_is_refused_off_dot_applied(self, tmp_path):
+    def test_the_sized_action_is_refused_off_dot_applied(self, tmp_path):
         with pytest.raises(gen.DataError, match="written on dot_applied"):
             gen.enchantment_effects(self.dot(tmp_path, {"Action Event": "hit_taken"}))
 
@@ -2615,11 +2615,11 @@ class TestAStatusLaidOnTheWearer:
         with pytest.raises(gen.DataError, match="written on dot_applied"):
             gen.enchantment_effects(self.hit(tmp_path, {"Action Event": "dot_applied"}))
 
-    def test_the_times_action_names_only_the_applied_dot(self, tmp_path):
+    def test_the_sized_action_names_only_the_applied_dot(self, tmp_path):
         with pytest.raises(gen.DataError, match="applies the status 'Bleed'"):
             gen.enchantment_effects(self.dot(tmp_path, {"Ailment": "Bleed"}))
 
-    def test_a_count_above_the_most_is_refused(self, tmp_path):
+    def test_a_size_above_the_most_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="whole number from 1"):
             gen.enchantment_effects(self.dot(tmp_path, {
                 "Enchantment": self.MANY, "Effect": self.MANY_WORDS,
