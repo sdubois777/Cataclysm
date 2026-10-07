@@ -321,6 +321,7 @@ const TCHAR* UCataclysmSkillEffects::KnockbackSuppressedStat =
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
+const TCHAR* UCataclysmSkillEffects::ConsequenceOfADeathDataName = TEXT("Cataclysm.ConsequenceOfADeath");
 const TCHAR* UCataclysmSkillEffects::StatedMagnitudeDataName =
 	TEXT("Cataclysm.StatedMagnitude");
 
@@ -1128,6 +1129,8 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 	// AND IT DOES NOT LEECH. Ruled 2026-10-07: the explosion is the consequence of a death and not a blow the
 	// killer struck, so the killer takes nothing back from it.
 	Delivery.bCannotLeech = true;
+	// AND IT FIRES NONE OF THE KILLER'S ON-HIT ROWS, for the same reason. Ruled 2026-10-07.
+	Delivery.bIsConsequenceOfADeath = true;
 
 	int32 Struck = 0;
 	for (AActor* Target : Caught)
@@ -1377,6 +1380,12 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsConvertedDamage)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ConvertedDamageDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS THE CONSEQUENCE OF A DEATH, which fires none of its dealer's on-hit rows. Ruled 2026-10-07.
+	if (Delivery.bIsConsequenceOfADeath)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ConsequenceOfADeathDataName), 1.0f);
 	}
 
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void

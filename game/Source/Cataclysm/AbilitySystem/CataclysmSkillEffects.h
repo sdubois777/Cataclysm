@@ -63,6 +63,18 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsConvertedDamage = false;
 
 	/**
+	 * Whether this blow is the consequence of a death and not a blow the character struck: the explosion a slain
+	 * enemy makes for its overkill. Ruled 2026-10-07. The effect is stamped with
+	 * `UCataclysmSkillEffects::ConsequenceOfADeathDataName`, the hit announcement carries it as
+	 * `FCataclysmHitNotice::bConsequenceOfADeath`, and `ACataclysmPlayerCharacter::OnSomethingWasHit` raises none
+	 * of `hit_dealt`, `first_hit_dealt` and `critical_strike` for it.
+	 *
+	 * IT IS NOT DAMAGE OVER TIME AND IS NOT TREATED AS ONE. It changes nothing else: who is credited with a kill
+	 * the blow makes, the `kill` event, leech and retaliation are each decided by their own flags.
+	 */
+	bool bIsConsequenceOfADeath = false;
+
+	/**
 	 * The blow was struck in melee. Issue #1032.
 	 *
 	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, the same way and in the same
@@ -1724,6 +1736,13 @@ public:
 	 * `UCataclysmDebuffs::Cleanse`, which keeps the effect.
 	 */
 	static const TCHAR* ConvertedDamageDataName;
+
+	/**
+	 * The name an effect is stamped under when its blow is the consequence of a death, with any value above
+	 * nought. Ruled 2026-10-07. A plain name and no gameplay tag, as `ConvertedDamageDataName` is. Read by
+	 * `UCataclysmCombatEvents::NoteBlow`. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`.
+	 */
+	static const TCHAR* ConsequenceOfADeathDataName;
 
 	/**
 	 * What the running application of this effect on this actor STATED, or a
