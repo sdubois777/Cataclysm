@@ -1365,15 +1365,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// four exclusions its blow carries and is checked here rather
 				// than inside the leech code, exactly as the critical strike
 				// and the two penetrations are.
+				//
+				// A TICK ALSO SAYS WHICH AILMENT IT IS. Ruled 2026-10-07, for "Bleed
+				// damage you deal also leeches 10%-20% of its value as HP". The
+				// asset tags carry the skill's tags and the bare `Keyword.DoT`;
+				// the ailment is a granted tag, gathered above for a tick alone.
+				// Without it a leech row scoped to `Keyword.DoT.Bleed` was
+				// discarded on every tick. A hit carries none, so a hit is asked
+				// with the same tags as before.
 				if (!AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))
 				{
+					FGameplayTagContainer LeechTags = AssetTags;
+					LeechTags.AppendTags(Hit.DamageOverTimeTags);
 					UCataclysmLeech::NoteHit(
 						const_cast<UAbilitySystemComponent*>(
 							Data.EffectSpec.GetContext()
 								.GetInstigatorAbilitySystemComponent()),
 						Outcome.DealtToHealth + Outcome.AbsorbedByShield
 							+ Outcome.AbsorbedByMana,
-						AssetTags);
+						LeechTags);
 				}
 
 				// AND A BLOW THAT GOT THROUGH TO A BOSS OPENS THE ATTACKER'S
