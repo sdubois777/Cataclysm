@@ -135,6 +135,31 @@ FROM_THE_SOURCE = re.compile(
     re.IGNORECASE)
 
 
+#: The two tables that hold an enchantment's sentence, which its rows in
+#: `EnchantmentEffects.csv` build.
+ENCHANTMENT_TABLES = ("EnchantmentsNegative", "EnchantmentsPositive")
+
+
+def stated_by_its_enchantment(effect_row: dict[str, str], sentences: dict[str, str]) -> bool:
+    """Whether the enchantment an effect row builds states the stun's duration.
+
+    AN EFFECT ROW HOLDS NO SENTENCE. It names its enchantment, and the
+    enchantment's own row holds the words. Since 2026-10-07 an effect row can
+    name Stun in its Ailment column, for "After using a charge skill you are
+    briefly stunned for 0.5-1 second", so it mentions stun and can state no
+    duration in words itself. Its duration is read where it is written.
+
+    THIS IS NOT A HOLE: the enchantment's sentence is a row every check in this
+    file reads, and an effect row whose enchantment is unknown, or whose
+    sentence states no duration, is still reported."""
+    sentence = sentences.get(effect_row.get("Enchantment", ""))
+    return sentence is not None and DURATION.search(sentence) is not None
+
+
+def enchantment_sentences() -> dict[str, str]:
+    return {row["Name"]: row["Effect"] for table in ENCHANTMENT_TABLES for row in rows_of(table)}
+
+
 def rows_of(name: str) -> list[dict[str, str]]:
     path = DATA / f"{name}.csv"
     if not path.is_file():
@@ -193,14 +218,30 @@ def test_everything_that_applies_a_stun_states_how_long():
     comment there for why, and for the test that stops the exemption being a
     hole."""
     exempt = DEFINITIONS | CHANCE_TO_APPLY
+    sentences = enchantment_sentences()
+    built = {row["Name"]: row for row in rows_of("EnchantmentEffects")}
     missing = [(table, key) for table, key, text in stun_rows()
-               if (table, key) not in exempt and not DURATION.search(text)]
+               if (table, key) not in exempt and not DURATION.search(text)
+               and not (table == "EnchantmentEffects"
+                        and stated_by_its_enchantment(built.get(key, {}), sentences))]
     assert not missing, (
         f"{missing} apply a stun without saying how long it lasts. Since the "
         "anti-stun-lock rule gave stun a 5 second immunity window, a duration "
         "is a number that interacts with another number and 'briefly' is not "
         "enough. Add the duration to docs/All_Things_Cataclysm.xlsx and "
         "regenerate. Issue #271.")
+
+
+def test_an_effect_row_is_excused_only_by_a_sentence_that_states_the_duration():
+    """What stops reading the enchantment's sentence being a way to say nothing.
+    Made-up rows: one whose sentence states a duration, one whose sentence says
+    only "briefly", and one that names an enchantment no table holds."""
+    sentences = {"Stated": "After a charge you are stunned for 0.5-1 second",
+                 "Brief": "After a charge you are briefly stunned"}
+    assert stated_by_its_enchantment({"Enchantment": "Stated"}, sentences)
+    assert not stated_by_its_enchantment({"Enchantment": "Brief"}, sentences)
+    assert not stated_by_its_enchantment({"Enchantment": "Nowhere"}, sentences)
+    assert not stated_by_its_enchantment({}, sentences)
 
 
 @pytest.mark.parametrize(("table", "key"), sorted(DEFINITIONS))

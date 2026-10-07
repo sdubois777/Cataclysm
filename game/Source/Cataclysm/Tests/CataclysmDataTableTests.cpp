@@ -729,7 +729,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 522 SINCE THE ROW THAT PASSES A BURN ON WHEN IT IS APPLIED, issue #1833, from 521.
 	//
 	// AND 523 SINCE THE BLOCK VALUE ROW, issue #1833, from 522.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    523)
+	//
+	// AND 535 SINCE TWELVE ROWS ON STATUSES AND DAMAGE OVER TIME ON THE WEARER, issue #1833, from 523.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    535)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
