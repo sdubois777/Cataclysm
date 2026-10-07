@@ -55,7 +55,7 @@ listener calls, eight give a different result when they hear two deaths the wron
 Epidemic, Demon Prince, Echoes of the Past, Hellfire, Soul Harvest, Blood-Forged Champions and Plague Harbingers.
 Divine Resurgence was read by the writing session: it counts a death as fallen and compares with the fallen plus
 those still standing, so a first death not yet heard leaves its total one short. The other seven were read by a
-second, read-only session and not by the writing session. None of it was run. The issue opened for it carries the
+second, read-only session and not by the writing session. None of it was run. Issue [#2290](https://github.com/sdubois777/Cataclysm/issues/2290) carries the
 detail.
 
 **What was built.** `UCataclysmCombatEvents::AfterThisDeathIsHeard(Work)`. `NoteDeath` counts the announcements in
