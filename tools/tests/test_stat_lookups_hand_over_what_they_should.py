@@ -87,6 +87,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: character are now asked with the tags of what arrives.
 #: Absorbed damage stored added two more on 2026-10-07, the caps of the two
 #: stores, each asked where its store fills and where it is spent.
+#: The class resource generation rate added one more on 2026-10-07, asked by
+#: the one helper every gain of class resource goes through.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -441,6 +443,11 @@ INVENTORY = {
      'FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat), SkillTags, UCataclysmDamageCalculation::NormalZoneFirstSweepDamage'):
         "the share a skill's zone deals on its first sweep (issue #1686), "
         "asked where the zone is priced; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ClassResourceGenerationStat), FGameplayTagContainer(), NormalClassResourceGeneration'):
+        "how fast the class resource is gained (ruled 2026-10-07), asked at "
+        "each gain by ClassResourceGainScaled; a generation rate is the "
+        "character's and not a skill's, so no tags",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::PersistentAreaDurationStat), SkillTags, UCataclysmDamageCalculation::NormalPersistentAreaDuration'):
         "the share of its stated time a ground zone or a terrain lasts (ruled "

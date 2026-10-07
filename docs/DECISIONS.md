@@ -2,6 +2,220 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Class resource generation rate: one stat, `class_resource_generation`, scales every gain of class resource and no loss. Engine and stat name only; no row authored; not built or run
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`ClassResourceGenerationStat`, `NormalClassResourceGeneration`, the helper `ClassResourceGainScaled`, and its call
+in `ApplyPoolAction`); `CataclysmFervour.cpp` (seven calls of the helper);
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (`StatsWithNoAttribute` and
+`EngineSuppliedBases`); `tools/generate_datatables.py` (`ENGINE_SUPPLIED_BASES`);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one inventory entry); tests in
+`CataclysmFervourTests.cpp`, `CataclysmEnchantmentEffectTests.cpp`, `CataclysmPassiveTreeTests.cpp` and
+`CataclysmStatExemptionTests.cpp`.
+**Not built and not run.** The C++ has not been compiled, no automation test has been run and no guard proof has
+been run. **No row is authored**: both sentences are still without an effect row.
+
+### Said first: only Fervour has generators, and three trees have none
+
+- **Every generator in the game today fills Fervour.** The class resource is one shared pool
+  (`UCataclysmClassResourceAttributeSet::ClassResource`), and everything that fills it by itself is one of seven
+  functions of `UCataclysmFervour`. Read in `game/Data/PassiveEffects.csv`: the Masochist, the Ritualist and the
+  Ravager each have rows that grant a Fervour rate. **The Berserker, the Bulwark and the Saboteur have none.**
+- **So on a character with no generator the two rows change only what an item row grants.** A gain of nought
+  scaled is nought. The item path is the eighth below: a worn row that grants class resource fills the pool of any
+  character that has one, and every class has a pool of 100 (`Default_class_resource` in
+  `game/Data/ClassStats.csv`). On a Berserker, a Bulwark or a Saboteur that grant is the only thing the two rows
+  scale. The bar is not drawn for such a character (`UCataclysmFervour::HasAGenerator`, asked in
+  `CataclysmCombatOverlay.cpp`), though rows that read the pool still read it.
+- **Where the code did not match what the writing session was told.** It was told to confirm "only Fervour has
+  generators" from the comment in `ACataclysmPlayerCharacter::Revive`, "The other three generators do not exist
+  yet", and to write that the rows do nothing on "the other three classes". That comment belongs to issue #956,
+  decided 2026-08-26; the Ritualist's and the Ravager's generators carry later issue numbers, #1518 and #1515.
+  Read today, three trees have a Fervour generator and three have none, and `game/Data/PassiveNodes.csv` holds
+  six trees, not four. The ruling is unchanged by it; the sentence above states what was read. **For the
+  coordinating session to confirm.**
+
+### What it is for
+
+Two enchantment sentences, each with no effect row. Quoted from the two files, `Name`, `Effect`, `Tags`:
+
+| File | Name | Effect | Tags |
+|---|---|---|---|
+| `EnchantmentsPositive.csv` | `Positive_Your_class_resource_generates_20_40_faster` | Your class resource generates 20%-40% faster | `Stat.Resource.ClassResource` |
+| `EnchantmentsNegative.csv` | `Negative_Your_class_resource_generates_30_50_slower` | Your class resource generates 30%-50% slower | `Stat.Resource.ClassResource` |
+
+| What each row needs | faster | slower |
+|---|---|---|
+| Stat | `class_resource_generation` | `class_resource_generation` |
+| Value Kind | `increased` | `increased` |
+| Value Low, Value High | 20, 40 | -30, -50 |
+| Required Tags, Condition, Scale, Action | empty | empty |
+
+**"Faster" and "slower" are `increased` by the project's tested wording rule**: the pattern `INCREASE` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` holds both words, and `TAKING` in the same file holds
+"slower", which is where a negative value goes. Neither row was run through that test, since neither is authored.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **One stat with no attribute, `class_resource_generation`, based at 100: a percent of normal.** Registered as
+   `persistent_area_duration` is: the name and base on the engine, `StatsWithNoAttribute`, `EngineSuppliedBases`,
+   the generator's `ENGINE_SUPPLIED_BASES`, a probe in the stat-exemption table and an inventory entry for its one
+   lookup. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+2. **One helper reads it and scales a gain: for a positive change, change x stat / 100, never below nought. A
+   loss, a spend and a decay are not scaled.** Called at the seven places Fervour is gained, before each one's
+   clamp to the maximum, so a faster gain still stops at the maximum. A labelled judgement by the coordinating
+   session under the owner's delegation, 2026-10-07.
+3. **The eighth path counts too: a gain a worn row grants through a pool action on the pool `class_resource`.** A
+   positive amount for that pool is scaled by the same helper; a row that takes class resource away is not. A
+   labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+4. **On a character with no generator the row does nothing but scale what an item row grants.** See "Said first".
+   A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+
+The helper asks the stat with no tags: a generation rate is the character's and not a skill's.
+
+### The eight paths
+
+Each of the seven functions clamps `Before + gain` between nought and
+`UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked()`, writes the difference, and returns the pool's
+measured movement. The scale is applied to the gain inside that clamp, so what each returns is the scaled and
+clamped figure.
+
+| Function | The stat that feeds it | Where the scale is applied |
+|---|---|---|
+| `UCataclysmFervour::Move`, called by `GainFromDamage` and `GainFromHealthCost` | `fervour_from_damage`, `fervour_from_cost` | on `Sign * Amount`, the line before the clamp; `RemoveForHealing` comes through the same line with a negative sign and is handed back as it came |
+| `GainPerSecondStep` | `fervour_per_second`, `fervour_from_minions`, `fervour_per_enemy_in_reach` | once, on the sum of the three times the seconds, before the clamp |
+| `GainForCast` | `fervour_per_cast` | on the per-cast figure, inside the clamp |
+| `GainOnDroppingLow` | `fervour_on_dropping_low` | on the figure, inside the clamp |
+| `GainForEnemiesHit` | `fervour_per_enemy_hit` | on the figure times the enemies hit, inside the clamp |
+| `GainOnMinionDeath` | `fervour_on_minion_death` | on the figure, inside the clamp |
+| `GainOnEnemyDeathNearby` | `fervour_on_enemy_death_nearby` | on the figure, inside the clamp |
+| `UCataclysmAbilitySystemComponent::ApplyPoolAction` | a row's `Action` on the pool `class_resource` | on the amount, where it is computed, before the test for nought and before `UCataclysmRegeneration::TopUp`, which stops it at the maximum |
+
+**The three authored rows that grant class resource**, from `game/Data/EnchantmentEffects.csv`, all through the
+eighth path:
+
+- `Positive_Blocking_an_attack_generates_5_10_of_your_clas#1`: 5 to 10, `class_resource`, `block`, `maximum`,
+  trigger cooldown 0.25.
+- `Positive_Each_skill_use_generates_1_3_of_your_maximum_c#1`: 1 to 3, `class_resource`, `skill_use`, `maximum`.
+- `Positive_Strike_skills_generate_5_10_of_your_class_reso#1`: 5 to 10, required tag `Type.Strike`,
+  `class_resource`, `hit_dealt`, `maximum`, trigger cooldown 0.25.
+
+**Where the helper lives.** `UCataclysmAbilitySystemComponent::ClassResourceGainScaled`, a static. A judgement by
+the writing session: `CataclysmFervour.cpp` already includes the component's header, and the component's own
+.cpp does not include `CataclysmFervour.h`, so no include is added anywhere.
+
+### What is not scaled, and why
+
+- **Healing's loss through `Move`** (`RemoveForHealing`). A loss is not generation.
+- **`DecayStep`.** A decay is not generation, and its two rows have a stat of their own, `fervour_decay_per_second`.
+- **`RestoreHealthOnKill` and `BuyDamageForEnemiesStruckTogether`.** Each spends.
+- **A row that takes class resource away** through a pool action: "Blocking attacks reduces your class resource"
+  and "Dodging an attack drains" are losses.
+- **A skill's Fervour cost**, `UCataclysmGameplayAbility`, and the write that brings the pool down to what an
+  army leaves spendable, `CataclysmCommand.cpp`. Each lowers the pool.
+- **A respawn emptying the pool**, and the maximum. `class_resource` is the maximum's stat and is untouched.
+
+A sweep of `game/Source/Cataclysm` for every other place that names the pool's attribute found only those writes;
+none of them gains. A gameplay effect that added to the pool would not pass through the helper; the sweep found
+none in code and did not read the editor's assets.
+
+### For the owner's play-check
+
+- **A slower generation at -50 halves every gain**: a hit that gave 10 Fervour gives 5, a second beside one enemy
+  gives a Ravager half a point, a block row that granted 10% of the maximum grants 5%.
+- **With the row at +40 and nothing else the maximum is unchanged.** The pool fills 1.4 times as fast and stops
+  where it did.
+- **Two worn rows add.** If two drawbacks at -50 are worn they make -100, and nothing is gained at all; the stat
+  never goes below nought, so a gain never becomes a loss.
+- **A Ravager's decay and a Masochist's loss to healing are as they were**, so a slower row makes the Masochist's
+  bar harder to keep, not only slower to fill.
+- **A Berserker, a Bulwark or a Saboteur gets nothing from the benefit and loses nothing to the drawback**, unless
+  it also wears a row that grants class resource.
+
+### Research
+
+**No source was read.** This adds no formula shape: it is one more `increased` line on gains this game already
+has, in the pipeline `(base + flat) x (1 + increases) x more` the project already uses.
+
+### Judgements by the writing session, 2026-10-07, for the coordinating session to confirm
+
+- **The helper is a static on the ability system component.** A judgement by the writing session; see "Where the
+  helper lives".
+- **A component that is not this project's subclass, or none, is answered the change as it came.** A judgement by
+  the writing session: it cannot be asked for a stat.
+- **The helper's fallback is the base of 100.** A judgement by the writing session. `ApplyTo` records only a stat
+  that has a modifier, so a character wearing neither row has no line for it, and must gain at the normal rate.
+- **The per-second gain is scaled once, on the sum of its three rates.** A judgement by the writing session; the
+  three are summed before they are clamped, and scaling each would give the same figure.
+- **The item path is tested on `block` alone.** A judgement by the writing session: the three rows differ only in
+  the event, and all reach one line.
+- **`Move` is tested by both of its gaining callers** though one call of the helper serves both.
+- **Each control is a separate character, alive alone.** The test characters of two rigs stand on the world's
+  origin, so each reading makes its character and destroys it before the next. The Ravagers are each in a world of
+  their own.
+
+### Tests
+
+**None of the Unreal tests has been run.**
+
+In `CataclysmFervourTests.cpp`, on that file's `FScopedCharacter`: 1000 health, a pool of 100, the path's rate
+given as a stat line, and `class_resource_generation` at its base of 100 with one `increased` line. Each reads a
+control with no line for the stat, a character at +40 and one at -50, and asserts the set-up one reading at a time.
+
+- `Cataclysm.Fervour.GenerationRateScalesWhatDamageAndAHealthCostGain`: `Move`, by `GainFromDamage` and by
+  `GainFromHealthCost`. The gain is 1.4 times the control's and half of it.
+- `Cataclysm.Fervour.GenerationRateScalesGainPerSecondStep`
+- `Cataclysm.Fervour.GenerationRateScalesGainForCast`
+- `Cataclysm.Fervour.GenerationRateScalesGainOnDroppingLow`
+- `Cataclysm.Fervour.GenerationRateScalesGainForEnemiesHit`
+- `Cataclysm.Fervour.GenerationRateScalesGainOnMinionDeath`
+- `Cataclysm.Fervour.GenerationRateScalesGainOnEnemyDeathNearby`: the same three readings each, and that each
+  function answers what its pool moved by.
+- `Cataclysm.Fervour.GenerationRateDoesNotScaleWhatHealingRemovesOrWhatIsSpent`: from a pool of 50,
+  `RemoveForHealing` and `BuyDamageForEnemiesStruckTogether` move the pool by exactly what the control's did.
+- `Cataclysm.Fervour.AFasterGainStillStopsAtTheMaximumAndBanksNothing`: from 88, a cast worth 10 at +40 gains the
+  12 that fit, and a spend of 5 after it leaves 95, which is what shows the scale came before the clamp.
+- `Cataclysm.Fervour.AGenerationRateBelowNoughtGainsNothingAndTakesNothing`: at -150 a cast gains nothing and the
+  pool is not lowered.
+
+In `CataclysmEnchantmentEffectTests.cpp`, on that file's `FWearer`, a pool of 200:
+
+- `Cataclysm.Enchantments.GenerationRateScalesAPoolActionThatGrantsClassResourceAndNotOneThatTakesIt`: a `block`
+  row granting 10% of the maximum grants 1.4 times and half the control's; a row taking 10% takes what the
+  control's took; from 190 a faster grant stops at 200; a health row on the same wearer restores what the
+  control's did.
+
+In `CataclysmPassiveTreeTests.cpp`, three real Ravagers with the starting node's real rows, each in a world of its
+own, an enemy 3 metres away:
+
+- `Cataclysm.Passives.ClassResourceGenerationScalesARealRavagersGainAndNotItsDecay`: the stat line of a carrier
+  holds the engine-supplied base; a second beside one enemy gains 1.4 times and half the control's; `DecayStep`
+  takes the 5 the control's took.
+
+In `CataclysmStatExemptionTests.cpp`: `ProbeClassResourceGeneration`, with its entry in the probe table.
+
+The Python suite gains no test: the one new lookup is added to the inventory an existing test holds.
+
+### Not covered by a test
+
+- **`RestoreHealthOnKill`'s spend.** No test in the suite calls it directly, and this change does not touch it.
+- **A skill's Fervour cost, the army's reserve and a respawn.** Untouched and not read by a new test.
+- **The two rates summed with `fervour_per_second`**, the minion rate and the enemies-near rate, on the bare rig.
+  The enemies-near rate is read on the real Ravager.
+- **The item path on `skill_use` and `hit_dealt`**, and on a real worn row: no row is authored.
+- **Two characters wearing the rows at once, and a save and load.**
+- **`EngineSuppliedBases` on the control**: a character with no modifier on the stat has no line for it, so only
+  a carrier's base is read.
+
+### Not yet run
+
+**Not run.** No Unreal compile, no automation test and no guard proof has been run for this change. The Python
+suite, the lint and `tools/check_resolved_cpp.py --changed` were run by the writing session after this entry was
+written; their output is in that session's hand-over and not here, because nothing may be recorded before the run
+that proves it.
+
+---
+
 ## 2026-10-07 — Overkill explosion, second part: a real kill explodes the body, chains run by themselves, and the explosion fires no on-hit row
 
 **Not built and not run when this was written; the figures are added under "Run" when a window has run.** This is

@@ -1054,6 +1054,437 @@ CATACLYSM_TEST(FCataclysmFervourPerSecondTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// How fast the class resource generates. Ruled 2026-10-07.
+//
+// "Your class resource generates 20%-40% faster" and "Your class resource
+// generates 30%-50% slower" are `increased` lines on `class_resource_generation`,
+// a stat based at 100 that `UCataclysmAbilitySystemComponent::ClassResourceGainScaled`
+// asks at each gain. Every test below reads a CONTROL character without the
+// stat beside the characters carrying it.
+//
+// ONE CHARACTER ALIVE AT A TIME. `FScopedCharacter` spawns a plain actor with
+// no root, so every one of them stands on the world's origin; each reading here
+// makes its character, reads it and destroys it before the next is made.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmGenerationRateTest
+{
+	using CataclysmFervourTest::FScopedCharacter;
+	using FStatLines = TMap<FName, FCataclysmStatInputs>;
+
+	/** One stat at a plain base, as a node's flat row leaves it. */
+	void Carry(FStatLines& Stats, const TCHAR* Stat, float Base)
+	{
+		Stats.FindOrAdd(FName(Stat)).Base = Base;
+	}
+
+	/** What one fresh character did. */
+	struct FReading
+	{
+		/** Every set-up reading held, so the two figures below mean something. */
+		bool bSetUp = false;
+
+		/** What the function answered. */
+		float Answered = 0.0f;
+
+		/** What the pool moved by, read off the pool. */
+		float Moved = 0.0f;
+	};
+
+	/**
+	 * One fresh character with 1000 health of 1000 and a pool of 100, given what `Give` gives it and, when
+	 * `Increase` is set, `class_resource_generation` at its base of 100 with that one `increased` line. The
+	 * control passes no increase and so carries NO line for the stat at all.
+	 *
+	 * EACH SET-UP READING IS ITS OWN ASSERTION, so a failure names which one.
+	 */
+	FReading ReadOne(FAutomationTestBase& Test, UWorld* World, const TCHAR* Who,
+					 const TOptional<float>& Increase, float StartAt,
+					 TFunctionRef<void(const FScopedCharacter&, FStatLines&)> Give,
+					 TFunctionRef<float(const FScopedCharacter&)> Act)
+	{
+		FReading Read;
+		const FScopedCharacter Character(World);
+		Character.SetHealth(1000.0f, 1000.0f);
+
+		FStatLines Stats;
+		Give(Character, Stats);
+		if (Increase.IsSet())
+		{
+			FCataclysmStatModifier Rate;
+			Rate.Bucket = ECataclysmStatBucket::Increased;
+			Rate.Source = ECataclysmModifierSource::Enchantment;
+			Rate.Value = Increase.GetValue();
+
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(
+				FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat));
+			Line.Base = UCataclysmAbilitySystemComponent::NormalClassResourceGeneration;
+			Line.Modifiers = {Rate};
+		}
+		Character.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		Character.SetFervour(StartAt);
+
+		const bool bMaximum = Test.TestEqual(
+			*FString::Printf(TEXT("%s: set-up: the pool's maximum is 100"), Who),
+			Character.Resource->MaximumClassResourceAsked(), 100.0f, 0.001f);
+		const bool bStart = Test.TestEqual(
+			*FString::Printf(TEXT("%s: set-up: the pool starts where it was put"), Who),
+			Character.Fervour(), StartAt, 0.001f);
+		const bool bRate = Test.TestEqual(
+			*FString::Printf(TEXT("%s: set-up: class_resource_generation reads 100 and its increase"), Who),
+			Character.AbilitySystem->StatForSkill(
+				FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat),
+				FGameplayTagContainer(),
+				UCataclysmAbilitySystemComponent::NormalClassResourceGeneration),
+			100.0f + Increase.Get(0.0f), 0.001f);
+		Read.bSetUp = bMaximum && bStart && bRate;
+		if (!Read.bSetUp)
+		{
+			return Read;
+		}
+
+		Read.Answered = Act(Character);
+		Read.Moved = Character.Fervour() - StartAt;
+		return Read;
+	}
+
+	/** The control, the row at +40 and the row at -50, each on its own fresh character. */
+	struct FThree
+	{
+		bool bSetUp = false;
+		FReading Control;
+		FReading Faster;
+		FReading Slower;
+	};
+
+	FThree ReadThree(FAutomationTestBase& Test, const TCHAR* Path, float StartAt,
+					 TFunctionRef<void(const FScopedCharacter&, FStatLines&)> Give,
+					 TFunctionRef<float(const FScopedCharacter&)> Act)
+	{
+		FThree Out;
+		UWorld* World = CataclysmFervourTest::MakeWorld();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return Out;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		Out.Control = ReadOne(Test, World, *FString::Printf(TEXT("%s, the control"), Path),
+							  TOptional<float>(), StartAt, Give, Act);
+		Out.Faster = ReadOne(Test, World, *FString::Printf(TEXT("%s, increased by 40"), Path),
+							 TOptional<float>(40.0f), StartAt, Give, Act);
+		Out.Slower = ReadOne(Test, World, *FString::Printf(TEXT("%s, decreased by 50"), Path),
+							 TOptional<float>(-50.0f), StartAt, Give, Act);
+		Out.bSetUp = Out.Control.bSetUp && Out.Faster.bSetUp && Out.Slower.bSetUp;
+		return Out;
+	}
+
+	/**
+	 * A GAIN: the control gains `Plain`, the row at +40 gains 1.4 times the control's and the row at -50 half of
+	 * it, and each function answers what its pool moved by.
+	 */
+	void ExpectAGainIsScaled(FAutomationTestBase& Test, const TCHAR* Path, float Plain,
+							 TFunctionRef<void(const FScopedCharacter&, FStatLines&)> Give,
+							 TFunctionRef<float(const FScopedCharacter&)> Act)
+	{
+		const FThree Read = ReadThree(Test, Path, /*StartAt=*/0.0f, Give, Act);
+		if (!Read.bSetUp)
+		{
+			return;
+		}
+		if (!Test.TestEqual(*FString::Printf(TEXT("%s: set-up: the control gains its plain figure"), Path),
+							Read.Control.Moved, Plain, 0.001f))
+		{
+			return;
+		}
+		Test.TestEqual(*FString::Printf(TEXT("%s: the control answers what it gained"), Path),
+					   Read.Control.Answered, Read.Control.Moved, 0.001f);
+		Test.TestEqual(*FString::Printf(TEXT("%s: increased by 40, the gain is 1.4 times the control's"), Path),
+					   Read.Faster.Moved, Read.Control.Moved * 1.4f, 0.001f);
+		Test.TestEqual(*FString::Printf(TEXT("%s: and it answers that scaled gain"), Path),
+					   Read.Faster.Answered, Read.Faster.Moved, 0.001f);
+		Test.TestEqual(*FString::Printf(TEXT("%s: decreased by 50, the gain is half the control's"), Path),
+					   Read.Slower.Moved, Read.Control.Moved * 0.5f, 0.001f);
+		Test.TestEqual(*FString::Printf(TEXT("%s: and it answers that halved gain"), Path),
+					   Read.Slower.Answered, Read.Slower.Moved, 0.001f);
+	}
+
+	/** A LOSS OR A SPEND: from a pool of 50, all three characters' pools move by exactly `Plain`. */
+	void ExpectItIsNotScaled(FAutomationTestBase& Test, const TCHAR* Path, float Plain,
+							 TFunctionRef<void(const FScopedCharacter&, FStatLines&)> Give,
+							 TFunctionRef<float(const FScopedCharacter&)> Act)
+	{
+		const FThree Read = ReadThree(Test, Path, /*StartAt=*/50.0f, Give, Act);
+		if (!Read.bSetUp)
+		{
+			return;
+		}
+		if (!Test.TestEqual(*FString::Printf(TEXT("%s: set-up: the control's pool falls by its plain figure"), Path),
+							Read.Control.Moved, Plain, 0.001f))
+		{
+			return;
+		}
+		Test.TestEqual(*FString::Printf(TEXT("%s: increased by 40, the pool falls by what the control's did"), Path),
+					   Read.Faster.Moved, Read.Control.Moved, 0.001f);
+		Test.TestEqual(*FString::Printf(TEXT("%s: decreased by 50, the pool falls by what the control's did"), Path),
+					   Read.Slower.Moved, Read.Control.Moved, 0.001f);
+	}
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateScalesMoveTest,
+	"Cataclysm.Fervour.GenerationRateScalesWhatDamageAndAHealthCostGain")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// `UCataclysmFervour::Move`, BY BOTH OF ITS GAINING CALLERS. A hundred of a
+	// thousand health is ten per cent, so ten Fervour at the Masochist's rate of 1.
+	const auto Give = [](const FScopedCharacter& Character, FStatLines&)
+	{
+		Character.GiveTheMasochistGenerator();
+	};
+	ExpectAGainIsScaled(*this, TEXT("GainFromDamage"), 10.0f, Give,
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainFromDamage(Character.AbilitySystem, 100.0f, FGameplayTagContainer());
+		});
+	ExpectAGainIsScaled(*this, TEXT("GainFromHealthCost"), 10.0f, Give,
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainFromHealthCost(Character.AbilitySystem, 100.0f);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateScalesPerSecondTest,
+	"Cataclysm.Fervour.GenerationRateScalesGainPerSecondStep")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// TEN A SECOND WITH NO CONDITION, for one second. The minion rate and the
+	// enemies-near rate are summed with this one before the single scale, so
+	// this one rate stands for the sum.
+	ExpectAGainIsScaled(*this, TEXT("GainPerSecondStep"), 10.0f,
+		[](const FScopedCharacter&, FStatLines& Stats) { Carry(Stats, UCataclysmFervour::PerSecondStat, 10.0f); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainPerSecondStep(Character.AbilitySystem, 1.0f);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateScalesPerCastTest,
+	"Cataclysm.Fervour.GenerationRateScalesGainForCast")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	ExpectAGainIsScaled(*this, TEXT("GainForCast"), 10.0f,
+		[](const FScopedCharacter&, FStatLines& Stats) { Carry(Stats, UCataclysmFervour::PerCastStat, 10.0f); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainForCast(Character.AbilitySystem);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateScalesDroppingLowTest,
+	"Cataclysm.Fervour.GenerationRateScalesGainOnDroppingLow")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	ExpectAGainIsScaled(*this, TEXT("GainOnDroppingLow"), 20.0f,
+		[](const FScopedCharacter&, FStatLines& Stats) { Carry(Stats, UCataclysmFervour::OnDroppingLowStat, 20.0f); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainOnDroppingLow(Character.AbilitySystem);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateScalesEnemiesHitTest,
+	"Cataclysm.Fervour.GenerationRateScalesGainForEnemiesHit")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// TWO AN ENEMY AND THREE ENEMIES HIT IS SIX.
+	ExpectAGainIsScaled(*this, TEXT("GainForEnemiesHit"), 6.0f,
+		[](const FScopedCharacter&, FStatLines& Stats) { Carry(Stats, UCataclysmFervour::PerEnemyHitStat, 2.0f); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainForEnemiesHit(Character.AbilitySystem, FGameplayTagContainer(), 3);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateScalesMinionDeathTest,
+	"Cataclysm.Fervour.GenerationRateScalesGainOnMinionDeath")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	ExpectAGainIsScaled(*this, TEXT("GainOnMinionDeath"), 5.0f,
+		[](const FScopedCharacter&, FStatLines& Stats) { Carry(Stats, UCataclysmFervour::OnMinionDeathStat, 5.0f); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainOnMinionDeath(Character.AbilitySystem);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateScalesEnemyDeathNearbyTest,
+	"Cataclysm.Fervour.GenerationRateScalesGainOnEnemyDeathNearby")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// A DEATH THREE METRES AWAY, inside the ten the rule reaches. The distance is
+	// an argument: no second actor is made.
+	ExpectAGainIsScaled(*this, TEXT("GainOnEnemyDeathNearby"), 10.0f,
+		[](const FScopedCharacter&, FStatLines& Stats) { Carry(Stats, UCataclysmFervour::OnEnemyDeathNearbyStat, 10.0f); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainOnEnemyDeathNearby(Character.AbilitySystem, 3.0f);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateLeavesALossTest,
+	"Cataclysm.Fervour.GenerationRateDoesNotScaleWhatHealingRemovesOrWhatIsSpent")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// THE LOSS THROUGH `Move`: healing a hundred of a thousand health removes
+	// ten, whatever the generation rate. `Move` carries the gain and the loss on
+	// one line, so a scale applied to both directions fails here.
+	ExpectItIsNotScaled(*this, TEXT("RemoveForHealing"), -10.0f,
+		[](const FScopedCharacter& Character, FStatLines&) { Character.GiveTheMasochistGenerator(); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::RemoveForHealing(Character.AbilitySystem, 100.0f, FGameplayTagContainer());
+		});
+
+	// AND A SPEND: three enemies struck together is two beyond the first, at
+	// `ExtraEnemyHitCost` each. What it answers is the damage bought, not the
+	// pool's movement, so only the pool is compared.
+	ExpectItIsNotScaled(*this, TEXT("BuyDamageForEnemiesStruckTogether"),
+		-2.0f * UCataclysmFervour::ExtraEnemyHitCost,
+		[](const FScopedCharacter&, FStatLines& Stats)
+		{
+			Carry(Stats, UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat, 10.0f);
+		},
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
+				Character.AbilitySystem, FGameplayTagContainer(), 3);
+		});
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateStopsAtTheMaximumTest,
+	"Cataclysm.Fervour.AFasterGainStillStopsAtTheMaximumAndBanksNothing")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// FROM 88 OF 100, A CAST WORTH TEN. The control reaches 98. The row at +40
+	// asks for fourteen and only twelve fit.
+	//
+	// AND THE SPEND AFTER IT IS WHAT SHOWS THE SCALE CAME BEFORE THE CLAMP. A
+	// scale applied after the clamp would write fourteen to the stored base,
+	// which the current value hides at 100, and a spend of five would then leave
+	// 97 and not 95. `Cataclysm.Fervour.AGainAtAFullPoolIsNotBankedForTheNextSpend`
+	// reads the same thing for the clamp itself.
+	UWorld* World = CataclysmFervourTest::MakeWorld();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Give = [](const FScopedCharacter&, FStatLines& Stats)
+	{
+		Carry(Stats, UCataclysmFervour::PerCastStat, 10.0f);
+	};
+	float AfterTheGain = 0.0f;
+	float AfterTheSpend = 0.0f;
+	const auto GainThenSpendFive = [&AfterTheGain, &AfterTheSpend](const FScopedCharacter& Character)
+	{
+		const float Answer = UCataclysmFervour::GainForCast(Character.AbilitySystem);
+		AfterTheGain = Character.Fervour();
+		Character.AbilitySystem->ApplyModToAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), EGameplayModOp::Additive, -5.0f);
+		AfterTheSpend = Character.Fervour();
+		return Answer;
+	};
+
+	const FReading Control = ReadOne(*this, World, TEXT("the control at 88"), TOptional<float>(), 88.0f, Give,
+									 GainThenSpendFive);
+	if (!Control.bSetUp)
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: the control's cast gains its ten"), Control.Answered, 10.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: so the control reaches 98"), AfterTheGain, 98.0f, 0.001f);
+
+	const FReading Faster = ReadOne(*this, World, TEXT("increased by 40 at 88"), TOptional<float>(40.0f), 88.0f,
+									Give, GainThenSpendFive);
+	if (!Faster.bSetUp)
+	{
+		return false;
+	}
+	TestEqual(TEXT("increased by 40, only the twelve that fit are gained"), Faster.Answered, 12.0f, 0.001f);
+	TestEqual(TEXT("and the pool is at its maximum, not over it"), AfterTheGain, 100.0f, 0.001f);
+	TestEqual(TEXT("and a spend of five after it leaves 95: nothing was banked above the maximum"),
+			  AfterTheSpend, 95.0f, 0.001f);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGenerationRateNeverBelowNoughtTest,
+	"Cataclysm.Fervour.AGenerationRateBelowNoughtGainsNothingAndTakesNothing")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// INCREASED BY -150 IS A STAT OF -50. No authored row reaches it; two worn
+	// rows at -50 reach nought, and anything below must not turn a gain into a
+	// loss. From a pool of 50, a cast worth ten moves nothing.
+	UWorld* World = CataclysmFervourTest::MakeWorld();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Give = [](const FScopedCharacter&, FStatLines& Stats)
+	{
+		Carry(Stats, UCataclysmFervour::PerCastStat, 10.0f);
+	};
+	const auto CastOnce = [](const FScopedCharacter& Character)
+	{
+		return UCataclysmFervour::GainForCast(Character.AbilitySystem);
+	};
+
+	const FReading Control = ReadOne(*this, World, TEXT("the control at 50"), TOptional<float>(), 50.0f, Give,
+									 CastOnce);
+	if (!Control.bSetUp)
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: the control's cast gains its ten"), Control.Moved, 10.0f, 0.001f))
+	{
+		return false;
+	}
+
+	const FReading Below = ReadOne(*this, World, TEXT("increased by -150 at 50"), TOptional<float>(-150.0f), 50.0f,
+								   Give, CastOnce);
+	if (!Below.bSetUp)
+	{
+		return false;
+	}
+	TestEqual(TEXT("a rate below nought answers nothing gained"), Below.Answered, 0.0f, 0.001f);
+	TestEqual(TEXT("and the pool is where it was, not lower"), Below.Moved, 0.0f, 0.001f);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif  // WITH_AUTOMATION_TESTS

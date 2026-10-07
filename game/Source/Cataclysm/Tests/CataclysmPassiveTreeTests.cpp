@@ -11949,6 +11949,149 @@ bool FCataclysmNowhereToRunFervourTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGenerationRateOnARealRavagerTest,
+	"Cataclysm.Passives.ClassResourceGenerationScalesARealRavagersGainAndNotItsDecay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `class_resource_generation` on a real character, with the starting node's real rows. Ruled 2026-10-07.
+ *
+ * TWO THINGS THE TESTS IN `CataclysmFervourTests.cpp` CANNOT SEE. The first is the BASE: those give the stat its
+ * base of 100 by hand, and a real player gets it from `UCataclysmPlayerClassStats::EngineSuppliedBases`. Both
+ * authored rows are `increased`, so without that base every gain a player carrying one made would be scaled by
+ * nought. The second is `UCataclysmFervour::DecayStep`, which takes a real character.
+ *
+ * THREE RAVAGERS, EACH IN A WORLD OF ITS OWN, so no two characters ever stand on one spot: a control, one whose
+ * generation is increased by 40 and one whose generation is decreased by 50. The increase is given through the
+ * dungeon stat modifiers, as `NowhereToRunKeepsFervourWithAnEnemyWithinEightMetresNotTwelve` gives its option,
+ * since neither sentence has an effect row.
+ *
+ * THE ENEMY STANDS 3 METRES FROM THE RAVAGER, inside the starting node's 4.
+ */
+bool FCataclysmGenerationRateOnARealRavagerTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		float Gained = 0.0f;
+		float Decayed = 0.0f;
+	};
+
+	const auto ReadOne = [this](const TCHAR* Who, float Increase) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FRealCharacter Player = Spawn(World);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a possessed Ravager with an effect table"), Who),
+					  Player.IsComplete()))
+		{
+			return Read;
+		}
+		Hold(Player, {{FName(StartingNode), 1}});
+		if (!FMath::IsNearlyZero(Increase))
+		{
+			FCataclysmStatModifier Rate;
+			Rate.Bucket = ECataclysmStatBucket::Increased;
+			Rate.Source = ECataclysmModifierSource::Enchantment;
+			Rate.Value = Increase;
+			TMap<FName, TArray<FCataclysmStatModifier>> Worn;
+			Worn.Add(FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat), {Rate});
+			Player.AbilitySystem->SetDungeonStatModifiers(MoveTemp(Worn));
+			Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		}
+
+		// A CARRIER IS ASKED WITH A FALLBACK OF -1, so a stat line that never recorded the stat reads -1 here
+		// and says so; what it must read is the engine-supplied base of 100 with the increase on it. THE CONTROL
+		// IS ASKED WITH THE BASE AS THE FALLBACK, as the game asks: `ApplyTo` records only a stat that has a
+		// modifier, so the control has no line for it and the fallback is its whole answer.
+		const float Fallback = FMath::IsNearlyZero(Increase)
+			? UCataclysmAbilitySystemComponent::NormalClassResourceGeneration
+			: -1.0f;
+		if (!TestEqual(
+				*FString::Printf(TEXT("%s: set-up: the stat reads the base of 100 and the increase"), Who),
+				Player.AbilitySystem->StatForSkill(
+					FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat),
+					FGameplayTagContainer(), Fallback),
+				100.0f + Increase, 0.001f))
+		{
+			return Read;
+		}
+		if (!TestEqual(*FString::Printf(TEXT("%s: set-up: the bar starts empty"), Who),
+					   FervourOf(Player), 0.0f, 0.001f))
+		{
+			return Read;
+		}
+		ACataclysmEnemyCharacter* Near = EnemyAtMetres(World, 3.0f);
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: an enemy three metres away"), Who), Near))
+		{
+			return Read;
+		}
+
+		// THE GAIN: one second beside one enemy.
+		UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+		Read.Gained = FervourOf(Player);
+
+		// THE DECAY, the way `FervourDecaysAtFivePerSecondOnceTheGraceHasLapsed` reaches it: fifty in the bar,
+		// one step in contact, the enemy gone, four seconds, one second of decay.
+		GiveFervour(Player, 50.0f - FervourOf(Player));
+		if (!TestEqual(*FString::Printf(TEXT("%s: set-up: fifty in the bar to lose"), Who),
+					   FervourOf(Player), 50.0f, 0.001f))
+		{
+			return Read;
+		}
+		UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+		if (!TestEqual(*FString::Printf(TEXT("%s: set-up: nothing decays while contact holds"), Who),
+					   FervourOf(Player), 50.0f, 0.001f))
+		{
+			return Read;
+		}
+		Near->Destroy();
+		World->TimeSeconds += 4.0f;
+		UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+		Read.Decayed = FervourOf(Player) - 50.0f;
+		Read.bSetUp = true;
+		return Read;
+	};
+
+	const FRead Control = ReadOne(TEXT("the control"), 0.0f);
+	const FRead Faster = ReadOne(TEXT("increased by 40"), 40.0f);
+	const FRead Slower = ReadOne(TEXT("decreased by 50"), -50.0f);
+	if (!Control.bSetUp || !Faster.bSetUp || !Slower.bSetUp)
+	{
+		return false;
+	}
+
+	if (TestEqual(TEXT("set-up: the control gains one in a second beside one enemy"), Control.Gained, 1.0f, 0.001f))
+	{
+		TestEqual(TEXT("increased by 40, a real Ravager gains 1.4 times the control's"),
+				  Faster.Gained, Control.Gained * 1.4f, 0.001f);
+		TestEqual(TEXT("decreased by 50, a real Ravager gains half the control's"),
+				  Slower.Gained, Control.Gained * 0.5f, 0.001f);
+	}
+	if (TestEqual(TEXT("set-up: the control's bar decays by five in a second"), Control.Decayed, -5.0f, 0.001f))
+	{
+		TestEqual(TEXT("increased by 40, the decay is what the control's was"),
+				  Faster.Decayed, Control.Decayed, 0.001f);
+		TestEqual(TEXT("decreased by 50, the decay is what the control's was"),
+				  Slower.Decayed, Control.Decayed, 0.001f);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourWithoutTheNodeNeverDecaysTest,
 	"Cataclysm.Passives.AMasochistWithoutTheRavagerNodeNeverDecays",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
