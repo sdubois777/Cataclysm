@@ -739,8 +739,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 539 over 452: one row on one enchantment.
 #: AND 541 OVER 454 SINCE THE REWORDED DURATION ROW,
 #: issue #1833, 2026-10-06, from 540 over 453: one row on one enchantment.
-AUTHORED_ROWS = 541
-AUTHORED_ENCHANTMENTS = 454
+#: AND 543 OVER 456 SINCE THE TWO CLASS RESOURCE GENERATION ROWS,
+#: issue #1833, 2026-10-06, from 541 over 454: two rows on two enchantments.
+AUTHORED_ROWS = 543
+AUTHORED_ENCHANTMENTS = 456
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
