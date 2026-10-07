@@ -17211,4 +17211,63 @@ bool FCataclysmLeechScopedToAnAilmentTest::RunTest(const FString&)
 	TestTrue(TEXT("a bleed's ticks start a payment"), Wearer.AbilitySystem->GetLeechPayments().Num() > 0);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedLeechRowTest,
+	"Cataclysm.Enchantments.TheBleedLeechRowLeechesFromABleedsTicksAndNotFromABurns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Bleed damage you deal also leeches 10%-20% of its value as HP". Issue #1833,
+ * ruled 2026-10-07: `life_leech` flat 10 to 20, scoped to `Keyword.DoT.Bleed`.
+ * The real row WORN at its best roll, and the stat read as the leech code asks
+ * it: with the bleed tag it is 20 above what it is with the burn tag, and with
+ * the burn tag it is what it is with no tag.
+ *
+ * A DIFFERENCE AND NOT A FIGURE, because the wearer this helper builds has a
+ * life leech of its own: its equipment refresh applies the starting class's
+ * lines, and the Ravager's include one. The first form of this test ran ticks and
+ * asserted that a burn's started no payment; the window's first run printed
+ * "Expected 'a burn's ticks start no payment' to be 0, but it was 2". That a
+ * tick of a bleed reaches the leech code with its ailment is the test of the
+ * layer below, on a wearer whose every stat line is set by hand.
+ */
+bool FCataclysmBleedLeechRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_Bleed_damage_you_deal_also_leeches_10_20_of_it");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Bleed = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTagContainer Burn = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.DoT.Burn"));
+	if (!TestTrue(TEXT("set-up: the bleed tag exists"), Bleed.Num() == 1)
+		|| !TestTrue(TEXT("set-up: the burn tag exists"), Burn.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Stat(TEXT("life_leech"));
+	const float OfABleed = Worn.ASC()->StatForSkill(Stat, Bleed, 0.0f);
+	const float OfABurn = Worn.ASC()->StatForSkill(Stat, Burn, 0.0f);
+	const float OfNoAilment = Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f);
+	TestEqual(*(FString(TEXT("worn: life leech asked about a bleed is 20 above life leech asked about a burn.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		OfABleed - OfABurn, 20.0f, 0.01f);
+	TestEqual(TEXT("asked about a burn it is what it is asked about no ailment"), OfABurn, OfNoAilment, 0.01f);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: a bleed and a burn are asked the same"),
+		Worn.ASC()->StatForSkill(Stat, Bleed, 0.0f), Worn.ASC()->StatForSkill(Stat, Burn, 0.0f), 0.01f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

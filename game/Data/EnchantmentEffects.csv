@@ -534,3 +534,4 @@ Positive_10_20_of_bleed_damage_you_take_is_taken_from_y#1,Positive_10_20_of_blee
 Positive_DoTs_deal_damage_to_your_mana_pool_first#1,Positive_DoTs_deal_damage_to_your_mana_pool_first,damage_over_time_taken_from_mana_first,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Your_persistent_AOE_zones_apply_their_effects_to#1,Negative_Your_persistent_AOE_zones_apply_their_effects_to,zone_applies_effects_to_owner,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Your_cooldown_abilities_have_a_5_20_chance_to#1,Positive_Your_cooldown_abilities_have_a_5_20_chance_to,,,5.0,20.0,,,0.0,,50.0,cooldown_use_increased_damage,skill_use,,0,0.0,0.0,0.0,0,200.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Bleed_damage_you_deal_also_leeches_10_20_of_it#1,Positive_Bleed_damage_you_deal_also_leeches_10_20_of_it,life_leech,flat,10.0,20.0,Keyword.DoT.Bleed,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

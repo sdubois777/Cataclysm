@@ -2,6 +2,43 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Bleed damage you deal also leeches 10%-20% of its value as HP" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row, on the change of the entry below this one. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Bleed damage you deal also leeches 10%-20% of its value as HP | `life_leech` | flat | 10 to 20 | `Keyword.DoT.Bleed` |
+
+EnchantmentEffects 535 to 536, over 448 to 449 enchantments.
+
+### HOW THE SENTENCE IS READ
+
+- **"Bleed damage you deal"** is each tick of a bleed the wearer applied. The leech is asked of whoever applied
+  the bleed, so a minion's bleed leeches nothing for the wearer: it is asked of the minion, which carries none of
+  its owner's rows.
+- **"Also"**: it is added to whatever life leech the wearer has. A wearer with an unscoped life leech already
+  leeches from a bleed's ticks; this row adds 10 to 20 to that on a bleed's ticks alone.
+- **"Of its value"** is of what the tick took, health, shield and mana together, as every leech is.
+- **"As HP"** is life leech: paid into health over the leech's three seconds, not at once.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheBleedLeechRowLeechesFromABleedsTicksAndNotFromABurns`: the real row worn. The test
+  first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. The wearer's burn on a creature
+  starts no leech payment in two and a half seconds; its bleed then starts one.
+
+**Not tested:** the size of a payment at a rolled value.
+
+---
+
 ## 2026-10-07 — A tick of an ailment tells the leech code which ailment it is; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the one call of
