@@ -81,10 +81,59 @@ when the next is chosen, and a resistance that is already negative is set to nou
   shield, payments into all three read 10.
 - `Cataclysm.Enchantments.StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto`: the real set
   worn, five pieces and then six. The test first asserts that both names it relies on are rows of the table. Five
-  pieces give nothing; six give 0 with no payment, 5 with one into health, 10 with payments into all three and no
-  energy shield, and 15 with an energy shield.
+  pieces give nothing; six give, above the same wearer's reading with no payment, 5 with one into health, 10 with
+  payments into all three and no energy shield, and 15 with an energy shield. As first written it asserted the
+  figures themselves; see the window's run below.
 
 **Not tested:** the reduction taking damage off a real blow; a payment running out during play.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 3 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 59d547ef | effect rows 536 to 537 |
+| Whole suite, every asset built | 78ac88c8 | 3296 tests performed, 3295 succeeded, 1 failed: this layer's row test |
+| The row test changed to read differences, folded into this layer | 14c4f76f | the line below is its run |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**CHANGED BY RULING BEFORE THE WINDOW: only a pool the character has counts.** Recorded above, under what was
+ruled.
+
+**A FAULT IN THIS LAYER'S ROW TEST WAS FOUND BY THE WHOLE SUITE, AND STATED BEFORE IT PRINTED.** With every asset
+built the suite printed "3296 tests performed, 3295 succeeded, 1 failed:
+StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto", on four readings at six pieces: "to be
+0.000000, but it was 3.950000", "to be 5.000000, but it was 8.950000", "to be 10.000000, but it was 13.950000"
+and "to be 15.000000, but it was 18.950001". **The cause:** the wearer the test's helper builds is of the starting
+class, the Ravager, whose own lines include damage reduction; 3.95 is that line at the level the wearer is given.
+Against the older assets the same readings were 0, because with no row on the stat nothing is recorded for it and
+the test's fallback of nought is returned; so the step against the older assets could not show it. It was found
+by reading while the suite ran, and the changed prediction was sent before the result.
+
+**Ruled 2026-10-07 by the coordinating session, in advance, because it changes what the test asserts:** each
+figure is read as a difference from the same wearer's reading with no payment in flight: 5, 10 and 15 above it at
+six pieces, and nothing above it at five. Nothing absolute is asserted.
+
+**The test fails against a table without its row and passes with it**: at six pieces the three differences were 0
+where 5, 10 and 15 were expected.
+
+**The engine test of the scale needs no row.** The scale's failing halves are these guard proofs, each with
+`prove_cpp_guard` on `Cataclysm.Enchantments.` at 01d66e81, each restored to 275 tests performed, 275 succeeded,
+0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| The scale reads no pool (`return StackedValue(Modifier, 0);` in `CataclysmStatPipeline.cpp`) | 275 performed, 2 failed | 8 assertions: the scale's test 5, each reading 0; the row test 3, each difference 0 |
+| Every payment is counted as the same pool (`PoolsSeen \|= 1u;`) | 275 performed, 2 failed | 5 assertions: the scale's test 3, each 5 where 10, 15 and 10; the row test 2, each 5 where 10 and 15 |
+| A pool the character does not have is counted (the `HasPool` condition removed) | 275 performed, 2 failed | 2 assertions: the scale's test 1 and the row test 1, each 15 where 10, with no energy shield |
+
+Each proof failed on the tests and the number of assertions stated before it ran; the third was added with the
+ruling that only a pool the character has counts.
 
 ---
 
