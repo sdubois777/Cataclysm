@@ -542,6 +542,12 @@ int32 UCataclysmContagion::BlastAt(AActor* Wearer, const FCataclysmBlastRead& Re
 	Delivery.bCannotCriticallyStrike = true;
 	Delivery.bCarriesNoWeaponSubType = true;
 	Delivery.bCannotLeech = true;
+	// AND IT IS THE CONSEQUENCE OF A DEATH, NOT A BLOW THE WEARER STRUCK. Ruled 2026-10-07 under the project
+	// owner's delegation: it fires none of the wearer's on-hit rows and is not recorded as the wearer's first blow
+	// on what it strikes. In play it fired no on-hit row already, because it is only ever called while the
+	// wearer is acting on an event, which answers nothing to a second event. The mark states the rule where
+	// that only happened to deliver it. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`.
+	Delivery.bIsConsequenceOfADeath = true;
 	for (AActor* Target : Caught)
 	{
 		// ONE THAT IS DEAD BY NOW IS NOT STRUCK. A death this blast causes does

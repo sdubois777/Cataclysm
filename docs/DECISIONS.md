@@ -12,7 +12,9 @@ merge together or not at all.**
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the overkill on the last
 blow and on the death notice; the mark on the hit notice); `CataclysmSkillEffects.h` and `.cpp` (the mark on a
 delivery and its stamp on the effect); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the two
-listeners); three tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`.
+listeners); four tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; and one line in
+`CataclysmContagion.cpp` (the mark on the Plague Doctor blast) and one condition in
+`CataclysmVitalAttributeSet.cpp` (the first-blow record).
 
 ### What it does in play
 
@@ -160,6 +162,10 @@ Read by the writing session on 2026-10-07 in the enchantment session's layer for
   delivery gets the same mark, with a test that calls the blast outside an event.** The reason recorded: the
   ruling is that neither effect at a death is a blow the character struck. The mark states that. The depth rule
   only happens to deliver it, and would stop delivering it the day a blast is called outside an event.
+- **Built in this layer, once the blast had merged**: one line in `UCataclysmContagion::BlastAt`
+  (`CataclysmContagion.cpp`), setting `bIsConsequenceOfADeath` on its delivery. So a blast is also not recorded
+  as the wearer's first blow on what it strikes. Re-read on development 98cf1649: both callers of the blast, the
+  row loop of `ActOnEvent` and `DrainQueuedAfflictedDeaths`, still run it while the event depth is 1.
 
 **For the owner's play-check, with both rows worn:**
 
@@ -172,7 +178,7 @@ Read by the writing session on 2026-10-07 in the enchantment session's layer for
 
 ### Tests
 
-Three, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player character and real creatures:
+Four, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player character and real creatures:
 
 - `Cataclysm.OverkillExplosion.ARealKillExplodesTheBodyAndAChainOfThreeRunsByItself`. The player 2 m from a
   creature with 50 health; a second with 20 health 3 m beyond it; a third with 1000 a further 3 m on; a fourth
@@ -192,6 +198,11 @@ Three, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player cha
   second. In two scenes, with that listener bound first and bound second, each listener heard two deaths (the
   control) and heard the first and then the second. And work handed over while no death is being announced is
   done at once.
+
+- `Cataclysm.OverkillExplosion.ABlastFromTheDyingIsNotABlowTheWearerStruckEither`. The blast is called outside an
+  event, which no play path does. A control blow raises `hit_dealt` and `first_hit_dealt` once each. The blast
+  strikes a creature, read off its health, and both stay at one. The wearer then strikes that creature for real
+  and both go to two.
 
 ### Not covered by a test
 
