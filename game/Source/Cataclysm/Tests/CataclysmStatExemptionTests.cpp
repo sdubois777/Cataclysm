@@ -7226,31 +7226,50 @@ bool FCataclysmStatusOnTheWearerTest::RunTest(const FString&)
 		TestFalse(TEXT("control: and not after a skill that does not carry the charge keyword"), bStunnedAfterABlink);
 	}
 
-	// WHEN THE WEARER APPLIES A DAMAGE OVER TIME TO ANOTHER, THE SAME IS LAID ON THE WEARER THE ROW'S NUMBER OF
-	// TIMES. Three, here. What three applications of a bleed come to is the bleed's own rule, so the reading is
-	// compared with a second character who laid three on themselves by hand, and is not a number written here.
+	// WHEN THE WEARER APPLIES A DAMAGE OVER TIME TO ANOTHER, THE SAME IS LAID ON THE WEARER ONCE, AT THE ROW'S MULTIPLE
+	// OF ITS ORDINARY SIZE. No ailment stacks, so the row's "1-4 stacks" is a size. A wearer whose row rolled 4 takes
+	// four times the damage a second from the bleed laid on them that a wearer whose row rolled 1 takes: the two
+	// are compared, so a size that is ignored fails here.
 	{
 		const FCataclysmAilmentKind* Bleed = UCataclysmAilments::KindNamed(TEXT("Bleed"));
 		const FGameplayTag BleedTag = UCataclysmDebuffs::BleedTag();
-		FScopedSwinger Wearer(World, FVector(0.0f, 12000.0f, 0.0f));
-		FScopedSwinger Enemy(World, FVector(200.0f, 12000.0f, 0.0f));
-		FScopedSwinger ByHand(World, FVector(0.0f, 15000.0f, 0.0f));
+		const auto BleedLaidOnAWearerWhoseRowRolled = [&](float Rolled, const FVector& At, bool& bOutEnemyBleeds) -> float
+		{
+			FScopedSwinger Wearer(World, At);
+			FScopedSwinger Enemy(World, At + FVector(200.0f, 0.0f, 0.0f));
+			Wearer.AbilitySystem->SetPoolActions({Row(TEXT("dot_applied"), ECataclysmApplyStatus::Sized, TEXT("Applied DoT"), Rolled)});
+			UCataclysmAilments::Apply(Wearer.Actor, Enemy.Actor, *Bleed, /*Magnitude=*/1.0f);
+			bOutEnemyBleeds = Enemy.AbilitySystem->HasMatchingGameplayTag(BleedTag);
+			return UCataclysmSkillEffects::StatedStrengthOn(Wearer.Actor, BleedTag);
+		};
 		if (TestNotNull(TEXT("set-up: the bleed"), Bleed))
 		{
-			Wearer.AbilitySystem->SetPoolActions({Row(TEXT("dot_applied"), ECataclysmApplyStatus::Times, TEXT("Applied DoT"), 3.0f)});
-			TestFalse(TEXT("control: before applying anything the wearer does not bleed"),
-					  Wearer.AbilitySystem->HasMatchingGameplayTag(BleedTag));
-			UCataclysmAilments::Apply(Wearer.Actor, Enemy.Actor, *Bleed, /*Magnitude=*/1.0f);
-			for (int32 Time = 0; Time < 3; ++Time)
+			FScopedSwinger Plain(World, FVector(0.0f, 21000.0f, 0.0f));
+			TestTrue(TEXT("control: a character nothing was laid on states no bleed"),
+					 UCataclysmSkillEffects::StatedStrengthOn(Plain.Actor, BleedTag) < 0.0f);
+			bool bOneBled = false;
+			bool bFourBled = false;
+			const float AtOne = BleedLaidOnAWearerWhoseRowRolled(1.0f, FVector(0.0f, 12000.0f, 0.0f), bOneBled);
+			const float AtFour = BleedLaidOnAWearerWhoseRowRolled(4.0f, FVector(0.0f, 15000.0f, 0.0f), bFourBled);
+			TestTrue(TEXT("set-up: each wearer's enemy bleeds"), bOneBled && bFourBled);
+			if (TestTrue(TEXT("a wearer whose row rolled 1 carries a bleed of their own, having applied one to another"), AtOne > 0.0f))
 			{
-				UCataclysmAilments::Apply(ByHand.Actor, ByHand.Actor, *Bleed, /*Magnitude=*/1.0f);
+				TestEqual(TEXT("and a wearer whose row rolled 4 carries one four times as large"), AtFour, AtOne * 4.0f, AtOne * 0.001f);
 			}
-			TestTrue(TEXT("set-up: the enemy bleeds"), Enemy.AbilitySystem->HasMatchingGameplayTag(BleedTag));
-			TestTrue(TEXT("the wearer bleeds too, having applied a bleed to another"),
-					 Wearer.AbilitySystem->HasMatchingGameplayTag(BleedTag));
-			TestEqual(TEXT("and carries what three applications by hand leave a character carrying"),
-					  Wearer.AbilitySystem->GetTagCount(BleedTag), ByHand.AbilitySystem->GetTagCount(BleedTag));
-			TestTrue(TEXT("set-up: three applications by hand leave a bleed"), ByHand.AbilitySystem->GetTagCount(BleedTag) > 0);
+		}
+	}
+
+	// AND A CLEANSE REMOVES WHAT THE ROW LAID, since the cleanse keeps only converted damage. Ruled 2026-10-06.
+	{
+		FScopedSwinger Wearer(World, FVector(0.0f, 18000.0f, 0.0f));
+		Wearer.AbilitySystem->SetPoolActions({Row(TEXT("hit_taken"), ECataclysmApplyStatus::Chance, TEXT("Random Debuff"), 100.0f)});
+		Pick->Set(1, ECVF_SetByConsole);
+		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, /*bLanded=*/true);
+		if (TestTrue(TEXT("set-up: the wearer carries the debuff their own row laid"), Wearer.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+		{
+			UCataclysmDebuffs::Cleanse(Wearer.Actor);
+			TestFalse(TEXT("a cleanse takes a debuff the wearer's own row laid off the wearer"),
+					  Wearer.AbilitySystem->HasMatchingGameplayTag(Cripple));
 		}
 	}
 	return true;

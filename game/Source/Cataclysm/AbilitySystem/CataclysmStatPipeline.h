@@ -3558,10 +3558,14 @@ enum class ECataclysmApplyStatus : uint8
 	Seconds UMETA(DisplayName = "Always, for the value in seconds"),
 
 	/**
-	 * The value is how many times it is applied, rounded, and it always applies: "When you apply a DOT, 1-4
-	 * stacks are applied to you". Ruled 2026-10-06. Only for a status laid on the wearer.
+	 * The value is the SIZE of the one application, in multiples of the status's ordinary size, and it always
+	 * applies: "When you apply a DOT, 1-4 stacks are applied to you". Ruled 2026-10-06. Only for a status laid on
+	 * the wearer.
+	 *
+	 * NO AILMENT IN THIS GAME STACKS: a character carries one effect for each, and a repeat of the same size only
+	 * refreshes it. So "stacks" is read as size, and a 4 is one application four times as large.
 	 */
-	Times UMETA(DisplayName = "Always, the value's number of times"),
+	Sized UMETA(DisplayName = "Always, at the value's multiple of its ordinary size"),
 };
 
 /**
