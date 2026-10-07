@@ -334,6 +334,14 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     "ailment_spread_on_death": {"nearest": 1.0},
 }
 
+#: The label a set bonus's sentence opens with, as in "Plague Doctor (10-Piece
+#: Bonus): ...". Its number counts the pieces worn and states nothing about what
+#: the bonus does, so `test_every_judged_number_is_still_needed` reads a sentence
+#: without it. Added 2026-10-07 with the first set bonus whose number is a
+#: judgement. ONLY THE LABEL: a number anywhere else in the sentence still ends
+#: the excuse, which `test_a_set_label_is_not_a_number_the_sentence_states` holds.
+SET_LABEL = re.compile(r"\(\d+-Piece Bonus\)")
+
 #: Enchantments whose sentence states no number, so the number was chosen under
 #: the project owner's delegation of 2026-09-11 and recorded as a labelled
 #: judgement in docs/DECISIONS.md. Each is excused from the two checks that need
@@ -352,6 +360,11 @@ JUDGED_NUMBERS = {
     # dies": every enemy within 5 metres, ruled 2026-10-06. The row's value is
     # how many it passes to, and 100 is a count no pack reaches.
     "Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh",
+    # "Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a
+    # DoT from you, it explodes and applies all of your DoTs to all nearby
+    # enemies": the explosion is 20 per cent of the dead enemy's maximum health,
+    # ruled 2026-10-06 and 2026-10-07.
+    "Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di",
 }
 
 #: Enchantments whose sentence states A TOTAL and whose row grants what is
@@ -683,8 +696,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 512 over 425: one row on one enchantment.
 #: AND 519 OVER 432 SINCE SIX ROWS ON ZONES A SKILL LEAVES AND WHAT A ZONE DOES,
 #: issue #1833, 2026-10-06, from 513 over 426: six rows on six enchantments.
-AUTHORED_ROWS = 519
-AUTHORED_ENCHANTMENTS = 432
+#: AND 520 OVER 433 SINCE PLAGUE DOCTOR'S TEN-PIECE ROW,
+#: issue #1833, 2026-10-06, from 519 over 432: one row on one enchantment.
+AUTHORED_ROWS = 520
+AUTHORED_ENCHANTMENTS = 433
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1557,6 +1572,15 @@ def test_every_flag_stat_is_still_used(effects):
         f"{unused} are excused the value-in-words check and no row grants them")
 
 
+def test_a_set_label_is_not_a_number_the_sentence_states():
+    # The label alone is taken out; a figure the sentence states stays.
+    plain = "Plague Doctor (10-Piece Bonus): it explodes"
+    assert numbers_in(plain) == {10.0}
+    assert not numbers_in(SET_LABEL.sub(" ", plain))
+    assert numbers_in(SET_LABEL.sub(" ", plain + " for 20% of its health")) == {20.0}
+    assert numbers_in(SET_LABEL.sub(" ", "Gain 10 armour per piece worn")) == {10.0}
+
+
 def test_every_judged_number_is_still_needed(effects, enchantments):
     """An excuse that outlives its reason hides a real mismatch. Each name in
     JUDGED_NUMBERS must still have a row, and its sentence must still state no
@@ -1564,6 +1588,6 @@ def test_every_judged_number_is_still_needed(effects, enchantments):
     written = {r["Enchantment"] for r in effects}
     for name in sorted(JUDGED_NUMBERS):
         assert name in written, f"{name} is excused but has no effect row"
-        assert not numbers_in(enchantments[name]["Effect"]), (
+        assert not numbers_in(SET_LABEL.sub(" ", enchantments[name]["Effect"])), (
             f"{name}'s words now state a number, so it needs no excuse: "
             f"{enchantments[name]['Effect']!r}")
