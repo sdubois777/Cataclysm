@@ -2,6 +2,35 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Plague Doctor's six-piece bonus is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row on the stat the entry below this one adds. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value |
+| :-- | :-- | :-- | :-- |
+| Plague Doctor (6-Piece Bonus): When you apply a DoT to an enemy, all other DoTs you have on that enemy have their duration refreshed | `dot_application_refreshes_others` | flat | 1 |
+
+EnchantmentEffects 512 to 513, over 425 to 426 enchantments. Plague Doctor now has its two-piece and six-piece
+bonuses; its ten-piece bonus still waits.
+
+### Tests
+
+- `Cataclysm.Enchantments.PlagueDoctorsSixPiecesSetTheFlagThatRefreshesTheWearersOtherDamageOverTime`: five
+  pieces of the real set read the stat as nought and six read it as 1, asked with an ailment's tag as the place
+  that applies a damage over time effect asks it.
+
+**Not tested here:** the six pieces refreshing an effect through a real application; the entry below tests that
+with the stat held by hand.
+
+---
+
 ## 2026-10-06 — A stat makes applying a damage over time effect refresh the applier's others on that target, each to its own full duration; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`
