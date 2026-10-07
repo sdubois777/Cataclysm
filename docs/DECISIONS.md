@@ -14,8 +14,8 @@ loop); `CataclysmStatPipeline.h` (`ECataclysmApplyStatus::Sized`, `FCataclysmPoo
 of tests in `tools/tests/test_generate_datatables.py` and two pins in
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No row is authored yet**; the rows are the enchantment session's.
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry. **No row is authored yet**; the rows are the enchantment session's.
 
 ### What it is for
 
@@ -116,9 +116,46 @@ new names pinned to the generator's.
 **Not covered by a test:** the timed row; the critical strike row; a cancelled charge; a free repeat copy raising
 `skill_end`.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under `Cataclysm.StatExemption.ARowLaysAStatusOnItsOwnWearer`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Sa | `CataclysmAbilitySystemComponent.cpp`: the size row lays the ailment at its ordinary size whatever it rolled | 1 performed, 1 failed, 1 failed assertion: the wearer whose row rolled 4 carried a bleed of 20.000000 against 80.000000 | 1 performed, 1 succeeded |
+| Sb | `CataclysmSkillTemplate.cpp`: a skill that ends raises nothing | 1 performed, 1 failed, 1 failed assertion: the wearer was not stunned once their charge skill had ended | 1 performed, 1 succeeded |
+
+**The first attempt of this window failed to build on this layer**: `CataclysmAilments.h` named `FGameplayTag`
+without declaring it. One forward declaration was added.
+
+**Not run:** the timed row; the critical strike row; a cancelled charge; a free repeat copy raising `skill_end`; any
+of this read from the effect table, since no row exists.
 
 ---
 
