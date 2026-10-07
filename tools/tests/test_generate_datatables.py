@@ -3205,6 +3205,100 @@ class TestStrikeTarget:
             gen.enchantment_effects(self.strike(tmp_path, {column: written}))
 
 
+class TestTemporaryAbsorb:
+    """A row that grants its wearer a temporary absorb. The project owner,
+    2026-10-07: it is separate from the energy shield. "Every 12 seconds gain a
+    shield absorbing 15%-25% of your maximum HP in damage". The value is the
+    amount, in per cent of maximum health, and the event is the clock, which
+    counts only in combat."""
+
+    WORDS = ("Every 12 seconds gain a shield absorbing 15%-25% of your maximum "
+             "HP in damage")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 3, "Trigger.Timer, Keyword.Shield", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def absorb(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "temporary_absorb", "Action Event": "every_seconds",
+                  "Every Seconds": 12,
+                  "Value Low": 15, "Value High": 25}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "absorb.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def sized(self, tmp_path, low, high):
+        """The row with a sentence that states `low` to `high`, because a range
+        the words do not state is refused before the size is looked at."""
+        return self.absorb(
+            tmp_path, {"Value Low": low, "Value High": high},
+            words=self.WORDS.replace("15%-25%", f"{low}%-{high}%"))
+
+    def test_the_row_is_carried_through_on_the_clock_with_its_period_and_no_wait(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.absorb(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["EverySeconds"], out[0]["FractionOf"],
+                out[0]["Scale"], out[0]["TriggerCooldown"]) == (
+            "temporary_absorb", "every_seconds", 15.0, 25.0, 12.0, "", "", 0.0)
+
+    # ONLY THE CLOCK. Every other event the game raises is refused, the hit-fired
+    # ones and the ones that carry an amount among them.
+    @pytest.mark.parametrize("event", ["hit_taken", "kill", "dodge", "skill_use",
+                                       "energy_shield_broken", "timed", None])
+    def test_the_row_on_any_event_but_the_clock_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="counts only in combat and on nothing else"):
+            gen.enchantment_effects(self.absorb(
+                tmp_path, {"Action Event": event, "Every Seconds": None}))
+
+    def test_the_clock_is_the_only_event_listed(self):
+        assert gen.TEMPORARY_ABSORB_EVENTS == (gen.TIMED_EVENT,)
+        assert set(gen.TEMPORARY_ABSORB_EVENTS) <= gen.granting_events()
+
+    def test_the_row_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Every Seconds"):
+            gen.enchantment_effects(self.absorb(tmp_path, {"Every Seconds": None}))
+
+    def test_a_trigger_cooldown_is_refused_because_the_period_is_the_wait(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states a Trigger Cooldown"):
+            gen.enchantment_effects(self.absorb(tmp_path, {"Trigger Cooldown": 12}))
+
+    def test_a_size_at_the_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(
+            self.sized(tmp_path, 15, int(gen.MAX_TEMPORARY_ABSORB_PERCENT)))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (15.0, 100.0)
+
+    @pytest.mark.parametrize("low, high", [(0, 25), (15, 101)])
+    def test_a_size_of_nought_or_past_the_bound_is_refused(self, tmp_path, low, high):
+        with pytest.raises(gen.DataError, match="It is above 0 and up to 100"):
+            gen.enchantment_effects(self.sized(tmp_path, low, high))
+
+    def test_a_size_the_words_do_not_state_is_refused_before_the_bound(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.absorb(tmp_path, {"Value Low": 20}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="a percentage of maximum health and nothing else"):
+            gen.enchantment_effects(self.absorb(tmp_path, {column: written}))
+
+    def test_it_is_not_one_of_the_pools_that_name_two_attributes(self):
+        assert gen.TEMPORARY_ABSORB_ACTION not in gen.POOL_ACTIONS
+
+
 class TestUseIncreaseSize:
     """The size of a use's rolled increase is the row's Scale Step and Scale Step
     High. Ruled 2026-10-06: "Your cooldown abilities have a 5%-20% chance to deal

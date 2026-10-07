@@ -4191,6 +4191,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bStrikeTarget = false;
 
 	/**
+	 * Set, this action GRANTS ITS WEARER A TEMPORARY ABSORB of `Percent` of the wearer's maximum health. The project
+	 * owner, 2026-10-07: it is separate from the energy shield. For "Every 12 seconds gain a shield absorbing 15%-25%
+	 * of your maximum HP in damage". A grant refreshes what is held to its own amount and never adds. See
+	 * `UCataclysmAbilitySystemComponent::GrantTemporaryAbsorb`; `TEMPORARY_ABSORB_ACTION` in
+	 * `tools/generate_datatables.py` holds the name and allows it on the timed event only.
+	 */
+	bool bTemporaryAbsorb = false;
+
+	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's
 	 * ailments that were on the body on them. Ruled 2026-10-07 for "Plague

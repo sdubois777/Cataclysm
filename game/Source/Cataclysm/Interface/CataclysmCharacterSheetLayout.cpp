@@ -356,6 +356,13 @@ FString UCataclysmCharacterSheetLayout::Percent(float Value)
 	return Number(Value) + TEXT("%");
 }
 
+FString UCataclysmCharacterSheetLayout::TemporaryAbsorbNote(float Held)
+{
+	return Held > 0.0f
+		? FString::Printf(TEXT("%s temporary absorb, taken before the shield."), *Number(Held))
+		: FString();
+}
+
 // ---------------------------------------------------------------------------
 // One row
 // ---------------------------------------------------------------------------
@@ -391,9 +398,14 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 
 	if (Stat == TEXT("max_energy_shield"))
 	{
+		// AND THE TEMPORARY ABSORB, said beside the shield and not as part of it.
+		// The project owner, 2026-10-07: it is separate from the energy shield.
+		const UCataclysmAbilitySystemComponent* Absorbing =
+			Cast<UCataclysmAbilitySystemComponent>(ASC);
 		return FCataclysmStatLine(
 			Name, PoolValue(ASC, FVital::GetEnergyShieldAttribute(),
-							FVital::GetMaxEnergyShieldAttribute()));
+							FVital::GetMaxEnergyShieldAttribute()),
+			TemporaryAbsorbNote(Absorbing ? Absorbing->TemporaryAbsorbHeld() : 0.0f));
 	}
 
 	if (Stat == TEXT("class_resource"))
