@@ -4,7 +4,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-07 — Overkill explosion, second part: a real kill explodes the body, chains run by themselves, and the explosion fires no on-hit row
 
-**Not built and not run when this was written; the figures are added under "Run" when a window has run.** This is
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** This is
 the second of two layers. The first, in the entry below this one ("Overkill explosion, first part"),
 recorded a blow's overkill and wrote the explosion and its row action with nothing calling the explosion. **The two
 merge together or not at all.**
@@ -215,9 +215,67 @@ Four, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player char
 - **A kill made from inside an event, a minion's kill, and Conduit.**
 - **The row read from the effect table**, since no row is authored.
 
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Od | `CataclysmCombatEvents.cpp`: work handed over at a death is done at once | `Cataclysm.OverkillExplosion.WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath` | 1 performed, 1 failed, 1 failed assertion: in the scene with the listener that kills bound second, so called first, the other listener did not hear the first death and then the second | 1 performed, 1 succeeded |
+| Oc | `CataclysmPlayerCharacter.cpp`: the mark is not read by the hit listener | `Cataclysm.OverkillExplosion.TheExplosionFiresNoneOfTheKillersOnHitRows` | 1 performed, 1 failed, 2 failed assertions: `hit_dealt` was raised 3 times against 2, then 4 against 3 | 1 performed, 1 succeeded |
+| Oe | `CataclysmVitalAttributeSet.cpp`: the explosion is recorded as a first blow | the same test | 1 performed, 1 failed, 1 failed assertion: `first_hit_dealt` was raised 2 times against 3 | 1 performed, 1 succeeded |
+
+**The listener-order proof is stated by call order.** The engine calls listeners in reverse order of binding, so
+the listener that hears the second death first, with the queue bypassed, is the one called after the listener that
+kills: the one bound FIRST when the killer is bound second. Accepted as worded by the coordinating session on
+2026-10-07, a labelled judgement under the owner's delegation.
+
+**The mark on the Plague Doctor blast has a test, which passed, and no guard proof.** Accepted by the coordinating
+session on 2026-10-07, a labelled judgement under the owner's delegation; the second part's three proofs are the
+three above.
+
+**For the owner's play-check, accepted on 2026-10-07 as following from the first-blow ruling:** a condition that
+asks whether a target has been struck by the wearer answers no after an explosion or a blast alone. A wearer's
+"first hit against each enemy" row therefore still fires on a creature that only an explosion or a blast has
+touched.
+
+### A comment in a test file changed after the tested head
+
+**One comment in `CataclysmSkillTemplateTests.cpp` was corrected after the window, in a comment-only commit. No
+code and no assertion changed.** The comment above the chain test gave its three figures as 100, 50 and 30 "for a
+creature with no defences". The run printed the third figure as 40.000000 (in proof Oa: "the third takes exactly
+what a blow of the second creature's overkill takes" was expected to be 40.000000). The test asserts the measured
+figure and not the comment's, so it passed. The comment's arithmetic assumed the player's blow takes 100. The
+blow's own figure was not printed; 40 is what the test's arithmetic gives for a blow of 110 on creatures with no
+defences (110 - 50 = 60, then 60 - 20 = 40), and that is an inference and not a printed figure. The comment now
+says so.
+
+**Not run:** the real dungeon game mode as the second listener; a lethal damage over time tick making the
+explosion through a real kill; everything else under "Not covered by a test" above.
+
 ---
 
-## 2026-10-07 — Overkill explosion, first part: a blow records its overkill, and the explosion and its row action exist. Nothing calls the explosion at a kill yet; not built or run
+## 2026-10-07 — Overkill explosion, first part: a blow records its overkill, and the explosion and its row action exist. Nothing calls the explosion at a kill in this part
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (the field
 `FCataclysmDamageResult::Overkill`, written beside the clamp at the end of `Resolve`);
@@ -230,8 +288,8 @@ Four, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player char
 (`OVERKILL_EXPLOSION_ACTION` and its checks); four tests in
 `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`; `tools/tests/test_generate_datatables.py` and
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`.
-**Not built and not run.** The C++ has not been compiled, no automation test has been run and no guard proof has
-been run. **No row is authored. Nothing in the game calls the explosion**: see "Not built yet: the second part".
+**Built and run on 2026-10-07 with the second part; the figures are under "Run" at the end of this entry.** **No row
+is authored. Nothing in the game calls the explosion in this part**: see "Not built yet: the second part".
 
 ### What it is for
 
@@ -414,6 +472,9 @@ Read in code, not run. `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` 
 
 ### Not built yet: the second part
 
+**Built since, and run in the same window: see the entry "Overkill explosion, second part" above. What follows is
+what this part left for it, as written before it existed.**
+
 It waits because another session is editing the death notice and the kill event, and this change touches neither
 `CataclysmCombatEvents.h` or `.cpp` nor `CataclysmPlayerCharacter.cpp`.
 
@@ -427,7 +488,7 @@ It waits because another session is editing the death notice and the kill event,
 
 ### Tests
 
-**None of the Unreal tests has been run.** Four, at the end of `CataclysmSkillTemplateTests.cpp`, on the rig the
+**All of them ran and passed in the window of 2026-10-07; see "Run".** Four, at the end of `CataclysmSkillTemplateTests.cpp`, on the rig the
 absorbed-damage tests use. A fighter of that rig has no team and so is every other fighter's enemy; an ally of
 the killer is made by `SetOwner`.
 
@@ -453,14 +514,37 @@ the engine's.
 
 ### Run
 
-**Not run.** No Unreal compile, no automation test and no guard proof has been run for this change. The Python
-suite, the lint and `tools/check_resolved_cpp.py --changed` were run by the writing session after this entry was
-written; their output is in that session's hand-over and not here, because nothing may be recorded before the run
-that proves it.
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Oa | `CataclysmDamageCalculation.cpp`: a blow records no overkill | `Cataclysm.OverkillExplosion.ARealKillExplodesTheBodyAndAChainOfThreeRunsByItself`, the second part's test through a real kill | 1 performed, 1 failed, 3 failed assertions: one death against two; the second creature was not dead; the third took 0.000000 against 40.000000 | 1 performed, 1 succeeded |
+
+**Not run:** the row read from the effect table, since no row exists.
 
 ---
 
-## 2026-10-07 — Absorbed damage stored: what the energy shield absorbs, and what an absorbed spell would have dealt, are each kept and added to the next attack. Engine and stat names only; not built or run
+## 2026-10-07 — Absorbed damage stored: what the energy shield absorbs, and what an absorbed spell would have dealt, are each kept and added to the next attack. Engine and stat names only
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (two stat names, two
 stores, `NoteShieldAbsorbedDamage`, `NoteSpellAbsorbedDamage`, `SpendStoredAbsorbedDamage`, and the clearing on
@@ -471,8 +555,8 @@ both are spent); `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp
 and two probes in `CataclysmStatExemptionTests.cpp`; the inventory in
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Not built and not run.** The C++ has not been compiled, no automation test has been run and no guard proof has
-been run. **No row is authored**; the rows are the enchantment session's.
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** **No row is authored**; the
+rows are the enchantment session's.
 
 ### What it is for
 
@@ -625,7 +709,7 @@ the SPEND and released on the next attack, which follows this game's own Nothing
 
 ### Tests
 
-**None has been run.** In `CataclysmSkillTemplateTests.cpp`, after the last test in the file, using Nothing
+**All of them ran and passed in the window of 2026-10-07; see "Run".** In `CataclysmSkillTemplateTests.cpp`, after the last test in the file, using Nothing
 Wasted's own helpers. Every stat is given by hand, so none can see a missing or wrong row.
 
 - `Cataclysm.AbsorbedDamageStored.WhatTheShieldAbsorbsIsStoredForItsWearerAndForNobodyElse`: a shield of 40 under a
@@ -653,10 +737,35 @@ When the rows land, that change must add a test that wears each real row.
 
 ### Run
 
-**Not run.** No Unreal compile, no automation test and no guard proof has been run for this change. The Python
-suite, the lint and `tools/check_resolved_cpp.py --changed` were run by the writing session after this entry was
-written; their output is in that session's hand-over and not here, because nothing may be recorded before the run
-that proves it.
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Aa | `CataclysmVitalAttributeSet.cpp`: the shield's store is never filled | `Cataclysm.AbsorbedDamageStored.WhatTheShieldAbsorbsIsStoredForItsWearerAndForNobodyElse` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| Ab | `CataclysmSkillEffects.cpp`: only a melee hit spends the two stores | `Cataclysm.AbsorbedDamageStored.ARangedHitSpendsTheTwoNewStoresAndLeavesNothingWastedsForAMeleeHit` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+**Not run:** a guard proof for the absorbed spell's store, which has tests and no proof; any of this read from the
+effect table, since no row exists.
 
 ---
 
