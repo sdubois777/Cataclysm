@@ -33,6 +33,35 @@ reaches it. The enchantment is listed in the row-text check's `JUDGED_NUMBERS` f
   real row worn; of six creatures within 5 metres of the body all six receive the Void Splinter, and one 6 metres
   away does not.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the layer below this one and the three above it, on `development` e49857f0. The
+build, the whole suite and the Python of record are in the table of the entry "A Void Splinter can pass on when its
+carrier dies" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 5fb5e953 | 252 tests performed, 249 succeeded, 3 failed, this layer's among them; 2 of the 9 failed assertions are this layer's |
+| The three enchantment assets, regenerated with the editor | fccf2c29 | effect rows 511 to 512 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of the layer below | c6088f3d | 252 tests performed, 252 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**, on two assertions: the death passes the
+Void Splinter to 0 where 6 are expected, and 0 of the six carry it.
+
+**This layer changes no engine code and no generator code.** The guard proofs of the spread are in the entry
+below this one, and this layer's test is one of the two that noticed the first.
+
+**RULED AFTER THE REGISTRATION, 2026-10-06, by the coordinating session under the owner's delegation: the count
+of 100 is accepted**, for the three reasons registered. The spread already reads one number, how many enemies an
+ailment passes to, so a count no pack reaches gives the same result as "all" with no second code path. It is the
+most the generator lets a number hung on an ailment be, so the row needs no new column. A separate flag would be a
+second thing a row could hang on an ailment that means "ignore the count". **What it costs:** if more than 100
+enemies ever stand within 5 metres of one body, the 101st is left out.
+
+**ON THE OWNER'S PLAY-CHECK LIST:** with this row, every enemy within 5 metres of a dying enemy that carried the
+wearer's Void Splinter receives an ailment that takes a share of its health.
+
 ---
 
 ## 2026-10-06 — A Void Splinter can pass on when its carrier dies, where a row gives it a count; no row authored here
