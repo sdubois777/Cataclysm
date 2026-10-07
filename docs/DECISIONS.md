@@ -49,6 +49,25 @@ absorbed dealing no damage" or another source of that chance.
 **Not tested here:** either store filling or being spent from a worn row; that entry tests both with the stat set
 by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 2 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | f25ae472 | effect rows 537 to 539 |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**: each cap read 0 where 100 was
+expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The two stores
+were proved by the session that built them.
+
 ---
 
 ## 2026-10-07 — Starvation's six-piece bonus is built: a scale counts the pools a character is leeching into
