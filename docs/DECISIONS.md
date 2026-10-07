@@ -2,6 +2,104 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — A tick of an ailment tells the leech code which ailment it is; no row authored here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the one call of
+`UCataclysmLeech::NoteHit`), one new test in `CataclysmEnchantmentEffectTests.cpp`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT IT IS FOR
+
+"Bleed damage you deal also leeches 10%-20% of its value as HP". Its row is a life leech scoped to bleed, and until
+this change such a row gave nothing.
+
+### WHAT WAS FOUND, BY READING, 2026-10-07
+
+- **A tick already reaches the leech code.** `UCataclysmVitalAttributeSet` calls `UCataclysmLeech::NoteHit` for
+  everything that gets through, a tick included, unless the blow is marked as one that cannot leech. **So an
+  unscoped life leech row already leeches from damage over time ticks today.** That is recorded here and not
+  changed.
+- **The tags it was handed could not name an ailment.** They were the damage effect's asset tags: the skill's own
+  tags and the bare `Keyword.DoT`. The ailment, `Keyword.DoT.Bleed`, is a tag the effect GRANTS. A leech row with
+  `Keyword.DoT.Bleed` in its Required Tags was therefore discarded on every tick.
+- **The ailment of a tick was already gathered in that function**, as `Hit.DamageOverTimeTags`, for the rows on
+  damage over time taken by ailment (the entries of 2026-10-06 and 2026-10-07 on the wearer's damage over time).
+
+### WHAT WAS BUILT
+
+The leech code is handed the asset tags and, for a tick, `Hit.DamageOverTimeTags` as well. A hit carries none, so
+a hit is asked with the same tags as before. Ruled 2026-10-07 by the coordinating session under the owner's
+delegation.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **Mana leech and energy shield leech are asked with the same tags**, so a row of either scoped to an ailment
+  now reads that ailment's ticks too. No authored row is.
+- **A leech row scoped to a kind of skill still reads a tick of that skill's ailment**, as before: the skill's
+  tags were already on the tick.
+
+### Tests
+
+- `Cataclysm.Enchantments.ALeechRowScopedToAnAilmentLeechesFromThatAilmentsTicksAndNoOthers`: a wearer with a
+  life leech of 10 scoped to bleed, made by hand. Its burn on a creature takes health from the creature for two
+  and a half seconds and starts no leech payment; its bleed on the same creature then starts one.
+
+**Not tested:** how much a payment is worth; mana and energy shield leech; a minion's tick, which leeches nothing.
+
+### SAID FIRST, AS RULED 2026-10-07: TWO THINGS THAT FALL OUT OF THIS CHANGE
+
+- **An unscoped life leech already leeched from damage over time ticks before this change, and still does.** The
+  window showed it by a run: a test wearer of the starting class, the Ravager, which has a life leech of its own,
+  started two leech payments from two burn ticks with no row of this stack worn.
+- **FOR THE OWNER'S PLAY-CHECK LIST: mana leech and energy shield leech scoped to an ailment now read that
+  ailment's ticks too**, since all three are asked with the same tags. No authored row is scoped so.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the seven layers above this one, on `development` 87a44157. **The ids are the
+commits as they stood when each step ran**; the first three were local and were never pushed. This table carries
+the steps the eight layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack, the first compile of its engine code, FIRST RUN | b40d83a8 | Build: Failed - 33 actions, 30 files compiled; one error, in the row test of the layer above this one |
+| The same, after that one line of that test was corrected | 6de80c0e | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.28.cpp |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, at that build | 6de80c0e | 275 tests performed, 268 succeeded, 7 failed; 13 failed assertions; the seven registered tests, one of them on an assertion that was not the registered one |
+| The same, after that test was rewritten by ruling | 7a2af6ca | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.28.cpp; 275 tests performed, 268 succeeded, 7 failed; 13 failed assertions, each the one stated before the run |
+| Assets | faf3ac35 | none built: this layer changes no table |
+| Whole suite, every asset built | 78ac88c8 | 3296 tests performed, 3295 succeeded, 1 failed: the row test of the layer two above this one, each of its four readings 3.95 above the figure it asserted. 40 skipped part of what they check; 0 ensures |
+| Cataclysm.Enchantments. alone, after that test was changed to read differences | 01d66e81 | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.28.cpp; 275 tests performed, 275 succeeded, 0 failed |
+| Python of record, continuous integration idle | 01d66e81 | 5814 passed, 8 skipped in 354.42s; the JUnit file: tests 5822, failures 0, errors 0, skipped 8 |
+| Lint | 01d66e81 | All checks passed! |
+
+**THE WHOLE SUITE WAS NOT RUN A SECOND TIME.** 3296 tests with none failing is the one run's 3295 and one group's
+rerun, and not one run. The one failure was stated as expected, with its cause, before the run printed.
+
+**THREE THINGS IN THIS WINDOW WERE NOT AS REGISTERED**, each a fault in a test of this stack and none in game
+code; each is recorded in the entry of its layer: a member called on the wrong one of two test helpers of the
+same name (the bleed leech row); a test that asserted "none" on a wearer that has a life leech of its own (the
+same row); and a test that asserted exact figures on a stat that wearer's class also gives (Starvation's
+six-piece). **The common cause:** a wearer whose equipment is refreshed is of the starting class, the Ravager
+(`UCataclysmPlayerClassStats::StartingClassName`, `CataclysmPlayerClassStats.cpp` line 66; applied by
+`UCataclysmEquipmentComponent::RefreshAttributes`), and carries that class's own lines, life leech and damage
+reduction among them.
+
+**This layer's test needs no row**, so it passes against the older assets. Its failing half is this guard proof,
+with `prove_cpp_guard` on `Cataclysm.Enchantments.` at 01d66e81, restored to 275 tests performed, 275 succeeded,
+0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| The tick's ailment tags are not handed to the leech code (`LeechTags.AppendTags(FGameplayTagContainer());` in `CataclysmVitalAttributeSet.cpp`) | 275 performed, 1 failed | this layer's test 1: "a bleed's ticks start a payment" |
+
+The proof failed on the test and the number of assertions stated before it ran. As registered it named the row
+test of the layer above as well; that test no longer runs a tick, by the ruling recorded in its entry.
+
+**The prediction that rested on reading alone held**: a damage over time tick from a test's wearer starts a leech
+payment under the test clock.
+
+---
+
 ## 2026-10-07 — A row on damage over time taken may carry a condition
 
 **Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.**
