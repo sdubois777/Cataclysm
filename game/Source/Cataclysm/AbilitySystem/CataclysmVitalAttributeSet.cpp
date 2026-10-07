@@ -1446,7 +1446,15 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				const bool bConsequenceOfADeath = Data.EffectSpec.GetSetByCallerMagnitude(
 					FName(UCataclysmSkillEffects::ConsequenceOfADeathDataName),
 					/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
-				UCataclysmAbilitySystemComponent* Struck = bConsequenceOfADeath
+				// NOR A BLOW A WORN ROW STRUCK IN ANSWER TO AN EVENT. Ruled 2026-10-07: it is
+				// dealt while its wearer is acting on an event, when the wearer's
+				// "first hit against each enemy" row cannot fire, so recording it would
+				// use that first hit up for nothing. The stamp is
+				// `UCataclysmSkillEffects::RowsAnswerToAnEventDataName`.
+				const bool bARowsAnswerToAnEvent = Data.EffectSpec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::RowsAnswerToAnEventDataName),
+					/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+				UCataclysmAbilitySystemComponent* Struck = bConsequenceOfADeath || bARowsAnswerToAnEvent
 					? nullptr
 					: Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 				if (Struck)

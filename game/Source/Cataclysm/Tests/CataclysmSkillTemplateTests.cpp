@@ -21269,14 +21269,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeTargetActsOnNoOnHitRowTest,
  * each grant a stack when `hit_dealt` and `first_hit_dealt` are heard.
  *
  * THE ROW'S HIT IS DEALT WHILE THE WEARER IS ACTING ON AN EVENT, and a character acts on one event at a time. So
- * the hit is announced, the pawn raises `hit_dealt` and `first_hit_dealt` for it, and neither row acts.
+ * the hit is announced, the pawn raises `hit_dealt` for it, and the row for that does not act.
  *
  * THE CONTROL IS A BLOW THE PLAYER STRUCK OUTSIDE AN EVENT, delivered as the row delivers its own, on a creature
  * 30 m away: each event once. What that blow takes is also the amount the row's hit is measured against, so
  * nothing here assumes a creature's defences are nought.
  *
- * AND THE ROW'S HIT IS RECORDED AS THE WEARER'S BLOW ON THE ATTACKER. The player's next real blow on that creature
- * raises `hit_dealt` and does not raise `first_hit_dealt`.
+ * AND THE ROW'S HIT IS NOT RECORDED AS THE WEARER'S FIRST BLOW ON THE ATTACKER, ruled 2026-10-07. The player's next
+ * real blow on that creature raises `hit_dealt` and `first_hit_dealt`: two of each.
  *
  * THE PLAYER ALWAYS EVADES: its evasion is 1000, and a blow's evasion roll is from 0 to 100. The creature's blow
  * is 50 of direct damage marked ranged, so it does not depend on the creature's attack.
@@ -21357,8 +21357,8 @@ bool FCataclysmStrikeTargetActsOnNoOnHitRowTest::RunTest(const FString&)
 									 AsTheRowDelivers);
 	TestEqual(TEXT("the player's real blow on the attacker raises hit_dealt: two now"),
 			  Wearer.AbilitySystem->OwnStacksHeld(Hits), 2);
-	TestEqual(TEXT("and not first_hit_dealt, because the row's hit was the first blow on it: still one"),
-			  Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 1);
+	TestEqual(TEXT("and first_hit_dealt, because the row's hit was not recorded as a first blow: two now"),
+			  Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 2);
 	return true;
 }
 

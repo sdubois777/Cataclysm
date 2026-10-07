@@ -92,6 +92,20 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCannotBeEvaded = false;
 
 	/**
+	 * Whether this blow was struck by a worn row in answer to an event, and not by the character's own skill or
+	 * basic attack: the hit the action `strike_target` deals. Ruled 2026-10-07.
+	 *
+	 * SUCH A BLOW IS NOT RECORDED AS ITS ATTACKER'S FIRST BLOW ON THE TARGET. A row's hit is dealt while its wearer
+	 * is acting on an event, when none of the wearer's own rows can act. Recorded then, it would use up the
+	 * wearer's "first hit against each enemy" for that enemy at a moment the row for it cannot fire, and the row
+	 * would never fire for that enemy at all. The effect is stamped with
+	 * `UCataclysmSkillEffects::RowsAnswerToAnEventDataName` and `UCataclysmVitalAttributeSet` skips `NoteStruckBy`
+	 * for it. It changes nothing else about the blow. A MARK OF ITS OWN, and not `bIsConsequenceOfADeath`: this is
+	 * a blow the character struck, where an explosion at a death is not.
+	 */
+	bool bIsARowsAnswerToAnEvent = false;
+
+	/**
 	 * The blow was struck in melee. Issue #1032.
 	 *
 	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, the same way and in the same
@@ -1768,6 +1782,14 @@ public:
 	 * `FCataclysmHitDelivery::bCannotBeEvaded`.
 	 */
 	static const TCHAR* CannotBeEvadedDataName;
+
+	/**
+	 * The name an effect is stamped under when its blow is a row's answer to an event, with any value above
+	 * nought. Ruled 2026-10-07. A plain name and no gameplay tag, as `CannotBeEvadedDataName` is. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` where it records who struck the target. See
+	 * `FCataclysmHitDelivery::bIsARowsAnswerToAnEvent`.
+	 */
+	static const TCHAR* RowsAnswerToAnEventDataName;
 
 	/**
 	 * What the running application of this effect on this actor STATED, or a

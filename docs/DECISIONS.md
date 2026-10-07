@@ -7,11 +7,16 @@ Decisions made outside the Google Drive documents, newest first.
 **Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
 outcome of any run is recorded here.
 
+**Said first, because a player may expect otherwise: the thrown hit is neither a melee attack, a ranged attack nor
+a spell.** It is dealt with no skill tags. So a worn row scoped to attacks of one kind ("melee attacks deal...",
+"your ranged attacks...") does not reach it; only a row with no scope does. Accepted by the coordinating session
+on 2026-10-07, a labelled judgement under the owner's delegation.
+
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the second form of
 `NoteEvaded`, the name `StrikeTargetAction`, and the action in the row loop of `ActOnEvent`);
 `CataclysmVitalAttributeSet.cpp` (the call of `NoteEvaded`, and the read of the new stamp);
 `CataclysmSkillEffects.h` and `.cpp` (`FCataclysmHitDelivery::bCannotBeEvaded` and its stamp
-`CannotBeEvadedDataName`); `CataclysmStatPipeline.h` (`FCataclysmPoolAction::bStrikeTarget`);
+`CannotBeEvadedDataName`; `bIsARowsAnswerToAnEvent` and its stamp `RowsAnswerToAnEventDataName`); `CataclysmStatPipeline.h` (`FCataclysmPoolAction::bStrikeTarget`);
 `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the loader); `tools/generate_datatables.py`
 (`STRIKE_TARGET_ACTION`, `STRIKE_TARGET_EVENTS`, `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`,
 `MAX_STRIKE_TARGET_PERCENT`, `_check_strike_target_action`); four tests in
@@ -149,9 +154,16 @@ the body does not explode for its overkill. It is not a Follow Through kill, bec
 tag. One event is kept and not dropped: `afflicted_death` waits in `ActOnEvent`'s queue and its blast rows act
 when the loop has returned.
 
-**The hit is recorded as the wearer's blow on that enemy.** `NoteStruckBy` writes it, as for any blow that gets
-through. So the wearer's next real blow on that enemy is not its first, and a `first_hit_dealt` row does not act
-for that enemy at all: the first blow was this hit, and its `first_hit_dealt` was raised while the loop ran.
+**The hit is NOT recorded as the wearer's first blow on that enemy.** Ruled 2026-10-07, a labelled judgement by the
+coordinating session under the owner's delegation. As first written, `NoteStruckBy` recorded it, as for any blow
+that gets through; the wearer's next real blow on that enemy was then not its first, and a `first_hit_dealt` row
+never acted for that enemy at all, because the first blow was this hit and its `first_hit_dealt` was raised while
+the loop ran. That silently removed a row's effect for every enemy the wearer evaded first. The hit now carries a
+mark of its own, `FCataclysmHitDelivery::bIsARowsAnswerToAnEvent` ("a blow a row struck in answer to an event"),
+stamped on the effect, and `UCataclysmVitalAttributeSet` skips `NoteStruckBy` for it. NOT the mark for a
+consequence of a death: this is a blow the character struck. Every use of `strike_target`, on any event, carries
+it. A condition that asks whether the target has been struck by the wearer also answers no after the row's hit
+alone.
 
 **On the character struck.** It takes a hit: `hit_taken` is raised on it and its count of hits taken moves. It
 can block the hit, and then its `block` is raised with the wearer as the attacker. It pays retaliation if it has
@@ -160,7 +172,18 @@ any. It raises no `dodge`, and no `melee_hit_taken`, because the hit carries no 
 **No loop.** The struck character cannot evade the hit. If it wears rows of its own that strike back, their hit
 on the wearer raises events on the wearer while the wearer's loop is still running, and those return at once.
 
-### Judgements by the writing session, 2026-10-07, for the coordinating session to confirm
+### For the owner's play-check
+
+- **The thrown hit is an ordinary hit of the wearer's, apart from not being evadable.** It can critically strike,
+  it leeches, it can be retaliated against and blocked, and it carries the weapon sub-type and the wearer's
+  unscoped ailment chances. Accepted 2026-10-07: the sentence says "throw an attack".
+- **It spends the wearer's stored absorbed damage** ("next attack"), beside the three procs that do, and not
+  Nothing Wasted's store.
+- **It fires none of the wearer's own on-hit, critical strike or kill rows**, and a kill it makes does not
+  explode for its overkill. An enemy it kills that carried the wearer's ailment still makes its plague blast.
+- **It does not use up the wearer's first hit on that enemy.**
+
+### Judgements by the writing session, each accepted on 2026-10-07 by the coordinating session under the owner's delegation
 
 1. **The name is `strike_target`.** "Target" is the word `dot_remaining_target` uses for the other character of
    an event.
@@ -223,7 +246,7 @@ origin, the attacker 4 m east of it and the control fighter 8 m east.
   control is a blow the player struck outside any event, delivered as the row delivers its own: each event once,
   and what it takes is the amount. The attacker's ranged blow is evaded, the row's hit takes that amount from the
   attacker, and both counts stay at one. The player's next real blow on the attacker then raises `hit_dealt` and
-  not `first_hit_dealt`.
+  `first_hit_dealt`, two of each: the row's hit was not recorded as a first blow.
 
 Python: `TestStrikeTarget` in `tools/tests/test_generate_datatables.py` holds the generator's cases. The row on
 `dodge` with `Type.Ranged` is carried through with the default wait. Each of the eight events is accepted. `kill`,

@@ -4907,9 +4907,9 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// PRICED BY `ApplyHit`, as a skill's damage percentage is and as a nearby smite's is: weapon damage times
 		// the percentage, through the wearer's own increases. With no skill tags, so only unscoped rows reach it.
 		//
-		// IT CANNOT BE EVADED, and that is the only thing the delivery says. So the character struck never
-		// evades it and never raises a `dodge` for it. Everything else about it is an ordinary hit of the
-		// wearer's.
+		// IT CANNOT BE EVADED, so the character struck never evades it and never raises a `dodge` for it. AND IT IS
+		// MARKED A ROW'S ANSWER TO AN EVENT, so it is not recorded as the wearer's first blow on that character.
+		// Everything else about it is an ordinary hit of the wearer's.
 		//
 		// DEALT INSIDE THIS LOOP, which runs one level deep. The hit's own announcements reach `ActOnEvent`
 		// while this call is running and are dropped: it acts on none of the wearer's `hit_dealt`,
@@ -4926,6 +4926,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				NoteTriggerFired(Action);
 				FCataclysmHitDelivery Delivery;
 				Delivery.bCannotBeEvaded = true;
+				// AND IT IS NOT RECORDED AS THE WEARER'S FIRST BLOW ON THAT CHARACTER. Ruled 2026-10-07: recorded
+				// here, while no row of the wearer's can act, it would remove a `first_hit_dealt` row's effect
+				// for every enemy this row strikes first.
+				Delivery.bIsARowsAnswerToAnEvent = true;
 				UCataclysmSkillEffects::ApplyHit(Self, Other, Action.Percent, FGameplayTagContainer(), Delivery);
 			}
 			continue;

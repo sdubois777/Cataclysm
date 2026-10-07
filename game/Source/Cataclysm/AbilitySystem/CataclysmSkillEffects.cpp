@@ -323,6 +323,7 @@ const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
 const TCHAR* UCataclysmSkillEffects::ConsequenceOfADeathDataName = TEXT("Cataclysm.ConsequenceOfADeath");
 const TCHAR* UCataclysmSkillEffects::CannotBeEvadedDataName = TEXT("Cataclysm.CannotBeEvaded");
+const TCHAR* UCataclysmSkillEffects::RowsAnswerToAnEventDataName = TEXT("Cataclysm.RowsAnswerToAnEvent");
 const TCHAR* UCataclysmSkillEffects::StatedMagnitudeDataName =
 	TEXT("Cataclysm.StatedMagnitude");
 
@@ -1393,6 +1394,12 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bCannotBeEvaded)
 	{
 		Spec.SetSetByCallerMagnitude(FName(CannotBeEvadedDataName), 1.0f);
+	}
+
+	// AND WHETHER A WORN ROW STRUCK IT IN ANSWER TO AN EVENT, which is not recorded as a first blow. Ruled 2026-10-07.
+	if (Delivery.bIsARowsAnswerToAnEvent)
+	{
+		Spec.SetSetByCallerMagnitude(FName(RowsAnswerToAnEventDataName), 1.0f);
 	}
 
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void
