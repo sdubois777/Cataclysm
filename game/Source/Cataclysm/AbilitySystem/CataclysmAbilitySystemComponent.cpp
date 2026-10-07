@@ -3432,7 +3432,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfAction = TEXT("apply_status_to_self");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSecondsAction = TEXT("apply_status_to_self_seconds");
-const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfTimesAction = TEXT("apply_status_to_self_times");
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSizedAction = TEXT("apply_status_to_self_sized");
 const TCHAR* UCataclysmAbilitySystemComponent::StunStatus = TEXT("Stun");
 const TCHAR* UCataclysmAbilitySystemComponent::AppliedDotStatus = TEXT("Applied DoT");
 const TCHAR* UCataclysmAbilitySystemComponent::SkillEndEvent = TEXT("skill_end");
@@ -4908,23 +4908,20 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPo
 		return false;
 	}
 
-	// THE AILMENT JUST APPLIED TO ANOTHER, THE VALUE'S NUMBER OF TIMES. "When you apply a DOT, 1-4 stacks are
-	// applied to you". Each is one application at the ailment's ordinary size, by the wearer, on the wearer; how
-	// the applications combine is the ailment's own rule. None of them raises `dot_applied`, which is raised for
-	// another character only.
-	if (Action.ApplyStatus == ECataclysmApplyStatus::Times)
+	// THE AILMENT JUST APPLIED TO ANOTHER, ONCE, AT THE VALUE'S MULTIPLE OF ITS ORDINARY SIZE. "When you apply a
+	// DOT, 1-4 stacks are applied to you". Ruled 2026-10-06.
+	//
+	// ONE APPLICATION AND NOT SEVERAL, because no ailment in this game stacks: a character carries one effect for
+	// each, and a second of the same size only refreshes the first. Four applications would leave what one
+	// leaves, and the row's roll would change nothing. The size is the magnitude `UCataclysmAilments::Apply`
+	// already takes, which scales a damage over time's damage a tick.
+	//
+	// BY THE WEARER, ON THE WEARER. It raises no `dot_applied`, which is raised for another character only.
+	if (Action.ApplyStatus == ECataclysmApplyStatus::Sized)
 	{
 		const FCataclysmAilmentKind* Applied = UCataclysmAilments::KindNamed(LastAppliedDotAilment);
-		if (!Applied)
-		{
-			return false;
-		}
-		bool bAny = false;
-		for (int32 Time = 0; Time < FMath::RoundToInt(Action.Percent); ++Time)
-		{
-			bAny |= UCataclysmAilments::Apply(Wearer, Wearer, *Applied, /*Magnitude=*/1.0f);
-		}
-		return bAny;
+		return Applied && Action.Percent > 0.0f
+			&& UCataclysmAilments::Apply(Wearer, Wearer, *Applied, /*Magnitude=*/Action.Percent);
 	}
 
 	const bool bSeconds = Action.ApplyStatus == ECataclysmApplyStatus::Seconds;

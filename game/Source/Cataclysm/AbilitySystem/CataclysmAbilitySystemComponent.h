@@ -900,12 +900,12 @@ public:
 	/**
 	 * The three actions that lay a status on THE WEARER. Ruled 2026-10-06. The first two are `ApplyStatusAction`
 	 * and `ApplyStatusSecondsAction` with the wearer as the character the status is laid on; the third applies it
-	 * the value's number of times. `tools/generate_datatables.py` holds the same names in
+	 * once at the value's multiple of its ordinary size. `tools/generate_datatables.py` holds the same names in
 	 * `APPLY_STATUS_TO_SELF_ACTIONS`.
 	 */
 	static const TCHAR* ApplyStatusToSelfAction;
 	static const TCHAR* ApplyStatusToSelfSecondsAction;
-	static const TCHAR* ApplyStatusToSelfTimesAction;
+	static const TCHAR* ApplyStatusToSelfSizedAction;
 
 	/**
 	 * Two more statuses, which only an action that lays a status on the wearer may name. `StunStatus` is a stun for
