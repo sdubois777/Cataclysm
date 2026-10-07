@@ -2,6 +2,78 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A stat makes applying a damage over time effect refresh the applier's others on that target, each to its own full duration; no row authored here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`
+(`DotApplicationRefreshesOthersStat`, `RefreshOtherDamageOverTime`, `ApplyDamageOverTime`,
+`ApplyShareOfHealthOverTime`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, one new test in
+`CataclysmRemainingDamageTests.cpp`, one probe in `CataclysmStatExemptionTests.cpp`,
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT IT IS FOR
+
+"Plague Doctor (6-Piece Bonus): When you apply a DoT to an enemy, all other DoTs you have on that enemy have their
+duration refreshed."
+
+### WHAT WAS RULED, 2026-10-06
+
+**The coordinating session, under the owner's delegation, a labelled judgement: "refreshed" is each effect's OWN
+full duration.** A poison applied for ten seconds has ten seconds again, whatever the effect just applied lasts.
+
+### WHAT THE RESEARCH SETTLES, AND WHAT IT DOES NOT
+
+No new source was read for this entry. The pages read on 2026-10-06 for the spread and the detonation
+(`poedb.tw` for Contagion, Abberath's Hooves, Explosive Arrow and Infernal Blow) do not describe an effect that
+refreshes others when one is applied, so **nothing read settles this**; it is the sentence's words and the ruling.
+
+### HOW IT IS BUILT
+
+- **A stat, `dot_application_refreshes_others`, a yes or a no with no gameplay attribute.** It is asked of the
+  character applying the effect, with the tag of the ailment being applied, in the two places a damage over time
+  effect is applied: `ApplyDamageOverTime` and, for a share of health, `ApplyShareOfHealthOverTime`.
+- **Above nought, `RefreshOtherDamageOverTime` runs.** Every effect on the target whose instigator is the applier,
+  that still has damage to deal, and that is not the ailment being applied, is given the duration it was applied
+  with again, counted from now. The engine keeps that duration on the running effect, and the effect is moved
+  rather than rebuilt, so its figures, its ticks and its instigator stay as they were. Never shorter.
+- **The ailment being applied follows its own rule**, unchanged: a stronger application replaces the running one
+  and an equal or weaker one refreshes it.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **"DoTs" are effects that still have damage to deal.** A slow, a mark or a stun the applier put on the target is
+  not refreshed.
+- **"You have on that enemy" is the applier's own.** Another character's effects on the same target are left
+  alone, and so are a minion's: a minion's ailment is the minion's, ruled 2026-09-17.
+- **A minion's application refreshes nothing.** The stat is asked of whoever applies the effect, and a minion
+  wears nothing. THE OWNER, 2026-10-06: a minion's ailment carries none of the wearer's enchantment bonus unless
+  a row says so.
+- **A copy made by a spread at a death refreshes nothing.** Nobody applied it.
+- **A Void Splinter is one of the others**, and applying one refreshes the others.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A character holding the stat that applies two ailments in turn keeps both running for as long as it keeps
+  applying either.** That is the bonus.
+- **A refreshed effect is not made stronger.** It deals what it was dealing, for longer.
+- **With the Void Splinter detonation row worn as well**, applying a Void Splinter again still detonates the
+  running one; the refresh acts on the other ailments.
+
+### Tests
+
+- `Cataclysm.RemainingDamage.ApplyingADamageOverTimeEffectRefreshesTheAppliersOthersOnThatTargetOnlyWhenARowSaysSo`,
+  with the stat held by hand, on a target of 1,000 health: the wearer's poison and bleed and another character's
+  burn, ten a tick for ten seconds, four seconds in, each have six ticks left; with no stat, applying a disease
+  leaves them at six; with the stat, applying a necrosis gives the poison and the bleed ten ticks again, leaves the
+  disease at ten and the other character's burn at six; two seconds on the poison has eight, and applying the
+  poison again gives the bleed ten and leaves the burn at four.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe: a poison four seconds into ten
+  has six seconds left after its applier applies a bleed, and ten when the applier holds the stat.
+
+**Not tested:** a Void Splinter among the others, and a minion.
+
+---
+
 ## 2026-10-06 — "Void splinter stacks spread to nearby enemies when the afflicted enemy dies" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
