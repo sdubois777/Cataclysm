@@ -32,6 +32,10 @@ the writing session, read from the comment at the lookup: "`debuff_damage_suppre
   `NoteMovedMetres` and standing with `NoteDidNotMove`, the two calls the movement sampler makes.
 - The pinned size of `ConditionedProbes()` moves from 8 to 9, in that test and in
   `tools/tests/test_every_conditioned_stat_has_an_asker.py`.
+- **The test that runs every conditioned probe is renamed**, because its name stated the count:
+  `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed` becomes
+  `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`. The entry of 2026-10-06 that
+  introduced it names it as it was then.
 
 ### What this does not cover
 
