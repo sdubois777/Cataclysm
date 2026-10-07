@@ -4393,6 +4393,16 @@ SCALES = {
     # `deployables_active`, the machines the character commands now. Issue
     # #1833, deployable Part 3.
     "deployables_active": (0.0, 20.0, "a number of deployable machines"),
+    # `traps_active` and `gadgets_active`, ruled 2026-10-07 and built ahead of
+    # their rows. A trap is a deployable machine whose type also carries
+    # `Type.Trap`; a gadget, for this scale, is a deployable machine that does
+    # not. `deployables_active` above is unchanged and counts both. "Traps
+    # deal 15%-30% increased damage for each other trap currently active on
+    # the battlefield" is `traps_active` with a step of 1 and a Scale Offset
+    # of 1; "Each active gadget increases trap damage by 10%-20%" is
+    # `gadgets_active` with a step of 1. The same bound as the machines.
+    "traps_active": (0.0, 20.0, "a number of traps"),
+    "gadgets_active": (0.0, 20.0, "a number of gadgets, the machines that are not traps"),
     # Issue #1833 group C part 3c. "for every 15 seconds spent on the same
     # dungeon floor" is `seconds_on_floor` with a step of 15; "for every dungeon
     # floor cleared this run" is `floors_cleared` with a step of 1; "for every
@@ -4463,10 +4473,17 @@ BASE_PLUS_RANGE_ENCHANTMENTS: dict[str, float] = {
 }
 
 #: The scales that read a Scale Offset: how much of the reading is not counted.
-#: Issue #1686. Only the class point sentences state a threshold ("above 100",
-#: "above 50"), and the engine's `ValidateModifier` refuses an offset on any
-#: other scale, so the generator refuses it first, with the row named.
-SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent"})
+#: Issue #1686. The class point sentences state a threshold ("above 100",
+#: "above 50"), and the engine's `ValidateModifier` refuses an offset on a
+#: scale that does not read one, so the generator refuses it first, with the
+#: row named.
+#:
+#: AND `traps_active`, SINCE 2026-10-07. "For each other trap" is an offset of
+#: 1: the row is read on a trap's blow, and the trap striking is not another
+#: trap. `MAX_SCALE_OFFSET` below is the class point budget and is not
+#: narrowed for it; an offset above the 20 traps the scale is bounded at
+#: counts nothing.
+SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active"})
 
 #: The largest offset a row may state: the 230 point budget. Issue #1686.
 MAX_SCALE_OFFSET = 230

@@ -1175,6 +1175,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	{
 		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Each);
 		State.DeployablesActive += Minion && Minion->IsDeployable() ? 1 : 0;
+
+		// AND WHICH OF THE MACHINES ARE TRAPS. Ruled 2026-10-07. A trap is not
+		// a gadget for `gadgets_active`; the count above is unchanged and still
+		// holds both, so the two below add up to it.
+		const bool bIsATrap = Minion && Minion->IsTrap();
+		State.TrapsActive += bIsATrap ? 1 : 0;
+		State.GadgetsActive += Minion && Minion->IsDeployable() && !bIsATrap ? 1 : 0;
 	}
 
 	// AND THE SELF-BUFF SKILLS RUNNING. Issue #1815. The same test

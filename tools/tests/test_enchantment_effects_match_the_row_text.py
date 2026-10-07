@@ -1229,13 +1229,26 @@ def test_the_single_target_rows_are_refused_without_their_words(effects, enchant
             for line in wrong), wrong
 
 
+#: Words that state an offset without a digit. Ruled 2026-10-07: "for each
+#: other trap" leaves out the one trap that is striking, which is an offset of
+#: 1 on `traps_active`. No row carried one on that day; the scale was built
+#: ahead of its row.
+WORDS_THAT_STATE_AN_OFFSET: dict[float, tuple[str, ...]] = {
+    1.0: ("each other",),
+}
+
+
 def offsets_not_stated(effects, enchantments) -> list[str]:
-    """The rows whose Scale Offset is not a number in their own sentence."""
+    """The rows whose Scale Offset is neither a number in their own sentence
+    nor stated by its words."""
     wrong = []
     for r in effects:
         offset = float(r.get("ScaleOffset") or 0.0)
-        if offset and offset not in numbers_in(words_of(r, enchantments)):
-            wrong.append(f"{r['Name']}: {offset:g} against {words_of(r, enchantments)!r}")
+        words = words_of(r, enchantments) if offset else ""
+        in_words = any(phrase in words.lower()
+                       for phrase in WORDS_THAT_STATE_AN_OFFSET.get(offset, ()))
+        if offset and not in_words and offset not in numbers_in(words):
+            wrong.append(f"{r['Name']}: {offset:g} against {words!r}")
     return wrong
 
 
@@ -1252,6 +1265,24 @@ def test_the_offset_check_can_fail():
     enchantments = {"A": {"Effect": "for every 10 class points spent above 50"}}
     assert offsets_not_stated(effects, enchantments) == [
         "A#1: 100 against 'for every 10 class points spent above 50'"]
+
+
+def test_each_other_states_an_offset_of_one_and_no_other():
+    """Ruled 2026-10-07. "For each other trap" is an offset of 1 and passes;
+    the same words do not excuse an offset of 2, and an offset of 1 on a
+    sentence without them is still named."""
+    words = ("Traps deal 15%-30% increased damage for each other trap "
+             "currently active on the battlefield")
+    enchantments = {"A": {"Effect": words},
+                    "B": {"Effect": "Each active gadget increases trap damage by 10%-20%"}}
+    assert offsets_not_stated(
+        [{"Name": "A#1", "Enchantment": "A", "ScaleOffset": "1.0"}], enchantments) == []
+    assert offsets_not_stated(
+        [{"Name": "A#1", "Enchantment": "A", "ScaleOffset": "2.0"}], enchantments) == [
+            f"A#1: 2 against {words!r}"]
+    assert offsets_not_stated(
+        [{"Name": "B#1", "Enchantment": "B", "ScaleOffset": "1.0"}], enchantments) == [
+            "B#1: 1 against 'Each active gadget increases trap damage by 10%-20%'"]
 
 
 def test_a_more_row_is_worded_as_a_multiplier(effects, enchantments):

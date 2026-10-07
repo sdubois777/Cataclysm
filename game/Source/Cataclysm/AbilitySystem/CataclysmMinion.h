@@ -175,6 +175,21 @@ public:
 	bool IsDeployable() const;
 
 	/**
+	 * Whether this machine is a trap: a placed machine whose type also carries
+	 * `Type.Trap`. Ruled 2026-10-07.
+	 *
+	 * ONLY THE TAG. The owner decided on 2026-10-07 that of the trap feature
+	 * only the tag is added now, and the ruling of 2026-09-11, "traps are a
+	 * separate feature, for later", holds for the rest. A trap does not arm,
+	 * trigger, re-arm or expire differently. It swings as any machine does.
+	 *
+	 * WHAT READS IT: the two counts `traps_active` and `gadgets_active`, and the
+	 * armour its blow ignores (`AttackTarget`). A minion carrying `Type.Trap`
+	 * without `Type.Deployable` is not a trap; no type row is written that way.
+	 */
+	bool IsTrap() const;
+
+	/**
 	 * Percent of its type's own health the skill that deployed it asked for, or
 	 * zero for that type's health unchanged.
 	 *
