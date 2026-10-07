@@ -400,12 +400,25 @@ namespace
 		return FGameplayTag::RequestGameplayTag(
 			FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
 	}
+
+	/** The tag that makes a machine a trap. Ruled 2026-10-07. See `IsTrap`. */
+	FGameplayTag TagOfATrap()
+	{
+		return FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	}
 }
 
 bool ACataclysmMinion::IsDeployable() const
 {
 	const FGameplayTag Deployable = DeployableTag();
 	return Deployable.IsValid() && TypeTags.HasTagExact(Deployable);
+}
+
+bool ACataclysmMinion::IsTrap() const
+{
+	const FGameplayTag Trap = TagOfATrap();
+	return IsDeployable() && Trap.IsValid() && TypeTags.HasTagExact(Trap);
 }
 
 ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Location,
@@ -758,9 +771,38 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// readings now find nothing of its own rather than everything of its
 		// summoner's, and a reading added later is blocked because it finds
 		// nothing rather than because somebody remembered the list.
+		//
+		// AND A TRAP'S BLOW IGNORES THE SHARE OF ARMOUR ITS SUMMONER'S ROWS
+		// NAMING `Type.Trap` STATE, AND NO OTHER. Ruled 2026-10-07, for "Your
+		// traps ignore 20%-40% of enemy armor": a flat `armor_penetration`
+		// row requiring `Type.Trap`. The design's rule is that a minion takes
+		// nothing of its summoner's unless a modifier names it, and this
+		// modifier names it. The same reader the gadget damage rows use above,
+		// with a figure of nought, so the answer is those rows and nothing
+		// else: not the summoner's attribute, and not a row with no tag.
+		//
+		// `bCannotPenetrate` STAYS SET AND MEANS WHAT IT MEANT. The figure
+		// travels beside it, on the delivery, and is nought for a ballista, for
+		// an imp, and for a trap whose summoner has no such row.
+		//
+		// A ROW NAMING `Type.Deployable` ON `armor_penetration` IS NOT READ.
+		// The ruling names traps only, and no row is written that way today.
+		FCataclysmHitDelivery BlowDelivery = MinionDelivery(this, /*bIsArea=*/false);
+		if (IsTrap())
+		{
+			if (const UCataclysmAbilitySystemComponent* NamingTraps =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(Summoner)))
+			{
+				BlowDelivery.NamedArmorPenetrationPercent =
+					NamingTraps->StatNamingTagAppliedTo(
+						FName(TEXT("armor_penetration")), TagOfATrap(), /*Figure=*/0.0f,
+						TypeTags, Target, GetGameTimeSinceCreation());
+			}
+		}
 		UCataclysmSkillEffects::ApplyDirectDamage(
 			this, Target, Damage,
-			MinionDelivery(this, /*bIsArea=*/false), &Resolved);
+			BlowDelivery, &Resolved);
 		Dealt = Damage;
 	}
 	// AND NOTHING AT ALL WITHOUT A TYPE ROW, SINCE ISSUE #1515. A minion used

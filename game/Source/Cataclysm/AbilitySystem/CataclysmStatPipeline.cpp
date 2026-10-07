@@ -175,6 +175,8 @@ namespace
 		{ TEXT("weapon_kills"),        ECataclysmStatScale::PerKillOfThisWeapon },
 		{ TEXT("minion_seconds_active"), ECataclysmStatScale::PerSecondTheMinionHasBeenActive },
 		{ TEXT("deployables_active"),  ECataclysmStatScale::PerDeployableActive },
+		{ TEXT("traps_active"),        ECataclysmStatScale::PerTrapActive },
+		{ TEXT("gadgets_active"),      ECataclysmStatScale::PerGadgetActive },
 		{ TEXT("seconds_on_floor"),    ECataclysmStatScale::PerSecondOnThisFloor },
 		{ TEXT("floors_cleared"),      ECataclysmStatScale::PerFloorClearedThisRun },
 		{ TEXT("armor"),               ECataclysmStatScale::PerPointOfArmor },
@@ -1580,6 +1582,17 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerDeployableActive:
 		return StackedValue(Modifier, State.DeployablesActive);
 
+	// THE TRAPS COMMANDED NOW, PAST THE OFFSET. Ruled 2026-10-07. "For each
+	// other trap" is an offset of 1, so one trap alone is worth nothing. The
+	// arithmetic the class point scale uses for its own offset.
+	case ECataclysmStatScale::PerTrapActive:
+		return StackedValue(Modifier, State.TrapsActive
+			- FMath::FloorToInt32(FMath::Max(0.0f, Modifier.ScaleOffset)));
+
+	// AND THE MACHINES COMMANDED THAT ARE NOT TRAPS. Ruled 2026-10-07.
+	case ECataclysmStatScale::PerGadgetActive:
+		return StackedValue(Modifier, State.GadgetsActive);
+
 	// THE FOUR OF ISSUE #1833 GROUP C PART 3c. Whole steps, as every count is;
 	// an unknown reading (-1) is nothing, as for the kills.
 	case ECataclysmStatScale::PerSecondOnThisFloor:
@@ -1915,8 +1928,10 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		return TEXT("consecutive_hits with no stack key. It would count nothing.");
 	}
 
-	// AN OFFSET IS A NUMBER OF POINTS NOT COUNTED, AND ONE SCALE READS IT.
-	// Issue #1686. An offset anywhere else would be dropped with no error.
+	// AN OFFSET IS HOW MUCH OF THE READING IS NOT COUNTED, AND TWO SCALES READ
+	// IT. Issue #1686 for the class points; 2026-10-07 for the traps, whose
+	// "each other trap" is an offset of 1. An offset anywhere else would be
+	// dropped with no error.
 	if (Modifier.ScaleOffset < 0.0f)
 	{
 		return FString::Printf(
@@ -1925,11 +1940,12 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 			Modifier.ScaleOffset);
 	}
 	if (Modifier.ScaleOffset > 0.0f
-		&& Modifier.Scale != ECataclysmStatScale::PerClassPointSpent)
+		&& Modifier.Scale != ECataclysmStatScale::PerClassPointSpent
+		&& Modifier.Scale != ECataclysmStatScale::PerTrapActive)
 	{
 		return FString::Printf(
 			TEXT("an offset of %.1f on a scale that does not read one. Only "
-				 "class_points_spent counts from a threshold."),
+				 "class_points_spent and traps_active count from a threshold."),
 			Modifier.ScaleOffset);
 	}
 

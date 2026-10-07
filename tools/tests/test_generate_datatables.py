@@ -3755,6 +3755,24 @@ class TestEnchantmentEffects:
                 "Scale": "debuffs_carried", "Scale Step": 1,
                 "Scale Offset": 100})]))
 
+    # AND ON THE TRAP SCALE, SINCE 2026-10-07: "for each other trap" is 1.
+    def test_an_offset_on_the_trap_scale_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "traps_active", "Scale Step": 1, "Scale Offset": 1})]))
+        assert (out[0]["Scale"], out[0]["ScaleStep"], out[0]["ScaleOffset"]) == (
+            "traps_active", 1.0, 1.0)
+
+    def test_an_offset_on_the_gadget_scale_is_refused(self, tmp_path):
+        """The gadget scale is carried through, and reads no offset: no
+        sentence says "each other gadget"."""
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "gadgets_active", "Scale Step": 1})]))
+        assert (out[0]["Scale"], out[0]["ScaleOffset"]) == ("gadgets_active", 0.0)
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "gadgets_active", "Scale Step": 1,
+                "Scale Offset": 1})]))
+
     def test_an_offset_with_no_scale_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="would be dropped"):
             gen.enchantment_effects(self.book(tmp_path, [self.row({

@@ -1051,6 +1051,27 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Hit.bIsPiercing = bCanPenetrate && bHoldsAPiercingWeapon;
 			Hit.bIsBlunt = SubType.Equals(TEXT("Blunt"), ESearchCase::IgnoreCase);
 
+			// AND THE SHARE OF ARMOUR THE BLOW ITSELF SAYS IT IGNORES. Ruled
+			// 2026-10-07. `FCataclysmHitDelivery::NamedArmorPenetrationPercent` is
+			// stamped on the effect by `UCataclysmSkillEffects::ApplyTypedSpec`, and
+			// the one blow that carries it is a trap's, for its summoner's
+			// `armor_penetration` rows that name `Type.Trap`.
+			//
+			// NOT INSIDE `bCanPenetrate`, AND THAT IS THE POINT. That flag stops the
+			// ATTACKER'S figures reaching a blow, and a minion's blow carries it.
+			// This figure was worked out by the caller from rows that name the
+			// minion's kind, which is what the design allows to cross.
+			//
+			// ADDED, AFTER THE ATTACKER'S OWN FIGURE WAS READ ABOVE, so it cannot be
+			// overwritten by that read. A blow with no stamp adds nought. The
+			// damage calculation clamps the sum and still lets a defender whose
+			// armour cannot be ignored refuse all of it.
+			Hit.ArmorPenetration += FMath::Max(
+				0.0f,
+				Data.EffectSpec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::NamedArmorPenetrationDataName),
+					/*WarnIfNotFound=*/false, 0.0f));
+
 			// THE DIFFICULTY TIER IS READ RATHER THAN ASSUMED, since issue #514.
 			// This passed a literal 1 because nothing in the project held a tier
 			// at all, and the tier decides what armour is worth: armour removes
