@@ -78,6 +78,36 @@ returns before the event and so spreads nothing.
 
 **Not tested:** a copy made here passing on at a death, a copy refused by an immunity, and a minion.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the older assets | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed; this layer's test not among them |
+| Assets | 92ddf6da | none built: this layer changes no table |
+
+**This layer's test needs no row**, so it passes against the older assets. Its failing half is this guard proof,
+with `prove_cpp_guard` on `Cataclysm.Enchantments.` at be112e78, restored to 265 tests performed, 265 succeeded,
+0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| The count is read as the kind None when an ailment is applied (`CataclysmSkillEffects.cpp`) | 265 performed, 2 failed | 6 assertions: this layer's test 4 (neither nearest creature burned; no running copy; the third not burned at the second application); the burn row test of the layer above 2 |
+
+**Not proved by a break: that a copy spreads no further.** No single line holds it. The test's creature 3 metres
+from the target, which a copy on the creature 1 metre away would have reached, is what holds it.
+
+**Accepted 2026-10-07 by the coordinating session**, each a labelled judgement: the judgements above as written.
+**FOR THE OWNER'S PLAY-CHECK LIST: every application spreads, a refresh included.** The worst case, by reasoning
+and not run: a ground zone that applies a burn at each of its sweeps is an application each sweep on every enemy
+standing in it. With a count of two, each sweep passes the burn to the two nearest enemies within 5 metres of
+each enemy in the zone that do not carry it yet. A pack standing within 5 metres of the zone's enemies is all
+burning after a few sweeps, though only some of it stands in the zone. It stops there: a copy passes no further,
+so an enemy more than 5 metres from every enemy in the zone is never reached.
+
 ---
 
 ## 2026-10-07 — "Enemies you kill explode and deal 5%-10% of their maximum HP as damage to you" is built as a row
