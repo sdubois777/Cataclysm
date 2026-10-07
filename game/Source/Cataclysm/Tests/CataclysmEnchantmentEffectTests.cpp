@@ -15865,4 +15865,54 @@ bool FCataclysmVoidSplinterSpreadsOnDeathTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidSplinterSpreadRowTest,
+	"Cataclysm.Enchantments.TheVoidSplinterSpreadRowPassesADyingEnemysVoidSplinterToEveryEnemyWithinFiveMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Void splinter stacks spread to nearby enemies when the afflicted enemy
+ * dies". Issue #1833, ruled 2026-10-06: every enemy within 5 metres.
+ * `ailment_spread_on_death` on Void Splinter, 100. The real row WORN: of six
+ * creatures within 5 metres of the body all six receive it, and one 6 metres
+ * away does not.
+ */
+bool FCataclysmVoidSplinterSpreadRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmDetonationTest;
+	FWorn Worn(TEXT("Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayTag Tag = Ailment(TEXT("Keyword.DoT.VoidSplinter"));
+	ACataclysmEnemyCharacter* Dying = Beside(Worn.World, 0.0f);
+	TArray<ACataclysmEnemyCharacter*> Near;
+	for (const float FromTheBody : {-1.0f, 1.5f, -2.0f, 2.5f, -3.0f, 3.5f})
+	{
+		Near.Add(Beside(Worn.World, FromTheBody));
+	}
+	ACataclysmEnemyCharacter* Six = Beside(Worn.World, 6.0f);
+	bool bAllStand = TestNotNull(TEXT("set-up: the creature that will die was spawned"), Dying)
+		&& TestNotNull(TEXT("set-up: the creature 6 metres from the body was spawned"), Six);
+	for (int32 Index = 0; Index < Near.Num(); ++Index)
+	{
+		bAllStand &= TestNotNull(
+			*FString::Printf(TEXT("set-up: creature %d of the six near the body was spawned"), Index), Near[Index]);
+	}
+	if (!TestTrue(TEXT("set-up: the void splinter tag is registered"), Tag.IsValid()) || !bAllStand
+		|| !TestTrue(TEXT("set-up: the wearer splinters the one that will die"),
+					 Splinter(Worn.Wearer->Actor, Dying, Tag)))
+	{
+		return false;
+	}
+
+	TestEqual(*(FString(TEXT("the death passes the void splinter to all six within 5 metres.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		UCataclysmContagion::SpreadFromTheDying(Dying), 6);
+	TestEqual(TEXT("all six carry it"), Carrying(Near, Tag), 6);
+	TestFalse(TEXT("the one 6 metres away does not"), Carries(Six, Tag));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
