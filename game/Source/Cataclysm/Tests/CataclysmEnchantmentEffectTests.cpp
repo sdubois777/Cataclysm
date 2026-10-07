@@ -15915,4 +15915,55 @@ bool FCataclysmVoidSplinterSpreadRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlagueDoctorSixRowTest,
+	"Cataclysm.Enchantments.PlagueDoctorsSixPiecesSetTheFlagThatRefreshesTheWearersOtherDamageOverTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Plague Doctor (6-Piece Bonus): When you apply a DoT to an enemy, all other
+ * DoTs you have on that enemy have their duration refreshed". Issue #1833,
+ * ruled 2026-10-06: `dot_application_refreshes_others` flat 1. FIVE PIECES AND
+ * THEN SIX of the real set: at five the stat reads nought and at six it reads
+ * 1, as the place that applies a damage over time effect asks it. What that
+ * place then does is `Cataclysm.RemainingDamage.`'s test, with the stat held by
+ * hand.
+ */
+bool FCataclysmPlagueDoctorSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* Bonus = TEXT("Positive_Plague_Doctor_2_Piece_Bonus_Your_DoT_effects");
+	const FName Stat(UCataclysmSkillEffects::DotApplicationRefreshesOthersStat);
+	const FGameplayTag Poison =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("set-up: the poison tag exists"), Poison.IsValid()))
+	{
+		return false;
+	}
+
+	for (const int32 Pieces : {5, 6})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, Bonus, Pieces);
+		const float Read = Wearer.AbilitySystem->StatForSkill(Stat, FGameplayTagContainer(Poison), 0.0f);
+		if (Pieces == 5)
+		{
+			TestEqual(TEXT("five pieces: the flag reads nought"), Read, 0.0f, 0.001f);
+		}
+		else
+		{
+			TestEqual(*(FString(TEXT("six pieces: the flag reads 1, asked with an ailment's tag.")) +
+						CataclysmRepeatRowsTest::OlderAsset),
+				Read, 1.0f, 0.001f);
+		}
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
