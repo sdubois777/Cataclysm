@@ -194,6 +194,9 @@ public:
 	 */
 	static const TCHAR* ShieldFillHex;
 
+	/** The fill of the temporary absorb's segment at the end of the shield bar: a pale gold. */
+	static const TCHAR* TemporaryAbsorbFillHex;
+
 	/**
 	 * Mana.
 	 *
@@ -764,6 +767,26 @@ public:
 	 * as the dark band at the end of the health bar.
 	 */
 	static float HealthReservedOf(const AActor* Actor);
+
+	/**
+	 * What this actor's temporary absorb holds, or 0 for an actor whose ability system is not this project's. The
+	 * project owner, 2026-10-07: it is separate from the energy shield. The HUD draws it as a second segment at
+	 * the end of the shield bar.
+	 */
+	static float TemporaryAbsorbOf(const AActor* Actor);
+
+	/**
+	 * The share of the shield bar the temporary absorb's segment takes: the absorb over the absorb and the
+	 * maximum energy shield together. So the bar's whole length stands for both, the shield's fill can never reach
+	 * the segment, and a character with no energy shield sees a bar that is all segment. Nought with nothing held.
+	 */
+	static float AbsorbSegmentFractionFor(float Absorb, float MaxShield);
+
+	/**
+	 * The figures on the shield bar: the pool's own, then "+25 absorb" while a temporary absorb is held, or
+	 * "25 absorb" alone for a character with no energy shield. An absorb of less than one point reads as one.
+	 */
+	static FString ShieldBarTextFor(float Shield, float MaxShield, float Absorb);
 
 	/** The same for an energy shield. False when the actor has no shield set. */
 	static bool ShieldOf(const AActor* Actor, float& OutShield,

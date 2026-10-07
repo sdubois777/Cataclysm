@@ -370,6 +370,18 @@ struct CATACLYSM_API FCataclysmDamageResult
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	bool bWasCritical = false;
 
+	/**
+	 * What the defender's TEMPORARY ABSORB took of the blow. The project owner, 2026-10-07: it is separate from the
+	 * energy shield. Taken before the mana, the energy shield and health, from every kind of damage, a bleed tick
+	 * included. See step 6b of `UCataclysmDamageCalculation::Resolve` and
+	 * `UCataclysmAbilitySystemComponent::GrantTemporaryAbsorb`.
+	 *
+	 * NOT PART OF `AbsorbedByShield`, so nothing that asks what the energy shield absorbed counts it: the store
+	 * `NoteShieldAbsorbedDamage` fills, the shield-broken event and the Sacrificial Ward all read that figure alone.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float AbsorbedByTemporary = 0.0f;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	float AbsorbedByMana = 0.0f;
 

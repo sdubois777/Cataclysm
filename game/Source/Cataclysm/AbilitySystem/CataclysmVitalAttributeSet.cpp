@@ -1192,6 +1192,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Resolved.AbsorbedByShield = 0.0f;
 						Resolved.AbsorbedByMana = 0.0f;
 						Warded->NoteMinionSpentForShield(WardEvery);
+						// AND THE TEMPORARY ABSORB KEEPS WHAT IT HELD: the whole blow is cancelled.
+						Resolved.AbsorbedByTemporary = 0.0f;
 
 						// KILLED BY NOBODY. A death written to health names as its
 						// killer whoever last struck the dying creature, however long
@@ -1260,13 +1262,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					Guarded->NoteSpellAbsorbedDamage(
 						Resolved.DealtToHealth + Resolved.AbsorbedByShield
-							+ Resolved.AbsorbedByMana);
+							+ Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary);
 				}
 				if (Guarded->IsDamageImmune() || bAbsorbed || bReflected)
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;
 					Resolved.AbsorbedByMana = 0.0f;
+					Resolved.AbsorbedByTemporary = 0.0f;
 				}
 				else if (!Hit.bIsDamageOverTime && GetHealth() > 0.0f
 					&& Resolved.DealtToHealth >= GetHealth())
@@ -1310,6 +1313,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Resolved.DealtToHealth = 0.0f;
 				Resolved.AbsorbedByShield = 0.0f;
 				Resolved.AbsorbedByMana = 0.0f;
+				Resolved.AbsorbedByTemporary = 0.0f;
 			}
 
 			// AND A BLOW THAT NO LONGER EMPTIES HEALTH HAS NO OVERKILL. Ruled 2026-10-07. Every step above that
@@ -1368,8 +1372,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// the death path both need it: GetOwningActor answers with the
 			// ability system's owner, and for the player that is the player
 			// state, which is not a character at all. Issues #562 and #565.
+			// AND A BLOW THE TEMPORARY ABSORB TOOK GOT THROUGH AS WELL, a judgement by
+			// the writing session: the character was struck and something it held was
+			// spent, as with a blow the energy shield swallowed whole. So the attacker
+			// leeches from it, retaliation answers it and it is recorded as a blow of
+			// its attacker's. THE REFILL WAIT DIRECTLY BELOW IS THE ONE EXCEPTION.
 			if (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
-				|| Outcome.AbsorbedByMana > 0.0f)
+				|| Outcome.AbsorbedByMana > 0.0f || Outcome.AbsorbedByTemporary > 0.0f)
 			{
 				if (ACataclysmCharacterBase* Hurt =
 						GetOwningAbilitySystemComponent()
@@ -1378,7 +1387,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 									  ->GetAvatarActor())
 							: nullptr)
 				{
-					Hurt->NoteDamageTaken();
+					// NOT FOR A BLOW THE TEMPORARY ABSORB TOOK WHOLE. Ruled 2026-10-07:
+					// it does not count as the energy shield for the refill wait. The
+					// three figures the wait was written against, and no fourth.
+					if (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
+						|| Outcome.AbsorbedByMana > 0.0f)
+					{
+						Hurt->NoteDamageTaken();
+					}
 				}
 
 				// AND THE ATTACKER LEECHES FROM WHAT GOT THROUGH. Issue #895:
@@ -1416,7 +1432,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							Data.EffectSpec.GetContext()
 								.GetInstigatorAbilitySystemComponent()),
 						Outcome.DealtToHealth + Outcome.AbsorbedByShield
-							+ Outcome.AbsorbedByMana,
+							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary,
 						LeechTags);
 				}
 
@@ -1615,6 +1631,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			const bool bBrokeShield = ShieldBeforeBlow > 0.0f
 				&& Outcome.AbsorbedByShield >= ShieldBeforeBlow;
 
+			// AND WHAT THE TEMPORARY ABSORB TOOK IS TAKEN FROM IT, first, as it was
+			// decided first: step 6b of `UCataclysmDamageCalculation::Resolve`. The
+			// project owner, 2026-10-07: it is separate from the energy shield. So the
+			// break above does not read it, nor the Sacrificial Ward, nor the store
+			// `NoteShieldAbsorbedDamage` fills further down.
+			if (Outcome.AbsorbedByTemporary > 0.0f)
+			{
+				if (UCataclysmAbilitySystemComponent* AbsorbHolder =
+						Cast<UCataclysmAbilitySystemComponent>(
+							GetOwningAbilitySystemComponent()))
+				{
+					AbsorbHolder->SpendTemporaryAbsorb(Outcome.AbsorbedByTemporary);
+				}
+			}
+
 			if (Outcome.AbsorbedByShield > 0.0f)
 			{
 				SetEnergyShield(FMath::Clamp(
@@ -1799,7 +1830,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// untyped hit opens nothing, which is what keeps a player's own
 			// damage -- untyped by the decision of 2026-08-12 -- from opening
 			// this every time it retaliates.
-			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield > 0.0f
+			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield
+					+ Outcome.AbsorbedByTemporary > 0.0f
 				&& !Hit.DamageType.IsNone())
 			{
 				// THE BODY'S WEAPON, NOT THE SET OWNER'S. Issue #1755. A player's
@@ -1996,7 +2028,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// line the window above draws too: an evaded blow and one armour
 			// took to nothing removed nothing and are not damage taken, and a
 			// shield absorbing it is.
-			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield > 0.0f)
+			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield
+					+ Outcome.AbsorbedByTemporary > 0.0f)
 			{
 				if (UCataclysmAbilitySystemComponent* Cataclysm =
 						Cast<UCataclysmAbilitySystemComponent>(

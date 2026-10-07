@@ -74,6 +74,7 @@
 // For the test that the bar, the check and the payment agree on a skill's cost.
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmSkillBar.h"
+#include "Interface/CataclysmCharacterSheetLayout.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -21359,6 +21360,552 @@ bool FCataclysmStrikeTargetActsOnNoOnHitRowTest::RunTest(const FString&)
 			  Wearer.AbilitySystem->OwnStacksHeld(Hits), 2);
 	TestEqual(TEXT("and first_hit_dealt, because the row's hit was not recorded as a first blow: two now"),
 			  Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 2);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// THE TEMPORARY ABSORB. The project owner, 2026-10-07: it is separate from the
+// energy shield. "Every 12 seconds gain a shield absorbing 15%-25% of your
+// maximum HP in damage" is the row it is for, and no row is authored yet, so
+// every grant here is made by hand or by a row built as the loader builds it.
+//
+// EVERY AMOUNT IS COMPARED WITH A CONTROL: a character holding no temporary
+// absorb that takes the same blow, or the same character before the grant.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. No two are within two
+// metres of each other, and nobody swings: every blow is `ApplyHit` or
+// `Resolve` by hand.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmTemporaryAbsorbTest
+{
+	using namespace CataclysmOverkillTest;
+
+	float AbsorbHeldBy(const FScopedFighter& Who)
+	{
+		return Who.AbilitySystem->TemporaryAbsorbHeld();
+	}
+
+	/** Exactly this much temporary absorb, whatever was held before. */
+	void HoldAbsorb(const FScopedFighter& Who, float Amount)
+	{
+		Who.AbilitySystem->SpendTemporaryAbsorb(Who.AbilitySystem->TemporaryAbsorbHeld());
+		Who.AbilitySystem->GrantTemporaryAbsorb(Amount);
+	}
+
+	/** One blow of this share of the attacker's attack damage; what reached health. The pool is filled first. */
+	float TakeBlow(const FScopedFighter& From, FScopedFighter& To, float SharePercent,
+				   const FGameplayTagContainer& BlowTags,
+				   const FCataclysmHitDelivery& Delivery = FCataclysmHitDelivery())
+	{
+		To.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+		UCataclysmSkillEffects::ApplyHit(From.Actor, To.Actor, SharePercent, BlowTags, Delivery);
+		return Pool - To.Health();
+	}
+
+	/** The row as the loader builds it: on the timed event, the value a percentage of maximum health. */
+	FCataclysmPoolAction AnAbsorbRow(float PercentOfMaximumHealth, float PeriodSeconds)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+		Action.Pool = FName(UCataclysmAbilitySystemComponent::TemporaryAbsorbAction);
+		Action.Percent = PercentOfMaximumHealth;
+		Action.bTemporaryAbsorb = true;
+		Action.EverySeconds = PeriodSeconds;
+		return Action;
+	}
+
+	/** A flat 100 on the shield store's stat, held only while `energy_shield_above_zero`. Replaces what was worn. */
+	void WearWhileShieldAboveZero(FScopedFighter& Who)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = 100.0f;
+		Flat.Condition = ECataclysmStatCondition::EnergyShieldAboveZero;
+		TMap<FName, FCataclysmStatInputs> Stats;
+		FCataclysmStatInputs& Line = Stats.FindOrAdd(ShieldCap());
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** What the conditioned stat above answers now: 100 while the condition holds, nought while it does not. */
+	float ConditionedStat(const FScopedFighter& Who)
+	{
+		return Who.AbilitySystem->StatForSkill(ShieldCap(), FGameplayTagContainer(), 0.0f);
+	}
+
+	/** How many times `energy_shield_broken` is raised on a component while this is alive. */
+	struct FBreakCount
+	{
+		explicit FBreakCount(UCataclysmAbilitySystemComponent* InSystem)
+			: System(InSystem)
+		{
+			Handle = System->OnActionEvent.AddLambda([this](FName Raised)
+			{
+				Count += Raised == FName(TEXT("energy_shield_broken")) ? 1 : 0;
+			});
+		}
+		~FBreakCount()
+		{
+			System->OnActionEvent.Remove(Handle);
+		}
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		int32 Count = 0;
+		FDelegateHandle Handle;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbOrderTest,
+	"Cataclysm.TemporaryAbsorb.ItIsTakenBeforeTheEnergyShieldAndHealthAndTheRestIsSplitAsAControlSplitsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 1 of 2026-10-07: arriving damage is absorbed by the temporary absorb first, then by the energy shield,
+ * then by health. A blow smaller than the absorb lowers it by what a control's shield and health took together and
+ * leaves the holder's shield and health alone. A blow larger than the absorb empties it, and the rest is split
+ * between shield and health exactly as the control splits a blow of that rest.
+ *
+ * STANDING: the holder at the origin, the enemy 3 m along X, the control 20 m along Y.
+ */
+bool FCataclysmTemporaryAbsorbOrderTest::RunTest(const FString&)
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Holder, 0.0f, 0.0f);
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+
+	// THE CONTROL: a whole blow on a shield of 40 and no temporary absorb.
+	SetShield(Plain, 40.0f);
+	const float PlainHealthTook = TakeBlow(Enemy, Plain, 100.0f, Melee());
+	const float PlainShieldTook = 40.0f - ShieldHeldBy(Plain);
+	const float WholeBlow = PlainHealthTook + PlainShieldTook;
+	if (!TestTrue(TEXT("control: the shield absorbed part of the blow and health took the rest"),
+				  PlainShieldTook > 1.0f && PlainHealthTook > 1.0f)
+		|| !TestEqual(TEXT("control: the blow is the attacker's 100 attack damage, which the larger blow below "
+						   "depends on"),
+					  WholeBlow, WeaponDamage, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a character never granted one holds no temporary absorb"), AbsorbHeldBy(Plain), 0.0f);
+
+	// A BLOW SMALLER THAN THE ABSORB.
+	SetShield(Holder, 40.0f);
+	HoldAbsorb(Holder, 500.0f);
+	const float HolderHealthTook = TakeBlow(Enemy, Holder, 100.0f, Melee());
+	TestEqual(TEXT("the absorb fell by what the control's shield and health took together"),
+			  500.0f - AbsorbHeldBy(Holder), WholeBlow, 0.01f);
+	TestEqual(TEXT("the holder's energy shield is untouched"), ShieldHeldBy(Holder), 40.0f, 0.01f);
+	TestEqual(TEXT("and so is its health"), HolderHealthTook, 0.0f, 0.01f);
+
+	// A BLOW LARGER THAN THE ABSORB. The holder holds 30, so 70 of the 100 is left; the control takes a blow of 70.
+	SetShield(Plain, 40.0f);
+	const float RestToHealth = TakeBlow(Enemy, Plain, 70.0f, Melee());
+	const float RestToShield = 40.0f - ShieldHeldBy(Plain);
+	if (!TestTrue(TEXT("control: a blow of the rest reaches both the shield and health"),
+				  RestToShield > 1.0f && RestToHealth > 1.0f))
+	{
+		return false;
+	}
+	HoldAbsorb(Holder, 30.0f);
+	const float HolderHealthTookOfLarger = TakeBlow(Enemy, Holder, 100.0f, Melee());
+	TestEqual(TEXT("a blow larger than the absorb empties it"), AbsorbHeldBy(Holder), 0.0f, 0.01f);
+	TestEqual(TEXT("the shield takes of the rest what the control's shield took"),
+			  40.0f - ShieldHeldBy(Holder), RestToShield, 0.01f);
+	TestEqual(TEXT("and health takes of the rest what the control's health took"),
+			  HolderHealthTookOfLarger, RestToHealth, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbEveryKindTest,
+	"Cataclysm.TemporaryAbsorb.ItAbsorbsADamageOverTimeTickAndABleedTickTheEnergyShieldLetsThrough",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 4 of 2026-10-07: it absorbs every kind of damage, a bleed included. The control's energy shield takes its
+ * share of a tick with no ailment and none of a bleed tick; the holder's temporary absorb takes the whole of both,
+ * and the holder's shield and health take none. Then one tick through the whole pipeline, so the write is seen.
+ *
+ * STANDING: the holder at the origin, the enemy 3 m along X, the control 20 m along Y. The first half calls
+ * `Resolve` by hand and changes nobody's pools.
+ */
+bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Holder, 0.0f, 0.0f);
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	SetShield(Holder, 40.0f);
+	SetShield(Plain, 40.0f);
+	HoldAbsorb(Holder, 500.0f);
+
+	FCataclysmIncomingHit Tick;
+	Tick.Damage = 100.0f;
+	Tick.bIsDamageOverTime = true;
+	FCataclysmIncomingHit BleedTick = Tick;
+	BleedTick.bIsBleed = true;
+
+	// THE CONTROLS: what a shield of 40 does with each tick.
+	const FCataclysmDamageResult TickOnPlain = ResolvedOn(Tick, Plain);
+	const FCataclysmDamageResult BleedOnPlain = ResolvedOn(BleedTick, Plain);
+	if (!TestTrue(TEXT("control: the shield absorbs part of a tick with no ailment and health takes the rest"),
+				  TickOnPlain.AbsorbedByShield > 1.0f && TickOnPlain.DealtToHealth > 1.0f)
+		|| !TestEqual(TEXT("control: the shield absorbs none of a bleed tick"), BleedOnPlain.AbsorbedByShield, 0.0f,
+					  0.001f)
+		|| !TestTrue(TEXT("control: so health takes the whole bleed tick"), BleedOnPlain.DealtToHealth > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with nothing held, the temporary absorb takes none of a tick"),
+			  TickOnPlain.AbsorbedByTemporary, 0.0f, 0.001f);
+
+	const FCataclysmDamageResult TickOnHolder = ResolvedOn(Tick, Holder);
+	TestEqual(TEXT("the absorb takes what the control's shield and health took of a tick, together"),
+			  TickOnHolder.AbsorbedByTemporary, TickOnPlain.AbsorbedByShield + TickOnPlain.DealtToHealth, 0.001f);
+	TestEqual(TEXT("so the holder's shield takes none of it"), TickOnHolder.AbsorbedByShield, 0.0f, 0.001f);
+	TestEqual(TEXT("and its health takes none"), TickOnHolder.DealtToHealth, 0.0f, 0.001f);
+
+	const FCataclysmDamageResult BleedOnHolder = ResolvedOn(BleedTick, Holder);
+	TestEqual(TEXT("the absorb takes the whole bleed tick the control's health took"),
+			  BleedOnHolder.AbsorbedByTemporary, BleedOnPlain.DealtToHealth, 0.001f);
+	TestEqual(TEXT("so the holder's health takes none of the bleed"), BleedOnHolder.DealtToHealth, 0.0f, 0.001f);
+
+	// AND A TICK THROUGH THE WHOLE PIPELINE, so the amount held is seen to fall.
+	FCataclysmHitDelivery AsATick;
+	AsATick.bIsDamageOverTime = true;
+	const float PlainHealthTook = TakeBlow(Enemy, Plain, 100.0f, FGameplayTagContainer(), AsATick);
+	const float PlainShieldTook = 40.0f - ShieldHeldBy(Plain);
+	if (!TestTrue(TEXT("control: a delivered tick takes from the control's shield or health"),
+				  PlainHealthTook + PlainShieldTook > 1.0f))
+	{
+		return false;
+	}
+	const float HolderHealthTook = TakeBlow(Enemy, Holder, 100.0f, FGameplayTagContainer(), AsATick);
+	TestEqual(TEXT("a delivered tick lowers the absorb by what the control's shield and health took together"),
+			  500.0f - AbsorbHeldBy(Holder), PlainHealthTook + PlainShieldTook, 0.01f);
+	TestEqual(TEXT("and leaves the holder's shield alone"), ShieldHeldBy(Holder), 40.0f, 0.01f);
+	TestEqual(TEXT("and its health"), HolderHealthTook, 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbRefreshTest,
+	"Cataclysm.TemporaryAbsorb.AGrantRefreshesToItsAmountAndNeverAddsAndARespawnEmptiesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 2 of 2026-10-07: a new grant refreshes the pool to the granted amount and never adds. Holding more than
+ * the grant, nothing changes (a judgement by the writing session). The later overheal layer's entry point adds, to
+ * no more than its cap. `ClearWhatDeathEnds`, which the respawn runs, empties it.
+ *
+ * STANDING: the holder at the origin, the control 20 m along Y.
+ */
+bool FCataclysmTemporaryAbsorbRefreshTest::RunTest(const FString&)
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	UCataclysmAbilitySystemComponent* ASC = Holder.AbilitySystem;
+
+	TestEqual(TEXT("before any grant, nothing is held"), AbsorbHeldBy(Holder), 0.0f);
+	ASC->GrantTemporaryAbsorb(300.0f);
+	TestEqual(TEXT("a grant of 300 on nothing holds 300"), AbsorbHeldBy(Holder), 300.0f, 0.001f);
+	ASC->GrantTemporaryAbsorb(300.0f);
+	TestEqual(TEXT("a second grant of 300 still holds 300, not 600"), AbsorbHeldBy(Holder), 300.0f, 0.001f);
+	ASC->SpendTemporaryAbsorb(100.0f);
+	TestEqual(TEXT("set-up: damage took 100 of it"), AbsorbHeldBy(Holder), 200.0f, 0.001f);
+	ASC->GrantTemporaryAbsorb(300.0f);
+	TestEqual(TEXT("a grant of 300 on 200 refreshes it to 300, not 500"), AbsorbHeldBy(Holder), 300.0f, 0.001f);
+	ASC->GrantTemporaryAbsorb(100.0f);
+	TestEqual(TEXT("a grant smaller than what is held changes nothing"), AbsorbHeldBy(Holder), 300.0f, 0.001f);
+
+	// THE LATER LAYER'S ENTRY POINT: it adds, to no more than its cap, and never lowers.
+	ASC->AddTemporaryAbsorbUpTo(50.0f, 320.0f);
+	TestEqual(TEXT("adding 50 under a cap of 320 stops at 320"), AbsorbHeldBy(Holder), 320.0f, 0.001f);
+	ASC->AddTemporaryAbsorbUpTo(50.0f, 200.0f);
+	TestEqual(TEXT("adding under a cap below what is held changes nothing"), AbsorbHeldBy(Holder), 320.0f, 0.001f);
+
+	TestEqual(TEXT("control: the character never granted one still holds nothing"), AbsorbHeldBy(Plain), 0.0f);
+
+	ASC->ClearWhatDeathEnds();
+	TestEqual(TEXT("what the respawn clears includes the temporary absorb"), AbsorbHeldBy(Holder), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbIsNotTheShieldTest,
+	"Cataclysm.TemporaryAbsorb.ItFillsNoShieldStoreHoldsNoShieldConditionAndRaisesNoShieldBreak",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 5 of 2026-10-07: it does not count as the energy shield. Three parts, each with a control that holds an
+ * energy shield and no temporary absorb: the store of what the shield absorbed does not fill from what the absorb
+ * took; `energy_shield_above_zero` is false for a character holding only the absorb; and emptying the absorb does
+ * not raise `energy_shield_broken`.
+ *
+ * STANDING: the holder at the origin, the enemy 3 m along X, the control 20 m along Y.
+ */
+bool FCataclysmTemporaryAbsorbIsNotTheShieldTest::RunTest(const FString&)
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Holder, 0.0f, 0.0f);
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+
+	// 1. THE STORE OF WHAT THE SHIELD ABSORBED. Both wear its row and both hold a shield of 40.
+	Wear(Holder, {{ShieldCap(), 100.0f}});
+	Wear(Plain, {{ShieldCap(), 100.0f}});
+	SetShield(Holder, 40.0f);
+	SetShield(Plain, 40.0f);
+	HoldAbsorb(Holder, 500.0f);
+	TakeBlow(Enemy, Plain, 100.0f, Melee());
+	if (!TestTrue(TEXT("control: the store fills from what the control's shield absorbed"), ShieldStore(Plain) > 1.0f))
+	{
+		return false;
+	}
+	TakeBlow(Enemy, Holder, 100.0f, Melee());
+	if (!TestTrue(TEXT("set-up: the holder's absorb took the blow"), AbsorbHeldBy(Holder) < 499.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the store does not fill from what the temporary absorb took"), ShieldStore(Holder), 0.0f, 0.001f);
+
+	// 2. THE CONDITION. The holder holds the absorb and no shield; the control a shield and no absorb.
+	WearWhileShieldAboveZero(Holder);
+	WearWhileShieldAboveZero(Plain);
+	SetShield(Holder, 0.0f);
+	SetShield(Plain, 40.0f);
+	if (!TestTrue(TEXT("set-up: the holder still holds a temporary absorb"), AbsorbHeldBy(Holder) > 1.0f)
+		|| !TestEqual(TEXT("control: energy_shield_above_zero holds for a character with an energy shield"),
+					  ConditionedStat(Plain), 100.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("energy_shield_above_zero does not hold for a character holding only the temporary absorb"),
+			  ConditionedStat(Holder), 0.0f, 0.001f);
+
+	// 3. THE BREAK. A blow of 100 empties the control's shield of 50 and the holder's absorb of 50.
+	FBreakCount PlainBreaks(Plain.AbilitySystem);
+	FBreakCount HolderBreaks(Holder.AbilitySystem);
+	SetShield(Plain, 50.0f);
+	TakeBlow(Enemy, Plain, 100.0f, Melee());
+	if (!TestEqual(TEXT("control: the blow that empties an energy shield raises its break once"), PlainBreaks.Count, 1))
+	{
+		return false;
+	}
+	HoldAbsorb(Holder, 50.0f);
+	TakeBlow(Enemy, Holder, 100.0f, Melee());
+	TestEqual(TEXT("set-up: the same blow emptied the holder's temporary absorb"), AbsorbHeldBy(Holder), 0.0f, 0.01f);
+	TestEqual(TEXT("and raised no energy shield break"), HolderBreaks.Count, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbTimedGrantTest,
+	"Cataclysm.TemporaryAbsorb.TheTimedRowGrantsItsShareOfMaximumHealthEachTwelveSecondsOfCombatAndNeverOutOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 6 of 2026-10-07: the 12 second clock runs in combat only, on the clock every timed row uses
+ * (`StepTimedGrants`), and the value is a percentage of maximum health. The control wears the same row and is
+ * never in combat. A second period refreshes a partly spent absorb to the full amount and does not add.
+ *
+ * THE CLOCK IS READ HALF A SECOND OFF EVERY PERIOD'S BOUNDARY: at 11.5 and 12.5 seconds, at 23.5 and 24.5. The
+ * world's time is written by hand, as the timed grant test above writes it; nothing here waits on a timer.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmTemporaryAbsorbTimedGrantTest::RunTest(const FString&)
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Idle(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Idle, 0.0f, 0.0f);
+	Wearer.AbilitySystem->SetPoolActions({AnAbsorbRow(20.0f, 12.0f)});
+	Idle.AbilitySystem->SetPoolActions({AnAbsorbRow(20.0f, 12.0f)});
+	const float Granted =
+		Wearer.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * 20.0f / 100.0f;
+	if (!TestTrue(TEXT("set-up: a fifth of the wearer's maximum health is a real amount"), Granted > 1.0f))
+	{
+		return false;
+	}
+
+	// OUT OF COMBAT, however long.
+	World->TimeSeconds = 50.0f;
+	Wearer.AbilitySystem->StepTimedGrants();
+	TestEqual(TEXT("fifty seconds out of combat grant nothing"), AbsorbHeldBy(Wearer), 0.0f);
+
+	// IN COMBAT, kept there by a blow every second, half a second off each whole second of the fight.
+	const float Began = World->TimeSeconds;
+	Wearer.AbilitySystem->NoteHitDealt();
+	World->TimeSeconds += 0.5f;
+	const auto FightUntil = [&](float Seconds)
+	{
+		while (World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			Wearer.AbilitySystem->NoteHitDealt();
+			Wearer.AbilitySystem->StepTimedGrants();
+			Idle.AbilitySystem->StepTimedGrants();
+		}
+	};
+	FightUntil(11.5f);
+	TestEqual(TEXT("eleven and a half seconds into a fight: nothing yet"), AbsorbHeldBy(Wearer), 0.0f);
+	FightUntil(12.5f);
+	TestEqual(TEXT("twelve and a half seconds in: 20% of maximum health"), AbsorbHeldBy(Wearer), Granted, 0.01f);
+	TestEqual(TEXT("control: the same row on a character out of combat has granted nothing"), AbsorbHeldBy(Idle),
+			  0.0f);
+
+	// A SECOND PERIOD REFRESHES AND DOES NOT ADD.
+	Wearer.AbilitySystem->SpendTemporaryAbsorb(Granted * 0.25f);
+	FightUntil(23.5f);
+	TestEqual(TEXT("twenty-three and a half seconds in: still what damage left of the first grant"),
+			  AbsorbHeldBy(Wearer), Granted * 0.75f, 0.01f);
+	FightUntil(24.5f);
+	TestEqual(TEXT("twenty-four and a half seconds in: refreshed to the full amount, not added to"),
+			  AbsorbHeldBy(Wearer), Granted, 0.01f);
+	TestEqual(TEXT("control: and the character out of combat still holds nothing"), AbsorbHeldBy(Idle), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbOverkillTest,
+	"Cataclysm.TemporaryAbsorb.ALethalBlowRecordsTheOverkillOfWhatGotPastTheAbsorb",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A blow's overkill is measured after everything that absorbs. Two characters hold 40 health; one also holds a
+ * temporary absorb of 30. The same lethal blow records, on the holder, the control's overkill less the 30.
+ *
+ * STANDING: the control at the origin, the holder 20 m along Y. `Resolve` is called by hand and changes nobody's
+ * health.
+ */
+bool FCataclysmTemporaryAbsorbOverkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Frail(World, FVector::ZeroVector);
+	FScopedFighter Holder(World, FVector(0, 20 * M, 0));
+	Holding(Frail, 40.0f);
+	Holding(Holder, 40.0f);
+	HoldAbsorb(Holder, 30.0f);
+
+	FCataclysmIncomingHit Arriving;
+	Arriving.Damage = 100.0f;
+
+	const FCataclysmDamageResult OnFrail = ResolvedOn(Arriving, Frail);
+	if (!TestTrue(TEXT("control: the blow kills a character with 40 health and goes more than 30 past it"),
+				  OnFrail.Overkill > 31.0f))
+	{
+		return false;
+	}
+
+	const FCataclysmDamageResult OnHolder = ResolvedOn(Arriving, Holder);
+	TestEqual(TEXT("the absorb takes the 30 it holds"), OnHolder.AbsorbedByTemporary, 30.0f, 0.001f);
+	TestEqual(TEXT("health takes what it held, as the control's did"), OnHolder.DealtToHealth, OnFrail.DealtToHealth,
+			  0.001f);
+	TestEqual(TEXT("the overkill is the control's, less what the absorb took"), OnHolder.Overkill,
+			  OnFrail.Overkill - 30.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbInterfaceTest,
+	"Cataclysm.TemporaryAbsorb.TheBarSegmentTheBarFiguresTheSheetNoteAndTheDamageNumberSayWhatIsHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The interface's pure functions: the segment's share of the shield bar, the bar's figures, the character sheet's
+ * note, and the damage number of a blow the absorb took. And the one reader, against a control that holds nothing.
+ *
+ * STANDING: the holder at the origin, the control 20 m along Y.
+ */
+bool FCataclysmTemporaryAbsorbInterfaceTest::RunTest(const FString&)
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+	using FOverlay = UCataclysmCombatOverlay;
+
+	// THE SEGMENT: the absorb over the absorb and the maximum shield together.
+	TestEqual(TEXT("nothing held: no segment"), FOverlay::AbsorbSegmentFractionFor(0.0f, 100.0f), 0.0f, 0.0001f);
+	TestEqual(TEXT("50 held beside a maximum shield of 150: a quarter of the bar"),
+			  FOverlay::AbsorbSegmentFractionFor(50.0f, 150.0f), 0.25f, 0.0001f);
+	TestEqual(TEXT("50 held and no energy shield: the whole bar"),
+			  FOverlay::AbsorbSegmentFractionFor(50.0f, 0.0f), 1.0f, 0.0001f);
+	TestEqual(TEXT("and the shield's fill beside it stops where the segment begins"),
+			  FOverlay::BarFractionFor(150.0f, 150.0f + 50.0f), 1.0f - FOverlay::AbsorbSegmentFractionFor(50.0f, 150.0f),
+			  0.0001f);
+
+	// THE FIGURES.
+	TestEqual(TEXT("nothing held: the pool's own figures, as before"),
+			  FOverlay::ShieldBarTextFor(80.0f, 100.0f, 0.0f), FOverlay::PoolTextFor(80.0f, 100.0f));
+	TestEqual(TEXT("25 held: the pool's figures and the absorb"),
+			  FOverlay::ShieldBarTextFor(80.0f, 100.0f, 25.0f), FString(TEXT("80 / 100  +25 absorb")));
+	TestEqual(TEXT("25 held and no energy shield: the absorb alone"),
+			  FOverlay::ShieldBarTextFor(0.0f, 0.0f, 25.0f), FString(TEXT("25 absorb")));
+	TestEqual(TEXT("less than one point reads as one, not as nothing"),
+			  FOverlay::ShieldBarTextFor(0.0f, 0.0f, 0.3f), FString(TEXT("1 absorb")));
+
+	// THE CHARACTER SHEET'S NOTE.
+	TestEqual(TEXT("nothing held: no note"), UCataclysmCharacterSheetLayout::TemporaryAbsorbNote(0.0f), FString());
+	TestEqual(TEXT("150 held: the note says so, and that it is taken before the shield"),
+			  UCataclysmCharacterSheetLayout::TemporaryAbsorbNote(150.0f),
+			  FString(TEXT("150 temporary absorb, taken before the shield.")));
+
+	// THE DAMAGE NUMBER.
+	FCataclysmDamageResult Nothing;
+	FCataclysmDamageResult Swallowed;
+	Swallowed.AbsorbedByTemporary = 30.0f;
+	FCataclysmDamageResult Partly = Swallowed;
+	Partly.DealtToHealth = 10.0f;
+	TestEqual(TEXT("control: a blow that nothing took reads 0"), FOverlay::TextFor(Nothing), FString(TEXT("0")));
+	TestEqual(TEXT("a blow the absorb took whole reads what it took"), FOverlay::TextFor(Swallowed),
+			  FString(TEXT("30")));
+	TestEqual(TEXT("a blow it took part of reads health first and the absorbed part in brackets"),
+			  FOverlay::TextFor(Partly), FString(TEXT("10 (+30)")));
+
+	// THE READER.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	HoldAbsorb(Holder, 150.0f);
+	TestEqual(TEXT("the overlay reads what the holder holds"), FOverlay::TemporaryAbsorbOf(Holder.Actor), 150.0f,
+			  0.001f);
+	TestEqual(TEXT("control: and nothing from a character that holds none"), FOverlay::TemporaryAbsorbOf(Plain.Actor),
+			  0.0f);
 	return true;
 }
 

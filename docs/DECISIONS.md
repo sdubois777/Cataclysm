@@ -2,6 +2,291 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — A temporary absorb, separate from the energy shield and taken before it, and a new action, `temporary_absorb`, that grants it on the clock that counts only in combat. Engine and generator only; no row authored
+
+**Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
+outcome of any run is recorded here.
+
+**Said first, because a player may expect otherwise: a blow that the temporary absorb takes whole does not restart
+the energy shield's refill wait.** The energy shield goes on refilling behind it. This is the writing session's
+reading of ruling 5 below ("not for ... refill wait"), and it is for the coordinating session to confirm.
+
+**Also said first: the enchantment's own tags call it an energy shield.** `game/Data/EnchantmentsPositive.csv`
+gives the row `Positive_Every_12_seconds_gain_a_shield_absorbing_15_25` the tags `Trigger.Timer, Keyword.Shield,
+Stat.Defense.EnergyShield`. The owner's decision is that it is not the energy shield. This change does not edit
+that file. Whoever writes the row should ask whether the third tag stays.
+
+### Said first: where the code did not match what the writing session was told
+
+1. **"One line on the character sheet" is written as a note on the energy shield's line, not as a line of its
+   own.** `UCataclysmCharacterSheetLayout::LineFor` says, for health's reserved amount (ruled 2026-09-30), that the
+   sheet's lines are the simulation's list, so a new line would be a model change and a note is not. The absorb
+   follows that.
+2. **The row is not a pool action on a new pool name. It is an action with its own name.** Each name in
+   `POOL_ACTIONS` stands for two attributes, what is held and the most that can be held, and
+   `tools/tests/test_pool_action_names_match_the_engine.py` holds that list equal to
+   `UCataclysmAbilitySystemComponent::PoolAttributesFor`. The absorb is one plain number with no maximum of its own.
+   It still travels the pool actions' path: `ApplyPoolAction` grants it.
+3. **"Every kind of damage" means every blow and every tick that goes through the damage calculation.**
+   `UCataclysmSkillEffects::ReduceHealthDirectly` writes health without calling `Resolve`. Retaliation, a Sacrificial
+   Bond's shares and a skill's health cost arrive that way. The energy shield takes none of them today, and the
+   temporary absorb takes none of them either.
+4. **A clock already exists, so none was built.** `UCataclysmAbilitySystemComponent::StepTimedGrants` fires every
+   action on the event `every_seconds`, once for each whole period of the current combat, and only in combat.
+
+### What was found in the code before writing
+
+- **Where damage is split.** `UCataclysmDamageCalculation::Resolve` (`CataclysmDamageCalculation.cpp`) decides the
+  figures and writes nothing. After its multipliers it takes mana first for a damage over time tick on a character
+  carrying `damage_over_time_taken_from_mana_first` (step 7), then the energy shield (step 8), then health (step 9),
+  and records the overkill. `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` writes those figures to the
+  pools and calls everything that reacts to a blow.
+- **How the energy shield treats a bleed.** It takes none of a bleed tick, by the owner's decision of 2026-09-18
+  (issue [#2014](https://github.com/sdubois777/Cataclysm/issues/2014)), unless the character carries `shield_absorbs_damage_over_time`, or carries
+  `bleed_damage_taken_from_energy_shield`, which puts that share of the tick to the shield.
+- **How the newest stores are held.** The stores `NoteShieldAbsorbedDamage` and `NoteSpellAbsorbedDamage` fill are
+  plain `float` members of `UCataclysmAbilitySystemComponent`, cleared in `ClearWhatDeathEnds`, and read by the
+  interface through a getter. They are not attributes and are not replicated.
+- **Who reads `AbsorbedByShield`.** Outside `Resolve`: `PostGameplayEffectExecute`, `UCataclysmCombatEvents::NoteBlow`,
+  `UCataclysmCombatOverlay` (`TextFor`, `ColourFor`, `ShowsCriticalStrike`) and
+  `UCataclysmImpactEffect::ShouldDrawFor`. Found by searching `game/Source` for the name, tests left out.
+- **How the game knows a character is in combat.** `UCataclysmAbilitySystemComponent::SecondsInCombat`: a hit dealt
+  or taken starts or continues a combat, and it lapses `CombatLapseSeconds` (3 seconds) after the last one. Ruled
+  2026-09-23 as the one meaning of "in combat" for the whole game. `StepTimedGrants` reads it.
+- **How a timed row is written.** Action Event `every_seconds`, with the period in the column Every Seconds, at
+  most `MAX_EVERY_SECONDS` (60). The generator refuses a Trigger Cooldown on that event.
+- **What a death, a respawn and a new floor do today.** `ACataclysmPlayerCharacter::Revive` calls
+  `ClearWhatDeathEnds`, which removes every temporary effect, stack and store, and then refills health, mana and
+  the energy shield. `ClearWhatDeathEnds` has no other caller. No code was found that changes a player's energy
+  shield or ends its buffs when a new floor begins; the search was for callers of `ClearWhatDeathEnds` and for
+  writes of the energy shield attribute under `Dungeon/`, and it is not a proof.
+
+### What it is for
+
+Two sentences in `game/Data/EnchantmentsPositive.csv`:
+
+- "Every 12 seconds gain a shield absorbing 15%-25% of your maximum HP in damage". This change builds what that
+  row needs. No effect row is written here.
+- "Overheal converts to a temporary shield absorbing up to 10%-20% of your max HP". **This is a later layer and is
+  not built here.** It will fill the same amount. `AddTemporaryAbsorbUpTo(Amount, Cap)` is the entry point left for
+  it; see "What the later overheal layer needs" below.
+
+### The owner's decision, 2026-10-07
+
+The project owner, to the coordinating session, on whether the health-sized shield is the energy shield: "Yeah
+it's separate". So the shield of both sentences is a separate temporary absorb and is not the energy shield.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **Judgement of the coordinating session: it is taken before the energy shield.** Arriving damage is absorbed by
+   the temporary absorb first, then by the energy shield, then by health.
+2. **Judgement of the coordinating session: a new grant refreshes the pool to the granted amount and never adds.**
+   Gaining a shield of N while holding less than N sets it to N.
+3. **Judgement of the coordinating session: it has no duration.** It lasts until damage removes it.
+4. **Judgement of the coordinating session: it absorbs every kind of damage,** a bleed included, and damage over
+   time ticks included.
+5. **Judgement of the coordinating session: it does not count as the energy shield.** Not for the store that fills
+   from what the energy shield absorbs, not for the energy-shield-broken event, not for the condition
+   `energy_shield_above_zero`, and not for energy shield leech or the refill wait.
+6. **Judgement of the coordinating session: the 12 second clock runs in combat only,** on the definition of "in
+   combat" the game already has. The row's value is the percentage of maximum health.
+
+**The interface, ruled the same day:** a second segment on the shield bar, and one line on the character sheet.
+
+### How it is built
+
+- **The amount.** `UCataclysmAbilitySystemComponent::TemporaryAbsorb`, a plain `float`, beside the two stores of
+  absorbed damage. Not an attribute, because it has no maximum, nothing regenerates it and nothing leeches into it,
+  and because a new attribute's base value can be raised past a clamp without anything showing it (issues [#1623](https://github.com/sdubois777/Cataclysm/issues/1623)
+  and [#1036](https://github.com/sdubois777/Cataclysm/issues/1036)). **It is not replicated.** The two stores beside it are not either.
+- **Granting.** `GrantTemporaryAbsorb(Amount)` sets what is held to the larger of what is held and `Amount`.
+  `SpendTemporaryAbsorb(Taken)` lowers it, to no less than nothing. `TemporaryAbsorbHeld()` reads it.
+- **Taking damage.** A new step 6b in `Resolve`, after every multiplier and before the mana of step 7. It takes one
+  point for one point of what is left, as far as the amount held goes, and records it in a new field,
+  `FCataclysmDamageResult::AbsorbedByTemporary`. It asks nothing about the kind of blow. The magic sub-type's bonus
+  is against the energy shield and the slashing sub-type's is against health, so neither reaches it.
+- **The order with mana.** The temporary absorb, then mana (only for a damage over time tick on a character
+  carrying `damage_over_time_taken_from_mana_first`), then the energy shield, then health.
+- **Writing it.** `PostGameplayEffectExecute` calls `SpendTemporaryAbsorb` directly before it writes the energy
+  shield's share.
+- **Where a blow is emptied, the absorb's share is emptied too,** so the absorb keeps what it held: the Sacrificial
+  Ward, a damage-immune wearer, an absorbed spell, a reflected melee hit, and a creature no damage reaches.
+- **The action.** `temporary_absorb` (`TemporaryAbsorbAction`, `FCataclysmPoolAction::bTemporaryAbsorb`, set by the
+  loader in `CataclysmItem.cpp`). `ApplyPoolAction` grants the row's percentage of the wearer's maximum health and
+  returns before it asks for a pair of attributes. `StepTimedGrants` reaches it through its last branch.
+- **The generator.** `TEMPORARY_ABSORB_ACTION`, `TEMPORARY_ABSORB_EVENTS` (the timed event only),
+  `MAX_TEMPORARY_ABSORB_PERCENT` (100) and `_check_temporary_absorb_action` in `tools/generate_datatables.py`.
+- **A death, a respawn and a new floor.** `ClearWhatDeathEnds`, which the respawn runs, empties it. The respawn
+  refills the energy shield and does not refill the absorb. Nothing empties it on a new floor.
+
+### What each reader of the energy shield does with the new amount: the answer to ruling 5
+
+Untouched, each because it reads the energy shield attribute or `AbsorbedByShield` and neither holds the absorb:
+
+- **The store of what the shield absorbed.** `PostGameplayEffectExecute` passes `Outcome.AbsorbedByShield` to
+  `UCataclysmAbilitySystemComponent::NoteShieldAbsorbedDamage`. Unchanged.
+- **The energy-shield-broken event.** `PostGameplayEffectExecute` computes `bBrokeShield` from the energy shield
+  attribute and `Outcome.AbsorbedByShield`, and calls `NoteEnergyShieldBroken`. Unchanged. No event is raised when
+  the absorb empties.
+- **The Sacrificial Ward.** The same two readings, in `PostGameplayEffectExecute`. Unchanged. Because the absorb is
+  taken first, a blow reaches the ward only with what the absorb left.
+- **The condition `energy_shield_above_zero`.** `UCataclysmAbilitySystemComponent::CurrentConditions` fills
+  `EnergyShieldHeld` from the energy shield attribute, and `UCataclysmStatPipeline::ConditionHolds` reads that.
+  Unchanged. The same holds for the condition on a full energy shield.
+- **Energy shield leech.** `UCataclysmLeech::PayOutStep` pays into the energy shield attribute. Unchanged. Nothing
+  leeches into the absorb.
+- **The refill and the recharge event.** `UCataclysmRegeneration::ApplyStep` refills the energy shield attribute.
+  Unchanged. Nothing regenerates the absorb.
+- **The refill wait.** `ACataclysmCharacterBase::NoteDamageTaken` is still called only when health, the energy
+  shield or mana took something. See the first paragraph of this entry.
+- **The two stats about a bleed and the shield,** `shield_absorbs_damage_over_time` and
+  `bleed_damage_taken_from_energy_shield`, in `Resolve`. Unchanged. Neither is read for the absorb.
+- **The pool action `energy_shield` and `PoolAttributesFor`.** Unchanged.
+
+Changed, each a judgement listed below: the test for "a blow that got through", the leech figure, the hit notice's
+`Landed`, the foreign-damage window, the stack for damage taken, what an absorbed spell stores, the damage number
+and the impact burst.
+
+### For the owner's play-check
+
+No row exists yet, so none of this can be seen in play until one is written.
+
+- In a fight, 12 seconds after it began and every 12 seconds after, a pale gold segment appears at the right-hand
+  end of the energy shield bar. The bar's figures gain "+N absorb". A character with no energy shield gets the bar
+  as well, all of it gold, reading "N absorb".
+- Hits and ticks, a bleed included, shrink the gold segment before the blue fill or health moves.
+- A blow the absorb took whole shows a number in the colour of an absorbed hit, not "0".
+- The next 12 second mark puts the segment back to its full size. It never grows past that.
+- Out of combat the segment stays as it is. Nothing new arrives, and nothing takes it away.
+- The character sheet's energy shield line carries the note "N temporary absorb, taken before the shield."
+- After a death and respawn the segment is gone.
+
+### Judgements by the writing session, 2026-10-07, for the coordinating session to confirm
+
+1. **A grant while holding as much or more changes nothing.** Ruling 2 says a grant refreshes and never adds. Read
+   literally it could also lower a larger amount to the granted one. The code keeps the larger. With one row this
+   arises only when maximum health has fallen since the last grant.
+2. **A blow the absorb took whole does not restart the energy shield's refill wait.** Said first, above.
+3. **The absorb is taken before mana as well as before the energy shield.** Ruling 1 names no pool before it.
+4. **A respawn empties it,** as it empties every temporary effect and store. Ruling 3 says only that it has no
+   duration. **A new floor does not empty it,** because no code was found that changes the energy shield or ends
+   a buff there.
+5. **A blow the absorb took counts as a blow that got through,** as one the energy shield swallowed whole does. So
+   the attacker's leech, the boss cooldown window, the record of who struck (`NoteStruckBy`), retaliation and
+   `UCataclysmSkillTemplate::NoteBlowTaken` all run for it.
+6. **Leech counts what the absorb took.** The design defines leech on "the damage the target really took", and
+   the code already counts what the energy shield and mana took.
+7. **The hit notice's `Landed` counts it.** `UCataclysmCombatEvents::NoteBlow` adds it to the mana, shield and
+   health figures. `DealtToHealth` in the notice is unchanged.
+8. **Fervour from damage does not count it.** `UCataclysmFervour::GainFromDamage` is given what reached health, as
+   before. An absorb costs a Masochist generation exactly as an energy shield does.
+9. **Retaliation's size is unchanged.** `UCataclysmRetaliation::Pay` is given `Hit.Damage`, the blow before the
+   defender's defences, as before.
+10. **Nothing Wasted and the two stores of absorbed damage do not count it.** Nothing Wasted stores what armour and
+    damage reduction removed, which is decided before the absorb. The shield's store is ruling 5. **What an absorbed
+    spell stores does count it:** that store is "what the spell would have dealt after the wearer's defences", and
+    the absorb's share is part of that.
+11. **The foreign-damage window and the stack for damage taken count it.** Both already say a shield absorbing a
+    blow is damage taken.
+12. **Overkill needs no change.** `Resolve` measures it at the health step, after the absorb, the mana and the
+    energy shield.
+13. **The Sacrificial Ward cancels the absorb's share too.** Its judgement of 2026-09-23 is that "instead" cancels
+    the whole blow.
+14. **The damage number adds the absorb to the bracket the energy shield uses.** `UCataclysmCombatOverlay::TextFor`
+    has one figure for what was absorbed. Without this a blow the absorb took whole would print "0", which means
+    the defences stopped it.
+15. **The bar's whole length stands for the maximum energy shield and the absorb together** while an absorb is
+    held, so the shield's fill looks shorter than it did a moment before though the shield has lost nothing. The
+    figures on the bar say the true amounts.
+16. **Only the player's corner bar draws the segment.** The bars over creatures' heads do not. Only an item's wearer
+    can hold an absorb today.
+17. **The generator allows the action on the timed event only,** and bounds its value at 100 per cent of maximum
+    health. The engine would grant on any event; no sentence asks for another.
+18. **The segment's colour is `E8D9A0`, a pale gold,** and the words are "absorb" on the bar and "temporary absorb"
+    on the sheet.
+
+### Research
+
+No source was fetched. The six rulings fixed the shape: the order, the refresh rule, no duration, every kind of
+damage, and the clock. What is specific to this game and could not be read off another: that this game has an
+energy shield which lets a bleed through, so a second absorb that does not is a different thing a player has to be
+shown; that "in combat" here is three seconds from the last hit dealt or taken; and every judgement in the list
+above about which of this game's own readers count the absorb.
+
+### Tests
+
+Seven Unreal automation tests, appended to `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group
+`Cataclysm.TemporaryAbsorb.`. Every amount is compared with a control character that holds no temporary absorb, or
+with the same character before the grant. Critical strikes are pinned to never happen where a blow is delivered.
+
+- `ItIsTakenBeforeTheEnergyShieldAndHealthAndTheRestIsSplitAsAControlSplitsIt`: ruling 1.
+- `ItAbsorbsADamageOverTimeTickAndABleedTickTheEnergyShieldLetsThrough`: ruling 4.
+- `AGrantRefreshesToItsAmountAndNeverAddsAndARespawnEmptiesIt`: ruling 2, judgement 1, the later layer's entry
+  point, and `ClearWhatDeathEnds`.
+- `ItFillsNoShieldStoreHoldsNoShieldConditionAndRaisesNoShieldBreak`: ruling 5, three parts.
+- `TheTimedRowGrantsItsShareOfMaximumHealthEachTwelveSecondsOfCombatAndNeverOutOfIt`: ruling 6. The world's time is
+  written by hand, as `Cataclysm.Skills.ATimedRowGrantsOncePerPeriodOfCombatAndNeverOutOfIt` writes it, and the
+  clock is read half a second off each period's boundary.
+- `ALethalBlowRecordsTheOverkillOfWhatGotPastTheAbsorb`: overkill.
+- `TheBarSegmentTheBarFiguresTheSheetNoteAndTheDamageNumberSayWhatIsHeld`: the interface's pure functions.
+
+Python, in `tools/tests/`: `TestTemporaryAbsorb` in `test_generate_datatables.py`, and two functions in
+`test_charge_and_placed_action_names_match_the_engine.py` that hold the generator's name equal to the engine's.
+
+### Not covered by a test
+
+- **The refill wait.** `NoteDamageTaken` is on `ACataclysmCharacterBase`, and these tests use bare actors. No test
+  shows that a blow the absorb took whole leaves the wait alone.
+- **A bleed tick delivered through a real damage over time effect.** The bleed is tested through `Resolve` with
+  the tick marked a bleed by hand. The mark itself is made in `PostGameplayEffectExecute` from the effect's tags.
+- **Leech, retaliation, the hit notice's `Landed`, the foreign-damage window and the stack for damage taken,** on
+  a blow the absorb took. Each is a judgement above and none has a test.
+- **The five places a blow is emptied.** No test shows the absorb keeps what it held under the Sacrificial Ward,
+  immunity, an absorbed spell, a reflected hit or a creature no damage reaches.
+- **The order with mana.** No test wears `damage_over_time_taken_from_mana_first`.
+- **The loader.** No test wears a real row, because none exists. The rows change has to add one.
+- **The drawing.** `ACataclysmHUD::DrawPlayerVitals` and the sheet's line are not tested; the functions they call
+  are.
+- **A real respawn.** The test calls `ClearWhatDeathEnds` by hand.
+- **Replication.** The amount is not replicated, so a remote client's bar would not show it.
+
+### What the later overheal layer needs from this one
+
+- **The entry point.** `AddTemporaryAbsorbUpTo(Amount, Cap)` adds `Amount` to what is held, to no more than `Cap`
+  in all, and never lowers what is held. The layer passes the overheal as `Amount` and its rolled 10% to 20% of
+  maximum health as `Cap`.
+- **Where to call it.** Wherever healing is found to exceed what health could take. This change did not read
+  `UCataclysmRegeneration::TopUp` for that and adds no call.
+- **A question the layer must put to a ruler: how the two sources share one amount.** As built, the timed grant
+  refreshes to its own amount and never lowers, and the overheal adds up to its own cap and never lowers. So a
+  character holding 25% from the clock gains nothing from overheal capped at 20%, and one holding 20% from
+  overheal is raised to 25% by the clock. Whether that is wanted has not been asked.
+- **Not determined:** whether overheal from leech, regeneration and potions all count, and whether the overheal
+  sentence's "temporary" means a duration. This change gives the amount no duration.
+
+### What the row needs, for the session that writes rows
+
+One row in the Enchantment Effects sheet, for `Positive_Every_12_seconds_gain_a_shield_absorbing_15_25`:
+
+| Column | Value |
+|---|---|
+| Effect | the sentence, as the Enchantments sheet has it |
+| Stat | empty |
+| Action | `temporary_absorb` |
+| Action Event | `every_seconds` |
+| Every Seconds | 12 |
+| Value Low | 15 |
+| Value High | 25 |
+| Fraction Of | empty. The value is always of maximum health, and the generator refuses the column |
+| Value Kind, Scale | empty. Refused |
+| Trigger Cooldown | empty. Refused on the timed event; the period is the wait |
+| Required Tags | empty. The timed event carries no tags, so a scoped row would never fire |
+
+A Condition may be stated; it is judged at the moment the clock fires. The rows change should add a test that
+wears the real row, and should ask whether the enchantment keeps the tag `Stat.Defense.EnergyShield`.
+
+---
+
 ## 2026-10-07 — Two count scales, `traps_active` and `gadgets_active`, and a trap's blow ignores armour only by its summoner's row that names traps. Engine and generator only; no row authored
 
 **Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No

@@ -596,14 +596,44 @@ void ACataclysmHUD::DrawPlayerVitals()
 	// shield is a design position rather than an error state --
 	// UCataclysmVitalAttributeSet::PreAttributeChange says so -- and a bar
 	// permanently at zero would say the opposite.
+	//
+	// AND THE TEMPORARY ABSORB IS A SECOND SEGMENT ON THE SAME BAR, at its
+	// right-hand end, in its own colour. The project owner, 2026-10-07: it is
+	// separate from the energy shield. Ruled the same day: a second segment on
+	// the shield bar. The bar's whole length then stands for the maximum shield
+	// and the absorb together, so the shield's fill can never reach the segment.
+	// A character with no energy shield holding an absorb gets the bar too, all
+	// of it segment. With nothing held the bar is drawn exactly as before.
 	float Shield = 0.0f;
 	float MaxShield = 0.0f;
-	if (UCataclysmCombatOverlay::ShieldOf(Pawn, Shield, MaxShield)
-		&& MaxShield > 0.0f)
+	const bool bHasShield = UCataclysmCombatOverlay::ShieldOf(Pawn, Shield, MaxShield)
+		&& MaxShield > 0.0f;
+	const float Absorb = UCataclysmCombatOverlay::TemporaryAbsorbOf(Pawn);
+	if (bHasShield && Absorb <= 0.0f)
 	{
 		Top -= PlayerBarHeightPx + PlayerBarGapPx;
 		DrawPlayerPool(Top, Shield, MaxShield,
 					   UCataclysmCombatOverlay::ShieldFillHex);
+	}
+	else if (Absorb > 0.0f)
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		const float ShieldHeld = bHasShield ? Shield : 0.0f;
+		const float ShieldTop = bHasShield ? MaxShield : 0.0f;
+		const float Segment =
+			UCataclysmCombatOverlay::AbsorbSegmentFractionFor(Absorb, ShieldTop);
+		DrawBar(PlayerBarMarginPx, Top, PlayerBarWidthPx, PlayerBarHeightPx,
+				UCataclysmCombatOverlay::BarFractionFor(ShieldHeld, ShieldTop + Absorb),
+				UCataclysmCombatOverlay::ColourFromHex(
+					UCataclysmCombatOverlay::ShieldFillHex), 1.0f);
+		DrawBar(PlayerBarMarginPx + PlayerBarWidthPx * (1.0f - Segment), Top,
+				PlayerBarWidthPx * Segment, PlayerBarHeightPx, 1.0f,
+				UCataclysmCombatOverlay::ColourFromHex(
+					UCataclysmCombatOverlay::TemporaryAbsorbFillHex), 1.0f);
+		DrawTextCentred(
+			UCataclysmCombatOverlay::ShieldBarTextFor(ShieldHeld, ShieldTop, Absorb),
+			FLinearColor::White, PlayerBarMarginPx + PlayerBarWidthPx * 0.5f,
+			Top + 2.0f, 1.0f);
 	}
 
 	// AND FERVOUR ON TOP, ONLY FOR A CHARACTER THAT CAN MOVE IT. Issue #954.

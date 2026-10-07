@@ -105,6 +105,8 @@ CONSTANTS = {
     "ExplodeVictimForOverkillAction": "explode_victim_for_overkill",
     # AND THE ONE THAT STRIKES THE OTHER CHARACTER OF ITS EVENT, ruled 2026-10-07.
     "StrikeTargetAction": "strike_target",
+    # AND THE ONE THAT GRANTS A TEMPORARY ABSORB, by the owner's decision of 2026-10-07.
+    "TemporaryAbsorbAction": "temporary_absorb",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -240,6 +242,19 @@ def test_the_generator_accepts_exactly_the_overkill_explosion_name_the_engine_ha
 def test_the_generator_accepts_exactly_the_strike_target_name_the_engine_has() -> None:
     """Ruled 2026-10-07."""
     assert gen.STRIKE_TARGET_ACTION == engine_names()["StrikeTargetAction"]
+
+
+def test_the_generator_accepts_exactly_the_temporary_absorb_name_the_engine_has() -> None:
+    """The owner's decision of 2026-10-07: separate from the energy shield."""
+    assert gen.TEMPORARY_ABSORB_ACTION == engine_names()["TemporaryAbsorbAction"]
+
+
+def test_a_temporary_absorb_is_not_a_pool_of_two_attributes() -> None:
+    """It is one plain number on the ability system component, so
+    `PoolAttributesFor` has no pair for it and it must not be listed with the
+    pools that have one."""
+    assert gen.TEMPORARY_ABSORB_ACTION not in gen.POOL_ACTIONS
+    assert gen.TEMPORARY_ABSORB_EVENTS == (gen.TIMED_EVENT,)
 
 
 def test_the_generator_knows_exactly_the_hit_all_nearby_name_the_engine_has() -> None:

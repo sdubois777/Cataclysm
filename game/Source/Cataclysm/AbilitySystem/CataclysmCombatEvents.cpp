@@ -200,7 +200,7 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 		Notice.SkillTags = &Skill->SkillTags;
 	}
 	Notice.Landed = Outcome.AbsorbedByMana + Outcome.AbsorbedByShield
-		+ Outcome.DealtToHealth;
+		+ Outcome.AbsorbedByTemporary + Outcome.DealtToHealth;
 	Notice.DealtToHealth = Outcome.DealtToHealth;
 	Notice.bCritical = Outcome.bWasCritical;
 	Notice.bBlocked = Outcome.bBlocked;
