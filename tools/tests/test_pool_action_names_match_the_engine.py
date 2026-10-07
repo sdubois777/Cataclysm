@@ -161,16 +161,17 @@ def test_every_event_a_row_may_take_a_share_of_is_fired_with_an_amount():
     """Issue #1833, 2026-10-05. `EVENTS_WITH_AN_AMOUNT` lets a row take a share
     of what its event carried. A name there that the game fires with no amount
     is a row that validates, is built, and moves nothing. THE CONTROLS ARE IN
-    THE SAME TEST: `hit_taken` is fired with a literal nought and `kill` with
-    no amount at all, and the reader must say so for both, or it is reading the
-    wrong argument."""
+    THE SAME TEST: `hit_taken` is fired with a literal nought and `dot_applied`
+    with no amount at all, and the reader must say so for both, or it is reading
+    the wrong argument. `kill` WAS THE SECOND CONTROL UNTIL 2026-10-07, when it
+    began to carry the slain enemy's maximum health and joined the list."""
     assert amounts_passed("hit_taken"), (
         f"no call firing hit_taken was read. {PARSE_ADVICE}")
     assert not carries_an_amount("hit_taken"), (
         f"hit_taken is fired with {amounts_passed('hit_taken')}, which this "
         f"reader takes for an amount. {PARSE_ADVICE}")
-    assert amounts_passed("kill") and not carries_an_amount("kill"), (
-        f"kill is fired with {amounts_passed('kill')}. {PARSE_ADVICE}")
+    assert amounts_passed("dot_applied") and not carries_an_amount("dot_applied"), (
+        f"dot_applied is fired with {amounts_passed('dot_applied')}. {PARSE_ADVICE}")
 
     without = [event for event in gen.EVENTS_WITH_AN_AMOUNT
                if not carries_an_amount(event)]

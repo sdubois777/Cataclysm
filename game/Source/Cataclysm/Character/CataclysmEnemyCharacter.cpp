@@ -408,6 +408,12 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// ailment and not who landed the last blow or who is watching. The ailments
 	// are read off this creature's own running effects, which `MarkDead` leaves
 	// in place.
+	//
+	// AND WHOEVER HAS A DAMAGE OVER TIME AILMENT ON THIS CREATURE HEARS THAT IT
+	// DIED, FIRST. Ruled 2026-10-07: `afflicted_death`, with this creature and its
+	// maximum health. Before the spread, so what a row does on hearing it lands
+	// before the ailments pass on by themselves.
+	UCataclysmContagion::AnnounceAfflictedDeath(this);
 	UCataclysmContagion::SpreadFromTheDying(this);
 
 	// AND A CREATURE THAT DIES CURSED MAY RISE AS AN IMP FOR WHOEVER CURSED IT.

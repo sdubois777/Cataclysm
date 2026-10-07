@@ -5388,6 +5388,13 @@ ACTION_ONLY_EVENTS = (
     # stunned": `skill_use` is raised when the skill is paid, before a charge
     # has moved. `UCataclysmAbilitySystemComponent::SkillEndEvent`.
     "skill_end",
+    # AN ENEMY DYING WHILE IT CARRIES ONE OF THE WEARER'S DAMAGE OVER TIME
+    # AILMENTS, raised on whoever applied the ailment with the dead enemy as the
+    # target, its maximum health as the amount and that character's ailments on
+    # the body as the tags. Ruled 2026-10-07, for "Plague Doctor (10-Piece
+    # Bonus): When an enemy dies while affected by a DoT from you". Raised in
+    # `UCataclysmContagion::AnnounceAfflictedDeath`.
+    "afflicted_death",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -5412,10 +5419,17 @@ CONSECUTIVE_HIT_EVENTS = (
 #: `UCataclysmRetaliation::Pay` passes what its payment took.
 #: `tools/tests/test_pool_action_names_match_the_engine.py` reads the calls and
 #: fails if a name here is fired with no amount.
+#:
+#: `kill` AND `afflicted_death` JOINED ON 2026-10-07. Each passes the MAXIMUM
+#: HEALTH of the enemy that died: `ACataclysmPlayerCharacter` passes the slain
+#: enemy's, and `UCataclysmContagion::AnnounceAfflictedDeath` the dying one's.
+#: So a row on either can be sized by the enemy that died.
 EVENTS_WITH_AN_AMOUNT = (
     "health_cost",
     "hit_dealt",
     "retaliation_dealt",
+    "kill",
+    "afflicted_death",
 )
 
 
