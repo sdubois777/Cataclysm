@@ -81,6 +81,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Part 4b added two more: the seconds a necrosis-risen imp lasts and the wait
 #: before a lost minion is summoned again.
 #: Part 4c added one more: the flag that shares an aura's immunities with allies.
+#: Damage over time on the wearer by ailment added one more on 2026-10-06, the
+#: flag by which a target refuses an ailment, and changed what two existing
+#: lookups hand over: the defender's stats and the duration of an effect on a
+#: character are now asked with the tags of what arrives.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -242,9 +246,12 @@ INVENTORY = {
         "an aura's duration and chance, asked of the character rather "
         'than of a blow',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp',
-     'FName(Stat), FGameplayTagContainer(), FromAttribute, -1.0f, Blow'):
+     'FName(Stat), Tags, FromAttribute, -1.0f, Blow'):
         "the defender's own stats, asked WITH THE BLOW so a row about "
-        'the hit being melee, ranged or a spell can be judged',
+        'the hit being melee, ranged or a spell can be judged; and, for a '
+        "damage over time tick only, with the tick's own tags (ruled "
+        '2026-10-06) so a row may require the bleed tag or the damage over '
+        'time parent. A tick has no blow and a hit passes no tags',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmDamageConversion.cpp',
      'FName(UCataclysmDamageConversion::ActiveStat), FGameplayTagContainer(), System->GetNumericAttribute(Flag)'):
         'how much of one damage type becomes another, a property of the '
@@ -254,9 +261,10 @@ INVENTORY = {
         'what a debuff this character carries is worth, with no blow in '
         'hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
-     'FName(DurationStat), FGameplayTagContainer(), Held'):
-        'what a debuff this character carries is worth, with no blow in '
-        'hand',
+     'FName(DurationStat), AppliedTags, Held'):
+        'how long an effect lasts on this character, asked with the tags of '
+        'the effect being applied (ruled 2026-10-06) so a row may require '
+        'the bleed tag or the damage over time parent; no blow is in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
      'FName(DoNotExpireStat), FGameplayTagContainer(), 0.0f'):
         'what a debuff this character carries is worth, with no blow in '
@@ -459,6 +467,11 @@ INVENTORY = {
      'FName(UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat), SkillTags, 0.0f'):
         "whether a zone also lays its effects on the character who left it (the owner's "
         "decision of 2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(UCataclysmDamageCalculation::AilmentImmunityStat), AppliedTags, 0.0f'):
+        "whether the target refuses the ailment being applied (ruled "
+        "2026-10-06), asked of the target with the ailment's own tag and the "
+        "damage over time parent; a flag, asked before any blow or tick exists",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat), SkillTags, 0.0f'):
         "the percent of its owner's walking speed at which a zone follows them "
