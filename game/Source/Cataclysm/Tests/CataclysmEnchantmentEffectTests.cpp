@@ -16610,4 +16610,97 @@ bool FCataclysmKilledEnemiesExplodeOnYouRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpreadOnApplicationTest,
+	"Cataclysm.Enchantments.AnAilmentAppliedPassesToTheNearestEnemiesARowCountsAndACopyPassesNoFurther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Burn effects you apply spread to 1-2 nearby enemies", with a row made by
+ * hand. Issue #1833, ruled 2026-10-06. With no row a burn goes to its target and
+ * nobody else. With a count of 2 hung on burn, a burn applied to a creature
+ * also goes to the two nearest within 5 metres of it, 1 and 2 metres away, and
+ * not to the ones 3 and 6 metres away: A COPY SPREADS NO FURTHER, or the one 3
+ * metres away would have received it from a copy. A copy is the same damage a
+ * second for the same ten seconds and raises no `dot_applied`. Applied again,
+ * the two that carry it are passed over and the one 3 metres away receives it.
+ */
+bool FCataclysmSpreadOnApplicationTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmSpreadOnDeathTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag Burn = Ailment(TEXT("Keyword.DoT.Burn"));
+	ACataclysmEnemyCharacter* Lone = Beside(World, -8.0f);
+	ACataclysmEnemyCharacter* BesideLone = Beside(World, -7.0f);
+	ACataclysmEnemyCharacter* Struck = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* One = Beside(World, 1.0f);
+	ACataclysmEnemyCharacter* Two = Beside(World, 2.0f);
+	ACataclysmEnemyCharacter* Three = Beside(World, 3.0f);
+	ACataclysmEnemyCharacter* Six = Beside(World, 6.0f);
+	if (!TestTrue(TEXT("set-up: the burn tag is registered"), Burn.IsValid())
+		|| !TestNotNull(TEXT("set-up: the creature burned with no row"), Lone)
+		|| !TestNotNull(TEXT("set-up: the creature 1 metre from that one"), BesideLone)
+		|| !TestNotNull(TEXT("set-up: the creature burned with the row"), Struck)
+		|| !TestNotNull(TEXT("set-up: the creature 1 metre from it"), One)
+		|| !TestNotNull(TEXT("set-up: the creature 2 metres from it"), Two)
+		|| !TestNotNull(TEXT("set-up: the creature 3 metres from it"), Three)
+		|| !TestNotNull(TEXT("set-up: the creature 6 metres from it"), Six))
+	{
+		return false;
+	}
+
+	// WITH NO ROW, a burn goes to its target and nobody else.
+	if (!TestTrue(TEXT("set-up: with no row, the wearer burns a creature"), Ail(Wearer.Actor, Lone, Burn)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("with no row, the creature 1 metre from it is not burned"), Carries(BesideLone, Burn));
+
+	FCataclysmPoolAction Row;
+	Row.Rider = ECataclysmAilmentRider::SpreadOnApplication;
+	Row.Ailment = Burn;
+	Row.Percent = 2.0f;
+	Wearer.AbilitySystem->SetPoolActions({Row});
+	int32 ApplicationsAnnounced = 0;
+	const FDelegateHandle Listening = Wearer.AbilitySystem->OnActionEvent.AddLambda(
+		[&ApplicationsAnnounced](FName Event)
+		{
+			ApplicationsAnnounced += Event == FName(TEXT("dot_applied")) ? 1 : 0;
+		});
+	const bool bApplied = Ail(Wearer.Actor, Struck, Burn);
+	Wearer.AbilitySystem->OnActionEvent.Remove(Listening);
+	if (!TestTrue(TEXT("with the row, the wearer burns a creature"), bApplied))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the creature 1 metre from it is burned too"), Carries(One, Burn));
+	TestTrue(TEXT("and the one 2 metres from it"), Carries(Two, Burn));
+	TestFalse(TEXT("the one 3 metres from it is not: the count is two, and a copy passes no further"),
+		Carries(Three, Burn));
+	TestFalse(TEXT("nor the one 6 metres from it"), Carries(Six, Burn));
+	TestEqual(TEXT("one application was announced, the wearer's own; the two copies announced none"),
+		ApplicationsAnnounced, 1);
+	UCataclysmSkillEffects::FRunningAilment Copy;
+	if (TestTrue(TEXT("the copy is a running burn"), UCataclysmSkillEffects::RunningAilmentOn(One, Burn, Copy)))
+	{
+		TestEqual(TEXT("at the one point a second the wearer's burn deals"), Copy.DamagePerSecond, 1.0f, 0.001f);
+		TestEqual(TEXT("for the same ten seconds"), Copy.SecondsLeft, 10.0f, 0.1f);
+		TestTrue(TEXT("with the wearer as its source"), Copy.Applier.Get() == Wearer.Actor);
+	}
+
+	// APPLIED AGAIN: those that carry it are passed over, so the next nearest receives it.
+	TestTrue(TEXT("the wearer burns the same creature again"), Ail(Wearer.Actor, Struck, Burn));
+	TestTrue(TEXT("the one 3 metres from it is burned now, the nearest that did not carry it"), Carries(Three, Burn));
+	TestFalse(TEXT("the one 6 metres from it is still out of reach"), Carries(Six, Burn));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
