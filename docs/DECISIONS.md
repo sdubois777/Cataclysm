@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — The two rows on absorbed damage added to the next attack are built
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The two rows the entry "Absorbed damage stored" of 2026-10-07 left to the session holding the design workbook,
+each as that entry's table states it. Both stat names were read in the merged code. No engine code and no
+generator code is changed here.
+
+| Sentence | Stat | Kind | Value |
+| :-- | :-- | :-- | :-- |
+| Damage absorbed by your energy shield is converted to bonus damage on your next attack | `shield_absorbed_damage_added_to_next_attack_cap_percent` | flat | 100 |
+| Absorbed spell damage is converted to bonus damage on your next attack | `spell_absorbed_damage_added_to_next_attack_cap_percent` | flat | 100 |
+
+EnchantmentEffects 537 to 539, over 450 to 452 enchantments.
+
+### SAID FIRST OF THE SECOND ROW: ONE ENEMY ATTACK IS A SPELL TODAY
+
+"Absorbed spell damage is converted to bonus damage on your next attack" can fill its store from one enemy attack
+today: the Succubus's Soulfire, the only enemy attack tagged `Type.Spell`, as that entry counted on 2026-10-07. So
+on a floor without a Succubus the row does nothing, whatever chance to absorb a spell its wearer has.
+
+### THE NUMBER IS A JUDGED ONE
+
+Neither sentence states a number. 100 is the ruling of that entry: the most a store may add is the whole of the
+hit it is added to. Both enchantments join the list of judged numbers in the row-text check.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the two sentences is that entry's: what "next attack" is, that a store has no ceiling and no
+expiry and is cleared on death, and that **the second row stores nothing on its own**: its store fills only when a
+chance to absorb a spell turns one aside, so its wearer needs "Spells that hit you have a 15%-30% chance to be
+absorbed dealing no damage" or another source of that chance.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheTwoAbsorbedDamageRowsEachGiveTheCapTheGameAsksFor`: each real row worn. The test
+  first asserts that each name it wears is a row of `EnchantmentsPositive.csv`. Each stat reads 100 worn and 0
+  when the item is taken off.
+
+**Not tested here:** either store filling or being spent from a worn row; that entry tests both with the stat set
+by hand.
+
+---
+
 ## 2026-10-07 — Starvation's six-piece bonus is built: a scale counts the pools a character is leeching into
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`
