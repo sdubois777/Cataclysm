@@ -16806,4 +16806,167 @@ bool FCataclysmBlockValueRowTest::RunTest(const FString&)
 	return true;
 }
 
+// TWELVE ROWS ON THE DUNGEON SESSION'S STACK OF 2026-10-07. Issue #1833. Each is WORN and read as far as the row
+// goes: a stat row by the figure the game asks for, an action row by the action it hands its wearer. What each
+// stat and action then does is those entries' tests, with a line or a row made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearerDamageOverTimeRowsTest,
+	"Cataclysm.Enchantments.TheSixStatRowsOnDamageOverTimeAndZonesOnTheWearerEachGiveTheFigureTheGameAsksFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Six stat rows. The two that raise a figure are read against a figure of
+ * 100, with the bleed tag and with the burn tag, since each is scoped to bleed:
+ * "Bleed effects applied to you deal 30%-50% increased damage" makes 150 of a
+ * bleed and leaves a burn at 100, and "Bleeding on you lasts 50%-100% longer"
+ * makes 200. A drawback is worn at its harshest roll. The four flat rows read
+ * their own figure: 1, 20, 1 and 1, the bleed immunity only with the bleed tag.
+ */
+bool FCataclysmWearerDamageOverTimeRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const FGameplayTagContainer Bleed = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTagContainer Burn = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.DoT.Burn"));
+	if (!TestTrue(TEXT("set-up: the bleed tag exists"), Bleed.Num() == 1)
+		|| !TestTrue(TEXT("set-up: the burn tag exists"), Burn.Num() == 1))
+	{
+		return false;
+	}
+
+	struct FRaised
+	{
+		const TCHAR* Row;
+		const TCHAR* Stat;
+		float OfABleed;
+	};
+	const FRaised Raised[] = {
+		{TEXT("Negative_Bleed_effects_applied_to_you_deal_30_50_increa"), TEXT("damage_over_time_taken"), 150.0f},
+		{TEXT("Negative_Bleeding_on_you_lasts_50_100_longer"), TEXT("debuff_duration_taken"), 200.0f},
+	};
+	for (const FRaised& Case : Raised)
+	{
+		FWorn Worn(Case.Row, false);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(Case.Stat);
+		TestEqual(FString::Printf(TEXT("%s, worn: 100 of a bleed's %s becomes %.0f.%s"), Case.Row, Case.Stat,
+					  Case.OfABleed, CataclysmRepeatRowsTest::OlderAsset),
+			Worn.ASC()->StatAppliedTo(Stat, Bleed, 100.0f), Case.OfABleed, 0.01f);
+		TestEqual(FString::Printf(TEXT("%s: a burn's stays 100"), Case.Row),
+			Worn.ASC()->StatAppliedTo(Stat, Burn, 100.0f), 100.0f, 0.01f);
+	}
+
+	struct FFlat
+	{
+		const TCHAR* Row;
+		bool bBenefit;
+		const TCHAR* Stat;
+		/** Whether the row is scoped to bleed, so it is read with the bleed tag and reads nought with the burn tag. */
+		bool bBleedOnly;
+		float Worn;
+	};
+	const FFlat Flats[] = {
+		{TEXT("Positive_Unaffected_by_bleeding"), true, TEXT("ailment_immunity"), true, 1.0f},
+		{TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y"), true,
+		 TEXT("bleed_damage_taken_from_energy_shield"), false, 20.0f},
+		{TEXT("Positive_DoTs_deal_damage_to_your_mana_pool_first"), true,
+		 TEXT("damage_over_time_taken_from_mana_first"), false, 1.0f},
+		{TEXT("Negative_Your_persistent_AOE_zones_apply_their_effects_to"), false,
+		 TEXT("zone_applies_effects_to_owner"), false, 1.0f},
+	};
+	for (const FFlat& Case : Flats)
+	{
+		FWorn Worn(Case.Row, Case.bBenefit);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(Case.Stat);
+		const FGameplayTagContainer Asked = Case.bBleedOnly ? Bleed : FGameplayTagContainer();
+		TestEqual(FString::Printf(TEXT("%s, worn: %s is %.0f.%s"), Case.Row, Case.Stat, Case.Worn,
+					  CataclysmRepeatRowsTest::OlderAsset),
+			Worn.ASC()->StatForSkill(Stat, Asked, 0.0f), Case.Worn, 0.01f);
+		if (Case.bBleedOnly)
+		{
+			TestEqual(FString::Printf(TEXT("%s: asked about a burn, %s is 0"), Case.Row, Case.Stat),
+				Worn.ASC()->StatForSkill(Stat, Burn, 0.0f), 0.0f, 0.01f);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearerStatusRowsTest,
+	"Cataclysm.Enchantments.TheSixActionRowsOnAStatusOnTheWearerAndACooldownAbilityEachHandOverTheirAction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Six action rows. Each is WORN and its wearer's actions are read: exactly one
+ * of the kind the row states, on the event it states. The five that lay a
+ * status on the wearer are marked as such; the timed one states fifteen seconds;
+ * the cooldown ability row is the one that may deal increased damage and is
+ * kept to a skill with a cooldown.
+ */
+bool FCataclysmWearerStatusRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Row;
+		bool bBenefit;
+		const TCHAR* Event;
+		/** Seconds between two, for the timed row; nought for the others. */
+		float EverySeconds;
+		bool bOnTheWearer;
+	};
+	const FCase Cases[] = {
+		{TEXT("Negative_Taking_a_hit_has_a_15_25_chance_to_trigger_a_r"), false, TEXT("hit_taken"), 0.0f, true},
+		{TEXT("Negative_Critical_strikes_have_a_20_35_chance_to_trigge"), false, TEXT("critical_strike"), 0.0f, true},
+		{TEXT("Negative_Every_15_seconds_a_random_debuff_is_applied_to_y"), false, TEXT("every_seconds"), 15.0f, true},
+		{TEXT("Negative_After_using_a_charge_skill_you_are_briefly_stunn"), false, TEXT("skill_end"), 0.0f, true},
+		{TEXT("Negative_When_you_apply_a_DOT_1_4_stacks_are_applied_to"), false, TEXT("dot_applied"), 0.0f, true},
+		{TEXT("Positive_Your_cooldown_abilities_have_a_5_20_chance_to"), true, TEXT("skill_use"), 0.0f, false},
+	};
+	for (const FCase& Case : Cases)
+	{
+		FWorn Worn(Case.Row, Case.bBenefit);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		int32 OfItsKind = 0;
+		float Seconds = -1.0f;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			const bool bItsKind = Case.bOnTheWearer
+				? Action.bStatusOnTheWearer
+				: Action.bUseDealsIncreasedDamage && Action.bOnlyASkillWithACooldown;
+			if (bItsKind && Action.Event == FName(Case.Event))
+			{
+				++OfItsKind;
+				Seconds = Action.EverySeconds;
+			}
+		}
+		TestEqual(FString::Printf(TEXT("%s, worn: one action of its kind on %s.%s"), Case.Row, Case.Event,
+					  CataclysmRepeatRowsTest::OlderAsset),
+			OfItsKind, 1);
+		if (Case.EverySeconds > 0.0f)
+		{
+			TestEqual(FString::Printf(TEXT("%s: it comes every %.0f seconds"), Case.Row, Case.EverySeconds), Seconds,
+				Case.EverySeconds, 0.01f);
+		}
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		int32 Left = 0;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			Left += Action.Event == FName(Case.Event) ? 1 : 0;
+		}
+		TestEqual(FString::Printf(TEXT("%s, taken off: no action on %s is left"), Case.Row, Case.Event), Left, 0);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
