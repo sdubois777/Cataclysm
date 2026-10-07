@@ -38,6 +38,25 @@ change today. The difference shows only in a count of ticks, which no row reads.
 **Not tested here:** a real tick on a moving wearer of the row; the probe of that entry resolves one with the stat
 set by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 1 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 78ac88c8 | effect rows 543 to 544 |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: moving, a figure of 100 stayed 100 where
+200 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The condition
+on the stat was probed by the session that allowed it.
+
 ---
 
 ## 2026-10-07 — The two rows on how fast class resource is generated are built
