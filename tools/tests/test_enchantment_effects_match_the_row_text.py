@@ -220,7 +220,13 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               "dot_application_refreshes_others",
               # TWO MORE JOINED 2026-10-06 with their rows: a zone that also damages
               # its owner, and minions that leave a chaos pool where they die.
-              "zone_damages_its_owner", "minions_leave_chaos_pools"}
+              "zone_damages_its_owner", "minions_leave_chaos_pools",
+              # THREE MORE JOINED 2026-10-07 with their rows: "Unaffected by
+              # bleeding", "DoTs deal damage to your mana pool first" and "Your
+              # persistent AOE zones apply their effects to you if you stand in
+              # them". The game asks each whether it is above nought.
+              "ailment_immunity", "damage_over_time_taken_from_mana_first",
+              "zone_applies_effects_to_owner"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -332,6 +338,11 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # in that sentence is the distance, which is the reach every spread at a
     # death has and is no cell of the row.
     "ailment_spread_on_death": {"nearest": 1.0},
+    # "APPLIED" IS 100 ON THE ACTION THAT LAYS A STATUS ON ITS WEARER, whose
+    # value is a chance: "Every 15 seconds a random debuff is applied to you"
+    # states no chance, so it is applied every time, as "reset" is on the
+    # cooldown reset actions. 2026-10-07.
+    "apply_status_to_self": {"applied": 100.0},
 }
 
 #: The label a set bonus's sentence opens with, as in "Plague Doctor (10-Piece
@@ -704,8 +715,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 521 over 434: one row on one enchantment.
 #: AND 523 OVER 436 SINCE THE BLOCK VALUE ROW,
 #: issue #1833, 2026-10-06, from 522 over 435: one row on one enchantment.
-AUTHORED_ROWS = 523
-AUTHORED_ENCHANTMENTS = 436
+#: AND 535 OVER 448 SINCE TWELVE ROWS ON STATUSES AND DAMAGE OVER TIME ON THE WEARER,
+#: issue #1833, 2026-10-06, from 523 over 436: twelve rows on twelve enchantments.
+AUTHORED_ROWS = 535
+AUTHORED_ENCHANTMENTS = 448
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1346,6 +1359,22 @@ def test_a_word_states_a_value_only_on_its_own_stat():
         "While below 30% HP you resist crowd control", set(), words)
     # AND THE REAL TABLE IS WHAT THE TEST ABOVE READS BY DEFAULT.
     assert value_is_stated("crowd_control_resistance", 100.0, sentence)
+
+
+def test_applied_states_every_time_only_on_the_action_that_lays_a_status_on_its_wearer():
+    """Ruled 2026-10-07, on made-up sentences and the real table. "Applied" with
+    no chance stated is 100 on `apply_status_to_self`, whose value is a chance,
+    and on nothing else: not on its two sibling actions, whose values are
+    seconds and a size, not on a stat, and not as any other number."""
+    sentence = "Every 15 seconds a random debuff is applied to you"
+
+    assert value_is_stated("apply_status_to_self", 100.0, sentence)
+    assert not value_is_stated("apply_status_to_self", 50.0, sentence)
+    assert not value_is_stated("apply_status_to_self", 100.0,
+                               "Every 15 seconds a random debuff lands on you")
+    for other in ("apply_status_to_self_seconds", "apply_status_to_self_sized",
+                  "cooldown_use_increased_damage", "damage_over_time_taken", "max_health"):
+        assert not value_is_stated(other, 100.0, sentence), other
 
 
 def test_every_word_stated_value_is_still_needed(effects, enchantments):
