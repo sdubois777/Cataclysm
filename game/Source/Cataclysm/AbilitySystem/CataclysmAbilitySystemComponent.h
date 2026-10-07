@@ -952,6 +952,13 @@ public:
 	static const TCHAR* ReflectBlockedAction;
 
 	/**
+	 * The action that blasts and afflicts every enemy near an enemy that died.
+	 * Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name in
+	 * `BLAST_FROM_THE_DYING_ACTION`.
+	 */
+	static const TCHAR* BlastFromTheDyingAction;
+
+	/**
 	 * The six ailment rider action names, one per `ECataclysmAilmentRider` but
 	 * None. Issue #1833, ruled 2026-10-06. `AILMENT_RIDER_ACTIONS` in
 	 * `tools/generate_datatables.py` holds the same six.
@@ -3250,8 +3257,34 @@ protected:
 	 * to stop because `UCataclysmFervour::Move` refuses to write a change of
 	 * nothing, and a rule that holds only because of an early return in another
 	 * class is a rule nothing states. This states it.
+	 *
+	 * ONE EVENT IS KEPT RATHER THAN DROPPED AT DEPTH ONE: `afflicted_death`,
+	 * for the blast of an enemy that a blast killed. It is not acted on at
+	 * depth two. It waits in `QueuedAfflictedDeaths` and is acted on after the
+	 * outer call has returned, at depth one again. Ruled 2026-10-07.
 	 */
 	int32 PoolActionDepth = 0;
+
+	/**
+	 * Deaths heard while this character was already acting on an event, each
+	 * with what its blast needs, read at the death. Defined in the .cpp.
+	 */
+	TArray<TSharedPtr<struct FCataclysmQueuedAfflictedDeath>> QueuedAfflictedDeaths;
+
+	/**
+	 * Keep an `afflicted_death` heard at depth one, if a worn row blasts on it.
+	 * Everything is read now: where the body is, the wearer's ailments on it,
+	 * and which rows are allowed to fire.
+	 */
+	void QueueAfflictedDeath(FName Event, const FGameplayTagContainer* EventTags,
+							 float EventAmount, const AActor* EventTarget);
+
+	/**
+	 * Act on each queued death in the order heard, one at a time at depth one.
+	 * A death one of them causes joins the end. It ends because each enemy dies
+	 * once. Dropped whole if this character has no avatar by then.
+	 */
+	void DrainQueuedAfflictedDeaths();
 
 	/**
 	 * Smite or heal every enemy within `NearbyActionRadiusCm` of the avatar.

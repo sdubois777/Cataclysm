@@ -4093,6 +4093,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bReflectBlocked = false;
 
 	/**
+	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
+	 * `Percent` of the amount its event carried, and then puts the wearer's
+	 * ailments that were on the body on them. Ruled 2026-10-07 for "Plague
+	 * Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT from
+	 * you, it explodes and applies all of your DoTs to all nearby enemies". On
+	 * `afflicted_death`, whose amount is the dead enemy's maximum health. See
+	 * `UCataclysmContagion::BlastFromTheDying`.
+	 */
+	bool bBlastFromTheDying = false;
+
+	/**
 	 * The window an "every Nth event" count runs in, in seconds, for an action
 	 * that is not one of the every-Nth kinds: it acts on the Nth of its events
 	 * inside the window, and the count starts again. Issue #1833 group E part 3,

@@ -4967,6 +4967,23 @@ REFLECT_BLOCKED_EVENTS = (
     "block",
 )
 
+#: The action that BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED for a share of the
+#: dead enemy's maximum health, and then puts the wearer's ailments that were on
+#: the body on them. Ruled 2026-10-07: "Plague Doctor (10-Piece Bonus): When an
+#: enemy dies while affected by a DoT from you, it explodes and applies all of
+#: your DoTs to all nearby enemies". The value is the share, above 0 and up to
+#: 100. `UCataclysmAbilitySystemComponent::BlastFromTheDyingAction` holds the
+#: same name.
+BLAST_FROM_THE_DYING_ACTION = "blast_from_the_dying"
+
+#: The events that blast may hang on: the ones raised on whoever afflicted an
+#: enemy that died, carrying the dead enemy, its maximum health and, as tags,
+#: that character's ailments on the body. NOT `kill`: it carries the first two,
+#: but its tags are the killing skill's, so the copies would never be made.
+BLAST_FROM_THE_DYING_EVENTS = (
+    "afflicted_death",
+)
+
 #: The actions that DEAL THE REMAINING DAMAGE of the wearer's own damage over
 #: time effects, as one instance each. Issue #1833 group D part 4, ruled
 #: 2026-10-01. The value is a percentage of that remaining damage, above 0 and up
@@ -5266,7 +5283,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action in COOLDOWN_REDUCE_ACTIONS or action == RANDOM_DOT_ACTION
             or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS
             or action in REMAINING_DAMAGE_ACTIONS or action in ALL_APPLY_STATUS_ACTIONS
-            or action == DAMAGE_IMMUNITY_ACTION or action == REFLECT_BLOCKED_ACTION)
+            or action == DAMAGE_IMMUNITY_ACTION or action == REFLECT_BLOCKED_ACTION
+            or action == BLAST_FROM_THE_DYING_ACTION)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -5516,6 +5534,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_reflect_blocked_action(index, who, action, event, fraction_of,
                                       kind, raw, headers)
         return
+    if action == BLAST_FROM_THE_DYING_ACTION:
+        _check_blast_from_the_dying_action(index, who, action, event, fraction_of,
+                                           kind, raw, headers)
+        return
     if action == CLEANSE_ACTION:
         _check_cleanse_action(index, who, action, event, fraction_of, kind,
                               raw, headers)
@@ -5538,7 +5560,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(ALL_APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
-            f"or {REFLECT_BLOCKED_ACTION}; or {CLEANSE_ACTION}; "
+            f"or {REFLECT_BLOCKED_ACTION}; or {BLAST_FROM_THE_DYING_ACTION}; "
+            f"or {CLEANSE_ACTION}; "
             f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
             f"or a rider on an ailment, {', '.join(AILMENT_RIDER_ACTIONS)}.")
 
@@ -5772,6 +5795,31 @@ def _check_reflect_blocked_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} reflects blocked damage "
                 f"and states {column} {written!r}. Its value is a share and "
                 f"nothing else, so the column must be empty.")
+
+
+def _check_blast_from_the_dying_action(index: int, who: str, action: str,
+                                       event: str, fraction_of: str, kind: str,
+                                       raw, headers: dict[str, int]) -> None:
+    """Everything a blast from the dying must say, and everything it must not.
+    Ruled 2026-10-07. The event must name who died and carry its maximum
+    health; the share is checked where the value is read. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than
+    dropped.
+    """
+    if event not in BLAST_FROM_THE_DYING_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} blasts from an enemy that "
+            f"died on the event {event or '(none)'!r}. Only an event raised on "
+            f"whoever afflicted the dead enemy, carrying their ailments on the "
+            f"body, can: {', '.join(BLAST_FROM_THE_DYING_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} blasts from an enemy "
+                f"that died and states {column} {written!r}. Its value is a "
+                f"share and nothing else, so the column must be empty.")
 
 
 def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
@@ -6149,6 +6197,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in ALL_APPLY_STATUS_ACTIONS \
                     and action != DAMAGE_IMMUNITY_ACTION \
                     and action != REFLECT_BLOCKED_ACTION \
+                    and action != BLAST_FROM_THE_DYING_ACTION \
                     and action != CLEANSE_ACTION \
                     and action not in SKILL_IN_HAND_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:
@@ -6306,6 +6355,15 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} reflects {low:g} to "
                     f"{high:g} per cent of what a block removed. It reflects above "
                     f"0 and up to 100.")
+
+        # A BLAST'S VALUE IS A SHARE OF THE DEAD ENEMY'S MAXIMUM HEALTH, above 0
+        # and up to 100. Ruled 2026-10-07.
+        if action == BLAST_FROM_THE_DYING_ACTION:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} blasts for {low:g} "
+                    f"to {high:g} per cent of a dead enemy's maximum health. It "
+                    f"blasts for above 0 and up to 100.")
 
         # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
         if action in SKILL_IN_HAND_ACTIONS:

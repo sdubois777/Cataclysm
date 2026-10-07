@@ -2994,6 +2994,21 @@ class TestReflectAndTheBlockCount:
                 out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
             "reflect_blocked", "block", 20.0, 100.0, "", 0.0)
 
+    BLAST = {"Action": "blast_from_the_dying", "Action Event": "afflicted_death"}
+
+    def test_a_blast_from_the_dying_is_carried_through_with_no_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.reflect(tmp_path, dict(self.BLAST)))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "blast_from_the_dying", "afflicted_death", 20.0, 100.0, "", 0.0)
+
+    def test_a_blast_on_the_kill_event_is_refused(self, tmp_path):
+        # `kill` carries the slain enemy and its maximum health too, but its tags
+        # are the killing skill's and not the wearer's ailments on the body.
+        with pytest.raises(gen.DataError, match="whoever afflicted the dead enemy"):
+            gen.enchantment_effects(self.reflect(
+                tmp_path, dict(self.BLAST, **{"Action Event": "kill"})))
+
     def test_a_reflect_on_an_event_carrying_no_block_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="Only an event carrying"):
             gen.enchantment_effects(self.reflect(tmp_path, {"Action Event": "hit_taken"}))
