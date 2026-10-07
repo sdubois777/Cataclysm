@@ -33,6 +33,30 @@ blast in its turn within the same moment.
   creature 2 metres from it and passes no poison on. At ten that creature loses what a direct area hit of a fifth
   of the dead creature's maximum health takes from a creature built alike, and carries the poison.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 2 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | f3a00d53 | effect rows 519 to 520 |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: at ten pieces the creature beside the body
+lost nothing where 20,000 was expected, and did not carry the wearer's poison.
+
+**This layer changes no engine code and no generator code.** The guard proofs of the two layers below fail its
+test with theirs: the one that takes the amount from `afflicted_death` on 2 of its assertions, and the one that
+skips the copies on 1.
+
+**Where the ruling is recorded.** The sentence, verbatim, and the rulings of 2026-10-06 and 2026-10-07 are in the
+entry "An enemy that dies carrying the wearer's ailment can blast those near it", with the ruling of 2026-10-07
+that an enemy the blast kills blasts after it. The entry of the six-piece bonus said the ten-piece "still waits";
+that sentence is corrected in this change.
+
 ---
 
 ## 2026-10-07 — An enemy that dies carrying the wearer's ailment can blast those near it for a share of its maximum health and pass the wearer's ailments to them; no row authored here
@@ -1204,7 +1228,8 @@ One row on the stat the entry below this one adds. No engine code and no generat
 | Plague Doctor (6-Piece Bonus): When you apply a DoT to an enemy, all other DoTs you have on that enemy have their duration refreshed | `dot_application_refreshes_others` | flat | 1 |
 
 EnchantmentEffects 512 to 513, over 425 to 426 enchantments. Plague Doctor now has its two-piece and six-piece
-bonuses; its ten-piece bonus still waits.
+bonuses; its ten-piece bonus waited then and has been a row since 2026-10-07, in the entry "Plague Doctor's
+ten-piece bonus is built as a row".
 
 ### Tests
 
