@@ -7738,6 +7738,10 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "cooldown_reduction": ASKER_PASSES_NOTHING_MORE,
     "cooldown_skip_chance": ASKER_PASSES_NOTHING_MORE,
     "crowd_control_resistance": ASKER_PASSES_NOTHING_MORE,
+    # ASKED WHEN A TICK ARRIVES, WITH THE WEARER'S STATE AND NO BLOW RECORD: a tick
+    # is not a hit, so no condition of a blow taken can be judged on it. Probed
+    # under `while_moving`, 2026-10-07.
+    "damage_over_time_taken": ASKER_PASSES_NOTHING_MORE,
     "debuffs_do_not_expire": ASKER_PASSES_NOTHING_MORE,
     "dot_damage": ASKER_PASSES_NOTHING_MORE,
     "energy_shield_leech": ASKER_PASSES_NOTHING_MORE,

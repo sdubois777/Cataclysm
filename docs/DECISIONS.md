@@ -2,6 +2,77 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — A row on damage over time taken may carry a condition
+
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.**
+
+`damage_over_time_taken` is added to `CONDITIONED_STATS_WITH_AN_ASKER` in `tools/generate_datatables.py`, the list
+of stats a data row may state under a condition. Until now the generator refused such a row. The row this is for is
+"you take more damage over time while moving"; the entry of 2026-10-06 for damage over time on the wearer listed
+its `while_moving` row as not covered.
+
+**No game code changed.** The stat was already asked when a tick arrives, by `DefenderStat` in
+`CataclysmDamageCalculation.cpp`, with the wearer's own state. This layer adds the generator's permission and the
+probe that measures the ask.
+
+### What the asker passes: the wearer's state and nothing of a blow
+
+A tick is not a hit, so the lookup is passed no blow record, and the stat is listed with
+`ASKER_PASSES_NOTHING_MORE`. A row on it may carry a condition about the wearer (`while_moving`,
+`health_below`) and the generator still refuses one about a blow taken (`hit_is_spell`). A judgement of
+the writing session, read from the comment at the lookup: "`debuff_damage_suppressed` and
+`damage_over_time_taken` receive no blow record".
+
+### Tests
+
+- `ProbeConditionedDamageOverTimeTaken`, in `ConditionedProbes()` of `CataclysmStatExemptionTests.cpp`, run by
+  the test that runs every conditioned probe. One wearer carries `damage_over_time_taken` more 100 under
+  `while_moving`. A burn tick of 100 is resolved on the wearer standing, moving and standing again: moving it is
+  twice the standing figure, and standing again it is the standing figure. Moving is set with
+  `NoteMovedMetres` and standing with `NoteDidNotMove`, the two calls the movement sampler makes.
+- The pinned size of `ConditionedProbes()` moves from 8 to 9, in that test and in
+  `tools/tests/test_every_conditioned_stat_has_an_asker.py`.
+- **The test that runs every conditioned probe is renamed**, because its name stated the count:
+  `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed` becomes
+  `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`. The entry of 2026-10-06 that
+  introduced it names it as it was then.
+
+### What this does not cover
+
+- No data row is written; the row is the enchantment session's.
+- A condition about the arriving tick's source, since no blow record is passed.
+- `debuff_damage_suppressed`, the other lookup that passes no blow record, is not added.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Ta | `CataclysmDamageCalculation.cpp`: the tick's lookup reads the attribute and asks nobody | `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` | 1 performed, 1 failed, 1 failed assertion: the tick on the wearer moving was 100.000000 against 200.000000 | 1 performed, 1 succeeded |
+
+---
+
 ## 2026-10-07 — Class resource generation rate: one stat, `class_resource_generation`, scales every gain of class resource and no loss. Engine and stat name only; no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
