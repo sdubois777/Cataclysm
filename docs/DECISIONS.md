@@ -2,6 +2,63 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "DoTs on you tick twice as fast while moving" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The row the entry "A row on damage over time taken may carry a condition" of 2026-10-07 made writable, as the
+entries on damage over time on the wearer state it. The stat and the condition were read in the merged generator.
+No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Condition |
+| :-- | :-- | :-- | :-- | :-- |
+| DoTs on you tick twice as fast while moving | `damage_over_time_taken` | more | 100 | `while_moving` |
+
+EnchantmentEffects 543 to 544, over 456 to 457 enchantments.
+
+### HOW THE SENTENCE IS BUILT, AND WHERE THAT DIFFERS FROM ITS WORDS
+
+**The row doubles what each tick takes; it does not make ticks come twice as often.** Those entries ruled it so:
+over a time spent moving the damage taken is the same either way, and a tick's interval is not a figure a row can
+change today. The difference shows only in a count of ticks, which no row reads.
+
+**"Twice" is the row's 100**, by the wording rule that reads double and twice as a `more` of 100.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheTickTwiceAsFastWhileMovingRowDoublesDamageOverTimeTakenOnlyWhileItsWearerMoves`: the
+  real row worn. The test first asserts that the name it wears is a row of `EnchantmentsNegative.csv`. A figure of
+  100 stays 100 standing, becomes 200 moving, and is 100 again standing.
+
+**Not tested here:** a real tick on a moving wearer of the row; the probe of that entry resolves one with the stat
+set by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 1 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 78ac88c8 | effect rows 543 to 544 |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: moving, a figure of 100 stayed 100 where
+200 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The condition
+on the stat was probed by the session that allowed it.
+
+---
+
 ## 2026-10-07 — The two rows on how fast class resource is generated are built
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
