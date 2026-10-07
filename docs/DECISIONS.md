@@ -65,6 +65,35 @@ stopped completely, which is the case the sentence's player most often meets.
 
 **Not tested:** the two rows worn together.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 1 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | 3736413e | effect rows 522 to 523 |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**THE ENCHANTMENT CANNOT ROLL ON AN ITEM TODAY.** Its Weight in `EnchantmentsPositive.csv` is 0.0.
+`UCataclysmDropRoll::EnchantmentDrawWeight` prices a sheet weight that is not a whole number from 1 to 4 at
+nought, and a row priced at nought is left out of the draw (`CataclysmDropRoll.cpp`, "a zero takes the row out of
+the draw"). So the row is correct and unreachable until the weight changes. Read, not run. Two other enchantments
+carry a weight of nought: "Your HP regeneration continues at 50% effectiveness during combat" and "Class points
+spent in your primary tree are 10%-20% more effective". The weight was not changed here: ruled 2026-10-07, it is
+the owner's to decide.
+
+**The test fails against a table without its row and passes with it**: the attacker lost nothing where 500 was
+expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The action was
+proved by the layer that built it.
+
+**Accepted 2026-10-07 by the coordinating session:** worn with "Reflect 20%-100% of damage blocked back at
+attackers", both rows pay, so the attacker is paid twice.
+
 ---
 
 ## 2026-10-07 — "Burn effects you apply spread to 1-2 nearby enemies" is built as a row
