@@ -2,6 +2,67 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Enemies killed by you explode for the overkill amount" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The row the two entries on the overkill explosion of 2026-10-07 left to the session holding the design workbook,
+as the first of them states it. The action name was read in the merged code. No engine code and no generator code
+is changed here.
+
+| Sentence | Action | Event | Value |
+| :-- | :-- | :-- | :-- |
+| Enemies killed by you explode for the overkill amount | `explode_victim_for_overkill` | `kill` | 100 |
+
+EnchantmentEffects 539 to 540, over 452 to 453 enchantments.
+
+### THE NUMBER IS A JUDGED ONE
+
+The sentence states no number. 100 is the share of the overkill the explosion deals, and "the overkill amount" is
+all of it, as that entry rules. The enchantment joins the list of judged numbers in the row-text check. The
+action takes no roll and no trigger cooldown: every kill explodes.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the sentence is those entries': what the overkill of a blow is, how far the explosion reaches,
+that it does not critically strike or leech, that it fires none of the wearer's on-hit rows, and how a chain of
+explosions runs.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheOverkillExplosionRowHandsItsWearerTheWholeOfTheOverkillOnAKill`: the real row worn.
+  The test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. The wearer holds exactly
+  one action of that kind on `kill`, with a share of 100, and none when the item is taken off.
+
+**Not tested here:** an explosion from a worn row at a real kill; those entries test the explosion with the action
+set by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 2 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 61d09b98 | effect rows 539 to 540 |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: the wearer held no action of the kind
+where one was expected, and no share where 100 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The explosion
+was proved by the session that built it.
+
+---
+
 ## 2026-10-07 — The two rows on absorbed damage added to the next attack are built
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
