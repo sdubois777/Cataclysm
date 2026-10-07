@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Bleed damage you deal also leeches 10%-20% of its value as HP" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row, on the change of the entry below this one. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Bleed damage you deal also leeches 10%-20% of its value as HP | `life_leech` | flat | 10 to 20 | `Keyword.DoT.Bleed` |
+
+EnchantmentEffects 535 to 536, over 448 to 449 enchantments.
+
+### HOW THE SENTENCE IS READ
+
+- **"Bleed damage you deal"** is each tick of a bleed the wearer applied. The leech is asked of whoever applied
+  the bleed, so a minion's bleed leeches nothing for the wearer: it is asked of the minion, which carries none of
+  its owner's rows.
+- **"Also"**: it is added to whatever life leech the wearer has. A wearer with an unscoped life leech already
+  leeches from a bleed's ticks; this row adds 10 to 20 to that on a bleed's ticks alone.
+- **"Of its value"** is of what the tick took, health, shield and mana together, as every leech is.
+- **"As HP"** is life leech: paid into health over the leech's three seconds, not at once.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheBleedLeechRowLeechesFromABleedsTicksAndNotFromABurns`: the real row worn at its best roll.
+  The test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. Life leech asked about a
+  bleed is 20 above life leech asked about a burn, and asked about a burn it is what it is asked about no ailment.
+  As first written it ran ticks; see the window's run below.
+
+**Not tested:** the size of a payment at a rolled value; the real row through a real tick.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 1 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 32fa1f72 | effect rows 535 to 536 |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**TWO FAULTS IN THIS LAYER'S TEST WERE FOUND BY THE WINDOW, AND THE TEST WAS CHANGED TWICE.**
+
+- **A build fault.** The first build printed "Build: Failed - 33 actions, 30 files compiled" with one error:
+  "CataclysmEnchantmentEffectTests.cpp(17243,7): error C2039: 'SetHealth': is not a member of
+  'CataclysmSmallHalvesTest::FWorn'". The test file has two helpers named `FWorn` in two namespaces; the member
+  was read on the other one. Approved 2026-10-07 by the coordinating session, test file only: that line became
+  the two calls that set the maximum health and then the health.
+- **An assertion that was false of the helper's wearer.** With the build fixed, against the older assets, the
+  test printed "Expected 'a burn's ticks start no payment' to be 0, but it was 2". No row of this stack was in
+  the table, and the wearer still leeched from a burn's ticks. **The cause, read during the window and not run
+  as a separate measurement:** `UCataclysmEquipmentComponent::RefreshAttributes` ends in
+  `UCataclysmPlayerClassStats::ApplyTo` with `ChosenClass()`, which with no class asked for is
+  `StartingClassName`, "Ravager" (`CataclysmPlayerClassStats.cpp` line 66 and about line 1408), and
+  `game/Data/ClassStats.csv` gives the Ravager a life leech. It is unscoped, and an unscoped life leech leeches
+  from ticks. That is the game working. The fault was the test's: it asserted "none" on a wearer whose own lines
+  it had not read.
+- **Ruled 2026-10-07 by the coordinating session, because it changes what the test asserts:** the row test no
+  longer runs ticks. It reads the row as the other row tests do, and as a difference, so the wearer's own leech
+  is in every reading and cancels.
+
+**The test fails against a table without its row and passes with it**: life leech asked about a bleed was 0 above
+life leech asked about a burn, where 20 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.**
+
+**Not tested:** the real row through a real tick. The test of the layer below covers the tick path, with a scoped
+leech made by hand on a wearer whose every stat line is set by hand.
+
+---
+
 ## 2026-10-07 — A tick of an ailment tells the leech code which ailment it is; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the one call of
