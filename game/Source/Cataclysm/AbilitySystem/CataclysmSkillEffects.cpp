@@ -1125,6 +1125,9 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 	Delivery.bCannotBeRetaliatedAgainst = true;
 	Delivery.bCannotCriticallyStrike = true;
 	Delivery.bCarriesNoWeaponSubType = true;
+	// AND IT DOES NOT LEECH. Ruled 2026-10-07: the explosion is the consequence of a death and not a blow the
+	// killer struck, so the killer takes nothing back from it.
+	Delivery.bCannotLeech = true;
 
 	int32 Struck = 0;
 	for (AActor* Target : Caught)
