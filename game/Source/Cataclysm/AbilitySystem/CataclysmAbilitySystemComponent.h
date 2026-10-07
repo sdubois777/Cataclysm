@@ -1363,11 +1363,36 @@ public:
 	void GrantTemporaryAbsorb(float Amount);
 
 	/**
-	 * Add `Amount` to the temporary absorb, to no more than `Cap` in all, and never lowering what is held. For a
-	 * LATER layer that this change does not build: "Overheal converts to a temporary shield absorbing up to 10%-20%
-	 * of your max HP", whose cap is that share of maximum health. Nothing calls it yet outside a test.
+	 * Add `Amount` to the temporary absorb, to no more than `Cap` in all, and never lowering what is held. Called by
+	 * `NoteOverheal` below, and by nothing else outside a test.
 	 */
 	void AddTemporaryAbsorbUpTo(float Amount, float Cap);
+
+	/**
+	 * `overheal_absorb_percent_of_maximum_health`: the MOST the temporary absorb can hold from overheal, as a
+	 * percentage of maximum health. Ruled 2026-10-07 for "Overheal converts to a temporary shield absorbing up to
+	 * 10%-20% of your max HP", which is a `flat` line of 10 to 20 on it.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE AND NO BASE. `NoteOverheal` asks it with no tags, at each heal of health that did not
+	 * all fit. At nought, which is every character with no such row, nothing happens.
+	 */
+	static const TCHAR* OverhealAbsorbCapStat;
+
+	/**
+	 * A heal of this character's HEALTH offered `Overheal` points more than fitted. Adds them to the temporary
+	 * absorb through `AddTemporaryAbsorbUpTo`, to no more than `OverhealAbsorbCapStat` per cent of maximum health.
+	 *
+	 * CALLED FROM ONE PLACE: `UCataclysmRegeneration::TopUp`, for the health pool only, with what was offered after
+	 * everything that changes a heal's size, less what fitted under the heal's ceiling. So every heal that goes
+	 * through the top-up counts: regeneration, leech, a potion and a row's restore alike. Ruled 2026-10-07. A heal
+	 * that does not go through the top-up does not reach here, and a respawn's refill is one of those.
+	 *
+	 * ONE AMOUNT WITH THE CLOCK'S GRANT, ruled the same day. Each source raises the absorb to its own cap and never
+	 * lowers it, so a character already holding this cap or more, from either source, gains nothing here.
+	 *
+	 * NO DURATION, ruled the same day. What is added lasts until damage removes it or a respawn clears it.
+	 */
+	void NoteOverheal(float Overheal);
 
 	/** Take `Taken` from the temporary absorb, to no less than nothing. Called where a resolved blow is written. */
 	void SpendTemporaryAbsorb(float Taken);

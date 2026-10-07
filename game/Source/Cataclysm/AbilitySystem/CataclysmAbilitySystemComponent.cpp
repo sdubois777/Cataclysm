@@ -4289,6 +4289,34 @@ void UCataclysmAbilitySystemComponent::AddTemporaryAbsorbUpTo(float Amount, floa
 	}
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::OverhealAbsorbCapStat =
+	TEXT("overheal_absorb_percent_of_maximum_health");
+
+void UCataclysmAbilitySystemComponent::NoteOverheal(float Overheal)
+{
+	if (Overheal <= 0.0f)
+	{
+		return;
+	}
+
+	// THE ROW'S VALUE IS THE MOST THE ABSORB CAN HOLD FROM OVERHEAL, as a
+	// percentage of maximum health. Ruled 2026-10-07. NO TAGS: a heal is not a
+	// skill. THE FALLBACK IS NOUGHT, so a character with no such row gains
+	// nothing, which is every character today.
+	const float CapPercent =
+		StatForSkill(FName(OverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f);
+	const FGameplayAttribute MaxHealthAttribute = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (CapPercent <= 0.0f || !HasAttributeSetForAttribute(MaxHealthAttribute))
+	{
+		return;
+	}
+
+	// OF THE WHOLE MAXIMUM, as the clock's grant in `ApplyPoolAction` is, and
+	// not of what a reservation leaves. ADDED, UP TO THE CAP, AND NEVER LOWERED:
+	// holding the cap or more from any source, this changes nothing.
+	AddTemporaryAbsorbUpTo(Overheal, GetNumericAttribute(MaxHealthAttribute) * CapPercent / 100.0f);
+}
+
 void UCataclysmAbilitySystemComponent::SpendTemporaryAbsorb(float Taken)
 {
 	TemporaryAbsorb = FMath::Max(0.0f, TemporaryAbsorb - FMath::Max(0.0f, Taken));
