@@ -2539,6 +2539,38 @@ public:
 	static const TCHAR* AurasEndAtDeathStat;
 
 	/**
+	 * `class_resource_generation`: how fast this character's class resource is GAINED, as a percent of normal,
+	 * based at 100. Ruled 2026-10-07 for two sentences: "Your class resource generates 20%-40% faster" and "Your
+	 * class resource generates 30%-50% slower", each an `increased` line on it.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE. It is asked at the moment of each gain, by `ClassResourceGainScaled`, with no tags:
+	 * a generation rate is the character's and not a skill's. Its base is put on a player by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`; both rows are `increased`, so with no base under them the
+	 * stat would resolve to nought and nothing would ever be gained.
+	 */
+	static const TCHAR* ClassResourceGenerationStat;
+
+	/** `ClassResourceGenerationStat`'s base: a class resource is gained at its stated rate. */
+	static constexpr float NormalClassResourceGeneration = 100.0f;
+
+	/**
+	 * A change to the class resource pool, scaled by `ClassResourceGenerationStat` WHEN IT IS A GAIN.
+	 *
+	 * A positive change answers change x stat / 100, never below nought. A change of nought or less is answered
+	 * as it came: a loss, a spend and a decay are not generation, and neither sentence speaks of them.
+	 *
+	 * BEFORE THE CALLER'S CLAMP TO THE MAXIMUM, never after it, so a faster gain still stops at the maximum.
+	 *
+	 * CALLED WHERE THE POOL IS FILLED: the seven writes in `UCataclysmFervour` that gain, and `ApplyPoolAction`
+	 * for a row that grants class resource. It lives here, and not on `UCataclysmFervour`, because this
+	 * component's own .cpp calls it and does not include that header, while `CataclysmFervour.cpp` already
+	 * includes this one.
+	 *
+	 * A null component, or one that is not this project's subclass, answers the change as it came.
+	 */
+	static float ClassResourceGainScaled(const UAbilitySystemComponent* AbilitySystem, float Change);
+
+	/**
 	 * The three stats that give allies this character's damage buffs. Issue
 	 * #1833 group E part 4a, ruled 2026-10-02. Read by
 	 * `UCataclysmSharedBuffs::Step`; none has a gameplay attribute. Two are a
