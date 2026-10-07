@@ -2,6 +2,39 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Burn effects you apply spread to 1-2 nearby enemies" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row on the number the entry below this one lets a row hang on an ailment. No engine code and no generator
+code is changed here.
+
+| Sentence | Action | Ailment | Value |
+| :-- | :-- | :-- | :-- |
+| Burn effects you apply spread to 1-2 nearby enemies | `ailment_spread_on_application` | Burn | 1 to 2 |
+
+EnchantmentEffects 521 to 522, over 434 to 435 enchantments.
+
+### HOW THE SENTENCE IS READ
+
+- **"You apply"**: the count is asked of the wearer when the wearer applies a burn. A burn another character or a
+  minion applies spreads nothing for the wearer's row.
+- **"1-2"** is how many enemies, rolled on the item.
+- **"Nearby"** is within 5 metres of the burned enemy, the nearest first.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheBurnSpreadRowPassesABurnTheWearerAppliesToTheTwoNearestWithinFiveMetres`: the real
+  row worn at the top of its roll; a burn the wearer applies to a creature also goes to the creatures 1 and 2
+  metres from it, and not to the ones 3 and 6 metres from it.
+
+---
+
 ## 2026-10-07 — An ailment can pass to enemies near its target when it is applied, where a row gives it a count; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`SpreadOnApplication`,
