@@ -5,6 +5,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For UCataclysmDebuffs::BleedTag, which `TagsOfTick` adds for a tick marked as a bleed.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -66,6 +68,12 @@ const TCHAR* UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat = TEXT("zone_d
 const TCHAR* UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat = TEXT("zone_applies_effects_to_owner");
 const TCHAR* UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat = TEXT("zone_follows_owner_percent");
 const TCHAR* UCataclysmDamageCalculation::MinionsLeaveChaosPoolsStat = TEXT("minions_leave_chaos_pools");
+// Three about damage over time on the character who carries them. Ruled 2026-10-06. See the header.
+const TCHAR* UCataclysmDamageCalculation::AilmentImmunityStat = TEXT("ailment_immunity");
+const TCHAR* UCataclysmDamageCalculation::BleedDamageTakenFromEnergyShieldStat =
+	TEXT("bleed_damage_taken_from_energy_shield");
+const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenFromManaFirstStat =
+	TEXT("damage_over_time_taken_from_mana_first");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
 const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
@@ -111,6 +119,14 @@ namespace
 	 * is being hit rather than swinging. An empty container is the honest reading
 	 * and it is what the character sheet passes for the same stat.
 	 *
+	 * EXCEPT THE TAGS OF WHAT IS ARRIVING, FOR A DAMAGE OVER TIME TICK. Ruled
+	 * 2026-10-06. `Tags` is empty for every step about a hit. The steps about a
+	 * tick pass what `TagsOfTick` below gives: the ailment's own tag and the
+	 * damage over time parent. They are the tick's tags and not a skill's, so
+	 * "Bleed effects applied to you deal 30%-50% increased damage" is a row
+	 * requiring the bleed tag. A row with no required tags applies whatever is
+	 * passed, so every row that existed before reads as it did.
+	 *
 	 * A BLOW, FOR A STEP WHOSE MODIFIERS MAY ASK ABOUT THE HIT. Issue #666, then
 	 * #947. Pass `BlowOf(Hit)` wherever a row conditioned on the arriving hit
 	 * ought to reach the stat -- "you take 20% less damage from spells", "your
@@ -129,12 +145,13 @@ namespace
 	 */
 	float DefenderStat(const UAbilitySystemComponent* Defender,
 					   const TCHAR* Stat, float FromAttribute,
-					   const FCataclysmBlowContext& Blow = FCataclysmBlowContext())
+					   const FCataclysmBlowContext& Blow = FCataclysmBlowContext(),
+					   const FGameplayTagContainer& Tags = FGameplayTagContainer())
 	{
 		const UCataclysmAbilitySystemComponent* Asking =
 			Cast<const UCataclysmAbilitySystemComponent>(Defender);
 		return Asking
-			? Asking->StatForSkill(FName(Stat), FGameplayTagContainer(),
+			? Asking->StatForSkill(FName(Stat), Tags,
 								   FromAttribute,
 								   /*SkillHealthCostPercent=*/-1.0f, Blow)
 			: FromAttribute;
@@ -153,6 +170,35 @@ namespace
 	FCataclysmBlowContext BlowOf(const FCataclysmIncomingHit& Hit)
 	{
 		return UCataclysmDamageCalculation::BlowContextFor(Hit);
+	}
+
+	/**
+	 * The tags a defender's stat about a damage over time tick is asked with.
+	 * Ruled 2026-10-06.
+	 *
+	 * THE AILMENT'S OWN TAGS, which the hit carries, AND THE PARENT EVERY DAMAGE
+	 * OVER TIME HAS, so a row requiring `Keyword.DoT` reaches a tick with no
+	 * ailment: a ground zone's, a dungeon hazard's.
+	 *
+	 * AND THE BLEED TAG WHERE THE HIT IS MARKED A BLEED, so the boolean and the
+	 * tags cannot disagree for a hit somebody built with the boolean alone.
+	 *
+	 * ONLY FOR A TICK. A hit is asked with no tags, as before.
+	 */
+	FGameplayTagContainer TagsOfTick(const FCataclysmIncomingHit& Hit)
+	{
+		FGameplayTagContainer Tags = Hit.DamageOverTimeTags;
+		const FGameplayTag Parent = UCataclysmDamageCalculation::DamageOverTimeTag();
+		if (Parent.IsValid())
+		{
+			Tags.AddTag(Parent);
+		}
+		const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+		if (Hit.bIsBleed && Bleed.IsValid())
+		{
+			Tags.AddTag(Bleed);
+		}
+		return Tags;
 	}
 
 	/**
@@ -876,6 +922,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// hit's own nature picks which stats are read, exactly as `ResistanceFor`
 		// picks a resistance slot from the hit's damage type.
 		//
+		// SINCE 2026-10-06 THE TICK'S OWN STAT IS ASKED WITH THE TICK'S TAGS, so
+		// a row on `damage_over_time_taken` may require the bleed tag or the
+		// damage over time parent. See `TagsOfTick`. The stat every hit meets is
+		// still asked with none.
+		//
 		// FLOORED AT NOTHING RATHER THAN CLAMPED AT BOTH ENDS. There is no
 		// ceiling: taking more damage is a real thing for a node to grant and
 		// Communion of Pain grants it. A NEGATIVE would turn a hit into healing,
@@ -930,17 +981,40 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			}
 			else
 			{
+				// WITH THE TICK'S TAGS AND NO BLOW. Ruled 2026-10-06. The tags
+				// let a row name the ailment; the character's own conditions,
+				// `while_moving` among them, are read whatever is passed.
 				Damage *= FMath::Max(0.0f,
 					DefenderStat(Defender, DamageOverTimeTakenStat,
-								 Combat->GetDamageOverTimeTaken())) / 100.0f;
+								 Combat->GetDamageOverTimeTaken(),
+								 FCataclysmBlowContext(), TagsOfTick(Hit))) / 100.0f;
 			}
 		}
 	}
 
-	// 7. Mana, but only for damage over time and only for a character built for
-	// it. Routing damage to mana comes from an enchantment, so there is nothing
-	// to read here yet; the step is left in place and does nothing.
-	// See the issue on the affix pool.
+	// 7. Mana, but only for damage over time and only for a character carrying
+	// `damage_over_time_taken_from_mana_first`: "DoTs deal damage to your mana
+	// pool first". Ruled 2026-10-06. One point of mana for one point of damage,
+	// as far as the mana held goes. What is left carries on to the shield and to
+	// health exactly as the whole tick would have, so a bleed's remainder still
+	// passes the shield.
+	//
+	// AFTER EVERY MULTIPLIER ABOVE, so the mana pays for the damage the character
+	// would really have taken and not for what was sent.
+	//
+	// ONLY THE FIGURE IS DECIDED HERE. `UCataclysmVitalAttributeSet` takes it
+	// from the mana, beside the line that takes the shield's share.
+	//
+	// ASKED WITH THE TICK'S TAGS, as the tick's own stat above is, so a row may
+	// name one ailment. A creature carries no stat line and answers nought.
+	if (Hit.bIsDamageOverTime && Damage > 0.0f
+		&& DefenderStat(Defender, DamageOverTimeTakenFromManaFirstStat, 0.0f,
+						FCataclysmBlowContext(), TagsOfTick(Hit)) > 0.0f)
+	{
+		Result.AbsorbedByMana =
+			FMath::Min(FMath::Max(0.0f, Vitals->GetMana()), Damage);
+		Damage -= Result.AbsorbedByMana;
+	}
 
 	// 8. Energy shield. It absorbs every hit and every kind of damage over time
 	// EXCEPT BLEED, which passes straight to health. The project owner,
@@ -974,11 +1048,26 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		|| DefenderStat(Defender, ShieldAbsorbsDamageOverTimeStat,
 						Combat ? Combat->GetShieldAbsorbsDamageOverTime() : 0.0f)
 			> 0.0f;
-	if (bShieldApplies && Vitals->GetEnergyShield() > 0.0f)
+
+	// AND A SHARE OF A BLEED THE SHIELD WOULD LET THROUGH, for a character
+	// carrying `bleed_damage_taken_from_energy_shield`: "10%-20% of bleed damage
+	// you take is taken from your energy shield instead of your health". Ruled
+	// 2026-10-06. That percent of the tick is put to the shield, as far as the
+	// shield has it, and the rest goes to health as the whole of it did.
+	//
+	// THE WHOLE OF EVERYTHING ELSE, AS BEFORE. The share is one for every hit,
+	// for every tick that is not a bleed, and for a bleed on a character whose
+	// shield takes bleed whole, and the stat is not read for any of them.
+	const float ShieldShare = bShieldApplies
+		? 1.0f
+		: FMath::Clamp(
+			  DefenderStat(Defender, BleedDamageTakenFromEnergyShieldStat, 0.0f),
+			  0.0f, 100.0f) / 100.0f;
+	if (ShieldShare > 0.0f && Vitals->GetEnergyShield() > 0.0f)
 	{
 		const float Magic = Hit.bIsMagic ? 1.0f + SubtypeBonus / 100.0f : 1.0f;
 		Result.AbsorbedByShield =
-			FMath::Min(Vitals->GetEnergyShield(), Damage * Magic);
+			FMath::Min(Vitals->GetEnergyShield(), Damage * ShieldShare * Magic);
 		// Convert what the shield stopped back into raw damage, so the magic
 		// bonus never destroys more raw damage than the hit contained.
 		Damage = FMath::Max(0.0f, Damage - Result.AbsorbedByShield / Magic);

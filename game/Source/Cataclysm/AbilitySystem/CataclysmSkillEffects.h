@@ -1300,6 +1300,11 @@ public:
 	 * one leaves the running one alone and only refreshes how long it runs,
 	 * never shortening it, so the running one's ticks carry on.
 	 *
+	 * A TARGET CARRYING `ailment_immunity` FOR THIS AILMENT IS GIVEN NOTHING, and
+	 * false is returned: "Unaffected by bleeding", ruled 2026-10-06. It is asked
+	 * before anything else happens, so the applier's `dot_applied` event is not
+	 * raised. Converted damage (`bIsConvertedDamage`) is not refused.
+	 *
 	 * @param DamagePerTick  what ONE tick deals before the attacker's stats
 	 * @param DurationSeconds  before the attacker's duration stat
 	 * @param EffectTag    granted for the duration, and what makes it one stack
