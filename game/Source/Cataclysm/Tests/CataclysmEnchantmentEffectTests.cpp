@@ -17686,4 +17686,50 @@ bool FCataclysmClassResourceGenerationRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotsTickFasterWhileMovingRowTest,
+	"Cataclysm.Enchantments.TheTickTwiceAsFastWhileMovingRowDoublesDamageOverTimeTakenOnlyWhileItsWearerMoves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "DoTs on you tick twice as fast while moving". Issue #1833, ruled 2026-10-06
+ * and 2026-10-07: `damage_over_time_taken` more 100 under `while_moving`. The
+ * real row WORN: a figure of 100 is 200 while the wearer moves, and 100 before
+ * it has moved and after it stands again. Moving and standing are set with the
+ * two calls the movement sampler makes.
+ */
+bool FCataclysmDotsTickFasterWhileMovingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Negative_DoTs_on_you_tick_twice_as_fast_while_moving");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Stat(TEXT("damage_over_time_taken"));
+	const FGameplayTagContainer Burn = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.DoT.Burn"));
+	if (!TestTrue(TEXT("set-up: the burn tag exists"), Burn.Num() == 1))
+	{
+		return false;
+	}
+	Worn.ASC()->NoteDidNotMove();
+	TestEqual(TEXT("standing: 100 of a burn's damage stays 100"),
+		Worn.ASC()->StatAppliedTo(Stat, Burn, 100.0f), 100.0f, 0.01f);
+	Worn.ASC()->NoteMovedMetres(1.0f);
+	TestEqual(*(FString(TEXT("moving: 100 becomes 200.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Worn.ASC()->StatAppliedTo(Stat, Burn, 100.0f), 200.0f, 0.01f);
+	Worn.ASC()->NoteDidNotMove();
+	TestEqual(TEXT("standing again: 100 stays 100"),
+		Worn.ASC()->StatAppliedTo(Stat, Burn, 100.0f), 100.0f, 0.01f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
