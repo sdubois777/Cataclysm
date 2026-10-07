@@ -342,6 +342,10 @@ JUDGED_NUMBERS = {
     # health the cost took, returned as mana, so 100 of the amount the event
     # carried. "that amount" is all of it.
     "Positive_Skills_that_cost_HP_restore_that_amount_as_mana",
+    # "Void splinter stacks spread to nearby enemies when the afflicted enemy
+    # dies": every enemy within 5 metres, ruled 2026-10-06. The row's value is
+    # how many it passes to, and 100 is a count no pack reaches.
+    "Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh",
 }
 
 #: Enchantments whose sentence states A TOTAL and whose row grants what is
@@ -667,8 +671,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-06, from 506 over 420: one row on one enchantment.
 #: AND 511 OVER 424 SINCE THREE MORE PERSISTENT AREA SENTENCES,
 #: issue #1833, 2026-10-06, from 507 over 421: four rows on three enchantments.
-AUTHORED_ROWS = 511
-AUTHORED_ENCHANTMENTS = 424
+#: AND 512 OVER 425 SINCE THE ROW THAT PASSES A VOID SPLINTER ON AT A DEATH,
+#: issue #1833, 2026-10-06, from 511 over 424: one row on one enchantment.
+AUTHORED_ROWS = 512
+AUTHORED_ENCHANTMENTS = 425
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
