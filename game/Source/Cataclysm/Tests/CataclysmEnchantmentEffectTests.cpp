@@ -16703,4 +16703,50 @@ bool FCataclysmSpreadOnApplicationTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBurnSpreadRowTest,
+	"Cataclysm.Enchantments.TheBurnSpreadRowPassesABurnTheWearerAppliesToTheTwoNearestWithinFiveMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Burn effects you apply spread to 1-2 nearby enemies". Issue #1833, ruled
+ * 2026-10-06: `ailment_spread_on_application` on Burn, 1 to 2. The real row
+ * WORN at the top of its roll, 2: a burn the wearer applies to a creature also
+ * goes to the creatures 1 and 2 metres from it, and not to the ones 3 and 6
+ * metres from it.
+ */
+bool FCataclysmBurnSpreadRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	using namespace CataclysmSpreadOnDeathTest;
+	FWorn Worn(TEXT("Positive_Burn_effects_you_apply_spread_to_1_2_nearby_ene"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayTag Burn = Ailment(TEXT("Keyword.DoT.Burn"));
+	ACataclysmEnemyCharacter* Struck = Beside(Worn.World, 0.0f);
+	ACataclysmEnemyCharacter* One = Beside(Worn.World, 1.0f);
+	ACataclysmEnemyCharacter* Two = Beside(Worn.World, 2.0f);
+	ACataclysmEnemyCharacter* Three = Beside(Worn.World, 3.0f);
+	ACataclysmEnemyCharacter* Six = Beside(Worn.World, 6.0f);
+	if (!TestTrue(TEXT("set-up: the burn tag is registered"), Burn.IsValid())
+		|| !TestNotNull(TEXT("set-up: the creature the wearer burns"), Struck)
+		|| !TestNotNull(TEXT("set-up: the creature 1 metre from it"), One)
+		|| !TestNotNull(TEXT("set-up: the creature 2 metres from it"), Two)
+		|| !TestNotNull(TEXT("set-up: the creature 3 metres from it"), Three)
+		|| !TestNotNull(TEXT("set-up: the creature 6 metres from it"), Six)
+		|| !TestTrue(TEXT("set-up: the wearer burns the creature"), Ail(Worn.Wearer->Actor, Struck, Burn)))
+	{
+		return false;
+	}
+
+	TestTrue(*(FString(TEXT("the creature 1 metre from it is burned too.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Carries(One, Burn));
+	TestTrue(TEXT("and the one 2 metres from it"), Carries(Two, Burn));
+	TestFalse(TEXT("the one 3 metres from it is not: the row's count is two at the top of its roll"),
+		Carries(Three, Burn));
+	TestFalse(TEXT("nor the one 6 metres from it"), Carries(Six, Burn));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
