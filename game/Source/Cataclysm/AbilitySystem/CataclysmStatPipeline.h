@@ -4136,6 +4136,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bReflectBlocked = false;
 
 	/**
+	 * Set, this action DEALS A DIRECT HIT TO THE OTHER CHARACTER OF ITS EVENT: `Percent` is the hit's size as a
+	 * percentage of the wearer's attack damage. Ruled 2026-10-07 for "When you evade a ranged attack, throw an
+	 * attack dealing 20-70% of your attack damage at that enemy". For any event that names a living character
+	 * other than the wearer; `STRIKE_TARGET_EVENTS` in `tools/generate_datatables.py` lists them.
+	 *
+	 * THE HIT CANNOT BE EVADED and is otherwise an ordinary hit of the wearer's. See the row loop of
+	 * `UCataclysmAbilitySystemComponent::ActOnEvent`.
+	 */
+	bool bStrikeTarget = false;
+
+	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's
 	 * ailments that were on the body on them. Ruled 2026-10-07 for "Plague

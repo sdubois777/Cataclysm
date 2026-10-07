@@ -2,6 +2,323 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — A dodge names its attacker and says melee or ranged, and a new action, `strike_target`, deals the other character of an event a hit that cannot be evaded. Engine and generator only; no row authored
+
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** The rest of this entry was
+written before that run.
+
+**Said first, because a player may expect otherwise: the thrown hit is neither a melee attack, a ranged attack nor
+a spell.** It is dealt with no skill tags. So a worn row scoped to attacks of one kind ("melee attacks deal...",
+"your ranged attacks...") does not reach it; only a row with no scope does. Accepted by the coordinating session
+on 2026-10-07, a labelled judgement under the owner's delegation.
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the second form of
+`NoteEvaded`, the name `StrikeTargetAction`, and the action in the row loop of `ActOnEvent`);
+`CataclysmVitalAttributeSet.cpp` (the call of `NoteEvaded`, and the read of the new stamp);
+`CataclysmSkillEffects.h` and `.cpp` (`FCataclysmHitDelivery::bCannotBeEvaded` and its stamp
+`CannotBeEvadedDataName`; `bIsARowsAnswerToAnEvent` and its stamp `RowsAnswerToAnEventDataName`); `CataclysmStatPipeline.h` (`FCataclysmPoolAction::bStrikeTarget`);
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the loader); `tools/generate_datatables.py`
+(`STRIKE_TARGET_ACTION`, `STRIKE_TARGET_EVENTS`, `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`,
+`MAX_STRIKE_TARGET_PERCENT`, `_check_strike_target_action`); four tests in
+`game/Source/Cataclysm/Tests/CataclysmBlockReflectTests.cpp`, one in `CataclysmSkillTemplateTests.cpp`, and Python
+cases in three files under `tools/tests/`.
+
+### Said first: where the code did not match what the writing session was told
+
+- **No blow could be marked "cannot be evaded" by whoever deals it.** `FCataclysmHitDelivery` had no such field.
+  The evasion step of `UCataclysmDamageCalculation::Resolve` is skipped for area damage, for a tick of damage over
+  time, and for a blow whose `FCataclysmIncomingHit::bCannotBeEvaded` is set. That last flag was set in two places
+  only, both in `UCataclysmVitalAttributeSet`: from the Perfect Aim enemy modifier, and from the attacker's
+  `melee_evasion_suppressed` stat for a melee blow. So this layer adds a field to the delivery and a stamp on the
+  effect.
+- **A live blow's evasion roll cannot be pinned.** There is no `Cataclysm.EvasionRoll`. The attribute set passes
+  `-1` to `Resolve`, which then rolls. The tests make an evade certain with an evasion of 1000 and impossible with
+  an evasion of 0. The roll is from 0 to 100 and the attribute is not clamped.
+- **The reflect's tests are in `CataclysmBlockReflectTests.cpp`**, and that file ends with
+  `#endif // WITH_DEV_AUTOMATION_TESTS`. Four of the new tests are appended there, because it holds the fighters
+  and the pins those tests use.
+- **A hit dealt inside the row loop is still announced.** `ActOnEvent` broadcasts `OnActionEvent` before it
+  returns for being already running. So the events are raised and heard by that one listener, and no row acts on
+  them. The section "What a hit dealt by the action does and does not raise" below gives the detail.
+
+### What it is for
+
+"When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at that enemy", the row
+`Positive_When_you_evade_a_ranged_attack_throw_an_attack` in `game/Data/EnchantmentsPositive.csv`. It has no
+effect row. This layer writes none. It builds what a row needs: the `dodge` event did not say who attacked or
+what kind of blow was evaded, and no action dealt a hit to one named character.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. "Ranged" is any attack that is not melee, spells included.
+2. The `dodge` event carries a melee-or-ranged tag and the attacker.
+3. "Throw an attack" is a direct hit on that enemy priced at 20 to 70 percent of the wearer's attack damage, NOT a
+   projectile.
+4. It cannot be evaded back into a loop and raises no dodge event of its own.
+5. The action that hits the event's character is GENERAL (not named for dodge): say in the entry which other
+   events could use it.
+
+The five are quoted as they were given to the writing session.
+
+### How it is built
+
+**The event.** `UCataclysmAbilitySystemComponent::NoteEvaded(const AActor* Attacker, bool bMelee)` is new.
+`UCataclysmVitalAttributeSet` calls it where it called `NoteEvaded()`, with
+`UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext())` and `Hit.bIsMelee`. `Hit.bIsMelee` is read
+from the tag `Type.Melee` on the damage effect, further up the same function. The form raises `dodge` with the
+attacker as the event's other character and with one tag: `Type.Melee` when the blow was melee, and `Type.Ranged`
+when it was not. A blow never gives both and never gives neither. A blow that carries both tags counts as melee.
+
+**The attacker is the one the blocked-blow notice names.** `AttackerOf` gives the effect's instigator. For a
+minion's blow it gives the minion, and it gives the summoner when the summoner holds the Conduit keystone.
+
+**`NoteEvaded()` with no arguments is kept.** Tests call it, and `CataclysmDeathTests.cpp` holds it in a table of
+member pointers. It raises `dodge` with no tags and no character.
+
+**How a row states "ranged".** The row puts `Type.Ranged` in Required Tags. `PoolActionAllowed` passes a row only
+when the event's tags hold every tag the row requires, and it refuses a row with Required Tags on an event that
+passes no tags. So a row scoped to `Type.Ranged` acts on an evaded blow that was not melee, does not act on an
+evaded melee blow, and does not act on the no-argument form. A `dodge` row with no Required Tags acts on every
+evaded blow, as before. **`Type.Projectile` in Required Tags would never match**: the event carries
+`Type.Ranged` or `Type.Melee` and no other tag. The enchantment's own tag list has `Type.Projectile` in it.
+
+**The action.** `strike_target`, held as `UCataclysmAbilitySystemComponent::StrikeTargetAction` and
+`STRIKE_TARGET_ACTION`, carried on `FCataclysmPoolAction::bStrikeTarget` and filled by the loader in
+`CataclysmItem.cpp`. In the row loop of `ActOnEvent` it deals one hit to the event's other character with
+`UCataclysmSkillEffects::ApplyHit(Self, Other, Action.Percent, FGameplayTagContainer(), Delivery)`. It acts only
+on an event that landed, once per row per event, when the row's trigger cooldown is ready, and only when the
+event names a character that is not the wearer and is not dead.
+
+**Why `ApplyHit` and not `ApplyDirectDamage`.** `ApplyHit` takes a percentage and prices it: the wearer's weapon
+damage times the percentage, through the wearer's increases and multipliers. That is what a skill's damage
+percentage means and what the nearby smite's "100% weapon damage" means, so "20-70% of your attack damage" is
+read the same way. `ApplyDirectDamage` takes an amount already worked out and prices nothing. The reflect uses it
+because its amount is a share of what the block removed.
+
+**Why the hit cannot be evaded.** The delivery sets `bCannotBeEvaded`. `ApplyTypedSpec` stamps the effect with
+`Cataclysm.CannotBeEvaded`. The struck character's attribute set reads the stamp into
+`FCataclysmIncomingHit::bCannotBeEvaded`, and `Resolve` skips the evasion step. `Resolve` sets `bEvaded` only
+inside that step. So the struck character never reports this hit evaded, never reaches `NoteEvaded` for it, and
+raises no `dodge` for it. That is ruling 4.
+
+**It is not marked the consequence of a death.** That mark is for effects at a death.
+
+**The generator.** `_check_strike_target_action` accepts the action on the events in `STRIKE_TARGET_EVENTS` and
+refuses a Fraction Of, a Value Kind and a Scale. The value is above 0 and up to `MAX_STRIKE_TARGET_PERCENT`,
+1000. The action is listed in `takes_a_trigger_cooldown`, so a row on a hit-fired event waits the default 0.25
+seconds between firings unless it states a Trigger Cooldown, and 0 is none. `dodge` is a hit-fired event.
+
+### The events that carry a character, which is the answer to ruling 5
+
+Read from every call of `ActOnEvent` outside the tests that passes a fifth argument. Eleven events carry a
+character. `strike_target` is allowed on eight:
+
+| Event | The character it carries | Raised in |
+|---|---|---|
+| `hit_dealt` | the enemy the wearer struck | `ACataclysmPlayerCharacter::OnSomethingWasHit` |
+| `first_hit_dealt` | the same, on the wearer's first blow to get through to it | the same |
+| `critical_strike` | the same, on a critical strike | the same |
+| `deployable_hit` | the enemy the wearer's deployable struck | `CataclysmMinion.cpp` |
+| `retaliation_dealt` | the attacker retaliation was paid to | `UCataclysmRetaliation::Pay` |
+| `block` | the attacker whose blow was blocked | `NoteBlocked(Attacker, DamageBlocked)` |
+| `melee_hit_taken` | the attacker whose melee blow was taken | `NoteMeleeHitTaken(bLanded, Attacker)` |
+| `dodge` | the attacker whose blow was evaded | `NoteEvaded(Attacker, bMelee)`, new |
+
+It is refused on three, listed in `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`:
+
+| Event | The character it carries | Why a strike is refused |
+|---|---|---|
+| `kill` | the enemy the wearer killed | it is dead, and the action does not strike the dead |
+| `afflicted_death` | the enemy that died carrying the wearer's ailment | the same |
+| `gadget_destroyed` | the wearer's own machine | it is the wearer's |
+
+Every other event carries no character, and the action would strike nobody on it.
+
+### What a hit dealt by the action does and does not raise
+
+A consequence of where the hit is dealt, and not a fault. `ActOnEvent` runs its rows one level deep: while it is
+running, a second call returns at once. The hit is dealt from inside the row loop.
+
+**On the wearer, when the wearer is a player.** `ACataclysmPlayerCharacter::OnSomethingWasHit` hears the hit and
+calls `ActOnEvent` for `hit_dealt`, for `first_hit_dealt` if it is the wearer's first blow to get through to that
+enemy, and for `critical_strike` if it was one. Each call broadcasts `OnActionEvent`, which the pawn uses to ask
+again for its movement speed, and then returns. **No row of the wearer's acts on any of the three.**
+
+**If the hit kills.** `ACataclysmPlayerCharacter::OnSomethingDied` runs as for any kill of the wearer's. It still
+counts the kill on the player state and on the worn weapons, still calls
+`UCataclysmRisenImps::RiseOnNecrosisKill`, still calls `UCataclysmFervour::RestoreHealthOnKillAtNoCost` and
+`GainOnEnemyDeathNearby`, and still ends crowd control applied by the victim for a wearer with that stat. Its
+calls of `ActOnEvent` for `kill` and `nearby_death` return at once, so **no `kill` row and no `nearby_death` row
+of the wearer's acts**, and `TakePendingOverkillExplosionSharePercent` answers nought while a call is running, so
+the body does not explode for its overkill. It is not a Follow Through kill, because the hit carries no melee
+tag. One event is kept and not dropped: `afflicted_death` waits in `ActOnEvent`'s queue and its blast rows act
+when the loop has returned.
+
+**The hit is NOT recorded as the wearer's first blow on that enemy.** Ruled 2026-10-07, a labelled judgement by the
+coordinating session under the owner's delegation. As first written, `NoteStruckBy` recorded it, as for any blow
+that gets through; the wearer's next real blow on that enemy was then not its first, and a `first_hit_dealt` row
+never acted for that enemy at all, because the first blow was this hit and its `first_hit_dealt` was raised while
+the loop ran. That silently removed a row's effect for every enemy the wearer evaded first. The hit now carries a
+mark of its own, `FCataclysmHitDelivery::bIsARowsAnswerToAnEvent` ("a blow a row struck in answer to an event"),
+stamped on the effect, and `UCataclysmVitalAttributeSet` skips `NoteStruckBy` for it. NOT the mark for a
+consequence of a death: this is a blow the character struck. Every use of `strike_target`, on any event, carries
+it. A condition that asks whether the target has been struck by the wearer also answers no after the row's hit
+alone.
+
+**On the character struck.** It takes a hit: `hit_taken` is raised on it and its count of hits taken moves. It
+can block the hit, and then its `block` is raised with the wearer as the attacker. It pays retaliation if it has
+any. It raises no `dodge`, and no `melee_hit_taken`, because the hit carries no melee tag.
+
+**No loop.** The struck character cannot evade the hit. If it wears rows of its own that strike back, their hit
+on the wearer raises events on the wearer while the wearer's loop is still running, and those return at once.
+
+### For the owner's play-check
+
+- **The thrown hit is an ordinary hit of the wearer's, apart from not being evadable.** It can critically strike,
+  it leeches, it can be retaliated against and blocked, and it carries the weapon sub-type and the wearer's
+  unscoped ailment chances. Accepted 2026-10-07: the sentence says "throw an attack".
+- **It spends the wearer's stored absorbed damage** ("next attack"), beside the three procs that do, and not
+  Nothing Wasted's store.
+- **It fires none of the wearer's own on-hit, critical strike or kill rows**, and a kill it makes does not
+  explode for its overkill. An enemy it kills that carried the wearer's ailment still makes its plague blast.
+- **It does not use up the wearer's first hit on that enemy.**
+
+### Judgements by the writing session, each accepted on 2026-10-07 by the coordinating session under the owner's delegation
+
+1. **The name is `strike_target`.** "Target" is the word `dot_remaining_target` uses for the other character of
+   an event.
+2. **The hit cannot be evaded on every event, not only on `dodge`.** One action with one delivery.
+3. **A new field on the delivery, and not area damage.** Setting `bIsArea` would also skip the evasion step. Area
+   damage is a different fact about a blow, and other rules read it.
+4. **Nothing else on the delivery is set.** So the hit can critically strike, at the chance the wearer's own
+   attribute holds, since no skill is behind it. It leeches. It can be retaliated against. It carries the weapon
+   sub-type of the weapon in the wearer's hand. It carries the wearer's unscoped chances to apply an ailment. It
+   can be blocked. This is what the nearby smite's hits are. It is the smallest choice: the sentence calls it an
+   attack and says nothing against any of these.
+5. **It is neither melee nor ranged nor a spell.** It is dealt with no skill tags and neither flag. So a row of
+   the wearer's scoped by a skill tag does not reach it, and the struck character's rows about melee blows or
+   ranged blows taken do not see it.
+6. **It spends the wearer's stored absorbed damage.** `ApplyHit` adds those stores to "the next attack", ruled
+   2026-10-07 as any hit that is not a spell and not a tick. This hit is one. It does not spend Nothing Wasted's
+   store, which a melee blow spends.
+7. **A blow carrying both the melee tag and the ranged tag is evaded as a melee blow.** Ruling 1 makes ranged
+   "not melee", so melee is asked first.
+8. **It does not strike the dead, the wearer, or nobody.** A projectile's firer can be dead when the projectile is
+   evaded. An event whose other character is the wearer strikes nobody.
+9. **It takes a trigger cooldown**, the default 0.25 seconds on a hit-fired event, as the reflect does.
+10. **Once per row per event.** Two worn copies of one row strike once, as two copies of a reflect do.
+11. **The eight events and the three refused**, as the tables above give them.
+12. **The bound is 1000 per cent**, the nearby smite's.
+13. **The no-argument `NoteEvaded()` carries no tags**, so a scoped `dodge` row does not act on it. No game code
+    calls it after this change.
+
+### Research
+
+No source was read for this layer. It adds no formula shape: the hit is priced by `ApplyHit` as every hit is.
+What it adds is who an event names and one action. Whether a thrown counter-attack can critically strike or
+leech in other games was not looked up; judgement 4 is a judgement.
+
+### Tests
+
+**All five ran and passed in the window of 2026-10-07; see "Run".** Five Unreal tests, each comparing an amount with a control. The first four use bare fighters whose
+blows go through `ApplyHit`, the damage calculation and the attribute set. In each, the wearer stands at the
+origin, the attacker 4 m east of it and the control fighter 8 m east.
+
+- `Cataclysm.StrikeTarget.AnEvadedRangedBlowStrikesItsAttackerForTheRowsShareAndAMeleeOneStrikesNobody`. The
+  amount is what a plain hit of 40% of the wearer's attack takes from the control fighter. With no row worn, an
+  evaded ranged blow costs the attacker nothing. With a 40% row scoped to ranged, an evaded ranged blow costs the
+  attacker that amount, an evaded melee blow costs it nothing, an evaded spell costs it that amount, and a ranged
+  blow that is not evaded costs it nothing.
+- `Cataclysm.StrikeTarget.TheHitLandsOnAnAttackerThatEvadesAnOrdinaryBlowAndRaisesNoDodgeOfItsOwn`. The attacker
+  always evades and counts its own dodges with a stack row. The control is an ordinary hit of the same size on
+  it: evaded, nothing taken, one dodge counted. The row's hit then takes from it what a plain hit takes from a
+  fighter with no evasion, and its count of dodges stays one.
+- `Cataclysm.StrikeTarget.ADodgeRowScopedToRangedCountsARangedEvadeAndNotAMeleeOne`. Three stack rows on `dodge`:
+  scoped to ranged, scoped to melee, and unscoped. Their counts are read after an evaded melee blow, an evaded
+  ranged blow, an evaded spell and the no-argument notice. Then, with a strike row, a ranged dodge naming nobody
+  costs the attacker nothing and the same dodge naming the attacker costs it the plain hit's amount.
+- `Cataclysm.StrikeTarget.TheSameActionOnABlockStrikesTheAttackerWhoseBlowWasBlocked`. A 50% row on `block`. A
+  blocked blow costs the attacker what a plain hit of 50% takes from the control fighter. A blow that is not
+  blocked costs it nothing.
+- `Cataclysm.StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows`, in
+  `CataclysmSkillTemplateTests.cpp`. A real player character at the origin, the attacker 4 m along +X, a control
+  creature 30 m along +Y. The player wears the row and two rows that count `hit_dealt` and `first_hit_dealt`. The
+  control is a blow the player struck outside any event, delivered as the row delivers its own: each event once,
+  and what it takes is the amount. The attacker's ranged blow is evaded, the row's hit takes that amount from the
+  attacker, and both counts stay at one. The player's next real blow on the attacker then raises `hit_dealt` and
+  `first_hit_dealt`, two of each: the row's hit was not recorded as a first blow.
+
+Python: `TestStrikeTarget` in `tools/tests/test_generate_datatables.py` holds the generator's cases. The row on
+`dodge` with `Type.Ranged` is carried through with the default wait. Each of the eight events is accepted. `kill`,
+`afflicted_death`, `gadget_destroyed`, `hit_taken`, `skill_use`, the timed event and no event are refused. A
+size of nought or past the bound is refused, and so are a fraction, a value kind and a scale.
+`test_every_event_a_strike_may_hang_on_is_fired_with_a_character` in
+`tools/tests/test_pool_action_names_match_the_engine.py` reads every call of `ActOnEvent` and fails if the events
+raised with a character are not exactly the eight and the three. The action's name is compared on both sides in
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`.
+
+### Not covered by a test
+
+- That a dead attacker is not struck, and that an event naming the wearer strikes nobody.
+- The trigger cooldown on a strike row, and two worn copies of one row striking once.
+- A minion's blow evaded: which of the minion and its summoner the event names is `AttackerOf`'s, and is read
+  here and not run.
+- A kill made by the row's hit: everything said above about `OnSomethingDied` is read from the code.
+- That the hit can critically strike, leech, be blocked and be retaliated against. Each is the absence of a flag.
+- The loader's line in `CataclysmItem.cpp`. No data row uses the action, so no test builds the action from a row.
+- The events other than `dodge` and `block`. The Python test shows each is raised with a character.
+- The generator does not check that an event can satisfy a row's Required Tags. A row on `block` with Required
+  Tags would validate and never act, because `block` passes no tags.
+
+### What the row needs, for the session that writes rows
+
+| Column | Value |
+|---|---|
+| Enchantment | `Positive_When_you_evade_a_ranged_attack_throw_an_attack` |
+| Stat | empty |
+| Action | `strike_target` |
+| Action Event | `dodge` |
+| Required Tags | `Type.Ranged`, and not `Type.Projectile` |
+| Value Low, Value High | 20, 70 |
+| Value Kind, Fraction Of, Scale | empty; each is refused |
+| Trigger Cooldown | empty for the default 0.25 seconds on a hit-fired event, or 0 for none. The sentence states none; which of the two it means is the row's session's to decide |
+
+### Run
+
+One window on 2026-10-07 for a stack of four, at `feat/overheal-becomes-absorb` 78b4806d: the attacker on dodge with
+`strike_target`, the trap counts and the armour reading, the temporary absorb, and overheal, in that order.
+Development was f0295305. One attempt; nothing was corrected during it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3319 tests performed, 3319 succeeded, 0 failed`; `Declared: 3319 tests in the tree at 78b4806d; 3319 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5865 passed, 8 skipped in 352.47s`; JUnit `tests="5873" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development f0295305's content with nothing failed.**
+
+**How the four layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the
+overlay's text and fraction functions for the absorb, the character sheet note's code, the trap layer's Python
+changes, and the overheal probe; their tests passed.
+
+**Guard proofs, at 78b4806d, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Da | `CataclysmAbilitySystemComponent.cpp`: the row's hit can be evaded | `Cataclysm.StrikeTarget.TheHitLandsOnAnAttackerThatEvadesAnOrdinaryBlowAndRaisesNoDodgeOfItsOwn` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| Db | `CataclysmVitalAttributeSet.cpp`: every evaded blow is announced as melee | `Cataclysm.StrikeTarget.ADodgeRowScopedToRangedCountsARangedEvadeAndNotAMeleeOne` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| Dc | `CataclysmVitalAttributeSet.cpp`: the row's hit is recorded as the wearer's first blow | `Cataclysm.StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows` | 1 performed, 1 failed, 1 failed assertion: `first_hit_dealt` was raised 1 time against 2 | 1 performed, 1 succeeded |
+
+**Not run:** the row read from the effect table, since no row exists; a kill made by the row's hit; a minion's
+evaded blow.
+
+---
+
 ## 2026-10-07 — "DoTs on you tick twice as fast while moving" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),

@@ -1481,6 +1481,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bBlastFromTheDying = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::BlastFromTheDyingAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT STRIKES THE EVENT'S OTHER CHARACTER. Ruled 2026-10-07.
+					// The value is the hit's size, a percentage of attack damage.
+					Action.bStrikeTarget = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeTargetAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

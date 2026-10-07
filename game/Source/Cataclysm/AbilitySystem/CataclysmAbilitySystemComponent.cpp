@@ -2770,6 +2770,29 @@ void UCataclysmAbilitySystemComponent::NoteEvaded()
 	ActOnEvent(FName(TEXT("dodge")));
 }
 
+void UCataclysmAbilitySystemComponent::NoteEvaded(const AActor* Attacker, bool bMelee)
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastEvadeAtSeconds = World->GetTimeSeconds();
+	}
+
+	// ONE TAG, AND ALWAYS ONE OF THE TWO. Ruled 2026-10-07: "ranged" is any attack
+	// that is not melee, spells included. So the event says melee when the blow
+	// carried `Type.Melee` and ranged otherwise, and a row scopes itself with
+	// Required Tags. `PoolActionAllowed` refuses a scoped row on an event with no
+	// tags, which is what the form above still is.
+	FGameplayTagContainer KindOfBlow;
+	const FGameplayTag MeleeOrRanged = bMelee ? UCataclysmDamageCalculation::MeleeTag()
+											  : UCataclysmDamageCalculation::RangedTag();
+	if (MeleeOrRanged.IsValid())
+	{
+		KindOfBlow.AddTag(MeleeOrRanged);
+	}
+
+	ActOnEvent(FName(TEXT("dodge")), &KindOfBlow, /*EventAmount=*/0.0f, /*bLanded=*/true, Attacker);
+}
+
 float UCataclysmAbilitySystemComponent::SecondsSinceEvaded() const
 {
 	const UWorld* World = GetWorld();
@@ -3645,6 +3668,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::UseHitsItsUserAction = TEXT("use_
 const TCHAR* UCataclysmAbilitySystemComponent::UseBackfiresAction = TEXT("use_backfires");
 const TCHAR* UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction =
 	TEXT("explode_victim_for_overkill");
+const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -4872,6 +4896,41 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				Delivery.bCannotLeech = true;
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Attacker, Reflected, Delivery);
 				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// A DIRECT HIT ON THE EVENT'S OTHER CHARACTER, at the row's value as a percentage of the wearer's attack
+		// damage. Ruled 2026-10-07 for "When you evade a ranged attack, throw an attack dealing 20-70% of your
+		// attack damage at that enemy": a direct hit and not a projectile. Landed only, once per row per event,
+		// and only for an event that names a character other than the wearer who is still alive.
+		//
+		// PRICED BY `ApplyHit`, as a skill's damage percentage is and as a nearby smite's is: weapon damage times
+		// the percentage, through the wearer's own increases. With no skill tags, so only unscoped rows reach it.
+		//
+		// IT CANNOT BE EVADED, so the character struck never evades it and never raises a `dodge` for it. AND IT IS
+		// MARKED A ROW'S ANSWER TO AN EVENT, so it is not recorded as the wearer's first blow on that character.
+		// Everything else about it is an ordinary hit of the wearer's.
+		//
+		// DEALT INSIDE THIS LOOP, which runs one level deep. The hit's own announcements reach `ActOnEvent`
+		// while this call is running and are dropped: it acts on none of the wearer's `hit_dealt`,
+		// `first_hit_dealt`, `critical_strike` or `kill` rows.
+		if (Action.bStrikeTarget)
+		{
+			AActor* Other = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Other && Self && Other != Self && Action.Percent > 0.0f
+				&& !UCataclysmSkillEffects::IsDead(Other)
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				FCataclysmHitDelivery Delivery;
+				Delivery.bCannotBeEvaded = true;
+				// AND IT IS NOT RECORDED AS THE WEARER'S FIRST BLOW ON THAT CHARACTER. Ruled 2026-10-07: recorded
+				// here, while no row of the wearer's can act, it would remove a `first_hit_dealt` row's effect
+				// for every enemy this row strikes first.
+				Delivery.bIsARowsAnswerToAnEvent = true;
+				UCataclysmSkillEffects::ApplyHit(Self, Other, Action.Percent, FGameplayTagContainer(), Delivery);
 			}
 			continue;
 		}

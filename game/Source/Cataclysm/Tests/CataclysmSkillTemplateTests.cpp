@@ -21259,4 +21259,107 @@ bool FCataclysmBlastIsNotTheWearersBlowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeTargetActsOnNoOnHitRowTest,
+	"Cataclysm.StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-07 for "When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at
+ * that enemy". A real player character wears a `strike_target` row on `dodge`, scoped to ranged, and two rows that
+ * each grant a stack when `hit_dealt` and `first_hit_dealt` are heard.
+ *
+ * THE ROW'S HIT IS DEALT WHILE THE WEARER IS ACTING ON AN EVENT, and a character acts on one event at a time. So
+ * the hit is announced, the pawn raises `hit_dealt` for it, and the row for that does not act.
+ *
+ * THE CONTROL IS A BLOW THE PLAYER STRUCK OUTSIDE AN EVENT, delivered as the row delivers its own, on a creature
+ * 30 m away: each event once. What that blow takes is also the amount the row's hit is measured against, so
+ * nothing here assumes a creature's defences are nought.
+ *
+ * AND THE ROW'S HIT IS NOT RECORDED AS THE WEARER'S FIRST BLOW ON THE ATTACKER, ruled 2026-10-07. The player's next
+ * real blow on that creature raises `hit_dealt` and `first_hit_dealt`: two of each.
+ *
+ * THE PLAYER ALWAYS EVADES: its evasion is 1000, and a blow's evasion roll is from 0 to 100. The creature's blow
+ * is 50 of direct damage marked ranged, so it does not depend on the creature's attack.
+ *
+ * STANDING: the player at the origin; the attacker 4 m along +X; the control creature 30 m along +Y.
+ */
+bool FCataclysmStrikeTargetActsOnNoOnHitRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	const float Plenty = 1000.0f;
+	ACataclysmEnemyCharacter* Attacker = CreatureAt(World, FVector(4 * M, 0, 0), Plenty);
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), Plenty);
+	if (!TestNotNull(TEXT("set-up: the attacker"), Attacker) || !TestNotNull(TEXT("set-up: the control creature"), Far))
+	{
+		return false;
+	}
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 1000.0f);
+
+	const FName Hits(TEXT("Test:hits"));
+	const FName FirstHits(TEXT("Test:first-hits"));
+	FCataclysmPoolAction Strike;
+	Strike.Event = FName(TEXT("dodge"));
+	Strike.Pool = FName(UCataclysmAbilitySystemComponent::StrikeTargetAction);
+	Strike.Percent = 40.0f;
+	Strike.TriggerKey = FName(TEXT("Test:strike"));
+	Strike.bStrikeTarget = true;
+	Strike.RequiredTags.AddTag(UCataclysmDamageCalculation::RangedTag());
+	Wearer.AbilitySystem->SetPoolActions({Strike, CountOn(TEXT("hit_dealt"), Hits),
+										  CountOn(TEXT("first_hit_dealt"), FirstHits)});
+
+	FCataclysmHitDelivery AsTheRowDelivers;
+	AsTheRowDelivers.bCannotBeEvaded = true;
+
+	// THE CONTROL, AND THE AMOUNT: a blow of 40% the player struck outside any event.
+	UCataclysmSkillEffects::ApplyHit(Wearer.Character, Far, /*DamagePercent=*/40.0f, FGameplayTagContainer(),
+									 AsTheRowDelivers);
+	const float Measured = Plenty - HealthOf(Far);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: a blow of 40%% delivered as the row's takes %.2f"), Measured),
+				  Measured > 0.0f)
+		|| !TestEqual(TEXT("control: a blow the player struck raises hit_dealt once"),
+					  Wearer.AbilitySystem->OwnStacksHeld(Hits), 1)
+		|| !TestEqual(TEXT("control: and first_hit_dealt once"), Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 1))
+	{
+		return false;
+	}
+
+	// THE ATTACKER'S RANGED BLOW, WHICH THE PLAYER EVADES.
+	FCataclysmHitDelivery Ranged;
+	Ranged.bIsRanged = true;
+	FCataclysmDamageResult Resolved;
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Wearer.Character, /*Damage=*/50.0f, Ranged, &Resolved);
+	if (!TestTrue(TEXT("set-up: the player evaded the attacker's ranged blow"), Resolved.bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the row's hit took from the attacker what the measured blow of 40% took"),
+			  Plenty - HealthOf(Attacker), Measured, 0.01f);
+	TestEqual(TEXT("hit_dealt is still at one: the row's hit acted on no hit_dealt row"),
+			  Wearer.AbilitySystem->OwnStacksHeld(Hits), 1);
+	TestEqual(TEXT("first_hit_dealt is still at one"), Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 1);
+
+	// AND THE ROW'S HIT WAS RECORDED AS THE WEARER'S BLOW ON THE ATTACKER.
+	UCataclysmSkillEffects::ApplyHit(Wearer.Character, Attacker, /*DamagePercent=*/40.0f, FGameplayTagContainer(),
+									 AsTheRowDelivers);
+	TestEqual(TEXT("the player's real blow on the attacker raises hit_dealt: two now"),
+			  Wearer.AbilitySystem->OwnStacksHeld(Hits), 2);
+	TestEqual(TEXT("and first_hit_dealt, because the row's hit was not recorded as a first blow: two now"),
+			  Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 2);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

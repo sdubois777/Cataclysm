@@ -1057,6 +1057,13 @@ public:
 	 */
 	static const TCHAR* ExplodeVictimForOverkillAction;
 
+	/**
+	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
+	 * the wearer's attack damage. Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name as
+	 * `STRIKE_TARGET_ACTION`. See `FCataclysmPoolAction::bStrikeTarget`.
+	 */
+	static const TCHAR* StrikeTargetAction;
+
 	/** The share a backfire deals its user, in per cent: "dealing half damage to you". */
 	static constexpr float BackfireSharePercent = 50.0f;
 
@@ -2693,8 +2700,31 @@ public:
 	 * AN EVADED BLOW DEALS NOTHING, so this is one of the two windows that
 	 * open on a blow the foreign-damage window cannot see: that one is reached
 	 * only when health or energy shield actually lost something.
+	 *
+	 * This form carries nobody and no tags, so a `dodge` row with Required Tags
+	 * does not act on it; the one below is what a resolved blow calls.
 	 */
 	void NoteEvaded();
+
+	/**
+	 * The same, naming the attacker whose blow was evaded and saying whether
+	 * that blow was melee. Ruled 2026-10-07 for "When you evade a ranged attack,
+	 * throw an attack dealing 20-70% of your attack damage at that enemy".
+	 *
+	 * `dodge` THEN CARRIES THE ATTACKER AS ITS OTHER CHARACTER AND ONE TAG:
+	 * `Type.Melee` when the blow was melee and `Type.Ranged` when it was not.
+	 * The ruling is that "ranged" is any attack that is not melee, spells
+	 * included, so there is no third answer and a blow never carries both. A
+	 * row says which it wants with Required Tags; a row that states none acts on
+	 * every evaded blow, as it did before the event carried tags.
+	 *
+	 * @param Attacker  whoever `UCataclysmCombatEvents::AttackerOf` names for
+	 *                  the blow: its instigator, or for a minion's blow the
+	 *                  minion, or the summoner when it holds Conduit. May be
+	 *                  null, and the event then carries no character.
+	 * @param bMelee    whether the evaded blow carried `Type.Melee`
+	 */
+	void NoteEvaded(const AActor* Attacker, bool bMelee);
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceEvaded() const;

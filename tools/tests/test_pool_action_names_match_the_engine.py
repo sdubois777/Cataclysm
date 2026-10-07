@@ -181,6 +181,83 @@ def test_every_event_a_row_may_take_a_share_of_is_fired_with_an_amount():
         f"share of their amount would move nothing.")
 
 
+def arguments_after_the_name(rest: str) -> list[str]:
+    """The arguments a call passes after its event's name, split at the commas
+    that are not inside brackets, so `FMath::Max(0.0f, Blocked)` is one."""
+    parts: list[str] = []
+    depth = 0
+    current = ""
+    for character in rest:
+        if character in "([{":
+            depth += 1
+        elif character in ")]}":
+            depth -= 1
+        if character == "," and depth == 0:
+            parts.append(current.strip())
+            current = ""
+        else:
+            current += character
+    parts.append(current.strip())
+    return parts[1:]
+
+
+def characters_passed(event: str) -> list[str]:
+    """What every call firing `event` passes as its other character: its fifth
+    argument, or an empty string for a call that passes none."""
+    passed = []
+    for path in sorted(SOURCE.rglob("*.cpp")):
+        if "Tests" in path.relative_to(SOURCE).parts:
+            continue
+        for rest in re.findall(CALL_OF % re.escape(event), code_of(path)):
+            arguments = arguments_after_the_name(rest)
+            passed.append(arguments[3] if len(arguments) > 3 else "")
+    return passed
+
+
+def carries_a_character(event: str) -> bool:
+    """Whether some call firing `event` passes a character that is not null."""
+    return any(character and character != "nullptr"
+               for character in characters_passed(event))
+
+
+def test_every_event_a_strike_may_hang_on_is_fired_with_a_character(event_reading):
+    """Ruled 2026-10-07. `STRIKE_TARGET_EVENTS` lets a row deal a hit to the
+    other character of its event. A name there that the game raises with no
+    character is a row that validates, is built, and strikes nobody.
+
+    AND THE OTHER WAY ROUND: every event the game raises with a character is
+    either one a strike may hang on or is listed, with its reason, as one whose
+    character cannot be struck. So a new event that carries a character has to
+    be put in one list or the other.
+
+    THE CONTROLS ARE IN THE SAME TEST. `hit_taken` is raised with three
+    arguments after its name and `dot_applied` with none, and the reader must
+    say neither carries a character. `block` passes `FMath::Max(0.0f,
+    DamageBlocked)` before its attacker, so reading `Attacker` there shows the
+    comma inside the brackets was not taken for a separator."""
+    assert characters_passed("hit_taken") and not carries_a_character("hit_taken"), (
+        f"hit_taken is fired with {characters_passed('hit_taken')}, which this "
+        f"reader takes for a character. {PARSE_ADVICE}")
+    assert characters_passed("dot_applied") and not carries_a_character("dot_applied"), (
+        f"dot_applied is fired with {characters_passed('dot_applied')}. {PARSE_ADVICE}")
+    assert "Attacker" in characters_passed("block"), (
+        f"block is fired with {characters_passed('block')} and none of them is "
+        f"its attacker. {PARSE_ADVICE}")
+
+    strikes = set(gen.STRIKE_TARGET_EVENTS)
+    refused = set(gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK)
+    assert not strikes & refused, (
+        f"{sorted(strikes & refused)} are in both lists.")
+
+    engine, _, _ = event_reading
+    carrying = {event for event in engine if carries_a_character(event)}
+    assert carrying == strikes | refused, (
+        f"the game raises {sorted(carrying - strikes - refused)} with a "
+        f"character and neither list has them; {sorted((strikes | refused) - carrying)} "
+        f"are listed and the game raises them with no character. A strike on "
+        f"an event with no character strikes nobody.")
+
+
 def test_every_pool_a_row_may_move_is_one_the_game_has_attributes_for(
         pool_reading):
     _, constants, compared = pool_reading

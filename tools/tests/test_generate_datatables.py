@@ -3108,6 +3108,103 @@ class TestOverkillExplosion:
             gen.enchantment_effects(self.explode(tmp_path, {"Trigger Cooldown": 1}))
 
 
+class TestStrikeTarget:
+    """A row that deals a direct hit to the other character of its event.
+    Ruled 2026-10-07: "When you evade a ranged attack, throw an attack dealing
+    20-70% of your attack damage at that enemy". The value is the hit's size, in
+    per cent of attack damage, and the event is one that names a living
+    character other than the wearer."""
+
+    WORDS = ("When you evade a ranged attack, throw an attack dealing 20-70% of "
+             "your attack damage at that enemy")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Stat.Defense.Evasion, Type.Projectile", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def strike(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "strike_target", "Action Event": "dodge",
+                  "Required Tags": "Type.Ranged",
+                  "Value Low": 20, "Value High": 70}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "strike.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def sized(self, tmp_path, low, high):
+        """The row with a sentence that states `low` to `high`, because a range
+        the words do not state is refused before the size is looked at."""
+        return self.strike(
+            tmp_path, {"Value Low": low, "Value High": high},
+            words=self.WORDS.replace("20-70%", f"{low}-{high}%"))
+
+    def test_the_row_is_carried_through_on_dodge_with_its_scope_and_the_hit_fired_wait(
+            self, tmp_path):
+        # `dodge` IS A HIT-FIRED EVENT, so a row that states no Trigger Cooldown
+        # takes the default.
+        out = gen.enchantment_effects(self.strike(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["RequiredTags"], out[0]["FractionOf"],
+                out[0]["Scale"], out[0]["TriggerCooldown"]) == (
+            "strike_target", "dodge", 20.0, 70.0, "Type.Ranged", "", "",
+            gen.DEFAULT_TRIGGER_COOLDOWN)
+
+    def test_a_trigger_cooldown_of_nought_is_carried_through_as_none(self, tmp_path):
+        out = gen.enchantment_effects(self.strike(tmp_path, {"Trigger Cooldown": 0}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    @pytest.mark.parametrize("event", gen.STRIKE_TARGET_EVENTS)
+    def test_the_row_is_accepted_on_every_event_that_names_a_living_character(
+            self, tmp_path, event):
+        out = gen.enchantment_effects(self.strike(tmp_path, {"Action Event": event}))
+        assert (out[0]["Action"], out[0]["ActionEvent"]) == ("strike_target", event)
+
+    # `kill` AND `afflicted_death` NAME AN ENEMY THAT HAS DIED, and
+    # `gadget_destroyed` the wearer's own machine. The others name nobody.
+    @pytest.mark.parametrize("event", ["kill", "afflicted_death", "gadget_destroyed",
+                                       "hit_taken", "skill_use", "timed", None])
+    def test_the_row_on_an_event_with_nobody_to_strike_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="names a living character other than"):
+            gen.enchantment_effects(self.strike(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_exactly_the_eight(self):
+        assert set(gen.STRIKE_TARGET_EVENTS) == {
+            "hit_dealt", "first_hit_dealt", "critical_strike", "deployable_hit",
+            "retaliation_dealt", "block", "melee_hit_taken", "dodge"}
+        assert set(gen.STRIKE_TARGET_EVENTS) <= gen.granting_events()
+
+    def test_a_size_at_the_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(
+            self.sized(tmp_path, 20, int(gen.MAX_STRIKE_TARGET_PERCENT)))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (20.0, 1000.0)
+
+    @pytest.mark.parametrize("low, high", [(0, 70), (20, 1001)])
+    def test_a_size_of_nought_or_past_the_bound_is_refused(self, tmp_path, low, high):
+        with pytest.raises(gen.DataError, match="A strike is above 0 and up to 1000"):
+            gen.enchantment_effects(self.sized(tmp_path, low, high))
+
+    def test_a_size_the_words_do_not_state_is_refused_before_the_bound(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.strike(tmp_path, {"Value Low": 30}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="a percentage of attack damage and nothing else"):
+            gen.enchantment_effects(self.strike(tmp_path, {column: written}))
+
+
 class TestUseIncreaseSize:
     """The size of a use's rolled increase is the row's Scale Step and Scale Step
     High. Ruled 2026-10-06: "Your cooldown abilities have a 5%-20% chance to deal
