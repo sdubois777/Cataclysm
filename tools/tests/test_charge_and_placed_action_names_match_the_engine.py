@@ -71,6 +71,7 @@ CONSTANTS = {
     "DamageImmunityAction": "damage_immunity",
     # AND THE REFLECT AND THE ARMOUR NOVA, since issue #1833 group E part 3.
     "ReflectBlockedAction": "reflect_blocked",
+    "BlastFromTheDyingAction": "blast_from_the_dying",
     "SmiteNearbyByArmourAction": "smite_nearby_by_armor",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
@@ -202,6 +203,7 @@ def test_the_generator_accepts_exactly_the_status_names_the_engine_has() -> None
 def test_the_generator_accepts_exactly_the_reflect_name_the_engine_has() -> None:
     """Issue #1833 group E part 3."""
     assert gen.REFLECT_BLOCKED_ACTION == engine_names()["ReflectBlockedAction"]
+    assert gen.BLAST_FROM_THE_DYING_ACTION == engine_names()["BlastFromTheDyingAction"]
 
 
 def test_the_generator_accepts_exactly_the_repeat_skill_name_the_engine_has() -> None:

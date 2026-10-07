@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — An enemy that dies carrying the wearer's ailment can blast those near it for a share of its maximum health and pass the wearer's ailments to them; no row authored here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmContagion.h` and `.cpp` (`BlastFromTheDying`),
+`CataclysmStatPipeline.h` (`FCataclysmPoolAction::bBlastFromTheDying`), `CataclysmAbilitySystemComponent.h` and
+`.cpp` (`BlastFromTheDyingAction`, `ActOnEvent`), `game/Source/Cataclysm/Items/CataclysmItem.cpp`,
+`tools/generate_datatables.py` (`BLAST_FROM_THE_DYING_ACTION`, `BLAST_FROM_THE_DYING_EVENTS`), two new tests in
+`CataclysmEnchantmentEffectTests.cpp`, `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### THE SENTENCE
+
+"Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT from you, it explodes and applies all of
+your DoTs to all nearby enemies". **It states both things**: an explosion, and the wearer's damage over time
+effects applied to nearby enemies. It states no figure for the explosion.
+
+### WHAT WAS RULED, 2026-10-06 AND 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+Each a labelled judgement.
+
+1. **The explosion is 20 per cent of the dead enemy's maximum health**, to every enemy within 5 metres of the
+   body, the body left out. It goes through each enemy's defences as any area hit does. A boss's maximum health is
+   used whole. It is not retaliated against.
+2. **"All of your DoTs" is those of the wearer's that were running on the body**, put on the same enemies as
+   copies with the time they had left. An enemy that already carries an ailment is passed over for it.
+3. **The blast first, the copies second.** An enemy the blast kills receives no copy, and its own death is heard
+   for whatever it already carried.
+4. **A copy made here is a spread copy.** It raises no `dot_applied`, refreshes nothing under Plague Doctor's
+   six-piece bonus, and a Void Splinter copy detonates nothing.
+5. **One death's blast strikes no enemy twice**, and a chain is bounded only by enemies running out.
+
+### THE READING NOT TAKEN, FOR THE OWNER'S PLAY-CHECK LIST
+
+**"All of your DoTs" could mean every damage over time effect the wearer is able to apply, each at its full
+duration.** That reading was not taken: the wearer's skills and chances decide what it can apply, and an effect
+nobody applied would appear from nothing. What is built moves what was on the body.
+
+### WHAT THE RESEARCH SETTLES, AND WHAT IT DOES NOT
+
+No new source was read for this entry. Of the pages read on 2026-10-06, Path of Exile's Infernal Blow
+(`poedb.tw/us/Infernal_Blow`) states an explosion that "deals base Fire Damage equal to 6% of the corpse's Maximum
+Life", and Abberath's Hooves (`poedb.tw/us/Abberaths_Hooves`) "inflict an equivalent Ignite on each nearby Enemy"
+at a kill. **They settle the shape**: a corpse explosion sized by the corpse's maximum life, and an ailment that
+moves at a death as the same ailment. **They do not settle** the 20, the 5 metres, the order or the chain; those
+are the rulings above.
+
+### HOW IT IS BUILT
+
+- **An action, `blast_from_the_dying`**, on the event `afflicted_death` of the entry below this one. Its value is
+  the share, above 0 and up to 100. The generator accepts it on that event alone.
+- **`UCataclysmContagion::BlastFromTheDying`** reads the wearer's running ailments off the body first, then deals
+  the blast to each enemy within 5 metres, then puts each ailment on each enemy still alive that does not carry it.
+- **A death the blast causes is handled inside the blast.** The dead enemy's own death raises the event again, so
+  its blast lands before the first blast's copies are made. An enemy that has died by the time its turn comes is
+  not struck and receives no copy.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **The blast is raised by none of the wearer's damage increases**, does not critically strike and does not
+  leech. Its figure is a share of the dead enemy's health and nothing of the wearer's, as a reflected block's is
+  a share of what the block removed.
+- **Not on the `kill` event.** That event carries the slain enemy and its maximum health too, but its tags are the
+  killing skill's and not the wearer's ailments on the body, so the copies would never be made. The generator
+  refuses it there.
+- **A minion's ailment blasts for nobody.** The event is heard by whoever applied the ailment, and a minion has
+  no row. THE OWNER, 2026-10-06.
+
+### THE BOSS CHECK THE RULING ASKED FOR
+
+From `game/Data/EnemyRarities.csv`, health for each point of score: Common 0.5, Elite 0.925, Legendary 1.711, Herald
+3.166, Boss 5.857. At one score an elite has 15.8 per cent of a boss's maximum health, so **a dying elite's blast
+is 3.2 per cent of a boss's maximum health before the boss's defences**; a common's is 1.7, a legendary's 5.8 and
+a herald's 10.8. The writing session judged that no reason to stop. **In the other direction, a dying boss's blast
+is 127 per cent of an elite's maximum health**, so it kills every elite within 5 metres, before defences.
+
+### THE WORST CASE, FOR THE OWNER'S PLAY-CHECK LIST
+
+A pack of like enemies all within 5 metres of each other, each carrying one of the wearer's ailments. Each death
+takes a fifth of a like enemy's maximum health from every other, before defences, so **the fifth death kills all
+that remain**. After the first death every survivor carries the ailment as a copy, so every later death blasts
+too, whoever lands the last blow.
+
+### Tests
+
+- `Cataclysm.Enchantments.AnAfflictedEnemysDeathBlastsThoseWithinFiveMetresAndPassesTheWearersAilmentsToThem`,
+  with a row made by hand: a creature of 100,000 maximum health carrying the wearer's poison and another
+  character's burn dies two and a half seconds in; the creatures 2 and 4 metres away each lose what a direct area
+  hit of 20,000 takes from a creature built alike, and the one 7 metres away loses nothing; the two carry the
+  wearer's poison for the seven and a half seconds it had left and not the other character's burn; and no
+  `dot_applied` is raised.
+- `Cataclysm.Enchantments.AnEnemyTheBlastKillsBlastsInItsTurnForAShareOfItsOwnMaximumHealth`: three creatures 3
+  metres apart; the first one's blast kills the second, which has 1,000 maximum health and carries the wearer's
+  poison; the third, out of the first one's reach, loses what a direct area hit of 200 takes, once, and receives
+  the second's poison.
+- Python: the action is carried through on `afflicted_death` and refused on `kill`; the generator's name equals
+  the engine's.
+
+**A copy made here goes through `ailment_immunity`.** It is applied by `ApplySpreadCopy`, which calls
+`ApplyDamageOverTime`, and that asks the target's immunity before anything else. So a target unaffected by an
+ailment is given no copy of it. The blast itself is a hit and asks no immunity. Nothing here is laid on the
+wearer, so a cleanse of the wearer removes nothing of it.
+
+**Not tested:** a boss; a copy passed over because the enemy already carries the ailment; a copy refused by an
+immunity; a Void Splinter copy; the six-piece bonus worn with this.
+
+---
+
 ## 2026-10-07 — Two events carry who died and how much health it had: the kill event gains both, and `afflicted_death` is raised on whoever has an ailment on an enemy that dies; no row authored here
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the `kill` event),
