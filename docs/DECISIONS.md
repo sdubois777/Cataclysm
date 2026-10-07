@@ -7,9 +7,17 @@ Decisions made outside the Google Drive documents, newest first.
 **Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
 outcome of any run is recorded here.
 
-**Said first, because a player may expect otherwise: a blow that the temporary absorb takes whole does not restart
-the energy shield's refill wait.** The energy shield goes on refilling behind it. This is the writing session's
-reading of ruling 5 below ("not for ... refill wait"), and it is for the coordinating session to confirm.
+**Said first, because the sentence says "in damage" and a reader may expect otherwise: the absorb takes every blow
+and every tick that goes through the damage calculation, and nothing else.** Health written directly is not
+taken by it: retaliation paid back to an attacker, a share of damage passed on by Sacrificial Bond, and a skill's
+health cost. The energy shield does not take those either. Accepted by the coordinating session on 2026-10-07, a
+labelled judgement under the owner's delegation.
+
+**A blow that the temporary absorb takes whole DOES restart the energy shield's refill wait**, as any blow that
+lands does. Ruled 2026-10-07 by the coordinating session. This was first written the other way, on the writing
+session's reading of ruling 5 below ("not for ... refill wait"); the coordinating session reversed it: ruling 5 is
+about what counts as the energy shield for rows that name it (the store, the broken event, the condition), not
+about being hit.
 
 **Also said first: the enchantment's own tags call it an energy shield.** `game/Data/EnchantmentsPositive.csv`
 gives the row `Positive_Every_12_seconds_gain_a_shield_absorbing_15_25` the tags `Trigger.Timer, Keyword.Shield,
@@ -137,8 +145,9 @@ Untouched, each because it reads the energy shield attribute or `AbsorbedByShiel
   leeches into the absorb.
 - **The refill and the recharge event.** `UCataclysmRegeneration::ApplyStep` refills the energy shield attribute.
   Unchanged. Nothing regenerates the absorb.
-- **The refill wait.** `ACataclysmCharacterBase::NoteDamageTaken` is still called only when health, the energy
-  shield or mana took something. See the first paragraph of this entry.
+- **The refill wait.** `ACataclysmCharacterBase::NoteDamageTaken` is called when health, the energy shield, mana
+  or the temporary absorb took something. So a blow the absorb took whole restarts the wait. Ruled 2026-10-07; see
+  the top of this entry.
 - **The two stats about a bleed and the shield,** `shield_absorbs_damage_over_time` and
   `bleed_damage_taken_from_energy_shield`, in `Resolve`. Unchanged. Neither is read for the absorb.
 - **The pool action `energy_shield` and `PoolAttributesFor`.** Unchanged.
@@ -160,13 +169,27 @@ No row exists yet, so none of this can be seen in play until one is written.
 - Out of combat the segment stays as it is. Nothing new arrives, and nothing takes it away.
 - The character sheet's energy shield line carries the note "N temporary absorb, taken before the shield."
 - After a death and respawn the segment is gone.
+- **While the absorb is taking hits the energy shield does not refill**: each hit restarts its refill wait, as a
+  hit on the shield itself would.
+- **Leech counts damage the absorb took.** A blow that only shrank the attacker's target's gold segment still
+  leeches for the attacker.
+- **Two sources, one amount.** The clock's grant and overheal (a later layer) fill the same amount. Each raises
+  it to its own cap and never lowers it. A character holding 25% of maximum health from the clock gains nothing
+  from overheal capped at 20%. A character holding 20% from overheal is raised to 25% at the next 12 second mark.
+- **A skill's health cost, retaliation paid and a Sacrificial Bond share are not absorbed.**
 
-### Judgements by the writing session, 2026-10-07, for the coordinating session to confirm
+### Judgements by the writing session, each ruled on by the coordinating session on 2026-10-07
+
+**All are accepted as labelled judgements under the owner's delegation, except number 2, which was reversed.** The
+note on the energy shield's line of the character sheet is accepted in place of a line of its own: the sheet's
+lines are the simulation's list, ruled 2026-09-30. That a new floor does not empty the absorb was found by search
+and not by proof. The two sources share one amount, each raising it to its own cap.
 
 1. **A grant while holding as much or more changes nothing.** Ruling 2 says a grant refreshes and never adds. Read
    literally it could also lower a larger amount to the granted one. The code keeps the larger. With one row this
    arises only when maximum health has fallen since the last grant.
-2. **A blow the absorb took whole does not restart the energy shield's refill wait.** Said first, above.
+2. **REVERSED: a blow the absorb took whole does not restart the energy shield's refill wait.** It does restart
+   it. See the top of this entry.
 3. **The absorb is taken before mana as well as before the energy shield.** Ruling 1 names no pool before it.
 4. **A respawn empties it,** as it empties every temporary effect and store. Ruling 3 says only that it has no
    duration. **A new floor does not empty it,** because no code was found that changes the energy shield or ends
@@ -233,10 +256,15 @@ with the same character before the grant. Critical strikes are pinned to never h
 Python, in `tools/tests/`: `TestTemporaryAbsorb` in `test_generate_datatables.py`, and two functions in
 `test_charge_and_placed_action_names_match_the_engine.py` that hold the generator's name equal to the engine's.
 
+- `Cataclysm.TemporaryAbsorb.ABlowItTakesWholeRestartsTheShieldsRefillWaitAndBreaksNoShield`. A real player
+  character holding 500 is struck twice for 50, five seconds apart. Health is untouched both times. Straight after
+  each blow the character reads nought seconds since it was last damaged; between them it reads five (the control).
+  No energy shield break is raised.
+
 ### Not covered by a test
 
-- **The refill wait.** `NoteDamageTaken` is on `ACataclysmCharacterBase`, and these tests use bare actors. No test
-  shows that a blow the absorb took whole leaves the wait alone.
+- **The energy shield actually not refilling during the wait.** The test below reads the time since the character
+  was last damaged, which is what the refill asks; it does not run the refill.
 - **A bleed tick delivered through a real damage over time effect.** The bleed is tested through `Resolve` with
   the tick marked a bleed by hand. The mark itself is made in `PostGameplayEffectExecute` from the effect's tags.
 - **Leech, retaliation, the hit notice's `Landed`, the foreign-damage window and the stack for damage taken,** on

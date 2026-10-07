@@ -21909,4 +21909,76 @@ bool FCataclysmTemporaryAbsorbInterfaceTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbRefillWaitTest,
+	"Cataclysm.TemporaryAbsorb.ABlowItTakesWholeRestartsTheShieldsRefillWaitAndBreaksNoShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-07: a blow the temporary absorb takes whole got through, so the energy shield's refill wait restarts
+ * for it, and it raises no energy shield break.
+ *
+ * A REAL PLAYER CHARACTER, because the refill wait is kept on the character and not on the ability system.
+ *
+ * THE CONTROL IS THE CLOCK ITSELF: five seconds after the first absorbed blow the character reads about five
+ * seconds since it was last damaged, so the nought read straight after a blow is that blow's doing. And the
+ * character's health is read before and after, so "took whole" is measured and not assumed.
+ *
+ * STANDING: the player at the origin; the creature that strikes it 4 m along +X.
+ */
+bool FCataclysmTemporaryAbsorbRefillWaitTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Player(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Striker = CreatureAt(World, FVector(4 * M, 0, 0), 1000.0f);
+	if (!TestNotNull(TEXT("set-up: the creature that strikes"), Striker))
+	{
+		return false;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Player.AbilitySystem->GrantTemporaryAbsorb(500.0f);
+	const float HealthBefore = Player.AbilitySystem->GetNumericAttribute(Health);
+
+	CataclysmTemporaryAbsorbTest::FBreakCount Breaks(Player.AbilitySystem);
+	FCataclysmHitDelivery Area;
+	Area.bIsArea = true;
+
+	World->TimeSeconds = 100.0f;
+	UCataclysmSkillEffects::ApplyDirectDamage(Striker, Player.Character, /*Damage=*/50.0f, Area);
+	const float TookFirst = 500.0f - Player.AbilitySystem->TemporaryAbsorbHeld();
+	if (!TestTrue(TEXT("set-up: the absorb took something of the first blow"), TookFirst > 0.0f)
+		|| !TestEqual(TEXT("set-up: and health took none of it, so the absorb took it whole"),
+					  Player.AbilitySystem->GetNumericAttribute(Health), HealthBefore, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("straight after a blow the absorb took whole, the character was damaged nought seconds ago"),
+			  Player.Character->SecondsSinceLastDamage(), 0.0f, 0.01f);
+
+	World->TimeSeconds = 105.0f;
+	if (!TestEqual(TEXT("control: five seconds on, it reads five seconds since it was last damaged"),
+				   Player.Character->SecondsSinceLastDamage(), 5.0f, 0.01f))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Striker, Player.Character, /*Damage=*/50.0f, Area);
+	TestEqual(TEXT("a second blow the absorb takes whole restarts the wait again"),
+			  Player.Character->SecondsSinceLastDamage(), 0.0f, 0.01f);
+	TestEqual(TEXT("health is still untouched after both"), Player.AbilitySystem->GetNumericAttribute(Health),
+			  HealthBefore, 0.001f);
+	TestEqual(TEXT("and neither blow raised an energy shield break"), Breaks.Count, 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

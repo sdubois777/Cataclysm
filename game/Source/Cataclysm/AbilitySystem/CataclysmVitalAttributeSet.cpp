@@ -1387,14 +1387,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 									  ->GetAvatarActor())
 							: nullptr)
 				{
-					// NOT FOR A BLOW THE TEMPORARY ABSORB TOOK WHOLE. Ruled 2026-10-07:
-					// it does not count as the energy shield for the refill wait. The
-					// three figures the wait was written against, and no fourth.
-					if (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
-						|| Outcome.AbsorbedByMana > 0.0f)
-					{
-						Hurt->NoteDamageTaken();
-					}
+					// AND FOR A BLOW THE TEMPORARY ABSORB TOOK WHOLE TOO. Ruled 2026-10-07:
+					// such a blow got through, and the energy shield's refill wait
+					// restarts for it as for any blow that lands. This was first written
+					// the other way, on a reading of "it does not count as the energy
+					// shield" that the ruling did not mean: that ruling is about rows
+					// that name the energy shield, not about being hit.
+					Hurt->NoteDamageTaken();
 				}
 
 				// AND THE ATTACKER LEECHES FROM WHAT GOT THROUGH. Issue #895:
