@@ -1397,6 +1397,21 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.ApplyStatus = ECataclysmApplyStatus::Seconds;
 					}
+					// AND THE THREE THAT LAY THE STATUS ON THE WEARER. Ruled 2026-10-06. The value is the
+					// chance, the seconds, or the number of times.
+					const TPair<const TCHAR*, ECataclysmApplyStatus> OnTheWearer[] = {
+						{UCataclysmAbilitySystemComponent::ApplyStatusToSelfAction, ECataclysmApplyStatus::Chance},
+						{UCataclysmAbilitySystemComponent::ApplyStatusToSelfSecondsAction, ECataclysmApplyStatus::Seconds},
+						{UCataclysmAbilitySystemComponent::ApplyStatusToSelfTimesAction, ECataclysmApplyStatus::Times},
+					};
+					for (const TPair<const TCHAR*, ECataclysmApplyStatus>& Self : OnTheWearer)
+					{
+						if (Effect->Action.Equals(Self.Key, ESearchCase::IgnoreCase))
+						{
+							Action.ApplyStatus = Self.Value;
+							Action.bStatusOnTheWearer = true;
+						}
+					}
 					if (Action.ApplyStatus != ECataclysmApplyStatus::None)
 					{
 						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
