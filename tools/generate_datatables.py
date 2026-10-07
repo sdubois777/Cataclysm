@@ -7359,6 +7359,13 @@ ENGINE_SUPPLIED_BASES = {
         "UCataclysmDamageCalculation::NormalPersistentAreaDuration, put on "
         "the character by UCataclysmPlayerClassStats::EngineSuppliedBases",
 
+    # AND HOW FAST THE CLASS RESOURCE IS GAINED, at 100. Ruled 2026-10-07: "Your
+    # class resource generates 20%-40% faster" and "... 30%-50% slower" are
+    # `increased` rows on it, so without a base every gain would be nought.
+    "class_resource_generation":
+        "UCataclysmAbilitySystemComponent::NormalClassResourceGeneration, put "
+        "on the character by UCataclysmPlayerClassStats::EngineSuppliedBases",
+
     # AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at 100 for
     # normal. Issue #1767. The Ravager's Dragging Weight reads "+3% increased
     # magnitude of Cripple you apply per point" and its Sapped says the same of
