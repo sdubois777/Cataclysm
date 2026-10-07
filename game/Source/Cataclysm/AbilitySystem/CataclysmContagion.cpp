@@ -359,7 +359,11 @@ int32 UCataclysmContagion::SpreadFromTheDying(AActor* Dying)
 	// of health and has its own applier; it is not passed on here.
 	static const TCHAR* const Names[] = {
 		TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"), TEXT("Keyword.DoT.Disease"),
-		TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn")};
+		TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn"),
+		// AND THE ONE THAT TAKES A SHARE OF HEALTH. It passes to nobody by itself;
+		// "Void splinter stacks spread to nearby enemies when the afflicted enemy
+		// dies" is the row that gives it a count.
+		TEXT("Keyword.DoT.VoidSplinter")};
 	const FGameplayTag Disease =
 		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Disease")), /*ErrorIfNotFound=*/false);
 	const FVector Body = Dying->GetActorLocation();

@@ -2400,7 +2400,12 @@ class TestRemainingDamageAndTheAilmentColumn:
     def test_another_rider_on_void_splinter_is_still_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="not one the game has"):
             gen.enchantment_effects(self.necrosis(
-                tmp_path, dict(self.DETONATES, Action="ailment_spread_on_death")))
+                tmp_path, dict(self.DETONATES, Action="ailment_damage_taken")))
+
+    def test_the_spread_at_a_death_may_name_void_splinter(self, tmp_path):
+        out = gen.enchantment_effects(self.necrosis(
+            tmp_path, dict(self.DETONATES, Action="ailment_spread_on_death")))
+        assert (out[0]["Action"], out[0]["Ailment"]) == ("ailment_spread_on_death", "Void Splinter")
 
     def test_an_ailment_on_an_action_that_does_not_read_it_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="would be dropped"):

@@ -15775,4 +15775,94 @@ bool FCataclysmDamageInYourZonesRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidSplinterSpreadsOnDeathTest,
+	"Cataclysm.Enchantments.AVoidSplinterPassesToEveryEnemyARowCountsWithinFiveMetresForTheTimeItHadLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Void splinter stacks spread to nearby enemies when the afflicted enemy
+ * dies", with a row made by hand. Issue #1833, ruled 2026-10-06. A Void Splinter
+ * passes to nobody by itself. With a count of 100 hung on it, the one on a dying
+ * creature passes to every enemy within 5 metres of the body: three stand 1, 2
+ * and 3 metres away and receive it, and one 6 metres away does not. A copy is
+ * the same share a second for the seconds the original had left, and carries
+ * the count again, so it passes on when its own carrier dies.
+ */
+bool FCataclysmVoidSplinterSpreadsOnDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmDetonationTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag Tag = Ailment(TEXT("Keyword.DoT.VoidSplinter"));
+	ACataclysmEnemyCharacter* Plain = Beside(World, -8.0f);
+	ACataclysmEnemyCharacter* Dying = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* One = Beside(World, 1.0f);
+	ACataclysmEnemyCharacter* Two = Beside(World, 2.0f);
+	ACataclysmEnemyCharacter* Three = Beside(World, 3.0f);
+	ACataclysmEnemyCharacter* Six = Beside(World, 6.0f);
+	if (!TestTrue(TEXT("set-up: the void splinter tag is registered"), Tag.IsValid())
+		|| !TestNotNull(TEXT("set-up: the creature splintered with no row"), Plain)
+		|| !TestNotNull(TEXT("set-up: the creature that will die"), Dying)
+		|| !TestNotNull(TEXT("set-up: the creature 1 metre from it"), One)
+		|| !TestNotNull(TEXT("set-up: the creature 2 metres from it"), Two)
+		|| !TestNotNull(TEXT("set-up: the creature 3 metres from it"), Three)
+		|| !TestNotNull(TEXT("set-up: the creature 6 metres from it"), Six))
+	{
+		return false;
+	}
+
+	// WITH NO ROW, a void splinter passes to nobody. This creature stands 8 metres the other side of the body,
+	// so nothing below reaches it either.
+	if (!TestTrue(TEXT("set-up: the wearer splinters a creature with no row"), Splinter(Wearer.Actor, Plain, Tag)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with no row, a void splinter passes to nobody"),
+		UCataclysmContagion::SpreadFromTheDying(Plain), 0);
+
+	FCataclysmPoolAction Row;
+	Row.Rider = ECataclysmAilmentRider::SpreadOnDeath;
+	Row.Ailment = Tag;
+	Row.Percent = 100.0f;
+	Wearer.AbilitySystem->SetPoolActions({Row});
+	if (!TestTrue(TEXT("set-up: with the row, the wearer splinters the one that will die"),
+				  Splinter(Wearer.Actor, Dying, Tag)))
+	{
+		return false;
+	}
+	// A SECOND AND A HALF PASSES: one tick has landed and two and a half seconds are left.
+	CataclysmTestWorld::RunClock(World, 1.5f);
+
+	if (!TestEqual(TEXT("the death passes the void splinter to the three within 5 metres"),
+				   UCataclysmContagion::SpreadFromTheDying(Dying), 3))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the creature 1 metre away carries it"), Carries(One, Tag));
+	TestTrue(TEXT("and the one 2 metres away"), Carries(Two, Tag));
+	TestTrue(TEXT("and the one 3 metres away"), Carries(Three, Tag));
+	TestFalse(TEXT("the one 6 metres away does not"), Carries(Six, Tag));
+
+	UCataclysmSkillEffects::FRunningAilment Copy;
+	if (!TestTrue(TEXT("the copy is a running void splinter"), UCataclysmSkillEffects::RunningAilmentOn(One, Tag, Copy)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it takes a share of health"), Copy.bShareOfHealth);
+	TestEqual(TEXT("the same share a second as the original, one per cent"), Copy.DamagePerSecond, 0.01f, 0.0001f);
+	TestEqual(TEXT("for the two and a half seconds the original had left"), Copy.SecondsLeft, 2.5f, 0.1f);
+	TestTrue(TEXT("with the wearer as its source"), Copy.Applier.Get() == Wearer.Actor);
+	const UCataclysmAbilitySystemComponent* Its = SystemOf(One);
+	TestEqual(TEXT("and the copy carries the row's count, so it passes on again when its own carrier dies"),
+		Its ? Its->AilmentRiderPercentCarriedOn(Tag, ECataclysmAilmentRider::SpreadOnDeath) : -1.0f, 100.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
