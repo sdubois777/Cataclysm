@@ -17127,4 +17127,88 @@ bool FCataclysmWearerStatusRowsTest::RunTest(const FString&)
 	return true;
 }
 
+// A LEECH ROW SCOPED TO AN AILMENT READS THAT AILMENT'S TICKS. Issue #1833, ruled 2026-10-07, for "Bleed damage you
+// deal also leeches 10%-20% of its value as HP". A tick's asset tags carry the skill's tags and the bare
+// `Keyword.DoT`; the ailment is a GRANTED tag, so until this change a leech row scoped to `Keyword.DoT.Bleed` was
+// discarded on every tick.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeechScopedToAnAilmentTest,
+	"Cataclysm.Enchantments.ALeechRowScopedToAnAilmentLeechesFromThatAilmentsTicksAndNoOthers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A wearer with 10% life leech scoped to bleed, made by hand as a row would
+ * give it. It burns a creature: two and a half seconds of burn ticks take
+ * health from the creature and start no leech payment. It then bleeds the same
+ * creature: two and a half seconds on, at least one payment has started.
+ */
+bool FCataclysmLeechScopedToAnAilmentTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmSpreadOnDeathTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag Bleed = Ailment(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Ailment(TEXT("Keyword.DoT.Burn"));
+	ACataclysmEnemyCharacter* Target = Beside(World, 0.0f);
+	if (!TestTrue(TEXT("set-up: the bleed tag is registered"), Bleed.IsValid())
+		|| !TestTrue(TEXT("set-up: the burn tag is registered"), Burn.IsValid())
+		|| !TestNotNull(TEXT("set-up: the creature"), Target))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Scoped;
+	Scoped.Bucket = ECataclysmStatBucket::Flat;
+	Scoped.Source = ECataclysmModifierSource::PassiveKeystone;
+	Scoped.Value = 10.0f;
+	Scoped.RequiredTags = FGameplayTagContainer(Bleed);
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("life_leech")));
+	Line.Base = 0.0f;
+	Line.Modifiers = {Scoped};
+	Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	// ROOM TO BE HEALED, maximum first: the vital set clamps health to it.
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 5000.0f);
+
+	const UCataclysmAbilitySystemComponent* Its = SystemOf(Target);
+	const auto Health = [Its]()
+	{
+		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	};
+
+	// A BURN FIRST. TWO AND A HALF SECONDS, BETWEEN TICKS.
+	const float BeforeTheBurn = Health();
+	if (!TestTrue(TEXT("set-up: the wearer burns the creature"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Wearer.Actor, Target, 100.0f, 10.0f, Burn,
+														/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	if (!TestTrue(TEXT("set-up: the burn's ticks took health from the creature"), Health() < BeforeTheBurn))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a burn's ticks start no payment for a row scoped to bleed"),
+		Wearer.AbilitySystem->GetLeechPayments().Num(), 0);
+
+	// THEN A BLEED ON THE SAME CREATURE.
+	if (!TestTrue(TEXT("set-up: the wearer bleeds the creature"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Wearer.Actor, Target, 100.0f, 10.0f, Bleed,
+														/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	TestTrue(TEXT("a bleed's ticks start a payment"), Wearer.AbilitySystem->GetLeechPayments().Num() > 0);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
