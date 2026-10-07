@@ -107,6 +107,96 @@ wearer, so a cleanse of the wearer removes nothing of it.
 **Not tested:** a boss; a copy passed over because the enemy already carries the ailment; a copy refused by an
 immunity; a Void Splinter copy; the six-piece bonus worn with this.
 
+### AN ENEMY A BLAST KILLS BLASTS AFTER IT, FROM A QUEUE: FOUND BY THE WINDOW'S FIRST RUN
+
+**As first written, an enemy the blast killed did not blast.** The window's first run of `Cataclysm.Enchantments.`
+printed "264 tests performed, 257 succeeded, 7 failed". Six were registered. The seventh was this layer's
+`AnEnemyTheBlastKillsBlastsInItsTurnForAShareOfItsOwnMaximumHealth`, with "Expected 'the third loses what a hit of
+a fifth of the SECOND's maximum takes, once, and nothing of the first blast, which it stood outside' to be
+200.000000, but it was 0.000000" and "Expected 'and it receives the second's poison' to be true".
+
+**The cause was read, and then shown by the rerun.** `UCataclysmAbilitySystemComponent::ActOnEvent` returns at once
+when its character is already inside it; `PoolActionDepth` states that the depth is never more than one. The blast
+runs inside the wearer's call for the first death, the second enemy dies inside that call, and its
+`afflicted_death` reached the wearer at depth one and was dropped. **That guard was not read before the stack was
+registered**, and the registration predicted the test would pass.
+
+**Ruled 2026-10-07 by the coordinating session, a labelled judgement under the owner's delegation: the chain is
+what the sentence says, and it is built as a queue.** An enemy that dies while affected by the wearer's damage over
+time explodes, and an enemy the blast kills is such an enemy.
+
+- **A death heard at depth one is kept, for `afflicted_death` only.** Every other event keeps the drop. A stack
+  grant or a pool action on `afflicted_death` at depth one is still dropped: only a worn blast row queues.
+- **Everything is read at the death**: where the body is, its maximum health, the wearer's ailments on it with what
+  each had left, and which worn blast rows are allowed to fire. Nothing is read from the dead enemy afterwards; the
+  pointer kept is only compared, to leave the body out. `BlastFromTheDying` is split for this into
+  `ReadForABlast` and `BlastAt`.
+- **Drained after the outer call's depth guard has ended**, in the order heard, one at a time, each under its own
+  depth guard, so a death a queued blast causes joins the end of the queue. "Depth one" stays true with no
+  exception, and there is no recursion.
+- **It ends because each enemy dies once.**
+- **If the wearer has no avatar when the queue is drained, what waited is dropped.**
+
+**A THIRD TEST, of three deaths in a row**, was added as the ruling asked:
+`Cataclysm.Enchantments.ThreeDeathsInARowEachBlastForAShareOfTheirOwnMaximumHealthAndStrikeEachEnemyOnce`.
+Creatures of 100,000, 1,000 and 100 maximum health carry the wearer's poison, 3 metres apart. The first dies; the
+second and third die of the blasts before them. A witness in reach of the second and third deaths loses one hit of
+200 and one of 20; a creature in reach of the third alone loses one hit of 20; each carries the poison.
+
+**THE ORDER IN PLAY.** The first blast strikes everyone in its reach and makes its copies; then the next death's
+blast runs. So a survivor of the first blast already carries its copies when the second blast strikes it, and is
+passed over for a copy of an ailment it now carries.
+
+**THE ALTERNATIVE NOT TAKEN: run the second blast at once, inside the first.** It was about 20 lines against
+about 150 with comments. It was not taken because it makes one event and one action an exception to "depth one",
+it nests one blast inside another as deep as the chain is long, and the second blast would strike before the first
+had finished its list and before any copy.
+
+**BOTH DEATH EXPLOSIONS ACT AFTER THE EVENT LOOP HAS RETURNED.** The dungeon session's overkill explosion was
+written against the same guard: by its account its event loop only records the share, and a function hands it
+over once the loop has returned. This one queues what it read and drains the queue when the outer call ends. That
+branch was not read here; the two can be compared when both are in git.
+
+**THE BLAST FIRES NO ON-HIT ROW TODAY, AND WHY.** It is the wearer's direct damage, so it reaches
+`ACataclysmPlayerCharacter::OnSomethingWasHit` as the wearer's hit. That handler raises `hit_dealt`,
+`first_hit_dealt` and `critical_strike` through `ActOnEvent`, and the blast always runs at depth one, so each is
+dropped. For the same reason a kill by the blast does not raise the wearer's `kill` event. One thing is not
+stopped by the depth: the target's record of who has struck it is written before the blow is announced, as that
+handler's own comment says, so the blast can be the wearer's first blow on an enemy and a later hit is then not
+the first. Read, not tested. The dungeon session is ruled to put its mark of a blow that is the
+consequence of a death on this delivery in its next window; nothing here marks it.
+
+**WHAT WAS CHECKED IN `BlastAt` FOR A DEATH DURING IT.** It walks a list of targets made before the first blow. A
+target dead by its turn is skipped, at the line `if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(Target))`,
+in the blast and again before the copies. With the queue no inner blast runs during the walk, so that line now
+covers only a target killed some other way during it.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the layer below this one and the six above it, on `development` 06790eea. The
+build, the whole suite and the Python of record are in the table of the entry "Two events carry who died and how
+much health it had". **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the older assets, FIRST RUN, before the queue | 19356a30 | 264 tests performed, 257 succeeded, 7 failed; the chain test among them with 2 failed assertions |
+| The same, with the queue and the test of three deaths | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed; this layer's three tests not among them |
+| Assets | 7948d9b5 | none built: this layer changes no table |
+
+**This layer's three tests need no row.** Their failing halves are the proof of the layer below that takes the
+amount from `afflicted_death`, which fails all three, and this one, with `prove_cpp_guard` on
+`Cataclysm.Enchantments.` at be112e78, restored to 265 tests performed, 265 succeeded, 0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| The blast gives no copy (`if (false && !Its->HasMatchingGameplayTag(Running.Ailment))` in `CataclysmContagion.cpp`) | 265 performed, 4 failed | 7 assertions: the blast test 3 (neither creature carries the poison; no running copy); the two-death test 1; the three-death test 2; the ten-piece row test 1 |
+
+**Not proved by a break:** the queue itself. No single line holds it; the first run above, made before it was
+written, is its failing half, and the two chain tests are what passes with it.
+
+**Not tested:** a wearer with no avatar when the queue is drained; a blast row with a trigger cooldown; two
+wearers with ailments on one body in a chain.
+
 ---
 
 ## 2026-10-07 — Two events carry who died and how much health it had: the kill event gains both, and `afflicted_death` is raised on whoever has an ailment on an enemy that dies; no row authored here
