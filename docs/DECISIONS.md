@@ -105,6 +105,19 @@ fires none of the wearer's on-hit rows. The first part's entry records the rulin
   `first_hit_dealt` or `critical_strike`. **The third is withheld too, and nothing can show it today**: the
   explosion cannot critically strike. It is withheld so the rule does not rest on that staying true.
 
+**And the explosion is not recorded as the attacker's first blow on what it strikes.** Ruled 2026-10-07, a
+labelled judgement by the coordinating session under the owner's delegation. The record of who has struck a
+character is not written from the hit notice: it is written on the target, in
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, by `NoteStruckBy`, and the notice only carries its answer
+away. So the mark read in `OnSomethingWasHit` alone did not cover it: an explosion would have been recorded as the
+wearer's first blow on a creature, and the wearer's next real hit on that creature would not have raised
+`first_hit_dealt`. The call to `NoteStruckBy` is now skipped for a blow carrying the stamp. Found by the
+enchantment session's reading; the writing session re-read both lines before changing them. It also means a
+condition that asks whether the target has been struck by the wearer answers no after an explosion alone.
+
+**The Boss clock is left as it was.** `NoteStruckABoss`, a few lines above in the same function, still stamps for
+an explosion that reaches a boss: damage dealt to a boss is engagement with it, whatever dealt it.
+
 **It is not marked as damage over time**, as ruled: that would also change the energy shield's refill wait and
 every other rule about a tick.
 
@@ -170,7 +183,9 @@ Three, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player cha
 - `Cataclysm.OverkillExplosion.TheExplosionFiresNoneOfTheKillersOnHitRows`. Two rows on the killer each grant a
   stack when `hit_dealt` and `first_hit_dealt` are heard. A blow on a creature that lives raises each once (the
   control). The killing blow raises each once more. The explosion strikes a creature the player has never struck,
-  which is read off its health, and raises neither: two stacks of each, not three.
+  which is read off its health, and raises neither: two stacks of each, not three. Then the player strikes that
+  creature for real, and both events are raised: three stacks of each. The third `first_hit_dealt` is what shows
+  the explosion was not recorded as a first blow.
 
 - `Cataclysm.OverkillExplosion.WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath`. Two listeners
   stand in for the player and the dungeon. One hands over work, on hearing the first creature die, that kills the

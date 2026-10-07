@@ -20988,7 +20988,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillFiresNoOnHitRowTest,
  *
  * THE CONTROL IS A BLOW THE PLAYER STRUCK: one blow on a creature that lives raises each event once. Then the
  * killing blow raises each once more, and the explosion, which strikes a creature the player has never struck,
- * raises neither. That the explosion did strike is read off that creature's health.
+ * raises neither. That the explosion did strike is read off that creature's health. Then the player strikes that
+ * creature for real, and that blow raises both: the explosion was not recorded as the player's first blow on it.
  *
  * STANDING: the player at the origin; the creature that dies 2 m along +X with 50 health; the creature the
  * explosion strikes 5 m along +X with 1000; the control creature 30 m along +Y with 1000.
@@ -21053,6 +21054,18 @@ bool FCataclysmOverkillFiresNoOnHitRowTest::RunTest(const FString&)
 			  Killer.AbilitySystem->OwnStacksHeld(Hits), 2);
 	TestEqual(TEXT("first_hit_dealt was raised twice: and not for the creature only the explosion struck"),
 			  Killer.AbilitySystem->OwnStacksHeld(FirstHits), 2);
+
+	// AND THE EXPLOSION IS NOT RECORDED AS THE KILLER'S FIRST BLOW ON THAT CREATURE. The killer's next real hit on
+	// it is still its first, so `first_hit_dealt` is raised for it.
+	UCataclysmSkillEffects::ApplyHit(Killer.Character, Caught, /*DamagePercent=*/100.0f);
+	if (!TestFalse(TEXT("set-up: the creature the explosion struck lives through one more blow"), IsGone(Caught)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the killer's real blow on the creature the explosion struck raises hit_dealt: three now"),
+			  Killer.AbilitySystem->OwnStacksHeld(Hits), 3);
+	TestEqual(TEXT("and first_hit_dealt, because the explosion was not recorded as a first blow: three now"),
+			  Killer.AbilitySystem->OwnStacksHeld(FirstHits), 3);
 	return true;
 }
 
