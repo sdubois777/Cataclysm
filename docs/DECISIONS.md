@@ -46,6 +46,24 @@ Every reading of the six sentences is those entries': what a zone a skill leaves
 **Not tested here:** a skill leaving a zone, a zone damaging or following its owner, or a minion leaving a pool
 because of a worn row; those entries test each with a stat line made by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the four layers below this one, on `development` e49857f0. The build, the whole
+suite and the Python of record are in the table of the entry "A Void Splinter can pass on when its carrier dies"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 5fb5e953 | 252 tests performed, 249 succeeded, 3 failed, this layer's among them; 6 of the 9 failed assertions are this layer's |
+| The three enchantment assets, regenerated with the editor | 07fea612 | effect rows 513 to 519 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of a layer below | c6088f3d | 252 tests performed, 252 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**, on one assertion a row: each of the
+six stats reads 0 where its row's figure is expected (5, 6, 4, 1, 50 and 1).
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The stats were
+proved by the session that built them.
+
 ---
 
 ## 2026-10-06 — Plague Doctor's six-piece bonus is built as a row
