@@ -143,6 +143,9 @@ HOOKS = {
             "UCataclysmContagion::SpreadOnDeath":
                 "this creature's debuffs passing to whatever stands by its "
                 "body, issue #1060",
+            "UCataclysmContagion::AnnounceAfflictedDeath":
+                "whoever has a damage over time ailment on this creature hearing "
+                "that it died, ruled 2026-10-07",
             "UCataclysmContagion::SpreadFromTheDying":
                 "this creature's Disease passing to the two nearest enemies, "
                 "and whatever a row adds to that, issue #919",

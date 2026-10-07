@@ -289,4 +289,22 @@ public:
 	 * @return how many copies were applied
 	 */
 	static int32 SpreadFromTheDying(AActor* Dying);
+
+	/**
+	 * Raise `afflicted_death` on every character that has a damage over time
+	 * ailment running on `Dying`. Ruled 2026-10-07, for "Plague Doctor (10-Piece
+	 * Bonus): When an enemy dies while affected by a DoT from you".
+	 *
+	 * ON WHOEVER APPLIED THE AILMENT, NOT ON THE KILLER AS SUCH: whoever landed
+	 * the last blow hears it only if an ailment of theirs is on the body. Once
+	 * for each such character, however many of its ailments the body carries.
+	 *
+	 * IT CARRIES the dead enemy as the event's target, its MAXIMUM health as the
+	 * amount, and as tags the ailments of that character's that were running on
+	 * the body. One application of an ailment runs on a character at a time, so
+	 * an ailment counts for the one whose application is running.
+	 *
+	 * @return how many characters heard it
+	 */
+	static int32 AnnounceAfflictedDeath(AActor* Dying);
 };

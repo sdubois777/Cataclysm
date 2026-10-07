@@ -31,6 +31,8 @@
 #include "AbilitySystem/CataclysmSwingTiming.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the slain enemy's maximum health, which the kill event carries.
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
@@ -1082,7 +1084,17 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			{
 				Gear->NoteKillOnWornWeapons(Acting);
 			}
-			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags);
+			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
+			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
+			// slain enemy. No row read either on this event before; a row that takes
+			// a share of its own pool, grants a stack or resets a cooldown reads
+			// neither now.
+			const UAbilitySystemComponent* Slain = UCataclysmTargeting::AbilitySystemOf(Notice.Victim);
+			const float SlainMaximum = Slain
+				? Slain->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+				: 0.0f;
+			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
+							   /*bLanded=*/true, Notice.Victim);
 
 			// AND AN ENEMY ITS NECROSIS KILLED MAY RISE FOR IT. Issue #1833 group E
 			// part 4b: "Enemies killed by necrosis rise as temporary minions for 5-10

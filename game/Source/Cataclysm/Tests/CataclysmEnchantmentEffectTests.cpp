@@ -16036,4 +16036,171 @@ bool FCataclysmSixZoneRowsTest::RunTest(const FString&)
 	return true;
 }
 
+// TWO EVENTS THAT CARRY WHO DIED AND HOW MUCH HEALTH IT HAD. Ruled 2026-10-07. Issue #1833. The rows here are made
+// by hand: a pool action that takes a share of the event's amount shows the amount, and a stack granted only on
+// an event carrying a tag shows the tags.
+namespace CataclysmDeathEventsTest
+{
+	using namespace CataclysmSpreadOnDeathTest;
+
+	/** A stack granted on `Event` only when the event carries `Required`. */
+	FCataclysmPoolAction GrantOn(const TCHAR* Event, FName Key, const FGameplayTag& Required)
+	{
+		FCataclysmPoolAction Grant;
+		Grant.Event = FName(Event);
+		Grant.StackKey = Key;
+		Grant.StackSeconds = 5.0f;
+		Grant.StackCap = 5;
+		Grant.TriggerKey = Key;
+		Grant.RequiredTags = FGameplayTagContainer(Required);
+		return Grant;
+	}
+
+	float MaximumHealthOf(const AActor* Who)
+	{
+		const UCataclysmAbilitySystemComponent* System = SystemOf(Who);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAfflictedDeathEventTest,
+	"Cataclysm.Enchantments.AnEnemysDeathIsHeardByWhoeverHasAnAilmentOnItWithItsMaximumHealthAndTheirOwnAilments",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `afflicted_death`, through a real death. A creature carries the wearer's
+ * poison and another character's burn, and dies. EACH of the two hears the
+ * event once. The wearer's row that restores the whole of the event's amount
+ * restores the dead creature's maximum health, so the amount is that. The
+ * wearer's stack kept to poison is granted and its stack kept to burn is not,
+ * so the tags are the wearer's own ailments on the body; the other character's
+ * stack kept to burn is granted. A creature that dies carrying nothing is heard
+ * by nobody.
+ */
+bool FCataclysmAfflictedDeathEventTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmDeathEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	FWearer Other(World);
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	const FGameplayTag Burn = Ailment(TEXT("Keyword.DoT.Burn"));
+	ACataclysmEnemyCharacter* Clean = Beside(World, -6.0f);
+	ACataclysmEnemyCharacter* Dying = Beside(World, 0.0f);
+	if (!TestTrue(TEXT("set-up: the poison tag is registered"), Poison.IsValid())
+		|| !TestTrue(TEXT("set-up: the burn tag is registered"), Burn.IsValid())
+		|| !TestNotNull(TEXT("set-up: the creature that dies carrying nothing"), Clean)
+		|| !TestNotNull(TEXT("set-up: the creature that dies afflicted"), Dying))
+	{
+		return false;
+	}
+	const float Maximum = MaximumHealthOf(Dying);
+	if (!TestTrue(TEXT("set-up: the creature has a maximum health"), Maximum > 0.0f)
+		|| !TestTrue(TEXT("set-up: the wearer poisons it and the other character burns it"),
+					 Ail(Wearer.Actor, Dying, Poison) && Ail(Other.Actor, Dying, Burn)))
+	{
+		return false;
+	}
+
+	const FName OnPoison(TEXT("Test:poison"));
+	const FName OnBurn(TEXT("Test:burn"));
+	Wearer.AbilitySystem->SetPoolActions({
+		PoolAction(TEXT("afflicted_death"), TEXT("health"), 100.0f, ECataclysmPoolActionBase::EventAmount),
+		GrantOn(TEXT("afflicted_death"), OnPoison, Poison), GrantOn(TEXT("afflicted_death"), OnBurn, Burn)});
+	Other.AbilitySystem->SetPoolActions({GrantOn(TEXT("afflicted_death"), OnBurn, Burn)});
+	// ONE POINT OF HEALTH IN A POOL TEN TIMES THE CREATURE'S MAXIMUM, so the whole amount fits.
+	GivePools(*Wearer.AbilitySystem, /*Health=*/1.0f, /*MaxHealth=*/Maximum * 10.0f);
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	// A CREATURE CARRYING NOTHING IS HEARD BY NOBODY.
+	TestEqual(TEXT("a creature that dies carrying no ailment is heard by nobody"),
+		UCataclysmContagion::AnnounceAfflictedDeath(Clean), 0);
+	TestEqual(TEXT("and the wearer's row restores nothing"),
+		Wearer.AbilitySystem->GetNumericAttribute(Health), 1.0f, 0.01f);
+
+	Dying->HandleDeath();
+	TestEqual(TEXT("the amount is the dead creature's maximum health: a row taking the whole of it restores that"),
+		Wearer.AbilitySystem->GetNumericAttribute(Health), 1.0f + Maximum, Maximum * 0.001f);
+	TestEqual(TEXT("the wearer hears it once, with its own poison among the tags"),
+		Wearer.AbilitySystem->OwnStacksHeld(OnPoison), 1);
+	TestEqual(TEXT("and without the other character's burn"), Wearer.AbilitySystem->OwnStacksHeld(OnBurn), 0);
+	TestEqual(TEXT("the other character hears it once too, with its burn"),
+		Other.AbilitySystem->OwnStacksHeld(OnBurn), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillEventCarriesTheSlainTest,
+	"Cataclysm.Enchantments.AKillIsHeardWithTheSlainEnemysMaximumHealthAsItsAmount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The `kill` event, through a real player character and a real kill, as the
+ * pawn raises it when it hears the death announced. A hand-made row that
+ * restores the whole of the event's amount restores the slain creature's
+ * maximum health. Before 2026-10-07 the event carried no amount and such a row
+ * restored nothing.
+ */
+bool FCataclysmKillEventCarriesTheSlainTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmDeathEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* ASC =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("the announcements"), Events) || !TestNotNull(TEXT("ability system component"), ASC)
+		|| !TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmEnemyCharacter* Victim =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(200.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a creature to kill"), Victim))
+	{
+		return false;
+	}
+	Victim->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	// A MAXIMUM OF FIFTY, which one blow of a hundred takes. `SetHealth` sets the maximum and fills it.
+	Victim->SetHealth(50.0f);
+	const float Maximum = MaximumHealthOf(Victim);
+	if (!TestEqual(TEXT("set-up: the creature's maximum health is fifty"), Maximum, 50.0f, 0.01f))
+	{
+		return false;
+	}
+
+	ASC->SetPoolActions({PoolAction(TEXT("kill"), TEXT("health"), 100.0f, ECataclysmPoolActionBase::EventAmount)});
+	GivePools(*ASC, /*Health=*/1.0f, /*MaxHealth=*/Maximum * 10.0f);
+	const uint32 DeathsBefore = Events->DeathsSent();
+	UCataclysmSkillEffects::ApplyHit(Character, Victim, /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("set-up: the kill was announced"), Events->DeathsSent() == DeathsBefore + 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a row taking the whole of the kill's amount restores the slain creature's maximum health"),
+		ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()), 1.0f + Maximum,
+		Maximum * 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
