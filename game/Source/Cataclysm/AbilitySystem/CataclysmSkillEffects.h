@@ -1545,6 +1545,18 @@ public:
 								const FRunningAilment& Running);
 
 	/**
+	 * Put a copy of an ailment just applied to `Target` on the `Count` nearest
+	 * enemies of `Applier` within 5 metres of it that do not already carry the
+	 * ailment. Ruled 2026-10-06 for "Burn effects you apply spread to 1-2 nearby
+	 * enemies". Each copy is a spread copy: the same damage a second for the
+	 * same time, no `dot_applied`, and it spreads no further on application.
+	 *
+	 * @return how many copies were applied
+	 */
+	static int32 SpreadOnApplication(AActor* Applier, AActor* Target,
+									 const FRunningAilment& Applied, int32 Count);
+
+	/**
 	 * Deal `Percent` of the remaining damage of every damage over time effect
 	 * `Owner` placed on `Target`, each as ONE damage instance delivered as its
 	 * ticks are: the effect's own context, so its instigator and causer, and its
