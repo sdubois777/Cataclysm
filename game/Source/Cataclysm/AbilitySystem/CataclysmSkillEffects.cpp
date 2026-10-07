@@ -1948,6 +1948,25 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 		return false;
 	}
 
+	// A DETONATION, WHEN A ROW OF THE INSTIGATOR'S SAYS SO. Ruled 2026-10-06 for
+	// "Void splinter stacks detonate for 50%-100% increased damage": the stack is
+	// the one running effect, and applying the ailment again to an enemy carrying
+	// the instigator's own application is what detonates it. What the running one
+	// had left is dealt at once and it ends, so the application below starts a
+	// new one at its full duration. Only the instigator's own is detonated:
+	// `DealRemainingDamageOverTime` reads the effects whose instigator it is
+	// handed, so another character's stands and the comparison below treats it
+	// as it always has. A boss is held at its line by what "left" means for a
+	// share of health. See `RemainingDamageOverTime`.
+	const float Detonation = DetonationPercentWhenReapplied(Source, EffectTag);
+	if (Detonation > 0.0f
+		&& DealRemainingDamageOverTime(Instigator, Target, Detonation, EffectTag, /*bEndEach=*/true) > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s again to %s and what was left was dealt at %.0f per cent."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target), Detonation);
+	}
+
 	// THE STRONGEST APPLICATION WINS, BY SHARE A SECOND, the comparison
 	// `ApplyDamageOverTime` makes by damage a second. Issue #1503. An equal or
 	// weaker one only refreshes how long the running one lasts and never
@@ -1995,6 +2014,20 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	return true;
+}
+
+float UCataclysmSkillEffects::DetonationPercentWhenReapplied(
+	const UAbilitySystemComponent* Applier, const FGameplayTag& Ailment)
+{
+	const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Applier);
+	const float Increase = Own
+		? Own->AilmentRiderPercentFor(Ailment, ECataclysmAilmentRider::DetonatesWhenReapplied)
+		: 0.0f;
+	// A ROW MAKES IT DETONATE FOR THE WHOLE OF WHAT WAS LEFT, RAISED BY ITS
+	// FIGURE. With no row it deals what the ailment deals by itself, which is
+	// nothing today.
+	const float Base = Increase > 0.0f ? 100.0f : DetonationPercentByItself;
+	return FMath::Max(0.0f, Base * (1.0f + Increase / 100.0f));
 }
 
 int32 UCataclysmSkillEffects::DamageOverTimeTicksLeft(float FirstTickInSeconds,

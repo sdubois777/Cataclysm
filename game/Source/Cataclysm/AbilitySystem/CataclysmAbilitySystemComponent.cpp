@@ -3442,6 +3442,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::AilmentMovementSpeedAction =
 	TEXT("ailment_movement_speed");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentSpreadOnDeathAction =
 	TEXT("ailment_spread_on_death");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentDetonatesWhenReappliedAction =
+	TEXT("ailment_detonates_when_reapplied");
 
 ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const FString& Action)
 {
@@ -3472,6 +3474,10 @@ ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const
 	if (Action.Equals(AilmentSpreadOnDeathAction, ESearchCase::IgnoreCase))
 	{
 		return ECataclysmAilmentRider::SpreadOnDeath;
+	}
+	if (Action.Equals(AilmentDetonatesWhenReappliedAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::DetonatesWhenReapplied;
 	}
 	return ECataclysmAilmentRider::None;
 }

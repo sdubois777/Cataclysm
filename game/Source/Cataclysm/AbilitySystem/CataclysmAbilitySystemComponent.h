@@ -925,6 +925,7 @@ public:
 	static const TCHAR* AilmentSpeedAction;
 	static const TCHAR* AilmentMovementSpeedAction;
 	static const TCHAR* AilmentSpreadOnDeathAction;
+	static const TCHAR* AilmentDetonatesWhenReappliedAction;
 
 	/** Which rider an action name is, or None. */
 	static ECataclysmAilmentRider AilmentRiderNamed(const FString& Action);
