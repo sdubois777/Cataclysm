@@ -32,8 +32,13 @@ been run. **No row is authored**: both sentences are still without an effect row
   yet", and to write that the rows do nothing on "the other three classes". That comment belongs to issue #956,
   decided 2026-08-26; the Ritualist's and the Ravager's generators carry later issue numbers, #1518 and #1515.
   Read today, three trees have a Fervour generator and three have none, and `game/Data/PassiveNodes.csv` holds
-  six trees, not four. The ruling is unchanged by it; the sentence above states what was read. **For the
-  coordinating session to confirm.**
+  six trees, not four. The ruling is unchanged by it; the sentence above states what was read.
+- **Confirmed by the coordinating session on 2026-10-07, and how it was counted.** The rows of
+  `game/Data/PassiveEffects.csv` whose stat is one of the ten that feed the seven functions (the "stat that feeds
+  it" column under "The eight paths") were counted by the tree of their node in `game/Data/PassiveNodes.csv`:
+  Masochist 17, Ritualist 5, Ravager 4, and none for the Berserker, the Bulwark or the Saboteur. Counted by the
+  writing session on 2026-10-07 at development 06790eea. For those three the stat acts only on class resource a
+  worn row grants through a pool action.
 
 ### What it is for
 
@@ -72,6 +77,12 @@ Two enchantment sentences, each with no effect row. Quoted from the two files, `
    A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
 
 The helper asks the stat with no tags: a generation rate is the character's and not a skill's.
+
+**A rate below nought gains nothing and takes nothing.** A labelled judgement by the coordinating session under
+the owner's delegation, 2026-10-07. No authored row reaches it alone; two worn drawbacks at -50 make a rate of
+nought. The test for it sets an increase of -150 and expects the stat to read -50 in its set-up. That the stat
+pipeline does not floor a negative sum of increases was read in `CataclysmStatPipeline.cpp` by the writing session
+and has not been run.
 
 ### The eight paths
 
