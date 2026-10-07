@@ -719,7 +719,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 512 SINCE THE ROW THAT PASSES A VOID SPLINTER ON AT A DEATH, issue #1833, from 511.
 	//
 	// AND 513 SINCE PLAGUE DOCTOR'S SIX-PIECE ROW, issue #1833, from 512.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    513)
+	//
+	// AND 519 SINCE SIX ROWS ON ZONES A SKILL LEAVES AND WHAT A ZONE DOES, issue #1833, from 513.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    519)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

@@ -2,6 +2,70 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Six more persistent area sentences are rows: zones a movement, charge or spell skill leaves, zones that damage their owner, zones that follow their owner, and minions that leave chaos pools
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (six rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The rows the dungeon session's four zone entries of 2026-10-06 left to the session holding the design workbook,
+each as the coordinating session gave it: the stat, the kind, the figures and the scope. No engine code and no
+generator code is changed here.
+
+| Sentence | Stat | Value | Required Tags |
+| :-- | :-- | :-- | :-- |
+| Your movement ability leaves a persistent AOE zone at both start and end locations for 3-5 seconds | `zone_at_start_and_end_seconds` | flat 3 to 5 | `Slot.Movement` |
+| Charge skills leave a persistent AOE zone at the impact point for 3-6 seconds | `zone_at_impact_seconds` | flat 3 to 6 | `Keyword.Charge` |
+| Your spells leave a persistent AOE zone at the impact point lasting 2-4 seconds | `zone_at_impact_seconds` | flat 2 to 4 | `Type.Spell` |
+| Persistent AOE zones also damage you if you stand in them | `zone_damages_its_owner` | flat 1 | |
+| Your persistent AOE zones follow you as you move at 50% of your movement speed | `zone_follows_owner_percent` | flat 50 | |
+| Your minions leave behind chaos pools when they die | `minions_leave_chaos_pools` | flat 1 | |
+
+EnchantmentEffects 513 to 519, over 426 to 432 enchantments.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the six sentences is those entries': what a zone a skill leaves deals and how wide it is, what
+"damage you" takes, how a zone follows its owner, and what a chaos pool is.
+
+### NOT WRITTEN, AND WHY
+
+- **"Your persistent AOE zones apply their effects to you if you stand in them" is held.** A player who carries
+  the Cripple slow is not slowed today, issue #2273; the row waits for that to be fixed.
+- **"Your own ultimate ability is disabled"** is a set's drawback and is left for the stack after this one.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheSixRowsOnZonesASkillLeavesAndWhatAZoneDoesEachGiveTheStatTheGameReads`: each row worn
+  at the top of its roll reads its stat as the game asks it (5, 6, 4, 1, 50 and 1); each of the three scoped to a
+  kind of skill reads nought when asked for a skill with no tag; each reads nought again when taken off.
+
+**Not tested here:** a skill leaving a zone, a zone damaging or following its owner, or a minion leaving a pool
+because of a worn row; those entries test each with a stat line made by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the four layers below this one, on `development` e49857f0. The build, the whole
+suite and the Python of record are in the table of the entry "A Void Splinter can pass on when its carrier dies"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 5fb5e953 | 252 tests performed, 249 succeeded, 3 failed, this layer's among them; 6 of the 9 failed assertions are this layer's |
+| The three enchantment assets, regenerated with the editor | 07fea612 | effect rows 513 to 519 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of a layer below | c6088f3d | 252 tests performed, 252 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**, on one assertion a row: each of the
+six stats reads 0 where its row's figure is expected (5, 6, 4, 1, 50 and 1).
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The stats were
+proved by the session that built them.
+
+---
+
 ## 2026-10-06 — Plague Doctor's six-piece bonus is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
