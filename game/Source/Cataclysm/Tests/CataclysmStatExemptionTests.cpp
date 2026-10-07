@@ -5407,6 +5407,59 @@ namespace CataclysmStatExemptionTest
 					   Skill->ManaCostFor(Fighter.AbilitySystem), Before + 200.0f, 0.01f);
 	}
 
+	/**
+	 * `class_resource_generation` is read by `UCataclysmAbilitySystemComponent::ClassResourceGainScaled` at each
+	 * gain of class resource. Ruled 2026-10-07. A character granted 10 for a cast gains 10; carrying the stat at
+	 * its base of 100 with 40% increased, the same cast grants 14.
+	 */
+	void ProbeClassResourceGeneration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+
+		// A CLASS RESOURCE SET FIRST, which the fighter does not carry, for the reason
+		// `ProbeScaledMaximumClassResource` gives; and a maximum of 100 for the gain to fit under.
+		Fighter.AbilitySystem->AddAttributeSetSubobject(
+			NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+
+		// THE SAME FIGHTER READ TWICE, from an empty pool each time: without the stat, then carrying it.
+		const auto GainedForACast = [&Fighter, &Pool](bool bCarrying) -> float
+		{
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(UCataclysmFervour::PerCastStat)).Base = 10.0f;
+			if (bCarrying)
+			{
+				FCataclysmStatModifier Faster;
+				Faster.Bucket = ECataclysmStatBucket::Increased;
+				Faster.Source = ECataclysmModifierSource::Enchantment;
+				Faster.Value = 40.0f;
+				FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+					FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat));
+				Line.Base = UCataclysmAbilitySystemComponent::NormalClassResourceGeneration;
+				Line.Modifiers = {Faster};
+			}
+			Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+			Fighter.AbilitySystem->SetNumericAttributeBase(Pool, 0.0f);
+			return UCataclysmFervour::GainForCast(Fighter.AbilitySystem);
+		};
+		const float Plain = GainedForACast(false);
+		const float Carrying = GainedForACast(true);
+		if (!Test.TestEqual(TEXT("set-up: without the stat a cast grants its 10"), Plain, 10.0f, 0.001f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("class_resource_generation is read: 40% increased makes the same cast grant 14"),
+					   Carrying, 14.0f, 0.001f);
+	}
+
 	/** Pins one console variable at the console's priority until it goes out of scope. */
 	struct FPinnedRoll
 	{
@@ -6454,6 +6507,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("energy_shield_recharge_ceiling_reduction"), &ProbeEnergyShieldRechargeCeiling},
 			{TEXT("experience_gain"), &ProbeExperienceGain},
 			{TEXT("mana_cost_as_maximum_mana_percent"), &ProbeManaCostAsMaximumManaPercent},
+			{TEXT("class_resource_generation"), &ProbeClassResourceGeneration},
 		};
 		return Made;
 	}

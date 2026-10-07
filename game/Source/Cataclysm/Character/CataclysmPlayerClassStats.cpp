@@ -433,6 +433,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("zone_damage_per_enemy_inside"),
 		TEXT("zone_slow_percent"),
 		TEXT("only_one_persistent_area"),
+		// How fast the class resource is gained, read by
+		// UCataclysmAbilitySystemComponent::ClassResourceGainScaled at each
+		// gain. Ruled 2026-10-07. No gameplay attribute: asked per gain with no
+		// tags, based at 100 by `EngineSuppliedBases`.
+		TEXT("class_resource_generation"),
 		// And two flags a ground zone reads there too: a stagger for whoever
 		// enters, and the ailment of the zone's own damage type each sweep.
 		// Ruled 2026-10-06.
@@ -1321,6 +1326,13 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			// Ruled 2026-10-06: its one row is a `more` of -40 to -60.
 			{FName(UCataclysmDamageCalculation::PersistentAreaDurationStat),
 			 UCataclysmDamageCalculation::NormalPersistentAreaDuration},
+
+			// AND HOW FAST THE CLASS RESOURCE IS GAINED, at 100. Ruled
+			// 2026-10-07: its two rows are `increased`, +20 to +40 and -30 to
+			// -50, so with no base every gain a player made would be scaled by
+			// nought.
+			{FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat),
+			 UCataclysmAbilitySystemComponent::NormalClassResourceGeneration},
 
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
 			// for normal. Issue #1033. The THIRD stat of this shape and it meets the
