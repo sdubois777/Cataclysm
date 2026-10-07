@@ -4,8 +4,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-07 — Two count scales, `traps_active` and `gadgets_active`, and a trap's blow ignores armour only by its summoner's row that names traps. Engine and generator only; no row authored
 
-**Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
-outcome of any run is recorded here.
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** The rest of this entry was
+written before that run.
 
 **Said first, because each may change what somebody decides.**
 
@@ -246,7 +246,7 @@ session followed the code that was already there.
 
 ### Tests
 
-**Not run.** Three Unreal tests in `CataclysmEnchantmentEffectTests.cpp`. No minion type carries `Type.Trap`, so
+**All three ran and passed in the window of 2026-10-07; see "Run".** Three Unreal tests in `CataclysmEnchantmentEffectTests.cpp`. No minion type carries `Type.Trap`, so
 each gives the tag to a spike trap by hand.
 
 - `Cataclysm.Enchantments.TheTrapScaleCountsPastAnOffsetAndTheGadgetScaleLeavesTrapsOut`. The pipeline alone,
@@ -397,12 +397,49 @@ blast" is the enemy the swing hit; the explosion raises no `deployable_hit`.
 **"Your traps ignore 20%-40% of enemy armor".** Its existing row needs no change once this layer and the tag
 are in: `armor_penetration`, `flat`, 20 to 40, Required Tags `Type.Trap`.
 
+### Run
+
+One window on 2026-10-07 for a stack of four, at `feat/overheal-becomes-absorb` 78b4806d: the attacker on dodge with
+`strike_target`, the trap counts and the armour reading, the temporary absorb, and overheal, in that order.
+Development was f0295305. One attempt; nothing was corrected during it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3319 tests performed, 3319 succeeded, 0 failed`; `Declared: 3319 tests in the tree at 78b4806d; 3319 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5865 passed, 8 skipped in 352.47s`; JUnit `tests="5873" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development f0295305's content with nothing failed.**
+
+**How the four layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the
+overlay's text and fraction functions for the absorb, the character sheet note's code, the trap layer's Python
+changes, and the overheal probe; their tests passed.
+
+**Guard proofs, at 78b4806d, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Ta | `CataclysmSkillEffects.cpp`: the named armour penetration is never stamped on the blow | `Cataclysm.Enchantments.ATrapsBlowIgnoresArmourOnlyByItsSummonersRowNamingTraps` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| Tb | `CataclysmAbilitySystemComponent.cpp`: a trap is counted as a gadget | `Cataclysm.Enchantments.TheTrapAndGadgetScalesCountTheSummonersOwnMachinesOnATrapsBlow` | 1 performed, 1 failed, 10 failed assertions: the gadget count was 3 against 2; the four "each gadget" ratios and the four "doubles" ratios each read one gadget too many; that summoner commanded 4 gadgets against 3 | 1 performed, 1 succeeded |
+| Tc | `CataclysmStatPipeline.cpp`: the offset allowed on the gadget scale and refused on the trap scale | `Cataclysm.Enchantments.TheTrapScaleCountsPastAnOffsetAndTheGadgetScaleLeavesTrapsOut` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+
+**No proof was run for the `if (IsTrap())` gate on the armour reading**, which cannot fail a test; see the top of
+this entry.
+
+**Not run:** any row read from the effect table with the tag in the data, since no spike trap carries `Type.Trap`
+yet; the trap's explosion.
+
 ---
 
 ## 2026-10-07 — A dodge names its attacker and says melee or ranged, and a new action, `strike_target`, deals the other character of an event a hit that cannot be evaded. Engine and generator only; no row authored
 
-**Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
-outcome of any run is recorded here.
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** The rest of this entry was
+written before that run.
 
 **Said first, because a player may expect otherwise: the thrown hit is neither a melee attack, a ranged attack nor
 a spell.** It is dealt with no skill tags. So a worn row scoped to attacks of one kind ("melee attacks deal...",
@@ -617,7 +654,7 @@ leech in other games was not looked up; judgement 4 is a judgement.
 
 ### Tests
 
-**Not run.** Five Unreal tests, each comparing an amount with a control. The first four use bare fighters whose
+**All five ran and passed in the window of 2026-10-07; see "Run".** Five Unreal tests, each comparing an amount with a control. The first four use bare fighters whose
 blows go through `ApplyHit`, the damage calculation and the attribute set. In each, the wearer stands at the
 origin, the attacker 4 m east of it and the control fighter 8 m east.
 
@@ -679,6 +716,40 @@ raised with a character are not exactly the eight and the three. The action's na
 | Value Low, Value High | 20, 70 |
 | Value Kind, Fraction Of, Scale | empty; each is refused |
 | Trigger Cooldown | empty for the default 0.25 seconds on a hit-fired event, or 0 for none. The sentence states none; which of the two it means is the row's session's to decide |
+
+### Run
+
+One window on 2026-10-07 for a stack of four, at `feat/overheal-becomes-absorb` 78b4806d: the attacker on dodge with
+`strike_target`, the trap counts and the armour reading, the temporary absorb, and overheal, in that order.
+Development was f0295305. One attempt; nothing was corrected during it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3319 tests performed, 3319 succeeded, 0 failed`; `Declared: 3319 tests in the tree at 78b4806d; 3319 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5865 passed, 8 skipped in 352.47s`; JUnit `tests="5873" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development f0295305's content with nothing failed.**
+
+**How the four layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the
+overlay's text and fraction functions for the absorb, the character sheet note's code, the trap layer's Python
+changes, and the overheal probe; their tests passed.
+
+**Guard proofs, at 78b4806d, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Da | `CataclysmAbilitySystemComponent.cpp`: the row's hit can be evaded | `Cataclysm.StrikeTarget.TheHitLandsOnAnAttackerThatEvadesAnOrdinaryBlowAndRaisesNoDodgeOfItsOwn` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| Db | `CataclysmVitalAttributeSet.cpp`: every evaded blow is announced as melee | `Cataclysm.StrikeTarget.ADodgeRowScopedToRangedCountsARangedEvadeAndNotAMeleeOne` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| Dc | `CataclysmVitalAttributeSet.cpp`: the row's hit is recorded as the wearer's first blow | `Cataclysm.StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows` | 1 performed, 1 failed, 1 failed assertion: `first_hit_dealt` was raised 1 time against 2 | 1 performed, 1 succeeded |
+
+**Not run:** the row read from the effect table, since no row exists; a kill made by the row's hit; a minion's
+evaded blow.
 
 ---
 
