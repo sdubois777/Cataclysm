@@ -42,6 +42,25 @@ explosions runs.
 **Not tested here:** an explosion from a worn row at a real kill; those entries test the explosion with the action
 set by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 2 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 61d09b98 | effect rows 539 to 540 |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: the wearer held no action of the kind
+where one was expected, and no share where 100 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The explosion
+was proved by the session that built it.
+
 ---
 
 ## 2026-10-07 — The two rows on absorbed damage added to the next attack are built
