@@ -78,6 +78,41 @@ row waited for a player to be slowed by Cripple, issue #2273.
 **Not tested here:** any of the twelve doing its work in play from a worn row; the dungeon session's entries test
 each stat and action with a line or a row made by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 13 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | e74285bb | effect rows 523 to 535 |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**The two tests fail against a table without their rows and pass with them**: 6 assertions of the stat test, one
+a row, and 7 of the action test, one a row and the seconds of the timed row.
+
+**A GUARD WAS CHANGED, ACCEPTED 2026-10-07 BY THE COORDINATING SESSION.** The change to
+`tools/tests/test_stun_durations_are_stated.py` described above was found by the first Python run of this layer,
+which printed "2 failed, 5794 passed, 8 skipped": the stale-asset test, and that check reporting the row of "After
+using a charge skill you are briefly stunned for 0.5-1 second". **What the check now cannot see:** an effect row
+that names Stun and whose own row would have had to state a duration, when its enchantment's sentence states one.
+It trusts the sentence. It still reports an effect row whose enchantment states none or is in neither table.
+**The alternative not taken** was an exemption by row name, which would have excused that one row whatever its
+sentence came to say.
+
+**Ruled the same day:** "applied" is 100 on `apply_status_to_self` alone, with a test on made-up sentences that the
+word is not read as 100 on any other action or stat,
+`test_applied_states_every_time_only_on_the_action_that_lays_a_status_on_its_wearer`; and the three stats join the
+yes-or-no stats.
+
+**The two rows not written**, ruled the same day: "DoTs last 2x-4x as long on you" waits for a generator rule that
+reads "Nx-Mx" as a range, this session's next stack; "DoTs on you tick twice as fast while moving" waits for the
+dungeon session to list `damage_over_time_taken` as a stat asked with a condition, with its probe.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.**
+
 ---
 
 ## 2026-10-07 — "100% of your block value is added to your retaliation damage" is built as a row that pays the attacker what a block removed
