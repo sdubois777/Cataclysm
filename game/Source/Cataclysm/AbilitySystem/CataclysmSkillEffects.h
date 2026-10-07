@@ -55,6 +55,14 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsDamageOverTime = false;
 
 	/**
+	 * Whether this is damage a character converted and has not yet taken: the bleed the Masochist's damage
+	 * conversion lays on its own character. Ruled 2026-10-06. The effect is stamped with
+	 * `UCataclysmSkillEffects::ConvertedDamageDataName`, and `UCataclysmDebuffs::Cleanse` keeps an effect that
+	 * carries the stamp and nothing else a character laid on themselves.
+	 */
+	bool bIsConvertedDamage = false;
+
+	/**
 	 * The blow was struck in melee. Issue #1032.
 	 *
 	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, the same way and in the same
@@ -1315,7 +1323,8 @@ public:
 									bool bScalesWithInstigator = true,
 									AActor* DealtBy = nullptr,
 									const UGameplayAbility* Skill = nullptr,
-									FName DamageType = NAME_None);
+									FName DamageType = NAME_None,
+									bool bIsConvertedDamage = false);
 
 	/**
 	 * Apply a share of the target's current health as damage over time. Void
@@ -1657,6 +1666,13 @@ public:
 	 * nothing is ever scoped by this one.
 	 */
 	static const TCHAR* StatedMagnitudeDataName;
+
+	/**
+	 * The name an effect is stamped under when it is converted damage not yet taken, with any value above nought.
+	 * Ruled 2026-10-06. A plain name and no gameplay tag, as `StatedMagnitudeDataName` is. Read by
+	 * `UCataclysmDebuffs::Cleanse`, which keeps the effect.
+	 */
+	static const TCHAR* ConvertedDamageDataName;
 
 	/**
 	 * What the running application of this effect on this actor STATED, or a

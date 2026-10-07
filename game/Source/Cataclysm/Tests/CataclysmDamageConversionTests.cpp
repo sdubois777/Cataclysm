@@ -629,6 +629,50 @@ CATACLYSM_CONVERSION_TEST(FCataclysmConvertedDamageIsBleedingTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+
+CATACLYSM_CONVERSION_TEST(FCataclysmConvertedDamageSurvivesACleanseTest,
+	"Cataclysm.DamageConversion.TheConvertedBleedIsKeptByACleanseBecauseItIsMarked")
+{
+	using namespace CataclysmDamageConversionTest;
+
+	// THE CONVERSION MARKS ITS BLEED AS CONVERTED DAMAGE, AND THE MARK IS WHAT A CLEANSE KEEPS. Ruled 2026-10-06.
+	// Until then a cleanse kept everything a character had laid on themselves, so this bleed was kept without
+	// being told apart. THIS IS THE CONTROL ON THE MARK: with the mark dropped from the conversion, the bleed is an
+	// ordinary self-laid one and the cleanse below removes it.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("the window is open"), Masochist.IsConverting()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		const float Converted = Conversion::ConvertIfActive(
+			Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false);
+		TestEqual(TEXT("set-up: the whole blow was converted"), Converted, 100.0f, 0.01f);
+		TestTrue(TEXT("set-up: the character is bleeding with the converted damage"),
+			UCataclysmDebuffs::IsBleeding(Masochist.AbilitySystem));
+
+		TestEqual(TEXT("a cleanse removes nothing from the character"), UCataclysmDebuffs::Cleanse(Masochist.Actor), 0);
+		TestTrue(TEXT("and the converted bleed is still there"),
+			UCataclysmDebuffs::IsBleeding(Masochist.AbilitySystem));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_CONVERSION_TEST
 
 #endif  // WITH_AUTOMATION_TESTS

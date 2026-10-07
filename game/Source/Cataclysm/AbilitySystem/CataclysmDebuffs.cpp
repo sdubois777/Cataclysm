@@ -160,7 +160,6 @@ int32 UCataclysmDebuffs::Cleanse(AActor* Character)
 	{
 		// THE CHARACTER, OR ITS ABILITY SYSTEM'S OWNER, IS ITSELF. A player's ability system belongs to its player
 		// state, and an effect the player put on itself names either the one or the other as its instigator.
-		const AActor* Owner = AbilitySystem->GetOwnerActor();
 
 		// MATCHED ON THE TAGS THE EFFECT GRANTS, as `HoldStep` matches them; the match honours parents, so the three
 		// roots find every bleed, burn, curse and stun without listing them. A copy of the handles, since removing
@@ -174,8 +173,12 @@ int32 UCataclysmDebuffs::Cleanse(AActor* Character)
 			{
 				continue;
 			}
-			const AActor* PutThereBy = Effect->Spec.GetContext().GetInstigator();
-			if (PutThereBy && (PutThereBy == Character || PutThereBy == Owner))
+			// CONVERTED DAMAGE NOT YET TAKEN IS KEPT, AND NOTHING ELSE IS. Ruled 2026-10-06. This kept every
+			// effect the character had laid on themselves, for the sake of the one that is stored damage; a
+			// drawback a row lays on its own wearer is not that, and a cleanse answers it as it answers an
+			// enemy's. The conversion stamps its bleed; see `UCataclysmSkillEffects::ConvertedDamageDataName`.
+			if (Effect->Spec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
 			{
 				continue;
 			}
