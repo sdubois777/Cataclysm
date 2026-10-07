@@ -10,8 +10,8 @@ Decisions made outside the Google Drive documents, newest first.
 (`StatsWithNoAttribute`); two probes in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; two inventory
 entries in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No row carries either flag yet**; the rows are the enchantment session's.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No row carries either flag yet**; the rows are the enchantment session's.
 
 ### What it is for
 
@@ -92,9 +92,37 @@ enemy stands inside as the control.
 
 **Python.** No new test. One existing inventory gained the two lookups.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of four, at `feat/minions-leave-chaos-pools-2` 4eba8aec: rows that make a zone,
+zones that reach their owner, zones that follow their owner, and chaos pools, in that order. Development was
+cd2ad0d9. Every figure is a line the run printed. **The stack had not been compiled before this window, and the
+first build and the first suite run both passed; no correction was made to any file.**
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3237 tests performed, 3237 succeeded, 0 failed`; `Declared: 3237 tests in the tree at 4eba8aec; 3237 performed, gap 0` |
+| Python, with continuous integration idle | `5771 passed, 8 skipped in 330.95s`; JUnit `tests="5779" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 4eba8aec, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under the prefix `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Da | `CataclysmGroundZone.cpp`: the owner is reached only when standing outside the zone | 1 performed, 1 failed, 5 failed assertions: the owner took 0.000000 against 16.700001, and was not slowed, staggered, set alight or cursed | 1 performed, 1 succeeded |
+| Db | `CataclysmSkillTemplate.cpp`: the damage flag is read from the effects row | 1 performed, 1 failed, 2 failed assertions: an owner carrying the damage flag took 0.000000 against 16.700001; one carrying the effects flag took 16.700195 against 0.000000 | 1 performed, 1 succeeded |
+
+**What the run settles of what this entry only predicted.** The game's effect functions lay a slow, a stagger, a
+burn and a curse on the character who is also their source; and an owner is staggered on entering and not again
+while staying.
+
+**Not run:** the owner dying to their own zone; Blood Pyre; a zone a row gives; any of this read from the effect
+table, since no row exists.
 
 **A behaviour with a test and no guard proof:** the owner being staggered once on entering and not again while
 staying. The proof written for it was dropped by the coordinating session to keep the window to eight proofs.
