@@ -1412,9 +1412,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// the same thing to both: health, shield or mana absorbed it.
 				// Written after the blow's own stats were read, so the first blow
 				// is judged against a record that does not hold it yet.
-				if (UCataclysmAbilitySystemComponent* Struck =
-						Cast<UCataclysmAbilitySystemComponent>(
-							GetOwningAbilitySystemComponent()))
+				//
+				// NOT A BLOW THAT IS THE CONSEQUENCE OF A DEATH. Ruled 2026-10-07 under
+				// the project owner's delegation: an overkill explosion is not a blow
+				// its attacker struck, so it is not the attacker's first blow on this
+				// character, and the attacker's next real hit still is. The stamp is
+				// `UCataclysmSkillEffects::ConsequenceOfADeathDataName`. THE BOSS
+				// CLOCK ABOVE IS LEFT AS IT WAS: damage dealt to a boss is engagement
+				// with it, whatever dealt it.
+				const bool bConsequenceOfADeath = Data.EffectSpec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::ConsequenceOfADeathDataName),
+					/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+				UCataclysmAbilitySystemComponent* Struck = bConsequenceOfADeath
+					? nullptr
+					: Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+				if (Struck)
 				{
 					bFirstFromAttacker = Struck->NoteStruckBy(
 						UCataclysmTargeting::AbilitySystemOf(
