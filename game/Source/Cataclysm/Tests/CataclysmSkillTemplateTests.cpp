@@ -52,6 +52,8 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For the character a root motion source can actually be applied to, and
 // for reading the source back off its movement component. Issue #1169.
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
@@ -20739,6 +20741,310 @@ bool FCataclysmOverkillRowOnlyRecordsTest::RunTest(const FString&)
 	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("kill")));
 	TestEqual(TEXT("of two rows the larger share is kept"),
 			  Wearer.AbilitySystem->TakePendingOverkillExplosionSharePercent(), 70.0f, 0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The overkill explosion at a real kill. Ruled 2026-10-07. Second part.
+//
+// A real player character hears a real creature's death, its `kill` row records a share, and the pawn makes the
+// explosion with the overkill the death notice carries. The explosion's blow is marked the consequence of a death,
+// and the pawn raises no on-hit event for it.
+// ---------------------------------------------------------------------------
+namespace CataclysmOverkillAtAKillTest
+{
+	using namespace CataclysmOverkillTest;
+
+	/** A possessed player character at the origin whose blow of 100% is its attack damage of 100. */
+	struct FRealKiller
+	{
+		ACataclysmPlayerCharacter* Character = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+
+		explicit FRealKiller(UWorld* World)
+		{
+			ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+			AbilitySystem = PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+			Character = World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+			if (Character && PlayerState && AbilitySystem)
+			{
+				Character->SetPlayerState(PlayerState);
+				Character->OnRep_PlayerState();
+				AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+													   100.0f);
+			}
+		}
+
+		bool IsComplete() const { return Character && AbilitySystem; }
+	};
+
+	/** A creature of the monsters' team standing here, with this maximum health and full. */
+	ACataclysmEnemyCharacter* CreatureAt(UWorld* World, const FVector& At, float Health)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(At, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(Health);
+		}
+		return Made;
+	}
+
+	/** The health a creature holds, or nought for one that is gone. */
+	float HealthOf(ACataclysmEnemyCharacter* Who)
+	{
+		const UAbilitySystemComponent* System = IsValid(Who) ? UCataclysmTargeting::AbilitySystemOf(Who) : nullptr;
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
+	bool IsGone(ACataclysmEnemyCharacter* Who) { return !IsValid(Who) || UCataclysmSkillEffects::IsDead(Who); }
+
+	/** A direct blow delivered as the explosion delivers its own, for measuring what such a blow takes. */
+	FCataclysmHitDelivery AsTheExplosionDelivers()
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		Delivery.bCannotBeRetaliatedAgainst = true;
+		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCarriesNoWeaponSubType = true;
+		Delivery.bCannotLeech = true;
+		Delivery.bIsConsequenceOfADeath = true;
+		return Delivery;
+	}
+
+	/** A stack granted each time `Event` is heard, so the count of stacks is the count of events. */
+	FCataclysmPoolAction CountOn(const TCHAR* Event, FName Key)
+	{
+		FCataclysmPoolAction Grant;
+		Grant.Event = FName(Event);
+		Grant.StackKey = Key;
+		Grant.StackSeconds = 60.0f;
+		Grant.StackCap = 10;
+		Grant.TriggerKey = Key;
+		return Grant;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillAtARealKillTest,
+	"Cataclysm.OverkillExplosion.ARealKillExplodesTheBodyAndAChainOfThreeRunsByItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * One blow by a real player character kills the first creature. With the row worn, the body explodes for the
+ * blow's overkill, that kills the second creature, the second body explodes for its own smaller overkill, and the
+ * third creature takes exactly that. Nobody calls the explosion: the pawn does, at each death it hears.
+ *
+ * THE CONTROL IS THE SAME SCENE WITHOUT THE ROW, in a world of its own: one death, and the second and third
+ * creatures lose nothing.
+ *
+ * EVERY EXPECTED FIGURE IS MEASURED ON A FOURTH CREATURE FIRST, 30 m away with health to spare: what the player's
+ * blow takes, and what a direct blow delivered as the explosion's takes for each of the two overkills. So nothing
+ * here assumes a creature's defences are nought.
+ *
+ * STANDING: the player at the origin; the first creature 2 m along +X with 50 health; the second 5 m along +X with
+ * 20, so 3 m from the first; the third 8 m along +X with 1000, so 6 m from the first body and 3 m from the second;
+ * the fourth 30 m along +Y, out of both explosions.
+ */
+bool FCataclysmOverkillAtARealKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		int32 Deaths = 0;
+		bool bSecondGone = false;
+		bool bThirdGone = false;
+		float SecondLost = 0.0f;
+		float ThirdLost = 0.0f;
+		float FarLost = 0.0f;
+		float ThirdShouldLose = 0.0f;
+	};
+
+	const auto Run = [this](const TCHAR* Who, bool bWithTheRow) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+		FRealKiller Killer(World);
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: the announcements"), Who), Events)
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: a possessed player character"), Who), Killer.IsComplete()))
+		{
+			return Read;
+		}
+		const float Plenty = 1000.0f;
+		ACataclysmEnemyCharacter* First = CreatureAt(World, FVector(2 * M, 0, 0), 50.0f);
+		ACataclysmEnemyCharacter* Second = CreatureAt(World, FVector(5 * M, 0, 0), 20.0f);
+		ACataclysmEnemyCharacter* Third = CreatureAt(World, FVector(8 * M, 0, 0), Plenty);
+		ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), Plenty);
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: the first creature"), Who), First)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: the second creature"), Who), Second)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: the third creature"), Who), Third)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: the far creature"), Who), Far))
+		{
+			return Read;
+		}
+
+		// MEASURED ON THE FAR CREATURE, which is refilled after each: the player's blow, then a blow delivered as
+		// the explosion's for the first overkill, then one for the second.
+		UCataclysmSkillEffects::ApplyHit(Killer.Character, Far, /*DamagePercent=*/100.0f);
+		const float Blow = Plenty - HealthOf(Far);
+		Far->SetHealth(Plenty);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the player's blow takes more than the first two hold"), Who),
+					  Blow > 75.0f))
+		{
+			return Read;
+		}
+		const float FirstOverkill = Blow - 50.0f;
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer.Character, Far, FirstOverkill, AsTheExplosionDelivers());
+		const float FirstExplosionTakes = Plenty - HealthOf(Far);
+		Far->SetHealth(Plenty);
+		const float SecondOverkill = FirstExplosionTakes - 20.0f;
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the first explosion takes more than the second holds"), Who),
+					  SecondOverkill > 1.0f))
+		{
+			return Read;
+		}
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer.Character, Far, SecondOverkill, AsTheExplosionDelivers());
+		Read.ThirdShouldLose = Plenty - HealthOf(Far);
+		Far->SetHealth(Plenty);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a blow of the second overkill takes something"), Who),
+					  Read.ThirdShouldLose > 0.0f))
+		{
+			return Read;
+		}
+		if (!TestEqual(*FString::Printf(TEXT("%s: set-up: no death has been announced yet"), Who),
+					   static_cast<int32>(Events->DeathsSent()), 0))
+		{
+			return Read;
+		}
+
+		if (bWithTheRow)
+		{
+			Killer.AbilitySystem->SetPoolActions({AnOverkillRow(TEXT("Test:overkill"), 100.0f)});
+		}
+
+		// THE ONE BLOW.
+		UCataclysmSkillEffects::ApplyHit(Killer.Character, First, /*DamagePercent=*/100.0f);
+
+		Read.Deaths = static_cast<int32>(Events->DeathsSent());
+		Read.bSecondGone = IsGone(Second);
+		Read.bThirdGone = IsGone(Third);
+		Read.SecondLost = 20.0f - HealthOf(Second);
+		Read.ThirdLost = Plenty - HealthOf(Third);
+		Read.FarLost = Plenty - HealthOf(Far);
+		Read.bSetUp = TestTrue(*FString::Printf(TEXT("%s: set-up: the blow killed the first creature"), Who),
+							   IsGone(First));
+		return Read;
+	};
+
+	const FRead Control = Run(TEXT("without the row"), false);
+	const FRead Worn = Run(TEXT("with the row"), true);
+	if (!Control.bSetUp || !Worn.bSetUp)
+	{
+		return false;
+	}
+
+	// THE CONTROL: nothing explodes.
+	TestEqual(TEXT("control: without the row one creature dies"), Control.Deaths, 1);
+	TestFalse(TEXT("control: the second creature lives"), Control.bSecondGone);
+	TestEqual(TEXT("control: and has lost nothing"), Control.SecondLost, 0.0f, 0.001f);
+	TestEqual(TEXT("control: and the third has lost nothing"), Control.ThirdLost, 0.0f, 0.001f);
+
+	// WORN: the chain of three, by itself.
+	TestEqual(TEXT("with the row two creatures die: the first to the blow, the second to its explosion"), Worn.Deaths,
+			  2);
+	TestTrue(TEXT("the second creature is dead"), Worn.bSecondGone);
+	TestFalse(TEXT("the third creature lives"), Worn.bThirdGone);
+	TestEqual(TEXT("the third takes exactly what a blow of the second creature's overkill takes"), Worn.ThirdLost,
+			  Worn.ThirdShouldLose, 0.01f);
+	TestEqual(TEXT("the creature 30 m away loses nothing"), Worn.FarLost, 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillFiresNoOnHitRowTest,
+	"Cataclysm.OverkillExplosion.TheExplosionFiresNoneOfTheKillersOnHitRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The explosion's blow raises neither `hit_dealt` nor `first_hit_dealt` on the killer. Two rows on the killer each
+ * grant a stack when their event is heard, so a count of stacks is a count of events.
+ *
+ * THE CONTROL IS A BLOW THE PLAYER STRUCK: one blow on a creature that lives raises each event once. Then the
+ * killing blow raises each once more, and the explosion, which strikes a creature the player has never struck,
+ * raises neither. That the explosion did strike is read off that creature's health.
+ *
+ * STANDING: the player at the origin; the creature that dies 2 m along +X with 50 health; the creature the
+ * explosion strikes 5 m along +X with 1000; the control creature 30 m along +Y with 1000.
+ */
+bool FCataclysmOverkillFiresNoOnHitRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Killer(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete()))
+	{
+		return false;
+	}
+	const float Plenty = 1000.0f;
+	ACataclysmEnemyCharacter* Dying = CreatureAt(World, FVector(2 * M, 0, 0), 50.0f);
+	ACataclysmEnemyCharacter* Caught = CreatureAt(World, FVector(5 * M, 0, 0), Plenty);
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), Plenty);
+	if (!TestNotNull(TEXT("set-up: the creature that dies"), Dying)
+		|| !TestNotNull(TEXT("set-up: the creature the explosion strikes"), Caught)
+		|| !TestNotNull(TEXT("set-up: the control creature"), Far))
+	{
+		return false;
+	}
+
+	const FName Hits(TEXT("Test:hits"));
+	const FName FirstHits(TEXT("Test:first-hits"));
+	Killer.AbilitySystem->SetPoolActions({AnOverkillRow(TEXT("Test:overkill"), 100.0f),
+										  CountOn(TEXT("hit_dealt"), Hits),
+										  CountOn(TEXT("first_hit_dealt"), FirstHits)});
+
+	// THE CONTROL: a blow the player struck raises each event once.
+	UCataclysmSkillEffects::ApplyHit(Killer.Character, Far, /*DamagePercent=*/100.0f);
+	if (!TestEqual(TEXT("control: a blow the player struck raises hit_dealt once"),
+				   Killer.AbilitySystem->OwnStacksHeld(Hits), 1)
+		|| !TestEqual(TEXT("control: and first_hit_dealt once, the creature not having been struck before"),
+					  Killer.AbilitySystem->OwnStacksHeld(FirstHits), 1))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: that blow takes more than the dying creature holds"), Plenty - HealthOf(Far) > 51.0f))
+	{
+		return false;
+	}
+
+	// THE KILL, AND ITS EXPLOSION.
+	UCataclysmSkillEffects::ApplyHit(Killer.Character, Dying, /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("set-up: the blow killed"), IsGone(Dying))
+		|| !TestTrue(TEXT("set-up: the explosion struck the creature 3 m from the body"),
+					 Plenty - HealthOf(Caught) > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("hit_dealt was raised twice: the control blow and the killing blow, and not the explosion"),
+			  Killer.AbilitySystem->OwnStacksHeld(Hits), 2);
+	TestEqual(TEXT("first_hit_dealt was raised twice: and not for the creature only the explosion struck"),
+			  Killer.AbilitySystem->OwnStacksHeld(FirstHits), 2);
 	return true;
 }
 

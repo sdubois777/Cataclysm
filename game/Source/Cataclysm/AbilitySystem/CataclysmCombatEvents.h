@@ -103,6 +103,13 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bFromBoss = false;
 
 	/**
+	 * Whether the blow is the consequence of a death and not a blow its attacker struck: an overkill explosion.
+	 * Ruled 2026-10-07. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`. The attacker and the kill credit are
+	 * as for any blow; only the player's on-hit rows read this.
+	 */
+	bool bConsequenceOfADeath = false;
+
+	/**
 	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
 	 * missing. The number the enchantment and Demonic tree sessions call the
 	 * opponent's distance, which is the same from either side of the blow.
@@ -186,6 +193,12 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 */
 	float SecondsSinceLastBlow = -1.0f;
 
+	/**
+	 * How far the blow that killed went past the health the victim held. Ruled 2026-10-07. Nought for a death
+	 * with no lethal blow on record. See `FCataclysmLastBlow::Overkill`.
+	 */
+	float Overkill = 0.0f;
+
 	FVector Location = FVector::ZeroVector;
 
 	/**
@@ -263,6 +276,13 @@ struct CATACLYSM_API FCataclysmLastBlow
 
 	/** See the struct's comment. Empty unless the blow was lethal. */
 	FGameplayTagContainer KillingTags;
+
+	/**
+	 * `FCataclysmDamageResult::Overkill` of this blow, AND ONLY WHEN IT WAS LETHAL. Ruled 2026-10-07. A blow that
+	 * would have emptied health and did not kill -- one an Unholy Sigil held -- records nought here, as it
+	 * records no killing tags.
+	 */
+	float Overkill = 0.0f;
 
 	bool IsOnRecord() const { return WorldSeconds >= 0.0; }
 };
