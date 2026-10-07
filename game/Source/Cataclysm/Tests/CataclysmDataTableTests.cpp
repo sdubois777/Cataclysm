@@ -735,7 +735,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 536 SINCE THE BLEED LEECH ROW, issue #1833, from 535.
 	//
 	// AND 537 SINCE STARVATION'S SIX-PIECE ROW, issue #1833, from 536.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    537)
+	//
+	// AND 539 SINCE THE TWO ABSORBED-DAMAGE ROWS, issue #1833, from 537.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    539)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
