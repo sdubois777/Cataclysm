@@ -4018,8 +4018,12 @@ struct CATACLYSM_API FCataclysmPoolAction
 
 	/**
 	 * The increase a passing `bUseDealsIncreasedDamage` roll gives, in percent. THE SECOND NUMBER OF THE SENTENCE,
-	 * and its own field because the row's value is the chance. Nought until a column of the effect table carries
-	 * it; the tests set it by hand.
+	 * and its own field because the row's value is the chance.
+	 *
+	 * FILLED FROM THE ROW'S `ScaleStep` AND `ScaleStepHigh`, rolled with the item's one roll for that half, by
+	 * `UCataclysmItemModifiers::AccumulateEnchantmentsInto`. ON THE TWO INCREASE ACTIONS THAT PAIR IS THE SIZE OF
+	 * THE INCREASE AND NOT A STEP: such a row states no scale, and nothing steps. Ruled 2026-10-06, so that the
+	 * effect table gained no column for one sentence.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float UseIncreasePercent = 0.0f;

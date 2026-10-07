@@ -1425,7 +1425,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						ESearchCase::IgnoreCase);
 					// AND WHETHER IT ROLLS FOR THE USE IN HAND: no damage, or increased damage; for every skill
 					// its tags allow, or for a skill with a cooldown only. Ruled 2026-10-06. The value is the
-					// chance. The increase stays at nought until a column carries it.
+					// chance. THE SIZE OF THE INCREASE IS THE ROW'S SCALE STEP AND SCALE STEP HIGH, rolled with
+					// the item's one roll as the chance is; on these two actions that pair is a size and not a
+					// step. Set below.
 					const bool bCooldownNoDamage = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::CooldownUseNoDamageAction, ESearchCase::IgnoreCase);
 					const bool bCooldownIncrease = Effect->Action.Equals(
@@ -1435,6 +1437,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bUseDealsIncreasedDamage = bCooldownIncrease || Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::UseIncreasedDamageAction, ESearchCase::IgnoreCase);
 					Action.bOnlyASkillWithACooldown = bCooldownNoDamage || bCooldownIncrease;
+					if (Action.bUseDealsIncreasedDamage)
+					{
+						Action.UseIncreasePercent = UCataclysmItemModifiers::RolledScaleStep(*Effect, Roll);
+					}
 					Action.bUseHitsAllNearby = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction, ESearchCase::IgnoreCase);
 					// AND WHETHER THE USE HITS ITS OWN USER: the whole of its hit, or half for a backfire.
