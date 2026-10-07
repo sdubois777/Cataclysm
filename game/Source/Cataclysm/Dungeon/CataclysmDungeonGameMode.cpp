@@ -11158,7 +11158,8 @@ bool ACataclysmDungeonGameMode::ChooseAtGrimTotem(ACataclysmFloorObject* Totem, 
 			   FloorNumber, Weakened);
 
 		// AND THE PLAYER'S HARMFUL EFFECTS, the row's "removing harmful effects": the player cleanse, which removes what
-		// others put on the player and keeps what the player put on itself. Ruled on 2026-09-30. The player is found
+		// is on the player and keeps damage the player converted and has not yet taken. Ruled on 2026-09-30, and
+		// narrowed to converted damage on 2026-10-06: it kept everything the player had put on itself. The player is found
 		// the way the floor rules find it.
 		UWorld* World = GetWorld();
 		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
