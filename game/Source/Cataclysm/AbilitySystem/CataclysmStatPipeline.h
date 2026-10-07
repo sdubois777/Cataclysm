@@ -2203,6 +2203,20 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerUniqueCataclysmBossDefeated
 		UMETA(DisplayName = "Per Unique Cataclysm Boss Defeated"),
+
+	/**
+	 * Multiplied by how many POOLS the character is leeching into now. Issue
+	 * #1833, ruled 2026-10-07, for "Starvation (6-Piece Bonus): You gain 5%
+	 * damage reduction for each active unique instance of leech".
+	 *
+	 * ONE FOR EACH POOL WITH A PAYMENT STILL OWED, NOT ONE FOR EACH PAYMENT:
+	 * health, mana and energy shield, so nought to three. Every hit starts a
+	 * payment, so a count of payments would have no bound. ONLY A POOL THE
+	 * CHARACTER HAS, a maximum above nought. Read from
+	 * `FCataclysmStatConditions::LeechPoolsInFlight`.
+	 */
+	PerLeechPoolInFlight
+		UMETA(DisplayName = "Per Leech Pool In Flight"),
 };
 
 /**
@@ -3001,6 +3015,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	/** How many aura skills are running on the character. Issue #1686. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 AurasHeld = 0;
+
+	/**
+	 * How many of the three pools (health, mana, energy shield) this character
+	 * has, a maximum above nought, and has a leech payment still owed into.
+	 * Issue #1833, ruled 2026-10-07.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 LeechPoolsInFlight = 0;
 
 	/**
 	 * How many passive points the character has spent, or -1 for one with no
