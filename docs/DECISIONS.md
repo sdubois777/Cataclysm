@@ -11,8 +11,8 @@ listener); `AbilitySystem/CataclysmBasicAttack.cpp` (`SecondsBetweenSwingsFor`);
 (`UCataclysmProjectileSkill::SecondsBetweenThrows`); one test in
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`. Issue
 [#2273](https://github.com/sdubois777/Cataclysm/issues/2273).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have.
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry.
 
 ### What was wrong
 
@@ -102,10 +102,71 @@ four fifths of their speed.
 
 **Not covered by a test:** the swing animation's play rate; a player's blow landing on a player.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs. **The reproduction has not been shown
-failing yet**; a guard proof that takes the walking-speed read out will show it.
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under `Cataclysm.StatExemption.APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Ca | `CataclysmPlayerCharacter.cpp`: the player's walking speed does not read Cripple | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| Cb | `CataclysmBasicAttack.cpp`: the player's swing does not read Cripple | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+
+### The reproduction of issue #2273
+
+**The reproduction could not be run on development 2d2a260b as it was written**: the test calls
+`UCataclysmSkillEffects::CrippleMultiplierOn`, which does not exist before the fix, so it does not compile there.
+Accepted by the coordinating session on 2026-10-07: **the failing half of proof Ca stands in for it, because its
+break restores exactly the code as it was, the player's walking speed not reading Cripple.** Proof Cb does the same
+for the swing. With the code as it was, the run printed:
+
+```
+Expected 'a player carrying a Cripple of 20 walks at four fifths of their speed' to be 320.000000, but it was 400.000000 and outside tolerance 0.500000.
+Expected 'a player carrying the row's Cripple walks at seven tenths' to be 280.000000, but it was 400.000000 and outside tolerance 0.500000.
+Expected 'and waits a quarter longer between swings' to be 1.250000, but it was 1.000000 and outside tolerance 0.001000.
+Expected 'and swings at seven tenths of the rate' to be 1.428571, but it was 1.000000 and outside tolerance 0.001000.
+Expected 'and still waits a quarter longer between swings' to be 1.250000, but it was 1.000000 and outside tolerance 0.001000.
+```
+
+So a crippled player walked at 400 and swung once a second, their full figures, which is the fault.
+
+### The test-only correction after the second attempt
+
+The second attempt's whole suite printed `3248 tests performed, 3247 succeeded, 1 failed`, and the one failed
+assertion was this test's set-up, `Expected 'set-up: the player walks, swings and throws at some rate' to be true.`
+**The cause was read in the code and not shown by that run**: a player's attack speed attribute starts at nought,
+because a worn weapon supplies it, and the test's player wears none, so its seconds between swings was nought.
+The correction, to the test file only: each of the test's two players is given an attack speed of 1 a second before
+anything is read, and the set-up assertion is split into three, for walking, swinging and throwing. No assertion's
+meaning changed. The third attempt printed the test passing, and the two proofs above.
+
+**Not run:** the swing animation's play rate; a player's blow landing on a player; the throw proof (the throw's read
+has a test and no proof).
 
 ---
 
