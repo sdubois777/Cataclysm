@@ -972,6 +972,21 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		}
 	}
 
+	// AND WHAT THE TWO STORES OF ABSORBED DAMAGE HOLD, ON THE NEXT ATTACK. Ruled
+	// 2026-10-07: "next attack" is any hit that is not a spell and not a tick,
+	// the basic attack included, so a ranged blow spends these and does not
+	// spend Nothing Wasted's above. Each cap is measured against `Damage`, the
+	// hit's own figure, and not against `Sent`, so the three stores worn
+	// together can take one hit to four times its own damage and no further.
+	if (!Arrived.bIsSpell && !Arrived.bIsDamageOverTime)
+	{
+		if (UCataclysmAbilitySystemComponent* Holder =
+				Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			Sent += Holder->SpendStoredAbsorbedDamage(Damage);
+		}
+	}
+
 	return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
 		? Sent : 0.0f;
 }

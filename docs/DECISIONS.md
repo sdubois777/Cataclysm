@@ -2,6 +2,231 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Absorbed damage stored: what the energy shield absorbs, and what an absorbed spell would have dealt, are each kept and added to the next attack. Engine and stat names only
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (two stat names, two
+stores, `NoteShieldAbsorbedDamage`, `NoteSpellAbsorbedDamage`, `SpendStoredAbsorbedDamage`, and the clearing on
+death); `CataclysmVitalAttributeSet.cpp` (where each store fills); `CataclysmSkillEffects.cpp` (`ApplyHit`, where
+both are spent); `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` (`StoredAttackDamageLine`) and
+`CataclysmHUD.cpp` (the line above the skill bar); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(two names in `StatsWithNoAttribute`); seven tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`
+and two probes in `CataclysmStatExemptionTests.cpp`; the inventory in
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** **No row is authored**; the
+rows are the enchantment session's.
+
+### What it is for
+
+Two enchantment sentences. The second is the one the 2026-10-06 entry on `spell_absorb_chance` left out with the
+words "is not in this work".
+
+| Sentence | Stat, new, with no attribute | What the row needs |
+|---|---|---|
+| "Damage absorbed by your energy shield is converted to bonus damage on your next attack" | `shield_absorbed_damage_added_to_next_attack_cap_percent` | flat 100 |
+| "Absorbed spell damage is converted to bonus damage on your next attack" | `spell_absorbed_damage_added_to_next_attack_cap_percent` | flat 100 |
+
+Above nought means the row is worn, and the value is the most its store may add, as a share of the hit it is added
+to. **The second row stores nothing on its own**: its store fills only when `spell_absorb_chance` turns a spell
+aside, so its wearer needs that chance from somewhere.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **A flat amount, in two new stores**, separate from each other and from Nothing Wasted's, each under its own cap
+   stat with no attribute. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+2. **The spend is at most the cap's percent of the hit's own damage, and the store has no ceiling.** No expiry.
+   Cleared on death, where Nothing Wasted's store is cleared. A labelled judgement by the coordinating session under
+   the owner's delegation, 2026-10-07.
+3. **"Next attack" is any hit that is not a spell and not a damage over time tick, the basic attack included.** It
+   is not melee only. Nothing Wasted stays melee only and is unchanged. A labelled judgement by the coordinating
+   session under the owner's delegation, 2026-10-07.
+4. **The shield's store fills from every blow the energy shield absorbs from, ticks included, by exactly what the
+   shield absorbed.** A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+5. **The spell's store fills by what the absorbed spell would have dealt after the wearer's defences**: what would
+   have reached health, the shield and mana, read just before the absorb empties them. Only when the absorb is what
+   turned the spell aside; not for immunity and not for a reflected hit. A labelled judgement by the coordinating
+   session under the owner's delegation, 2026-10-07.
+6. **All three stores may be worn together and all add to one hit**, each from its own store under its own cap, and
+   each cap is measured against the hit's own damage before any store is added. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-07.
+
+The coordinating session also ruled that each store has its own line above the skill bar, as Nothing Wasted's has.
+
+### This does not reverse ruling N1 of Nothing Wasted
+
+The entry "2026-09-24 — Nothing Wasted, engine only" ruled, as N1, that Nothing Wasted's store counts armour and
+both damage reduction lines, and that "Block, resistance, evasion, the energy shield and mana do not." **That
+stands.** The shield still adds nothing to Nothing Wasted's store. What the shield absorbs fills a different store,
+under a different stat, spent on a different set of hits. A test holds the two apart: a blow a shield absorbs from
+leaves Nothing Wasted's store exactly where it was.
+
+### Judgements by the writing session, 2026-10-07, for the coordinating session to confirm
+
+- **Spent when the blow is sent, on the first target, and anything above the cap is lost.** A judgement by the
+  writing session, following N5 and the first ruling of the Nothing Wasted entry: the two new stores are spent in
+  the same place in `ApplyHit`, so an evaded first blow uses them up and the second target of one swing gets
+  nothing.
+- **The line names its store**: "Next attack +340 (shield)" and "Next attack +120 (spell)". A judgement by the
+  writing session. Two stores can be held at once and each is spent under its own cap, so two lines reading only
+  "Next attack +N" could not be told apart.
+- **A store whose row is no longer worn is kept and not spent**, as Nothing Wasted's is. A judgement by the writing
+  session; death still clears it.
+- **An absorbed spell fills the spell's store and not the shield's.** A judgement by the writing session that
+  follows from the order of the code: the absorb empties the blow before the shield is drawn on, so the shield
+  absorbed nothing.
+
+### For the owner's play-check
+
+- **The cap is on the spend and there is no ceiling on the store.** A store can grow without limit over a long
+  fight. However large it is, it adds at most the cap's share of the one hit it is spent on, and the rest is lost.
+- **The largest total is one hit at four times its own damage**: the hit itself, Nothing Wasted at 100%, the
+  shield's store at 100% and the spell's store at 100%. That needs a melee hit, all three worn, and each store
+  holding at least the hit's damage.
+- **A proc can spend the store before the player's own next attack does.** Every hit through `ApplyHit` that is not
+  a spell or a tick spends the two new stores, and three of those are not something the player presses: a Smite a
+  worn row fires, the Shoulder Through follow-up, and the buried weapon's hop. Ruled on 2026-10-07 by the
+  coordinating session under the owner's delegation to stay as built, because Nothing Wasted and the next-use
+  charges are spent the same way. **The alternative not taken:** spend only on a hit of a skill the player used,
+  which needs a mark on the hit's delivery.
+- **A wand's, a staff's or a crossbow's basic attack spends them**, though it reads as a spell to a player. It is a
+  projectile whose skill carries no `Type.Spell` tag. The nine skills tagged as spells do not spend them.
+- **Nothing expires.** A store filled at the start of a floor is still there at the end of it.
+- **The second sentence can fire against one enemy attack today.** See the count below.
+
+### How many enemy attacks are spells today
+
+**One: the Succubus's Soulfire**, `ACataclysmSuccubusCharacter::SoulfireTags`, "Type.Spell, Type.Projectile".
+Counted on 2026-10-07 on this branch by searching `game/Source/Cataclysm/Character` for the string literals that
+state an attack's tags, `TEXT("Type.` followed by a tag list: nine literals in six files (the Abyssal Warden, the
+Brute, the Corrupted Sentinel, the base enemy, the Gatekeeper and the Succubus), and one of the nine carries
+`Type.Spell`. `game/Data/EnemyArchetypes.csv`, `EnemyModifiers.csv` and `MinionTypes.csv` were searched for
+`Type.Spell` as well and hold none. That agrees with the 2026-10-06 entry on `spell_absorb_chance`, which says the
+absorb "reaches one enemy attack today". **The search finds tags written as literals in creature code; an attack
+tagged some other way would not be in it.**
+
+### What the research settles, and what it does not
+
+Path of Exile's Molten Shell and Vaal Molten Shell were read on poedb.tw
+([Molten Shell](https://poedb.tw/us/Molten_Shell) and [Vaal Molten Shell](https://poedb.tw/us/Vaal_Molten_Shell)):
+each takes a share of damage from hits into a buff bounded by a share of armour up to a ceiling (10% of armour up to
+5000; 20% up to 10000), lasts 3 and 9 seconds, and reflects a share of what it took. poewiki.net,
+lastepochtools.com and a maxroll.gg page refused the fetch, so Last Epoch and Diablo were NOT read and nothing is
+said of them. The shipped stores read are bounded on the STORE and released on a timer, and this one is bounded on
+the SPEND and released on the next attack, which follows this game's own Nothing Wasted rulings and is a judgement.
+
+### How it is built
+
+- **Two stores on the ability system**, `StoredShieldAbsorbedDamage` and `StoredSpellAbsorbedDamage`, beside
+  `StoredMitigatedDamage` and cleared where it is cleared.
+- **The shield's store fills** in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, on the line after
+  Nothing Wasted's `NoteMitigatedDamage`, with `Outcome.AbsorbedByShield`: the figure the same function has just
+  taken from the shield.
+- **The spell's store fills** in the same function where a blow is emptied, on `bAbsorbed` alone, with
+  `Resolved.DealtToHealth + Resolved.AbsorbedByShield + Resolved.AbsorbedByMana` read before the three are set to
+  nought. `bAbsorbed` is never true inside the no-damage window, and `bReflected` is only true when `bAbsorbed` is
+  not.
+- **Both are spent** in `UCataclysmSkillEffects::ApplyHit`, straight after Nothing Wasted's spend, when the blow is
+  not a spell (`Arrived.bIsSpell`, which is `Type.Spell` on the skill's tags or the caller's own flag) and not a
+  tick. `SpendStoredAbsorbedDamage` is handed the hit's own finished damage, the same figure Nothing Wasted's spend
+  is handed, so no cap is measured against a figure another store has raised.
+- **Each `Note` asks its cap stat and stores nothing at nought**, as `NoteMitigatedDamage` does.
+- **The display.** `UCataclysmSkillBar::StoredAttackDamageLine` answers "Next attack +340 (shield)" or "Next attack
+  +120 (spell)", or nothing, and the heads-up display joins each to the line above the skill bar after Nothing
+  Wasted's "Next melee +N", with the same three spaces. A store below one point reads "+1". **Only the text is
+  tested**: the automation tests run with no renderer.
+
+### What was read to check ruling 3 before writing
+
+- **How a hit is known to be a spell where it is spent.** `UCataclysmSkillEffects::ApplyHit` sets
+  `Arrived.bIsSpell = Arrived.bIsSpell || IsSpell(SkillTags)`, and `IsSpell` is whether the tags carry `Type.Spell`.
+- **A player's basic attack reaches that place.** `UCataclysmWeaponSkills::BasicAttackFor` builds it from the
+  weapon's base: a strike for a melee weapon, given `Slot.Basic` and `Type.Melee`, and a projectile for a wand, a
+  staff or a crossbow, given `Slot.Basic` alone. A strike goes through `UCataclysmStrikeSkill::SwingOnce` to
+  `UCataclysmSkillTemplate::HitTargets`, which calls `ApplyHit` with the skill's tags: melee, not a spell, not a
+  tick.
+- **A projectile reaches it.** `ACataclysmProjectile::HitOne` calls `ApplyHit` with the firing skill's tags and a
+  delivery that sets none of the melee, ranged, spell or tick flags, so whether it is a spell is the firing
+  skill's `Type.Spell` alone.
+
+### Consequences, stated rather than changed
+
+- **Any hit through `ApplyHit` that is not a spell or a tick spends the two stores**, whoever asked for it. Read on
+  this branch: the Smite a worn row fires at nearby enemies (`ApplyHit` with no tags, in
+  `CataclysmAbilitySystemComponent.cpp`), Shoulder Through's hit on an enemy walked into, and a buried weapon's hop
+  to its next host all are. So a store can be spent on a hit the player did not aim. This is ruling 3 as written;
+  narrowing it to hits of a pressed skill would be a new ruling.
+- **A hit that does not go through `ApplyHit` spends nothing**: retaliation, a reflected hit paid back, and damage
+  over time applied as an effect.
+- **A minion's hits are its own.** The store is on the character who was struck, and only that character's own
+  hits spend it.
+- **The first target is the nearest only because `HitTargets` hits nearest first**, as the Nothing Wasted entry
+  says of its own store.
+- **A wearer who is immune to damage fills neither new store from a spell, whatever their absorb chance.** The
+  immunity is asked first: a spell may be absorbed only when the wearer is not immune, so the absorb is not rolled
+  for an immune wearer and nothing is stored. Read in the code; the spell test asserts it.
+
+### Tests
+
+**All of them ran and passed in the window of 2026-10-07; see "Run".** In `CataclysmSkillTemplateTests.cpp`, after the last test in the file, using Nothing
+Wasted's own helpers. Every stat is given by hand, so none can see a missing or wrong row.
+
+- `Cataclysm.AbsorbedDamageStored.WhatTheShieldAbsorbsIsStoredForItsWearerAndForNobodyElse`: a shield of 40 under a
+  blow of 100 stores 40 for a wearer and nothing for a character without the stat; a blow the shield takes whole
+  and a tick each add exactly what the shield lost; the other two stores stay empty. The line's exact words are
+  asserted.
+- `Cataclysm.AbsorbedDamageStored.AnAbsorbedSpellIsStoredAsWhatItWouldHaveDealtAndNothingElseIs`: with
+  `Cataclysm.SpellAbsorbRoll` pinned, an absorbed spell stores what the same spell deals a twin with the same
+  armour and damage reduction. A spell not absorbed, a melee blow, a wearer of the absorb without the stat, and a
+  spell emptied by the no-damage window store nothing. **A reflected hit is not covered.**
+- `Cataclysm.AbsorbedDamageStored.TheNextHitThatIsNeitherASpellNorATickSpendsItUpToItsCap`: a spell and a tick
+  leave the store; the next hit with no tags adds it and empties it; a store above the hit makes a ranged hit
+  exactly twice its plain damage at a cap of 100 and one and a half times at 50.
+- `Cataclysm.AbsorbedDamageStored.OnlyTheFirstTargetOfAnAttackGetsIt`: a 360 degree strike on two enemies adds the
+  store to the nearer alone.
+- `Cataclysm.AbsorbedDamageStored.ABasicAttackSpendsItAndSoDoesAProjectile`: a strike in the basic attack slot and
+  a flying projectile each deal a plain character's damage and the store.
+- `Cataclysm.AbsorbedDamageStored.AllThreeStoresWornTakeOneHitToFourTimesItsOwnDamage`: 400 from a weapon of 100.
+- `Cataclysm.AbsorbedDamageStored.ARangedHitSpendsTheTwoNewStoresAndLeavesNothingWastedsForAMeleeHit`: Nothing
+  Wasted's store does not fill from the shield or from an absorbed spell, is left by a ranged hit, and is spent by
+  the melee hit after it.
+- Two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, one for each stat.
+
+When the rows land, that change must add a test that wears each real row.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Aa | `CataclysmVitalAttributeSet.cpp`: the shield's store is never filled | `Cataclysm.AbsorbedDamageStored.WhatTheShieldAbsorbsIsStoredForItsWearerAndForNobodyElse` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| Ab | `CataclysmSkillEffects.cpp`: only a melee hit spends the two stores | `Cataclysm.AbsorbedDamageStored.ARangedHitSpendsTheTwoNewStoresAndLeavesNothingWastedsForAMeleeHit` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+**Not run:** a guard proof for the absorbed spell's store, which has tests and no proof; any of this read from the
+effect table, since no row exists.
+
+---
+
 ## 2026-10-07 — Twelve rows on statuses and damage over time on the wearer, a zone that applies its effects to its owner, and a cooldown ability that may deal increased damage
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (twelve rows of the Enchantment Effects sheet),

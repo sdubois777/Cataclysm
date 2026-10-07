@@ -515,6 +515,12 @@ void ACataclysmHUD::DrawSkillBar()
 				  SkillPercent, SkillCount, AttackPercent, AttackCount,
 				  Cataclysm->NextUseEffectivenessHeld(), OwnStacks),
 			  UCataclysmSkillBar::StoredDamageLine(Cataclysm->StoredMitigatedDamageNow()),
+			  // AND THE TWO STORES OF ABSORBED DAMAGE, each its own entry. Ruled
+			  // 2026-10-07.
+			  UCataclysmSkillBar::StoredAttackDamageLine(
+				  Cataclysm->StoredShieldAbsorbedDamageNow(), TEXT("shield")),
+			  UCataclysmSkillBar::StoredAttackDamageLine(
+				  Cataclysm->StoredSpellAbsorbedDamageNow(), TEXT("spell")),
 			  // AND WHAT THE NEXT SPELL'S COOLDOWN WILL LOSE. Issue #1833.
 			  UCataclysmSkillBar::NextSpellCooldownLine(
 				  Cataclysm->NextSpellCooldownSecondsHeld()),

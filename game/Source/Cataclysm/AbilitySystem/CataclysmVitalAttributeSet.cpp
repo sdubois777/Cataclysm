@@ -1215,6 +1215,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Guarded, CataclysmDefendingBody(*this), Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
 				}
+				// AND AN ABSORBED SPELL IS STORED, for "Absorbed spell damage is
+				// converted to bonus damage on your next attack". Ruled
+				// 2026-10-07: what the spell would have dealt after the wearer's
+				// defences, which is these three figures before the lines below
+				// empty them. ONLY WHEN THE ABSORB TURNED IT ASIDE: `bAbsorbed`
+				// is never true inside the no-damage window, and a reflected hit
+				// was not absorbed.
+				if (bAbsorbed)
+				{
+					Guarded->NoteSpellAbsorbedDamage(
+						Resolved.DealtToHealth + Resolved.AbsorbedByShield
+							+ Resolved.AbsorbedByMana);
+				}
 				if (Guarded->IsDamageImmune() || bAbsorbed || bReflected)
 				{
 					Resolved.DealtToHealth = 0.0f;
@@ -1874,6 +1887,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// are not in either figure.
 				Cataclysm->NoteMitigatedDamage(
 					Outcome.RemovedByArmour + Outcome.RemovedByDamageReduction);
+
+				// AND WHAT THE ENERGY SHIELD ABSORBED IS STORED IN A STORE OF ITS
+				// OWN, for "Damage absorbed by your energy shield is converted to
+				// bonus damage on your next attack". Ruled 2026-10-07. Exactly
+				// the figure taken from the shield above, ticks included.
+				Cataclysm->NoteShieldAbsorbedDamage(Outcome.AbsorbedByShield);
 			}
 
 			// AND ANY HIT THAT REACHED THE CHARACTER BUILDS A STACK. Issue

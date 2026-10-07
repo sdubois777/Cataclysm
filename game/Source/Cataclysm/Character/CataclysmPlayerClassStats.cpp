@@ -273,6 +273,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// to, read by UCataclysmAbilitySystemComponent::NoteMitigatedDamage and
 		// SpendStoredMitigatedDamage. Issue #1515.
 		TEXT("mitigated_damage_added_to_next_melee_cap_percent"),
+		// The caps of the two stores of absorbed damage, each a share of the
+		// hit its store is added to, read by
+		// UCataclysmAbilitySystemComponent::NoteShieldAbsorbedDamage,
+		// NoteSpellAbsorbedDamage and SpendStoredAbsorbedDamage. Ruled
+		// 2026-10-07.
+		TEXT("shield_absorbed_damage_added_to_next_attack_cap_percent"),
+		TEXT("spell_absorbed_damage_added_to_next_attack_cap_percent"),
 		// Shared Blood's share of the summoner's maximum energy shield that each
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.

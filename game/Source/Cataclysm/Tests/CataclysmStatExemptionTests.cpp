@@ -5513,6 +5513,85 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `shield_absorbed_damage_added_to_next_attack_cap_percent`, read by
+	 * `UCataclysmAbilitySystemComponent::NoteShieldAbsorbedDamage`. Ruled 2026-10-07. Two defenders with a shield of
+	 * 40 take the same blow of 100; only the one carrying the stat stores what its shield absorbed.
+	 */
+	void ProbeShieldAbsorbedAdded(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+
+		FScopedSwinger Attacker(World, FVector::ZeroVector);
+		FScopedSwinger Plain(World, FVector(3 * M, 0, 0));
+		FScopedSwinger Held(World, FVector(3 * M, 100 * M, 0));
+		GrantFlats(Held.Actor,
+			{{FName(UCataclysmAbilitySystemComponent::ShieldAbsorbedAddedCapStat), 100.0f}});
+		for (FScopedSwinger* Defender : {&Plain, &Held})
+		{
+			Defender->Set(Vital::GetMaxEnergyShieldAttribute(), 1000.0f);
+			Defender->Set(Vital::GetEnergyShieldAttribute(), 40.0f);
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Plain.Actor, 100.0f, FGameplayTagContainer());
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Held.Actor, 100.0f, FGameplayTagContainer());
+
+		const float Absorbed = 40.0f - Held.Get(Vital::GetEnergyShieldAttribute());
+		if (!Test.TestTrue(TEXT("set-up: the carrying defender's shield absorbed something of the blow"), Absorbed > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a defender without shield_absorbed_damage_added_to_next_attack_cap_percent stores nothing"),
+					   Plain.AbilitySystem->StoredShieldAbsorbedDamageNow(), 0.0f);
+		Test.TestEqual(TEXT("and one carrying it stores what its shield absorbed, so NoteShieldAbsorbedDamage really reads it"),
+					   Held.AbilitySystem->StoredShieldAbsorbedDamageNow(), Absorbed, 0.01f);
+	}
+
+	/**
+	 * `spell_absorbed_damage_added_to_next_attack_cap_percent`, read by
+	 * `UCataclysmAbilitySystemComponent::NoteSpellAbsorbedDamage`. Ruled 2026-10-07. Two defenders absorb the same
+	 * spell, each on a chance of 100; only the one carrying the stat stores what the spell would have dealt.
+	 */
+	void ProbeSpellAbsorbedAdded(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+
+		FScopedSwinger Attacker(World, FVector::ZeroVector);
+		FScopedSwinger Plain(World, FVector(3 * M, 0, 0));
+		FScopedSwinger Held(World, FVector(3 * M, 100 * M, 0));
+		GrantFlats(Plain.Actor, {{FName(UCataclysmDamageCalculation::SpellAbsorbChanceStat), 100.0f}});
+		GrantFlats(Held.Actor,
+			{{FName(UCataclysmDamageCalculation::SpellAbsorbChanceStat), 100.0f},
+			 {FName(UCataclysmAbilitySystemComponent::SpellAbsorbedAddedCapStat), 100.0f}});
+
+		const FGameplayTagContainer Spell = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Spell"));
+		const float HealthBefore = Held.Get(Vital::GetHealthAttribute());
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Plain.Actor, 100.0f, Spell);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Held.Actor, 100.0f, Spell);
+
+		if (!Test.TestEqual(TEXT("set-up: the carrying defender absorbed the spell and took nothing"),
+							Held.Get(Vital::GetHealthAttribute()), HealthBefore, 0.001f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a defender without spell_absorbed_damage_added_to_next_attack_cap_percent stores nothing of a spell it absorbs"),
+					   Plain.AbilitySystem->StoredSpellAbsorbedDamageNow(), 0.0f);
+		Test.TestTrue(TEXT("and one carrying it stores what the spell would have dealt, so NoteSpellAbsorbedDamage really reads it"),
+					  Held.AbilitySystem->StoredSpellAbsorbedDamageNow() > 0.0f);
+	}
+
+	/**
 	 * `spell_absorb_chance` is read by `UCataclysmDamageCalculation::SpellIsAbsorbed`, asked in the vital set beside
 	 * the no-damage window. A defender carrying 100 of it takes nothing from a spell a plain defender is hurt by.
 	 */
@@ -6301,6 +6380,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("dot_application_refreshes_others"), &ProbeDotApplicationRefreshesOthers},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
+			{TEXT("shield_absorbed_damage_added_to_next_attack_cap_percent"), &ProbeShieldAbsorbedAdded},
+			{TEXT("spell_absorbed_damage_added_to_next_attack_cap_percent"), &ProbeSpellAbsorbedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
 			{TEXT("minions_repeat_your_skills"), &ProbeChorus},
 			{TEXT("two_handed_weapon_in_each_hand"), &ProbeBothHandsFull},

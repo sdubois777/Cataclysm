@@ -383,6 +383,15 @@ public:
 	static FString StoredDamageLine(float Stored);
 
 	/**
+	 * What a store of absorbed damage holds for the next attack, such as "Next
+	 * attack +340 (shield)" or "Next attack +120 (spell)", or empty while
+	 * nothing is stored. Ruled 2026-10-07. `From` says which store, since two
+	 * may be held at once and each is spent under its own cap. Rounded and
+	 * floored at one as the line above is.
+	 */
+	static FString StoredAttackDamageLine(float Stored, const TCHAR* From);
+
+	/**
 	 * What the held next-spell cooldown charges take off the next spell's
 	 * cooldown, such as "Next spell cooldown -1.5s", or empty while none is
 	 * held. Issue #1833, the cooldown reduction action. One decimal place,
