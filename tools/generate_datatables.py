@@ -5183,6 +5183,9 @@ AILMENT_RIDER_ACTIONS = (
     # THE INCREASE on what the ailment deals at once when its applier applies it
     # again. Read on the applier and not carried; on `DETONATING_AILMENTS` only.
     "ailment_detonates_when_reapplied",
+    # HOW MANY enemies near the target the ailment also goes to when it is
+    # applied. A count and not a percent; read on the applier and not carried.
+    "ailment_spread_on_application",
 )
 
 #: The rider that makes an ailment DETONATE, and the ailments it can be hung on.

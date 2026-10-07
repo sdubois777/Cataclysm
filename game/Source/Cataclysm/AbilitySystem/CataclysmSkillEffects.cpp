@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the reach every spread of an ailment has.
+#include "AbilitySystem/CataclysmContagion.h"
 // For the chances to apply an ailment that a blow carries. Issue #899.
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -1799,6 +1801,30 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// A ROW MAY PASS THIS APPLICATION ON TO ENEMIES NEAR THE TARGET. Ruled
+	// 2026-10-06: "Burn effects you apply spread to 1-2 nearby enemies". Asked of
+	// the instigator's own rows, so a minion's application spreads nothing of its
+	// owner's. NOT FOR A COPY A SPREAD MAKES, which is the guard the ruling asks
+	// for: a copy that spread on application would cross a whole pack from one
+	// application.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source);
+		const int32 Count = Own
+			? FMath::RoundToInt(Own->AilmentRiderPercentFor(
+				  EffectTag, ECataclysmAilmentRider::SpreadOnApplication))
+			: 0;
+		if (Count > 0)
+		{
+			FRunningAilment Applied;
+			Applied.Ailment = EffectTag;
+			Applied.DamagePerSecond = Stated;
+			Applied.SecondsLeft = Numbers.DurationSeconds;
+			Applied.Applier = Instigator;
+			SpreadOnApplication(Instigator, Target, Applied, Count);
+		}
+	}
+
 	// AND WHAT THE APPLIER'S WORN ROWS HANG ON THIS AILMENT GOES ONTO THE
 	// CARRIER. Issue #1833, ruled 2026-10-06: "Bleeding enemies take 20%-40%
 	// increased damage from all sources". HERE, BEFORE THE TWO BRANCHES BELOW, so
@@ -2182,6 +2208,39 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 		Defender->ModifyActiveEffectStartTime(Move.Key, Move.Value);
 	}
 	return Moves.Num();
+}
+
+int32 UCataclysmSkillEffects::SpreadOnApplication(AActor* Applier, AActor* Target,
+												  const FRunningAilment& Applied, int32 Count)
+{
+	if (!Applier || !Target || Count <= 0)
+	{
+		return 0;
+	}
+	const FVector Centre = Target->GetActorLocation();
+	TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+		Target->GetWorld(), Applier, Centre, UCataclysmContagion::SpreadFromTheDyingMetres * 100.0f);
+	Nearby.Remove(Target);
+	const FGameplayTag Ailment = Applied.Ailment;
+	Nearby.RemoveAll([&Ailment](const AActor* Candidate)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Candidate);
+		return !Its || Its->HasMatchingGameplayTag(Ailment);
+	});
+	Nearby.Sort([&Centre](const AActor& A, const AActor& B)
+	{
+		return FVector::DistSquared(A.GetActorLocation(), Centre)
+			< FVector::DistSquared(B.GetActorLocation(), Centre);
+	});
+	int32 Copies = 0;
+	for (int32 Index = 0; Index < Nearby.Num() && Index < Count; ++Index)
+	{
+		if (ApplySpreadCopy(Applier, Nearby[Index], Applied))
+		{
+			++Copies;
+		}
+	}
+	return Copies;
 }
 
 float UCataclysmSkillEffects::DetonationPercentWhenReapplied(
