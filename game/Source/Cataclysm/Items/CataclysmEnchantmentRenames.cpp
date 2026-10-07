@@ -22,7 +22,14 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 	// AND ONE ON 2026-10-06, the owner's approved reword: "Nearby enemies gain
 	// 20%-40% resistances" became "Enemies within 5 metres gain 20%-40%
 	// resistances", so that its row could state the distance it acts on.
+	//
+	// AND ONE ON 2026-10-07, the owner's approved reword: "DoTs last 2x-4x as
+	// long on you" became "DoTs on you have 100%-300% more duration", so that
+	// its sentence states the range its row holds in the form every reader of
+	// a range already reads.
 	static const TMap<FName, FName> Table = {
+		{TEXT("Negative_DoTs_last_2x_4x_as_long_on_you"),
+		 TEXT("Negative_DoTs_on_you_have_100_300_more_duration")},
 		{TEXT("Negative_Nearby_enemies_gain_20_40_resistances"),
 		 TEXT("Negative_Enemies_within_5_metres_gain_20_40_resistances")},
 		{TEXT("Positive_Critical_hits_grant_a_stack_of_power_increasing"),

@@ -332,7 +332,7 @@ public:
 	 *
 	 * ASKED WITH THE TAGS OF WHAT IS BEING APPLIED, since 2026-10-06, so a row
 	 * may require one: "Bleeding on you lasts 50%-100% longer" requires the
-	 * bleed tag and "DoTs last 2x-4x as long on you" the `Keyword.DoT` parent.
+	 * bleed tag and "DoTs on you have 100%-300% more duration" the `Keyword.DoT` parent.
 	 * A damage over time passes its own tag and that parent; any other effect
 	 * passes its own tag. A row with no required tags reads as it did.
 	 *
