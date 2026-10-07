@@ -1899,7 +1899,7 @@ float UCataclysmSkillEffects::ShareOfHealthRoomLeft(float Health, float MaxHealt
 
 bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	AActor* Instigator, AActor* Target, float SharePerTick,
-	float DurationSeconds, const FGameplayTag& EffectTag)
+	float DurationSeconds, const FGameplayTag& EffectTag, bool bScalesWithInstigator)
 {
 	if (SharePerTick <= 0.0f || DurationSeconds <= 0.0f || !EffectTag.IsValid())
 	{
@@ -1926,18 +1926,28 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	// claim would have found the two functions disagreeing with no reason given.
 	// ASKED WITH THE AILMENT'S OWN TAG, as `ApplyDamageOverTime` asks. Issue
 	// #1833, the small engine halves.
+	//
+	// A COPY IS APPLIED AS IT IS. With `bScalesWithInstigator` off, the share a
+	// tick and the seconds handed in are used unchanged, at the plain one second
+	// a tick: the figures of a running Void Splinter already hold its applier's
+	// two stats, and applying them again would make each copy last longer than
+	// the one it was copied from. See `ApplySpreadCopy`.
 	const FGameplayTagContainer AskedWith(EffectTag);
-	const float FrequencyScale = AsMultiplierForSkill(
-		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
-		FName(TEXT("dot_frequency")), AskedWith);
+	const float FrequencyScale = bScalesWithInstigator
+		? AsMultiplierForSkill(
+			  Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
+			  FName(TEXT("dot_frequency")), AskedWith)
+		: 1.0f;
 	if (FrequencyScale <= 0.0f)
 	{
 		return false;
 	}
 	const float SecondsPerTick = BaseSecondsPerTick / FrequencyScale;
-	const float Duration = DurationSeconds * AsMultiplierForSkill(
-		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
-		FName(TEXT("dot_duration")), AskedWith);
+	const float Duration = bScalesWithInstigator
+		? DurationSeconds * AsMultiplierForSkill(
+			  Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
+			  FName(TEXT("dot_duration")), AskedWith)
+		: DurationSeconds;
 
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, as for every
 	// other lasting effect. Issue #1033. A duration taken to nothing applies
@@ -1958,7 +1968,27 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	// handed, so another character's stands and the comparison below treats it
 	// as it always has. A boss is held at its line by what "left" means for a
 	// share of health. See `RemainingDamageOverTime`.
-	const float Detonation = DetonationPercentWhenReapplied(Source, EffectTag);
+	//
+	// A COPY MADE BY A SPREAD NEVER DETONATES ANYTHING: nobody applied it.
+	const float Detonation =
+		bApplyingASpreadCopy ? 0.0f : DetonationPercentWhenReapplied(Source, EffectTag);
+
+	// THE NUMBERS THE INSTIGATOR'S ROWS HANG ON THIS AILMENT GO TO THE CHARACTER
+	// STRUCK, as `ApplyDamageOverTime` hands them over, whether this application
+	// makes a new effect or only refreshes a stronger one. What reads one today
+	// is the spread at a death: "Void splinter stacks spread to nearby enemies
+	// when the afflicted enemy dies". The instigator's own rows: a minion's
+	// ailment is the minion's, ruled 2026-09-17, so it carries none.
+	if (Instigator != Target)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier =
+				Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->ReceiveAilmentRiders(
+				EffectTag, Cast<UCataclysmAbilitySystemComponent>(Source));
+		}
+	}
+
 	if (Detonation > 0.0f
 		&& DealRemainingDamageOverTime(Instigator, Target, Detonation, EffectTag, /*bEndEach=*/true) > 0)
 	{
@@ -2136,6 +2166,10 @@ bool UCataclysmSkillEffects::RunningAilmentOn(AActor* Carrier, const FGameplayTa
 	Out.Ailment = Ailment;
 	Out.DamagePerSecond = Running.Stated;
 	Out.SecondsLeft = Running.SecondsLeft;
+	// A SHARE OF HEALTH CARRIES ITS SHARE ON THE EFFECT, and nothing else does.
+	Out.bShareOfHealth = Active->Spec.GetSetByCallerMagnitude(
+		FName(ShareOfCurrentHealthDataName), /*WarnIfNotFound=*/false,
+		/*DefaultIfNotFound=*/-1.0f) >= 0.0f;
 	Out.Applier = Active->Spec.GetContext().GetInstigator();
 	return true;
 }
@@ -2153,6 +2187,15 @@ bool UCataclysmSkillEffects::ApplySpreadCopy(AActor* Applier, AActor* Target,
 	// they are, so the copy deals what the original dealt a second for the
 	// seconds it had left.
 	TGuardValue<bool> Copying(bApplyingASpreadCopy, true);
+	if (Running.bShareOfHealth)
+	{
+		// THE SAME SHARE A SECOND FOR THE SECONDS LEFT. Each tick takes its share
+		// of the health the character it is now on holds, so a copy on a
+		// creature with more health deals more than the original would have.
+		return ApplyShareOfHealthOverTime(Applier, Target, Running.DamagePerSecond,
+										  Running.SecondsLeft, Running.Ailment,
+										  /*bScalesWithInstigator=*/false);
+	}
 	return ApplyDamageOverTime(Applier, Target, Running.DamagePerSecond, Running.SecondsLeft,
 							   Running.Ailment, /*bScalesWithInstigator=*/false);
 }
