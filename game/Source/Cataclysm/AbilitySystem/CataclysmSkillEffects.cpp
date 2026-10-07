@@ -1686,6 +1686,43 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		return false;
 	}
 
+	// WHAT IS BEING APPLIED, AS THE TARGET'S OWN STATS ARE ASKED ABOUT IT: the
+	// ailment's tag and the parent every damage over time has. Ruled 2026-10-06.
+	// Not the applying skill's tags, which are the attacker's.
+	FGameplayTagContainer AppliedTags;
+	if (EffectTag.IsValid())
+	{
+		AppliedTags.AddTag(EffectTag);
+	}
+	const FGameplayTag DamageOverTimeParent = UCataclysmDamageCalculation::DamageOverTimeTag();
+	if (DamageOverTimeParent.IsValid())
+	{
+		AppliedTags.AddTag(DamageOverTimeParent);
+	}
+
+	// "UNAFFECTED BY BLEEDING" REFUSES IT HERE, BEFORE ANYTHING ELSE. Ruled
+	// 2026-10-06. A target carrying `ailment_immunity` for this ailment is not
+	// given it at all: nothing reads them as bleeding, the applier's `dot_applied`
+	// event below is not raised, the applier's ailment riders are not handed
+	// over, and a running effect is not refreshed. A copy a spread makes comes
+	// through here and is refused alike.
+	//
+	// NOT CONVERTED DAMAGE. The Masochist's converted bleed is damage already
+	// taken and stored, not an ailment somebody applied, and refusing it would
+	// put the whole of it straight onto health. A judgement by the writing
+	// session, 2026-10-06, for the coordinating session to confirm.
+	if (!bIsConvertedDamage)
+	{
+		const UCataclysmAbilitySystemComponent* Refusing =
+			Cast<const UCataclysmAbilitySystemComponent>(Defender);
+		if (Refusing
+			&& Refusing->StatForSkill(FName(UCataclysmDamageCalculation::AilmentImmunityStat),
+									  AppliedTags, 0.0f) > 0.0f)
+		{
+			return false;
+		}
+	}
+
 	// THE ATTACKER'S THREE STATS, AND UNTIL ISSUE #895 NONE OF THEM WAS READ.
 	// All three attributes existed, were clamped and were replicated, and the
 	// comment that used to stand here said the frequency stat "is not wired in
@@ -1796,7 +1833,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	if (Running.bFound && Running.Stated >= Stated)
 	{
 		RefreshRunningApplication(Defender, Running,
-			UCataclysmDebuffs::DurationOn(Defender, Numbers.DurationSeconds));
+			UCataclysmDebuffs::DurationOn(Defender, Numbers.DurationSeconds, AppliedTags));
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("%s applied %s to %s at %.1f a second, and the running one at "
 				 "%.1f a second stands."),
@@ -1840,7 +1877,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// duration stat already behaves in `DamageOverTimeNumbers`.
 	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(
 		FScalableFloat(UCataclysmDebuffs::DurationOn(
-			Defender, Numbers.DurationSeconds)));
+			Defender, Numbers.DurationSeconds, AppliedTags)));
 	Effect->Period = FScalableFloat(Numbers.SecondsPerTick);
 
 	// False, so the first tick lands a second in rather than at once. Applying
@@ -1986,7 +2023,12 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, as for every
 	// other lasting effect. Issue #1033. A duration taken to nothing applies
 	// nothing, rather than an effect the engine would treat as lasting for ever.
-	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, Duration);
+	//
+	// WITH ITS OWN TAG AND THE DAMAGE OVER TIME PARENT, as `ApplyDamageOverTime`
+	// passes. Ruled 2026-10-06.
+	FGameplayTagContainer AppliedTags = AskedWith;
+	AppliedTags.AddTag(UCataclysmDamageCalculation::DamageOverTimeTag());
+	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, Duration, AppliedTags);
 	if (OnTarget <= 0.0f)
 	{
 		return false;
@@ -3505,7 +3547,8 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 	if (Running.bFound && Running.Stated >= Stated)
 	{
 		RefreshRunningApplication(Defender, Running,
-			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds));
+			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+										  FGameplayTagContainer(Pinned)));
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("%s pinned %s again stating %.0f%%, and the running pin's "
 				 "%.0f%% stands."),
@@ -3525,7 +3568,8 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 	}
 
 	const float OnTarget =
-		UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
+		UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+									  FGameplayTagContainer(Pinned));
 	if (OnTarget <= 0.0f)
 	{
 		return false;
@@ -3639,8 +3683,12 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 	const float Lengthened = UCataclysmTargeting::IsHostileTo(Target, Instigator)
 		? DurationSeconds * DebuffDurationMultiplierOf(Source)
 		: DurationSeconds;
+	// ASKED WITH THE EFFECT'S OWN TAG. Ruled 2026-10-06. A tag under the damage
+	// over time parent satisfies a row requiring that parent, as any child tag
+	// satisfies its parent.
 	const float OnTarget =
-		UCataclysmDebuffs::DurationOn(Defender, Lengthened);
+		UCataclysmDebuffs::DurationOn(Defender, Lengthened,
+									  FGameplayTagContainer(EffectTag));
 	if (OnTarget <= 0.0f)
 	{
 		// A DURATION THE TARGET'S STAT TOOK TO NOTHING APPLIES NOTHING, rather
@@ -3942,7 +3990,8 @@ bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
 	if (Running.bFound && Running.Stated >= Stated)
 	{
 		RefreshRunningApplication(Defender, Running,
-			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds));
+			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+										  FGameplayTagContainer(EffectTag)));
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("%s applied %s to %s stating %.0f, and the running one stating "
 				 "%.0f stands."),
@@ -4006,7 +4055,8 @@ bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
 		Size = FMath::Clamp(Size, 0.0f, Most);
 	}
 
-	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
+	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+														 FGameplayTagContainer(EffectTag));
 	if (OnTarget <= 0.0f)
 	{
 		return false;

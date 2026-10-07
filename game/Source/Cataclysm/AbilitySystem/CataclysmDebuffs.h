@@ -330,12 +330,22 @@ public:
 	 * #1033 asked for: a build honouring one and not the other would lengthen
 	 * a burn and not a stun, or the reverse, and nothing would report it.
 	 *
+	 * ASKED WITH THE TAGS OF WHAT IS BEING APPLIED, since 2026-10-06, so a row
+	 * may require one: "Bleeding on you lasts 50%-100% longer" requires the
+	 * bleed tag and "DoTs last 2x-4x as long on you" the `Keyword.DoT` parent.
+	 * A damage over time passes its own tag and that parent; any other effect
+	 * passes its own tag. A row with no required tags reads as it did.
+	 *
+	 * @param AppliedTags  the tags of the effect being applied; empty for a
+	 *                     caller with none, which is how this read before
 	 * @return the duration unchanged for every character in the game without
 	 *         one of those two nodes, and for any ability system with no
 	 *         combat attribute set
 	 */
 	static float DurationOn(const UAbilitySystemComponent* Defender,
-							float DurationSeconds);
+							float DurationSeconds,
+							const FGameplayTagContainer& AppliedTags =
+								FGameplayTagContainer());
 
 	/**
 	 * The stat saying the debuffs on this character stop counting down at all,
