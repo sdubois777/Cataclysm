@@ -898,6 +898,44 @@ public:
 	static const TCHAR* RandomDebuffStatus;
 
 	/**
+	 * The three actions that lay a status on THE WEARER. Ruled 2026-10-06. The first two are `ApplyStatusAction`
+	 * and `ApplyStatusSecondsAction` with the wearer as the character the status is laid on; the third applies it
+	 * the value's number of times. `tools/generate_datatables.py` holds the same names in
+	 * `APPLY_STATUS_TO_SELF_ACTIONS`.
+	 */
+	static const TCHAR* ApplyStatusToSelfAction;
+	static const TCHAR* ApplyStatusToSelfSecondsAction;
+	static const TCHAR* ApplyStatusToSelfTimesAction;
+
+	/**
+	 * Two more statuses, which only an action that lays a status on the wearer may name. `StunStatus` is a stun for
+	 * the row's seconds. `AppliedDotStatus` is the ailment the wearer has just applied to another character, which
+	 * `NoteDotApplied` records before the `dot_applied` event is raised.
+	 */
+	static const TCHAR* StunStatus;
+	static const TCHAR* AppliedDotStatus;
+
+	/** The event raised when a skill's ability ends without being cancelled, with the skill's tags. */
+	static const TCHAR* SkillEndEvent;
+
+	/**
+	 * Record which ailment this character has just applied to another, by its name, for a row that lays "the
+	 * same" on the wearer. Called by `UCataclysmSkillEffects::ApplyDamageOverTime` before it raises `dot_applied`.
+	 */
+	void NoteDotApplied(const FString& Ailment) { LastAppliedDotAilment = Ailment; }
+
+	/**
+	 * Lay a status action's status on the wearer, by the wearer. Ruled 2026-10-06.
+	 *
+	 * THE RULE OF A TENTH IS NOT ASKED. The owner's rule of 2026-09-02 (issue #917) is about what a BLOW may lay on
+	 * its target. These rows state their status without condition and most have no blow at all. THE STUN'S
+	 * IMMUNITY WINDOW IS KEPT, so a wearer is not stunned back to back.
+	 *
+	 * @return whether anything was applied
+	 */
+	bool ApplyStatusToTheWearer(const FCataclysmPoolAction& Action);
+
+	/**
 	 * The action that opens the wearer's no-damage window for its value in
 	 * seconds. Issue #1833 group E part 2, ruled 2026-10-02.
 	 * `tools/generate_datatables.py` holds the same name in
@@ -3030,6 +3068,9 @@ protected:
 
 	/** What the worn items do when an event happens. See `SetPoolActions`. */
 	TArray<FCataclysmPoolAction> PoolActions;
+
+	/** The ailment this character last applied to another, by name. See `NoteDotApplied`. */
+	FString LastAppliedDotAilment;
 
 	/** One row's own stacks: how many, and when the last was granted. */
 	struct FOwnStack

@@ -1748,6 +1748,16 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		if (UCataclysmAbilitySystemComponent* Applier =
 				Cast<UCataclysmAbilitySystemComponent>(Source))
 		{
+			// WHICH AILMENT IT WAS, for a row that lays the same on its wearer. Ruled 2026-10-06. Recorded
+			// before the event, which is when such a row reads it.
+			if (const FCataclysmAilmentKind* AppliedKind = UCataclysmAilments::KindWithTag(EffectTag))
+			{
+				Applier->NoteDotApplied(AppliedKind->Ailment);
+			}
+			else
+			{
+				Applier->NoteDotApplied(FString());
+			}
 			Applier->ActOnEvent(FName(TEXT("dot_applied")));
 		}
 	}
