@@ -13,8 +13,8 @@ and 8 of `Resolve`); `CataclysmVitalAttributeSet.cpp` (the tick's tags are fille
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; the inventory in
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No row is authored yet**; the rows are the enchantment session's.
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry. **No row is authored yet**; the rows are the enchantment session's.
 
 ### What it is for
 
@@ -169,9 +169,52 @@ One new automation test, `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsSco
 callers in `ApplyNamedEffectOnly`; a spread copy being refused; the mana row and the bleed share
 together; the ailment riders not being handed over on a refusal.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite and the guard proofs.
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Da | `CataclysmDamageCalculation.cpp`: a tick's lookup is asked with no tags | `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment` | 1 performed, 1 failed, 5 failed assertions: a bleed tick was 100.000000 against 150.000000, twice; a bleed, a burn and a bare tick were 100.000000 against 200.000000 under the row for every damage over time | 1 performed, 1 succeeded |
+| Db | `CataclysmSkillEffects.cpp`: the immunity flag is never asked | `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | 1 performed, 1 failed, 2 failed assertions: the character was bleeding, and the application answered that it was applied | 1 performed, 1 succeeded |
+
+**How this layer was written and checked.** A second session wrote it under a brief carrying the rulings above. The
+writing session read its game-code changes before the window, and every assertion of its tests before the run that
+passed; it found none that would pass with its behaviour absent. One assertion is indirect and was left: that the
+applier's `dot_applied` event is not raised is read through a row on the applier that lays Cripple on them when the
+event fires, and its control in the same test shows the tag appears when a burn is applied.
+
+**Confirmed by the coordinating session on 2026-10-07, with the writing session's reading:** the converted bleed is
+exempted from `ailment_immunity` by the same argument that stamps the cleanse's mark; and every bleed found reaches
+a character through `ApplyDamageOverTime`, which is the one function that asks the immunity: the ailment rolled on a
+blow, a copy passed on at a death, and the conversion.
+
+**Not run:** the `while_moving` row; Void Splinter's duration; the pin and named-effect callers of the duration
+lookup; a spread copy being refused; any of this read from the effect table, since no row exists.
 
 ---
 
