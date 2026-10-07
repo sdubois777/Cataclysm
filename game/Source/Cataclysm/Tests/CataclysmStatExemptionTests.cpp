@@ -6073,6 +6073,53 @@ namespace CataclysmStatExemptionTest
 					   Hurt / Full, 1.5f, 0.001f);
 	}
 
+	/**
+	 * `damage_over_time_taken`, read by `UCataclysmDamageCalculation::Resolve` when a tick arrives.
+	 *
+	 * UNDER `while_moving` AND NOT BELOW HALF HEALTH, because the row this stands for is "you take more damage
+	 * over time while moving". The same wearer is asked standing, moving and standing again, so the standing
+	 * figure is the control on both sides.
+	 */
+	void ProbeConditionedDamageOverTimeTaken(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Wearer(World, /*AttackDamage=*/0.0f);
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::More;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 100.0f;
+		Row.Condition = ECataclysmStatCondition::WhileMoving;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::DamageOverTimeTakenStat));
+		Line.Base = 100.0f;
+		Line.Modifiers = {Row};
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		const FCataclysmIncomingHit Tick = TickOf(100.0f, UCataclysmSkillEffects::BurnTag());
+		const auto Taken = [&Tick, &Wearer]()
+		{
+			return ResolveATick(Tick, Wearer.AbilitySystem).DealtToHealth;
+		};
+		Wearer.AbilitySystem->NoteDidNotMove();
+		const float Standing = Taken();
+		if (!Test.TestTrue(TEXT("damage_over_time_taken: a standing wearer takes something from a tick"),
+						   Standing > 0.0f))
+		{
+			return;
+		}
+		Wearer.AbilitySystem->NoteMovedMetres(1.0f);
+		Test.TestEqual(TEXT("damage_over_time_taken is asked for, so the same tick on the wearer moving is doubled"),
+					   Taken(), Standing * 2.0f, 0.01f);
+		Wearer.AbilitySystem->NoteDidNotMove();
+		Test.TestEqual(TEXT("damage_over_time_taken: and standing again the tick is what it was"),
+					   Taken(), Standing, 0.01f);
+	}
+
 	/** `mana_pool_becomes_health`, read by `UCataclysmSkillTemplate::ManaPoolBecomesHealth`. */
 	void ProbeConditionedManaPoolBecomesHealth(FAutomationTestBase& Test)
 	{
@@ -6403,6 +6450,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("block_chance"),             &ProbeConditionedBlockChance},
 			{TEXT("cooldown_reduction"),       &ProbeConditionedCooldownReduction},
 			{TEXT("crit_multiplier"),          &ProbeConditionedCritMultiplier},
+			{TEXT("damage_over_time_taken"),   &ProbeConditionedDamageOverTimeTaken},
 			{TEXT("dot_damage"),               &ProbeConditionedDotDamage},
 			{TEXT("mana_pool_becomes_health"), &ProbeConditionedManaPoolBecomesHealth},
 			{TEXT("penetration"),              &ProbeConditionedPenetration},
@@ -6714,7 +6762,7 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 {
 	using namespace CataclysmStatExemptionTest;
 
-	if (!TestEqual(TEXT("the eight probes are all here"), ConditionedProbes().Num(), 8))
+	if (!TestEqual(TEXT("the nine probes are all here"), ConditionedProbes().Num(), 9))
 	{
 		return false;
 	}
