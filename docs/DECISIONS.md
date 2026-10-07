@@ -66,6 +66,41 @@ without applying its applier's stats a second time. This entry closes both.
 
 **Not tested:** a copy passing on a second time through a second death, and a copy on a boss.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the four layers above this one, on `development` e49857f0. **The ids are the
+commits as they stood when each step ran.** This table carries the steps the five layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack, the first compile of this layer's engine code | 5fb5e953 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 5fb5e953 | 252 tests performed, 249 succeeded, 3 failed; 9 failed assertions; this layer's test not among them |
+| Assets | 22c83f7e | none built: this layer changes no table |
+| Whole suite, every asset built, FIRST RUN | 7d662d94 | 3242 tests performed, 3241 succeeded, 1 failed: the test of the layer two above this one, at its own set-up. 40 skipped part of what they check; 0 ensures |
+| Cataclysm.RemainingDamage. alone, after that one test's set-up was corrected | c6088f3d | Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.21.cpp; 9 tests performed, 9 succeeded, 0 failed |
+| Python of record, continuous integration idle | c6088f3d | 5772 passed, 8 skipped in 321.91s; the JUnit file: tests 5780, failures 0, errors 0, skipped 8 |
+| Lint | c6088f3d | All checks passed! |
+
+**THE WHOLE SUITE WAS NOT RUN A SECOND TIME.** 3242 tests with none failing is the first run's 3241 and one
+group's rerun, and not one run. The failure and its correction are recorded in the entry "A stat makes applying a
+damage over time effect refresh the applier's others".
+
+**This layer's test needs no row**, so it passes against the older assets. Its failing halves are these guard
+proofs, each with `prove_cpp_guard` on `Cataclysm.Enchantments.` at c6088f3d, each restored to 252 tests performed,
+252 succeeded, 0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| The spread at a death does not read a Void Splinter (its name replaced in the list, `CataclysmContagion.cpp`) | 252 performed, 2 failed | this layer's test 1: passed to 0 where 3; the row test of the layer above 2 |
+| A copy of a share of health is applied as a plain damage over time (`if (Running.bShareOfHealth)` made false) | 252 performed, 1 failed | this layer's test 1: "it takes a share of health" |
+| A copy is given twice the seconds left | 252 performed, 1 failed | this layer's test 1: 5.000000 where 2.500000 |
+
+Each proof failed on the tests and the number of assertions registered before the window.
+
+**RULED AFTER THE REGISTRATION, 2026-10-06, by the coordinating session under the owner's delegation:** the
+other numbers a row can hang on an ailment stay refused on Void Splinter. The engine would now hand them to the
+character struck; the generator is what refuses them.
+
 ---
 
 ## 2026-10-06 — A killed minion leaves its commander a chaos pool: one flag, `minions_leave_chaos_pools`. No row authored yet
