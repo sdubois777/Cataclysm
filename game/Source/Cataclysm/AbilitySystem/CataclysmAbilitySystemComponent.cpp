@@ -3610,6 +3610,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownUseIncreasedDamageAction 
 const TCHAR* UCataclysmAbilitySystemComponent::UseHitsAllNearbyAction = TEXT("use_hits_all_nearby");
 const TCHAR* UCataclysmAbilitySystemComponent::UseHitsItsUserAction = TEXT("use_hits_its_user");
 const TCHAR* UCataclysmAbilitySystemComponent::UseBackfiresAction = TEXT("use_backfires");
+const TCHAR* UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction =
+	TEXT("explode_victim_for_overkill");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -4600,6 +4602,15 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	ON_SCOPE_EXIT { DrainQueuedAfflictedDeaths(); };
 	TGuardValue<int32> Depth(PoolActionDepth, 1);
 
+	// A NEW KILL BEGINS WITH NO EXPLOSION PENDING, as a new use begins with nothing pending in `ActOnSkillUse`.
+	// Ruled 2026-10-07. Only at the top level, which is the only place this line is reached, so a kill made
+	// from inside the loop cannot clear what the kill before it recorded.
+	static const FName KillEventName(TEXT("kill"));
+	if (Event == KillEventName)
+	{
+		PendingOverkillExplosionSharePercent = 0.0f;
+	}
+
 	// A COPY, because applying one writes an attribute, and an attribute write
 	// can reach the equipment refresh that replaces this very list.
 	const TArray<FCataclysmPoolAction> Firing = PoolActions;
@@ -4894,6 +4905,21 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					}
 					NoteTriggerFired(Action);
 				}
+			}
+			continue;
+		}
+		// AN ENEMY KILLED EXPLODES FOR ITS OVERKILL. Ruled 2026-10-07. ONLY RECORDED HERE, once per row per
+		// event: the largest share of the rows that asked. The explosion can kill, and that kill has to reach
+		// the rows again, which it could not from inside this loop's one level; so whoever raised the event
+		// takes the share when this returns and makes the explosion then. See
+		// `TakePendingOverkillExplosionSharePercent`. No roll and no trigger cooldown: the sentence has neither.
+		if (Action.bExplodeVictimForOverkill)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				PendingOverkillExplosionSharePercent =
+					FMath::Max(PendingOverkillExplosionSharePercent, Action.Percent);
 			}
 			continue;
 		}

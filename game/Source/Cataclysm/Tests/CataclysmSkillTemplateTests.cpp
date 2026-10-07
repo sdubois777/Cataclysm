@@ -20378,4 +20378,368 @@ bool FCataclysmNothingWastedStaysMeleeOnlyTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// "Enemies killed by you explode for the overkill amount". Ruled 2026-10-07.
+// THE FIRST PART: the overkill is recorded on the blow, the explosion exists as
+// a function, and the row's action records its share for the kill site to take.
+// NOTHING CALLS THE EXPLOSION AT A KILL YET, so every explosion below is called
+// by hand and no test here goes through a real kill. That is the second part.
+//
+// WHO IS WHOSE ENEMY. A fighter of this rig has no team, and
+// `UCataclysmTeams::AttitudeBetween` answers Hostile for any pair where either
+// has none, so every fighter is every other's enemy. AN ALLY IS MADE BY
+// OWNERSHIP: `SetOwner` on the ally with the killer as owner, which the same
+// function answers Friendly for before it looks at a team.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. No two are within two
+// metres of each other.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmOverkillTest
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	/** No armour and no damage reduction, a maximum nothing here reaches, and this much health. */
+	void Holding(FScopedFighter& Who, float Health)
+	{
+		Defences(Who, 0.0f, 0.0f);
+		Who.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+	}
+
+	/** One blow through the whole calculation with the evasion, block and critical strike rolls pinned to miss. */
+	FCataclysmDamageResult ResolvedOn(const FCataclysmIncomingHit& Blow, const FScopedFighter& On)
+	{
+		return UCataclysmDamageCalculation::Resolve(Blow, On.AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/100.0f,
+													/*BlockRoll=*/100.0f, /*CritRoll=*/100.0f);
+	}
+
+	/** The row as the loader builds it: on `kill`, the value as the share. */
+	FCataclysmPoolAction AnOverkillRow(const TCHAR* Key, float SharePercent)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("kill"));
+		Action.Pool = FName(UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction);
+		Action.Percent = SharePercent;
+		Action.bExplodeVictimForOverkill = true;
+		Action.TriggerKey = FName(Key);
+		return Action;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillIsRecordedTest,
+	"Cataclysm.OverkillExplosion.ABlowRecordsHowFarItWentPastTheHealthHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `UCataclysmDamageCalculation::Resolve` records the overkill: what would have reached health, less the health held.
+ * Nought for a blow smaller than the health, for one exactly as large, and for one on a character already at nought.
+ * A lethal damage over time tick records the figure a lethal hit does.
+ *
+ * STANDING: the hale character at the origin, the frail one 20 m along Y. Nobody swings; `Resolve` is called by hand
+ * and changes nobody's health.
+ */
+bool FCataclysmOverkillIsRecordedTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Hale(World, FVector::ZeroVector);
+	FScopedFighter Frail(World, FVector(0, 20 * M, 0));
+	Holding(Hale, Pool);
+	Holding(Frail, 40.0f);
+
+	FCataclysmIncomingHit Blow;
+	Blow.Damage = 100.0f;
+
+	// THE CONTROL: the same blow on a character with health to spare, which says what reaches health.
+	const FCataclysmDamageResult OnHale = ResolvedOn(Blow, Hale);
+	const float Reaching = OnHale.DealtToHealth;
+	if (!TestTrue(TEXT("control: the blow reaches health with more than the frail character holds"), Reaching > 41.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow smaller than the health held has no overkill"), OnHale.Overkill, 0.0f, 0.001f);
+
+	// A LETHAL HIT.
+	const FCataclysmDamageResult OnFrail = ResolvedOn(Blow, Frail);
+	TestEqual(TEXT("health takes what it held and no more, as before"), OnFrail.DealtToHealth, 40.0f, 0.001f);
+	TestEqual(TEXT("the overkill is what the control took, less the health held"), OnFrail.Overkill, Reaching - 40.0f,
+			  0.001f);
+	TestEqual(TEXT("so the two add up to what reached the health step"), OnFrail.DealtToHealth + OnFrail.Overkill,
+			  Reaching, 0.001f);
+
+	// AN EXACTLY LETHAL HIT.
+	Frail.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Reaching);
+	const FCataclysmDamageResult Exactly = ResolvedOn(Blow, Frail);
+	TestEqual(TEXT("set-up: a blow exactly as large as the health takes all of it"), Exactly.DealtToHealth, Reaching,
+			  0.001f);
+	TestEqual(TEXT("and has no overkill"), Exactly.Overkill, 0.0f, 0.001f);
+
+	// A LETHAL TICK, against its own control.
+	FCataclysmIncomingHit Tick = Blow;
+	Tick.bIsDamageOverTime = true;
+	const float TickReaching = ResolvedOn(Tick, Hale).DealtToHealth;
+	if (!TestTrue(TEXT("control: the tick reaches health with more than the frail character holds"), TickReaching > 41.0f))
+	{
+		return false;
+	}
+	Frail.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 40.0f);
+	const FCataclysmDamageResult TickOnFrail = ResolvedOn(Tick, Frail);
+	TestEqual(TEXT("a lethal tick records what its control took, less the health held"), TickOnFrail.Overkill,
+			  TickReaching - 40.0f, 0.001f);
+	TestEqual(TEXT("which is the figure the lethal hit recorded"), TickOnFrail.Overkill, OnFrail.Overkill, 0.001f);
+
+	// A CHARACTER ALREADY AT NOUGHT is killed by nothing.
+	Frail.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	TestEqual(TEXT("a blow on a character already at nought has no overkill"), ResolvedOn(Blow, Frail).Overkill, 0.0f,
+			  0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillExplosionReachTest,
+	"Cataclysm.OverkillExplosion.TheExplosionDealsItsShareToEnemiesNearTheBodyAndToNobodyElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The explosion deals overkill x share / 100 to an enemy 3 m from the body, and nothing to one 6 m away, to the
+ * victim, to the killer or to the killer's ally. Nothing at an overkill or a share of nought; half at a share of 50.
+ *
+ * STANDING: the body at the origin; the killer 4 m along -X, inside the reach; the near enemy 3 m along +X; the far
+ * enemy 6 m along +Y; the bystander 3 m along -Y, who becomes the killer's ally half way through. The nearest two
+ * are the near enemy and the body, 3 m apart. Nobody swings; the explosion is called by hand.
+ */
+bool FCataclysmOverkillExplosionReachTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Body(World, FVector::ZeroVector);
+	FScopedFighter Killer(World, FVector(-4 * M, 0, 0));
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Far(World, FVector(0, 6 * M, 0));
+	FScopedFighter Bystander(World, FVector(0, -3 * M, 0));
+	FScopedFighter* const Everyone[] = {&Body, &Killer, &Near, &Far, &Bystander};
+	const auto Refill = [&Everyone]()
+	{
+		for (FScopedFighter* Each : Everyone)
+		{
+			Holding(*Each, Pool);
+		}
+	};
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	const FVector At = Body.Actor->GetActorLocation();
+	const float Overkill = 60.0f;
+	Refill();
+
+	TestEqual(TEXT("the reach is five metres"), UCataclysmSkillEffects::OverkillExplosionRadiusCm, 500.0f, 0.001f);
+
+	// THE CONTROL: one direct area blow of the overkill, by hand, on the near enemy.
+	FCataclysmHitDelivery Area;
+	Area.bIsArea = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer.Actor, Near.Actor, Overkill, Area);
+	const float PlainBlow = Lost(Near);
+	if (!TestTrue(TEXT("control: a direct blow of the overkill by the killer hurts the near enemy"), PlainBlow > 1.0f))
+	{
+		return false;
+	}
+	Refill();
+
+	// THE CONTROL FOR THE VICTIM AND THE BYSTANDER: named as nobody's victim and owned by nobody, both are struck,
+	// so each stands inside the reach and what spares it below is what the test says spares it.
+	const int32 StruckWithNobodySpared = UCataclysmSkillEffects::ExplodeForOverkill(
+		Killer.Actor, /*Victim=*/nullptr, At, Overkill, /*SharePercent=*/100.0f);
+	TestEqual(TEXT("control: with no victim named and no ally, three are struck: the body, the near enemy and the "
+				   "bystander"),
+			  StruckWithNobodySpared, 3);
+	if (!TestEqual(TEXT("control: the body takes the blow when it is not named as the victim"), Lost(Body), PlainBlow,
+				   0.01f)
+		|| !TestEqual(TEXT("control: the bystander takes it while it is nobody's ally"), Lost(Bystander), PlainBlow,
+					  0.01f))
+	{
+		return false;
+	}
+	Refill();
+
+	// THE EXPLOSION, with the victim named and the bystander made the killer's ally.
+	Bystander.Actor->SetOwner(Killer.Actor);
+	const int32 Struck = UCataclysmSkillEffects::ExplodeForOverkill(Killer.Actor, Body.Actor, At, Overkill,
+																   /*SharePercent=*/100.0f);
+	TestEqual(TEXT("one enemy is struck"), Struck, 1);
+	TestEqual(TEXT("the near enemy takes what the plain blow of the overkill dealt"), Lost(Near), PlainBlow, 0.01f);
+	TestEqual(TEXT("which is the overkill, at a share of 100"), Lost(Near), Overkill, 0.01f);
+	TestEqual(TEXT("the enemy 6 m away takes nothing"), Lost(Far), 0.0f, 0.001f);
+	TestEqual(TEXT("the victim takes nothing"), Lost(Body), 0.0f, 0.001f);
+	TestEqual(TEXT("the killer, 4 m from the body, takes nothing"), Lost(Killer), 0.0f, 0.001f);
+	TestEqual(TEXT("the killer's ally, 3 m from the body, takes nothing"), Lost(Bystander), 0.0f, 0.001f);
+	Refill();
+
+	// HALF AT A SHARE OF 50.
+	UCataclysmSkillEffects::ExplodeForOverkill(Killer.Actor, Body.Actor, At, Overkill, /*SharePercent=*/50.0f);
+	TestEqual(TEXT("at a share of 50 the near enemy takes half of what it took at 100"), Lost(Near), PlainBlow * 0.5f,
+			  0.01f);
+	Refill();
+
+	// NOTHING FOR AN OVERKILL OR A SHARE OF NOUGHT.
+	TestEqual(TEXT("an overkill of nought strikes nobody"),
+			  UCataclysmSkillEffects::ExplodeForOverkill(Killer.Actor, Body.Actor, At, 0.0f, 100.0f), 0);
+	TestEqual(TEXT("and a share of nought strikes nobody"),
+			  UCataclysmSkillEffects::ExplodeForOverkill(Killer.Actor, Body.Actor, At, Overkill, 0.0f), 0);
+	TestEqual(TEXT("and neither hurt the near enemy"), Lost(Near), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillChainByHandTest,
+	"Cataclysm.OverkillExplosion.AChainOfThreeByHandDealsLessAtEachLink",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A chain of three, each link made by hand: the explosion at the first body kills the second enemy, whose own
+ * overkill is smaller, and the explosion at the second body deals the third exactly that smaller figure.
+ *
+ * THE AUTOMATIC CHAIN IS WIRED IN THE SECOND PART. Here the test reads the second enemy's overkill off the blow that
+ * emptied it and calls the second explosion itself, and marks each body dead as the creature's own death would.
+ *
+ * STANDING: the killer 20 m along -Y, out of everything; the first body at the origin; the second enemy 3 m along
+ * +X; the third 6 m along +X, so 6 m from the first body and 3 m from the second.
+ */
+bool FCataclysmOverkillChainByHandTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Killer(World, FVector(0, -20 * M, 0));
+	FScopedFighter First(World, FVector::ZeroVector);
+	FScopedFighter Second(World, FVector(3 * M, 0, 0));
+	FScopedFighter Third(World, FVector(6 * M, 0, 0));
+	Holding(Killer, Pool);
+	Holding(First, Pool);
+	Holding(Second, 40.0f);
+	Holding(Third, Pool);
+	const float FirstOverkill = 100.0f;
+
+	// THE CONTROL: what a direct area blow of the first overkill takes from a character with health to spare.
+	FCataclysmHitDelivery Area;
+	Area.bIsArea = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Killer.Actor, Third.Actor, FirstOverkill, Area);
+	const float PlainBlow = Pool - Third.Health();
+	if (!TestTrue(TEXT("control: a plain blow of the first overkill is more than the second enemy holds"),
+				  PlainBlow > 41.0f))
+	{
+		return false;
+	}
+	Holding(Third, Pool);
+
+	// THE FIRST BODY IS DEAD, as it is in play.
+	if (!TestTrue(TEXT("set-up: the first body is marked dead"), UCataclysmSkillEffects::MarkDead(First.Actor)))
+	{
+		return false;
+	}
+
+	// LINK ONE: the explosion at the first body.
+	const int32 StruckByFirst = UCataclysmSkillEffects::ExplodeForOverkill(
+		Killer.Actor, First.Actor, First.Actor->GetActorLocation(), FirstOverkill, /*SharePercent=*/100.0f);
+	TestEqual(TEXT("the first explosion strikes one enemy, the second"), StruckByFirst, 1);
+	if (!TestEqual(TEXT("the second enemy's health reaches nought"), Second.Health(), 0.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the third, 6 m from the first body, is not reached by it"), Pool - Third.Health(), 0.0f, 0.001f);
+
+	// THE SECOND ENEMY'S OWN OVERKILL, read off the blow that emptied it.
+	const float SecondOverkill = Second.AbilitySystem->GetLastResolvedHit().Overkill;
+	TestEqual(TEXT("its overkill is what the plain blow dealt, less the 40 it held"), SecondOverkill, PlainBlow - 40.0f,
+			  0.01f);
+	if (!TestTrue(TEXT("the second figure is above nought and smaller than the first"),
+				  SecondOverkill > 0.0f && SecondOverkill < FirstOverkill))
+	{
+		return false;
+	}
+
+	// LINK TWO: the explosion at the second body, with the smaller figure.
+	UCataclysmSkillEffects::MarkDead(Second.Actor);
+	const int32 StruckBySecond = UCataclysmSkillEffects::ExplodeForOverkill(
+		Killer.Actor, Second.Actor, Second.Actor->GetActorLocation(), SecondOverkill, /*SharePercent=*/100.0f);
+	TestEqual(TEXT("the second explosion strikes one enemy, the third: the first body is dead"), StruckBySecond, 1);
+	TestEqual(TEXT("the third takes exactly the second enemy's overkill"), Pool - Third.Health(), SecondOverkill,
+			  0.01f);
+	TestTrue(TEXT("which is less than the first explosion dealt"), Pool - Third.Health() < PlainBlow);
+
+	// AND THE CHAIN ENDS: the third lived, so its blow has no overkill and there is nothing to explode for.
+	TestEqual(TEXT("the third's blow records no overkill, so the chain ends here"),
+			  Third.AbilitySystem->GetLastResolvedHit().Overkill, 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverkillRowOnlyRecordsTest,
+	"Cataclysm.OverkillExplosion.TheRowOnlyRecordsItsShareForTheKillSiteToTake",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The event loop records the row's share on `kill` and explodes nothing itself. The share is taken once; a character
+ * without the row, and another event, record nothing; of two rows the larger share is kept.
+ *
+ * STANDING: the wearer at the origin, the plain character 20 m along Y, an enemy 3 m along X from the wearer, who
+ * must lose nothing: no explosion is made here.
+ */
+bool FCataclysmOverkillRowOnlyRecordsTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	Holding(Enemy, Pool);
+
+	Wearer.AbilitySystem->SetPoolActions({AnOverkillRow(TEXT("Test:overkill"), 100.0f)});
+
+	// THE CONTROL: without the row, a kill records nothing.
+	Plain.AbilitySystem->ActOnEvent(FName(TEXT("kill")));
+	TestEqual(TEXT("control: a character without the row records nothing on a kill"),
+			  Plain.AbilitySystem->TakePendingOverkillExplosionSharePercent(), 0.0f, 0.001f);
+
+	// WORN: recorded, taken once.
+	TestEqual(TEXT("before any kill, nothing is pending"), Wearer.AbilitySystem->PendingOverkillExplosionShare(), 0.0f,
+			  0.001f);
+	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("kill")));
+	TestEqual(TEXT("a kill records the row's share"), Wearer.AbilitySystem->PendingOverkillExplosionShare(), 100.0f,
+			  0.001f);
+	TestEqual(TEXT("and the enemy beside the wearer lost nothing: the loop explodes nothing"), Pool - Enemy.Health(),
+			  0.0f, 0.001f);
+	TestEqual(TEXT("the kill site takes the share"), Wearer.AbilitySystem->TakePendingOverkillExplosionSharePercent(),
+			  100.0f, 0.001f);
+	TestEqual(TEXT("and a second take finds nought"), Wearer.AbilitySystem->TakePendingOverkillExplosionSharePercent(),
+			  0.0f, 0.001f);
+
+	// ANOTHER EVENT records nothing.
+	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("block")));
+	TestEqual(TEXT("another event records nothing"), Wearer.AbilitySystem->TakePendingOverkillExplosionSharePercent(),
+			  0.0f, 0.001f);
+
+	// A KILL NOBODY TOOK IS NOT CARRIED INTO THE NEXT: the next kill starts from nought and records its own.
+	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("kill")));
+	Wearer.AbilitySystem->SetPoolActions({AnOverkillRow(TEXT("Test:overkill"), 50.0f)});
+	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("kill")));
+	TestEqual(TEXT("a row of 50 records 50, and not the 100 an earlier kill left untaken"),
+			  Wearer.AbilitySystem->TakePendingOverkillExplosionSharePercent(), 50.0f, 0.001f);
+
+	// OF TWO ROWS, THE LARGER SHARE.
+	Wearer.AbilitySystem->SetPoolActions(
+		{AnOverkillRow(TEXT("Test:small"), 30.0f), AnOverkillRow(TEXT("Test:large"), 70.0f)});
+	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("kill")));
+	TestEqual(TEXT("of two rows the larger share is kept"),
+			  Wearer.AbilitySystem->TakePendingOverkillExplosionSharePercent(), 70.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -4093,6 +4093,18 @@ struct CATACLYSM_API FCataclysmPoolAction
 	float UseSelfHitSharePercent = 100.0f;
 
 	/**
+	 * Set, this action makes an enemy its wearer kills EXPLODE FOR THE OVERKILL: `Percent` is the share of the
+	 * overkill each enemy near the body takes, in per cent. Ruled 2026-10-07, for "Enemies killed by you explode
+	 * for the overkill amount". On the event `kill` and no other.
+	 *
+	 * THE EVENT LOOP ONLY RECORDS THE SHARE. The explosion can kill, and that kill must reach the rows again, so
+	 * it cannot be made inside the loop's one level. See
+	 * `UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bExplodeVictimForOverkill = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
