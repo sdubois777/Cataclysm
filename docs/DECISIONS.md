@@ -2,6 +2,60 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — "Void splinter stacks detonate for 50%-100% increased damage" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row on the action the entry below this one adds. No engine code and no generator code is changed here.
+
+| Sentence | Action | Ailment | Value |
+| :-- | :-- | :-- | :-- |
+| Void splinter stacks detonate for 50%-100% increased damage | `ailment_detonates_when_reapplied` | Void Splinter | 50 to 100 |
+
+EnchantmentEffects 506 to 507, over 420 to 421 enchantments.
+
+### HOW THE SENTENCE IS READ, AS RULED 2026-10-06
+
+- **"Stacks" is the one running Void Splinter.** An enemy carries one.
+- **"Detonate" is what the wearer does by applying it again**: what the running one had left is dealt at once
+  and a new one starts.
+- **"50%-100% increased" is on what was left**, so the wearer deals 150% to 200% of it.
+- **The row is what makes it detonate.** A character without it refreshes or replaces a Void Splinter by
+  applying it again, as before.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheVoidSplinterDetonationRowDealsTwiceWhatWasLeftAtTheTopOfItsRoll`: the real row worn
+  at the top of its roll makes the wearer's percent 200; applying the ailment again takes at once what a
+  hand-made row of 100 took from a creature built alike; taken off, a further application takes nothing at once.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the two layers below this one and the one above it, on `development` 210f1267.
+The build, the whole suite and the Python of record are in the table of the entry "Two drawbacks roll for a skill
+to hit its own user" and were run with this layer in the stack. **The ids are the commits as they stood when each
+step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | b97776b7 | 248 tests performed, 243 succeeded, 5 failed, this layer's among them; 2 of the 7 failed assertions are this layer's |
+| The three enchantment assets, regenerated with the editor | 3eeefc2d | effect rows 506 to 507 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of the layer below | c07c8f46 | 248 tests performed, 248 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**, on two assertions: the wearer's percent is
+0 where 200 is expected, and applying the ailment again takes 0 at once where 7880.796875 is expected, the figure
+a hand-made row of 100 took from a creature built alike.
+
+**This layer changes no engine code and no generator code.** The two guard proofs of the detonation are in the
+entry below this one, and this layer's test is one of the two that noticed each.
+
+---
+
 ## 2026-10-06 — A Void Splinter can detonate: applied again by the character whose application is running, it deals what was left at once, when a row of that character says so; no row authored here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`DetonationPercentByItself`,
