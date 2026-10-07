@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A zone reaches the character who left it where a row says so: two flags, `zone_damages_its_owner` and `zone_applies_effects_to_owner`. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (`bAlsoDamagesItsOwner`,
+`bAlsoLaysItsEffectsOnItsOwner`, `Sweep`); `CataclysmSkillTemplate.cpp` (`LeaveZoneAlong` reads the two flags);
+`CataclysmDamageCalculation.h` and `.cpp` (the two stat names); `Character/CataclysmPlayerClassStats.cpp`
+(`StatsWithNoAttribute`); two probes in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; two inventory
+entries in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No row carries either flag yet**; the rows are the enchantment session's.
+
+### What it is for
+
+Two negative sentences about the character who left a zone:
+
+| Sentence | Stat | What the row needs |
+|---|---|---|
+| "Persistent AOE zones also damage you if you stand in them" | `zone_damages_its_owner` | flat 1 |
+| "Your persistent AOE zones apply their effects to you if you stand in them" | `zone_applies_effects_to_owner` | flat 1 |
+
+### The owner's decision, 2026-10-06
+
+**A character's own skills and zones may hurt them where a row's sentence says so.** The own-side rule of
+2026-08-20, that a character's skills do not reach their own side, stays the default for everything else. Both
+flags here rest on that decision.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **Two flags that reach the owner only.** Not the zone's existing flag that makes it reach everyone, which would
+  also reach the owner's minions and allies.
+- **The damage is the zone's own sweep figure, through the owner's defences, and it can kill.**
+- **"Their effects" are the curse the zone carries, the slow, the stagger on entry and the ailment.** Not the
+  damage, which is the other row's.
+- **Blood Pyre gets no special case.** Its sentence says "standing in your own pyre does you no harm and doubles
+  your health regeneration". With the first row worn the pyre harms its owner and still doubles their regeneration.
+- **The owner is not counted as an enemy standing in the zone, and the damage the owner takes carries the increase
+  for the enemies that are.**
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles either ruling**; they are readings of the two sentences under the
+owner's decision.
+
+### How it is built
+
+- **Each flag is read where the zone is left**, with the skill's tags, as the other zone flags are. A zone a row
+  gives a skill reads them too.
+- **A sweep reaches the enemies inside as before, then its owner**, when a flag is set, the owner is alive and the
+  owner stands inside. The damage flag gives the owner the damage half of what a sweep does; the effects flag gives
+  the other half.
+- **The owner is not counted as an enemy inside.** "Increased damage for each enemy standing in them" does not
+  count the owner, and the sweep's own count of who it found does not either. The damage the owner takes does
+  carry that increase for the enemies inside, since it is the sweep's own figure.
+- **The stagger on entry is laid on the owner once each time they enter**, as on an enemy.
+- **A zone that already reaches everyone does not reach its owner twice.** No such zone is left by a skill today.
+
+### Consequences, stated rather than changed
+
+- **A PLAYER OWNER CARRIES THE ZONE'S SLOW AND IS NOT SLOWED BY IT.** The slow is Cripple, and only a creature
+  reads Cripple for its speed (`ACataclysmEnemyCharacter::CrippleMultiplier`). A player's walking speed follows the
+  MovementSpeed attribute, which Cripple does not move. So under the second row a player standing in their own
+  slowing zone carries the Cripple tag, and conditions that ask whether they are crippled see it, and they walk and
+  attack at full speed. **That is a gap in the game and not a ruling**, issue [#2273](https://github.com/sdubois777/Cataclysm/issues/2273). This entry said the
+  zone "slows its owner by the row's own figure" until 2026-10-06; that was wrong for a player. The probe's owner
+  is a plain test actor and it checks that the owner carries the tag, nothing more. The stagger, the ailment and
+  the curse do not go through Cripple and are not affected.
+- **A movement skill's ground at the point of arrival is under its owner the moment it is left**, so under the
+  first row Ashwalk, Infernal Plunge, Foul Wake and Vesselstep damage their user on the next sweep unless they
+  step out. Read from the rows, not run.
+- **The zone's ailment on its owner is its owner's own application**, so what the owner's rows hang on that ailment
+  go onto the owner too. Read in the code, not run.
+
+### For the owner's play-check
+
+Whether a character's own zone killing them reads as fair in play, and whether Blood Pyre's "does you no harm"
+should outrank the first row. Both are as ruled above until played.
+
+**A movement skill's ground where it arrives hurts its user under the damage row.** That ground is under its owner
+the moment it is left, so Ashwalk, Infernal Plunge, Foul Wake and Vesselstep damage their user on the next sweep
+unless they step out.
+
+### Tests
+
+Two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. A strike leaves a 4 metre zone
+under its user that carries a curse; the user wears a zone slow, the stagger on entry and the zone's ailment; one
+enemy stands inside as the control.
+
+- `zone_damages_its_owner`: a plain owner takes nothing from a sweep; a carrying one takes the zone's sweep figure,
+  the sweep still counts one enemy, and the owner carries none of the four effects.
+- `zone_applies_effects_to_owner`: a plain owner carries none of the four effects; a carrying one is slowed,
+  staggered on entering and not again while staying, set alight and cursed, and takes no damage from the sweep.
+
+**Not covered by a test:** the owner dying to their own zone; Blood Pyre; a zone a row gives.
+
+**Python.** No new test. One existing inventory gained the two lookups.
+
+### Run
+
+One window on 2026-10-06 for a stack of four, at `feat/minions-leave-chaos-pools-2` 4eba8aec: rows that make a zone,
+zones that reach their owner, zones that follow their owner, and chaos pools, in that order. Development was
+cd2ad0d9. Every figure is a line the run printed. **The stack had not been compiled before this window, and the
+first build and the first suite run both passed; no correction was made to any file.**
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3237 tests performed, 3237 succeeded, 0 failed`; `Declared: 3237 tests in the tree at 4eba8aec; 3237 performed, gap 0` |
+| Python, with continuous integration idle | `5771 passed, 8 skipped in 330.95s`; JUnit `tests="5779" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 4eba8aec, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under the prefix `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Da | `CataclysmGroundZone.cpp`: the owner is reached only when standing outside the zone | 1 performed, 1 failed, 5 failed assertions: the owner took 0.000000 against 16.700001, and was not slowed, staggered, set alight or cursed | 1 performed, 1 succeeded |
+| Db | `CataclysmSkillTemplate.cpp`: the damage flag is read from the effects row | 1 performed, 1 failed, 2 failed assertions: an owner carrying the damage flag took 0.000000 against 16.700001; one carrying the effects flag took 16.700195 against 0.000000 | 1 performed, 1 succeeded |
+
+**What the run settles of what this entry only predicted.** The game's effect functions lay a slow, a stagger, a
+burn and a curse on the character who is also their source; and an owner is staggered on entering and not again
+while staying.
+
+**Not run:** the owner dying to their own zone; Blood Pyre; a zone a row gives; any of this read from the effect
+table, since no row exists.
+
+**A behaviour with a test and no guard proof:** the owner being staggered once on entering and not again while
+staying. The proof written for it was dropped by the coordinating session to keep the window to eight proofs.
+
+---
+
 ## 2026-10-06 — A row gives a ground zone to a skill that states none: two stats, `zone_at_start_and_end_seconds` and `zone_at_impact_seconds`. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp` (`LeaveRowZoneAt`,

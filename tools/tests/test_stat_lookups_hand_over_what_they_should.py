@@ -447,6 +447,14 @@ INVENTORY = {
         "how long the zone a row gives a skill lasts (ruled 2026-10-06), one "
         "of two stats, asked where the zone is left; a zone is not a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat), SkillTags, 0.0f'):
+        "whether a zone also damages the character who left it (the owner's "
+        "decision of 2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat), SkillTags, 0.0f'):
+        "whether a zone also lays its effects on the character who left it (the owner's "
+        "decision of 2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f'):
         "whether a zone staggers whoever enters it (ruled 2026-10-06), asked "
         "where the zone is left; a flag, not a modifier of a blow",
