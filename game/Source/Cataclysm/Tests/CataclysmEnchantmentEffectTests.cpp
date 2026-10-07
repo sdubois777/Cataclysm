@@ -16749,4 +16749,48 @@ bool FCataclysmBurnSpreadRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlockValueRowTest,
+	"Cataclysm.Enchantments.TheBlockValueRowPaysTheAttackerAllOfWhatABlockRemoved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "100% of your block value is added to your retaliation damage". Issue #1833,
+ * ruled 2026-10-07: "block value" is what the block removed from that blow, and
+ * the row is `reflect_blocked` on `block` at 100. WORN: a real blocked blow
+ * costs the attacker exactly what the block removed, as the top roll of
+ * "Reflect 20%-100% of damage blocked back at attackers" does.
+ */
+bool FCataclysmBlockValueRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	FBlockFight Fight(World, TEXT("Positive_100_of_your_block_value_is_added_to_your_retali"));
+	WriteLines(Fight.Wearer.AbilitySystem, {}, {{BlockChance, 100.0f}});
+	Fight.Attacker.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	Fight.Attacker.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Before = Fight.Attacker.AbilitySystem->GetNumericAttribute(Health);
+	FCataclysmDamageResult Result;
+	UCataclysmSkillEffects::ApplyHit(Fight.Attacker.Actor, Fight.Wearer.Actor, 100.0f,
+		FGameplayTagContainer(), FCataclysmHitDelivery(), &Result);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the blow was blocked and removed %.1f"), Result.DamageBlocked),
+			Result.bBlocked && Result.DamageBlocked > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the attacker lost all of what the block removed. If nothing, DT_EnchantmentEffects may be "
+				   "older than the rows: run tools/generate_datatable_assets.py"),
+		Before - Fight.Attacker.AbilitySystem->GetNumericAttribute(Health), Result.DamageBlocked, 0.5f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
