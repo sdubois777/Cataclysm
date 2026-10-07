@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystem/CataclysmAbilitySet.h"
 #include "CataclysmPlayerCharacter.generated.h"
@@ -813,6 +814,12 @@ private:
 	 *  adding a second one. That function runs from both PossessedBy and
 	 *  OnRep_PlayerState, and on a listen server both happen. */
 	FDelegateHandle MovementSpeedChangedHandle;
+
+	/** Refreshes the walking speed when the Cripple tag is gained or lost. Issue #2273. */
+	void OnCrippleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** The binding of `OnCrippleChanged`, kept so a second set-up does not leave two. */
+	FDelegateHandle CrippleChangedHandle;
 
 	/** Re-asks for the movement speed when the class resource pool or its
 	 *  maximum moves, so a bonus conditioned on the pool being full reaches the

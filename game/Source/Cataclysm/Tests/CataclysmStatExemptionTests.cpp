@@ -6995,4 +6995,127 @@ bool FCataclysmAFollowingZoneTest::RunTest(const FString&)
 	return true;
 }
 
+// A PLAYER READS CRIPPLE AS A CREATURE DOES. Issue #2273. Until that issue only `ACataclysmEnemyCharacter` read it: a
+// player who carried Cripple walked at full speed and swung at full rate. THIS IS THE REPRODUCTION, and it fails on
+// the code before the fix at "walks at four fifths".
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAPlayerReadsCrippleTest,
+	"Cataclysm.StatExemption.APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAPlayerReadsCrippleTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	const FCataclysmAilmentKind* CrippleKind = UCataclysmAilments::KindNamed(TEXT("Cripple"));
+	FScopedSwinger Source(World, FVector(0.0f, 9000.0f, 0.0f));
+	ACataclysmPlayerCharacter* Player = SpawnPotionHolder(World);
+	UCataclysmAbilitySystemComponent* System =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)) : nullptr;
+	if (!TestTrue(TEXT("set-up: the tag, the ailment, a player and its ability system"),
+				  Cripple.IsValid() && CrippleKind && Player && System && Player->GetCharacterMovement()))
+	{
+		return false;
+	}
+	const auto Walk = [Player]() { return Player->GetCharacterMovement()->MaxWalkSpeed; };
+	const auto TakeCrippleOff = [System, &Cripple]()
+	{
+		System->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(Cripple));
+	};
+
+	// A THROWN SKILL WHOSE INTERVAL FOLLOWS ATTACK SPEED, to read the seconds between its throws.
+	const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+		UCataclysmProjectileSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/1, Player);
+	FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
+	UCataclysmProjectileSkill* Thrown = Spec ? Cast<UCataclysmProjectileSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a thrown skill on the player"), Thrown))
+	{
+		return false;
+	}
+	Thrown->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Range=10; Radius=1; Speed=0; Interval=0.5; ScalesWithAttackSpeed=1"));
+
+	const float WalkBefore = Walk();
+	const float SwingBefore = UCataclysmBasicAttack::SecondsBetweenSwingsFor(System);
+	const float ThrowBefore = Thrown->SecondsBetweenThrows();
+	if (!TestTrue(TEXT("set-up: the player walks, swings and throws at some rate"),
+				  WalkBefore > 0.0f && SwingBefore > 0.0f && ThrowBefore > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with no Cripple the share kept is the whole"),
+			  UCataclysmSkillEffects::CrippleMultiplierOn(Player), 1.0f, 0.0001f);
+
+	// CRIPPLE STATING 20. Gaining the tag is heard, and the walking speed is four fifths at once.
+	UCataclysmSkillEffects::ApplyTagForDuration(Source.Actor, Player, Cripple, 4.0f, 20.0f);
+	if (!TestTrue(TEXT("set-up: the player carries Cripple"), System->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a player carrying a Cripple of 20 walks at four fifths of their speed"), Walk(), WalkBefore * 0.8f, 0.5f);
+	TestEqual(TEXT("and waits a quarter longer between swings"),
+			  UCataclysmBasicAttack::SecondsBetweenSwingsFor(System), SwingBefore / 0.8f, 0.001f);
+	TestEqual(TEXT("and a quarter longer between throws"), Thrown->SecondsBetweenThrows(), ThrowBefore / 0.8f, 0.001f);
+
+	// LOSING THE TAG IS HEARD TOO.
+	TakeCrippleOff();
+	TestEqual(TEXT("with the Cripple gone the player walks at their full speed again"), Walk(), WalkBefore, 0.5f);
+	TestEqual(TEXT("and swings at their full rate"), UCataclysmBasicAttack::SecondsBetweenSwingsFor(System), SwingBefore, 0.001f);
+
+	// AT THE ROW'S OWN FIGURE, 30, which is what the ailment lays at its ordinary size.
+	UCataclysmAilments::Apply(Source.Actor, Player, *CrippleKind, /*Magnitude=*/1.0f);
+	if (TestTrue(TEXT("set-up: the player carries the ailment's Cripple"), System->HasMatchingGameplayTag(Cripple)))
+	{
+		TestEqual(TEXT("a player carrying the row's Cripple walks at seven tenths"), Walk(), WalkBefore * 0.7f, 0.5f);
+		TestEqual(TEXT("and swings at seven tenths of the rate"),
+				  UCataclysmBasicAttack::SecondsBetweenSwingsFor(System), SwingBefore / 0.7f, 0.001f);
+		TestEqual(TEXT("and throws at seven tenths of the rate"), Thrown->SecondsBetweenThrows(), ThrowBefore / 0.7f, 0.001f);
+	}
+	TakeCrippleOff();
+
+	// A CREATURE'S FIGURE IS WHAT IT WAS: four fifths under a Cripple of 20, read through the same function.
+	ACataclysmEnemyCharacter* Creature =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(3000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("set-up: a creature"), Creature))
+	{
+		Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Creature->SetHealth(1000.0f);
+		TestEqual(TEXT("control: a creature with no Cripple keeps the whole"), Creature->CrippleMultiplier(), 1.0f, 0.0001f);
+		UCataclysmSkillEffects::ApplyTagForDuration(Source.Actor, Creature, Cripple, 4.0f, 20.0f);
+		TestEqual(TEXT("a creature carrying a Cripple of 20 keeps four fifths, as before"), Creature->CrippleMultiplier(), 0.8f, 0.0001f);
+		TestEqual(TEXT("and the shared function answers the same for it"),
+				  UCataclysmSkillEffects::CrippleMultiplierOn(Creature), Creature->CrippleMultiplier(), 0.0001f);
+	}
+
+	// A PLAYER WHOSE MOVEMENT SPEED NOTHING MAY LOWER IS NOT SLOWED ON FOOT BY CRIPPLE, AND STILL SWINGS SLOWER. The
+	// flag is the Ravager's (`movement_speed_reduction_suppressed`). Ruled 2026-10-06.
+	// THE FIRST PLAYER IS MOVED AWAY FIRST: the helper spawns every player at the origin, and two characters are not
+	// spawned on one spot.
+	Player->SetActorLocation(FVector(-6000.0f, 0.0f, Player->GetActorLocation().Z));
+	ACataclysmPlayerCharacter* Unslowed = SpawnPotionHolder(World);
+	UCataclysmAbilitySystemComponent* UnslowedSystem =
+		Unslowed ? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Unslowed)) : nullptr;
+	if (TestTrue(TEXT("set-up: a second player"), Unslowed && UnslowedSystem && Unslowed->GetCharacterMovement()))
+	{
+		GrantFlat(Unslowed, ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat, 1.0f);
+		const float FullWalk = Unslowed->GetCharacterMovement()->MaxWalkSpeed;
+		const float FullSwing = UCataclysmBasicAttack::SecondsBetweenSwingsFor(UnslowedSystem);
+		UCataclysmSkillEffects::ApplyTagForDuration(Source.Actor, Unslowed, Cripple, 4.0f, 20.0f);
+		TestTrue(TEXT("set-up: the second player carries Cripple"), UnslowedSystem->HasMatchingGameplayTag(Cripple));
+		TestEqual(TEXT("a player whose movement speed nothing may lower walks at full speed under Cripple"),
+				  Unslowed->GetCharacterMovement()->MaxWalkSpeed, FullWalk, 0.5f);
+		TestEqual(TEXT("and still waits a quarter longer between swings"),
+				  UCataclysmBasicAttack::SecondsBetweenSwingsFor(UnslowedSystem), FullSwing / 0.8f, 0.001f);
+	}
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS

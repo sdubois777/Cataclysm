@@ -1245,6 +1245,11 @@ void ACataclysmPlayerCharacter::EndCrowdControlAppliedBy(const AActor* Applier)
 	}
 }
 
+void ACataclysmPlayerCharacter::OnCrippleChanged(const FGameplayTag /*Tag*/, int32 /*NewCount*/)
+{
+	RefreshMovementSpeed();
+}
+
 void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 {
 	const UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent();
@@ -1266,9 +1271,12 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	// WHAT CRIPPLE LEAVES OF IT, as a creature's walk is multiplied. Issue #2273.
+	const float Crippled = UCataclysmSkillEffects::CrippleMultiplierOn(this);
+
 	if (!Cataclysm)
 	{
-		ApplyMovementSpeed(FromAttribute);
+		ApplyMovementSpeed(FromAttribute * Crippled);
 		return;
 	}
 
@@ -1293,7 +1301,7 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 				GetMovementSpeedReductionSuppressedAttribute()));
 	if (Suppressed <= 0.0f)
 	{
-		ApplyMovementSpeed(Asked);
+		ApplyMovementSpeed(Asked * Crippled);
 		return;
 	}
 
@@ -2223,6 +2231,18 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	// Removed before adding, because this function is safe to run twice and on a
 	// listen server it does. Without this a second call would leave two handlers
 	// on one pawn.
+	// AND WHEN CRIPPLE IS GAINED OR LOST, WHICH MOVES NO ATTRIBUTE. Issue #2273. The walking speed is stored on
+	// the movement component, so something has to say when the tag changes; a stronger Cripple replaces the
+	// running one, which takes the tag off and puts it back, so that is heard too.
+	const FGameplayTag CrippleTag = UCataclysmDebuffs::CrippleTag();
+	if (CrippleTag.IsValid())
+	{
+		FOnGameplayEffectTagCountChanged& CrippleChanged =
+			ASC->RegisterGameplayTagEvent(CrippleTag, EGameplayTagEventType::NewOrRemoved);
+		CrippleChanged.Remove(CrippleChangedHandle);
+		CrippleChangedHandle = CrippleChanged.AddUObject(this, &ACataclysmPlayerCharacter::OnCrippleChanged);
+	}
+
 	SpeedChanged.Remove(MovementSpeedChangedHandle);
 	MovementSpeedChangedHandle = SpeedChanged.AddUObject(
 		this, &ACataclysmPlayerCharacter::OnMovementSpeedChanged);
