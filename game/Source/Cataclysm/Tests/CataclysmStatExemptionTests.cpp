@@ -7118,4 +7118,142 @@ bool FCataclysmAPlayerReadsCrippleTest::RunTest(const FString&)
 	return true;
 }
 
+// A ROW LAYS A STATUS ON ITS OWN WEARER. Ruled 2026-10-06, for five drawbacks: "Taking a hit has a 15%-25% chance to
+// trigger a random negative status effect on you", "Critical strikes have a 20%-35% chance to trigger a random debuff
+// on you", "Every 15 seconds a random debuff is applied to you", "After using a charge skill you are briefly stunned
+// for 0.5-1 second" and "When you apply a DOT, 1-4 stacks are applied to you". Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusOnTheWearerTest,
+	"Cataclysm.StatExemption.ARowLaysAStatusOnItsOwnWearer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStatusOnTheWearerTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// WHICH DEBUFF THE RANDOM PICK GIVES IS PINNED BY ITS PLACE IN THE POOL: Madness, Cripple, Weaken, Shred, Stun.
+	IConsoleVariable* Pick = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RandomDebuffPick"));
+	if (!TestNotNull(TEXT("set-up: the pin for the random pick"), Pick))
+	{
+		return false;
+	}
+	const int32 PickWas = Pick->GetInt();
+	ON_SCOPE_EXIT { Pick->Set(PickWas, ECVF_SetByConsole); };
+
+	const auto Row = [](const TCHAR* Event, ECataclysmApplyStatus Kind, const TCHAR* Status, float Value)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(Event);
+		Action.ApplyStatus = Kind;
+		Action.bStatusOnTheWearer = true;
+		Action.StatusName = Status;
+		Action.Percent = Value;
+		Action.TriggerKey = FName(TEXT("a status on the wearer"));
+		return Action;
+	};
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+
+	// A HIT TAKEN, A CHANCE OF 20. With the roll pinned under it the wearer carries the debuff picked; with the
+	// roll pinned over it, nothing. No other character is named by the event, and none is needed.
+	{
+		FScopedSwinger Wearer(World, FVector::ZeroVector);
+		Wearer.AbilitySystem->SetPoolActions({Row(TEXT("hit_taken"), ECataclysmApplyStatus::Chance, TEXT("Random Debuff"), 20.0f)});
+		Pick->Set(1, ECVF_SetByConsole);
+		{
+			const FPinnedRoll Misses(TEXT("Cataclysm.StatusRoll"), 99.0f);
+			Wearer.AbilitySystem->ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, /*bLanded=*/true);
+			TestFalse(TEXT("control: with the roll over the chance, a hit taken lays nothing on the wearer"),
+					  Wearer.AbilitySystem->HasMatchingGameplayTag(Cripple));
+		}
+		{
+			const FPinnedRoll Comes(TEXT("Cataclysm.StatusRoll"), 0.0f);
+			Wearer.AbilitySystem->ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, /*bLanded=*/true);
+			TestTrue(TEXT("with the roll under the chance, a hit taken lays the debuff picked on the wearer"),
+					 Wearer.AbilitySystem->HasMatchingGameplayTag(Cripple));
+		}
+	}
+
+	// THE PICK THAT IS A STUN LANDS WITH NO BLOW AT ALL, which is the rule of a tenth not being asked: the event
+	// carries no damage, and a stun from a blow that dealt none is refused.
+	{
+		FScopedSwinger Wearer(World, FVector(0.0f, 3000.0f, 0.0f));
+		Wearer.AbilitySystem->SetPoolActions({Row(TEXT("hit_taken"), ECataclysmApplyStatus::Chance, TEXT("Random Debuff"), 100.0f)});
+		Pick->Set(4, ECVF_SetByConsole);
+		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, /*bLanded=*/true);
+		TestTrue(TEXT("a random debuff that is a stun stuns the wearer though no blow dealt anything"),
+				 UCataclysmSkillEffects::IsStunned(Wearer.Actor));
+	}
+
+	// AFTER A CHARGE SKILL, A STUN FOR THE ROW'S SECONDS. The row waits on the skill ending and asks for the charge
+	// keyword. A charge stuns its user once it has ended; a blink, which does not carry the keyword, does not.
+	const auto UseAMove = [World, &Row](const FVector& At, const TCHAR* ParamsCell, const TCHAR* TagsCell, bool& bOutUsed) -> bool
+	{
+		FScopedSwinger Wearer(World, At);
+		FCataclysmPoolAction Stun = Row(TEXT("skill_end"), ECataclysmApplyStatus::Seconds, TEXT("Stun"), 0.75f);
+		Stun.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Keyword.Charge"));
+		Wearer.AbilitySystem->SetPoolActions({Stun});
+		const FGameplayAbilitySpecHandle Handle = Wearer.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmMovementSkill::StaticClass(), ECataclysmAbilitySlot::Movement, /*Level=*/100, Wearer.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? Wearer.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSkillTemplate* Skill = Spec ? Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Skill)
+		{
+			bOutUsed = false;
+			return false;
+		}
+		Skill->SkillName = TEXT("A move that may stun its user");
+		Skill->Params = UCataclysmSkillShapes::ParseParams(ParamsCell);
+		Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagsCell);
+		bOutUsed = Wearer.AbilitySystem->TryActivateAbility(Handle);
+		return UCataclysmSkillEffects::IsStunned(Wearer.Actor);
+	};
+	bool bCharged = false;
+	bool bBlinked = false;
+	const bool bStunnedAfterACharge = UseAMove(FVector(0.0f, 6000.0f, 0.0f), TEXT("Mode=Charge; Range=8; Radius=1.5"),
+		TEXT("Item.Weapon.Sword, Element.Demonic, Keyword.Charge, Slot.Movement"), bCharged);
+	const bool bStunnedAfterABlink = UseAMove(FVector(0.0f, 9000.0f, 0.0f), TEXT("Mode=Blink; Range=8; Radius=3.5"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Slot.Movement"), bBlinked);
+	if (TestTrue(TEXT("set-up: the charge and the blink both ran"), bCharged && bBlinked))
+	{
+		TestTrue(TEXT("a wearer is stunned once their charge skill has ended"), bStunnedAfterACharge);
+		TestFalse(TEXT("control: and not after a skill that does not carry the charge keyword"), bStunnedAfterABlink);
+	}
+
+	// WHEN THE WEARER APPLIES A DAMAGE OVER TIME TO ANOTHER, THE SAME IS LAID ON THE WEARER THE ROW'S NUMBER OF
+	// TIMES. Three, here. What three applications of a bleed come to is the bleed's own rule, so the reading is
+	// compared with a second character who laid three on themselves by hand, and is not a number written here.
+	{
+		const FCataclysmAilmentKind* Bleed = UCataclysmAilments::KindNamed(TEXT("Bleed"));
+		const FGameplayTag BleedTag = UCataclysmDebuffs::BleedTag();
+		FScopedSwinger Wearer(World, FVector(0.0f, 12000.0f, 0.0f));
+		FScopedSwinger Enemy(World, FVector(200.0f, 12000.0f, 0.0f));
+		FScopedSwinger ByHand(World, FVector(0.0f, 15000.0f, 0.0f));
+		if (TestNotNull(TEXT("set-up: the bleed"), Bleed))
+		{
+			Wearer.AbilitySystem->SetPoolActions({Row(TEXT("dot_applied"), ECataclysmApplyStatus::Times, TEXT("Applied DoT"), 3.0f)});
+			TestFalse(TEXT("control: before applying anything the wearer does not bleed"),
+					  Wearer.AbilitySystem->HasMatchingGameplayTag(BleedTag));
+			UCataclysmAilments::Apply(Wearer.Actor, Enemy.Actor, *Bleed, /*Magnitude=*/1.0f);
+			for (int32 Time = 0; Time < 3; ++Time)
+			{
+				UCataclysmAilments::Apply(ByHand.Actor, ByHand.Actor, *Bleed, /*Magnitude=*/1.0f);
+			}
+			TestTrue(TEXT("set-up: the enemy bleeds"), Enemy.AbilitySystem->HasMatchingGameplayTag(BleedTag));
+			TestTrue(TEXT("the wearer bleeds too, having applied a bleed to another"),
+					 Wearer.AbilitySystem->HasMatchingGameplayTag(BleedTag));
+			TestEqual(TEXT("and carries what three applications by hand leave a character carrying"),
+					  Wearer.AbilitySystem->GetTagCount(BleedTag), ByHand.AbilitySystem->GetTagCount(BleedTag));
+			TestTrue(TEXT("set-up: three applications by hand leave a bleed"), ByHand.AbilitySystem->GetTagCount(BleedTag) > 0);
+		}
+	}
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS
