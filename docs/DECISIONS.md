@@ -29,6 +29,25 @@ bonuses; its ten-piece bonus still waits.
 **Not tested here:** the six pieces refreshing an effect through a real application; the entry below tests that
 with the stat held by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers below this one and the one above it, on `development` e49857f0.
+The build, the whole suite and the Python of record are in the table of the entry "A Void Splinter can pass on when
+its carrier dies" and were run with this layer in the stack. **The ids are the commits as they stood when each
+step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 5fb5e953 | 252 tests performed, 249 succeeded, 3 failed, this layer's among them; 1 of the 9 failed assertions is this layer's |
+| The three enchantment assets, regenerated with the editor | e35e1aa9 | effect rows 512 to 513 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of the layer below | c6088f3d | 252 tests performed, 252 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**, on one assertion: six pieces read the
+stat as 0 where 1 is expected.
+
+**This layer changes no engine code and no generator code.** The guard proof that the engine asks for the stat
+under the name this row states is in the entry below this one, and this layer's test is the one that noticed it.
+
 ---
 
 ## 2026-10-06 — A stat makes applying a damage over time effect refresh the applier's others on that target, each to its own full duration; no row authored here
