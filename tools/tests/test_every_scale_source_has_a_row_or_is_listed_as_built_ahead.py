@@ -146,7 +146,10 @@ KNOWN_USED = "debuffs_carried"
 #: AND 35 SINCE THE SCALES OF ISSUE #1833 GROUP C PART 3c,
 #: from 31: seconds_on_floor, floors_cleared, armor and
 #: cataclysm_bosses_defeated.
-EXPECTED_NAMED_BY_A_ROW = 35
+#:
+#: AND 36 WHEN `leech_pools_in_flight` ARRIVED WITH ITS ROW, 2026-10-07, for
+#: Starvation's six-piece bonus.
+EXPECTED_NAMED_BY_A_ROW = 36
 
 
 def scales_named_by_a_row() -> set[str]:

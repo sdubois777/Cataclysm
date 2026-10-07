@@ -1201,6 +1201,37 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		}
 	}
 
+	// AND THE POOLS BEING LEECHED INTO. Issue #1833, ruled 2026-10-07: one for
+	// each pool with a payment still owed, however many payments it has.
+	//
+	// ONLY A POOL THE CHARACTER HAS, a maximum above nought. Ruled the same day.
+	// A payment is started from the leech stat and what the hit took, so one is
+	// owed into an energy shield a character does not have; that is not leech
+	// in any sense a player would mean. A pool that is FULL still counts while
+	// a payment is owed to it.
+	const auto HasPool = [this](ECataclysmLeechPool Pool)
+	{
+		switch (Pool)
+		{
+		case ECataclysmLeechPool::Health:
+			return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) > 0.0f;
+		case ECataclysmLeechPool::Mana:
+			return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute()) > 0.0f;
+		case ECataclysmLeechPool::EnergyShield:
+			return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()) > 0.0f;
+		}
+		return false;
+	};
+	uint32 PoolsSeen = 0;
+	for (const FCataclysmLeechPayment& Payment : LeechPayments)
+	{
+		if (Payment.Remaining > 0.0f && HasPool(Payment.Pool))
+		{
+			PoolsSeen |= 1u << static_cast<uint32>(Payment.Pool);
+		}
+	}
+	State.LeechPoolsInFlight = FMath::CountBits(static_cast<uint64>(PoolsSeen));
+
 	// AND THE PASSIVE POINTS SPENT, WHICH ONLY A PLAYER HAS. Issue #1686. A
 	// player's ability system is owned by its player state, which holds the
 	// allocation; anything else keeps the -1 that gives a class point row

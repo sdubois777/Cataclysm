@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Starvation's six-piece bonus is built: a scale counts the pools a character is leeching into
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`
+(`ECataclysmStatScale::PerLeechPoolInFlight`, `FCataclysmStatConditions::LeechPoolsInFlight`),
+`CataclysmAbilitySystemComponent.cpp`, `tools/generate_datatables.py` (`SCALES`),
+`docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv` and
+its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### THE SENTENCE
+
+"Starvation (6-Piece Bonus): You gain 5% damage reduction for each active unique instance of leech".
+
+### WHAT WAS RULED, 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+**"Unique instance" is one for each pool being leeched into**: health, mana and energy shield. So nought to three,
+and at most 15 damage reduction. A labelled judgement.
+
+**Only a pool the character has counts, a maximum above nought.** Ruled the same day, on this layer's
+registration, before any window step. A leech payment is started from the leech stat and what the hit took, with
+nothing asking whether the character has the pool, and Starvation's own two-piece bonus gives life, mana and
+energy shield leech. Counted as first written, a wearer of six pieces had all three pools from one hit and the
+whole 15 whenever a hit landed, an energy shield or none. **A pool that is full still counts while a payment is
+owed to it.**
+
+**The reading not taken: one for each payment.** Every hit that leeches starts a payment, and several run at the
+same time, so that count has no bound.
+
+### WHAT WAS BUILT
+
+| Sentence | Stat | Kind | Value | Scale | Scale Step |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Starvation (6-Piece Bonus): You gain 5% damage reduction for each active unique instance of leech | `damage_reduction` | flat | 5 | `leech_pools_in_flight` | 1 |
+
+EnchantmentEffects 536 to 537, over 449 to 450 enchantments.
+
+**A new scale, `leech_pools_in_flight`.** It is built as the scale that counts running auras is: an entry of
+`ECataclysmStatScale`, a field of the state a scale reads, its name in the pipeline's table, its case, and its
+line in the generator's `SCALES`. The ability system component fills the field from its list of leech payments: a
+pool counts when a payment into it has something still owed.
+
+**The scale and the row are one layer** because
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` refuses a scale no row names. Its
+count moves from 35 to 36.
+
+**It follows the payments without a refresh.** `damage_reduction` is asked each time damage is resolved, with the
+character's state as it is then.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **A pool stops counting when its last payment is paid out**, three seconds after the last hit that leeched into
+  it. So the reduction falls away between fights.
+- **Leeching into a full pool still counts.** A payment is started from the leech stat and what the hit took
+  (`UCataclysmLeech::NoteHit`), and is paid out by time; nothing asks whether the pool has room.
+- **FOR THE OWNER'S PLAY-CHECK LIST: a wearer of six pieces has every pool it owns from one hit.** Starvation's
+  own two-piece bonus gives life, mana and energy shield leech, and six pieces include it. So one hit that gets
+  through gives 10 damage reduction to a wearer with health and mana, and 15 to one with an energy shield as
+  well, for the three seconds a payment lasts.
+
+### RECORDED HERE FOR THE NEXT READER: A ROW THAT WAITS ON ITS SET
+
+"Every 5 seconds, one of your resistances is reduced to 0 until this triggers again" is the drawback of Shard of
+Anarchy, set 15. The generator writes a set whole or not at all, and none of that set's bonuses has a row, so the
+drawback cannot be written alone. Held 2026-10-07 by the coordinating session: it waits on the list of buffs for
+the set's two-piece bonus, "Every 30 seconds, a random buff or debuff is applied to you", which is with the owner.
+The eight resistances a character has a stat for, read from the rows of "You have no resistances": war, demonic,
+death, pestilence, famine, celestial, chaos, void. Ruled for when it is built: the previous resistance is restored
+when the next is chosen, and a resistance that is already negative is set to nought, which is a benefit.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree`: a damage reduction
+  of 5 a pool made by hand reads 0 with no payment, 5 with two payments into health, 10 with health and mana, 15
+  with all three and a second into health, and 5 when the mana payment has nothing left owed; with no energy
+  shield, payments into all three read 10.
+- `Cataclysm.Enchantments.StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto`: the real set
+  worn, five pieces and then six. The test first asserts that both names it relies on are rows of the table. Five
+  pieces give nothing; six give, above the same wearer's reading with no payment, 5 with one into health, 10 with
+  payments into all three and no energy shield, and 15 with an energy shield. As first written it asserted the
+  figures themselves; see the window's run below.
+
+**Not tested:** the reduction taking damage off a real blow; a payment running out during play.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 87a44157. The build, the
+whole suite and the Python of record are in the table of the entry "A tick of an ailment tells the leech code which
+ailment it is" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 7a2af6ca | 275 tests performed, 268 succeeded, 7 failed, this layer's among them; 3 of the 13 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 59d547ef | effect rows 536 to 537 |
+| Whole suite, every asset built | 78ac88c8 | 3296 tests performed, 3295 succeeded, 1 failed: this layer's row test |
+| The row test changed to read differences, folded into this layer | 14c4f76f | the line below is its run |
+| Cataclysm.Enchantments., whole, with every asset built | 01d66e81 | 275 tests performed, 275 succeeded, 0 failed |
+
+**CHANGED BY RULING BEFORE THE WINDOW: only a pool the character has counts.** Recorded above, under what was
+ruled.
+
+**A FAULT IN THIS LAYER'S ROW TEST WAS FOUND BY THE WHOLE SUITE, AND STATED BEFORE IT PRINTED.** With every asset
+built the suite printed "3296 tests performed, 3295 succeeded, 1 failed:
+StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto", on four readings at six pieces: "to be
+0.000000, but it was 3.950000", "to be 5.000000, but it was 8.950000", "to be 10.000000, but it was 13.950000"
+and "to be 15.000000, but it was 18.950001". **The cause:** the wearer the test's helper builds is of the starting
+class, the Ravager, whose own lines include damage reduction; 3.95 is that line at the level the wearer is given.
+Against the older assets the same readings were 0, because with no row on the stat nothing is recorded for it and
+the test's fallback of nought is returned; so the step against the older assets could not show it. It was found
+by reading while the suite ran, and the changed prediction was sent before the result.
+
+**Ruled 2026-10-07 by the coordinating session, in advance, because it changes what the test asserts:** each
+figure is read as a difference from the same wearer's reading with no payment in flight: 5, 10 and 15 above it at
+six pieces, and nothing above it at five. Nothing absolute is asserted.
+
+**The test fails against a table without its row and passes with it**: at six pieces the three differences were 0
+where 5, 10 and 15 were expected.
+
+**The engine test of the scale needs no row.** The scale's failing halves are these guard proofs, each with
+`prove_cpp_guard` on `Cataclysm.Enchantments.` at 01d66e81, each restored to 275 tests performed, 275 succeeded,
+0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| The scale reads no pool (`return StackedValue(Modifier, 0);` in `CataclysmStatPipeline.cpp`) | 275 performed, 2 failed | 8 assertions: the scale's test 5, each reading 0; the row test 3, each difference 0 |
+| Every payment is counted as the same pool (`PoolsSeen \|= 1u;`) | 275 performed, 2 failed | 5 assertions: the scale's test 3, each 5 where 10, 15 and 10; the row test 2, each 5 where 10 and 15 |
+| A pool the character does not have is counted (the `HasPool` condition removed) | 275 performed, 2 failed | 2 assertions: the scale's test 1 and the row test 1, each 15 where 10, with no energy shield |
+
+Each proof failed on the tests and the number of assertions stated before it ran; the third was added with the
+ruling that only a pool the character has counts.
+
+---
+
 ## 2026-10-07 — "Bleed damage you deal also leeches 10%-20% of its value as HP" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),

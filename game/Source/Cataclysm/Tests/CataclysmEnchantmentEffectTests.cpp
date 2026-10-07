@@ -17270,4 +17270,211 @@ bool FCataclysmBleedLeechRowTest::RunTest(const FString&)
 		Worn.ASC()->StatForSkill(Stat, Bleed, 0.0f), Worn.ASC()->StatForSkill(Stat, Burn, 0.0f), 0.01f);
 	return true;
 }
+// HOW MANY POOLS A CHARACTER IS LEECHING INTO IS A SCALE. Issue #1833, ruled 2026-10-07, for "Starvation (6-Piece
+// Bonus): You gain 5% damage reduction for each active unique instance of leech". ONE PER POOL: health, mana and
+// energy shield, so at most three. Two payments into one pool are one.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeechPoolsScaleTest,
+	"Cataclysm.Enchantments.TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A wearer with a hand-made damage reduction of 5 for each pool being leeched
+ * into. With no payment it reads 0; with two payments into health, 5; with
+ * health and mana, 10; with all three and a second into health, 15. A payment
+ * with nothing left to pay is not counted. ONLY A POOL THE WEARER HAS COUNTS:
+ * with no energy shield, payments into all three read 10, and a full pool
+ * still counts.
+ */
+bool FCataclysmLeechPoolsScaleTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	ECataclysmStatScale Named = ECataclysmStatScale::Fixed;
+	if (!TestTrue(TEXT("set-up: leech_pools_in_flight is a scale this build knows"),
+			UCataclysmStatPipeline::ScaleNamed(TEXT("leech_pools_in_flight"), Named)
+				&& Named == ECataclysmStatScale::PerLeechPoolInFlight))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+
+	FCataclysmStatModifier PerPool;
+	PerPool.Bucket = ECataclysmStatBucket::Flat;
+	PerPool.Source = ECataclysmModifierSource::PassiveKeystone;
+	PerPool.Value = 5.0f;
+	PerPool.Scale = ECataclysmStatScale::PerLeechPoolInFlight;
+	PerPool.ScaleStep = 1.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("damage_reduction")));
+	Line.Base = 0.0f;
+	Line.Modifiers = {PerPool};
+	Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	// THE THREE POOLS, each with a maximum above nought, health and mana full.
+	const auto SetPool = [&Wearer](const FGameplayAttribute& Maximum, float Value)
+	{
+		Wearer.AbilitySystem->SetNumericAttributeBase(Maximum, Value);
+	};
+	SetPool(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	SetPool(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+	SetPool(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 100.0f);
+	SetPool(UCataclysmVitalAttributeSet::GetManaAttribute(), 100.0f);
+	SetPool(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100.0f);
+	if (!TestTrue(TEXT("set-up: the wearer has all three pools"),
+			Wearer.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) > 0.0f
+				&& Wearer.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute()) > 0.0f
+				&& Wearer.AbilitySystem->GetNumericAttribute(
+					   UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()) > 0.0f))
+	{
+		return false;
+	}
+
+	const auto Payment = [](ECataclysmLeechPool Pool, float Remaining)
+	{
+		FCataclysmLeechPayment One;
+		One.Pool = Pool;
+		One.Remaining = Remaining;
+		One.SecondsLeft = 3.0f;
+		return One;
+	};
+	const auto Reduction = [&Wearer]()
+	{
+		return Wearer.AbilitySystem->StatForSkill(FName(TEXT("damage_reduction")), FGameplayTagContainer(), 0.0f);
+	};
+
+	TestEqual(TEXT("no payment in flight: nothing"), Reduction(), 0.0f, 0.001f);
+
+	Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>{Payment(ECataclysmLeechPool::Health, 10.0f), Payment(ECataclysmLeechPool::Health, 20.0f)});
+	TestEqual(TEXT("two payments into health are one pool: 5"), Reduction(), 5.0f, 0.001f);
+
+	Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>{Payment(ECataclysmLeechPool::Health, 10.0f), Payment(ECataclysmLeechPool::Mana, 10.0f)});
+	TestEqual(TEXT("health and mana are two pools: 10"), Reduction(), 10.0f, 0.001f);
+
+	Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>{Payment(ECataclysmLeechPool::Health, 10.0f), Payment(ECataclysmLeechPool::Mana, 10.0f),
+		 Payment(ECataclysmLeechPool::EnergyShield, 10.0f), Payment(ECataclysmLeechPool::Health, 5.0f)});
+	TestEqual(TEXT("all three pools, one of them twice: 15"), Reduction(), 15.0f, 0.001f);
+
+	Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>{Payment(ECataclysmLeechPool::Health, 10.0f), Payment(ECataclysmLeechPool::Mana, 0.0f)});
+	TestEqual(TEXT("a payment with nothing left to pay is not counted: 5"), Reduction(), 5.0f, 0.001f);
+
+	// A WEARER WITH NO ENERGY SHIELD: a payment into it is not a pool being leeched into.
+	SetPool(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 0.0f);
+	if (!TestEqual(TEXT("set-up: the wearer now has no energy shield"),
+			Wearer.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()),
+			0.0f, 0.001f))
+	{
+		return false;
+	}
+	Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>{
+		Payment(ECataclysmLeechPool::Health, 10.0f), Payment(ECataclysmLeechPool::Mana, 10.0f),
+		 Payment(ECataclysmLeechPool::EnergyShield, 10.0f)});
+	TestEqual(TEXT("payments into all three, and no energy shield: 10, and the full pools still count"),
+		Reduction(), 10.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStarvationSixRowTest,
+	"Cataclysm.Enchantments.StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The real row from the built table. Five pieces give nothing; six give 5 for
+ * each pool the wearer has and is leeching into: 0 with no payment, 5 with one
+ * into health, 10 with one into each of the three and no energy shield, 15
+ * with one into each of the three and an energy shield.
+ */
+bool FCataclysmStarvationSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+
+	// A SET IS WORN BY ITS FIRST BONUS'S NAME. BOTH NAMES ARE LOOKED UP IN THE TABLE FIRST, so a name that is not a
+	// row fails here and says so.
+	const TCHAR* const Bonus = TEXT("Positive_Starvation_2_Piece_Bonus_You_have_5_life_m");
+	const TCHAR* const SixPieces = TEXT("Positive_Starvation_6_Piece_Bonus_You_gain_5_damage_r");
+	const UDataTable* Positive = LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the set's first bonus, which this test wears, is a row of the table"),
+					 Positive->GetRowMap().Contains(FName(Bonus)))
+		|| !TestTrue(TEXT("set-up: the six-piece bonus is a row of the table"),
+					 Positive->GetRowMap().Contains(FName(SixPieces))))
+	{
+		return false;
+	}
+
+	const auto Payment = [](ECataclysmLeechPool Pool)
+	{
+		FCataclysmLeechPayment One;
+		One.Pool = Pool;
+		One.Remaining = 10.0f;
+		One.SecondsLeft = 3.0f;
+		return One;
+	};
+	for (const int32 Pieces : {5, 6})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, Bonus, Pieces);
+		// THE POOLS ARE SET AFTER THE SET IS WORN, since wearing refreshes the attributes. Health and mana, and
+		// no energy shield until the last reading.
+		const auto SetPool = [&Wearer](const FGameplayAttribute& Maximum, float Value)
+		{
+			Wearer.AbilitySystem->SetNumericAttributeBase(Maximum, Value);
+		};
+		const auto PoolIs = [&Wearer](const FGameplayAttribute& Maximum)
+		{
+			return Wearer.AbilitySystem->GetNumericAttribute(Maximum);
+		};
+		SetPool(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		SetPool(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 100.0f);
+		SetPool(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 0.0f);
+		if (!TestTrue(TEXT("set-up: the wearer has health and mana and no energy shield"),
+				PoolIs(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) > 0.0f
+					&& PoolIs(UCataclysmVitalAttributeSet::GetMaxManaAttribute()) > 0.0f
+					&& PoolIs(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()) <= 0.0f))
+		{
+			return false;
+		}
+		const auto Reduction = [&Wearer]()
+		{
+			return Wearer.AbilitySystem->StatForSkill(FName(TEXT("damage_reduction")), FGameplayTagContainer(),
+													 0.0f);
+		};
+		const float AtSix = Pieces == 6 ? 1.0f : 0.0f;
+
+		// EVERY FIGURE IS READ AS A DIFFERENCE from this wearer's own reading with no payment in flight. The
+		// wearer this helper builds is of the starting class, and the Ravager's own lines include damage
+		// reduction, so an absolute figure would be the class's and the row's together.
+		const float WithNoPayment = Reduction();
+		Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>{Payment(ECataclysmLeechPool::Health)});
+		TestEqual(FString::Printf(TEXT("%d pieces, leeching into health, above the reading with no payment.%s"),
+					  Pieces, CataclysmRepeatRowsTest::OlderAsset),
+			Reduction() - WithNoPayment, 5.0f * AtSix, 0.001f);
+		Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>{Payment(ECataclysmLeechPool::Health),
+			Payment(ECataclysmLeechPool::Mana), Payment(ECataclysmLeechPool::EnergyShield)});
+		TestEqual(FString::Printf(TEXT("%d pieces, payments into all three and no energy shield"), Pieces),
+			Reduction() - WithNoPayment, 10.0f * AtSix, 0.001f);
+		SetPool(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100.0f);
+		if (!TestTrue(TEXT("set-up: the wearer now has an energy shield"),
+				PoolIs(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()) > 0.0f))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%d pieces, payments into all three and an energy shield"), Pieces),
+			Reduction() - WithNoPayment, 15.0f * AtSix, 0.001f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

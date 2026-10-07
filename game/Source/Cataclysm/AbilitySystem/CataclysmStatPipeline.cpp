@@ -179,6 +179,7 @@ namespace
 		{ TEXT("floors_cleared"),      ECataclysmStatScale::PerFloorClearedThisRun },
 		{ TEXT("armor"),               ECataclysmStatScale::PerPointOfArmor },
 		{ TEXT("cataclysm_bosses_defeated"), ECataclysmStatScale::PerUniqueCataclysmBossDefeated },
+		{ TEXT("leech_pools_in_flight"), ECataclysmStatScale::PerLeechPoolInFlight },
 	};
 
 	/**
@@ -1595,6 +1596,9 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerUniqueCataclysmBossDefeated:
 		return State.CataclysmBossesDefeated < 0
 			? 0.0f : StackedValue(Modifier, State.CataclysmBossesDefeated);
+
+	case ECataclysmStatScale::PerLeechPoolInFlight:
+		return StackedValue(Modifier, State.LeechPoolsInFlight);
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
