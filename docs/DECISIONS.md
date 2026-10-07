@@ -2,6 +2,59 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "DoTs last 2x-4x as long on you" is reworded by the owner to "DoTs on you have 100%-300% more duration", and built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one sentence of the Enchantments sheet, one row of the Enchantment
+Effects sheet), `game/Data/EnchantmentsNegative.csv`, `game/Data/EnchantmentEffects.csv` and their assets,
+`game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp` (one alias), `tools/tests/enchantment_row_names.txt`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` and `CataclysmEnchantmentRollTests.cpp` (the count of
+stated ranges, 390 to 391), comments in `CataclysmDebuffs.h` and `CataclysmStatExemptionTests.cpp`, one new test in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### THE OWNER'S DECISION, 2026-10-07
+
+**The sentence "DoTs last 2x-4x as long on you" becomes "DoTs on you have 100%-300% more duration".** The owner
+approved that wording on 2026-10-07, as relayed by the coordinating session; the wording was the coordinating
+session's proposal.
+
+### WHY A REWORD AND NOT A RULE
+
+The row is `debuff_duration_taken` more 100 to 300. A sentence's range is read in two places that are held to one
+count: the generator, and `UCataclysmItemValues::EnchantmentRanges`, which the game uses to show an item's rolled
+figure in place of the range. Neither reads "2x-4x" as a range, and the game picks the rolled figure from the
+sentence's own range, so a rule for that form would have had to teach both readers the form and how a multiplier
+of N becomes a `more` of N minus 1 hundreds. One sentence in the two tables was written that way. Reworded, it
+states the row's own range in the form every reader already reads.
+
+### WHAT WAS BUILT
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| DoTs on you have 100%-300% more duration | `debuff_duration_taken` | more | 100 to 300 | `Keyword.DoT` |
+
+EnchantmentEffects 540 to 541, over 453 to 454 enchantments.
+
+- **The row is renamed by the reword**, from `Negative_DoTs_last_2x_4x_as_long_on_you` to
+  `Negative_DoTs_on_you_have_100_300_more_duration`. **THE ALIAS, by the owner's decision of 2026-09-30 on issue
+  #1799**: `FCataclysmEnchantmentRenames::Aliases()` gains the pair, so an item saved under the old name loads
+  under the new one. The pinned list of row names records the rename.
+- **One more range is stated in the two tables**, 390 to 391, in the generator's pin and in the game's.
+- **It multiplies with "Bleeding on you lasts 50%-100% longer"**, which is an increase scoped to bleed: a bleed on
+  a wearer of both at their harshest lasts 2 times 4, eight times as long.
+- **The same meaning as the old words**: 2x to 4x as long is 100 to 300 more.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheDotDurationRowMultipliesHowLongAnyDamageOverTimeLastsOnItsWearer`: the real row worn
+  at its harshest roll. The test first asserts that the name it wears is a row of `EnchantmentsNegative.csv`. A
+  duration of 100 asked about a bleed becomes 400, and so does one asked about a burn; asked about nothing that is
+  damage over time it stays 100.
+
+**Not tested here:** a real effect lasting longer on a wearer of the row; the alias loading a saved item.
+
+---
+
 ## 2026-10-07 — "Enemies killed by you explode for the overkill amount" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
