@@ -343,8 +343,24 @@ TArray<const FCataclysmAilmentKind*> UCataclysmAilments::RandomDebuffPool()
 	return Pool;
 }
 
+const FCataclysmAilmentKind* UCataclysmAilments::KindWithTag(const FGameplayTag& Tag)
+{
+	if (!Tag.IsValid())
+	{
+		return nullptr;
+	}
+	for (const FCataclysmAilmentKind& Kind : EveryKind)
+	{
+		if (Tag.GetTagName() == FName(Kind.TagName))
+		{
+			return &Kind;
+		}
+	}
+	return nullptr;
+}
+
 const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDebuff(
-	AActor* Instigator, AActor* Target, float DealtToHealth)
+	AActor* Instigator, AActor* Target, float DealtToHealth, bool bWithoutABlow)
 {
 	const TArray<const FCataclysmAilmentKind*> Pool = RandomDebuffPool();
 	if (Pool.IsEmpty() || !Instigator || !Target)
@@ -364,7 +380,7 @@ const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDebuff(
 		const FCataclysmStatusEffectNumbers Row =
 			UCataclysmSkillEffects::StatusEffectNumbers(Kind.StatusRow, Kind.Ailment);
 		return UCataclysmSkillEffects::ApplyStun(Instigator, Target,
-				   Row.DurationSeconds, DealtToHealth, /*bStunIsDesigned=*/false)
+				   Row.DurationSeconds, DealtToHealth, /*bStunIsDesigned=*/bWithoutABlow)
 			? &Kind
 			: nullptr;
 	}

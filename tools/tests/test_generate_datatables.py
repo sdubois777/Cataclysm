@@ -2504,6 +2504,128 @@ class TestGadgetDestroyedAndResourceConsumed:
         assert not {"gadget_destroyed", "resource_consumed"} & set(gen.HIT_FIRED_EVENTS)
 
 
+class TestAStatusLaidOnTheWearer:
+    """A status a row lays on its own wearer. Ruled 2026-10-06, for five
+    drawbacks. Three actions; the event need name no other character."""
+
+    HIT_WORDS = ("Taking a hit has a 15%-25% chance to trigger a random negative "
+                 "status effect on you")
+    HIT = gen.row_name("Negative", HIT_WORDS[:48])
+    STUN_WORDS = "After using a charge skill you are briefly stunned for 0.5-1 second"
+    STUN = gen.row_name("Negative", STUN_WORDS[:48])
+    DOT_WORDS = "When you apply a DOT, 1-4 stacks are applied to you"
+    DOT = gen.row_name("Negative", DOT_WORDS[:48])
+    TIMED_WORDS = "Every 15 seconds a random debuff is applied to you"
+    TIMED = gen.row_name("Negative", TIMED_WORDS[:48])
+    MANY_WORDS = "Whenever you apply a DOT, 1-40 stacks are applied to you"
+    MANY = gen.row_name("Negative", MANY_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        ["Your block chance is increased by 10%-20%", "Generic", 4,
+         "Stat.Defense.Block", None, HIT_WORDS, "Generic", 3, "Keyword.Debuff"],
+        [None, None, None, None, None, STUN_WORDS, "Generic", 4, "Keyword.Charge"],
+        [None, None, None, None, None, DOT_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
+        [None, None, None, None, None, TIMED_WORDS, "Generic", 4, "Keyword.Debuff"],
+        [None, None, None, None, None, MANY_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "self.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def hit(self, tmp_path, changes):
+        values = {"Enchantment": self.HIT, "Effect": self.HIT_WORDS,
+                  "Action": "apply_status_to_self", "Action Event": "hit_taken",
+                  "Ailment": "Random Debuff", "Value Low": 15, "Value High": 25}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def stun(self, tmp_path, changes):
+        values = {"Enchantment": self.STUN, "Effect": self.STUN_WORDS,
+                  "Action": "apply_status_to_self_seconds", "Action Event": "skill_end",
+                  "Ailment": "Stun", "Value Low": 0.5, "Value High": 1,
+                  "Required Tags": "Keyword.Charge"}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def dot(self, tmp_path, changes):
+        values = {"Enchantment": self.DOT, "Effect": self.DOT_WORDS,
+                  "Action": "apply_status_to_self_times", "Action Event": "dot_applied",
+                  "Ailment": "Applied DoT", "Value Low": 1, "Value High": 4}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_chance_row_on_a_hit_taken_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.hit(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "apply_status_to_self", "hit_taken", 15.0, 25.0, "Random Debuff")
+
+    def test_a_chance_row_on_a_hit_taken_waits_the_default_trigger_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.hit(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_a_seconds_row_on_a_skill_ending_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.stun(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"], out[0]["RequiredTags"]) == (
+            "apply_status_to_self_seconds", "skill_end", 0.5, 1.0, "Stun",
+            "Keyword.Charge")
+
+    def test_a_times_row_on_a_dot_applied_is_carried_through_and_waits_for_nothing(self, tmp_path):
+        out = gen.enchantment_effects(self.dot(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"], out[0]["TriggerCooldown"]) == (
+            "apply_status_to_self_times", "dot_applied", 1.0, 4.0, "Applied DoT", 0.0)
+
+    def test_a_timed_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.TIMED, "Effect": self.TIMED_WORDS,
+            "Action": "apply_status_to_self", "Action Event": "every_seconds",
+            "Every Seconds": 15, "Ailment": "Random Debuff",
+            "Value Low": 100, "Value High": 100}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"]) == (
+            "apply_status_to_self", "every_seconds", 15.0)
+
+    def test_an_event_that_is_not_one_of_the_wearers_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="lays a status on its wearer on the event"):
+            gen.enchantment_effects(self.hit(tmp_path, {"Action Event": "kill"}))
+
+    def test_a_stun_is_refused_on_the_chance_action(self, tmp_path):
+        with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
+            gen.enchantment_effects(self.hit(tmp_path, {"Ailment": "Stun"}))
+
+    def test_a_stun_is_refused_on_the_action_that_lays_a_status_on_another(self, tmp_path):
+        with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
+            gen.enchantment_effects(self.book(tmp_path, {
+                "Enchantment": self.STUN, "Effect": self.STUN_WORDS,
+                "Action": "apply_status_seconds", "Action Event": "hit_dealt",
+                "Ailment": "Stun", "Value Low": 0.5, "Value High": 1}))
+
+    def test_the_times_action_is_refused_off_dot_applied(self, tmp_path):
+        with pytest.raises(gen.DataError, match="written on dot_applied"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Action Event": "hit_taken"}))
+
+    def test_another_action_is_refused_on_dot_applied(self, tmp_path):
+        with pytest.raises(gen.DataError, match="written on dot_applied"):
+            gen.enchantment_effects(self.hit(tmp_path, {"Action Event": "dot_applied"}))
+
+    def test_the_times_action_names_only_the_applied_dot(self, tmp_path):
+        with pytest.raises(gen.DataError, match="applies the status 'Bleed'"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Ailment": "Bleed"}))
+
+    def test_a_count_above_the_most_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="whole number from 1"):
+            gen.enchantment_effects(self.dot(tmp_path, {
+                "Enchantment": self.MANY, "Effect": self.MANY_WORDS,
+                "Value High": 40}))
+
+
 class TestApplyStatusAndItsEvents:
     """A status applied to the other character of an event, a chance or for
     stated seconds, named in the Ailment column; and the event `first_hit_dealt`.
