@@ -255,6 +255,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// by UCataclysmRegeneration::TopUp as its own multiplier. Ruled
 		// 2026-10-06: Reaper's Embrace's first bonus.
 		TEXT("healing_received"),
+		// Above nought, applying a damage over time effect refreshes the
+		// applier's others on that target, read by UCataclysmSkillEffects where
+		// one is applied. Ruled 2026-10-06: Plague Doctor's six-piece bonus.
+		TEXT("dot_application_refreshes_others"),
 		// No Second Wind's radius in metres, read by
 		// UCataclysmDebuffs::HoldAppliedNearbyStep: above zero, a Cripple or
 		// Weaken the holder applied does not run down on an enemy that near.
