@@ -4155,6 +4155,173 @@ namespace CataclysmStatExemptionTest
 		Test.TestTrue(TEXT("as Chaos damage"), Pool->DamageType == FName(TEXT("Chaos")));
 	}
 
+	/** A damage over time tick of this size, of the ailment whose tag this is, or of none for an invalid tag. */
+	FCataclysmIncomingHit TickOf(float Damage, const FGameplayTag& Ailment)
+	{
+		FCataclysmIncomingHit Tick;
+		Tick.Damage = Damage;
+		Tick.bIsDamageOverTime = true;
+		if (Ailment.IsValid())
+		{
+			Tick.DamageOverTimeTags.AddTag(Ailment);
+			Tick.bIsBleed = Ailment == UCataclysmDebuffs::BleedTag();
+		}
+		return Tick;
+	}
+
+	/** What a tick comes to on this character, with the evasion and block rolls pinned to miss. */
+	FCataclysmDamageResult ResolveATick(const FCataclysmIncomingHit& Tick, const UAbilitySystemComponent* Defender)
+	{
+		return UCataclysmDamageCalculation::Resolve(Tick, Defender, /*Tier=*/1, /*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f);
+	}
+
+	/**
+	 * One modifier on a stat held at its base of 100, requiring a tag where one is given. For the two stats a
+	 * defender is asked about what arrives, `damage_over_time_taken` and `debuff_duration_taken`.
+	 */
+	void CarryOnAHundred(TMap<FName, FCataclysmStatInputs>& Inputs, const TCHAR* Stat, ECataclysmStatBucket Bucket,
+						 float Value, const FGameplayTag& Required = FGameplayTag())
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = Bucket;
+		Modifier.Source = ECataclysmModifierSource::Enchantment;
+		Modifier.Value = Value;
+		if (Required.IsValid())
+		{
+			Modifier.RequiredTags.AddTag(Required);
+		}
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = 100.0f;
+		Line.Modifiers.Add(Modifier);
+	}
+
+	/** The longest time left on any effect this character carries that grants the tag, or nought. */
+	float SecondsLeftOfTag(const UAbilitySystemComponent* System, const FGameplayTag& Tag)
+	{
+		float Longest = 0.0f;
+		for (const float Seconds : System->GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag))))
+		{
+			Longest = FMath::Max(Longest, Seconds);
+		}
+		return Longest;
+	}
+
+	/**
+	 * `ailment_immunity` is a flag asked with the tags of the ailment being applied, read by
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime`. Ruled 2026-10-06: "Unaffected by bleeding".
+	 *
+	 * ONE ATTACKER AND TWO TARGETS, the second carrying the flag. The same bleed is applied to each: the plain one
+	 * bleeds and the flagged one does not, and the application to the flagged one answers false.
+	 */
+	void ProbeAilmentImmunity(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+		if (!Test.TestTrue(TEXT("set-up: the bleed tag"), Bleed.IsValid()))
+		{
+			return;
+		}
+		FScopedSwinger Attacker(World, FVector::ZeroVector);
+		FScopedSwinger Plain(World, FVector(2 * M, 0, 0));
+		FScopedSwinger Immune(World, FVector(2 * M, 100 * M, 0));
+		GrantFlat(Immune.Actor, UCataclysmDamageCalculation::AilmentImmunityStat, 1.0f);
+
+		const bool bPlainApplied = UCataclysmSkillEffects::ApplyDamageOverTime(
+			Attacker.Actor, Plain.Actor, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/5.0f, Bleed);
+		const bool bImmuneApplied = UCataclysmSkillEffects::ApplyDamageOverTime(
+			Attacker.Actor, Immune.Actor, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/5.0f, Bleed);
+		Test.TestTrue(TEXT("control: a bleed applied to a plain character leaves them bleeding"),
+					  bPlainApplied && UCataclysmDebuffs::IsBleeding(Plain.AbilitySystem));
+		Test.TestFalse(TEXT("and one carrying ailment_immunity is not bleeding, so ApplyDamageOverTime really reads it"),
+					   UCataclysmDebuffs::IsBleeding(Immune.AbilitySystem));
+		Test.TestFalse(TEXT("and the application to them answers that nothing was applied"), bImmuneApplied);
+	}
+
+	/**
+	 * `bleed_damage_taken_from_energy_shield` is the percent of a bleed tick the energy shield takes, read by
+	 * `UCataclysmDamageCalculation::Resolve`. Ruled 2026-10-06.
+	 *
+	 * TWO SHIELDED CHARACTERS, the second carrying the stat at 20, each asked about the same bleed tick. The plain
+	 * one's shield takes none of it. The other's takes a fifth and their health the rest.
+	 */
+	void ProbeBleedDamageTakenFromEnergyShield(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Held(World, FVector(0, 100 * M, 0));
+		for (FScopedSwinger* One : {&Plain, &Held})
+		{
+			One->Set(Vital::GetMaxEnergyShieldAttribute(), 500.0f);
+			One->Set(Vital::GetEnergyShieldAttribute(), 500.0f);
+		}
+		GrantFlat(Held.Actor, UCataclysmDamageCalculation::BleedDamageTakenFromEnergyShieldStat, 20.0f);
+
+		const FCataclysmIncomingHit Bleed = TickOf(100.0f, UCataclysmDebuffs::BleedTag());
+		const FCataclysmDamageResult OnPlain = ResolveATick(Bleed, Plain.AbilitySystem);
+		const FCataclysmDamageResult OnHeld = ResolveATick(Bleed, Held.AbilitySystem);
+		if (!Test.TestTrue(TEXT("set-up: the tick is a bleed and it reaches a plain character's health"),
+						   Bleed.bIsBleed && OnPlain.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: a plain character's shield takes none of a bleed"), OnPlain.AbsorbedByShield, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("one carrying bleed_damage_taken_from_energy_shield at 20 has a fifth of it taken from the shield, so Resolve really reads it"),
+					   OnHeld.AbsorbedByShield, OnPlain.DealtToHealth * 0.2f, 0.01f);
+		Test.TestEqual(TEXT("and the other four fifths from health"), OnHeld.DealtToHealth, OnPlain.DealtToHealth * 0.8f, 0.01f);
+	}
+
+	/**
+	 * `damage_over_time_taken_from_mana_first` is a flag read by `UCataclysmDamageCalculation::Resolve`, and
+	 * `UCataclysmVitalAttributeSet` takes the figure from the mana. Ruled 2026-10-06.
+	 *
+	 * A TICK DELIVERED AS DAMAGE, to a plain character and to one carrying the flag. The plain one loses health and
+	 * no mana. The flagged one loses the same amount of mana and no health.
+	 */
+	void ProbeDamageOverTimeTakenFromManaFirst(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Attacker(World, FVector::ZeroVector);
+		FScopedSwinger Plain(World, FVector(2 * M, 0, 0));
+		FScopedSwinger Held(World, FVector(2 * M, 100 * M, 0));
+		GrantFlat(Held.Actor, UCataclysmDamageCalculation::DamageOverTimeTakenFromManaFirstStat, 1.0f);
+
+		FCataclysmHitDelivery AsATick;
+		AsATick.bIsDamageOverTime = true;
+		const float HealthBefore = Plain.Get(Vital::GetHealthAttribute());
+		const float ManaBefore = Plain.Get(Vital::GetManaAttribute());
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Plain.Actor, 300.0f, AsATick);
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Held.Actor, 300.0f, AsATick);
+		const float PlainLost = HealthBefore - Plain.Get(Vital::GetHealthAttribute());
+		if (!Test.TestTrue(TEXT("set-up: the tick takes health from a plain character, and less than the mana held"),
+						   PlainLost > 0.0f && PlainLost < ManaBefore))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: and none of a plain character's mana"), Plain.Get(Vital::GetManaAttribute()), ManaBefore, 0.001f);
+		Test.TestEqual(TEXT("one carrying damage_over_time_taken_from_mana_first loses that much mana instead, so Resolve really reads it"),
+					   Held.Get(Vital::GetManaAttribute()), ManaBefore - PlainLost, 0.01f);
+		Test.TestEqual(TEXT("and no health"), Held.Get(Vital::GetHealthAttribute()), HealthBefore, 0.001f);
+	}
+
 	/**
 	 * A player character on its player state, for the potion probes below: only a
 	 * player character holds potions. Issue #806.
@@ -6190,6 +6357,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_applies_effects_to_owner"), &ProbeZoneAppliesEffectsToOwner},
 			{TEXT("zone_follows_owner_percent"), &ProbeZoneFollowsOwnerPercent},
 			{TEXT("minions_leave_chaos_pools"), &ProbeMinionsLeaveChaosPools},
+			{TEXT("ailment_immunity"), &ProbeAilmentImmunity},
+			{TEXT("bleed_damage_taken_from_energy_shield"), &ProbeBleedDamageTakenFromEnergyShield},
+			{TEXT("damage_over_time_taken_from_mana_first"), &ProbeDamageOverTimeTakenFromManaFirst},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
 			{TEXT("skill_duration"), &ProbeSkillDuration},
@@ -7270,6 +7440,273 @@ bool FCataclysmStatusOnTheWearerTest::RunTest(const FString&)
 			UCataclysmDebuffs::Cleanse(Wearer.Actor);
 			TestFalse(TEXT("a cleanse takes a debuff the wearer's own row laid off the wearer"),
 					  Wearer.AbilitySystem->HasMatchingGameplayTag(Cripple));
+		}
+	}
+	return true;
+}
+
+// DAMAGE OVER TIME ON THE WEARER, SCOPED BY AILMENT. Ruled 2026-10-06, for seven drawbacks: "Bleed effects applied to
+// you deal 30%-50% increased damage", "Bleeding on you lasts 50%-100% longer", "DoTs last 2x-4x as long on you", "DoTs
+// on you tick twice as fast while moving", "Unaffected by bleeding", "10%-20% of bleed damage you take is taken from
+// your energy shield instead of your health" and "DoTs deal damage to your mana pool first". Issue #1833.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageOverTimeOnTheWearerByAilmentTest,
+	"Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDamageOverTimeOnTheWearerByAilmentTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	const FGameplayTag AnyDamageOverTime = UCataclysmDamageCalculation::DamageOverTimeTag();
+	if (!TestTrue(TEXT("set-up: the bleed, burn, Cripple and damage over time tags"),
+				  Bleed.IsValid() && Burn.IsValid() && Cripple.IsValid() && AnyDamageOverTime.IsValid()))
+	{
+		return false;
+	}
+	const TCHAR* TakenStat = UCataclysmDamageCalculation::DamageOverTimeTakenStat;
+	const TCHAR* DurationStat = TEXT("debuff_duration_taken");
+
+	const FCataclysmIncomingHit BleedTick = TickOf(100.0f, Bleed);
+	const FCataclysmIncomingHit BurnTick = TickOf(100.0f, Burn);
+	const FCataclysmIncomingHit BareTick = TickOf(100.0f, FGameplayTag());
+	const auto Taken = [](const FCataclysmIncomingHit& Tick, const FScopedSwinger& Who)
+	{
+		return ResolveATick(Tick, Who.AbilitySystem).DealtToHealth;
+	};
+
+	// THE CONTROL: a character carrying no row. Every figure below is compared with what this one takes.
+	FScopedSwinger Plain(World, FVector::ZeroVector);
+	const float PlainBleed = Taken(BleedTick, Plain);
+	const float PlainBurn = Taken(BurnTick, Plain);
+	const float PlainBare = Taken(BareTick, Plain);
+	if (!TestTrue(TEXT("set-up: a plain character takes each of the three ticks"),
+				  PlainBleed > 0.0f && PlainBurn > 0.0f && PlainBare > 0.0f))
+	{
+		return false;
+	}
+
+	// AN EXISTING ROW WITH NO REQUIRED TAGS READS AS IT DID. "DoTs deal double damage to you" is
+	// `damage_over_time_taken` more 100 with none: it doubles a bleed tick, a burn tick and a tick with no ailment.
+	{
+		FScopedSwinger Wearer(World, FVector(0.0f, 3000.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryOnAHundred(Inputs, TakenStat, ECataclysmStatBucket::More, 100.0f);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestEqual(TEXT("a row with no required tags doubles a bleed tick"), Taken(BleedTick, Wearer), PlainBleed * 2.0f, 0.01f);
+		TestEqual(TEXT("and a burn tick alike"), Taken(BurnTick, Wearer), PlainBurn * 2.0f, 0.01f);
+		TestEqual(TEXT("and a tick with no ailment alike"), Taken(BareTick, Wearer), PlainBare * 2.0f, 0.01f);
+	}
+
+	// A ROW REQUIRING THE BLEED TAG CHANGES A BLEED AND NOTHING ELSE. "Bleed effects applied to you deal 30%-50%
+	// increased damage", at 50.
+	{
+		FScopedSwinger Wearer(World, FVector(0.0f, 6000.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryOnAHundred(Inputs, TakenStat, ECataclysmStatBucket::Increased, 50.0f, Bleed);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestEqual(TEXT("a row requiring the bleed tag raises a bleed tick by half"), Taken(BleedTick, Wearer), PlainBleed * 1.5f, 0.01f);
+		TestEqual(TEXT("control: and leaves a burn tick as it was"), Taken(BurnTick, Wearer), PlainBurn, 0.01f);
+		TestEqual(TEXT("control: and a tick with no ailment as it was"), Taken(BareTick, Wearer), PlainBare, 0.01f);
+
+		// A HIT BUILT WITH THE BOOLEAN ALONE IS STILL ASKED AS A BLEED.
+		FCataclysmIncomingHit MarkedOnly;
+		MarkedOnly.Damage = 100.0f;
+		MarkedOnly.bIsDamageOverTime = true;
+		MarkedOnly.bIsBleed = true;
+		TestEqual(TEXT("a tick marked a bleed and carrying no tags meets the bleed row too"), Taken(MarkedOnly, Wearer), PlainBleed * 1.5f, 0.01f);
+	}
+
+	// A ROW REQUIRING THE PARENT REACHES EVERY DAMAGE OVER TIME, one with no ailment included.
+	{
+		FScopedSwinger Wearer(World, FVector(0.0f, 9000.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryOnAHundred(Inputs, TakenStat, ECataclysmStatBucket::More, 100.0f, AnyDamageOverTime);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestEqual(TEXT("a row requiring the damage over time parent doubles a bleed tick"), Taken(BleedTick, Wearer), PlainBleed * 2.0f, 0.01f);
+		TestEqual(TEXT("and a burn tick"), Taken(BurnTick, Wearer), PlainBurn * 2.0f, 0.01f);
+		TestEqual(TEXT("and a tick with no ailment"), Taken(BareTick, Wearer), PlainBare * 2.0f, 0.01f);
+	}
+
+	// HOW LONG AN EFFECT LASTS ON THE CHARACTER, asked with the tags of what is applied. A damage over time passes
+	// its own tag and the parent; Cripple passes its own.
+	FGameplayTagContainer AsABleed(Bleed);
+	AsABleed.AddTag(AnyDamageOverTime);
+	FGameplayTagContainer AsABurn(Burn);
+	AsABurn.AddTag(AnyDamageOverTime);
+	const FGameplayTagContainer AsCripple(Cripple);
+	TestEqual(TEXT("control: ten seconds last ten on a plain character"),
+			  UCataclysmDebuffs::DurationOn(Plain.AbilitySystem, 10.0f, AsABleed), 10.0f, 0.001f);
+
+	// AN EXISTING ROW WITH NO REQUIRED TAGS READS AS IT DID: "Debuffs applied to you last 30%-50% longer", at 50,
+	// lengthens a bleed and a Cripple alike, and a caller that passes no tags.
+	{
+		FScopedSwinger Wearer(World, FVector(0.0f, 12000.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryOnAHundred(Inputs, DurationStat, ECataclysmStatBucket::Increased, 50.0f);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestEqual(TEXT("a duration row with no required tags lengthens a bleed by half"),
+				  UCataclysmDebuffs::DurationOn(Wearer.AbilitySystem, 10.0f, AsABleed), 15.0f, 0.001f);
+		TestEqual(TEXT("and a Cripple alike"), UCataclysmDebuffs::DurationOn(Wearer.AbilitySystem, 10.0f, AsCripple), 15.0f, 0.001f);
+		TestEqual(TEXT("and an effect asked about with no tags alike"), UCataclysmDebuffs::DurationOn(Wearer.AbilitySystem, 10.0f), 15.0f, 0.001f);
+	}
+
+	// "BLEEDING ON YOU LASTS 50%-100% LONGER" AND "DoTs LAST 2x-4x AS LONG ON YOU", each at its most: an increase of
+	// 100 requiring the bleed tag and 300 more requiring the parent. A bleed lasts 8 times as long, a burn 4 times,
+	// and a Cripple as long as it did.
+	{
+		FScopedSwinger Wearer(World, FVector(0.0f, 15000.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryOnAHundred(Inputs, DurationStat, ECataclysmStatBucket::Increased, 100.0f, Bleed);
+		CarryOnAHundred(Inputs, DurationStat, ECataclysmStatBucket::More, 300.0f, AnyDamageOverTime);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestEqual(TEXT("with both rows a bleed lasts 8 times as long"),
+				  UCataclysmDebuffs::DurationOn(Wearer.AbilitySystem, 10.0f, AsABleed), 80.0f, 0.01f);
+		TestEqual(TEXT("a burn 4 times as long, meeting only the row for every damage over time"),
+				  UCataclysmDebuffs::DurationOn(Wearer.AbilitySystem, 10.0f, AsABurn), 40.0f, 0.01f);
+		TestEqual(TEXT("control: and a Cripple as long as it did"),
+				  UCataclysmDebuffs::DurationOn(Wearer.AbilitySystem, 10.0f, AsCripple), 10.0f, 0.001f);
+	}
+
+	// AND THE PLACES THAT APPLY AN EFFECT PASS ITS TAGS. A bleed, a burn and a Cripple are laid on a plain target and
+	// on one carrying an increase of 100 that requires the bleed tag. Time does not pass in this world, so the time
+	// left on each is how long it was applied for.
+	{
+		FScopedSwinger Attacker(World, FVector(0.0f, 18000.0f, 0.0f));
+		FScopedSwinger Unchanged(World, FVector(200.0f, 18000.0f, 0.0f));
+		FScopedSwinger Wearer(World, FVector(400.0f, 18000.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryOnAHundred(Inputs, DurationStat, ECataclysmStatBucket::Increased, 100.0f, Bleed);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		for (FScopedSwinger* Target : {&Unchanged, &Wearer})
+		{
+			UCataclysmSkillEffects::ApplyDamageOverTime(Attacker.Actor, Target->Actor, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/5.0f, Bleed);
+			UCataclysmSkillEffects::ApplyDamageOverTime(Attacker.Actor, Target->Actor, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/5.0f, Burn);
+			UCataclysmSkillEffects::ApplyTagForDuration(Attacker.Actor, Target->Actor, Cripple, /*DurationSeconds=*/5.0f);
+		}
+		const float BleedLasts = SecondsLeftOfTag(Unchanged.AbilitySystem, Bleed);
+		const float BurnLasts = SecondsLeftOfTag(Unchanged.AbilitySystem, Burn);
+		const float CrippleLasts = SecondsLeftOfTag(Unchanged.AbilitySystem, Cripple);
+		if (TestTrue(TEXT("set-up: the plain target carries all three for some time"),
+					 BleedLasts > 0.0f && BurnLasts > 0.0f && CrippleLasts > 0.0f))
+		{
+			TestEqual(TEXT("a bleed applied to the wearer lasts twice as long as on the plain target"),
+					  SecondsLeftOfTag(Wearer.AbilitySystem, Bleed), BleedLasts * 2.0f, 0.05f);
+			TestEqual(TEXT("control: a burn applied to the wearer lasts as long as on the plain target"),
+					  SecondsLeftOfTag(Wearer.AbilitySystem, Burn), BurnLasts, 0.05f);
+			TestEqual(TEXT("control: and a Cripple too"), SecondsLeftOfTag(Wearer.AbilitySystem, Cripple), CrippleLasts, 0.05f);
+		}
+	}
+
+	// "UNAFFECTED BY BLEEDING": a flag requiring the bleed tag. A bleed is refused and its applier's `dot_applied`
+	// event is not raised; a burn is applied and raises it; and converted damage, which arrives as a bleed the
+	// character lays on themselves, is not refused.
+	{
+		FScopedSwinger Attacker(World, FVector(0.0f, 21000.0f, 0.0f));
+		FScopedSwinger Wearer(World, FVector(200.0f, 21000.0f, 0.0f));
+		FCataclysmStatModifier Immune;
+		Immune.Bucket = ECataclysmStatBucket::Flat;
+		Immune.Source = ECataclysmModifierSource::Enchantment;
+		Immune.Value = 1.0f;
+		Immune.RequiredTags.AddTag(Bleed);
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::AilmentImmunityStat)).Modifiers.Add(Immune);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		// THE APPLIER CARRIES A ROW THAT LAYS CRIPPLE ON THEM EACH TIME THEY APPLY A DAMAGE OVER TIME, which is how
+		// the event being raised is observed.
+		FCataclysmPoolAction OnApplying;
+		OnApplying.Event = FName(TEXT("dot_applied"));
+		OnApplying.ApplyStatus = ECataclysmApplyStatus::Chance;
+		OnApplying.bStatusOnTheWearer = true;
+		OnApplying.StatusName = TEXT("Cripple");
+		OnApplying.Percent = 100.0f;
+		OnApplying.TriggerKey = FName(TEXT("observes dot_applied"));
+		Attacker.AbilitySystem->SetPoolActions({OnApplying});
+
+		const bool bBleedApplied = UCataclysmSkillEffects::ApplyDamageOverTime(
+			Attacker.Actor, Wearer.Actor, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/5.0f, Bleed);
+		TestFalse(TEXT("a bleed applied to a character unaffected by bleeding is not applied"),
+				  bBleedApplied || UCataclysmDebuffs::IsBleeding(Wearer.AbilitySystem));
+		TestFalse(TEXT("and its applier's dot_applied event is not raised"), Attacker.AbilitySystem->HasMatchingGameplayTag(Cripple));
+
+		const bool bBurnApplied = UCataclysmSkillEffects::ApplyDamageOverTime(
+			Attacker.Actor, Wearer.Actor, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/5.0f, Burn);
+		TestTrue(TEXT("control: a burn is applied to the same character"),
+				 bBurnApplied && Wearer.AbilitySystem->HasMatchingGameplayTag(Burn));
+		TestTrue(TEXT("control: and that application raises the applier's dot_applied event"),
+				 Attacker.AbilitySystem->HasMatchingGameplayTag(Cripple));
+
+		const bool bConvertedApplied = UCataclysmSkillEffects::ApplyDamageOverTime(
+			Wearer.Actor, Wearer.Actor, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/5.0f, Bleed,
+			/*bScalesWithInstigator=*/false, /*DealtBy=*/nullptr, /*Skill=*/nullptr, NAME_None, /*bIsConvertedDamage=*/true);
+		TestTrue(TEXT("converted damage arriving as a bleed is not refused"),
+				 bConvertedApplied && UCataclysmDebuffs::IsBleeding(Wearer.AbilitySystem));
+	}
+
+	// "10%-20% OF BLEED DAMAGE YOU TAKE IS TAKEN FROM YOUR ENERGY SHIELD": the share is taken as far as the shield has
+	// it, and every tick that is not a bleed meets the shield whole, as it did.
+	{
+		FScopedSwinger Unchanged(World, FVector(0.0f, 24000.0f, 0.0f));
+		FScopedSwinger Wearer(World, FVector(200.0f, 24000.0f, 0.0f));
+		for (FScopedSwinger* One : {&Unchanged, &Wearer})
+		{
+			One->Set(Vital::GetMaxEnergyShieldAttribute(), 500.0f);
+			One->Set(Vital::GetEnergyShieldAttribute(), 500.0f);
+		}
+		GrantFlat(Wearer.Actor, UCataclysmDamageCalculation::BleedDamageTakenFromEnergyShieldStat, 20.0f);
+		const FCataclysmDamageResult BurnOnUnchanged = ResolveATick(BurnTick, Unchanged.AbilitySystem);
+		const FCataclysmDamageResult BurnOnWearer = ResolveATick(BurnTick, Wearer.AbilitySystem);
+		TestTrue(TEXT("set-up: a shield takes a burn tick"), BurnOnUnchanged.AbsorbedByShield > 0.0f);
+		TestEqual(TEXT("control: the wearer's shield takes the same of a burn tick as a plain character's"),
+				  BurnOnWearer.AbsorbedByShield, BurnOnUnchanged.AbsorbedByShield, 0.001f);
+		TestEqual(TEXT("control: and their health the same"), BurnOnWearer.DealtToHealth, BurnOnUnchanged.DealtToHealth, 0.001f);
+
+		Wearer.Set(Vital::GetEnergyShieldAttribute(), 5.0f);
+		const FCataclysmDamageResult OnALowShield = ResolveATick(BleedTick, Wearer.AbilitySystem);
+		TestEqual(TEXT("a shield holding 5 takes 5 of a bleed tick whose fifth is more"), OnALowShield.AbsorbedByShield, 5.0f, 0.001f);
+		TestEqual(TEXT("and health takes all the rest"), OnALowShield.DealtToHealth, PlainBleed - 5.0f, 0.01f);
+	}
+
+	// "DoTs DEAL DAMAGE TO YOUR MANA POOL FIRST": a tick larger than the mana held empties it and the rest reaches
+	// health; a hit takes no mana; and a skill cost the mana left cannot pay finds no pool to pay it.
+	{
+		FScopedSwinger Attacker(World, FVector(0.0f, 27000.0f, 0.0f));
+		FScopedSwinger Unchanged(World, FVector(200.0f, 27000.0f, 0.0f));
+		FScopedSwinger Wearer(World, FVector(400.0f, 27000.0f, 0.0f));
+		GrantFlat(Wearer.Actor, UCataclysmDamageCalculation::DamageOverTimeTakenFromManaFirstStat, 1.0f);
+		const float HealthBefore = Wearer.Get(Vital::GetHealthAttribute());
+		const float ManaBefore = Wearer.Get(Vital::GetManaAttribute());
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearer.Actor, 300.0f);
+		TestEqual(TEXT("control: a hit takes none of the wearer's mana"), Wearer.Get(Vital::GetManaAttribute()), ManaBefore, 0.001f);
+		const float HealthAfterTheHit = Wearer.Get(Vital::GetHealthAttribute());
+		TestTrue(TEXT("control: and the wearer can pay a cost of 40 while they hold their mana"),
+				 UCataclysmGameplayAbility::PoolPaying(Wearer.AbilitySystem, 40.0f).IsValid());
+
+		FCataclysmHitDelivery AsATick;
+		AsATick.bIsDamageOverTime = true;
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Unchanged.Actor, 1500.0f, AsATick);
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearer.Actor, 1500.0f, AsATick);
+		const float UnchangedLost = HealthBefore - Unchanged.Get(Vital::GetHealthAttribute());
+		if (TestTrue(TEXT("set-up: the tick takes more from a plain character's health than the mana the wearer holds"),
+					 UnchangedLost > ManaBefore))
+		{
+			TestEqual(TEXT("a tick larger than the mana held leaves the wearer no mana"), Wearer.Get(Vital::GetManaAttribute()), 0.0f, 0.001f);
+			TestEqual(TEXT("and the rest of it is taken from health"),
+					  HealthAfterTheHit - Wearer.Get(Vital::GetHealthAttribute()), UnchangedLost - ManaBefore, 0.01f);
+			TestFalse(TEXT("and a cost of 40 then finds no pool to pay it, as for any character short of mana"),
+					  UCataclysmGameplayAbility::PoolPaying(Wearer.AbilitySystem, 40.0f).IsValid());
 		}
 	}
 	return true;
