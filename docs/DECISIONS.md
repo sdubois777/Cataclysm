@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-07 — Class resource generation rate: one stat, `class_resource_generation`, scales every gain of class resource and no loss. Engine and stat name only; no row authored; not built or run
+## 2026-10-07 — Class resource generation rate: one stat, `class_resource_generation`, scales every gain of class resource and no loss. Engine and stat name only; no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
 (`ClassResourceGenerationStat`, `NormalClassResourceGeneration`, the helper `ClassResourceGainScaled`, and its call
@@ -12,8 +12,8 @@ in `ApplyPoolAction`); `CataclysmFervour.cpp` (seven calls of the helper);
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one inventory entry); tests in
 `CataclysmFervourTests.cpp`, `CataclysmEnchantmentEffectTests.cpp`, `CataclysmPassiveTreeTests.cpp` and
 `CataclysmStatExemptionTests.cpp`.
-**Not built and not run.** The C++ has not been compiled, no automation test has been run and no guard proof has
-been run. **No row is authored**: both sentences are still without an effect row.
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** **No row is authored**: both
+sentences are still without an effect row.
 
 ### Said first: only Fervour has generators, and three trees have none
 
@@ -81,8 +81,8 @@ The helper asks the stat with no tags: a generation rate is the character's and 
 **A rate below nought gains nothing and takes nothing.** A labelled judgement by the coordinating session under
 the owner's delegation, 2026-10-07. No authored row reaches it alone; two worn drawbacks at -50 make a rate of
 nought. The test for it sets an increase of -150 and expects the stat to read -50 in its set-up. That the stat
-pipeline does not floor a negative sum of increases was read in `CataclysmStatPipeline.cpp` by the writing session
-and has not been run.
+pipeline does not floor a negative sum of increases was read in `CataclysmStatPipeline.cpp` by the writing session;
+the test passed in the window of 2026-10-07.
 
 ### The eight paths
 
@@ -167,7 +167,7 @@ has, in the pipeline `(base + flat) x (1 + increases) x more` the project alread
 
 ### Tests
 
-**None of the Unreal tests has been run.**
+**All of them ran and passed in the window of 2026-10-07; see "Run".**
 
 In `CataclysmFervourTests.cpp`, on that file's `FScopedCharacter`: 1000 health, a pool of 100, the path's rate
 given as a stat line, and `class_resource_generation` at its base of 100 with one `increased` line. Each reads a
@@ -218,18 +218,52 @@ The Python suite gains no test: the one new lookup is added to the inventory an 
 - **`EngineSuppliedBases` on the control**: a character with no modifier on the stat has no line for it, so only
   a carrier's base is read.
 
-### Not yet run
+### Run
 
-**Not run.** No Unreal compile, no automation test and no guard proof has been run for this change. The Python
-suite, the lint and `tools/check_resolved_cpp.py --changed` were run by the writing session after this entry was
-written; their output is in that session's hand-over and not here, because nothing may be recorded before the run
-that proves it.
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Tests | With the break in | Restored |
+|---|---|---|---|---|
+| Ga | `CataclysmAbilitySystemComponent.cpp`: the helper hands a gain back unscaled | the seven under the prefix `Cataclysm.Fervour.GenerationRateScales` | 7 performed, 7 failed, 16 failed assertions | 7 performed, 7 succeeded |
+| Gb | `CataclysmAbilitySystemComponent.cpp`: a pool action that grants class resource is not scaled | `Cataclysm.Enchantments.GenerationRateScalesAPoolActionThatGrantsClassResourceAndNotOneThatTakesIt` | 1 performed, 1 failed, 2 failed assertions: the grant was 20.000000 against 28.000000, and against 10.000000 | 1 performed, 1 succeeded |
+
+**How this layer was written and checked.** A second session wrote it under a brief carrying the rulings above. The
+writing session read its game-code changes and every assertion of its tests before the window, and found none that
+would pass with its behaviour absent: each compares an amount with a control character that carries no row.
+
+**A reading the run settled.** The test for a rate below nought expects the stat to read -50 under an increase of
+-150 in its set-up. That the stat pipeline does not floor a negative sum of increases was a reading; the test
+passed.
+
+**Stated as not covered, and allowed to stay so by the coordinating session on 2026-10-07:** the per-second test
+uses one of the three rates that are summed before the scale, and the pool action is tested on `block` only, not
+on `skill_use` or `hit_dealt`, which reach the same line.
 
 ---
 
 ## 2026-10-07 — Overkill explosion, second part: a real kill explodes the body, chains run by themselves, and the explosion fires no on-hit row
 
-**Not built and not run when this was written; the figures are added under "Run" when a window has run.** This is
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** This is
 the second of two layers. The first, in the entry below this one ("Overkill explosion, first part"),
 recorded a blow's overkill and wrote the explosion and its row action with nothing calling the explosion. **The two
 merge together or not at all.**
@@ -439,6 +473,64 @@ Four, in `CataclysmSkillTemplateTests.cpp`. The first two use a real player char
 - **A blow an Unholy Sigil held, and a death through Sacrificial Bond.**
 - **A kill made from inside an event, a minion's kill, and Conduit.**
 - **The row read from the effect table**, since no row is authored.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-taken-may-carry-a-condition` c0aabdaf: absorbed damage
+stored, the overkill explosion in two parts, the class resource generation rate, and damage over time taken under a
+condition, in that order. Development was 98cf1649. One attempt; nothing was corrected during it. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3287 tests performed, 3287 succeeded, 0 failed`; `Declared: 3287 tests in the tree at c0aabdaf; 3287 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5814 passed, 8 skipped in 324.51s`; JUnit `tests="5822" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 98cf1649's content with nothing failed.**
+
+**The registration did not reach the coordinating session before the run**: the application's limit on messages
+between sessions refused it. It was written to the writing session's own notes before the run, and the report after
+the run carried the same heads, predictions and proofs.
+
+**Guard proofs, at c0aabdaf, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Od | `CataclysmCombatEvents.cpp`: work handed over at a death is done at once | `Cataclysm.OverkillExplosion.WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath` | 1 performed, 1 failed, 1 failed assertion: in the scene with the listener that kills bound second, so called first, the other listener did not hear the first death and then the second | 1 performed, 1 succeeded |
+| Oc | `CataclysmPlayerCharacter.cpp`: the mark is not read by the hit listener | `Cataclysm.OverkillExplosion.TheExplosionFiresNoneOfTheKillersOnHitRows` | 1 performed, 1 failed, 2 failed assertions: `hit_dealt` was raised 3 times against 2, then 4 against 3 | 1 performed, 1 succeeded |
+| Oe | `CataclysmVitalAttributeSet.cpp`: the explosion is recorded as a first blow | the same test | 1 performed, 1 failed, 1 failed assertion: `first_hit_dealt` was raised 2 times against 3 | 1 performed, 1 succeeded |
+
+**The listener-order proof is stated by call order.** The engine calls listeners in reverse order of binding, so
+the listener that hears the second death first, with the queue bypassed, is the one called after the listener that
+kills: the one bound FIRST when the killer is bound second. Accepted as worded by the coordinating session on
+2026-10-07, a labelled judgement under the owner's delegation.
+
+**The mark on the Plague Doctor blast has a test, which passed, and no guard proof.** Accepted by the coordinating
+session on 2026-10-07, a labelled judgement under the owner's delegation; the second part's three proofs are the
+three above.
+
+**For the owner's play-check, accepted on 2026-10-07 as following from the first-blow ruling:** a condition that
+asks whether a target has been struck by the wearer answers no after an explosion or a blast alone. A wearer's
+"first hit against each enemy" row therefore still fires on a creature that only an explosion or a blast has
+touched.
+
+### A comment in a test file changed after the tested head
+
+**One comment in `CataclysmSkillTemplateTests.cpp` was corrected after the window, in a comment-only commit. No
+code and no assertion changed.** The comment above the chain test gave its three figures as 100, 50 and 30 "for a
+creature with no defences". The run printed the third figure as 40.000000 (in proof Oa: "the third takes exactly
+what a blow of the second creature's overkill takes" was expected to be 40.000000). The test asserts the measured
+figure and not the comment's, so it passed. The comment's arithmetic assumed the player's blow takes 100. The
+blow's own figure was not printed; 40 is what the test's arithmetic gives for a blow of 110 on creatures with no
+defences (110 - 50 = 60, then 60 - 20 = 40), and that is an inference and not a printed figure. The comment now
+says so.
+
+**Not run:** the real dungeon game mode as the second listener; a lethal damage over time tick making the
+explosion through a real kill; everything else under "Not covered by a test" above.
 
 ---
 
