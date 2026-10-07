@@ -2,6 +2,222 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — Damage over time on the wearer is scoped by ailment: two defender lookups asked with tags, and three new stats. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`
+(`FCataclysmIncomingHit::DamageOverTimeTags`, three stat names, `DefenderStat` takes tags, `TagsOfTick`, steps 6, 7
+and 8 of `Resolve`); `CataclysmVitalAttributeSet.cpp` (the tick's tags are filled, and mana is written);
+`CataclysmDebuffs.h` and `.cpp` (`DurationOn` takes the tags of what is applied); `CataclysmSkillEffects.h` and
+`.cpp` (the refusal in `ApplyDamageOverTime`, and eight callers of `DurationOn` pass tags);
+`Character/CataclysmPlayerClassStats.cpp` (three names in `StatsWithNoAttribute`); three probes and one test in
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`; the inventory in
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the automation tests and the guard proofs ran on 2026-10-07; the figures are under "Run" at the
+end of this entry. **No row is authored yet**; the rows are the enchantment session's.
+
+### What it is for
+
+Seven drawbacks about damage over time on the character who wears them. Two stats a defender is asked about what
+arrives already existed, `damage_over_time_taken` and `debuff_duration_taken`, and neither could be scoped to one
+ailment: both were asked with no tags. Three sentences have no stat at all.
+
+| Sentence | Stat | What the row needs |
+|---|---|---|
+| "Bleed effects applied to you deal 30%-50% increased damage" | `damage_over_time_taken` | increased 30 to 50, Required Tags `Keyword.DoT.Bleed` |
+| "Bleeding on you lasts 50%-100% longer" | `debuff_duration_taken` | increased 50 to 100, Required Tags `Keyword.DoT.Bleed` |
+| "DoTs last 2x-4x as long on you" | `debuff_duration_taken` | more 100 to 300, Required Tags `Keyword.DoT` |
+| "DoTs on you tick twice as fast while moving" | `damage_over_time_taken` | more 100, condition `while_moving` |
+| "Unaffected by bleeding" | `ailment_immunity` (new, a flag) | flat 1, Required Tags `Keyword.DoT.Bleed` |
+| "10%-20% of bleed damage you take is taken from your energy shield instead of your health" | `bleed_damage_taken_from_energy_shield` (new) | flat 10 to 20 |
+| "DoTs deal damage to your mana pool first" | `damage_over_time_taken_from_mana_first` (new, a flag) | flat 1 |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **The two defender lookups are asked with tags**: the ailment's own tag and the parent every damage over time
+  carries, `Keyword.DoT`. A row with Required Tags scopes itself to bleed or to any damage over time. **A row with
+  no Required Tags reads exactly as before.**
+- **"Unaffected by bleeding" refuses the bleed altogether.** It is not applied: nothing reads the wearer as
+  bleeding, what the attacker's rows hang on applying a bleed does not happen, and the attacker's `dot_applied`
+  event is not raised.
+- **The energy shield takes the row's percent of a bleed tick**, as far as the shield has it, and health takes the
+  rest. Every other hit and tick meets the shield as it did.
+- **Mana first means one point of mana for one point of damage**, taking what mana there is, on every damage over
+  time tick. The remainder goes where the tick would have gone: the shield and then health, or for a bleed straight
+  to health unless the row above applies. Mana regeneration is unchanged.
+- **"Tick twice as fast while moving" is built as DAMAGE and not as a rate**: `damage_over_time_taken` more 100
+  under `while_moving`. No engine code beyond the tags. **This is not the literal reading.** See the play-check.
+- **The two duration rows multiply**, as an increase and a more ordinarily do.
+
+### Judgements by the writing session, 2026-10-06, for the coordinating session to confirm
+
+- **Converted damage is not refused by `ailment_immunity`.** The Masochist's The Breaking Point turns damage taken
+  into a bleed the character lays on themselves. That is damage already taken and stored, not an enemy's bleed.
+  Refusing it would also be harmless to the wearer in the wrong way: the conversion's caller takes the whole amount
+  off health at once when the bleed is not applied. So a wearer of both is bleeding while a conversion runs.
+- **A bleed the wearer lays on themselves by any other route IS refused.** The sentence does not say whose bleed.
+- **Only `ApplyDamageOverTime` asks the flag.** Void Splinter is laid by `ApplyShareOfHealthOverTime`, which does
+  not ask. A row requiring the bleed tag never concerns it; a row with no Required Tags would refuse every ailment
+  but Void Splinter.
+- **`Resolve` adds the parent tag, and the bleed tag for a tick marked a bleed, to the tags the hit carries**, so a
+  tick with no ailment (a ground zone's, a dungeon hazard's) meets a row requiring `Keyword.DoT`, and the boolean
+  and the tags cannot disagree.
+- **The bleed share and the mana flag are read through the same helper as every other defender stat.** The mana
+  flag is asked with the tick's tags, so a later row could put only one ailment to mana. The bleed share is asked
+  with none, since it is only read for a bleed.
+- **The bleed share is clamped to between 0 and 100.**
+- **With both the mana row and the bleed share, mana is taken first** and the share is of what is left.
+
+### For the owner's play-check
+
+- **"Tick twice as fast while moving" doubles the damage while the character moves.** Literally, ticking twice as
+  fast ends the ailment in half the time for the same total. This build keeps the duration and doubles what each
+  tick takes for as long as the wearer is moving, so the total rises. The literal reading is the alternative. It
+  was not taken because the period of an effect already running cannot be changed in this code today: the period is
+  set when the effect is applied.
+- **A bleed can last up to 8 times as long**: "Bleeding on you lasts 50%-100% longer" at 100 is twice, "DoTs last
+  2x-4x as long on you" at its most is four times, and the two multiply. With "Debuffs applied to you last 30%-50%
+  longer" as well, the two increases add first: 2.5 times 4, so 10 times.
+- **"DoTs last 2x-4x as long on you" also lengthens the tick count**, so the same damage over time deals 2 to 4
+  times its total. The tick size is not changed by a duration stat.
+- **Mana is a second health pool against damage over time**, and a wearer whose mana a tick has taken cannot pay for
+  skills until it comes back.
+- **A wearer unaffected by bleeding who also converts damage to bleeding is bleeding during the conversion.**
+
+### What the research settles, and what it does not
+
+Path of Exile's modifiers that make an ailment "deal damage faster" keep the total and shorten the duration; its
+Swift Affliction Support says "They will deal the same total damage over a shorter duration" (poedb.tw,
+`/us/Damage_over_time`, read 2026-10-06). That settles what the literal reading of "tick twice as fast" is in the
+genre. It does not settle what this game should do while it cannot change a running effect's period; the damage
+form is a judgement and is on the play-check list.
+
+Nothing else here was read from another game. Scoping a defender's stat to an ailment by the tags of what arrives is
+this game's own mechanism: Required Tags already scope an attacker's row to an ailment by the same tags (issue
+#1833, "Burn effects you apply deal 30%-60% increased damage per second").
+
+### How it is built
+
+- **`StatForSkill` already applies a row with no Required Tags whatever tags are asked**, and applies a row with
+  Required Tags only when the tags asked hold each one, a child tag satisfying its parent. So passing tags to a
+  lookup that passed none changes nothing for the rows that exist. Read on 2026-10-06: every row on
+  `damage_over_time_taken` and `debuff_duration_taken` in `game/Data/EnchantmentEffects.csv` and
+  `game/Data/PassiveEffects.csv` has no Required Tags (2 and 7 rows).
+- **The tick says which ailment it is.** `FCataclysmIncomingHit::DamageOverTimeTags` is filled where `bIsBleed` is,
+  from the tick's granted tags under `Keyword.DoT`. `damage_over_time_taken` is asked with them. `damage_taken`,
+  which every hit and tick meets, is still asked with none.
+- **`UCataclysmDebuffs::DurationOn` takes a third argument**, the tags of what is applied, empty by default. Of its
+  eight callers in `CataclysmSkillEffects.cpp`:
+  - the two in `ApplyDamageOverTime` (a refresh and a new effect) and the one in `ApplyShareOfHealthOverTime` pass
+    the effect's own tag and `Keyword.DoT`;
+  - the two in `ApplyPin` pass the pinned tag;
+  - the one in `ApplyTagForDuration` and the two in `ApplyNamedEffectOnly` pass the effect's own tag.
+- **The refusal is the first thing `ApplyDamageOverTime` does once it has both characters**, before the attacker's
+  stats are read, before `dot_applied`, before the ailment riders are handed over and before a running effect is
+  refreshed. A copy a spread makes comes through the same function and is refused alike.
+- **Step 7 of `Resolve`, which was a placeholder, takes the mana.** It writes `FCataclysmDamageResult::AbsorbedByMana`,
+  a field that already existed and that leech, the shield's refill wait and the floating numbers already read.
+  `UCataclysmVitalAttributeSet` takes that figure from the mana beside the line that takes the shield's share.
+- **Step 8 puts a share to the shield.** The share is one wherever the shield applied before, and the stat is read
+  only for a bleed the shield would otherwise let through.
+- **`while_moving` is read from the asking character's own movement**, and the asking character of a defender
+  lookup is the defender, so the row for "tick twice as fast while moving" needs nothing new.
+
+### Consequences, stated rather than changed
+
+- **A row on either stat that requires a skill tag still never applies**, since the tags asked are the arriving
+  effect's and not a skill's.
+- **A hit meets none of this.** `damage_over_time_taken` is not read for a hit, and a hit carries no tags.
+- **A tick wholly taken by mana does not count as a debuff dealing damage** for Contagious Torment, which asks that
+  the tick reached health, nor as damage taken for the two windows that count health and shield only. It does
+  restart the energy shield's refill wait and the attacker does leech from it.
+- **The mana held is what is taken**, for a character of any class. A character whose skills are paid from another
+  pool still has a mana attribute, and it is taken from.
+- **A skill cost the mana left cannot pay is refused**, as for any character short of mana:
+  `UCataclysmGameplayAbility::PoolPaying` answers no pool. A wearer who also carries a row that pays a short cost
+  from the shield or from health pays from those.
+- **A creature carries no stat line**, so none of the three new stats and no scoped row does anything on one.
+
+### Tests
+
+Three probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, one for each new stat, each
+against a control: `ProbeAilmentImmunity`, `ProbeBleedDamageTakenFromEnergyShield` and
+`ProbeDamageOverTimeTakenFromManaFirst`.
+
+One new automation test, `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment`:
+
+- a `damage_over_time_taken` row with no Required Tags doubles a bleed tick, a burn tick and a tick with no ailment
+  alike;
+- a row requiring the bleed tag raises a bleed tick and leaves a burn tick and a tick with no ailment as they were,
+  and a tick marked a bleed that carries no tags meets it too;
+- a row requiring `Keyword.DoT` doubles all three;
+- a `debuff_duration_taken` row with no Required Tags lengthens a bleed, a Cripple and an effect asked about with no
+  tags alike;
+- the two duration rows at their most make a bleed last 8 times as long, a burn 4 times, and leave a Cripple alone;
+- a bleed, a burn and a Cripple applied through the real functions: on a wearer of the bleed duration row the bleed
+  lasts twice as long as on a plain target and the other two as long;
+- a bleed applied to a character unaffected by bleeding is not applied and its applier's `dot_applied` is not
+  raised; a burn is applied and raises it; converted damage arriving as a bleed is not refused;
+- the wearer of the bleed share takes a burn tick on the shield as a plain character does, and a shield holding 5
+  takes 5 of a bleed tick;
+- a tick larger than the mana held empties it and the rest is taken from health; a hit takes no mana; a cost of 40
+  then finds no pool to pay it.
+
+**Python.** The inventory of stat lookups records the two changed lookups and the one new one.
+
+**Not covered by a test:** the `while_moving` row; Void Splinter's duration; the two pin callers and the two
+callers in `ApplyNamedEffectOnly`; a spread copy being refused; the mana row and the bleed share
+together; the ailment riders not being handed over on a refusal.
+
+### Run
+
+One window on 2026-10-07 for a stack of five, at `feat/dot-on-the-wearer-by-ailment-3` 24d9b7e3: the Cripple fix, the
+size of a use's increase, the cleanse, a status on the wearer, and damage over time on the wearer by ailment, in
+that order. Development was 2d2a260b. Every figure is a line a run printed.
+
+**The window took three attempts, and the first two are recorded here because they are part of the evidence.**
+
+| Attempt | Head | What printed | What was done |
+|---|---|---|---|
+| 1 | 46dc1c73 | `Build: Failed - 33 actions, 30 files compiled`; `CataclysmAilments.h(333,50): error C4430: missing type specifier` | `CataclysmAilments.h` named `FGameplayTag` without declaring it. One line added, `struct FGameplayTag;`, in the layer that introduced the name (a status on the wearer). Ruled by the coordinating session before it was made |
+| 2 | 32d5666d | `Build: Succeeded - 33 actions, 30 files compiled`; `3248 tests performed, 3247 succeeded, 1 failed: APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`; the one failed assertion: `Expected 'set-up: the player walks, swings and throws at some rate' to be true.` | A test-only correction, in the Cripple layer; see that layer's entry. Ruled before it was made |
+| 3 | 24d9b7e3 | the table below | nothing |
+
+| Step, attempt 3 | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3248 tests performed, 3248 succeeded, 0 failed`; `Declared: 3248 tests in the tree at 24d9b7e3; 3248 performed, gap 0` |
+| Python, with continuous integration idle | `5792 passed, 8 skipped in 324.86s`; JUnit `tests="5800" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development 2d2a260b's content with nothing failed**: the window before it had
+one failure corrected and its group run again.
+
+**Guard proofs, at 24d9b7e3, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Da | `CataclysmDamageCalculation.cpp`: a tick's lookup is asked with no tags | `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment` | 1 performed, 1 failed, 5 failed assertions: a bleed tick was 100.000000 against 150.000000, twice; a bleed, a burn and a bare tick were 100.000000 against 200.000000 under the row for every damage over time | 1 performed, 1 succeeded |
+| Db | `CataclysmSkillEffects.cpp`: the immunity flag is never asked | `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | 1 performed, 1 failed, 2 failed assertions: the character was bleeding, and the application answered that it was applied | 1 performed, 1 succeeded |
+
+**How this layer was written and checked.** A second session wrote it under a brief carrying the rulings above. The
+writing session read its game-code changes before the window, and every assertion of its tests before the run that
+passed; it found none that would pass with its behaviour absent. One assertion is indirect and was left: that the
+applier's `dot_applied` event is not raised is read through a row on the applier that lays Cripple on them when the
+event fires, and its control in the same test shows the tag appears when a burn is applied.
+
+**Confirmed by the coordinating session on 2026-10-07, with the writing session's reading:** the converted bleed is
+exempted from `ailment_immunity` by the same argument that stamps the cleanse's mark; and every bleed found reaches
+a character through `ApplyDamageOverTime`, which is the one function that asks the immunity: the ailment rolled on a
+blow, a copy passed on at a death, and the conversion.
+
+**Not run:** the `while_moving` row; Void Splinter's duration; the pin and named-effect callers of the duration
+lookup; a spread copy being refused; any of this read from the effect table, since no row exists.
+
+---
+
 ## 2026-10-06 — A row lays a status on its own wearer: three actions and the event `skill_end`. No row authored yet
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
