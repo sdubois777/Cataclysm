@@ -2,6 +2,44 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "DoTs on you tick twice as fast while moving" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The row the entry "A row on damage over time taken may carry a condition" of 2026-10-07 made writable, as the
+entries on damage over time on the wearer state it. The stat and the condition were read in the merged generator.
+No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Condition |
+| :-- | :-- | :-- | :-- | :-- |
+| DoTs on you tick twice as fast while moving | `damage_over_time_taken` | more | 100 | `while_moving` |
+
+EnchantmentEffects 543 to 544, over 456 to 457 enchantments.
+
+### HOW THE SENTENCE IS BUILT, AND WHERE THAT DIFFERS FROM ITS WORDS
+
+**The row doubles what each tick takes; it does not make ticks come twice as often.** Those entries ruled it so:
+over a time spent moving the damage taken is the same either way, and a tick's interval is not a figure a row can
+change today. The difference shows only in a count of ticks, which no row reads.
+
+**"Twice" is the row's 100**, by the wording rule that reads double and twice as a `more` of 100.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheTickTwiceAsFastWhileMovingRowDoublesDamageOverTimeTakenOnlyWhileItsWearerMoves`: the
+  real row worn. The test first asserts that the name it wears is a row of `EnchantmentsNegative.csv`. A figure of
+  100 stays 100 standing, becomes 200 moving, and is 100 again standing.
+
+**Not tested here:** a real tick on a moving wearer of the row; the probe of that entry resolves one with the stat
+set by hand.
+
+---
+
 ## 2026-10-07 — The two rows on how fast class resource is generated are built
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
