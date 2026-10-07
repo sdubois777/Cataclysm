@@ -5183,12 +5183,20 @@ USE_HITS_ITS_USER_ACTIONS = ("use_hits_its_user", "use_backfires")
 
 #: The same two for a use that deals increased damage: "Your cooldown abilities
 #: have a 5%-20% chance to deal 50%-200% increased damage". The engine has them
-#: (`UseIncreasedDamageAction`, `CooldownUseIncreasedDamageAction`). THE
-#: GENERATOR REFUSES THEM UNTIL A COLUMN CARRIES THE INCREASE, which is the
-#: sentence's second number: a row written today would roll and then add
-#: nothing.
+#: (`UseIncreasedDamageAction`, `CooldownUseIncreasedDamageAction`).
+#:
+#: THE ROW'S VALUE IS THE CHANCE AND ITS SCALE STEP AND SCALE STEP HIGH ARE THE
+#: SIZE OF THE INCREASE, the sentence's second range. ON THESE TWO ACTIONS THAT
+#: PAIR IS A SIZE AND NOT A STEP: the row states no Scale and nothing steps.
+#: Ruled 2026-10-06, so that the effect table gained no column for one
+#: sentence. Both ranges roll from the item's one roll, so the top chance comes
+#: with the top increase. The pair is required here and refused with a Scale.
 USE_INCREASED_DAMAGE_ACTIONS = ("use_increased_damage",
                                 "cooldown_use_increased_damage")
+
+#: The most a use's rolled increase may be, in percent. A bound for typing
+#: mistakes; the one sentence states 200.
+MAX_USE_INCREASE = 1000.0
 
 #: Every action that acts on the skill of the use in hand. Each is written on
 #: an event that names a skill, and its value is a chance and nothing else.
@@ -5773,12 +5781,6 @@ def _check_repeat_skill_action(index: int, who: str, action: str, event: str,
     skill of the use to leave it out. The messages say "repeats a skill" for
     all three, and name the action.
     """
-    if action in USE_INCREASED_DAMAGE_ACTIONS:
-        raise DataError(
-            f"Enchantment Effects row {index}: {who} uses the action "
-            f"{action!r}, which needs the increase it gives as a second "
-            f"number, and no column carries that yet. The engine has the "
-            f"action; the row cannot be written until the column exists.")
     if event not in REPEAT_SKILL_EVENTS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} repeats a skill on the "
@@ -6510,7 +6512,42 @@ def enchantment_effects(book) -> list[dict]:
         # first, and the high end is inside the scale's bounds.
         step_high_text = clean(_cell(raw, headers, "Scale Step High"))
         scale_step_high = 0.0
-        if step_high_text:
+        if action in USE_INCREASED_DAMAGE_ACTIONS:
+            # ON THESE TWO ACTIONS THE PAIR IS THE SIZE OF THE INCREASE AND NOT
+            # A STEP. Ruled 2026-10-06. See `USE_INCREASED_DAMAGE_ACTIONS`. It
+            # is required, because a row without it would roll and add
+            # nothing; it is refused with a Scale, because then it would be
+            # read as that scale's step; and it is a range the sentence
+            # states, as a step's range is.
+            if scale:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} rolls a use's "
+                    f"increased damage and states the scale {scale!r}. Its "
+                    f"Scale Step is the size of the increase and not a step, "
+                    f"so the Scale column must be empty.")
+            step_text = clean(_cell(raw, headers, "Scale Step"))
+            if not step_text or not step_high_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} rolls a use's "
+                    f"increased damage and does not state how large the "
+                    f"increase is. On the action {action!r} that is Scale Step "
+                    f"and Scale Step High, the sentence's second range.")
+            scale_step = number(step_text, "Scale Step", index)
+            scale_step_high = number(step_high_text, "Scale Step High", index)
+            if not 0.0 < scale_step < scale_step_high <= MAX_USE_INCREASE:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gives an "
+                    f"increase from {scale_step:g} to {scale_step_high:g}. The "
+                    f"low end is above 0, the high end above it and at most "
+                    f"{MAX_USE_INCREASE:g}.")
+            if (scale_step, scale_step_high) not in enchantment_ranges(words[name]):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gives an "
+                    f"increase from {scale_step:g} to {scale_step_high:g}, "
+                    f"which its words {words[name]!r} do not state as a range, "
+                    f"so the hover text would show one size and the effect "
+                    f"use another.")
+        elif step_high_text:
             scale_step_high = number(step_high_text, "Scale Step High", index)
             if not scale:
                 raise DataError(

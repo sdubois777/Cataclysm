@@ -638,4 +638,76 @@ bool FCataclysmEnchantmentRollDownAgreesTest::RunTest(const FString&)
 	return true;
 }
 
+// THE SIZE OF A USE'S ROLLED INCREASE COMES FROM THE ROW'S STEP PAIR. Ruled 2026-10-06: "Your cooldown abilities have
+// a 5%-20% chance to deal 50%-200% increased damage". The chance is the row's value; the 50 to 200 is its Scale Step
+// and Scale Step High, which on this action hold a size and not a step. Both roll from the item's one roll.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentRollUseIncreaseTest,
+	"Cataclysm.Enchantments.AUsesRolledIncreaseTakesItsSizeFromTheRowsStepPair",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentRollUseIncreaseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentRollTest;
+
+	/** The real benefit: "Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage". */
+	const TCHAR* Benefit = TEXT("Positive_Your_cooldown_abilities_have_a_5_20_chance_to");
+
+	UDataTable* Positive = LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	UDataTable* Negative = LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	UDataTable* Effects = NewObject<UDataTable>();
+	Effects->RowStruct = FCataclysmEnchantmentEffectRow::StaticStruct();
+	const FString Csv =
+		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
+					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment,DamageShare\n"))
+		+ FString::Printf(TEXT("%s#1,%s,,,5,20,,,0,,50,cooldown_use_increased_damage,skill_use,,0,0,0,0,0,200,0,,0,0,0,0,,0\n"),
+						  Benefit, Benefit);
+	for (const FString& Problem : Effects->CreateTableFromCSVString(Csv))
+	{
+		AddError(Problem);
+	}
+	if (!Positive || !Negative || Effects->GetRowMap().Num() != 1)
+	{
+		AddError(TEXT("A table could not be read."));
+		return false;
+	}
+	if (!TestNotNull(TEXT("set-up: the benefit is a real row of the positive table"),
+					 Positive->FindRow<FCataclysmEnchantmentRow>(FName(Benefit), TEXT("test"), /*bWarnIfRowMissing=*/false)))
+	{
+		return false;
+	}
+
+	const auto ActionAt = [&](float Roll, FCataclysmPoolAction& Out) -> bool
+	{
+		const FCataclysmItem Helm = Carrying(TEXT("Head_Helm"), Benefit, Roll, DrawbackWithNoEffect, 1.0f);
+		FTotals Totals;
+		TArray<FCataclysmPoolAction> Actions;
+		UCataclysmItemModifiers::AccumulateEnchantmentsInto(Totals, {Helm}, Effects, Positive, Negative, &Actions);
+		for (const FCataclysmPoolAction& Action : Actions)
+		{
+			if (Action.bUseDealsIncreasedDamage)
+			{
+				Out = Action;
+				return true;
+			}
+		}
+		return false;
+	};
+
+	FCataclysmPoolAction Best;
+	FCataclysmPoolAction Least;
+	if (!TestTrue(TEXT("the row loads as an action that rolls a use's increase, at the top roll"), ActionAt(1.0f, Best))
+		|| !TestTrue(TEXT("and at the bottom roll"), ActionAt(0.0f, Least)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is the action for skills with a cooldown only"), Best.bOnlyASkillWithACooldown);
+	TestEqual(TEXT("at the top roll the chance is 20"), Best.Percent, 20.0f, 0.001f);
+	TestEqual(TEXT("and the increase is 200, from the row's Scale Step High"), Best.UseIncreasePercent, 200.0f, 0.001f);
+	TestEqual(TEXT("at the bottom roll the chance is 5"), Least.Percent, 5.0f, 0.001f);
+	TestEqual(TEXT("and the increase is 50, from the row's Scale Step"), Least.UseIncreasePercent, 50.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

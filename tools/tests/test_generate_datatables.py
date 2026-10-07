@@ -2905,6 +2905,62 @@ class TestReflectAndTheBlockCount:
         with pytest.raises(gen.DataError, match="from 2"):
             gen.enchantment_effects(self.wave(tmp_path, {"Every Nth": 1}))
 
+class TestUseIncreaseSize:
+    """The size of a use's rolled increase is the row's Scale Step and Scale Step
+    High. Ruled 2026-10-06: "Your cooldown abilities have a 5%-20% chance to deal
+    50%-200% increased damage". On these two actions the pair is a size and not
+    a step."""
+
+    WORDS = ("Your cooldown abilities have a 5%-20% chance to deal 50%-200% "
+             "increased damage")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Trigger.OnSkillUse, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def increase(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "cooldown_use_increased_damage",
+                  "Action Event": "skill_use", "Value Low": 5, "Value High": 20,
+                  "Scale Step": 50, "Scale Step High": 200}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "increase.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    @pytest.mark.parametrize("action", ["use_increased_damage",
+                                        "cooldown_use_increased_damage"])
+    def test_a_row_stating_the_chance_and_the_size_is_carried_through(self, tmp_path, action):
+        out = gen.enchantment_effects(self.increase(tmp_path, {"Action": action}))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["Scale"], out[0]["ScaleStep"], out[0]["ScaleStepHigh"]) == (
+            action, 5.0, 20.0, "", 50.0, 200.0)
+
+    @pytest.mark.parametrize("missing", ["Scale Step", "Scale Step High"])
+    def test_a_row_missing_either_end_of_the_size_is_refused(self, tmp_path, missing):
+        with pytest.raises(gen.DataError, match="does not state how large"):
+            gen.enchantment_effects(self.increase(tmp_path, {missing: None}))
+
+    def test_a_row_stating_a_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Scale"):
+            gen.enchantment_effects(self.increase(tmp_path, {"Scale": "kills"}))
+
+    def test_a_size_the_sentence_does_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.increase(tmp_path, {"Scale Step High": 150}))
+
+    def test_a_size_with_its_ends_the_wrong_way_round_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="low end is above 0"):
+            gen.enchantment_effects(self.increase(
+                tmp_path, {"Scale Step": 200, "Scale Step High": 50}))
+
+
 class TestRepeatSkill:
     """A row that repeats the skill just used, free. Mechanism B2, ruled
     2026-10-05: "Every skill use has a 5%-15% chance to cast a second time for
@@ -2983,11 +3039,17 @@ class TestRepeatSkill:
 
     @pytest.mark.parametrize("action", ["use_increased_damage",
                                         "cooldown_use_increased_damage"])
-    def test_a_row_that_rolls_increased_damage_is_refused_until_a_column_carries_the_increase(
+    def test_a_row_that_rolls_increased_damage_without_its_size_is_refused(
             self, tmp_path, action):
-        with pytest.raises(gen.DataError, match="no column carries that yet"):
+        with pytest.raises(gen.DataError, match="does not state how large"):
             gen.enchantment_effects(self.repeat(
                 tmp_path, {"Action": action, "Action Event": "skill_use"}))
+
+    def test_the_size_pair_is_refused_on_an_action_that_is_not_an_increase(self, tmp_path):
+        # The rule that was there before: a Scale Step High with no scale would be dropped.
+        with pytest.raises(gen.DataError, match="Scale Step High and no scale"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Scale Step": 50, "Scale Step High": 200}))
 
     @pytest.mark.parametrize("action", ["use_hits_its_user", "use_backfires"])
     def test_a_row_that_rolls_a_use_hitting_its_user_is_carried_through(self, tmp_path, action):
