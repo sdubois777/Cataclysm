@@ -51,6 +51,32 @@ EnchantmentEffects 520 to 521, over 433 to 434 enchantments.
   is past all the health left leaves 1. The event is raised by hand with the amount the player character passes
   from a real kill; the test `AKillIsHeardWithTheSlainEnemysMaximumHealthAsItsAmount` holds that it passes it.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 3 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | 7031ec08 | effect rows 520 to 521 |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: the wearer's health stayed at 1000 where
+800, 600 and 1 were expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The proof of the
+lowest layer that takes the amount from the `kill` event fails that layer's test; this row's test raises its
+events by hand, so that break does not reach it.
+
+**Accepted 2026-10-07 by the coordinating session, for the owner's play-check list:** the row is a drain that
+cannot kill, against the sentence's word "damage".
+
+**Read after the layer two below gained its queue:** a kill by the Plague Doctor blast does not raise the wearer's
+`kill` event, because the blast runs while the wearer is acting on an event. So an enemy the blast kills does not
+explode on a wearer of this row. Not tested.
+
 ---
 
 ## 2026-10-07 — Plague Doctor's ten-piece bonus is built as a row
