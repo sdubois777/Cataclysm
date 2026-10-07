@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Enemies you kill explode and deal 5%-10% of their maximum HP as damage to you" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+One row, on what the `kill` event carries since the entry "Two events carry who died and how much health it had".
+No engine code and no generator code is changed here.
+
+| Sentence | Action | Event | Fraction Of | Value | Trigger Cooldown |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Enemies you kill explode and deal 5%-10% of their maximum HP as damage to you | `health` | `kill` | `event_amount` | -5 to -10 | 0 |
+
+EnchantmentEffects 520 to 521, over 433 to 434 enchantments.
+
+### WHAT WAS RULED, 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+- **It hurts its own wearer because the sentence says so.** THE OWNER, 2026-10-06: a character's own effects may
+  hurt them where a row's sentence says so.
+- **Nothing is done to enemies.** The sentence says "to you" and nothing else.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH LABELLED
+
+- **It is taken off the wearer's health as a share of the event's amount, the shape of "You take 10%-20% of the
+  damage dealt by your own point blank AOE skills"** and of the three retaliation drawbacks. It does not go
+  through the wearer's armour or resistances, and **it cannot kill**: a drain leaves 1 health, ruled 2026-09-14.
+  The other reading, a blow dealt to the wearer through its defences that can kill, as a skill that hits its own
+  user is, was not taken; it is stated here for the owner's play-check list.
+- **No wait between two of them**, so two kills in one moment each take their share.
+- **A drawback rolls its harshest figure at the top of its range**: 10.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **The share is of the slain enemy's maximum health and not of the wearer's.** A boss has 5.857 health for each
+  point of score against an elite's 0.925, so killing a boss takes far more than killing an elite. Against the
+  wearer's own maximum health the figure depends on the enemy, and was not measured.
+- **Every kill counts, whatever killed**: a blow, a tick of the wearer's damage over time, or a blast.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheKilledEnemiesExplodeOnYouRowTakesItsShareOfTheSlainEnemysMaximumHealth`: the real row
+  worn at the top of its roll by a wearer with 1,000 health; a kill carrying no amount takes nothing; a kill of
+  an enemy with 2,000 maximum health takes 200; a second in the same moment takes 200 more; and a kill whose share
+  is past all the health left leaves 1. The event is raised by hand with the amount the player character passes
+  from a real kill; the test `AKillIsHeardWithTheSlainEnemysMaximumHealthAsItsAmount` holds that it passes it.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other seven layers of the stack, on `development` 06790eea. The build, the
+whole suite and the Python of record are in the table of the entry "Two events carry who died and how much health
+it had" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 77c378c3 | 265 tests performed, 259 succeeded, 6 failed, this layer's among them; 3 of the 21 failed assertions are this layer's |
+| The enchantment effect asset, regenerated with the editor | 7031ec08 | effect rows 520 to 521 |
+| Cataclysm.Enchantments., whole, with every asset built | be112e78 | 265 tests performed, 265 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: the wearer's health stayed at 1000 where
+800, 600 and 1 were expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The proof of the
+lowest layer that takes the amount from the `kill` event fails that layer's test; this row's test raises its
+events by hand, so that break does not reach it.
+
+**Accepted 2026-10-07 by the coordinating session, for the owner's play-check list:** the row is a drain that
+cannot kill, against the sentence's word "damage".
+
+**Read after the layer two below gained its queue:** a kill by the Plague Doctor blast does not raise the wearer's
+`kill` event, because the blast runs while the wearer is acting on an event. So an enemy the blast kills does not
+explode on a wearer of this row. Not tested.
+
+---
+
 ## 2026-10-07 — Plague Doctor's ten-piece bonus is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
