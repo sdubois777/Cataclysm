@@ -44,6 +44,31 @@ EnchantmentEffects 507 to 511, over 421 to 424 enchantments.
 **Not tested here:** a zone staggering or laying an ailment because of a worn row; those entries test each with
 a stat line made by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-06 in one window with the three layers below this one, on `development` 210f1267. The build, the
+whole suite and the Python of record are in the table of the entry "Two drawbacks roll for a skill to hit its own
+user" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | b97776b7 | 248 tests performed, 243 succeeded, 5 failed, both of this layer's among them; 3 of the 7 failed assertions are this layer's |
+| The three enchantment assets, regenerated with the editor | 4e04c9f9 | effect rows 507 to 511 |
+| Cataclysm.Enchantments., whole, with every asset built, as the restored half of a proof of the detonation | c07c8f46 | 248 tests performed, 248 succeeded, 0 failed |
+
+**Each test fails against a table without its rows and passes with them.** The flag test fails on one assertion a
+row: each stat reads 0 where 1 is expected. The zone damage test fails on one: the blow on the creature standing
+in the wearer's zone equals the blow on the one outside, where 1.3 times is expected.
+
+**Python guard proof, run in a copy of c07c8f46 with `tools/prove_guard.py`:**
+
+| The break | With the break in | Restored | The test that noticed |
+| :-- | :-- | :-- | :-- |
+| The two zone flags taken off `FLAG_STATS` | 1 failed, 34 passed | 35 passed | `test_enchantment_effects_match_the_row_text.py::test_a_single_value_appears_in_its_words_outside_any_range` |
+
+**This layer changes no engine code and no generator code, so it has no C++ guard proof of its own.** The two
+stats and the condition were proved by the session that built them.
+
 ---
 
 ## 2026-10-06 — "Void splinter stacks detonate for 50%-100% increased damage" is built as a row
