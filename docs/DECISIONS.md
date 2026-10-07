@@ -2,6 +2,171 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-06 — A row gives a ground zone to a skill that states none: two stats, `zone_at_start_and_end_seconds` and `zone_at_impact_seconds`. No row authored yet
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp` (`LeaveRowZoneAt`,
+`LeaveZoneAlong`, `RowZoneRadiusCm`, `RowZonePercentPerSweep`; `LeaveGroundAlong` now ends in `LeaveZoneAlong`);
+`CataclysmSkillTemplates.cpp` (the Strike, Projectile, Movement and Debuff skills each call `LeaveRowZoneAt`);
+`CataclysmDamageCalculation.h` and `.cpp` (the two stat names); `Character/CataclysmPlayerClassStats.cpp`
+(`StatsWithNoAttribute`); two probes and one test in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`;
+one inventory entry in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No row carries either stat yet**; the rows are the enchantment session's.
+
+### What it is for
+
+Three sentences, each of which makes a zone where the skill's own row states none:
+
+| Sentence | Stat | What the row needs |
+|---|---|---|
+| "Your movement ability leaves a persistent AOE zone at both start and end locations for 3-5 seconds" | `zone_at_start_and_end_seconds` | flat 3 to 5, Required Tags `Slot.Movement` |
+| "Charge skills leave a persistent AOE zone at the impact point for 3-6 seconds" | `zone_at_impact_seconds` | flat 3 to 6, Required Tags `Keyword.Charge` |
+| "Your spells leave a persistent AOE zone at the impact point lasting 2-4 seconds" | `zone_at_impact_seconds` | flat 2 to 4, Required Tags `Type.Spell` |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-06
+
+- **The zone lasts the row's seconds and sweeps once a second**, as every ground zone does.
+- **Its radius is 1.5 metres**, which is the smallest an authored row states: Emberhaul's `GroundRadius=1.5`
+  (Emberhurl states the same).
+- **A sweep deals 10 of the skill's hit**, which is the smallest share an authored row states: Buried Fire's
+  `GroundPercent=10.0`.
+- **Rejected: a share of 100 divided by the row's seconds.** Every one of the twelve authored rows that leave ground
+  follows that rule, from issue #361: the share times the duration is 100, so standing in a skill's ground for its
+  whole time costs one hit of the skill. Applied to these rows it would make a zone given for 2 seconds deal 50 of a
+  hit a sweep, on top of the skill's own hit. A row's zone at 10 a sweep for 2 to 6 seconds is worth 20 to 60 of a
+  hit in all.
+- **A skill that states ground of its own keeps it and gets none from a row.**
+- **Each row does what its sentence says**, so a charge skill under the first two rows leaves two zones where it
+  arrived, one from each row, and one where it began.
+- **The zone's damage type is the skill's own.**
+- **"The impact point" is, for each kind of skill, the place the table under "How it is built" gives**, and Summon,
+  Deployable, Aura and Self Buff skills read neither stat.
+- **A skill that fires several projectiles leaves several zones**, one where each flight ended.
+- **A row's zone carries no curse and does not heal its owner.**
+- **The charge row follows `Keyword.Charge` and the movement row follows `Slot.Movement`.** The skill data is not
+  changed for either.
+- **A Support-slot spell's zone deals nothing a sweep and is still left**, as it falls out of the slot's damage.
+
+### For the owner's play-check
+
+Four figures no sentence states: **1.5 metres**, **10 of the skill's hit a sweep**, and so **20 to 60 of a hit over a
+row's zone's whole time** against the 100 of a designed skill's ground; and the two-zones-at-the-end result for a
+charge skill under both rows.
+
+- **A skill that fires several projectiles leaves one zone for each.**
+- **Three skills a row does not reach, by name, for the owner to decide:** Lunge is a charge by its mode and does
+  not carry `Keyword.Charge`, so the charge row does not reach it; Echo and Everywhere at Once are Movement skills
+  outside the Movement slot, so the movement row does not reach them. Whether Lunge should carry the keyword is the
+  owner's.
+- **Hex of Cinders and Quarry get a zone that deals nothing a sweep.**
+
+### What the research settles, and what it does not
+
+No new source was read. **Nothing read settles the radius or the share**; both are the smallest figure this game's
+own authored rows state, chosen by the coordinating session.
+
+### How it is built
+
+- **Two stats, each a number of seconds, asked with the skill's own tags** where the zone would be left. Nought,
+  which is every character with no such row, leaves nothing. The restriction to movement skills, charge skills or
+  spells is the row's Required Tags and not the engine's.
+- **`zone_at_start_and_end_seconds` is read only by a Movement skill**: at the point it left and at the point it
+  arrived, for every mode but the Flicker, which has neither.
+- **`zone_at_impact_seconds` is read in four places**, and "the impact point" is, for each kind of skill:
+
+  | Kind of skill | Where the zone is left |
+  |---|---|
+  | Movement | where it arrived |
+  | Projectile | where the flight ended; a point and never the path, whatever it pierces. One for each projectile |
+  | Strike | under its user, where a strike's own ground goes |
+  | Debuff | under each target the curse was laid on; every Debuff row states `MaxTargets=1` |
+
+  **Summon, Deployable, Aura and Self Buff skills read neither stat**: none of them has a point of impact in the
+  code.
+- **Priced and left as a skill's own ground is.** `LeaveGroundAlong` now ends in a shared function,
+  `LeaveZoneAlong`, that takes the radius, the seconds and the share; a row's zone goes through the same function.
+  So the duration row, the only-one row, the first-sweep row and every row a zone reads reach a row's zone.
+- **Two things only a skill's own ground does**: it carries the skill's curse, and it heals its owner where the row
+  says so. A row's zone does neither: the sentence says a zone, and the curse belongs to the skill.
+- **A row's zone is handed the skill's damage type by name.** A skill's own ground is left without one, as before
+  this change, and deals its owner's.
+- **Both rows that feed `zone_at_impact_seconds` are flat**, so a skill carrying both `Keyword.Charge` and
+  `Type.Spell` would get the sum of their seconds. No authored skill carries both.
+
+### Which skills each row reaches, of the 63 skills built today
+
+Read from `game/Data/WeaponSkills.csv`; none of this is run.
+
+- **The movement row** (`Slot.Movement`): Flashpoint, Inexorable, Shockwave Leap, Lunge, Whip Swing, Nail Down, Reel
+  and Crater. **Not** Ashwalk, Emberhaul, Infernal Plunge, Cinder Rush, Foul Wake or Vesselstep, which state ground.
+  Echo and Everywhere at Once are Movement skills in other slots and do not carry the tag.
+- **The charge row** (`Keyword.Charge`): Flashpoint, Inexorable, Nail Down and Reel. **Not** Emberhaul or Cinder
+  Rush, which state ground. **Lunge is a charge by its mode and does not carry `Keyword.Charge`**, so the row does
+  not reach it.
+- **The spell row** (`Type.Spell`): Malefice and Compel (Projectile), Anathema (Strike), Hex of Cinders, Whisper of
+  Madness and Quarry (Debuff). **Not** Foul Wake or Vesselstep, which state ground. **Not** Subjugate, a Summon.
+
+### Consequences, stated rather than changed
+
+- **Hex of Cinders and Quarry sit in the Support slot, whose damage is nought, so the zone the spell row gives them
+  deals nothing a sweep.** The zone is still left, and still carries what the zone rows add: the slow, the stagger
+  on entry and the ailment. Accepted as it falls out.
+- **A walked charge, Inexorable, leaves its zones when the walk ends**, the start one included.
+- **With the only-one row worn too, one zone is left**: each zone a use leaves ends the earlier ones.
+
+### Tests
+
+Two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, one for each stat, and one new
+automation test, `Cataclysm.StatExemption.ARowGivesAZoneOnlyToASkillThatStatesNoGround`:
+
+- the row's zone has the radius, the duration and the sweep damage of the zone a skill stating
+  `GroundRadius=1.5; GroundDuration=4; GroundPercent=10` leaves, and carries the skill's damage type;
+- a skill that states ground leaves its own two zones under both rows, and no more;
+- a charge under both rows leaves three, one where it began and two where it arrived; with the only-one row worn
+  too it is left with one;
+- a projectile, a strike and a curse each leave one zone under the impact row, in the place the table above gives;
+- a strike under the start-and-end row leaves none.
+
+**Python.** No new test. One existing inventory gained the new lookup.
+
+### Run
+
+One window on 2026-10-06 for a stack of four, at `feat/minions-leave-chaos-pools-2` 4eba8aec: rows that make a zone,
+zones that reach their owner, zones that follow their owner, and chaos pools, in that order. Development was
+cd2ad0d9. Every figure is a line the run printed. **The stack had not been compiled before this window, and the
+first build and the first suite run both passed; no correction was made to any file.**
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3237 tests performed, 3237 succeeded, 0 failed`; `Declared: 3237 tests in the tree at 4eba8aec; 3237 performed, gap 0` |
+| Python, with continuous integration idle | `5771 passed, 8 skipped in 330.95s`; JUnit `tests="5779" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 4eba8aec, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under the prefix `Cataclysm.StatExemption.ARowGivesAZoneOnlyToASkillThatStatesNoGround`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Aa | `CataclysmSkillTemplate.cpp`: a row's zone deals 100 of the hit a sweep, not 10 | 1 performed, 1 failed, 1 failed assertion: a sweep was 100.000000 against 10.000000 | 1 performed, 1 succeeded |
+| Ab | Same file: a skill that states ground gets the row's zones too | 1 performed, 1 failed, 1 failed assertion: it left 5 zones against 2 | 1 performed, 1 succeeded |
+
+**What the run settles of what this entry only predicted.** A projectile, a strike and a curse each leave one zone
+under the impact row, in the place the table gives; a charge under both rows leaves three, and one with the
+only-one row worn too.
+
+**Not run:** a walked charge; a skill that fires several projectiles; a Support-slot spell; any of this read from
+the effect table, since no row exists.
+
+**A behaviour with a test and no guard proof:** an instant move asking the impact row where it arrives. The proof
+written for it was dropped by the coordinating session to keep the window to eight proofs.
+
+---
+
 ## 2026-10-06 — Three more persistent area sentences are rows: zones that stagger on entry, zones that lay their own ailment, and more damage to an enemy standing in your zone
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),

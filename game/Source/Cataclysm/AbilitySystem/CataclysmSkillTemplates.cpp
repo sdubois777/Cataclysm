@@ -280,6 +280,10 @@ void UCataclysmStrikeSkill::ActivateAbility(
 			// meters".
 			LeaveGroundAt(Self->GetActorLocation());
 
+			// AND THE ZONE A ROW GIVES A STRIKE THAT STATES NO GROUND, in the same place: "your spells leave a
+			// persistent AOE zone at the impact point". Ruled 2026-10-06. Nothing for a character with no row.
+			LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Self->GetActorLocation());
+
 			// AND THE TERRAIN, WHICH IS A DIFFERENT THING FROM THE GROUND ABOVE.
 			// Three Strike rows leave some: the Spear's Thicket raises spears
 			// within 12 metres, the Warhammer's Break the World collapses the
@@ -685,6 +689,8 @@ int32 UCataclysmStrikeSkill::ReleaseTheSwing()
 	if (const AActor* Self = Avatar())
 	{
 		LeaveGroundAt(Self->GetActorLocation());
+		// AND A ROW'S ZONE, as the ordinary strike leaves it. Ruled 2026-10-06.
+		LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Self->GetActorLocation());
 	}
 
 	UE_LOG(LogCataclysm, Verbose,
@@ -721,6 +727,8 @@ void UCataclysmStrikeSkill::LetTheHoldFinish()
 	if (const AActor* Self = Avatar())
 	{
 		LeaveGroundAt(Self->GetActorLocation());
+		// AND A ROW'S ZONE, as the ordinary strike leaves it. Ruled 2026-10-06.
+		LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Self->GetActorLocation());
 	}
 
 	UE_LOG(LogCataclysm, Verbose,
@@ -1679,6 +1687,10 @@ void UCataclysmProjectileSkill::LeaveGroundForFlight(const FVector& From,
 {
 	if (!Params.LeavesGround())
 	{
+		// AND THE ZONE A ROW GIVES A PROJECTILE THAT STATES NO GROUND, where its flight ended: "at the impact
+		// point". Ruled 2026-10-06. A point and never the path, whatever the projectile pierces: the row's
+		// sentence names a point. Nothing for a character with no row.
+		LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, To);
 		return;
 	}
 
@@ -2840,6 +2852,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 		LeaveGroundAt(Start);
 	}
 
+	// AND THE ZONE A ROW GIVES A MOVEMENT SKILL THAT STATES NO GROUND, AT THE POINT LEFT, for every mode that
+	// reaches here: "your movement ability leaves a persistent AOE zone at both start and end locations". Ruled
+	// 2026-10-06. Nothing for a character with no row.
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, Start);
+
 	// Swept, so a leap into a wall stops at the wall rather than putting the
 	// character inside it.
 	Self->SetActorLocation(End, /*bSweep=*/true);
@@ -2896,6 +2913,12 @@ void UCataclysmMovementSkill::ActivateAbility(
 	{
 		LeaveGroundAt(ArrivedAt);
 	}
+
+	// AND A ROW'S ZONES WHERE IT ARRIVED: the end of "both start and end", and "charge skills leave a persistent
+	// AOE zone at the impact point". EACH ROW DOES WHAT ITS SENTENCE SAYS, so a charge skill under both leaves two
+	// zones here. Ruled 2026-10-06.
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt);
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, ArrivedAt);
 
 	// AND THE TERRAIN, WHERE IT LANDED. The Warhammer's Crater is the only
 	// Movement row that leaves any: "Rise and fall on a point up to 9 meters
@@ -3186,6 +3209,12 @@ void UCataclysmMovementSkill::FinishAdvance()
 	// means for the rows that state one. Inexorable states none, so this is idle
 	// for it and correct for whatever states one next.
 	LeaveGroundAlong(ArrivedAt - Advance * WalkedCm, ArrivedAt);
+
+	// AND A ROW'S ZONES, WHERE THE WALK BEGAN AND WHERE IT ENDED, as the arrival of an instant move leaves them.
+	// Ruled 2026-10-06.
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt - Advance * WalkedCm);
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt);
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, ArrivedAt);
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("'%s' advanced %.0fcm over %d steps and struck %d."),
@@ -4646,6 +4675,17 @@ void UCataclysmDebuffSkill::ActivateAbility(
 		// A Support slot deals no damage by design, so this only lands a hit for
 		// a debuff whose slot has one.
 		HitTargets(Targets);
+
+		// AND THE ZONE A ROW GIVES A CURSE THAT STATES NO GROUND, UNDER EACH TARGET IT WAS LAID ON: "your spells
+		// leave a persistent AOE zone at the impact point". Ruled 2026-10-06. Every Debuff row states
+		// `MaxTargets=1` today, so this is one zone. Nothing for a character with no row.
+		for (const AActor* Target : Targets)
+		{
+			if (Target)
+			{
+				LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Target->GetActorLocation());
+			}
+		}
 
 		EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
 				   GetCurrentActivationInfo(), true, false);

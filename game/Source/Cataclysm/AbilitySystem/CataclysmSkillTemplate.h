@@ -1313,6 +1313,46 @@ protected:
 	ACataclysmGroundZone* LeaveGroundAlong(const FVector& Start, const FVector& End);
 
 	/**
+	 * The radius, in centimetres before area of effect, of the zone a row gives a skill that states no ground, and
+	 * the percent of the skill's hit it deals each sweep. Ruled 2026-10-06 by the coordinating session under the
+	 * owner's delegation.
+	 *
+	 * BOTH ARE THE SMALLEST FIGURE AN AUTHORED ROW STATES: Emberhaul's `GroundRadius=1.5` and Buried Fire's
+	 * `GroundPercent=10.0`. The row's own sentence states neither.
+	 *
+	 * THE SHARE IS NOT 100 DIVIDED BY THE DURATION, which is what every authored row's is (issue #361: standing in
+	 * a skill's ground for its whole time costs one hit of the skill). That candidate was rejected: it would make
+	 * a zone the row gives for 2 seconds deal 50 of a hit a sweep, on top of the skill's own hit.
+	 */
+	static constexpr float RowZoneRadiusCm = 150.0f;
+	static constexpr float RowZonePercentPerSweep = 10.0f;
+
+	/**
+	 * Leave the zone a ROW gives this skill, at a point, if a row gives one. Ruled 2026-10-06.
+	 *
+	 * `SecondsStat` IS ONE OF THE TWO STATS in `UCataclysmDamageCalculation` that say how long the zone lasts,
+	 * asked with this skill's own tags. Nought, which is every character with no such row, leaves nothing.
+	 *
+	 * A SKILL THAT STATES GROUND OF ITS OWN KEEPS IT AND GETS NONE FROM A ROW, whatever the row says.
+	 *
+	 * THE ZONE IS PRICED AND LEFT AS A SKILL'S OWN GROUND IS, by `LeaveZoneAlong`, so the duration row, the
+	 * only-one row and every row a zone reads reach it. It carries the skill's own damage type. It does not carry
+	 * the skill's curse or heal its owner: those are what one skill's designed ground does.
+	 */
+	ACataclysmGroundZone* LeaveRowZoneAt(const TCHAR* SecondsStat, const FVector& Location);
+
+	/**
+	 * What `LeaveGroundAlong` and `LeaveRowZoneAt` both do once each has decided there is a zone to leave: price a
+	 * sweep, end the earlier areas if the character may hold one, spawn the zone and tell it what the rows add.
+	 *
+	 * `bTheSkillsOwnGround` is true for ground the skill's own row states. Only that ground carries the skill's
+	 * curse and heals its owner, and only a row's zone is handed the skill's damage type by name: a skill's own
+	 * ground is left without one, as it always was, and deals its owner's.
+	 */
+	ACataclysmGroundZone* LeaveZoneAlong(const FVector& Start, const FVector& End, float RadiusCm, float Seconds,
+										 float PercentPerSweep, bool bTheSkillsOwnGround);
+
+	/**
 	 * Leave persistent terrain, if this skill's `Terrain` cell names a kind.
 	 *
 	 * A SECOND RIDER BESIDE THE BURNING GROUND, AND NOT THE SAME THING. The
