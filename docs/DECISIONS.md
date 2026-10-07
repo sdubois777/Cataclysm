@@ -11,8 +11,8 @@ Decisions made outside the Google Drive documents, newest first.
 (`StatsWithNoAttribute`); two probes and one test in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`;
 one inventory entry in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
-**Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the figures are added at the
-end of this entry when they have. **No row carries either stat yet**; the rows are the enchantment session's.
+**Applied.** The Unreal compile, the whole automation suite, the Python suite and the guard proofs ran on 2026-10-06;
+the figures are under "Run" at the end of this entry. **No row carries either stat yet**; the rows are the enchantment session's.
 
 ### What it is for
 
@@ -130,9 +130,37 @@ automation test, `Cataclysm.StatExemption.ARowGivesAZoneOnlyToASkillThatStatesNo
 
 **Python.** No new test. One existing inventory gained the new lookup.
 
-### Not yet run
+### Run
 
-The compile, the whole Unreal suite, the Python suite and the guard proofs.
+One window on 2026-10-06 for a stack of four, at `feat/minions-leave-chaos-pools-2` 4eba8aec: rows that make a zone,
+zones that reach their owner, zones that follow their owner, and chaos pools, in that order. Development was
+cd2ad0d9. Every figure is a line the run printed. **The stack had not been compiled before this window, and the
+first build and the first suite run both passed; no correction was made to any file.**
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3237 tests performed, 3237 succeeded, 0 failed`; `Declared: 3237 tests in the tree at 4eba8aec; 3237 performed, gap 0` |
+| Python, with continuous integration idle | `5771 passed, 8 skipped in 330.95s`; JUnit `tests="5779" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**Guard proofs, at 4eba8aec, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count is the one registered
+before the run.
+
+Both are under the prefix `Cataclysm.StatExemption.ARowGivesAZoneOnlyToASkillThatStatesNoGround`.
+
+| Proof | The break | With the break in | Restored |
+|---|---|---|---|
+| Aa | `CataclysmSkillTemplate.cpp`: a row's zone deals 100 of the hit a sweep, not 10 | 1 performed, 1 failed, 1 failed assertion: a sweep was 100.000000 against 10.000000 | 1 performed, 1 succeeded |
+| Ab | Same file: a skill that states ground gets the row's zones too | 1 performed, 1 failed, 1 failed assertion: it left 5 zones against 2 | 1 performed, 1 succeeded |
+
+**What the run settles of what this entry only predicted.** A projectile, a strike and a curse each leave one zone
+under the impact row, in the place the table gives; a charge under both rows leaves three, and one with the
+only-one row worn too.
+
+**Not run:** a walked charge; a skill that fires several projectiles; a Support-slot spell; any of this read from
+the effect table, since no row exists.
 
 **A behaviour with a test and no guard proof:** an instant move asking the impact row where it arrives. The proof
 written for it was dropped by the coordinating session to keep the window to eight proofs.
