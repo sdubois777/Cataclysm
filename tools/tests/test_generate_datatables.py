@@ -5028,3 +5028,45 @@ class TestAHitCutsShortTheSkillInUse:
         control is a made-up name that is on no list."""
         assert "hit_taken_cancels_skills" in gen.stats_with_no_attribute()
         assert "hit_taken_interrupts" not in gen.stats_with_no_attribute()
+
+
+class TestACastDelayOnASkillsBlow:
+    """`blow_delay_seconds`, ruled 2026-10-08 and built ahead of its row. The
+    row here is the shape `docs/DECISIONS.md` of that day gives the session
+    that writes rows, on a made-up enchantment sheet holding the real
+    sentence. One row for one sentence: seconds, flat, rolled between the two
+    figures the sentence states, requiring the tag the sentence names.
+
+    A NUMBER AND NOT A FLAG. Its two values are the 0.75 and the 1.5 of the
+    sentence, so it is on no list of flags.
+    """
+
+    DELAY = ("Point blank AOE skills have a 0.75-1.5 second cast delay before "
+             "firing")
+    ROW = {"Stat": "blow_delay_seconds", "Value Kind": "flat",
+           "Value Low": 0.75, "Value High": 1.5,
+           "Required Tags": "Type.AOE.PointBlank"}
+
+    def out(self, tmp_path, words, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, words, rows)
+
+    def test_the_row_is_carried_through_with_its_seconds_and_its_tag(
+            self, tmp_path):
+        out = self.out(tmp_path, self.DELAY, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("blow_delay_seconds", "flat", 0.75, 1.5, "Type.AOE.PointBlank",
+             "", "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert "blow_delay_seconds" not in gen.CONDITIONED_STATS_WITH_AN_ASKER
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """What lets the row above name it: the seconds have no gameplay
+        attribute, so the name is on the engine's list of stats that need
+        none. The control is a made-up name that is on no list."""
+        assert "blow_delay_seconds" in gen.stats_with_no_attribute()
+        assert "cast_delay_seconds" not in gen.stats_with_no_attribute()
