@@ -19576,4 +19576,113 @@ bool FCataclysmCastDelayRowTest::RunTest(const FString&)
 	TestEqual(TEXT("taken off: asked for a point blank skill, it is nought"), For(PointBlank), 0.0f, 0.001f);
 	return true;
 }
+// THE NECROSIS ROW AND THE MINIONS' DEFENCES ROW. Ruled 2026-10-08; each row is as the entry "An ailment can lower
+// its carrier's maximum health, and a minion takes a share of its summoner's armour and resistances" states it.
+// EACH IS READ OFF THE WEARER AS THE GAME READS IT; that an enemy's maximum then falls and a minion then takes less
+// are that entry's tests, with the row made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisMaxHealthRowTest,
+	"Cataclysm.Enchantments.TheNecrosisRowHandsItsWearerANumberOnNecrosisThatLowersMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies with Necrosis have 1%-2% less maximum health". One row: the number
+ * `ailment_max_health_removed` hung on Necrosis, 1 to 2. The real row WORN at
+ * the top of its range, 2: the wearer holds exactly one number of that kind,
+ * on Necrosis, of 2; and none when the item is taken off.
+ */
+bool FCataclysmNecrosisMaxHealthRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_Enemies_with_Necrosis_have_1_2_less_maximum_he");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	const FGameplayTag Necrosis =
+		FGameplayTag::RequestGameplayTag(TEXT("Keyword.DoT.Necrosis"), /*ErrorIfNotFound=*/false);
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: Keyword.DoT.Necrosis is a tag this build knows"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const auto OfItsKind = [&](float* Percent, bool* bOnNecrosis)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			if (Action.Rider == ECataclysmAilmentRider::MaxHealthRemoved)
+			{
+				++Found;
+				if (Percent) { *Percent = Action.Percent; }
+				if (bOnNecrosis) { *bOnNecrosis = Action.Ailment == Necrosis; }
+			}
+		}
+		return Found;
+	};
+	float Percent = 0.0f;
+	bool bOnNecrosis = false;
+	TestEqual(*(FString(TEXT("worn: one number that lowers a carrier's maximum health.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		OfItsKind(&Percent, &bOnNecrosis), 1);
+	TestEqual(TEXT("it is 2 at the top of the row's range"), Percent, 2.0f, 0.001f);
+	TestTrue(TEXT("and it hangs on Necrosis"), bOnNecrosis);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: no such number is left"), OfItsKind(nullptr, nullptr), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDefencesRowTest,
+	"Cataclysm.Enchantments.TheMinionDefencesRowAnswersAQuarterForAnyMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Summoned minions inherit 10%-25% of your armor and resistances". One row:
+ * `minion_defences_percent_of_yours` flat 10 to 25 with no required tags. The
+ * real row WORN at the top of its range, 25. The stat is asked as the damage
+ * formula asks it of a summoner, with a minion's type tags: with a minion's
+ * tag and with no tags it answers 25, and nought for both when the item is
+ * taken off.
+ */
+bool FCataclysmMinionDefencesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const RowName = TEXT("Positive_Summoned_minions_inherit_10_25_of_your_armor_a");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	const FGameplayTagContainer NoTags;
+	const FGameplayTagContainer Minion = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Minion"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: the minion tag exists"), Minion.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Share(UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat);
+	const auto For = [&](const FGameplayTagContainer& Tags) { return Worn.ASC()->StatForSkill(Share, Tags, 0.0f); };
+
+	TestEqual(*(FString(TEXT("worn: asked with a minion's tag, the share is 25.")) + CataclysmRepeatRowsTest::OlderAsset),
+		For(Minion), 25.0f, 0.001f);
+	TestEqual(TEXT("worn: asked with no tags, the share is 25"), For(NoTags), 25.0f, 0.001f);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: asked with a minion's tag, the share is nought"), For(Minion), 0.0f, 0.001f);
+	TestEqual(TEXT("taken off: asked with no tags, the share is nought"), For(NoTags), 0.0f, 0.001f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
