@@ -58,6 +58,28 @@ Each wears the real row at the top of its range, and first asserts that the name
 **Not tested here:** an enemy afflicted by a wearer of the real Necrosis row; a minion summoned by a wearer of
 the real minion row.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. The build, the whole suite and the Python of record are in the table of the entry of the same day on the
+retirement of "Can’t use a basic attack" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any change of the stack | 58367e1f | 301 tests performed, 297 succeeded, 4 failed, this layer's two among them; 5 of the 8 failed assertions are this layer's: the Necrosis row 3, the minions' row 2 |
+| The enchantment assets, regenerated with the editor | e31bb776 | effect rows 573 to 575 |
+| Whole suite, every asset built | cee98975 | 3401 tests performed, 3401 succeeded, 0 failed |
+
+**Each of the two tests fails against a table without its row and passes with it.** Without the rows the wearer
+held no number that lowers a carrier's maximum health, and the minions' share read nought with a minion's tag
+and with no tags.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the entry
+that built the two proved, read in its table: three guard proofs, each failed with its break in and passed with
+it out: the ailment's ending seen, the unlowered maximum remembered, and the summoner's resistance capped before
+the share is taken. **That table says no proof was run for the bound of 50 or for anything of the armour a
+minion takes from its summoner**; those are tested and not proved.
+
 ---
 
 ## 2026-10-08 — An ailment can lower its carrier's maximum health, and a minion takes a share of its summoner's armour and resistances: one number hung on an ailment, `ailment_max_health_removed`, and one stat, `minion_defences_percent_of_yours`. Engine only; no row authored
