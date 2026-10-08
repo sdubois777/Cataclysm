@@ -4,6 +4,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-07 — Two conditions, `while_under_damage_over_time` and `in_combat_for_seconds`, and one scale, `seconds_leeching`, for three enchantment sentences that have no row. Engine and generator only; no row authored
 
+**Built and run on 2026-10-07 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
+
 **Not built and not run.** No Unreal build was made and no Unreal test was run by the writing session. The C++
 in this entry has never been compiled. The Python checks were run; their output is not recorded here. Two dry
 runs were made by the writing session, in memory and in a temporary workbook only, and are described under
@@ -390,6 +392,37 @@ writes rows moves. The checks were not run again against a real row, because the
   count of scales named by a row rises by one.
 - **Not determined:** whether the DataTable import, the Unreal test that pins the row count, or any check that
   reads the built asset has more to say about these rows. None was run.
+
+### Run
+
+One window on 2026-10-07 for a stack of three, at `feat/movement-skill-riders-3` 7b601c3c: the two conditions and
+the scale, the four stats read at one place each, and the movement skill rows, in that order. Development was
+8025764e. One attempt; nothing was corrected during it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3338 tests performed, 3338 succeeded, 0 failed`; `Declared: 3338 tests in the tree at 7b601c3c; 3338 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 336.62s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**How the three layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the Python
+changes to the generator and its tests beyond the lists they add to, and the eight probes in the stat-exemption
+tables; their tests passed.
+
+**Guard proofs, at 7b601c3c, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| L1a | `CataclysmAbilitySystemComponent.cpp`: only a bleed counts as damage over time | `Cataclysm.DotCombatLeech.ARowUnderAnyDamageOverTimeRaisesABlowWhileOneIsCarriedLaidByAnotherOrByTheWearer` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| L1b | `CataclysmAbilitySystemComponent.cpp`: a timed row whose condition is not met forgets no periods | `Cataclysm.DotCombatLeech.TheDrainBeginsTenSecondsIntoACombatTakesOneShareASecondAndStopsWhereTheOldDrainStops` | 1 performed, 1 failed, 5 failed assertions | 1 performed, 1 succeeded |
+| L1c | `CataclysmAbilitySystemComponent.cpp`: the leeching clock is never cleared | `Cataclysm.DotCombatLeech.TheResistanceCapFallsForEachWholeSecondOfUnbrokenLeechingUpToTheRowsCapAndReturnsWhenNothingIsOwed` | 1 performed, 1 failed, 5 failed assertions | 1 performed, 1 succeeded |
+
+**Not run:** any of the three rows read from the effect table, since no row exists.
 
 ---
 
