@@ -18470,4 +18470,69 @@ bool FCataclysmTrapCountRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeOnARangedDodgeRowTest,
+	"Cataclysm.Enchantments.TheEvadedRangedAttackRowHandsItsWearerAStrikeOnADodgeScopedToRanged",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When you evade a ranged attack, throw an attack dealing 20-70% of your
+ * attack damage at that enemy". Issue #1833, ruled 2026-10-07: `strike_target`
+ * on `dodge`, 20 to 70, Required Tags `Type.Ranged`. The real row WORN at its
+ * best roll: its wearer holds exactly one action of that kind on `dodge`, at
+ * 70, requiring `Type.Ranged` and nothing else, and none when the item is
+ * taken off. What the strike then does is the tests of the entry that built
+ * the action.
+ */
+bool FCataclysmStrikeOnARangedDodgeRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_When_you_evade_a_ranged_attack_throw_an_attack");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Ranged = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Ranged"));
+	if (!TestTrue(TEXT("set-up: the ranged tag exists"), Ranged.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Dodge(TEXT("dodge"));
+	int32 OfItsKind = 0;
+	float Share = -1.0f;
+	bool bScopedToRangedAlone = false;
+	for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+	{
+		if (Action.bStrikeTarget && Action.Event == Dodge)
+		{
+			++OfItsKind;
+			Share = Action.Percent;
+			bScopedToRangedAlone = Action.RequiredTags == Ranged;
+		}
+	}
+	TestEqual(*(FString(TEXT("worn: one action that strikes the event's other character, on a dodge.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		OfItsKind, 1);
+	TestEqual(TEXT("at the row's best roll, 70"), Share, 70.0f, 0.01f);
+	TestTrue(TEXT("requiring Type.Ranged and nothing else"), bScopedToRangedAlone);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	int32 Left = 0;
+	for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+	{
+		Left += Action.bStrikeTarget ? 1 : 0;
+	}
+	TestEqual(TEXT("taken off: no such action is left"), Left, 0);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
