@@ -117,7 +117,13 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: reduce your max resistances by 1%-3% per second", on the same terms. It leaves
 #: with its row.
 #: IT LEFT with its row, issue #1833, and the list is empty again.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: ONE JOINED ON 2026-10-08, `share_of_range_moved`, ruled that day for
+#: "Charge skills deal 30%-60% bonus damage proportional to distance traveled"
+#: and built ahead of its two rows while the design workbook is with another
+#: session. `docs/DECISIONS.md` of that day gives the shape of each row. It
+#: leaves with them, and `EXPECTED_NAMED_BY_A_ROW` below moves then and not
+#: before.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"share_of_range_moved"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
