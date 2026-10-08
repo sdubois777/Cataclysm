@@ -307,6 +307,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// channeling interrupts the channel immediately". A flag. No gameplay
 		// attribute and no base.
 		TEXT("hit_taken_cancels_skills"),
+		// The seconds a worn row adds to a skill's wind-up, read by
+		// UCataclysmSkillTemplate::SecondsUntilTheSwingConnects with the skill's
+		// tags. Ruled 2026-10-08: "Point blank AOE skills have a 0.75-1.5 second
+		// cast delay before firing". Seconds, not a flag; a figure below nought
+		// adds nothing. No gameplay attribute and no base.
+		TEXT("blow_delay_seconds"),
 		// Shared Blood's share of the summoner's maximum energy shield that each
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.

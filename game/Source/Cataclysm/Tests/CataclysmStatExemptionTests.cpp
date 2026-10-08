@@ -7293,6 +7293,71 @@ namespace CataclysmStatExemptionTest
 					   CarrierSpin->IsActive());
 	}
 
+	/**
+	 * `blow_delay_seconds`, asked by `UCataclysmSkillTemplate::SecondsUntilTheSwingConnects` with the skill's tags.
+	 * Ruled 2026-10-08: "Point blank AOE skills have a 0.75-1.5 second cast delay before firing".
+	 *
+	 * TWO CHARACTERS A HUNDRED METRES APART, each using the same strike tagged `Type.AOE.PointBlank`. The second
+	 * carries the stat at 1 second on a line requiring that tag. Neither has a wind-up of its own, so the plain
+	 * one's blow lands as it is used and its strike is over, and the carrying one's is still waiting to land.
+	 * Then the carrying one uses a strike WITHOUT the tag, which does not wait.
+	 *
+	 * WHAT THIS DOES NOT REACH. How long the wait is and that the blow then lands: `Cataclysm.SkillStats.*` in
+	 * `CataclysmSkillTemplateTests.cpp` holds those, on a clock.
+	 *
+	 * STANDING: the plain character at the origin, the carrying one 100 m along Y. Nobody is struck.
+	 */
+	void ProbeBlowDelaySeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Carrier(World, FVector(0, 100 * M, 0));
+		GrantFlatRequiring(Carrier.Actor, UCataclysmSkillTemplate::BlowDelaySecondsStat, 1.0f,
+						   TEXT("Type.AOE.PointBlank"));
+
+		const auto StrikeIn = [&Test](FScopedSwinger& Who, ECataclysmAbilitySlot Slot, const TCHAR* TagCell,
+									  int32 TagsWanted) -> UCataclysmStrikeSkill*
+		{
+			const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), Slot, /*Level=*/1, Who.Actor);
+			FGameplayAbilitySpec* Spec = Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+			UCataclysmStrikeSkill* Skill =
+				Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=360"));
+				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+			}
+			const bool bUsed = Skill && Skill->SkillTags.Num() == TagsWanted
+				&& Who.AbilitySystem->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false);
+			Test.TestTrue(TEXT("set-up: a strike with the tags asked for is granted and used"), bUsed);
+			return bUsed ? Skill : nullptr;
+		};
+		const TCHAR* const PointBlank = TEXT("Type.Melee, Type.AOE.PointBlank");
+		UCataclysmStrikeSkill* PlainStrike = StrikeIn(Plain, ECataclysmAbilitySlot::Heavy, PointBlank, 2);
+		UCataclysmStrikeSkill* CarrierStrike = StrikeIn(Carrier, ECataclysmAbilitySlot::Heavy, PointBlank, 2);
+		UCataclysmStrikeSkill* CarrierOther =
+			StrikeIn(Carrier, ECataclysmAbilitySlot::Special, TEXT("Type.Melee"), 1);
+		if (!PlainStrike || !CarrierStrike || !CarrierOther)
+		{
+			return;
+		}
+
+		Test.TestFalse(TEXT("control: a point-blank strike of a character with no row is not waiting to land"),
+					   PlainStrike->IsWaitingForTheSwingToConnect());
+		Test.TestTrue(TEXT("and one carrying blow_delay_seconds at 1 is, so SecondsUntilTheSwingConnects really "
+						   "reads it"),
+					  CarrierStrike->IsWaitingForTheSwingToConnect());
+		Test.TestFalse(TEXT("and the same character's strike without the tag is not"),
+					   CarrierOther->IsWaitingForTheSwingToConnect());
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7421,6 +7486,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("crowd_control_health_ceiling_reduction"), &ProbeCrowdControlHealthCeiling},
 			{TEXT("cannot_walk"), &ProbeCannotWalk},
 			{TEXT("hit_taken_cancels_skills"), &ProbeHitTakenCancelsSkills},
+			{TEXT("blow_delay_seconds"), &ProbeBlowDelaySeconds},
 		};
 		return Made;
 	}

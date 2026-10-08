@@ -106,6 +106,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: asked by the one helper the player controller's refusal of a step calls.
 #: The flag by which a landed hit cuts short a running skill added one more on
 #: 2026-10-08, asked in `NoteHitTaken` with each running skill's tags.
+#: The seconds a worn row adds to a skill's wind-up added one more on
+#: 2026-10-08, asked in `SecondsUntilTheSwingConnects` with the skill's tags.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -753,6 +755,12 @@ INVENTORY = {
         "2026-10-08), asked by NoteHitTaken once for each running skill with "
         "that skill's tags; a flag about the skill, so the blow that landed "
         "is not handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(BlowDelaySecondsStat), SkillTags, 0.0f'):
+        "the seconds a worn row adds to a skill's wind-up (ruled 2026-10-08), "
+        "asked by SecondsUntilTheSwingConnects with the skill's tags once it "
+        "is paid for; the skill has struck nothing yet, so there is no blow "
+        "and no target to hand over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
