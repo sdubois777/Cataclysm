@@ -1284,6 +1284,37 @@ namespace CataclysmFloorSectionsTest
 	}
 }
 
+namespace CataclysmFloorSectionsTest
+{
+	/**
+	 * For a summary log line only, asked for on 2026-10-08 after layer 2's first run: whether any cell of this answer
+	 * is held by more than one boundary, and whether any boundary has no cell that it alone holds. Nothing asserts
+	 * either. The search closes the cells of both boundaries together and nothing makes them apart.
+	 */
+	void NoteSharedBoundaryCells(const FCataclysmFloorSections& Sections, int32& WithASharedCell, int32& WithNoOwnCell)
+	{
+		bool bSharesACell = false;
+		bool bOneHasNoOwnCell = false;
+		for (int32 Barrier = 0; Barrier < Sections.Boundaries.Num(); ++Barrier)
+		{
+			int32 OwnCells = 0;
+			for (const FIntPoint& Cell : Sections.Boundaries[Barrier])
+			{
+				bool bAnotherHoldsIt = false;
+				for (int32 Other = 0; Other < Sections.Boundaries.Num(); ++Other)
+				{
+					bAnotherHoldsIt = bAnotherHoldsIt || (Other != Barrier && Sections.Boundaries[Other].Contains(Cell));
+				}
+				bSharesACell = bSharesACell || bAnotherHoldsIt;
+				OwnCells += bAnotherHoldsIt ? 0 : 1;
+			}
+			bOneHasNoOwnCell = bOneHasNoOwnCell || OwnCells == 0;
+		}
+		WithASharedCell += bSharesACell ? 1 : 0;
+		WithNoOwnCell += bOneHasNoOwnCell ? 1 : 0;
+	}
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorSectionsTwentyPlansTest,
 	"Cataclysm.FloorSections.OnTwentyHallsPlansTheSearchFindsSectionsThreeOrTwoOnEveryOne",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1305,6 +1336,8 @@ bool FCataclysmFloorSectionsTwentyPlansTest::RunTest(const FString& Parameters)
 	int32 WithThree = 0;
 	int32 WithTwoOrThree = 0;
 	int32 AtTheLimit = 0;
+	int32 SharingACell = 0;
+	int32 WithNoOwnCell = 0;
 	double Slowest = 0.0;
 	for (const int32 FloorNumber : {1, 10})
 	{
@@ -1323,6 +1356,7 @@ bool FCataclysmFloorSectionsTwentyPlansTest::RunTest(const FString& Parameters)
 			const double Milliseconds = (FPlatformTime::Seconds() - Began) * 1000.0;
 			Slowest = FMath::Max(Slowest, Milliseconds);
 			AtTheLimit += Sections.bReachedTheWalkLimit ? 1 : 0;
+			NoteSharedBoundaryCells(Sections, SharingACell, WithNoOwnCell);
 
 			const int32 Count = Sections.SectionCount();
 			WithThree += (Count == 3) ? 1 : 0;
@@ -1352,8 +1386,8 @@ bool FCataclysmFloorSectionsTwentyPlansTest::RunTest(const FString& Parameters)
 	}
 	UE_LOG(LogTemp, Display,
 		TEXT("FLOORSECTIONS SUMMARY three sections on %d of %d | three or two on %d of %d | slowest floor %.3f ms | floors "
-			 "where the search stopped at its limit %d"),
-		WithThree, Plans, WithTwoOrThree, Plans, Slowest, AtTheLimit);
+			 "where the search stopped at its limit %d | shared=%d no_own_cell=%d"),
+		WithThree, Plans, WithTwoOrThree, Plans, Slowest, AtTheLimit, SharingACell, WithNoOwnCell);
 
 	TestEqual(TEXT("set-up: twenty plans were asked about"), Plans, 20);
 	TestEqual(TEXT("the requirement: sections, three or two, on all 20 plans"), WithTwoOrThree, 20);
@@ -2074,6 +2108,8 @@ bool FCataclysmFloorSectionsWiderTest::RunTest(const FString& Parameters)
 	int32 WithTwo = 0;
 	int32 WithNone = 0;
 	int32 AtTheLimit = 0;
+	int32 SharingACell = 0;
+	int32 WithNoOwnCell = 0;
 	double Slowest = 0.0;
 	for (int32 Index = 0; Index < 100; ++Index)
 	{
@@ -2108,10 +2144,13 @@ bool FCataclysmFloorSectionsWiderTest::RunTest(const FString& Parameters)
 			}
 			CheckEveryRule(*this, FString::Printf(TEXT("dungeon seed %d floor %d"), Request.DungeonSeed, FloorNumber),
 						   Plan, Plan, Sections);
+			NoteSharedBoundaryCells(Sections, SharingACell, WithNoOwnCell);
 		}
 	}
-	UE_LOG(LogTemp, Display, TEXT("FLOORSECTIONS WIDER plans=%d three=%d two=%d none=%d slowest_ms=%.3f at_the_limit=%d"),
-		   Plans, WithThree, WithTwo, WithNone, Slowest, AtTheLimit);
+	UE_LOG(LogTemp, Display,
+		   TEXT("FLOORSECTIONS WIDER plans=%d three=%d two=%d none=%d slowest_ms=%.3f at_the_limit=%d shared=%d "
+				"no_own_cell=%d"),
+		   Plans, WithThree, WithTwo, WithNone, Slowest, AtTheLimit, SharingACell, WithNoOwnCell);
 
 	TestEqual(TEXT("set-up: two hundred plans were built and asked about"), Plans, 200);
 	return true;
