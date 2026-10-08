@@ -9,8 +9,22 @@ was run by the writing session. The C++ in this entry has never been compiled. T
 output is not recorded here. The two row shapes under "What the row needs" were each passed through the
 generator in a temporary workbook, by the Python tests named there.
 
+**The basic attack's interruption is written and NOT shown by any run, because a worktree has no attack clips.**
+Only a real player character has a swing that waits to connect, and only where its clips are present; without
+them a swing lands as it is used and there is nothing to interrupt. Two tests skip a half for it and say so with
+`ReportSkippedHalf`: `Cataclysm.HitCancels.ABasicAttackInItsWindUpIsCutShortLikeAnyOtherSkill`, the whole of
+which needs the wind-up, and
+`Cataclysm.HitCancels.ALandedHitCutsShortTheWearersSkillAndGivesBackNeitherItsCostNorItsCooldown`, whose second
+half is the swing lost in a wind-up. **That a hit in the wind-up loses a basic attack, and any other swing, goes
+on the owner's play-check list.**
+
 **Said first, for the play-check.**
 
+- **A single shot already in the air is NOT lost to a hit.** It flies on and lands. **A rack's remaining throws
+  ARE lost**, and the throws already made fly on.
+- **When the hit that ends a skill arrives inside that skill's own blow, a retaliation for it, what that blow
+  leaves stays and everything later is lost.** For a spin struck back on its first swing: the ground and the
+  terrain that swing leaves stay, and the remaining swings and the final hit are lost.
 - **"Taking damage" in the channel sentence is read as a LANDED HIT.** A burn, a bleed or any other damage over
   time does not end a channel, and neither does a cost paid in health.
 - **Under "Taking a hit interrupts any skill currently being used", a player hit while winding up loses the
@@ -150,6 +164,10 @@ channelled one. This layer does not read the channelling state of the layer belo
 act.** The skills running when the hit landed are collected and cancelled, and only then is the event raised.
 A row that answers a hit by starting a skill must not have that skill cut short by the same hit.
 
+**The coordinating session approved the writing session's judgements 1 to 10, under "Judgements by the writing
+session" below, on 2026-10-08.** They were put to it as eight; the numbering here is this entry's, which lists
+ten, and the approval is of all ten.
+
 ### How it is built
 
 - **`NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime)`**, a third form beside the two
@@ -233,7 +251,8 @@ each blow is read back before anything is concluded from it.
 - `ASpinEndedFromOutsideMakesNoFurtherSwingAndNoFinalHitEvenWithTheEnginesTimerSweepOff`. A 3 second spin with
   a final hit, ended after its first swing, takes nothing more from its target in four and a quarter seconds;
   the same spin left alone makes at least seven swings. Then again with `AbilitySystem.ClearAbilityTimers`
-  off. **Only the second half fails if the Strike's two clears are taken out.**
+  off. **Only the second half fails if the Strike's two clears are taken out.** That variable is process-wide
+  while this one test runs; the test puts it back on every way out and its last line reads it back.
 - `ALandedHitCutsShortTheWearersSkillAndGivesBackNeitherItsCostNorItsCooldown`. K1, on test fighters: the
   wearer spent what a fighter with no row spent, and its slot is on cooldown. Then a real player hit in its
   wind-up: the swing is lost and its target is not hurt; a player with no row connects.
@@ -246,6 +265,10 @@ each blow is read back before anything is concluded from it.
 - `ASkillStartedInAnswerToTheHitIsNotCutShortByThatHit`. The order.
 - `ASpinCutShortByTheRetaliationForItsOwnFirstSwingNeverGoesOnSpinning`. A cancel from inside the skill's own
   blow.
+- `ARackCutShortByTheRetaliationForItsOwnFirstThrowThrowsNothingMore`. The same, for the guard on a rack: a
+  rack of four that states no speed, so each throw lands as it is made.
+- `AFlickerCutShortByTheRetaliationForItsOwnFirstArrivalArrivesNowhereElse`. The same, for the guard on a
+  flicker: a flicker whose row states no `Untargetable`, so it can be hit.
 
 **Two of them need the player's attack clips** for a swing that waits: the second half of the second, and the
 whole of the fifth. Where the clips are absent each reports itself with `ReportSkippedHalf`.
@@ -265,8 +288,12 @@ row shapes is carried through; the flag is a stat with no attribute and a made-u
 - **The skill bar's display of the lost use.**
 - **A blow the temporary absorb takes whole.** The energy shield's is tested; the absorb's is read to reach the
   same line.
-- **A rack and a rift interrupted.** Their timers are cleared by name and by the engine; no test uses either.
-- **A flicker interrupted.** It makes its user untargetable for its length, so a hit seldom lands on one.
+- **A rack between throws interrupted by a hit from outside, and a rift interrupted.** Their timers are cleared
+  by name and by the engine. The one test of a rack is of the retaliation for its own first throw; no test uses
+  a rift.
+- **A flicker between arrivals interrupted by a hit from outside, and the designed flicker at all.** The one
+  test is of the retaliation for its own first arrival, on a row with no `Untargetable`. The designed flicker
+  makes its user untargetable for its length, so a hit seldom lands on one.
 - **A held swing interrupted.** It was already broken by `HoldTimer`'s clear; under the untagged row The Whole
   Weight, which counts the hits taken while it is held, ends at the first.
 - **A hit by a trap, a gadget or a minion.** Each is a landed hit like any other; a minion of the wearer's own
