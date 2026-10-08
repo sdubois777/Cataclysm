@@ -8,6 +8,18 @@ Decisions made outside the Google Drive documents, newest first.
 outcome of any Unreal run is recorded here. The Python checks that were run are named under "Tests", with what they
 printed left to the commit that carries this entry.
 
+**Said first, because a player will call a stagger and a slow crowd control: "CC effects" here is seven
+kinds and no others.** They are a stun, a knockdown, a fear, and the four displacements: a knockback, a push
+aside, a pull and a launch. These are the kinds the code asks its crowd-control immunity for. **A stagger, a
+pin and a slow are NOT covered.** A wearer still staggers, pins and slows an enemy above half health, unless
+another row says otherwise. Ruled 2026-10-07; it is on the play-check list.
+
+**Said first: two things that follow from that, about other layers of the same stack.** Neither is in this
+branch's code, and neither was read or tested here; both are stated as the coordinating session ruled them.
+An earlier layer roots an enemy after a stagger, by a pin. This ceiling does not stop that root, because a
+pin is not covered. A worn row that pulls enemies when a movement skill arrives IS refused by this ceiling on
+enemies above it, because a pull is a displacement.
+
 **Said first: the stat holds 100 less the ceiling, not the ceiling.** The sentence says "above 50% HP" and the row
 states 50. Those are the same number only because 100 less 50 is 50. A sentence that said "above 30% HP" would be
 a row of 70. This is the shape `stagger_health_ceiling_reduction` and `healing_ceiling_reduction` already have.
@@ -87,6 +99,20 @@ written here. This change builds what the row needs.
 5. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: where the new
    ceiling and the stagger's ceiling both apply, the stricter decides.**
 
+6. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: "CC
+   effects" is the seven kinds the immunity is asked for.** A stun, a knockdown, a fear, and displacement:
+   knockback, push aside, pull, launch. A stagger, a pin and a slow are not covered. An earlier layer's root
+   after a stagger, which is a pin, is not stopped by this ceiling. A worn row that pulls enemies on the
+   arrival of a movement skill is refused by it on enemies above the ceiling.
+7. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: the stat is
+   a reduction of the ceiling, and the row is a flat 50.** Two worn copies give a ceiling of nought, so no
+   living enemy can be controlled. The reading not taken: a stat holding the ceiling itself.
+8. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: accepted as
+   built.** Health is read after the skill's own blow. "Above" is strict. The wearer's minions are not
+   limited. Only an enemy is refused.
+9. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: noted that no
+   player skill applies fear today.**
+
 ### What the immunity covers, and so what this covers
 
 `UCataclysmSkillTemplate::IsImmuneTo` is asked in four places. A row writing `Immune=CrowdControl` answers yes
@@ -158,6 +184,13 @@ No row exists yet, so none of this can be seen in play until one is written.
 - A wearer's stun, knockdown, knockback, pull, launch or shoulder-through does nothing to an enemy above half
   health. The enemy is not held, not moved and not staggered. The skill's damage lands as usual.
 - The same skill on an enemy at half health or below works as it always did.
+- **To check, because a player will call these crowd control: a stagger, a pin and a slow still land on an
+  enemy above half health.** Only a stun, a knockdown, a fear, a knockback, a push aside, a pull and a launch
+  are refused. The reading not taken: every effect a player would call crowd control.
+- **To check, once the other layers' rows exist:** an enemy above half health that is staggered is still
+  rooted by the row that roots after a stagger, because that root is a pin. An enemy above half health is not
+  pulled by the worn row that pulls on the arrival of a movement skill, because a pull is a displacement.
+- No player skill frightens an enemy today, so fear cannot be seen refused in play.
 - A blow that takes an enemy below half health controls it in the same use.
 - Rows that say "applying a CC effect grants ..." do not fire for a refused application.
 - Enemies stun, knock down and shove the wearer exactly as before.
@@ -168,42 +201,38 @@ No row exists yet, so none of this can be seen in play until one is written.
   exactly 50% can be controlled. The reading not taken: refused at 50% and above.
 - **Judged: "HP" is health as a share of maximum health.** The energy shield is not counted. The reading not
   taken: health and energy shield together. The stagger's ceiling reads health alone.
-- **Judged: two worn copies add to 100, and the wearer can control no living enemy.** The reading not taken:
-  two copies are the same as one.
+- **Judged: the stat is a reduction of the ceiling, and the row is a flat 50. Two worn copies add to 100, the
+  ceiling is nought, and the wearer can control no living enemy.** The reading not taken: a stat holding the
+  ceiling itself, under which two copies would add to a ceiling of 100 and remove the drawback. Also not
+  taken: two copies are the same as one.
 
 ### Judgements by the writing session
 
-Each is a judgement by the writing session, for the coordinating session to confirm.
+Each is a judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 
 1. **The stat is a reduction of the ceiling, base nought, and the row is `flat` 50.** A judgement by the writing
-   session, for the coordinating session to confirm. The brief described a stat holding the ceiling itself. That
+   session, confirmed by the coordinating session on 2026-10-07. The brief described a stat holding the ceiling itself. That
    stat would need nought to mean "no ceiling", and two worn copies would add in the flat bucket to 100 and
    remove the drawback. `tools/tests/test_enchantment_effects_match_the_row_text.py` records that reasoning for
    `healing_ceiling_reduction`. As a reduction, a wearer without the row is unchanged with no engine-supplied
    base, the row states 50, and two copies are stricter. The cost: a future sentence with a number other than
    50 states the complement, and its stat then joins `COMPLEMENT_STATS` in that test.
-2. **The stat's name,** `crowd_control_health_ceiling_reduction`. A judgement by the writing session, for the
-   coordinating session to confirm.
-3. **Only an enemy is refused.** A judgement by the writing session, for the coordinating session to confirm.
+2. **The stat's name,** `crowd_control_health_ceiling_reduction`. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+3. **Only an enemy is refused.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
    The sentence says "enemies". `IsHostileTo` is what `debuff_duration` already uses for "debuffs you apply to
    enemies". It answers no for the wearer itself and for a corpse.
-4. **Above, not at.** A judgement by the writing session, for the coordinating session to confirm. The
+4. **Above, not at.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-07. The
    stagger's ceiling reads the same way.
 5. **The stat is read off the actor that applies, with no pass to a summoner.** A judgement by the writing
-   session, for the coordinating session to confirm. A minion asks its own stats, so the wearer's minions are
+   session, confirmed by the coordinating session on 2026-10-07. A minion asks its own stats, so the wearer's minions are
    not limited, also under the keystone Conduit. The stagger's ceiling is read the same way. The reading not
    taken: `UCataclysmCombatEvents::AttackerOf`, which the `crowd_control` event uses.
-6. **Health is read when the effect is applied, after the blow.** A judgement by the writing session, for the
-   coordinating session to confirm. It follows from the order in the code. The reading not taken: health before
+6. **Health is read when the effect is applied, after the blow.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-07. It follows from the order in the code. The reading not taken: health before
    the blow, which would need the health carried from before the damage.
-7. **A target whose health cannot be read is not refused.** A judgement by the writing session, for the
-   coordinating session to confirm.
-8. **The stat is asked with no tags.** A judgement by the writing session, for the coordinating session to
-   confirm. A row with Required Tags would never apply.
-9. **The stat is held between 0 and 100.** A judgement by the writing session, for the coordinating session to
-   confirm. Three copies are the same as two.
-10. **The stagger's block was left as it is.** A judgement by the writing session, for the coordinating session
-    to confirm. See "where the code did not match", item 2.
+7. **A target whose health cannot be read is not refused.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+8. **The stat is asked with no tags.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-07. A row with Required Tags would never apply.
+9. **The stat is held between 0 and 100.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-07. Three copies are the same as two.
+10. **The stagger's block was left as it is.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-07. See "where the code did not match", item 2.
 
 ### Research
 
