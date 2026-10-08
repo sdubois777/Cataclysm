@@ -19425,4 +19425,102 @@ bool FCataclysmLessDamageEarlyInAChannelRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+// TWO SENTENCES ON A HIT THAT CUTS A SKILL SHORT. Ruled 2026-10-08; each row is as the entry "A landed hit cuts
+// short the skill its wearer is using" states it. THE STAT IS READ AS THE GAME ASKS FOR IT, with a skill's own tags;
+// that a real blow then ends a real skill is that entry's tests, with the row made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAHitInterruptsAnySkillRowTest,
+	"Cataclysm.Enchantments.TheHitInterruptsAnySkillRowAnswersForASkillOfAnyTags",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Taking a hit interrupts any skill currently being used". One row:
+ * `hit_taken_cancels_skills` flat 1 with no required tags. The real row WORN.
+ * The stat is asked three ways, each as `NoteHitTaken` asks it for a running
+ * skill: with a channelled skill's tag, with a melee skill's tag and with no
+ * tags at all. Each answers 1 while the item is worn and nought when it is
+ * taken off.
+ */
+bool FCataclysmAHitInterruptsAnySkillRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Negative_Taking_a_hit_interrupts_any_skill_currently_bein");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	const FGameplayTagContainer NoTags;
+	const FGameplayTagContainer Channelled = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Channel"));
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: the two tags exist"), Channelled.Num() == 1 && Melee.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Flag(UCataclysmAbilitySystemComponent::HitTakenCancelsSkillsStat);
+	const auto For = [&](const FGameplayTagContainer& Tags) { return Worn.ASC()->StatForSkill(Flag, Tags, 0.0f); };
+
+	TestEqual(*(FString(TEXT("worn: asked for a melee skill, the flag answers 1.")) + CataclysmRepeatRowsTest::OlderAsset),
+		For(Melee), 1.0f, 0.001f);
+	TestEqual(TEXT("worn: asked for a channelled skill, it answers 1"), For(Channelled), 1.0f, 0.001f);
+	TestEqual(TEXT("worn: asked for a skill with no tags, it answers 1"), For(NoTags), 1.0f, 0.001f);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: asked for a melee skill, it answers nought"), For(Melee), 0.0f, 0.001f);
+	TestEqual(TEXT("taken off: asked for a channelled skill, it answers nought"), For(Channelled), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAHitInterruptsAChannelRowTest,
+	"Cataclysm.Enchantments.TheHitInterruptsTheChannelRowAnswersForAChannelledSkillAndForNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Taking damage while channeling interrupts the channel immediately". One
+ * row: `hit_taken_cancels_skills` flat 1 requiring `Type.Channel`. The real
+ * row WORN. Asked for a channelled skill the flag answers 1; asked for a melee
+ * skill, or for a skill with no tags, it answers nought, WHICH IS THE WHOLE
+ * DIFFERENCE between this row and the one for any skill.
+ */
+bool FCataclysmAHitInterruptsAChannelRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const RowName = TEXT("Negative_Taking_damage_while_channeling_interrupts_the_ch");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	const FGameplayTagContainer NoTags;
+	const FGameplayTagContainer Channelled = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Channel"));
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: the two tags exist"), Channelled.Num() == 1 && Melee.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Flag(UCataclysmAbilitySystemComponent::HitTakenCancelsSkillsStat);
+	const auto For = [&](const FGameplayTagContainer& Tags) { return Worn.ASC()->StatForSkill(Flag, Tags, 0.0f); };
+
+	TestEqual(*(FString(TEXT("worn: asked for a channelled skill, the flag answers 1.")) + CataclysmRepeatRowsTest::OlderAsset),
+		For(Channelled), 1.0f, 0.001f);
+	TestEqual(TEXT("worn: asked for a melee skill, it answers nought"), For(Melee), 0.0f, 0.001f);
+	TestEqual(TEXT("worn: asked for a skill with no tags, it answers nought"), For(NoTags), 0.0f, 0.001f);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: asked for a channelled skill, it answers nought"), For(Channelled), 0.0f, 0.001f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
