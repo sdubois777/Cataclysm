@@ -4,12 +4,13 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-08 — A large enough blow kills a creature under Sacrificial Bond: the whole blow is divided before it is cut to the creature's remaining health
 
-**Not built and not run.** The writing session wrote the change, six tests, one restated test and this entry,
-in two commits. The second followed the coordinating session's rulings on the report of the first; it added one
-line of code, the sixth test and the rulings numbered 7 to 12 below. The writing session compiled nothing and
-ran no Unreal test. It ran the Python suite, the lint and the conflict check before each commit and nothing
-else. Every statement below about what the engine does is read from the code. No outcome of a build or of an
-Unreal run is recorded here.
+**Built and run.** The writing session wrote the change, six tests, one restated test and this entry, in two
+commits. The second followed the coordinating session's rulings on the report of the first; it added one line of
+code, the sixth test and the rulings numbered 7 to 12 below. The writing session compiled nothing and ran no
+Unreal test. The registering session then built and ran the layer in one window at 94408589, and every figure
+came out as registered; the Run section at the end of this entry has each printed line. The coordinating session
+ruled and ran nothing. Statements below about what the engine does are read from the code unless the Run section
+gives a printed line for them.
 
 **Said first, for the owner's play-check: an ally can take more than the bonded creature had left.** A blow of
 1,000 on a bonded creature with 100 health and one ally kills it and takes 500 from the ally. It follows from the
@@ -37,10 +38,10 @@ nought", stays true. The sixth test is on it.
 brief named one assertion of that test that this layer makes false. Reading the test whole found a second, its
 last line. Both are restated below, before and after, and ruling 8 approves the second.
 
-**Said first: the sixth test rests on an order that was read and not run.** The bonded creature's death is
-handled inside its health write, so its body explodes before its allies are paid. The sixth test sets the
-ally's health from that order. If the order were the other way the test would fail with the ruled line in
-place.
+**Said first: the sixth test rests on an order that was read, and the run agrees with it.** The bonded creature's
+death is handled inside its health write, so its body explodes before its allies are paid. The sixth test sets
+the ally's health from that order. If the order were the other way the test would fail with the ruled line in
+place. It passed in the window, and its figures under the second guard proof are the ones that order gives.
 
 ### The owner's answer
 
@@ -197,7 +198,8 @@ and the registering session read it: `UCataclysmSkillEffects::ReduceHealthDirect
 of nought or less, a missing ability system on either side, or a target with no vital set, and does not ask
 whether the sender lives; `UCataclysmTargeting::AbilitySystemOf` asks the engine for the actor's ability
 system and nothing else. The writing session also read that a dead creature is removed on a timer and not
-at once. This order did not occur before this layer and is not run. It is accepted as read (ruling 11).
+at once. This order did not occur before this layer. It was accepted as read (ruling 11), and the second and
+third tests, which assert the ally is paid after the bonded creature dies, passed in the window.
 
 **And its body explodes before its allies are paid, as read.** A death is announced from inside the health
 write (`UCataclysmSkillEffects::MarkDead` calls `UCataclysmCombatEvents::NoteDeath`), and work handed to
@@ -336,7 +338,7 @@ for 200,000 or more.
 
 ### The guard proof proposed
 
-Not run. In `CataclysmVitalAttributeSet.cpp`, line 1726, `const float Whole = Arriving + Outcome.Overkill;`
+Run in the window; see Run. In `CataclysmVitalAttributeSet.cpp`, line 1726, `const float Whole = Arriving + Outcome.Overkill;`
 becomes `const float Whole = Arriving;`. The first test should then fail on two assertions: "a blow whose
 half is at least the bonded creature's health kills it" and "control: and it loses half of the whole blow".
 **The break changes the control's figure too, and this is why.** In the control the blow is larger than the
@@ -369,6 +371,48 @@ case and the Necrotic Ground case remain.
 
 Nothing. No row, stat, condition or scale was added, and nothing in `game/Data` or the workbook changes. No
 generator dry run applies.
+
+### Run
+
+One window on 2026-10-08, at `feat/sacrificial-bond-kills-3` 94408589, on development 9bfac4da. One attempt;
+nothing was corrected during it. Every build, run and measurement here was made by the registering session. Every
+figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 34 actions, 31 files compiled` |
+| Whole Unreal suite | `3395 tests performed, 3395 succeeded, 0 failed`; `Declared: 3395 tests in the tree at 94408589; 3395 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 387.98s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+Registered before the run: 3,395 Unreal tests (3,389 at the merged tree plus the six of this layer by name) and a
+JUnit count of 5,887. Both printed as registered.
+
+**How the layer was written and checked.** A second session wrote both commits under a brief carrying the
+rulings. The registering session read every changed line of game code and every line of the six new tests and of
+the restated test apart from comments, read `ReduceHealthDirectly`, `AbilitySystemOf` and where the explosion's
+figure is read, and did not read this entry beyond its opening and the parts it changed.
+
+**Guard proofs, at 94408589, each with one anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| B1 | `CataclysmVitalAttributeSet.cpp`: `const float Whole = Arriving + Outcome.Overkill;` becomes `const float Whole = Arriving;` | `Cataclysm.EnemyModifiers.ABlowWhoseShareReachesABondedCreaturesHealthKillsIt` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| B2 | `CataclysmVitalAttributeSet.cpp`: `Blow.Overkill = 0.0f;` becomes `Blow.Overkill = Blow.Overkill;` | `Cataclysm.EnemyModifiers.AnAllyKilledByItsShareOfABondedKillAddsNoOverkillExplosion` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+
+B1's two, as printed: "Expected 'control: and it loses half of the whole blow' to be 550.000000, but it was
+412.500000 and outside tolerance 0.010000." and "Expected 'a blow whose half is at least the bonded creature's
+health kills it' to be true." The first is three eighths of a blow of 1,100 where half is asserted, as ruling 12's
+note says.
+
+B2's two, as printed: "Expected 'the ally's death records an overkill of nought' to be 0.000000, but it was
+880.000000 and outside tolerance 0.001000." and "Expected 'the bystander loses what it lost in the control: the
+ally's death adds no explosion' to be 1246.664062, but it was 2126.664062 and outside tolerance 0.050000." The
+difference between the last two figures is 880, the same figure as the overkill the first line shows.
+
+No proof was run for the restated Lightforged Walls bond test, for the Unholy Sigil's hold, or for the tick.
 
 ---
 
