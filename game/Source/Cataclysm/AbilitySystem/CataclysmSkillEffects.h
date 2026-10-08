@@ -2527,6 +2527,45 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsPinned(const AActor* Actor);
 
+	/**
+	 * `cannot_walk`, a flag: above nought, the character's own steps are
+	 * refused. Ruled 2026-10-08 under the owner's delegation, for "You cannot
+	 * move while channeling any skill", whose row is a `flat` line of 1 under
+	 * the condition `while_channelling`.
+	 *
+	 * A FLAG AND NOT A SPEED. The sentence could have been a walking speed taken
+	 * to nothing, and `ACataclysmPlayerCharacter::ApplyMovementSpeed` refuses a
+	 * speed of nought for its own written reason: a speed of zero is a
+	 * character who cannot move with nothing on screen to say why. So no speed
+	 * is moved, and the step is refused where a pin's and a held swing's are, in
+	 * `ACataclysmPlayerController::PawnCannotWalk`.
+	 *
+	 * IT STOPS THE CHARACTER'S OWN WALKING AND NOTHING ELSE. A knockback, a pull
+	 * and every other forced movement read neither this nor a pin. A movement
+	 * SKILL is refused by a second row, on `UCataclysmSkillSlots::LockedStat`.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE AND NO BASE. It is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()` and is asked by
+	 * `CannotWalkByARow` below, with no tags.
+	 */
+	static const TCHAR* CannotWalkStat;
+
+	/**
+	 * Whether a row this character carries forbids it to walk right now:
+	 * `CannotWalkStat` above nought, asked with no tags and the character's
+	 * state at this moment, so a row under a condition answers for now. Ruled
+	 * 2026-10-08.
+	 *
+	 * NO TAGS, because walking is not a skill: a row scoped to a skill's tags
+	 * would never apply, and none should. False for an actor with no ability
+	 * system of this project's, and for a character with no such row, which is
+	 * every character today.
+	 *
+	 * A FUNCTION OF THE ACTOR, as `IsPinned` above is, so that the one question
+	 * the player controller asks can be asked without a player controller.
+	 */
+	static bool CannotWalkByARow(const AActor* Actor);
+
 	/** The tag a character carries while nothing can hit it. */
 	static FGameplayTag UntargetableTag();
 
