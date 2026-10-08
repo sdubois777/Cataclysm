@@ -754,8 +754,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-07, from 546 over 460: one row on one enchantment.
 #: AND 548 OVER 462 SINCE THE SHIELD EVERY TWELVE SECONDS,
 #: issue #1833, 2026-10-07, from 547 over 461: one row on one enchantment.
-AUTHORED_ROWS = 548
-AUTHORED_ENCHANTMENTS = 462
+#: AND 549 OVER 463 SINCE THE SHIELD FROM OVERHEAL,
+#: issue #1833, 2026-10-07, from 548 over 462: one row on one enchantment.
+AUTHORED_ROWS = 549
+AUTHORED_ENCHANTMENTS = 463
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

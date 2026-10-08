@@ -753,7 +753,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 547 SINCE THE STRIKE ON AN EVADED RANGED ATTACK, issue #1833, from 546.
 	//
 	// AND 548 SINCE THE SHIELD EVERY TWELVE SECONDS, issue #1833, from 547.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    548)
+	//
+	// AND 549 SINCE THE SHIELD FROM OVERHEAL, issue #1833, from 548.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    549)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
