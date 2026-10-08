@@ -7201,6 +7201,36 @@ namespace CataclysmStatExemptionTest
 					  bCarrierAppliedToHurt && UCataclysmSkillEffects::IsStunned(CarriersHurt.Actor));
 	}
 
+	/**
+	 * `cannot_walk`, read by `UCataclysmSkillEffects::CannotWalkByARow`, which is what
+	 * `ACataclysmPlayerController::PawnCannotWalk` asks for its fifth reason. Ruled 2026-10-08: "You cannot move
+	 * while channeling any skill". Two characters, the second carrying the stat at a flat 1: the plain one is not
+	 * forbidden to walk and the carrying one is.
+	 *
+	 * WHAT THIS DOES NOT REACH. That a player's step is then refused: `PawnCannotWalk` runs on a player controller
+	 * and no automation test has one. This observes the function that controller calls, and no further.
+	 *
+	 * STANDING: the plain character at the origin, the carrying one 100 m along Y.
+	 */
+	void ProbeCannotWalk(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Carrier(World, FVector(0, 100 * M, 0));
+		GrantFlat(Carrier.Actor, UCataclysmSkillEffects::CannotWalkStat, 1.0f);
+
+		Test.TestFalse(TEXT("control: a character with no row is not forbidden to walk"),
+					   UCataclysmSkillEffects::CannotWalkByARow(Plain.Actor));
+		Test.TestTrue(TEXT("and one carrying cannot_walk at 1 is, so CannotWalkByARow really reads it"),
+					  UCataclysmSkillEffects::CannotWalkByARow(Carrier.Actor));
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7327,6 +7357,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("strike_arc_at_least_degrees"), &ProbeStrikeArcAtLeastDegrees},
 			{TEXT("stagger_root_seconds"), &ProbeStaggerRootSeconds},
 			{TEXT("crowd_control_health_ceiling_reduction"), &ProbeCrowdControlHealthCeiling},
+			{TEXT("cannot_walk"), &ProbeCannotWalk},
 		};
 		return Made;
 	}

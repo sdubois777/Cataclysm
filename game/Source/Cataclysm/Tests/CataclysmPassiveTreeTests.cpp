@@ -1666,6 +1666,10 @@ namespace CataclysmPassiveConditionTest
 			// RULED 2026-10-07: under any damage over time. A state, as the
 			// name above is, so no value.
 			|| Name == TEXT("while_under_damage_over_time")
+			// RULED 2026-10-08: a channelled skill of the character's own is
+			// running. A state too, so no value. `channelling_for_under_seconds`
+			// compares its seconds and is deliberately absent.
+			|| Name == TEXT("while_channelling")
 			|| Name == TEXT("class_resource_at_maximum")
 			|| Name == TEXT("hit_is_melee_attack")
 			|| Name == TEXT("hit_is_ranged_attack")
