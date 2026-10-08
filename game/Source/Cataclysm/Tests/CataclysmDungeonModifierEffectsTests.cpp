@@ -27,6 +27,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -49384,6 +49385,799 @@ bool FCataclysmAngelicWardensOnceTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no statue came back and none woke"), Mode->AngelicStatueCellsStanding().Num(), StandingBefore - 1);
 	TestTrue(TEXT("the woken statue's cell is still walkable"), Plan.IsFloor(Stage.Statue));
 	TestEqual(TEXT("and no pillar came back onto it"), PillarsOn(World, Mode, Stage.Statue), 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Rule_of_Chaos. Issues #1820 and #41.
+//
+// "The normal rules of the game are suspended within these dungeons. Gameplay mechanics and systems become
+// randomized or altered, challenging players to adapt on the fly. This could involve changes to character
+// attributes, skill behavior, or even unconventional victory conditions."
+//
+// WHAT IS BUILT IS NARROWER THAN THE SENTENCE: three named rule changes, one drawn a floor, approved by the owner on
+// 2026-10-08 "for now". Skills paid in health; cooldowns twice as long; the stairs open by time.
+//
+// NOT TESTED HERE BECAUSE IT IS NOT WRITTEN: a kill by the player clearing every cooldown. It was stopped for a
+// ruling; see the entry of 2026-10-08 in `docs/DECISIONS.md`.
+//
+// WHERE EVERYTHING STANDS. The player stands where the floor put it, at the entrance. No creature is placed except
+// in the Blood Gates test, which places two, 4 metres apart, at (400, 0, 0) and (800, 0, 0), as the Blood Gates
+// tests above place theirs. No test waits on world time: the floor's clock is stepped by hand, one beat at a time,
+// and a beat is a quarter of a second, so 59 seconds is 236 beats and 60 is 240.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one whose floors each draw a rule change. Issues #1820, #41. */
+	const FName RuleOfChaosRow(FCataclysmDungeonFloorRules::RuleOfChaosKey);
+
+	/** A dungeon carrying only that row, on a seed written here, so its floors' draws never move. */
+	FCataclysmDungeonIdentity ARuleOfChaosDungeon()
+	{
+		FCataclysmDungeonIdentity Dungeon;
+		Dungeon.DungeonSeed = 1234;
+		Dungeon.TotalFloors = 40;
+		Dungeon.Modifiers = {RuleOfChaosRow};
+		Dungeon.ModifierScore = 15.0f;
+		return Dungeon;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString RuleOfChaosPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(RuleOfChaosRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * Carrying these rows, go to the first floor from 1 to 40 that draws the wanted change, and empty it.
+	 *
+	 * SEARCHED FOR AND NOT TYPED, because the game mode's seed can be pinned at the console and a typed floor number
+	 * would then draw something else. The draw is asked of the same rule the game mode asks.
+	 */
+	bool GoToAFloorThatDrew(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const TArray<FName>& Rows,
+							int32 Wanted, int32& OutFloor)
+	{
+		Mode->DungeonModifiers = Rows;
+		OutFloor = 0;
+		for (int32 Floor = 1; Floor <= 40 && OutFloor == 0; ++Floor)
+		{
+			if (FCataclysmDungeonFloorRules::BriefFor(Mode->DungeonIdentity(), Floor).RuleOfChaosChange == Wanted)
+			{
+				OutFloor = Floor;
+			}
+		}
+		if (!Test.TestTrue(FString::Printf(TEXT("a floor from 1 to 40 draws rule change %d"), Wanted), OutFloor > 0)
+			|| !Test.TestTrue(FString::Printf(TEXT("floor %d was reached"), OutFloor), Mode->GoToFloor(OutFloor))
+			|| !Test.TestEqual(TEXT("and it drew the wanted rule change"), Mode->RuleOfChaosChangeNow(), Wanted))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		return true;
+	}
+
+	/** The same floor number carrying these other rows and not Rule of Chaos: the control. */
+	bool GoToThatFloorCarrying(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const TArray<FName>& Rows,
+							   int32 Floor)
+	{
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(FString::Printf(TEXT("floor %d without Rule of Chaos was reached"), Floor),
+						   Mode->GoToFloor(Floor))
+			|| !Test.TestEqual(TEXT("and it drew no rule change"), Mode->RuleOfChaosChangeNow(),
+							   FCataclysmDungeonFloorRules::RuleOfChaosNoChange))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		return true;
+	}
+
+	/** A Movement skill on the player, which costs mana and has a cooldown, granted as the death tests grant one. */
+	UCataclysmMovementSkill* RuleOfChaosGrantStep(const FPossessedPlayer& Player)
+	{
+		const FGameplayAbilitySpecHandle Handle = Player.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmMovementSkill::StaticClass(), ECataclysmAbilitySlot::Movement, /*Level=*/100, Player.Character);
+		FGameplayAbilitySpec* Spec = Player.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmMovementSkill* Skill = Spec ? Cast<UCataclysmMovementSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = TEXT("Ashwalk");
+			Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Mode=Blink; Range=9; Radius=2"));
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Slot.Movement"));
+		}
+		return Skill;
+	}
+
+	/** What one use of that skill took and started. */
+	struct FRuleOfChaosUse
+	{
+		bool bWentOff = false;
+		float HealthBefore = 0.0f;
+		float HealthTaken = 0.0f;
+		float ManaTaken = 0.0f;
+		float CooldownSeconds = 0.0f;
+	};
+
+	/**
+	 * Use the skill once, holding this share of a maximum mana of 1000, with no cooldown left from an earlier use.
+	 *
+	 * THE MAXIMUM MANA IS WRITTEN HERE, EACH TIME, because a floor change refreshes the player's stat line and puts
+	 * the class's own back; 1000 makes a share exact and is more than the skill costs. HEALTH IS READ, NEVER WRITTEN:
+	 * the player is a real character with class lines, so every health figure below is a difference from what was
+	 * held just before the use. The test world's time does not move, so the time left on the cooldown is its length.
+	 */
+	FRuleOfChaosUse RuleOfChaosUseAtManaShare(const FPossessedPlayer& Player, UCataclysmMovementSkill* Step,
+											  float ManaShare)
+	{
+		using Vital = UCataclysmVitalAttributeSet;
+		FRuleOfChaosUse Use;
+		const FGameplayTagContainer Cooldown(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Movement));
+		Player.AbilitySystem->RemoveActiveEffectsWithGrantedTags(Cooldown);
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxManaAttribute(), 1000.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetManaAttribute(), 1000.0f * ManaShare);
+
+		Use.HealthBefore = Player.Read(Vital::GetHealthAttribute());
+		const float ManaBefore = Player.Read(Vital::GetManaAttribute());
+		Use.bWentOff = Step != nullptr
+			&& Player.AbilitySystem->FindAbilitySpecFromHandle(Step->GetCurrentAbilitySpecHandle()) != nullptr
+			&& Player.AbilitySystem->TryActivateAbility(Step->GetCurrentAbilitySpecHandle(),
+														 /*bAllowRemoteActivation=*/false);
+		Use.HealthTaken = Use.HealthBefore - Player.Read(Vital::GetHealthAttribute());
+		Use.ManaTaken = ManaBefore - Player.Read(Vital::GetManaAttribute());
+		for (const float Left : Player.AbilitySystem->GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Cooldown)))
+		{
+			Use.CooldownSeconds = FMath::Max(Use.CooldownSeconds, Left);
+		}
+		return Use;
+	}
+}
+
+// THE DRAW: THE SAME SEED AND FLOOR GIVE THE SAME CHANGE; OVER THIRTY FLOORS ALL THREE APPEAR; A DUNGEON WITHOUT THE
+// ROW DRAWS NONE; THE DRAW ADDS NO ROW AND NO DANGER; AND THE PANEL NAMES THE CHANGE DRAWN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosDrawTest,
+	"Cataclysm.DungeonModifierEffects.RuleOfChaosDrawsOneOfThreeRuleChangesForEachFloorAndThePanelNamesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosDrawTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	// THE RULE ALONE, NO WORLD. Thirty floors of one dungeon, and the same thirty of a dungeon without the row.
+	const FCataclysmDungeonIdentity Chaotic = ARuleOfChaosDungeon();
+	FCataclysmDungeonIdentity Plain = Chaotic;
+	Plain.Modifiers = {};
+	Plain.ModifierScore = 0.0f;
+
+	TArray<int32> Drawn = {0, 0, 0, 0};
+	for (int32 Floor = 1; Floor <= 30; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief = Rules::BriefFor(Chaotic, Floor);
+		if (!TestTrue(FString::Printf(TEXT("floor %d drew one of the three changes (%d)"), Floor,
+									  Brief.RuleOfChaosChange),
+					  Brief.RuleOfChaosChange >= 1 && Brief.RuleOfChaosChange <= Rules::RuleOfChaosChanges))
+		{
+			return false;
+		}
+		++Drawn[Brief.RuleOfChaosChange];
+		TestEqual(FString::Printf(TEXT("floor %d draws the same change when asked again"), Floor),
+				  Rules::BriefFor(Chaotic, Floor).RuleOfChaosChange, Brief.RuleOfChaosChange);
+		TestEqual(FString::Printf(TEXT("floor %d carries the one row and no other"), Floor), Brief.Modifiers.Num(), 1);
+		TestEqual(FString::Printf(TEXT("floor %d is worth the row's danger and no more"), Floor), Brief.ModifierScore,
+				  15.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("without the row floor %d draws no change"), Floor),
+				  Rules::BriefFor(Plain, Floor).RuleOfChaosChange, 0);
+	}
+	TestTrue(FString::Printf(TEXT("over thirty floors skills paid in health was drawn (%d times)"), Drawn[1]),
+			 Drawn[1] > 0);
+	TestTrue(FString::Printf(TEXT("over thirty floors longer cooldowns was drawn (%d times)"), Drawn[2]),
+			 Drawn[2] > 0);
+	TestTrue(FString::Printf(TEXT("over thirty floors the stairs that open by time was drawn (%d times)"), Drawn[3]),
+			 Drawn[3] > 0);
+
+	// AND A WORLD, FOR THE PANEL. One floor that drew each change, and the same floor without the row.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row has no line for it"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("no line")));
+
+	int32 Floor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosSkillsPaidInHealth, Floor))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel names skills paid in health"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: skills cost 5% of current health and no mana")));
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosKillsClearCooldowns, Floor))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel names longer cooldowns"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: cooldowns 100% longer")));
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosStairsOpenByTime, Floor))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel names the stairs that open by time, and their seconds"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: the stairs open in 60 s")));
+	if (!GoToThatFloorCarrying(*this, Mode, {}, Floor))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the same floor without the row has no line again"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("no line")));
+	return true;
+}
+
+// CHANGE 1: A SKILL TAKES A SHARE OF CURRENT HEALTH AND NO MANA. THE CONTROL IS THE SAME SKILL ON THE SAME FLOOR
+// WITHOUT THE ROW. WITH DESPERATE MEASURES ALSO ON THE FLOOR, AT LOW MANA, THE SHARE IS DESPERATE MEASURES' OWN, ONCE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosHealthCostTest,
+	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosASkillPaidInHealthTakesAShareOfCurrentHealthAndNoMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosHealthCostTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	if (!TestNotNull(TEXT("a movement skill was granted to the player"), Step))
+	{
+		return false;
+	}
+	const TArray<FName> DesperateOnly = {FName(UCataclysmDungeonModifierEffects::DesperateMeasuresKey)};
+	const TArray<FName> Both = {RuleOfChaosRow, FName(UCataclysmDungeonModifierEffects::DesperateMeasuresKey)};
+
+	// THE FLOOR UNDER THE CHANGE, AT FULL MANA.
+	int32 Floor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosSkillsPaidInHealth, Floor))
+	{
+		return false;
+	}
+	const FRuleOfChaosUse Chaotic = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+
+	// THE CONTROL: THE SAME FLOOR NUMBER WITH NO ROW, AT FULL MANA.
+	if (!GoToThatFloorCarrying(*this, Mode, {}, Floor))
+	{
+		return false;
+	}
+	const float Cost = Step->ManaCostFor(Player.AbilitySystem);
+	const FRuleOfChaosUse Control = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+
+	// DESPERATE MEASURES ALONE, AT 5% OF MANA, WHICH IS BELOW ITS 10%: the figure the two rows together must match.
+	if (!GoToThatFloorCarrying(*this, Mode, DesperateOnly, Floor))
+	{
+		return false;
+	}
+	const FRuleOfChaosUse Desperate = RuleOfChaosUseAtManaShare(Player, Step, 0.05f);
+
+	// AND BOTH ROWS, AT THE SAME 5% OF MANA, where each row's condition holds.
+	int32 BothFloor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, Both, Rules::RuleOfChaosSkillsPaidInHealth, BothFloor))
+	{
+		return false;
+	}
+	const FRuleOfChaosUse Together = RuleOfChaosUseAtManaShare(Player, Step, 0.05f);
+
+	// SET-UP, ASSERTED BEFORE ANYTHING IS READ FROM IT.
+	if (!TestTrue(TEXT("the use under the change went off"), Chaotic.bWentOff)
+		|| !TestTrue(TEXT("the control use went off"), Control.bWentOff)
+		|| !TestTrue(TEXT("the use under Desperate Measures alone went off"), Desperate.bWentOff)
+		|| !TestTrue(TEXT("the use under both rows went off"), Together.bWentOff)
+		|| !TestTrue(FString::Printf(TEXT("the skill costs mana (%.2f)"), Cost), Cost > 0.0f)
+		|| !TestTrue(FString::Printf(TEXT("the player held health to take a share of (%.1f)"), Chaotic.HealthBefore),
+					 Chaotic.HealthBefore > 20.0f && Together.HealthBefore > 20.0f)
+		|| !TestTrue(FString::Printf(TEXT("Desperate Measures alone took health at 5%% of mana (%.3f)"),
+									 Desperate.HealthTaken),
+					 Desperate.HealthTaken > 0.0f))
+	{
+		return false;
+	}
+
+	// THE CONTROL PAYS ITS MANA.
+	TestEqual(TEXT("without the row the use takes the skill's mana"), Control.ManaTaken, Cost, 0.01f);
+
+	// UNDER THE CHANGE: NO MANA, AND 5% OF THE HEALTH HELD, OVER WHATEVER THE CONTROL USE TOOK.
+	TestEqual(TEXT("under the change the use takes no mana"), Chaotic.ManaTaken, 0.0f, 0.01f);
+	TestEqual(TEXT("and takes 5% of the health held, over what the control use took"),
+			  Chaotic.HealthTaken - Control.HealthTaken, 0.05f * Chaotic.HealthBefore, 0.05f);
+
+	// WITH DESPERATE MEASURES TOO: THE SAME SHARE AS DESPERATE MEASURES ALONE TAKES, NOT TWICE IT.
+	TestEqual(TEXT("with Desperate Measures too the use takes no mana"), Together.ManaTaken, 0.0f, 0.01f);
+	TestEqual(TEXT("and takes the share of health Desperate Measures alone takes, not twice it"),
+			  Together.HealthTaken / Together.HealthBefore, Desperate.HealthTaken / Desperate.HealthBefore, 0.0005f);
+	TestEqual(TEXT("which is the share the change alone takes"),
+			  Together.HealthTaken / Together.HealthBefore, Chaotic.HealthTaken / Chaotic.HealthBefore, 0.0005f);
+	return true;
+}
+
+// CHANGE 2, THE HALF THAT IS WRITTEN: EVERY COOLDOWN RUNS TWICE AS LONG AS ON THE SAME FLOOR WITHOUT THE ROW, AND
+// WITHIN AN ETERNAL CHORUS'S EARSHOT THE CHORUS'S SHARE IS ADDED TO IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosCooldownTest,
+	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosLongerCooldownsRunTwiceAsLongAndAChorusAddsToThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosCooldownTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	if (!TestNotNull(TEXT("a movement skill was granted to the player"), Step))
+	{
+		return false;
+	}
+
+	// UNDER THE CHANGE.
+	int32 Floor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosKillsClearCooldowns, Floor))
+	{
+		return false;
+	}
+	const FRuleOfChaosUse Chaotic = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	const float AskedUnderTheChange =
+		UCataclysmGameplayAbility::CooldownAfterReduction(Player.AbilitySystem, 10.0f, Step->SkillTags);
+
+	// THE CONTROL: THE SAME FLOOR NUMBER WITH NO ROW.
+	if (!GoToThatFloorCarrying(*this, Mode, {}, Floor))
+	{
+		return false;
+	}
+	const FRuleOfChaosUse Control = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	const float AskedInControl =
+		UCataclysmGameplayAbility::CooldownAfterReduction(Player.AbilitySystem, 10.0f, Step->SkillTags);
+	const float LengtheningInControl = PlayerStat(Player, TEXT("cooldown_lengthening"));
+
+	if (!TestTrue(TEXT("the use under the change went off"), Chaotic.bWentOff)
+		|| !TestTrue(TEXT("the control use went off"), Control.bWentOff)
+		|| !TestTrue(FString::Printf(TEXT("the control use started a cooldown (%.2f s)"), Control.CooldownSeconds),
+					 Control.CooldownSeconds > 0.0f)
+		|| !TestTrue(FString::Printf(TEXT("a 10 second cooldown asked in control is above nothing (%.2f s)"),
+									 AskedInControl),
+					 AskedInControl > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the skill's cooldown runs twice as long as on the floor without the row"),
+			  Chaotic.CooldownSeconds, 2.0f * Control.CooldownSeconds, 0.01f);
+	TestEqual(TEXT("and a 10 second cooldown asked for is twice what the control answers"), AskedUnderTheChange,
+			  2.0f * AskedInControl, 0.001f);
+
+	// AND WITH ETERNAL CHORUS ON THE SAME FLOOR: OUT OF EARSHOT THE CHANGE'S SHARE ALONE, WITHIN IT BOTH, ADDED.
+	const TArray<FName> WithChorus = {RuleOfChaosRow, ChorusRow};
+	int32 ChorusFloor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, WithChorus, Rules::RuleOfChaosKillsClearCooldowns, ChorusFloor))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Sources = Mode->EternalChorusSourcesNow();
+	if (!TestTrue(TEXT("the floor has a chorus source"), Sources.Num() > 0))
+	{
+		return false;
+	}
+	const float Z = Player.Character->GetActorLocation().Z;
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Z));
+	Beat(Mode, 1);
+	const float OutOfEarshot = PlayerStat(Player, TEXT("cooldown_lengthening"));
+	TestEqual(TEXT("out of earshot cooldowns are 100 longer than on the floor without the row"),
+			  OutOfEarshot - LengtheningInControl, 100.0f, 0.01f);
+
+	const FVector Near = Sources[0]->GetActorLocation()
+		+ FVector(0.5f * UCataclysmDungeonModifierEffects::EternalChorusEarshotCm, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("within earshot the chorus's 50 is added to the change's 100, not put in its place"),
+			  PlayerStat(Player, TEXT("cooldown_lengthening")) - OutOfEarshot, 50.0f, 0.01f);
+
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("and out of earshot again the change's 100 is still there"),
+			  PlayerStat(Player, TEXT("cooldown_lengthening")) - LengtheningInControl, 100.0f, 0.01f);
+	return true;
+}
+
+// CHANGE 3: THE STAIRS ARE SEALED AT THE START WITH EVERY CREATURE ALREADY SLAIN; STILL SEALED AT 59 SECONDS AND ONE
+// BEAT BEFORE 60; OPEN AT 60; THE PANEL COUNTS THE SECONDS; AND THE NEXT FLOOR'S COUNT STARTS AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosStairsTest,
+	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosTheStairsOpenAfterSixtySecondsWhateverIsSlain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	int32 Floor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosStairsOpenByTime, Floor))
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST: THE SAME FLOOR NUMBER WITHOUT THE ROW IS OPEN IN ITS FIRST MOMENT.
+	if (!GoToThatFloorCarrying(*this, Mode, {}, Floor) || !TestNotNull(TEXT("the control floor has stairs"),
+																		 Mode->Stairs.Get()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("without the row nothing seals the stairs in the floor's first moment"),
+			  Mode->StairsSealedBy().Num(), 0);
+
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosStairsOpenByTime, Floor)
+		|| !TestNotNull(TEXT("the floor has stairs"), Mode->Stairs.Get())
+		|| !TestEqual(TEXT("every creature of the floor is already gone"), Mode->LivingFloorEnemies(), 0)
+		|| !TestEqual(TEXT("and the floor's clock stands at nought"), Mode->SecondsOnThisFloor(), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// AT THE START.
+	TestTrue(TEXT("at the start the change seals the stairs, with nothing left to slay"),
+			 Mode->RuleOfChaosSealsTheStairs());
+	const TArray<FName> SealedAtTheStart = Mode->StairsSealedBy();
+	TestTrue(TEXT("and it is the one row sealing them"),
+			 SealedAtTheStart.Num() == 1 && SealedAtTheStart[0] == RuleOfChaosRow);
+	TestEqual(TEXT("the panel says 60 seconds"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: the stairs open in 60 s")));
+	TestEqual(TEXT("at the start the stairs lead nowhere"), TakeTheStairs(*this, Mode), Floor);
+	TestTrue(TEXT("and they watch for the player again"), Mode->Stairs->IsWatching());
+
+	// AT 59 SECONDS: 236 BEATS.
+	Beat(Mode, 236);
+	TestEqual(TEXT("236 beats are 59 seconds of the floor's clock"), Mode->SecondsOnThisFloor(), 59.0f, 0.001f);
+	TestTrue(TEXT("at 59 seconds the stairs are still sealed"), Mode->RuleOfChaosSealsTheStairs());
+	TestEqual(TEXT("the panel says 1 second"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: the stairs open in 1 s")));
+	TestEqual(TEXT("at 59 seconds the stairs lead nowhere"), TakeTheStairs(*this, Mode), Floor);
+
+	// ONE BEAT BEFORE THE BOUNDARY: 239 BEATS, 59.75 SECONDS.
+	Beat(Mode, 3);
+	TestTrue(TEXT("one beat before 60 seconds the stairs are still sealed"), Mode->RuleOfChaosSealsTheStairs());
+	TestEqual(TEXT("one beat before 60 seconds the stairs lead nowhere"), TakeTheStairs(*this, Mode), Floor);
+
+	// AT THE BOUNDARY: 240 BEATS, 60 SECONDS.
+	Beat(Mode, 1);
+	TestEqual(TEXT("240 beats are 60 seconds of the floor's clock"), Mode->SecondsOnThisFloor(), 60.0f, 0.001f);
+	TestFalse(TEXT("at 60 seconds the change no longer seals the stairs"), Mode->RuleOfChaosSealsTheStairs());
+	TestEqual(TEXT("and nothing seals them"), Mode->StairsSealedBy().Num(), 0);
+	TestEqual(TEXT("the panel says they are open"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: the stairs are open")));
+	TestEqual(TEXT("at 60 seconds the stairs lead down"), TakeTheStairs(*this, Mode), Floor + 1);
+	TestEqual(TEXT("and the next floor's clock starts again from nought"), Mode->SecondsOnThisFloor(), 0.0f, 0.001f);
+	return true;
+}
+
+// CHANGE 3 WITH BLOOD GATES ALSO ON THE FLOOR: BOTH SEALS HOLD. AFTER 60 SECONDS THE STAIRS STAY SEALED UNTIL THE
+// PLAYER HAS SLAIN ENOUGH. Two creatures, 4 metres apart, at (400, 0, 0) and (800, 0, 0).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosWithBloodGatesTest,
+	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAndBloodGatesTheStairsNeedBothTheTimeAndTheKills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosWithBloodGatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FName> WithGates = {RuleOfChaosRow, BloodGates};
+	int32 Floor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, WithGates, Rules::RuleOfChaosStairsOpenByTime, Floor)
+		|| !TestNotNull(TEXT("the floor has stairs"), Mode->Stairs.Get()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Second = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("the first creature was placed"), First)
+		|| !TestNotNull(TEXT("the second creature was placed"), Second))
+	{
+		return false;
+	}
+
+	// AT THE START BOTH ROWS SEAL, BLOOD GATES LISTED FIRST.
+	const TArray<FName> AtTheStart = Mode->StairsSealedBy();
+	TestTrue(TEXT("at the start Blood Gates and Rule of Chaos both seal the stairs"),
+			 AtTheStart.Num() == 2 && AtTheStart[0] == BloodGates && AtTheStart[1] == RuleOfChaosRow);
+
+	// AFTER 60 SECONDS THE TIME HAS PASSED AND THE KILLS HAVE NOT BEEN MADE.
+	Beat(Mode, 240);
+	TestEqual(TEXT("240 beats are 60 seconds of the floor's clock"), Mode->SecondsOnThisFloor(), 60.0f, 0.001f);
+	const TArray<FName> AfterTheTime = Mode->StairsSealedBy();
+	TestTrue(TEXT("after 60 seconds Blood Gates alone still seals the stairs"),
+			 AfterTheTime.Num() == 1 && AfterTheTime[0] == BloodGates);
+	TestEqual(TEXT("its panel line still asks for a kill"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 2 slain, open at 1")));
+	TestEqual(TEXT("and Rule of Chaos' line says its own seal is open"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: the stairs are open")));
+	TestEqual(TEXT("after 60 seconds with nothing slain the stairs lead nowhere"), TakeTheStairs(*this, Mode), Floor);
+
+	// AND THE KILL OPENS THEM.
+	if (!ThePlayerKills(*this, Player, First))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the count met nothing seals the stairs"), Mode->StairsSealedBy().Num(), 0);
+	TestEqual(TEXT("and they lead down"), TakeTheStairs(*this, Mode), Floor + 1);
+	return true;
+}
+
+// THE LAST FLOOR, AS THE CODE DOES TODAY FOR EVERY SEALING ROW: ITS WAY OUT IS NOT SEALED. The control is the same
+// floor while the dungeon is deeper than it, sealed by the same change at the same moment. No player and no creature.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosLastFloorTest,
+	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosTheLastFloorsWayOutIsNotSealedByTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosLastFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+	// NOT THE COW LEVEL, which the run treats apart; the first other dungeon.
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel)
+		{
+			Chosen = Index;
+		}
+	}
+	if (!TestTrue(TEXT("the run has an ordinary dungeon"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// FORTY FLOORS, AN ORDINARY SUB-TYPE AND THIS ROW ALONE, so some floor short of the bottom draws the change.
+	Run->Dungeons[Chosen].Floors = 40;
+	Run->Dungeons[Chosen].SubType = ECataclysmDungeonSubType::None;
+	Run->Dungeons[Chosen].Modifiers = {RuleOfChaosRow};
+	const int32 DungeonId = Run->Dungeons[Chosen].DungeonId;
+	if (!TestTrue(TEXT("the dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+	int32 Floor = 0;
+	for (int32 Asked = 1; Asked < 40 && Floor == 0; ++Asked)
+	{
+		if (Rules::BriefFor(Mode->DungeonIdentity(), Asked).RuleOfChaosChange == Rules::RuleOfChaosStairsOpenByTime)
+		{
+			Floor = Asked;
+		}
+	}
+	if (!TestTrue(TEXT("a floor short of the bottom draws the stairs that open by time"), Floor > 0)
+		|| !TestTrue(FString::Printf(TEXT("floor %d was reached"), Floor), Mode->GoToFloor(Floor))
+		|| !TestEqual(TEXT("and it drew that change"), Mode->RuleOfChaosChangeNow(),
+					  Rules::RuleOfChaosStairsOpenByTime))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// THE CONTROL: WHILE THE DUNGEON IS DEEPER, THIS FLOOR'S STAIRS ARE SEALED.
+	TestFalse(TEXT("with forty floors this floor is not the last"), Mode->IsOnTheLastFloor());
+	TestTrue(TEXT("and the change seals its stairs"), Mode->RuleOfChaosSealsTheStairs());
+	TestEqual(TEXT("and the panel counts the seconds"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: the stairs open in 60 s")));
+
+	// THE SAME FLOOR AT THE SAME MOMENT, NOW THE DUNGEON'S LAST.
+	for (FCataclysmDungeon& Standing : Run->Dungeons)
+	{
+		if (Standing.DungeonId == DungeonId)
+		{
+			Standing.Floors = Floor;
+		}
+	}
+	if (!TestTrue(TEXT("made the dungeon's bottom, this floor is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the same change at the same moment does not seal the way out"),
+			  Mode->RuleOfChaosSealsTheStairs());
+	TestEqual(TEXT("and nothing seals it"), Mode->StairsSealedBy().Num(), 0);
+	TestEqual(TEXT("and the panel says so"), RuleOfChaosPanelLine(Mode),
+			  FString(TEXT("rule of chaos: the way out is not sealed")));
+
+	// AND TAKING THEM BEATS THE DUNGEON: it leaves the run's list.
+	Mode->HandleStairsTaken();
+	bool bStillStanding = false;
+	for (const FCataclysmDungeon& Standing : Run->Dungeons)
+	{
+		bStillStanding |= Standing.DungeonId == DungeonId;
+	}
+	TestFalse(TEXT("the way out was taken and the dungeon is cleared"), bStillStanding);
+	return true;
+}
+
+// EXACTLY ONE AT A TIME: A FLOOR THAT DREW ONE CHANGE HAS NEITHER OF THE OTHER TWO IN FORCE. Every figure on the
+// player is read as a difference from the same floor without the row.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosOneAtATimeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorUnderRuleOfChaosHasOnlyTheOneRuleChangeItDrew",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosOneAtATimeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const TCHAR* const HealthCost = UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat;
+	const TCHAR* const Lengthening = TEXT("cooldown_lengthening");
+
+	// WHAT EACH CHANGE WRITES, WITH NO WORLD.
+	const FCataclysmPlayerFloorEffects NoChange = Effects::PlayerEffectsFor({RuleOfChaosRow}, 1);
+	TestTrue(TEXT("the row with no change drawn moves nothing on the player"), NoChange.IsEmpty());
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> PaidInHealth =
+		Effects::StatModifiersFor(Effects::PlayerEffectsFor({RuleOfChaosRow}, 1, Rules::RuleOfChaosSkillsPaidInHealth));
+	const TArray<FCataclysmStatModifier> PaidRows = ModifiersOn(PaidInHealth, HealthCost);
+	if (TestEqual(TEXT("skills paid in health writes one modifier on the health-cost stat"), PaidRows.Num(), 1))
+	{
+		TestEqual(TEXT("worth 5"), PaidRows[0].Value, 5.0f, 0.001f);
+		TestTrue(TEXT("flat"), PaidRows[0].Bucket == ECataclysmStatBucket::Flat);
+		TestTrue(TEXT("and under no condition"), PaidRows[0].Condition == ECataclysmStatCondition::Always);
+	}
+	TestEqual(TEXT("skills paid in health writes nothing on cooldown lengthening"),
+			  ModifiersOn(PaidInHealth, Lengthening).Num(), 0);
+
+	const TArray<FName> BothRows = {RuleOfChaosRow, FName(Effects::DesperateMeasuresKey)};
+	const TArray<FCataclysmStatModifier> BothPaidRows = ModifiersOn(
+		Effects::StatModifiersFor(Effects::PlayerEffectsFor(BothRows, 1, Rules::RuleOfChaosSkillsPaidInHealth)),
+		HealthCost);
+	if (TestEqual(TEXT("with Desperate Measures too there is still one modifier, not two"), BothPaidRows.Num(), 1))
+	{
+		TestEqual(TEXT("still worth 5"), BothPaidRows[0].Value, 5.0f, 0.001f);
+		TestTrue(TEXT("still under no condition"), BothPaidRows[0].Condition == ECataclysmStatCondition::Always);
+	}
+	const TArray<FCataclysmStatModifier> DesperateRows = ModifiersOn(
+		Effects::StatModifiersFor(Effects::PlayerEffectsFor({FName(Effects::DesperateMeasuresKey)}, 1)), HealthCost);
+	if (TestEqual(TEXT("Desperate Measures alone still writes its one modifier"), DesperateRows.Num(), 1))
+	{
+		TestTrue(TEXT("still holding only while mana is low"),
+				 DesperateRows[0].Condition == ECataclysmStatCondition::ManaBelowPercent);
+	}
+	TestTrue(TEXT("the panel text says the cost holds at any mana"),
+			 Effects::Describe(Effects::PlayerEffectsFor({RuleOfChaosRow}, 1, Rules::RuleOfChaosSkillsPaidInHealth))
+				 .Contains(TEXT("skills cost 5% of current health instead of mana")));
+
+	const FCataclysmPlayerFloorEffects Longer =
+		Effects::PlayerEffectsFor({RuleOfChaosRow}, 1, Rules::RuleOfChaosKillsClearCooldowns);
+	const TMap<FName, TArray<FCataclysmStatModifier>> LongerRows = Effects::StatModifiersFor(Longer);
+	const TArray<FCataclysmStatModifier> OnLengthening = ModifiersOn(LongerRows, Lengthening);
+	if (TestEqual(TEXT("longer cooldowns writes one modifier on cooldown lengthening"), OnLengthening.Num(), 1))
+	{
+		TestEqual(TEXT("worth 100"), OnLengthening[0].Value, 100.0f, 0.001f);
+		TestTrue(TEXT("flat too"), OnLengthening[0].Bucket == ECataclysmStatBucket::Flat);
+	}
+	TestEqual(TEXT("longer cooldowns writes nothing on the health-cost stat"),
+			  ModifiersOn(LongerRows, HealthCost).Num(), 0);
+	TestTrue(TEXT("the panel text says cooldowns are 100% longer"),
+			 Effects::Describe(Longer).Contains(TEXT("cooldowns 100% longer")));
+
+	TestTrue(TEXT("the stairs that open by time moves nothing on the player"),
+			 Effects::PlayerEffectsFor({RuleOfChaosRow}, 1, Rules::RuleOfChaosStairsOpenByTime).IsEmpty());
+
+	// AND ON A REAL FLOOR, EACH CHANGE AGAINST THE SAME FLOOR WITHOUT THE ROW.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	for (int32 Wanted = 1; Wanted <= Rules::RuleOfChaosChanges; ++Wanted)
+	{
+		int32 Floor = 0;
+		if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Wanted, Floor))
+		{
+			return false;
+		}
+		const float HealthCostUnder = PlayerStat(Player, HealthCost);
+		const float LengtheningUnder = PlayerStat(Player, Lengthening);
+		const bool bSealedUnder = Mode->RuleOfChaosSealsTheStairs();
+
+		if (!GoToThatFloorCarrying(*this, Mode, {}, Floor))
+		{
+			return false;
+		}
+		const float HealthCostOver = HealthCostUnder - PlayerStat(Player, HealthCost);
+		const float LengtheningOver = LengtheningUnder - PlayerStat(Player, Lengthening);
+		TestFalse(FString::Printf(TEXT("change %d's floor without the row does not seal its stairs by time"), Wanted),
+				  Mode->RuleOfChaosSealsTheStairs());
+
+		TestEqual(FString::Printf(TEXT("change %d: the share of health a skill costs, over the control"), Wanted),
+				  HealthCostOver, Wanted == Rules::RuleOfChaosSkillsPaidInHealth ? 5.0f : 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("change %d: how much longer cooldowns are, over the control"), Wanted),
+				  LengtheningOver, Wanted == Rules::RuleOfChaosKillsClearCooldowns ? 100.0f : 0.0f, 0.001f);
+		TestTrue(FString::Printf(TEXT("change %d: the stairs are sealed by time only under the third change"), Wanted),
+				 bSealedUnder == (Wanted == Rules::RuleOfChaosStairsOpenByTime));
+	}
 	return true;
 }
 
