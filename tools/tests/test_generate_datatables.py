@@ -4850,6 +4850,10 @@ class TestTheChannellingConditionsOfTheEighthOfOctober:
     `docs/DECISIONS.md` of that day gives the session that writes rows, on
     made-up enchantment sheets holding the real sentence. Five rows for three
     sentences: the drain, the two that stop movement, and the two damage rows.
+
+    THE FIRST OF THE TWO THAT STOP MOVEMENT IS THE FLAG `cannot_walk`, ruled the
+    same day. A walking speed taken to nothing was the other way to write it,
+    and the player character refuses a speed of nought; no such row is written.
     """
 
     HEADER = TestEnchantmentEffects.HEADER
@@ -4880,9 +4884,9 @@ class TestTheChannellingConditionsOfTheEighthOfOctober:
     DRAIN_ROW = {"Value Low": -8, "Value High": -15, "Action": "health",
                  "Action Event": "every_seconds", "Fraction Of": "maximum",
                  "Every Seconds": 1, "Condition": "while_channelling"}
-    SPEED_ROW = {"Stat": "movement_speed", "Value Kind": "removed",
-                 "Value Low": 1, "Value High": 1,
-                 "Condition": "while_channelling"}
+    WALK_ROW = {"Stat": "cannot_walk", "Value Kind": "flat",
+                "Value Low": 1, "Value High": 1,
+                "Condition": "while_channelling"}
     LOCK_ROW = {"Stat": "skill_locked", "Value Kind": "flat",
                 "Value Low": 1, "Value High": 1,
                 "Required Tags": "Slot.Movement",
@@ -4909,11 +4913,16 @@ class TestTheChannellingConditionsOfTheEighthOfOctober:
 
     def test_the_two_rows_that_stop_movement_are_carried_through_together(
             self, tmp_path):
-        out = self.out(tmp_path, self.STILL, [self.SPEED_ROW, self.LOCK_ROW])
-        assert [(row["Stat"], row["ValueKind"], row["RequiredTags"],
-                 row["Condition"], row["ConditionValue"]) for row in out] == [
-            ("movement_speed", "removed", "", "while_channelling", 0.0),
-            ("skill_locked", "flat", "Slot.Movement", "while_channelling", 0.0)]
+        out = self.out(tmp_path, self.STILL, [self.WALK_ROW, self.LOCK_ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["ConditionValue"]) for row in out] == [
+            ("cannot_walk", "flat", 1.0, 1.0, "", "while_channelling", 0.0),
+            ("skill_locked", "flat", 1.0, 1.0, "Slot.Movement",
+             "while_channelling", 0.0)]
+        # TWO ROWS ON ONE ENCHANTMENT, numbered in the order written.
+        assert [row["Name"].rsplit("#", 1)[1] for row in out] == ["1", "2"]
+        assert len({row["Enchantment"] for row in out}) == 1
         # BOTH STATS ARE ASKED FOR WITH THE WEARER'S OWN STATE, which is all
         # the condition needs.
         assert gen.what_a_condition_needs("while_channelling") == ""
@@ -4931,6 +4940,22 @@ class TestTheChannellingConditionsOfTheEighthOfOctober:
             for stat in ("attack_damage", "spell_damage")]
         assert gen.what_a_condition_needs("channelling_for_under_seconds") == ""
         assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_cannot_walk_is_a_stat_with_no_attribute_that_an_asker_can_judge(
+            self):
+        """What lets the row above through, each by name. The flag has no
+        gameplay attribute, so it is on the engine's list of stats that need
+        none; and it is asked for with the wearer's own state, which is all
+        `while_channelling` needs. The control is a stat on neither list."""
+        assert "cannot_walk" in gen.stats_with_no_attribute()
+        assert gen.CONDITIONED_STATS_WITH_AN_ASKER["cannot_walk"] == (
+            gen.ASKER_PASSES_NOTHING_MORE)
+        assert "walking_forbidden" not in gen.stats_with_no_attribute()
+        problems = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects",
+            [{"Name": "A#1", "Stat": "walking_forbidden",
+              "Condition": "while_channelling"}])
+        assert len(problems) == 1 and "walking_forbidden" in problems[0]
 
     def test_a_value_beside_while_channelling_is_refused(self, tmp_path):
         """It names a state. The control is the same row without the value,

@@ -24599,11 +24599,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannellingWalkingSpeedTest,
  * A real player character's walking speed follows a `movement_speed` row under `while_channelling`, at both edges,
  * with nothing asking for it again on a clock.
  *
- * THE ROW HERE IS `more` -50, AND NOT THE `removed` ROW THE SENTENCE "You cannot move while channeling any skill"
- * WAS GIVEN. `ACataclysmPlayerCharacter::ApplyMovementSpeed` refuses a speed of nought or less and leaves the last
- * one standing, so a removed speed changes nothing on a player today; `docs/DECISIONS.md`, 2026-10-08, puts that
- * to the session that rules. What this test holds is the part that is built: the speed is worked out again when
- * channelling begins and when it ends.
+ * THE ROW HERE IS `more` -50, A ROW NO SENTENCE OF THIS STACK WRITES. "You cannot move while channeling any skill"
+ * moves no speed: ruled 2026-10-08, it is the flag `cannot_walk` and a lock on the movement slot, because
+ * `ACataclysmPlayerCharacter::ApplyMovementSpeed` refuses a speed of nought or less and leaves the last one
+ * standing. A speed row under `while_channelling` is still a row somebody may write, and without this it would
+ * hold a stale speed. What this test holds is that the speed is worked out again when channelling begins and when
+ * it ends.
  *
  * EVERY SPEED IS A RATIO OF THE ONE READ BEFORE ANY SKILL WAS USED. Half of it the moment the spin is used; all of
  * it once the spin has ended by its own timer; half again on a second use; all of it the moment that use is ended
@@ -24835,6 +24836,133 @@ bool FCataclysmChannellingMovementLockTest::RunTest(const FString&)
 	}
 	TestTrue(TEXT("once the channel has ended, the movement skill may be used again"), MayUse(Step));
 	TestEqual(TEXT("and carries no lock"), LockOn(Step), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannellingCannotWalkStatTest,
+	"Cataclysm.Channelling.TheCannotWalkStatAnswersAboveNoughtOnlyWhileItsWearerIsChannelling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The first row of "You cannot move while channeling any skill": `cannot_walk` flat 1 under `while_channelling`,
+ * on a real player character. Ruled 2026-10-08.
+ *
+ * THIS TESTS THE STAT'S ANSWER AND NOT THE STEP. `ACataclysmPlayerController::PawnCannotWalk` is what refuses a
+ * step, it runs on a player controller, and this world has none; whether a player wearing the row can still walk
+ * is judged by pressing a key. What is held here is what that function asks: the stat, with no tags, and
+ * `UCataclysmSkillEffects::CannotWalkByARow` on the pawn, which is the call it makes.
+ *
+ * NOUGHT before any skill is used; above nought the moment a channelled spin is used; nought the moment that spin
+ * is ended from outside; above nought on a second use; nought once that one has ended by its own timer. THE
+ * CONTROL is the same stat asked with the row's condition never met, which is the first reading.
+ *
+ * STANDING: the player at the origin and nobody else.
+ */
+bool FCataclysmChannellingCannotWalkStatTest::RunTest(const FString&)
+{
+	using namespace CataclysmChannellingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* System =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a player state with an ability system"), System)
+		|| !TestTrue(TEXT("set-up: Type.Channel is a tag this build knows"), ChannelTag().IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatInputs Line;
+	Line.Base = 0.0f;
+	FCataclysmStatModifier Row;
+	Row.Bucket = ECataclysmStatBucket::Flat;
+	Row.Source = ECataclysmModifierSource::Enchantment;
+	Row.Value = 1.0f;
+	Row.Condition = ECataclysmStatCondition::WhileChannelling;
+	Line.Modifiers.Add(Row);
+	const FName CannotWalk(UCataclysmSkillEffects::CannotWalkStat);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(CannotWalk, Line);
+	System->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	UCataclysmStrikeSkill* Spin = GrantSkillOn<UCataclysmStrikeSkill>(
+		System, Character, ECataclysmAbilitySlot::Heavy, SpinParams, TEXT("Spin"),
+		TEXT("Element.Demonic, Type.Melee, Type.Channel"));
+	if (!TestNotNull(TEXT("set-up: the player was granted the spin"), Spin))
+	{
+		return false;
+	}
+
+	const auto Answer = [System, CannotWalk]()
+	{
+		return System->StatForSkill(CannotWalk, FGameplayTagContainer(), 0.0f);
+	};
+
+	// BEFORE ANY SKILL: the row is worn and its condition is not met.
+	if (!TestFalse(TEXT("set-up: the player is not channelling"), System->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("before channelling, cannot_walk asked with no tags answers nought"), Answer(), 0.0f, 0.001f);
+	TestFalse(TEXT("and the pawn is not forbidden to walk by a row"),
+			  UCataclysmSkillEffects::CannotWalkByARow(Character));
+
+	// THE SPIN IS USED, AND NO TIME PASSES.
+	if (!TestTrue(TEXT("set-up: the spin is used and the player is channelling"),
+				  System->TryActivateAbility(Spin->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)
+					  && System->IsChannelling()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("while channelling, cannot_walk asked with no tags answers above nought"), Answer() > 0.0f);
+	TestTrue(TEXT("and the pawn is forbidden to walk by a row"), UCataclysmSkillEffects::CannotWalkByARow(Character));
+
+	// ENDED FROM OUTSIDE.
+	CancelFromOutside(System, Spin);
+	if (!TestFalse(TEXT("set-up: the spin was ended from outside and the player is not channelling"),
+				   Spin->IsActive() || System->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the moment a channel is ended from outside, cannot_walk answers nought"), Answer(), 0.0f, 0.001f);
+	TestFalse(TEXT("and the pawn is not forbidden to walk by a row"),
+			  UCataclysmSkillEffects::CannotWalkByARow(Character));
+
+	// A SECOND USE, ENDED BY ITS OWN TIMER. Four and a half seconds, past its three and any wind-up before them.
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	if (!TestTrue(TEXT("set-up: the spin is used again and the player is channelling"),
+				  System->TryActivateAbility(Spin->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)
+					  && System->IsChannelling()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("on a second channel, cannot_walk answers above nought again"), Answer() > 0.0f);
+	CataclysmTestWorld::RunClock(World, 4.5f);
+	if (!TestFalse(TEXT("set-up: four and a half seconds on, the spin has ended and the player is not channelling"),
+				   Spin->IsActive() || System->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("once a channel has ended by its own timer, cannot_walk answers nought"), Answer(), 0.0f, 0.001f);
+	TestFalse(TEXT("and the pawn is not forbidden to walk by a row"),
+			  UCataclysmSkillEffects::CannotWalkByARow(Character));
 	return true;
 }
 

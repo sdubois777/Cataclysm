@@ -3233,8 +3233,10 @@ public:
 	 * WHAT IT IS FOR. A stat that is asked for when it matters reads the state
 	 * as it is. Walking speed is not asked for then: it is written onto the
 	 * movement component and kept, so `ACataclysmPlayerCharacter` binds this to
-	 * work its speed out again, as it binds the cripple tag. "You cannot move
-	 * while channeling any skill" is a speed row under `while_channelling`.
+	 * work its speed out again, as it binds the cripple tag. A speed row under
+	 * `while_channelling` would otherwise hold a stale speed. No row of that
+	 * day's is one: "You cannot move while channeling any skill" is the flag
+	 * `cannot_walk` and moves no speed.
 	 *
 	 * RAISED AFTER THE STATE HAS CHANGED, so a listener asking
 	 * `CurrentConditions` inside it reads the new answer.

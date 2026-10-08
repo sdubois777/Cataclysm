@@ -7990,6 +7990,11 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
+    # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
+    # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
+    # cannot move while channeling any skill". Its probe is `ProbeCannotWalk`,
+    # which observes that function and not the step.
+    "cannot_walk": ASKER_PASSES_NOTHING_MORE,
     "cooldown_reduction": ASKER_PASSES_NOTHING_MORE,
     "cooldown_skip_chance": ASKER_PASSES_NOTHING_MORE,
     "crowd_control_resistance": ASKER_PASSES_NOTHING_MORE,

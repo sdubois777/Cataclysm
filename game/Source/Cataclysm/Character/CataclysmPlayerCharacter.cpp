@@ -2310,9 +2310,10 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 		CrippleChangedHandle = CrippleChanged.AddUObject(this, &ACataclysmPlayerCharacter::OnCrippleChanged);
 	}
 
-	// AND WHEN THE CHARACTER BEGINS OR STOPS CHANNELLING, WHICH MOVES NO ATTRIBUTE EITHER. Ruled 2026-10-08. "You
-	// cannot move while channeling any skill" is a speed row under `while_channelling`, and a conditioned row is
-	// never folded into the attribute, so nothing above hears it. Replaced rather than added, as above.
+	// AND WHEN THE CHARACTER BEGINS OR STOPS CHANNELLING, WHICH MOVES NO ATTRIBUTE EITHER. Ruled 2026-10-08. A
+	// speed row under `while_channelling` is a conditioned row, and a conditioned row is never folded into the
+	// attribute, so nothing above hears it. No row of that day's is one ("You cannot move while channeling any
+	// skill" is the flag `cannot_walk`); this is for the one somebody writes. Replaced rather than added, as above.
 	ASC->OnChannellingChanged.Remove(ChannellingChangedHandle);
 	ChannellingChangedHandle = ASC->OnChannellingChanged.AddUObject(
 		this, &ACataclysmPlayerCharacter::OnChannellingChanged);
