@@ -59,6 +59,28 @@ Each wears the real row at the top of its range, and first asserts that the name
 **Not tested here:** a blow raised by the worn row, health lost to the worn row over a combat, or the cap falling
 while a worn row's wearer leeches. That entry tests each with the row made by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the other three layers of the stack, on `development` 8a46f17f. The build, the
+whole suite and the Python of record are in the table of the entry of the same day on "Traps last 50%-100%
+longer before expiring" and were run with this layer in the stack. **The ids are the commits as they stood when
+each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 239a6647 | 290 tests performed, 284 succeeded, 6 failed, this layer's three among them; 8 of the 17 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 46d47900 | effect rows 550 to 554 |
+| Whole suite, every asset built | 00b537ed | 3344 tests performed, 3344 succeeded, 0 failed |
+
+**The three tests fail against a table without their rows and pass with them**: under a bleed the summed
+increases were no higher on either stat; no timed action on health waited for seconds in combat; and the
+resistance cap's line held no modifier on the scale.
+
+**A set-up that rested on reading held**: the test wearer laid a bleed on itself and carried it, asserted by
+name before anything was read.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The two conditions and the scale were proved by the session that built them.
+
 ---
 
 ## 2026-10-08 — "Traps last 50%-100% longer before expiring" is built as a row, and two trap sentences and one on healing skills are recorded as not written
