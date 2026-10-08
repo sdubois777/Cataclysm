@@ -5070,3 +5070,148 @@ class TestACastDelayOnASkillsBlow:
         none. The control is a made-up name that is on no list."""
         assert "blow_delay_seconds" in gen.stats_with_no_attribute()
         assert "cast_delay_seconds" not in gen.stats_with_no_attribute()
+
+
+class TestAnAilmentThatLowersMaximumHealth:
+    """`ailment_max_health_removed`, ruled 2026-10-08 and built ahead of its
+    row. The row here is the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentence. One row for one sentence: the tenth number a row may hang on an
+    ailment, with no event, the ailment the sentence names, and its two
+    figures as a percentage.
+
+    ITS BOUND IS ITS OWN. The other nine may state up to 100; this one stops at
+    `MAX_AILMENT_MAX_HEALTH_REMOVED`, so a lowered maximum is never nought.
+    """
+
+    WORDS = "Enemies with Necrosis have 1%-2% less maximum health"
+    #: MADE UP, for the bound alone. The generator holds a row's two figures to
+    #: the ones its sentence states, so a figure past the bound needs a
+    #: sentence that states it. No such sentence is in the design.
+    PAST_THE_BOUND = "Enemies with Necrosis have 1%-51% less maximum health"
+    AT_THE_BOUND = "Enemies with Necrosis have 50% less maximum health"
+    HEADER = TestScaleStepHigh.HEADER
+
+    def rider(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "ailment_max_health_removed", "Ailment": "Necrosis",
+                  "Value Low": 1, "Value High": 2}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [
+            ["Positives", "Type", "Weight", "Column 4", None,
+             "Negatives", "Type", "Weight", "Tags"],
+            [words, "Generic", 4, "Keyword.DoT.Necrosis", None,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "necrosis.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_row_is_carried_through_with_its_ailment_and_no_event(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.rider(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["Ailment"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"], out[0]["Stat"]) == (
+            "ailment_max_health_removed", "", "Necrosis", 1.0, 2.0, "", 0.0, "")
+
+    def test_it_is_one_of_the_numbers_a_row_may_hang_on_an_ailment(self):
+        """What makes the row above a rider and not a pool: the name is on the
+        list every rider check reads. The control is a made-up name on no
+        list."""
+        assert gen.AILMENT_MAX_HEALTH_ACTION == "ailment_max_health_removed"
+        assert gen.AILMENT_MAX_HEALTH_ACTION in gen.AILMENT_RIDER_ACTIONS
+        assert "ailment_max_health" not in gen.AILMENT_RIDER_ACTIONS
+        assert len(gen.AILMENT_RIDER_ACTIONS) == 10
+
+    def test_the_row_without_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no Ailment"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Ailment": None}))
+
+    def test_the_row_above_its_bound_is_refused(self, tmp_path):
+        """51 is inside the 100 every rider is held to and outside this one's
+        own bound, so the refusal is this rider's and names the bound."""
+        assert gen.MAX_AILMENT_MAX_HEALTH_REMOVED == 50.0
+        with pytest.raises(gen.DataError, match="up to 50 per cent"):
+            gen.enchantment_effects(self.rider(tmp_path, {
+                "Value Low": 1, "Value High": 51}, self.PAST_THE_BOUND))
+
+    def test_the_row_at_its_bound_is_carried_through(self, tmp_path):
+        """The control for the refusal above: 50 is allowed, so it is the
+        figure past the bound that was refused and not the action."""
+        out = gen.enchantment_effects(self.rider(tmp_path, {
+            "Value Low": 50, "Value High": None}, self.AT_THE_BOUND))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "ailment_max_health_removed", 50.0, 50.0)
+
+    def test_another_rider_may_still_state_what_this_one_may_not(self, tmp_path):
+        """The bound is this rider's alone: the armour rider on the same
+        made-up sentence, with the same 1 to 51, is carried through."""
+        out = gen.enchantment_effects(self.rider(tmp_path, {
+            "Action": "ailment_armor_removed", "Value Low": 1,
+            "Value High": 51}, self.PAST_THE_BOUND))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "ailment_armor_removed", 1.0, 51.0)
+
+    def test_the_row_with_an_event_is_refused_as_any_rider_is(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.rider(tmp_path, {
+                "Action Event": "dot_applied"}))
+
+
+class TestMinionsTakeAShareOfTheirSummonersDefences:
+    """`minion_defences_percent_of_yours`, ruled 2026-10-08 and built ahead of
+    its row. The row here is the shape `docs/DECISIONS.md` of that day gives
+    the session that writes rows, on a made-up enchantment sheet holding the
+    real sentence. One row for one sentence and one figure for both armour and
+    resistances: flat, 10 to 25, and no Required Tags, so it reaches every
+    minion.
+    """
+
+    WORDS = "Summoned minions inherit 10%-25% of your armor and resistances"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Type.Minion", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+    ROW = {"Stat": "minion_defences_percent_of_yours", "Value Kind": "flat",
+           "Value Low": 10, "Value High": 25}
+
+    def out(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+        values.update(self.ROW)
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "defences.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def test_the_row_is_carried_through_flat_with_no_tags(self, tmp_path):
+        out = self.out(tmp_path, {})
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("minion_defences_percent_of_yours", "flat", 10.0, 25.0, "", "",
+             "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert ("minion_defences_percent_of_yours"
+                not in gen.CONDITIONED_STATS_WITH_AN_ASKER)
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """What lets the row above name it: a share of two figures the
+        summoner already has holds no gameplay attribute, so the name is on
+        the engine's list of stats that need none. TESTED BY NAME, because a
+        row carried through does not prove the listing. The control is a
+        made-up name that is on no list."""
+        assert "minion_defences_percent_of_yours" in gen.stats_with_no_attribute()
+        assert "minion_armor_percent_of_yours" not in gen.stats_with_no_attribute()
