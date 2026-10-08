@@ -5,9 +5,9 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-10-08 — A search finds where a Halls floor can be divided into three sections, or two, by closing short lines of cells. Engine only; nothing a player sees changes and no row changes state
 
 **Not built and not run as it now stands.** The search in this entry is the third version. The first two were
-built and run by the coordinating session on 2026-10-08, and every figure of a run in this entry is that session's,
+built and run by the registering session on 2026-10-08, and every figure of a run in this entry is that session's,
 given to the writing session, which ran nothing. The third version, the fewest-lines search, was measured by the
-coordinating session as a temporary test and then written into the generator by the writing session. As written
+registering session as a temporary test and then written into the generator by the writing session. As written
 into the generator it has not been compiled and no Unreal test of it has been run. The Python suite, the lint and
 the conflict check were run before the commit; their figures are in the commit's report and not here.
 
@@ -19,7 +19,8 @@ session's number, set before anything was measured, on the expectation that thre
 "sections", and two sections with one barrier is that. Three stays preferred wherever the search finds it. "This is
 the coordinator lowering its own number with its reason stated, not the test being lowered to pass".
 
-The four runs on the 20 Halls floors, by the coordinating session:
+The four runs on the 20 Halls floors, by the registering session, each reported to the coordinating session, which
+ran nothing and ruled on each:
 
 | Run | Three sections | Three or two | Slowest floor | |
 |---|---|---|---|---|
@@ -62,7 +63,7 @@ every draw after it is a different draw. Nothing passes the set yet, so no floor
 ways.** Ruled after the first version of this layer was reported. The search still reads the plan with those cells
 open. An answer is taken only if every rule also holds with them closed. One plan made by hand shows a division
 refused for it and, by the Python model, another three-section division taken in its place. The second version
-passed the shortcut test on a generated plan, gate open and gate closed, in the coordinating session's run; under
+passed the shortcut test on a generated plan, gate open and gate closed, in the registering session's run; under
 the fewest-lines search that test has not been run.
 
 **Said first: "the same as today" for the populator is not pinned against recorded figures.** That would need a
@@ -204,7 +205,7 @@ argument that keeps creatures off cells.
    Accepted. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
 
 **The time, measured.** The arithmetic this entry first carried, about 70 microseconds an offer, was about nine
-times too high and is withdrawn. Measured by the coordinating session on 2026-10-08: the first search took 4.837
+times too high and is withdrawn. Measured by the registering session on 2026-10-08: the first search took 4.837
 milliseconds on its slowest floor. The fewest-lines search took 35.219 milliseconds on its slowest floor, which is
 the floor that reached the limit of 3,000 walks: about 12 microseconds a walk. That time is from a Development
 build, inside a test's code. The same search written into the generator has not been timed. The check with the
@@ -276,6 +277,10 @@ Each boundary alone parts the entrance from the exit for two reasons: the search
 holds the entrance, from the far part, which holds the exit (step 3); and the acceptance of a boundary asks it
 again (step 6). A tenth is worked out in whole numbers: the walkable cells plus 9, divided by 10, so 111 cells
 give 12. The near and far parts use the same one-in-ten, also in whole numbers.
+
+**The port must reproduce the temporary test's order,** a labelled judgement by the coordinating session under the
+owner's delegation, 2026-10-08: the counts depend on the order cells are visited and lines are tried, so the
+first run of this code is compared with the measured run floor by floor and not only in its totals.
 
 **Where the code written here departs from the code that was measured.** The measured functions were ported with
 their order kept: the order lines are numbered, the order the walk starts and steps, the walk back through the
@@ -480,7 +485,7 @@ generator, so it says nothing of the twenty plans.
   existing tests are what hold it, and they were not changed.
 - That the search written into the generator gives the measured answers on the twenty plans. The test checks
   that each answer obeys the rules and counts the floors with three sections and with two. It does not hold each
-  floor's answer against the measured one. The coordinating session has the measured lines to compare the log to.
+  floor's answer against the measured one. The registering session has the measured lines to compare the log to.
 - The rule that three areas lie in a row (ruling 8). No test reaches it: see the "said first" paragraph on it.
 - The rule that each boundary alone parts the entrance from the exit, by a single line. It is held by the exit
   being in the far part and again by the acceptance of a boundary. By the Python model, breaking either alone
