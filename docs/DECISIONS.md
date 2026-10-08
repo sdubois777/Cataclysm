@@ -7,8 +7,9 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two new rows of the Enchantment Effects sheet and one Trigger
 Cooldown cell of a merged row), `game/Data/EnchantmentEffects.csv` and its asset, three new tests in
 `CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`,
-`tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts), `docs/README.md`. Issue
-[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
+`tools/tests/test_stun_durations_are_stated.py` (one action accepted, and its refusals), `docs/README.md`.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
 
 ### SAID FIRST: A MERGED ROW CHANGES WHAT IT DOES IN PLAY
 
@@ -18,6 +19,33 @@ of a second to nought. Before, one swing that first-struck several enemies rolle
 others had then been struck and never got their roll. Ruled 2026-10-08 by the coordinating session under the
 owner's delegation, because the sentence says "each enemy" and the other four first-hit rows already reach every
 enemy first struck. **On the owner's play-check list.**
+
+### SAID FIRST: A CHECK NOW ACCEPTS ONE THING IT DID NOT
+
+**The check that every stun states its length did not see the Chronomancer row's length**, and it now accepts
+this one action when the row's own seconds and its sentence's agree. The check is
+`tools/tests/test_stun_durations_are_stated.py::test_everything_that_applies_a_stun_states_how_long`. With the
+row authored and the check as it was, the Python suite in a copy printed:
+
+> [('EnchantmentEffects', 'Positive_Chronomancer_s_Time_Lock_6_Piece_Bonus_When_a#1')] apply a stun without
+> saying how long it lasts. Since the anti-stun-lock rule gave stun a 5 second immunity window, a duration is a
+> number that interacts with another number and 'briefly' is not enough. Add the duration to
+> docs/All_Things_Cataclysm.xlsx and regenerate. Issue #271.
+
+**Why.** The check takes every row whose text contains "stun" and looks, for an effect row, in the enchantment's
+sentence for "stun... for N seconds". The row's action is named `stun_near_the_dying`, so it counts as applying
+a stun; its sentence says "This freezes all nearby enemies for 2 seconds", so the pattern finds no length. The
+length is stated twice, as "for 2 seconds" in the sentence and as 2 in the row's Stack Seconds, where the engine
+reads it. The owner ruled on 2026-10-08 that the freeze "acts like a stun".
+
+**What changed, ruled 2026-10-08 by the coordinating session under the owner's delegation.** An effect row whose
+Action is `stun_near_the_dying` is accepted only when BOTH hold: its own Stack Seconds is above nought, and its
+enchantment's sentence states that same number as "for N seconds". No other action is accepted this way, and
+the pattern that reads "stun" was not widened to "freeze". A new test,
+`test_a_stun_near_the_dying_is_excused_only_when_its_seconds_and_its_sentence_agree`, shows the refusals on
+made-up rows: Stack Seconds 2 under a sentence that says only "briefly"; under one that says "for 3 seconds";
+Stack Seconds of nought, and none; an enchantment no table holds; and another action with the same seconds and
+words. **This is a change to what a check accepts, approved by its reason.**
 
 ### SAID FIRST: WHAT A PLAYER GETS FROM THE TWO NEW ROWS, AND WHAT NO TEST SHOWS
 
