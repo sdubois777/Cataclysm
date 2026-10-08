@@ -194,7 +194,7 @@ namespace
 
 FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 	const FCataclysmFloorPlan& Plan, float Scale,
-	const FCataclysmFloorBrief& Brief)
+	const FCataclysmFloorBrief& Brief, const TSet<FIntPoint>& NoCreatureOn)
 {
 	FCataclysmFloorPopulation Out;
 
@@ -246,6 +246,21 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 			// count it.
 			Out.Enemies.Add(Boss);
 			Occupied.Add(ExitIndex);
+		}
+	}
+
+	// CELLS NO CREATURE MAY BE PLACED ON ARE HELD AS THOUGH ONE STOOD THERE. `CataclysmCellsNear` leaves out every
+	// cell in `Occupied`, so no member of a group and no Succubus lands on one, and nothing else about the floor
+	// changes: the plan is not touched, so the count wanted and the walking distances are what they were.
+	//
+	// AFTER THE BOSS, which stands on the exit whatever this set holds. IT DRAWS NO NUMBERS, and with an empty set
+	// this loop does nothing, so an ordinary floor is placed exactly as before. Issues #1820 and #41.
+	for (const FIntPoint& Barred : NoCreatureOn)
+	{
+		const int32 BarredIndex = Plan.IndexOf(Barred);
+		if (BarredIndex != INDEX_NONE)
+		{
+			Occupied.Add(BarredIndex);
 		}
 	}
 
@@ -377,6 +392,16 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 	for (int32 Which = 0; Which < Candidates.Num() && Placed < Out.Wanted; ++Which)
 	{
 		const int32 SiteIndex = Candidates[Which];
+
+		// NO GROUP'S MIDDLE ON A CELL NO CREATURE MAY STAND ON. Skipped before anything is claimed or drawn. The
+		// candidates are shuffled exactly as they would be without the set, because the set is not read until here.
+		// A floor with cells in the set is the same as the floor without them up to the first group that would
+		// have stood on one, and may differ in every group after it. `Nearby[0]` below is still the site itself,
+		// which the Succubus rule relies on.
+		if (!NoCreatureOn.IsEmpty() && NoCreatureOn.Contains(Plan.CellAt(SiteIndex)))
+		{
+			continue;
+		}
 
 		// ON AN ORDINARY FLOOR a group's middle may not stand within
 		// `LeastCellsBetweenPacks` of one already placed, which is what spreads

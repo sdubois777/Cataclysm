@@ -370,8 +370,16 @@ public:
 	 *              stands a Gatekeeper on the way down. The density is not
 	 *              touched by any of them: a boss is one creature beyond what
 	 *              the density asked for, not one of them.
+	 * @param NoCreatureOn cells no creature may be placed on, for a barrier that
+	 *              will stand there. Issues #1820 and #41. The cells stay
+	 *              walkable: the count wanted still comes from every walkable
+	 *              cell and a creature may still stand beyond them. A group's
+	 *              middle is not put on one and no member stands on one. The
+	 *              boss is not moved by it. Empty, which is the default, changes
+	 *              nothing, draw for draw.
 	 */
 	static FCataclysmFloorPopulation Populate(
 		const FCataclysmFloorPlan& Plan, float Scale = 1.0f,
-		const FCataclysmFloorBrief& Brief = FCataclysmFloorBrief());
+		const FCataclysmFloorBrief& Brief = FCataclysmFloorBrief(),
+		const TSet<FIntPoint>& NoCreatureOn = TSet<FIntPoint>());
 };

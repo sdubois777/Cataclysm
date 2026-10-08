@@ -971,4 +971,219 @@ bool FCataclysmPopulationDifferentFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Cells no creature may be placed on. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPopulationTest
+{
+	/**
+	 * How many things differ between two populations, compared creature by creature and cell by cell: each placement's
+	 * cell, creature and group, each group's site, the count wanted, the number of groups and the wave's site.
+	 */
+	int32 PlacementsThatDiffer(const FCataclysmFloorPopulation& A, const FCataclysmFloorPopulation& B)
+	{
+		int32 Differ = FMath::Abs(A.Enemies.Num() - B.Enemies.Num()) + FMath::Abs(A.PackSites.Num() - B.PackSites.Num());
+		for (int32 Index = 0; Index < A.Enemies.Num() && Index < B.Enemies.Num(); ++Index)
+		{
+			Differ += (A.Enemies[Index].Cell != B.Enemies[Index].Cell) ? 1 : 0;
+			Differ += (A.Enemies[Index].Creature != B.Enemies[Index].Creature) ? 1 : 0;
+			Differ += (A.Enemies[Index].Pack != B.Enemies[Index].Pack) ? 1 : 0;
+		}
+		for (int32 Index = 0; Index < A.PackSites.Num() && Index < B.PackSites.Num(); ++Index)
+		{
+			Differ += (A.PackSites[Index] != B.PackSites[Index]) ? 1 : 0;
+		}
+		Differ += (A.Wanted != B.Wanted) ? 1 : 0;
+		Differ += (A.PackCount != B.PackCount) ? 1 : 0;
+		Differ += (A.WaveSite != B.WaveSite) ? 1 : 0;
+		return Differ;
+	}
+
+	/** How many of a population's creatures stand on one of these cells. */
+	int32 CreaturesOn(const FCataclysmFloorPopulation& Population, const TSet<FIntPoint>& Cells)
+	{
+		int32 Count = 0;
+		for (const FCataclysmEnemyPlacement& Enemy : Population.Enemies)
+		{
+			Count += Cells.Contains(Enemy.Cell) ? 1 : 0;
+		}
+		return Count;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPopulationEmptyBarredSetTest,
+	"Cataclysm.DungeonEnemies.AnEmptySetOfBarredCellsPlacesEveryCreatureWhereItStoodWithoutOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPopulationEmptyBarredSetTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmPopulationTest;
+
+	// THE CALL EVERY EXISTING CALLER MAKES AGAINST THE CALL WITH AN EMPTY SET NAMED, on the seeds the tests above
+	// sweep. Compared placement by placement and not by count.
+	const TSet<FIntPoint> NoCells;
+	int32 Compared = 0;
+	int32 Creatures = 0;
+	int32 Differences = 0;
+	for (const ECataclysmFloorLayout Layout : EveryLayout())
+	{
+		for (int32 Seed = 1; Seed <= SweepSeeds; ++Seed)
+		{
+			const FCataclysmFloorPlan Plan = Floor(Seed, 1, Layout);
+			if (!Plan.IsBuilt())
+			{
+				continue;
+			}
+			const FCataclysmFloorPopulation AsToday = FCataclysmFloorPopulator::Populate(Plan);
+			const FCataclysmFloorPopulation WithNone =
+				FCataclysmFloorPopulator::Populate(Plan, 1.0f, FCataclysmFloorBrief(), NoCells);
+			++Compared;
+			Creatures += AsToday.Enemies.Num();
+			Differences += PlacementsThatDiffer(AsToday, WithNone);
+		}
+	}
+	TestTrue(TEXT("set-up: the sweep compared floors"), Compared > 0);
+	TestTrue(TEXT("set-up: and those floors held creatures"), Creatures > 0);
+	TestEqual(FString::Printf(TEXT("an ordinary floor: nothing differs over %d floors and %d creatures"), Compared,
+							  Creatures), Differences, 0);
+
+	// THE SAME FOR A BOSS FLOOR AND FOR BOTH KINDS OF WAVE, which take other paths through the populator.
+	FCataclysmFloorBrief Boss;
+	Boss.bBossAtTheExit = true;
+	FCataclysmFloorBrief Wave;
+	Wave.bOneWave = true;
+	FCataclysmFloorBrief WalksIn;
+	WalksIn.bOneWave = true;
+	WalksIn.bWaveWalksIn = true;
+	int32 BriefDifferences = 0;
+	int32 BriefCreatures = 0;
+	for (int32 Seed = 1; Seed <= 20; ++Seed)
+	{
+		const FCataclysmFloorPlan Halls = Floor(Seed, 1, ECataclysmFloorLayout::Halls);
+		const FCataclysmFloorPlan Arena = Floor(Seed, 1, ECataclysmFloorLayout::Arena);
+		const FCataclysmFloorPopulation BossToday = FCataclysmFloorPopulator::Populate(Halls, 1.0f, Boss);
+		const FCataclysmFloorPopulation WaveToday = FCataclysmFloorPopulator::Populate(Arena, 1.0f, Wave);
+		const FCataclysmFloorPopulation WalksInToday = FCataclysmFloorPopulator::Populate(Arena, 1.0f, WalksIn);
+		BriefCreatures += BossToday.Enemies.Num() + WaveToday.Enemies.Num() + WalksInToday.Enemies.Num();
+		BriefDifferences += PlacementsThatDiffer(BossToday, FCataclysmFloorPopulator::Populate(Halls, 1.0f, Boss, NoCells));
+		BriefDifferences += PlacementsThatDiffer(WaveToday, FCataclysmFloorPopulator::Populate(Arena, 1.0f, Wave, NoCells));
+		BriefDifferences +=
+			PlacementsThatDiffer(WalksInToday, FCataclysmFloorPopulator::Populate(Arena, 1.0f, WalksIn, NoCells));
+	}
+	TestTrue(TEXT("set-up: the boss floors and the waves held creatures"), BriefCreatures > 0);
+	TestEqual(TEXT("a boss floor and both kinds of wave: nothing differs"), BriefDifferences, 0);
+
+	// THE CONTROL: THE COMPARISON CAN TELL TWO FLOORS APART.
+	TestTrue(TEXT("two different floors differ by this count"),
+			 PlacementsThatDiffer(FCataclysmFloorPopulator::Populate(Floor(1, 1, ECataclysmFloorLayout::Halls)),
+								  FCataclysmFloorPopulator::Populate(Floor(2, 1, ECataclysmFloorLayout::Halls))) > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPopulationBarredCellsTest,
+	"Cataclysm.DungeonEnemies.NoCreatureIsPlacedOnABarredCellAndEverySectionStillHoldsOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPopulationBarredCellsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmPopulationTest;
+
+	// THE FIRST HALLS FLOOR OF THE SWEEP THAT HAS SECTIONS AND WHOSE ORDINARY POPULATION PUTS A CREATURE ON A BOUNDARY
+	// CELL. Without one the test would show nothing: the cells would be empty with the set and without it.
+	FCataclysmFloorPlan Plan;
+	FCataclysmFloorSections Sections;
+	TSet<FIntPoint> Barred;
+	int32 OnThemBefore = 0;
+	int32 FoundOnSeed = 0;
+	for (int32 Seed = 1; Seed <= SweepSeeds && FoundOnSeed == 0; ++Seed)
+	{
+		Plan = Floor(Seed, 1, ECataclysmFloorLayout::Halls);
+		if (!Plan.IsBuilt())
+		{
+			continue;
+		}
+		Sections = FCataclysmFloorGenerator::FindSections(Plan);
+		if (Sections.SectionCount() < 2)
+		{
+			continue;
+		}
+		Barred.Reset();
+		for (const TArray<FIntPoint>& Boundary : Sections.Boundaries)
+		{
+			Barred.Append(Boundary);
+		}
+		OnThemBefore = CreaturesOn(FCataclysmFloorPopulator::Populate(Plan), Barred);
+		if (OnThemBefore > 0)
+		{
+			FoundOnSeed = Seed;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a floor whose ordinary population stands a creature on a boundary cell was found"),
+				  FoundOnSeed != 0 && OnThemBefore > 0))
+	{
+		return true;
+	}
+
+	const FCataclysmFloorPopulation Before = FCataclysmFloorPopulator::Populate(Plan);
+	const FCataclysmFloorPopulation With =
+		FCataclysmFloorPopulator::Populate(Plan, 1.0f, FCataclysmFloorBrief(), Barred);
+	TestEqual(FString::Printf(TEXT("seed %d: with the cells barred no creature stands on one (%d did without)"),
+							  FoundOnSeed, OnThemBefore), CreaturesOn(With, Barred), 0);
+	TestTrue(TEXT("the floor still holds creatures"), With.Enemies.Num() > 0);
+	TestEqual(TEXT("the count wanted is the plan's and has not moved"), With.Wanted, Before.Wanted);
+
+	// EVERY SECTION HOLDS ONE, and every creature is in a section: on walkable ground and not on a boundary.
+	TArray<int32> InSection;
+	InSection.Init(0, Sections.SectionCount());
+	int32 InNoSection = 0;
+	for (const FCataclysmEnemyPlacement& Enemy : With.Enemies)
+	{
+		const int32 Section = Sections.SectionOf(Plan, Enemy.Cell);
+		if (InSection.IsValidIndex(Section))
+		{
+			++InSection[Section];
+		}
+		else
+		{
+			++InNoSection;
+		}
+	}
+	TestEqual(TEXT("no creature stands outside every section"), InNoSection, 0);
+	for (int32 Section = 0; Section < InSection.Num(); ++Section)
+	{
+		TestTrue(FString::Printf(TEXT("section %d holds a creature (%d)"), Section, InSection[Section]),
+				 InSection[Section] > 0);
+	}
+
+	// AND THE GATEKEEPER OF A BOSS FLOOR STILL STANDS ON THE EXIT, with the boundary cells barred and even with the
+	// exit itself among them: the set does not move the boss.
+	FCataclysmFloorBrief Boss;
+	Boss.bBossAtTheExit = true;
+	TSet<FIntPoint> BarredAndTheExit = Barred;
+	BarredAndTheExit.Add(Plan.Exit);
+	for (const TSet<FIntPoint>& Cells : {Barred, BarredAndTheExit})
+	{
+		const FCataclysmFloorPopulation BossFloor = FCataclysmFloorPopulator::Populate(Plan, 1.0f, Boss, Cells);
+		int32 Gatekeepers = 0;
+		int32 OnTheExit = 0;
+		for (const FCataclysmEnemyPlacement& Enemy : BossFloor.Enemies)
+		{
+			if (Enemy.Creature == ECataclysmDungeonCreature::Gatekeeper)
+			{
+				++Gatekeepers;
+				OnTheExit += (Enemy.Cell == Plan.Exit) ? 1 : 0;
+			}
+		}
+		TestEqual(TEXT("a boss floor holds one Gatekeeper"), Gatekeepers, 1);
+		TestEqual(TEXT("and it stands on the exit"), OnTheExit, 1);
+		TestEqual(TEXT("and no creature stands on a boundary cell"), CreaturesOn(BossFloor, Barred), 0);
+	}
+
+	// THE CONTROL FOR THE GATEKEEPER: the same floor not asked for a boss has none.
+	TestEqual(TEXT("the same floor without the boss rule holds no Gatekeeper"),
+			  With.HowMany(ECataclysmDungeonCreature::Gatekeeper), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

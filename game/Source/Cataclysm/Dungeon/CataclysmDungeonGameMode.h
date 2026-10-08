@@ -3956,6 +3956,19 @@ private:
 	/** Open one gate: its pillars gone and its cells walkable. */
 	void OpenTheGate(FGatedShortcut& One);
 
+	/**
+	 * The per-cell half of closing a gate, shared so a barrier that is not a shortcut's gate can use it. Issues #1820
+	 * and #41. Blocks every cell in the floor's plan and, when none of `Pillars` still stands, places one one-cell
+	 * pillar on each cell, raised, and keeps them in `Pillars`. `RowKey` is the row the pillars are coloured and named
+	 * for. It asks nothing: whether the cells may be closed is the caller's question. Does nothing with no floor.
+	 */
+	void BlockCellsWithPillars(const TArray<FIntPoint>& Cells, FName RowKey,
+		TArray<TWeakObjectPtr<ACataclysmFloorObstacle>>& Pillars);
+
+	/** The per-cell half of opening a gate: every pillar in `Pillars` destroyed and forgotten, every cell walkable. */
+	void UnblockCellsAndDestroyPillars(const TArray<FIntPoint>& Cells,
+		TArray<TWeakObjectPtr<ACataclysmFloorObstacle>>& Pillars);
+
 	/** Open a row's shortcut by its index, if it exists and is closed. */
 	void OpenTheShortcutOf(FName RowKey, int32 Index);
 
