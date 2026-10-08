@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — Three sentences on channelling are built as five rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, three new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (one stat joins the
+list of stats that are a yes or a no, and the row counts),
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHAT NO TEST SHOWS
+
+- **All three sentences reach one built skill today, Pyroclasm**, the Demonic greataxe's ultimate. A channel in
+  this game is a skill tagged `Type.Channel` that is running; it is a fixed spin and not a held button.
+- **Whether the player can still take a step under "You cannot move while channeling any skill" has no
+  automation test and cannot have one.** The step is refused by the player controller, and the tests run with no
+  player controller. The stat's answer is tested, here and in the entry that built it. The step is on the owner's
+  play-check list.
+- **The drain is paid three or four times for one use of Pyroclasm, 24% to 45% or 32% to 60% of maximum
+  health**, as the entry that built the condition works out: the channel begins when the skill is paid for and so
+  includes the swing's wind-up. Out of combat it pays nothing, and it cannot kill.
+
+### WHAT WAS BUILT
+
+The rows the entry "A character knows it is channelling" of 2026-10-08 left to the session holding the design
+workbook, each as that entry's table states it. No engine code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Channel skills drain 8%-15% of your maximum HP per second while active | Action `health` on `every_seconds`, Every Seconds 1, -8 to -15 of `maximum`, Condition `while_channelling` |
+| You cannot move while channeling any skill | Two rows: `cannot_walk`, flat, 1, no Required Tags, Condition `while_channelling`; and `skill_locked`, flat, 1, Required Tags `Slot.Movement`, Condition `while_channelling` |
+| Channel skills deal 30%-50% less damage during the first 2 seconds of channeling | Two rows: `attack_damage` and `spell_damage`, each more, -30 to -50, Required Tags `Type.Channel`, Condition `channelling_for_under_seconds` 2 |
+
+EnchantmentEffects 565 to 570, over 478 to 481 enchantments.
+
+**With the rows, three lists move.** `cannot_walk` joins `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`: it is a yes or a no, its sentence states no number,
+and that list refuses a flag no row uses, so it could not join before its row. Without it the check that every
+value appears in its sentence refuses the row's 1; that was seen in a copy before the list was changed. The two
+conditions leave the list of conditions built ahead of their rows.
+
+### THREE THINGS A READER OF THE ROWS SHOULD KNOW
+
+- **A worn item at the top of the drain row's range carries 15**, the larger loss; the row is written -8 to -15.
+  **A character can wear it with "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per
+  second"**: both are health every 1 second, and the entry that built the condition is what lets both pay.
+- **"You cannot move" is two rows because moving is two things**: walking, and a movement skill. Neither stops
+  an enemy moving the character.
+- **"The first 2 seconds" is less than 2 seconds since the channel began, counted from the press.**
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the three sentences is that entry's and its rulings of 2026-10-08.
+
+### Tests
+
+Each wears the real row at the top of its range, and first asserts that the name it wears is a row of
+`EnchantmentsNegative.csv`. **A test wearer is made to channel by the component's own note, `NoteChannelBegan`**,
+which is what a skill tagged `Type.Channel` calls when it is paid for; no skill is used in these tests.
+
+- `Cataclysm.Enchantments.TheChannelDrainRowHandsItsWearerATimedLossOfMaximumHealthWhileChannelling`: the wearer
+  holds exactly one timed action on health that acts only while channelling: 15 of maximum health, every 1
+  second; and none when the item is taken off.
+- `Cataclysm.Enchantments.TheCannotMoveWhileChannellingRowsForbidWalkingAndLockTheMovementSlotOnlyWhileChannelling`:
+  `cannot_walk` asked with no tags answers nought before channelling, 1 while channelling and nought after; the
+  function the player controller asks says the wearer cannot walk while channelling; the lock asked with a
+  movement skill's slot tag answers nought, 1 and nought, and asked with a heavy attack's slot tag answers nought
+  while channelling.
+- `Cataclysm.Enchantments.TheLessDamageEarlyInAChannelRowsHalveAChannelledSkillsDamageOnlyInItsFirstTwoSeconds`:
+  for attack damage and for spell damage, the stat applied to 100 is, against the same reading while not
+  channelling, half for a skill tagged `Type.Channel` half a second into a channel, whole for a skill without the
+  tag, and whole two and a half seconds in. Ratios, so nothing the wearer's class gives is read.
+
+**Not tested here:** Pyroclasm used under any of the worn rows; a step refused in play; health lost over a
+real spin. The entry that built the condition tests each with the row made by hand, except the step.
+
+---
+
 ## 2026-10-08 — A character knows it is channelling: two conditions, `while_channelling` and `channelling_for_under_seconds`, and one flag stat, `cannot_walk`, for three enchantment sentences that have no row, and a fault in the timed-row clock is fixed. Engine and generator only; no row authored
 
 **Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
