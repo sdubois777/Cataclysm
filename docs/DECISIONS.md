@@ -374,6 +374,38 @@ sentence. **It needs no entry in `CONDITIONED_STATS_WITH_AN_ASKER`** while its r
 its row was carried through does not show the stat is listed**: the listing in `StatsWithNoAttribute()` is
 tested by name.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. The build, the whole suite and the Python of record are in the table of the entry of the same day on the
+retirement of "Can’t use a basic attack" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.** It was the first time the C++ of this layer was
+compiled.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of all seven layers, the first compile of this layer's code and tests | 58367e1f | Build: Succeeded - 34 actions, 31 files compiled |
+| Whole suite, every asset built | cee98975 | 3401 tests performed, 3401 succeeded, 0 failed |
+| Proof B1, the ailment's tag leaving is not seen (`NewCount` made 1) | cee98975 | PROVED: with the break in, 10 tests performed, 9 succeeded, 1 failed: `WhenTheNecrosisEndsTheMaximumReturnsAndTheHealthIsNotGivenBack`, 4 failed assertions; restored, 10 of 10 |
+| Proof B2, the unlowered maximum is not remembered (`> 0.0f` made `> 1000.0f`) | cee98975 | PROVED: 10 performed, 3 failed: `ASecondAppliersNumberReplacesTheFirstsAndTheTwoDoNotAdd`, `ARefreshOfANecrosisAlreadyCarriedLowersNothingASecondTime` and `WhenTheNecrosisEndsTheMaximumReturnsAndTheHealthIsNotGivenBack`, 10 failed assertions; restored, 10 of 10 |
+| Proof B3, the summoner's resistance is not capped before the share is taken | cee98975 | PROVED: 10 performed, 1 failed: `AMinionTakesAShareOfItsSummonersCappedResistance`, 2 failed assertions; restored, 10 of 10 |
+
+**What the run showed that the writing session could only read.** The ailment's ending BY TIME is seen: the test
+runs the clock to 10.5 seconds, the Necrosis expires, and the maximum is back at exactly 1,000. A fresh
+application lowers the maximum from the tag's event. So an effect with a duration does expire under the test
+clock, and the tag event does write the maximum at those moments. **Still by reading only**: what happens to the
+listener when a creature is destroyed, a respawn, and a dungeon rule writing the maximum while it is lowered.
+
+**The three proofs were each as stated before they ran.** B1 was stated as that one test and at least 2 failed
+assertions with two named; it failed 4, as the writing session had counted: the maximum was not back at 1,000
+and 2 was still reported held off it, after a removal and after the time ran out. B2 was stated as ONE test that
+must fail, `ASecondAppliersNumberReplacesTheFirstsAndTheTwoDoNotAdd`, with at least 6 failed assertions in the
+run and the others allowed to fail; three tests failed, 6, 2 and 2 assertions, and the lowering compounded as
+predicted (931 where 950 was expected, then 912.38). B3 failed "82.5% of the control's" (it read 77.5%) and
+"92.5% of the control's" (87.5%). For every proof the broken file's hash was the same after as before.
+
+**No proof was run for**: the bound of 50; the armour a minion takes from its summoner, its penetration, a
+machine, a summoner that is gone, or a summoner changing its armour. Each is tested and passed; none is proved.
+
 ---
 
 ## 2026-10-08 — "Point blank AOE skills have a 0.75-1.5 second cast delay before firing" is built as a row
