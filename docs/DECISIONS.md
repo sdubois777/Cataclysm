@@ -30,6 +30,13 @@ A player will read "point blank AOE skills" as all of them, and it is not all of
 
 So the row delays 9 of the 34 today. Whether a movement skill or a self buff SHOULD be delayed is ruled no (M2).
 
+**How the count was made.** A script written for the purpose and not kept in the repository read
+`game/Data/WeaponSkills.csv` as it stands at commit `c9f30dae`, split each row's `Tags` cell on commas, kept the
+rows holding `Type.AOE.PointBlank`, and grouped them by `DamageType` and `Shape`. **A held strike was found by
+the substring `ChargeTime` in the row's `ShapeParams` cell, not by parsing the parameters.** An earlier ruling of
+the coordinating session quoted 11 strikes and 5 from the brief; the count from the code is the one that stands:
+9 delayed and 25 not (2 held strikes, 5 movement skills, 1 self buff, 17 War rows with no shape).
+
 **Said first, for the play-check.**
 
 - **With the row "Taking a hit interrupts any skill currently being used", a hit during the delay loses the
@@ -42,6 +49,7 @@ So the row delays 9 of the 34 today. Whether a movement skill or a self buff SHO
   of channeling" are counted from the press, so the delay uses some of them up before the first swing.
 - **The burst at the caster and the attack clip both play at the press**, 0.75 to 1.5 seconds before the damage.
   Nothing here moves either. Under the row the swing will be seen to finish and the blow to land after it.
+- **Only the first blow of a use is delayed, so a spin starts late and lasts as long as before.**
 - **Nothing stops the player walking during the delay** (M4). A strike finds its targets when the blow lands,
   from where the character stands then; a projectile leaves from where the character stands then, toward the
   point aimed at the press.
@@ -100,6 +108,19 @@ the four that move at once; it is true of all six.
 - **M8.** A charge that walks counts the distance walked; a charge that moves at once must count the distance
   from where it began to where it arrived. If a charge that moves at once tells its blow no distance today,
   stop and write none of the charge. **It tells its blow none, so none was written.** See above.
+
+**The coordinating session approved the writing session's judgements 1 to 8, below, as written, on 2026-10-08.**
+
+**Its ruling on M8 of the same day, each a labelled judgement of the coordinating session.** None of it is built
+by this layer.
+
+- **(a) A NEW delivery field carries the metres charged, with the range the skill used.**
+  `MetresMovedBeforeBlow` is untouched: it is the distance walked before the press and belongs to Headlong and
+  to `metres_moved_before_attack`.
+- **(b) A charge that moves at once counts from where it began to where it arrived.**
+- **(c) A charge that walks counts the walk so far when the blow lands, and no blow is held.**
+- **(d) The two hits a worn row gives a movement skill carry nothing and get no bonus.**
+- **(e) It is its own layer, after the next one. So this layer is the cast delay alone.**
 
 ### How it is built
 
@@ -183,9 +204,9 @@ carried through; the stat is one with no attribute and a made-up name is not.
 
 ### Not covered by a test
 
+- **The animation during the delay. It is on the owner's play-check list.** The attack clip and the burst at
+  the caster play at the press, 0.75 to 1.5 seconds before the damage, and nothing checks what is seen.
 - **Any real row.** None exists. Every row in a test is built by hand.
-- **The animation during the delay**, and the burst at the caster: both play at the press and nothing checks
-  what is seen.
 - **A wind-up above nought in a world.** A test fighter has none, so "added to the wind-up" and "a figure below
   nought leaves the wind-up whole" are held by the sum's own function and not by a real player's swing.
 - **A projectile skill and a curse under the row.** Both wait through the same function; only a strike is used.
