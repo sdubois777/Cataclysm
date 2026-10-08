@@ -5,30 +5,42 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-10-08 — Lightforged Walls seals each section of a Halls floor behind a barrier of pillars until the creatures placed in it are slain, and the row is Built
 
 **Not built and not run.** Nothing in this entry was compiled and no Unreal test of it was run. The writing session
-ran the Python suite, the lint and the conflict check before the commit; their figures are in the commit's report
-and not here. This is layer 2 of the floor-sections stack. Layer 1 is the entry below this one.
+ran the Python suite, the lint and the conflict check before each commit; their figures are in the commits' reports
+and not here. This is layer 2 of the floor-sections stack. Layer 1 is the entry below this one. The entry was
+written with the layer's first commit and corrected by its second, the same day, after the coordinating session
+ruled on the first report. The coordinating session ruled and ran nothing. Every build, run and measurement of
+layer 1 named here was made by the registering session.
 
-**Said first: the rules' objects are placed before the barriers close, and that is not settled.** The ruled order is:
-build the floor, place the shortcut gates, place the creatures with the boundary cells barred, then close the
-barriers. It is built as ruled. The ruling also required that the barriers be Solid in the plan before any other
-rule chooses a cell for an object. That does not hold. `PopulateFloor` makes all 27 of its `Place...` calls
-(`CataclysmDungeonGameMode.cpp` lines 1828 to 1951) before it asks the populator for creatures (line 1989), and the
-barriers close at line 2045. Every one of those calls reads the plan with the boundary cells walkable. The pickers
-`FloorSourceCells` (3796), `EternalChorusCells` (3774) and `InfestedVeinsCells` (3791) take any walkable cell far
-enough from the entrance in a straight line, so each can choose a boundary cell. What then stands on a boundary
-cell is inside a pillar until that barrier opens. A Reality Rift's cell is one of them: a rift whose other end is a
-boundary cell would carry the player into a pillar. The candidate order named in the ruling, closing right after
-the creature loop, is where the close is, and it does not help, because the `Place...` calls are not after the
-creature loop. The writing session did not invent another order. One that the code would allow, for the
-coordinating session to rule on: close the barriers before those calls and hand the populator a copy of the plan
-with the boundary cells walkable. The pickers read only whether a cell is walkable and straight-line distances, so
-nothing else about them would change. The full list of sites is under "How it is built".
+**Said first: the order first ruled put objects inside pillars, and was corrected before any run.** The
+coordinating session's first order was: build the floor, place the shortcut gates, place the creatures with the
+boundary cells barred, then close the barriers. The writing session built it and reported that all 27 `Place...`
+calls of `PopulateFloor` run before the creatures are placed, so every object was chosen with the barriers' cells
+walkable and could stand inside a pillar; a Reality Rift's cell among them. The coordinating session then ruled
+the order again (ruling 10), and the layer's second commit builds that: the barriers close before the first
+`Place...` call (`CataclysmDungeonGameMode.cpp` line 1833), the populator is asked about a copy of the plan with
+the barriers' cells walkable (line 1993, through `FloorPopulationNow`, 6357), and a barrier whose section holds no
+creature is opened at once (line 2049). Neither order has been run.
+
+**Said first: one thing the new order does not reach, and what was done about it.** Warzone Control Points'
+points on a Halls floor are chosen before the floor is built and before sections exist
+(`PlanTheGatedShortcuts`, called at line 1499; `PlanTheSections` at 1504), each with a shortcut measured from it.
+A planned point could be a cell the search then takes for a boundary, and the point would stand inside a pillar.
+The point cannot be moved there and layer 1's search cannot be told to avoid a cell. So a floor on which a
+planned point lies on a boundary's cell gets no sections, and the row is the sealed stairs only there
+(`PlanTheSections`, from line 6203). That is a judgement by the writing session, for the coordinating session to
+confirm. How often it happens is not measured and no test reaches it.
 
 **Said first: where the row does only what it did before this layer.** On a Caverns floor. In an Arena as Horde.
-On a floor that carries Shadowy Enemies. And: "On 4 of 200 measured Halls floors the search finds no sections; on
-such a floor Lightforged Walls is the sealed stairs only, as on a Caverns floor or a Horde arena. Of the 200, 178
-have three sections and 18 have two." Of the 20 floors first measured, 17 have three and 3 have two. Those counts
-are the registering session's runs of layer 1, not the writing session's.
+On a floor that carries Shadowy Enemies. On a Halls floor where a Warzone point was planned on a boundary's cell,
+as above. And: "On 4 of 200 measured Halls floors the search finds no sections; on such a floor Lightforged Walls
+is the sealed stairs only, as on a Caverns floor or a Horde arena. Of the 200, 178 have three sections and 18 have
+two."
+
+Those counts are from layer 1's last run, made by the registering session at df008d57 on 2026-10-08:
+`Cataclysm.FloorSections` 15 of 15 passed, `Cataclysm.FloorGenerator` 2 of 2, `Cataclysm.DungeonEnemies` 13 of 13.
+On the 20 floors: three sections on 17, three or two on 20, slowest floor 34.021 ms. On the 200 further floors:
+three sections on 178, two on 18, none on 4, slowest floor 49.544 ms, 9 at the walk limit. The writing session
+ran none of it.
 
 The reason for leaving out a floor with Shadowy Enemies: under that row a creature takes no damage unless lit and
 still counts as standing, and the light zones are placed without regard to sections, so a character with no fire
@@ -37,8 +49,9 @@ damage could be unable to clear a section.
 How often the two rows meet. **This is arithmetic and not a measurement.** A dungeon carries as many rows as its
 tier, and twice that if Sacrificial (`CataclysmDungeonModifier.h` lines 103 and 116, `CataclysmDungeonModifier.cpp`
 `CountFor`). They are drawn without replacement from the rows of the Cataclysms active in the run (`PoolFor` and
-`Draw` in the same file). Tier N faces N Cataclysms; that is the registering session's reading of
-`CataclysmRoster.cpp` and the writing session did not read it. `game/Data/DungeonModifiers.csv` has 12 Void rows
+`Draw` in the same file). Tier N faces N Cataclysms: read by the registering session, in
+`UCataclysmRoster::ActiveCountFor` (`CataclysmEmpire/Empire/CataclysmRoster.cpp`), which returns the tier clamped
+to 1 to 8, and `ActiveFor`. The writing session did not read them. `game/Data/DungeonModifiers.csv` has 12 Void rows
 and 15 Celestial rows, and 116 rows in the eight types together; the writing session counted them. At tier 2,
 when the two active are Void and Celestial, both rows land on one dungeon about 1 time in 351, and 1 in 58 if
 Sacrificial. With all eight active, 1 in 238 at tier 8, and 1 in 56 if Sacrificial. Reality Twister's extra row
@@ -79,15 +92,15 @@ without a gap. That is inferred and not shown. Nothing was changed for it.
 - Creatures a rule spawns near the player on a floor in sections. They may land beyond a barrier. The ones read
   are marked raised and are not counted.
 - Other rules that choose cells by walking distance on a plan with sealed areas.
-- **Found while writing: fifteen places draw a fresh population from the floor's plan during play or while the
-  floor begins**, to learn which kinds to send (`FCataclysmFloorPopulator::Populate` at lines 3086, 4110, 4712,
-  4994, 6898, 6940, 7361, 7633, 7860, 8249, 8403, 8908, 9429, 9866 and 19522). The populator places only where the
-  entrance can be walked from. With a barrier closed that is the open sections only, so those rules may draw
-  fewer creatures, or none where a rule sends nothing from an empty population. The writing session did not read
-  what each does with a smaller answer.
-- Morale Break. A creature that flees is taken off the floor and one that returns is a new creature with no
-  section. So a section whose creatures have fled can read as cleared and open its barrier while they are away.
-  Not read further.
+- **The fifteen places that ask the populator which kinds the floor holds were not examined rule by rule.** They
+  are named under "How it is built". The populator places only where the entrance can be walked from, so asked
+  about a plan with a barrier closed it would answer for the open sections alone. Since the second commit every
+  one of them asks through one helper that reads the plan with the closed barriers' cells walkable (ruling 11),
+  so each gets the answer it gets on the same floor without sections. What each rule then does with the cells of
+  that answer was not read: the ones read take only the kinds from it and choose their own cells.
+- Morale Break, stated and not changed (ruling 12). A creature that flees is taken off the floor and one that
+  returns is a new creature with no section. So a section whose creatures have fled reads as cleared, its
+  barrier opens, and the returnees hold only the stairs.
 - Six kinds of creature that rules add during play are counted and carry no section. They hold no barrier and
   still hold the stairs: Necrotic Bloom's waves, Infection Bloom's last surge, Infested Veins' guardians, the
   Demon Prince, a Vengeful Wraith, the Epidemic's Plague Lord.
@@ -102,17 +115,32 @@ taken from the registering session's notes. The writing session read none of the
   Forced Tithes, Grim Totems, Royal Guard, Grave Tide, Dead Rising, Divine Resurgence, Field Medic, Singularity
   Wells, Blackest Shadow and Fog of War. The registering session's note on that reading says it had not yet read
   it again itself.
-- Third reading, 56 rows of the other seven types, "read"; and 9 + 14 rows "scanned by search for spawns, heals,
-  moves and immunity, not read line by line". The 9 are Warzone Control Points, Portal Unleashing, Necrotic
-  Bloom, Mind-Shattering Illusions, Infection Bloom, Demon Prince, Vengeful Wraiths, Epidemic and Famished
-  Beasts. The notes do not name the 14 or the 56 one by one; their "only harder" lines are below.
+- Third reading, rows of the other seven types, "read". The registering session's count is 56 and it names 55:
+  Pandora's Box, Trick or Treat, Volatile Evolution, Wild Magic, Echo Chamber, Illusory Enemies, Mind-Shattering
+  Illusions, Portal Unleashing, Unstable Dimensions, Reality Twister, Mortal Decay, Death's Embrace, Dirge
+  Resonance, Funereal Procession, Necrotic Ground, Necrotic Bloom, Vengeful Wraiths, Soul Harvest, Nothing Is
+  Forgotten, Wasting Sickness, Blood Altar's step, Blood Price, Infernal Beacons, Pact of Temptation, Demon
+  Prince, Suffering Aura, Forced March, Famished Beasts, Swarm of Locusts, Carrion Feast, Contagious Touch,
+  Infested Veins, Leech Spores' step, Pestilent Empowerment, Plague Harbingers, Raw Sewage's step, Infested
+  Hoard, Epidemic, Infection Bloom, Anti-Magic Zones, Insanity Bursts, Nihil's Embrace, Void Parasite, Grasping
+  Tentacles, Singularity Wells' step, the Blackest Shadow, Fog of War, Battlefield Relics, Blood Debt,
+  Blood-Forged Champions, Commander's Aura, War Banner, Artillery Strike, Chaos Touched, and the choice of March
+  of Progress's Commander.
+- "Scanned by search for spawns, heals, moves and immunity, not read line by line", which the registering session
+  counts as 14: Hellfire, Spore Clouds, Brand of the Aggressor, Withered Ground, Fungal Overgrowth, the death
+  listeners of Leech Spores and Blood Altar, Infernal Rain, Ravenous Hoard, March of Progress's step, Starvation
+  Curse, and the Famine player-stat rows Starvation, Dehydration, Scarcity, Recession, Diminishing Returns, Hard
+  Mode and Desperate Measures. The first reading's 9 skimmed rows are Warzone Control Points, Portal Unleashing,
+  Necrotic Bloom, Mind-Shattering Illusions, Infection Bloom, Demon Prince, Vengeful Wraiths, Epidemic and
+  Famished Beasts.
 - The Celestial rows, in the second reading, whose key lines the registering session says it read again. None
   locks a section by itself.
 - The 18 enemy modifiers with code. **An enemy modifier with a teleport, if one is ever built, needs the question
   asked again.**
 
 Issue [#2334](https://github.com/sdubois777/Cataclysm/issues/2334) holds the dead ends that exist in merged code,
-and that a player cannot leave an unfinished dungeon without the console. Issue
+that a player cannot leave an unfinished dungeon without the console, and a third case: Necrotic Ground's fog on
+a creature that never moves. Issue
 [#2289](https://github.com/sdubois777/Cataclysm/issues/2289) asks whether a bonded creature with an ally in reach
 is meant to be unkillable by a blow. **This layer fixes neither.**
 
@@ -171,8 +199,8 @@ nothing. The registering session's helpers' list.
 
 ### Said first: where the code did not match what the writing session was told
 
-1. **Every `Place...` call of a floor's beginning is before the creature loop**, as above. The brief's candidate
-   order assumed some were after it.
+1. **Every `Place...` call of a floor's beginning is before the creature loop.** The first order ruled assumed
+   some were after it. See the first "said first" and ruling 10.
 2. **`CataclysmEnemyModifiers.cpp` did not reach the dungeon game mode at all.** It now includes its header and
    asks it one question. See judgement 6.
 3. **The row is a dungeon modifier row.** Its sentence is in `game/Data/DungeonModifiers.csv`, not in the
@@ -190,14 +218,14 @@ Line numbers are of the files as this change leaves them.
 
 - Layer 1's entry, below, whole. `CataclysmFloorGenerator.h`: `FCataclysmFloorSections` (line 84) and
   `FindSections` (410). `CataclysmFloorPlan.h` and `.cpp`, whole. `CataclysmFloorPopulation.h` line 381.
-- `CataclysmDungeonGameMode.cpp`: `BuildFloor` (1441), `ClearFloorEnemies` (1719), `PopulateFloor` (1762 to 2123)
-  and `SpawnPlacedCreature` (from 2125), whole. `GoToFloor` (from 20302), whole. `FloorSourceCells`,
-  `EternalChorusCells`, `InfestedVeinsCells`, `SeededSourceCells` (5906), `PlaceFloorObjects` (9803),
-  `ExitAltarWorld` (10599), `NecroticBloomWaveCells` (3996), `PlaceTheRealityRifts` and the carry in
-  `StepRealityRifts` (line 8524). `PlanTheGatedShortcuts` (5970), `CloseTheGate` (6072), the two pillar helpers,
-  `CellsTheFloorHolds`, `ChooseObstacleCells` (6700), `WarnOfAnObstacle` (6738), `RaiseOrCancel` (6764).
-  `IsOneOfTheFloorsOwnStanding` (4316), `LightforgedWallsStanding` (12452), `StairsSealedBy` (12477), the head and
-  the Lightforged Walls block of `StepFloorRulesThatChange` (13338), and the row's line in `LiveCountsForTheFloor`.
+- `CataclysmDungeonGameMode.cpp`: `BuildFloor` (1441), `ClearFloorEnemies` (1719), `PopulateFloor` (1762 to 2127)
+  and `SpawnPlacedCreature` (from 2129), whole. `GoToFloor` (from 20333), whole. `FloorSourceCells`,
+  `EternalChorusCells`, `InfestedVeinsCells`, `SeededSourceCells` (5909), `PlaceFloorObjects` (9835),
+  `ExitAltarWorld` (10631), `NecroticBloomWaveCells` (3999), `PlaceTheRealityRifts` and the carry in
+  `StepRealityRifts` (line 8557). `PlanTheGatedShortcuts` (5973), `CloseTheGate` (6075), the two pillar helpers,
+  `CellsTheFloorHolds`, `ChooseObstacleCells` (6733), `WarnOfAnObstacle` (6771), `RaiseOrCancel` (6797).
+  `IsOneOfTheFloorsOwnStanding` (4319), `LightforgedWallsStanding` (12484), `StairsSealedBy` (12509), the head and
+  the Lightforged Walls block of `StepFloorRulesThatChange` (13370), and the row's line in `LiveCountsForTheFloor`.
 - `CataclysmEnemyModifiers.cpp`, `ShareOfDamageKept` (685). `CataclysmVitalAttributeSet.cpp`, where a blow is
   shared and judged lethal. Issue #2289.
 - `CataclysmDungeonModifierEffects.cpp`, `BuiltStateOf`, and the comment on `LightforgedWallsKey` in the header.
@@ -225,10 +253,10 @@ Each is a labelled judgement by the coordinating session under the owner's deleg
    is made, after any gated shortcuts are carved, passing every planned shortcut's gate cells as cells that may
    close. Then: build the floor; place the shortcut gates; place the creatures with every boundary cell barred;
    then close the barriers. No creature may stand on a barrier cell and every section must be populated. The
-   barriers must be Solid in the plan before any other rule chooses a cell for an object it places; **that part
-   does not hold as built, see the first "said first"**. On a floor without sections nothing is barred and the
-   same calls run in the same order: the order changed only by the added steps. A labelled judgement by the
-   coordinating session under the owner's delegation, 2026-10-08.
+   barriers must be Solid in the plan before any other rule chooses a cell for an object it places. **REPLACED BY
+   RULING 10**, because that last requirement did not hold in this order. On a floor without sections nothing is
+   barred and the same calls run in the same order. A labelled judgement by the coordinating session under the
+   owner's delegation, 2026-10-08.
 3. **A section number for each creature.** Recorded on each creature the floor places, in the one loop of
    `PopulateFloor` where the creature and its placement are both in hand. The Gatekeeper gets the section of the
    cell it stands on, the exit's. A creature a rule adds later has none. A labelled judgement by the coordinating
@@ -262,90 +290,149 @@ Each is a labelled judgement by the coordinating session under the owner's deleg
    same, on two reasons: the rift row says players "can use these rifts strategically to teleport", and the
    stairs seal still holds the floor to a full clear. A labelled judgement by the coordinating session under the
    owner's delegation, 2026-10-08.
+10. **The order changes; this replaces the order first ruled.** The barriers close BEFORE the object-placing
+    calls of a floor's beginning, so every picker sees barrier cells as Solid. The creature placement is given a
+    COPY of the plan with the boundary cells walkable, and those cells are still barred to creatures, so every
+    section is populated and no creature stands on a barrier cell. Every barrier closes before the objects are
+    placed; once the creatures stand, any barrier whose section holds no standing creature opens at once, before
+    the floor's first beat. A barrier closed during object placement and opened straight after leaves objects
+    off its cells, which is fine. The first order put objects inside pillars and was corrected before any run.
+    A labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+11. **Every call that asks the populator during play which kinds the floor holds goes through one helper** that
+    passes the plan with the still-closed barriers' cells walkable, so the answer is what it is on the same floor
+    without sections. The creature placement of ruling 10 uses the same helper. A labelled judgement by the
+    coordinating session under the owner's delegation, 2026-10-08.
+12. **Morale Break is stated for the play-check and nothing changes.** A section whose creatures fled reads as
+    cleared, its barrier opens, and the returnees hold only the stairs. A labelled judgement by the coordinating
+    session under the owner's delegation, 2026-10-08.
+13. **Confirmed as built**, each first a judgement of the writing session: the panel's "while a barrier stands"
+    is a barrier closed AND its section still holding a standing creature; a section with no creature is never
+    left closed; the bond's "the barriers between" is any one of them closed; the enemy modifier code asks the
+    dungeon game mode one question, and both files are in the Cataclysm module. A labelled judgement by the
+    coordinating session under the owner's delegation, 2026-10-08.
+14. **The area-split refusal as worded, "refused when the count of areas rises", is accepted, with its gap stated
+    as untested.** The gap: an obstacle that removed one whole area while splitting another would leave the count
+    level and pass. The reason it is accepted is REASONING AND NOT A TEST: with the barriers shut an area is a
+    section of a tenth of the floor or more, and an obstacle is a few cells, so an obstacle that removes a whole
+    area cannot occur on a floor the search accepts. A labelled judgement by the coordinating session under the
+    owner's delegation, 2026-10-08.
+15. **The unwritten barrier tests stand as read**: a charge, a blink, a creature's charge and a straight shot.
+    The rift test that fails on its set-up when no seed gives a pair either side of a closed barrier is right as
+    it is. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
 
 ### How it is built
 
-**The condition.** `ACataclysmDungeonGameMode::FloorGetsSections` (`CataclysmDungeonGameMode.cpp` line 6154) is
+**The condition.** `ACataclysmDungeonGameMode::FloorGetsSections` (`CataclysmDungeonGameMode.cpp` line 6157) is
 the four tests of ruling 1 and nothing else.
 
-**Planning.** `BuildFloor` calls `PlanTheSections` (6179) on the line after `PlanTheGatedShortcuts`, before the
+**Planning.** `BuildFloor` calls `PlanTheSections` (6182) on the line after `PlanTheGatedShortcuts`, before the
 floor is built from the plan. It forgets the last floor's sections, opening any barrier still closed. On a floor
 that gets sections it passes every planned shortcut's two gate cells to `FindSections` and keeps the answer in
 `FloorSections`. It closes nothing.
 
-**The order a floor begins in, with the lines.** In `GoToFloor`: `BuildFloor` (20312), the sweep of the last
-floor's actors, `PlaceTheShortcutGates` (20375), `PopulateFloor` (20377), `PlaceStairs` (20406), the player put at
-the entrance (20457) and the floor's rules applied (20509). Inside `PopulateFloor`: the 27 `Place...` calls (1828
-to 1951); the populator (1989), given every boundary cell as cells no creature may be placed on; the loop that
-puts each creature down and writes its section (2029); `CloseTheSectionBarriers` (2045); then the seven `Choose...`
-calls (2050 to 2072), none of which chooses a cell.
+**The order a floor begins in, with the lines.** In `GoToFloor`: `BuildFloor` (20343), the sweep of the last
+floor's actors, `PlaceTheShortcutGates` (20406), `PopulateFloor` (20408), `PlaceStairs` (20437), the player put at
+the entrance (20488) and the floor's rules applied (20540). Inside `PopulateFloor`, on a floor that is not a Horde
+arena: `CloseTheSectionBarriers` (1833), which closes every barrier; the 27 `Place...` calls (1839 to 1962); the
+populator through `FloorPopulationNow` (1993), which reads a copy of the plan with the closed barriers' cells
+walkable and is given every boundary cell as cells no creature may be placed on; the loop that puts each creature
+down and writes its section (2032); `StepTheSectionBarriers` (2049), which opens at once the barrier of any
+section that holds no standing creature; then the seven `Choose...` calls (2054 to 2076), none of which chooses
+a cell. The floor's first beat comes later, from `Tick`.
 
-**Every site that chooses a cell for an object when a floor begins, and which side of the close it is on.** All of
-these are BEFORE the close. Each reads the plan with the boundary cells walkable.
+**Every site that chooses a cell for an object when a floor begins, and which side of the close it is on.** The
+close is line 1833. Every site of `PopulateFloor` in this table is now AFTER it and reads the barriers' cells as
+Solid. The one site BEFORE it is the last row, the Warzone points planned in `BuildFloor`; see the second "said
+first".
 
 | Line | Call | How its cells are chosen |
 |---|---|---|
-| 1828, 1832, 1836 | `PlaceTheTitheAltar`, `PlaceThePactAltar`, `PlaceTheDivineGate` | `ExitAltarWorld`: the exit, or a walkable cell beside it |
-| 1847 | `PlaceTheChoruses` | `EternalChorusCells` |
-| 1852 | `PlaceTheBlooms` | `EternalChorusCells` |
-| 1856 | `PlaceTheSpires` | `EternalChorusCells` |
-| 1861 | `PlaceTheBeacons` | `EternalChorusCells` |
-| 1866 | `PlaceThePortals` | `EternalChorusCells` |
-| 1870 | `PlaceTheRealityRifts` | `EternalChorusCells`; the cells the player is carried to |
-| 1875 | `PlaceTheHoards` | `EternalChorusCells`, then guards on `NecroticBloomWaveCells` through `SpawnPlacedCreature` |
-| 1880 | `PlaceTheQuarantine` | `EternalChorusCells` |
-| 1885 | `PlaceTheBloom` | `EternalChorusCells` |
-| 1890 | `PlaceTheRift` | `EternalChorusCells` |
-| 1895 | `PlaceTheShelters` | `EternalChorusCells` |
-| 1899 | `PlaceTheControlPoints` | on Halls the points `SeededSourceCells` chose before the floor was built; else `EternalChorusCells` |
-| 1904 | `PlaceTheRivers` | `EternalChorusCells`, then a line of marks across the floor |
-| 1908 | `PlaceTheGuide` | the entrance |
-| 1913 | `PlaceTheVeins` | `InfestedVeinsCells` |
-| 1918 | `PlaceTheLight` | `EternalChorusCells` |
-| 1922, 1925, 1929, 1933, 1937, 1941 | `PlaceTheTotems`, `PlaceTheRelics`, `PlaceTheBoxes`, `PlaceTheAltar`, `PlaceTheInfernalBeacons`, `PlaceTheWarBanner` | `PlaceFloorObjects`, which is `EternalChorusCells` |
-| 1946 | `PlaceTheShadowLights` | `EternalChorusCells`; never on a floor in sections, by ruling 1 |
-| 1951 | `PlaceTheSarcophagi` | `EternalChorusCells` |
+| 1839, 1843, 1847 | `PlaceTheTitheAltar`, `PlaceThePactAltar`, `PlaceTheDivineGate` | `ExitAltarWorld`: the exit, or a walkable cell beside it |
+| 1858 | `PlaceTheChoruses` | `EternalChorusCells` |
+| 1863 | `PlaceTheBlooms` | `EternalChorusCells` |
+| 1867 | `PlaceTheSpires` | `EternalChorusCells` |
+| 1872 | `PlaceTheBeacons` | `EternalChorusCells` |
+| 1877 | `PlaceThePortals` | `EternalChorusCells` |
+| 1881 | `PlaceTheRealityRifts` | `EternalChorusCells`; the cells the player is carried to |
+| 1886 | `PlaceTheHoards` | `EternalChorusCells`, then guards on `NecroticBloomWaveCells` through `SpawnPlacedCreature` |
+| 1891 | `PlaceTheQuarantine` | `EternalChorusCells` |
+| 1896 | `PlaceTheBloom` | `EternalChorusCells` |
+| 1901 | `PlaceTheRift` | `EternalChorusCells` |
+| 1906 | `PlaceTheShelters` | `EternalChorusCells` |
+| 1910 | `PlaceTheControlPoints` | on Halls the points `SeededSourceCells` chose before the floor was built; else `EternalChorusCells` |
+| 1915 | `PlaceTheRivers` | `EternalChorusCells`, then a line of marks across the floor |
+| 1919 | `PlaceTheGuide` | the entrance |
+| 1924 | `PlaceTheVeins` | `InfestedVeinsCells` |
+| 1929 | `PlaceTheLight` | `EternalChorusCells` |
+| 1933, 1936, 1940, 1944, 1948, 1952 | `PlaceTheTotems`, `PlaceTheRelics`, `PlaceTheBoxes`, `PlaceTheAltar`, `PlaceTheInfernalBeacons`, `PlaceTheWarBanner` | `PlaceFloorObjects`, which is `EternalChorusCells` |
+| 1957 | `PlaceTheShadowLights` | `EternalChorusCells`; never on a floor in sections, by ruling 1 |
+| 1962 | `PlaceTheSarcophagi` | `EternalChorusCells` |
 | `BuildFloor` 1499 | `PlanTheGatedShortcuts` | `SeededSourceCells` for Warzone's points, before sections are planned |
 
-AFTER the close: `PlaceStairs` (20406), on the exit, which is never a boundary cell; the player at the entrance
-(20457) and the followers around it (20461), and the entrance is never a boundary cell either. Everything a rule
-places during play reads the plan as it then stands, with closed barriers Solid.
+Also after the close: `PlaceStairs` (20437), on the exit; the player at the entrance (20488) and the followers
+around it (20492). Everything a rule places during play reads the plan as it then stands, with closed barriers
+Solid and opened ones walkable.
 
 The entrance and the exit cannot be boundary cells and neither can a cell in the nearest or the farthest tenth of
-the floor, by layer 1's rules. So the three exit altars, the guide and the stairs are safe. Every `EternalChorusCells`
-and `InfestedVeinsCells` site is not.
+the floor, by layer 1's rules, so the three exit altars, the guide and the stairs were never at risk. Every
+`EternalChorusCells` and `InfestedVeinsCells` site was, under the first order, and is not under this one: both are
+`FloorSourceCells`, which takes only cells that are walkable in the plan.
 
 **A creature's section.** `ACataclysmEnemyCharacter::FloorSection` (`CataclysmEnemyCharacter.h` line 1352),
-`INDEX_NONE` by default. It is written in one place, line 2029's loop, as `FloorSections.SectionOf` of the
+`INDEX_NONE` by default. It is written in one place, line 2032's loop, as `FloorSections.SectionOf` of the
 placement's cell. On a floor with no sections that is none. `ClearFloorEnemies` puts it back to none on a
 player's thrall, which leaves the floor's list and goes down the stairs.
 
 **Every caller of `SpawnPlacedCreature`, and what was done at each.** Only the first writes a section.
 
-- `PopulateFloor` (2029): the floor's own creatures. Section written.
-- `ContinueTheWaveArriving` (2400): a Horde wave. No sections on a Horde floor; nothing written.
+- `PopulateFloor` (2032): the floor's own creatures. Section written.
+- `ContinueTheWaveArriving` (2404): a Horde wave. No sections on a Horde floor; nothing written.
 - Twenty-nine more call sites, each a rule adding creatures, all left alone so their creatures carry none:
   `RaiseTheReaper`
-  (2731), `StepPlagueConvergence` (3105), `StepEchoesOfThePast` (3241), `StepNecroticBloom` (4127),
-  `NoteDeathForObsidianSarcophagi` (4723), `StepPortalUnleashing` (5004), `PlaceTheGuide` (5122), `StepMoraleBreak`
-  (5491 and 5498), `BringWarzoneAllies` (6907), `SendWarzoneWave` (6956), `StepAbyssalRifts` (7369),
-  `InfectionBloomSend` (7640), `NoteDeathForQuarantineBreach` (7915), `PlaceTheHoards` (8277),
-  `StepMindShatteringIllusions` (8421), `StepCarrionFeast` (8917), `StepInfestedVeins` (9440), `BringCreaturesNear`
-  (9900), `RaiseTheTrickOrTreatPair` (12122), `RaiseTheUnstablePortalsWarden` (12312), `NoteDeathForDemonPrince`
-  (15314), `NoteDeathForVengefulWraiths` (15818), `NoteDeathForVoidParasite` (15886), `NoteDeathForDeadRising`
-  (15950), `NoteDeathForDivineResurgence` (16045), `EpidemicEndTheChain` (16584), `StepRoyalGuard` (19461) and
-  `StepGraveTide` (19542).
+  (2735), `StepPlagueConvergence` (3108), `StepEchoesOfThePast` (3244), `StepNecroticBloom` (4130),
+  `NoteDeathForObsidianSarcophagi` (4726), `StepPortalUnleashing` (5007), `PlaceTheGuide` (5125), `StepMoraleBreak`
+  (5494 and 5501), `BringWarzoneAllies` (6940), `SendWarzoneWave` (6989), `StepAbyssalRifts` (7402),
+  `InfectionBloomSend` (7673), `NoteDeathForQuarantineBreach` (7948), `PlaceTheHoards` (8310),
+  `StepMindShatteringIllusions` (8454), `StepCarrionFeast` (8950), `StepInfestedVeins` (9472), `BringCreaturesNear`
+  (9932), `RaiseTheTrickOrTreatPair` (12154), `RaiseTheUnstablePortalsWarden` (12344), `NoteDeathForDemonPrince`
+  (15346), `NoteDeathForVengefulWraiths` (15850), `NoteDeathForVoidParasite` (15918), `NoteDeathForDeadRising`
+  (15982), `NoteDeathForDivineResurgence` (16077), `EpidemicEndTheChain` (16616), `StepRoyalGuard` (19493) and
+  `StepGraveTide` (19573).
 
-**Closing.** `CloseTheSectionBarriers` (6213) closes the barrier of every section that holds a standing creature,
-through layer 1's `BlockCellsWithPillars` with this row's key. A section that holds none is never closed.
+**Closing.** `CloseTheSectionBarriers` (6234) opens any barrier that is closed and then closes every barrier,
+through layer 1's `BlockCellsWithPillars` with this row's key. It is called from one place, line 1833. No creature
+stands yet, so it cannot ask which sections are empty.
 
-**Opening.** `StepTheSectionBarriers` (6239) runs on the beat from `StepFloorRulesThatChange`, before the panel's
-figures are read. A closed barrier whose section has no standing creature is opened through
-`UnblockCellsAndDestroyPillars`. Nothing closes a barrier again but a floor being populated again. The beat's
-early return now also asks whether the floor has any boundary. `StandingInSection` (6261) is the count: the
-floor's creatures that pass `IsOneOfTheFloorsOwnStanding` and carry that section.
+**A section with no creature.** Once the creatures stand, line 2049 calls `StepTheSectionBarriers`, the same
+function the beat calls. It opens the barrier of any section with no standing creature. That is before the
+floor's first beat and inside the same call that placed the creatures, so such a barrier is never seen closed in
+play; its pillars exist for the length of `PopulateFloor`.
 
-**The panel.** `LightforgedWallsSectionHeld` (6276) is the lowest-numbered section whose barrier is closed and
+**A floor populated again without being built again.** `PopulateFloor` is public. Called a second time, line 1833
+opens every barrier and closes every one afresh, so barriers the first population opened are closed again for
+the new creatures, the objects are again chosen with them Solid, and the populator again reads the open copy.
+A creature of the first population still standing on a boundary's cell when it closes is not looked for; in
+play `GoToFloor` builds the floor first and this does not arise.
+
+**The populator, and every caller of it.** `FloorPopulationNow` (6357) is now the one call of
+`FCataclysmFloorPopulator::Populate` in the game mode (line 6360). It passes `PlanWithSectionBarriersOpen` (6347):
+a copy of the floor's plan with the cells of every barrier still closed made walkable. With no barrier closed
+that copy is the plan. The sixteen callers, each changed only to call the helper: `PopulateFloor` (1993), which
+also passes the boundary cells as barred; and fifteen that ask which kinds the floor holds, not examined rule by
+rule: `StepPlagueConvergence` (3090), `StepNecroticBloom` (4113), `NoteDeathForObsidianSarcophagi` (4715),
+`StepPortalUnleashing` (4997), `BringWarzoneAllies` (6931), `SendWarzoneWave` (6973), `StepAbyssalRifts` (7394),
+`InfectionBloomSend` (7666), `PlaceTheQuarantine` (7893), `PlaceTheHoards` (8282), `StepMindShatteringIllusions`
+(8436), `StepCarrionFeast` (8941), `StepInfestedVeins` (9462), `BringCreaturesNear` (9898) and `StepGraveTide`
+(19554). `PlaceTheQuarantine` and `PlaceTheHoards` run while the floor begins, after the close; the rest during
+play. A second search of `game/Source` found no other caller outside the tests and the populator's own file.
+
+**Opening.** `StepTheSectionBarriers` (6255) runs on the beat from `StepFloorRulesThatChange`, before the panel's
+figures are read, and once from `PopulateFloor` as above. A closed barrier whose section has no standing creature
+is opened through `UnblockCellsAndDestroyPillars`. Nothing closes a barrier again but a floor being populated
+again. The beat's early return now also asks whether the floor has any boundary. `StandingInSection` (6277) is
+the count: the floor's creatures that pass `IsOneOfTheFloorsOwnStanding` and carry that section.
+
+**The panel.** `LightforgedWallsSectionHeld` (6292) is the lowest-numbered section whose barrier is closed and
 which still holds a standing creature. When there is one, the line is the section's count and the floor's.
 Otherwise the two lines the row had. The beat redraws the panel when the floor's count, the section named or the
 section's count has moved.
@@ -354,11 +441,11 @@ section's count has moved.
 87) counts the connected areas of walkable cells. `CataclysmFloorClosingSplitsAnArea` (123) is true when closing
 the cells raises that count. `CataclysmFloorCanBlockBesideBarriers` (133) is `CataclysmFloorCanBlock` when no
 barrier is closed; otherwise it asks that with the closed barriers' cells treated as open, and then refuses a
-split. The game mode's `AnObstacleMayClose` (6322) calls it with the cells of every barrier still closed.
+split. The game mode's `AnObstacleMayClose` (6338) calls it with the cells of every barrier still closed.
 
 **Every caller of `CataclysmFloorCanBlock` in the game mode, and what was done at each.** All four now call
-`AnObstacleMayClose`: `CloseTheGate` when a gate closes during play (6083), `ChooseObstacleCells` (6729),
-`WarnOfAnObstacle` (6744) and `RaiseOrCancel` (6774).
+`AnObstacleMayClose`: `CloseTheGate` when a gate closes during play (6086), `ChooseObstacleCells` (6762),
+`WarnOfAnObstacle` (6777) and `RaiseOrCancel` (6807).
 
 **Sacrificial Bond.** In `UCataclysmEnemyModifiers::ShareOfDamageKept` (`CataclysmEnemyModifiers.cpp` lines 722 to
 733) an ally is left out when `ACataclysmDungeonGameMode::AClosedBarrierStandsBetween` says so: both creatures
@@ -405,6 +492,10 @@ Every judged number and reading, none played:
 | Shadowy Enemies leaves the floor without sections | The row is the sealed stairs only there | Sections all the same, with a light zone placed in each |
 | 4 of 200 Halls floors with no sections; 178 with three, 18 with two | Measured by the registering session on layer 1 | Changing how the far part is chosen |
 | 1 in 351, 1 in 58, 1 in 238, 1 in 56 | Arithmetic: how often this row and Shadowy Enemies share a dungeon | A measurement |
+| The barriers close before the objects are placed, and an empty section's opens once the creatures stand | No object of a rule is chosen on a barrier's cell | The order first ruled, which put objects inside pillars |
+| A floor with a Warzone point planned on a boundary's cell gets no sections | The row is the sealed stairs only there; not measured how often | Moving the point, or telling the search to avoid it |
+| Morale Break: a section whose creatures fled reads as cleared | Its barrier opens and the returnees hold only the stairs | Counting the fled in their section |
+| A rule that asks which kinds the floor holds reads the floor with its barriers open | The same kinds as on the floor without sections | The open sections' kinds alone |
 | A creature is counted in the section it was placed in | A creature that walks into another section still holds its own barrier | Counted by where it stands |
 | A quarter of a second | How often a barrier is asked whether to open: the floor rules' beat | The moment of the last death |
 | An opened barrier stays open | Also after death, and after creatures arrive | Closing again |
@@ -423,21 +514,25 @@ rows were read, and the "only harder" lines.
 
 ### Judgements by the writing session
 
-Each is a judgement by the writing session, for the coordinating session to confirm.
+Each is a judgement by the writing session, for the coordinating session to confirm. Judgements 1, 2, 3 and 6 were
+confirmed on 2026-10-08 and are ruling 13; judgement 5's wording was accepted with its gap, as ruling 14. They
+stay here as first written, with 2 and 4 brought up to the second order.
 
 1. **"The barriers between those sections are closed" is read as any one of them closed.** Two creatures in
    sections 0 and 2 are parted when barrier 0 or barrier 1 is closed. A judgement by the writing session, for the
    coordinating session to confirm.
-2. **A section with no creature is never closed, where the ruling says it "opens when the floor begins".** No
-   pillar is raised and taken down. A judgement by the writing session, for the coordinating session to confirm.
+2. **A section with no creature is never left closed, where the ruling says it "opens when the floor begins".**
+   Under the first order it was never closed at all. Under the second it is closed while the objects are placed
+   and opened in the same call, before any beat. A judgement by the writing session, for the coordinating session
+   to confirm.
 3. **"While a barrier stands" in the panel is read as: while a barrier is closed AND its section still holds a
    standing creature.** Between a section's last death and the next beat, up to a quarter of a second, the panel
    already shows the next line. Without this the row's existing tests, which clear a floor's creatures and read
    the panel before any beat, would read "0 standing in this section". A judgement by the writing session, for
    the coordinating session to confirm.
-4. **A floor populated again without being built again has its barriers opened first.** `PopulateFloor` is public
-   and the populator needs the open plan. In play `GoToFloor` builds first, so this is for a direct call. A
-   judgement by the writing session, for the coordinating session to confirm.
+4. **A floor populated again without being built again has every barrier opened and closed afresh**, before its
+   objects are placed. `PopulateFloor` is public. In play `GoToFloor` builds first, so this is for a direct call.
+   A judgement by the writing session, for the coordinating session to confirm.
 5. **The obstacle question is three pure functions in the plan's file**, and the game mode's four callers share
    one member that calls them. "Refuse when the count rises" is built as worded: an obstacle that removed one
    whole area while splitting another would leave the count level and pass. A judgement by the writing session,
@@ -463,11 +558,24 @@ Each is a judgement by the writing session, for the coordinating session to conf
     two assertions change. A judgement by the writing session, for the coordinating session to confirm.
 12. **`FloorSections` is named harmless in the Python check of kept cells**, with the ruling as its reason, and
     not added to `CellsTheFloorHolds`. A judgement by the writing session, for the coordinating session to confirm.
+13. **A floor with a Warzone point planned on a boundary's cell gets no sections.** See the second "said first".
+    The smallest change the code allowed: the points are chosen before sections exist and the search takes no
+    cells to avoid. A judgement by the writing session, for the coordinating session to confirm.
+14. **The barrier of an empty section is opened by calling the beat's own step once from `PopulateFloor`**, not by
+    a second function, so there is one rule for when a barrier opens. A judgement by the writing session, for the
+    coordinating session to confirm.
+15. **The helper of ruling 11 is public and is also what places the floor's own creatures.** That is truthful:
+    both are the populator asked about the floor with its barriers open, and they differ only in the cells
+    barred. A judgement by the writing session, for the coordinating session to confirm.
+16. **The picker is tested on built floors and not as a pure function**, because `EternalChorusCells` and
+    `InfestedVeinsCells` take a floor actor. The twenty floors are the dungeon seeds of layer 1's twenty plans,
+    floors 1 and 10, reached with `GoToFloor`. A judgement by the writing session, for the coordinating session
+    to confirm.
 
 ### Tests
 
 None has been run. In `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group
-`Cataclysm.DungeonModifierEffects.`, twelve new tests. Floors are found by a search over dungeon seeds, asserted
+`Cataclysm.DungeonModifierEffects.`, sixteen new tests. Floors are found by a search over dungeon seeds, asserted
 as set-up. Every kind but the Gatekeeper is set to Common, so no creature draws an enemy modifier.
 
 - `LightforgedWallsBarriersStandWhenAHallsFloorBeginsAndEachCreatureCarriesItsSection`: on a floor of three
@@ -507,6 +615,23 @@ as set-up. Every kind but the Gatekeeper is set to Common, so no creature draws 
   it a turret that never moves, is placed off a section. Control: with the barrier before its section closed too,
   no creature past the first section is reached. **It does not prove no lock exists.**
 
+Four more came with the second commit:
+
+- `LightforgedWallsNoCellTheObjectPickerChoosesIsAClosedBarriersCell`: on the twenty floors, the two pickers are
+  each asked twenty times a floor and no cell chosen is a closed barrier's. Control, as set-up: closed barrier
+  cells far enough from the entrance to be chosen exist on those floors. A world test, because the picker takes a
+  built floor.
+- `LightforgedWallsNoRealityRiftIsDrawnOnABarriersCell`: on floors with both rows, over twenty seeds, no rift's
+  cell is a boundary's and every rift's cell is walkable. It has no control beyond the picker test's.
+- `AFloorWithNoSectionsIsPopulatedAsThePopulatorAnswersForItsPlan`: on six floors without the row, the population
+  asked through the helper is `Populate` of the plan, placement by placement, and each creature standing is on
+  its placement's cell, in order. Control: one floor's population differs from the next's. **It cannot show that
+  these are the placements the same seeds gave before this layer: that needs figures recorded from a run made
+  before it, and none were. The picker shuffles on the global random, so its cells cannot be compared at all.**
+- `LightforgedWallsAPopulationAskedDuringPlayIsThatOfTheSameFloorWithoutSections`: on a floor with sealed
+  sections the helper's population equals that of the same seed with the row off, placement by placement.
+  Control: the populator asked about the sealed plan as it stands answers differently.
+
 One existing test changed what it asserts, because the row's state changed:
 `LightforgedWallsFiguresAndTheRowPartly`, now `LightforgedWallsFiguresAndTheRowBuilt`, asserted
 `BuiltStateOf` is `Partly` and now asserts `Built`.
@@ -519,7 +644,12 @@ this layer changed; searched for.
 ### Not covered by a test
 
 - A charge, a blink, a creature's charge and a straight shot against a closed barrier. Read, not tested.
-- An object or a rift placed on a boundary cell. Nothing prevents it and nothing tests for it.
+- An object of each rule, rule by rule, on a floor in sections. The shared picker and the rifts are tested; the
+  other twenty-odd `Place...` calls are covered only through the picker they share.
+- The area-split refusal's gap: an obstacle that removes one whole area while splitting another. Ruling 14 gives
+  the reasoning for why it cannot occur; no test.
+- A Warzone point planned on a boundary's cell, and the floor then getting no sections.
+- What each of the fifteen rules does with the population it is given.
 - The Labrynth's gate closing during play on a floor in sections.
 - A floor populated a second time without being built again.
 - A thrall's section being put back to none.
