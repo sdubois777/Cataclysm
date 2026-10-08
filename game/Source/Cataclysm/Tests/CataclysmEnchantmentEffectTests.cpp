@@ -19134,4 +19134,90 @@ bool FCataclysmCrowdControlCeilingRowTest::RunTest(const FString&)
 		WornReading - Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f), 50.0f, 0.01f);
 	return true;
 }
+// THE RICOCHET ROW AND THE SPELLS PIERCE ROW. Ruled 2026-10-07; each row is as the entry "Two stats a worn row can
+// state for a projectile skill" states it.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRicochetAndPierceRowsTest,
+	"Cataclysm.Enchantments.TheRicochetRowReachesProjectileSkillsAndTheSpellsPierceRowReachesSpellsOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two real rows, each WORN at the top of its range, and each read as a
+ * projectile skill asks: with the skill's own tags. EVERY FIGURE IS A
+ * DIFFERENCE against the same wearer with the item taken off.
+ *
+ * "Projectiles ricochet 1-4 times": `projectile_bounces` flat 1 to 4,
+ * requiring `Type.Projectile`. Asked with a projectile's tag it is 4 higher;
+ * asked with a melee skill's tag it is no higher.
+ *
+ * "Spells pierce through all enemies in their path": `projectile_pierce_all`
+ * flat 1, requiring `Type.Spell`. Asked with the tags of a projectile that is
+ * a spell it is 1 higher. ASKED WITH A PROJECTILE'S TAG ALONE IT IS NO HIGHER,
+ * which is the whole reason the row carries the tag: without it every
+ * projectile skill would pierce.
+ */
+bool FCataclysmRicochetAndPierceRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const RicochetRow = TEXT("Positive_Projectiles_ricochet_1_4_times");
+	const TCHAR* const PierceRow = TEXT("Positive_Spells_pierce_through_all_enemies_in_their_path");
+	// THE NAMES WORN ARE LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the ricochet row's name is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RicochetRow)))
+		|| !TestTrue(TEXT("set-up: the pierce row's name is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(PierceRow))))
+	{
+		return false;
+	}
+	const FGameplayTagContainer Projectile = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Projectile"));
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Melee"));
+	const FGameplayTagContainer SpellProjectile = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Spell, Type.Projectile"));
+	if (!TestTrue(TEXT("set-up: the three tags exist"),
+				  Projectile.Num() == 1 && Melee.Num() == 1 && SpellProjectile.Num() == 2))
+	{
+		return false;
+	}
+	{
+		FWorn Worn(RicochetRow, true);
+		if (!TestNotNull(TEXT("a wearer in a world, for the ricochet row"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(TEXT("projectile_bounces"));
+		const float WornProjectile = Worn.ASC()->StatForSkill(Stat, Projectile, 0.0f);
+		const float WornSpellProjectile = Worn.ASC()->StatForSkill(Stat, SpellProjectile, 0.0f);
+		const float WornMelee = Worn.ASC()->StatForSkill(Stat, Melee, 0.0f);
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(*(FString(TEXT("the ricochet row, worn: asked with a projectile's tag the stat is 4 higher.")) +
+					CataclysmRepeatRowsTest::OlderAsset),
+			WornProjectile - Worn.ASC()->StatForSkill(Stat, Projectile, 0.0f), 4.0f, 0.01f);
+		TestEqual(TEXT("the ricochet row, worn: asked with the tags of a projectile that is a spell it is 4 higher"),
+			WornSpellProjectile - Worn.ASC()->StatForSkill(Stat, SpellProjectile, 0.0f), 4.0f, 0.01f);
+		TestEqual(TEXT("the ricochet row, worn: asked with a melee skill's tag it is no higher"),
+			WornMelee - Worn.ASC()->StatForSkill(Stat, Melee, 0.0f), 0.0f, 0.01f);
+	}
+	{
+		FWorn Worn(PierceRow, true);
+		if (!TestNotNull(TEXT("a wearer in a world, for the pierce row"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(TEXT("projectile_pierce_all"));
+		const float WornSpellProjectile = Worn.ASC()->StatForSkill(Stat, SpellProjectile, 0.0f);
+		const float WornProjectile = Worn.ASC()->StatForSkill(Stat, Projectile, 0.0f);
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(*(FString(TEXT("the pierce row, worn: asked with the tags of a projectile that is a spell the "
+								 "stat is 1 higher.")) +
+					CataclysmRepeatRowsTest::OlderAsset),
+			WornSpellProjectile - Worn.ASC()->StatForSkill(Stat, SpellProjectile, 0.0f), 1.0f, 0.01f);
+		TestEqual(TEXT("the pierce row, worn: asked with a projectile's tag alone it is no higher"),
+			WornProjectile - Worn.ASC()->StatForSkill(Stat, Projectile, 0.0f), 0.0f, 0.01f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
