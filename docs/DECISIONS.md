@@ -92,6 +92,16 @@ waits 3 seconds lost nothing at all. **What was changed:** the count is kept for
 of the pair search: none.** See "The pair search" below; there is no such pair in the tables today, so no
 character in play was affected, and the first pair arrives with the channel drain's row.
 
+**CORRECTED 2026-10-08: THE PARAGRAPH BELOW IS WRONG. A spin ended from outside does NOT go on swinging.**
+The engine's `UGameplayAbility::EndAbility` calls `ClearAllTimersForObject(this)` while the console variable
+`AbilitySystem.ClearAbilityTimers` is on, which is its default (`GameplayAbility.cpp` lines 57 and 832 to 834,
+Unreal Engine 5.8, read by the enchantment session), and every timer of a skill template is bound to the ability.
+So a spin ended from outside already stopped. The paragraph was the enchantment session's misreading. The entry of
+the layer that makes a landed hit cancel a skill says what the real fault was: a timer SET AFTER the skill has ended
+is cleared by nothing. The wrong paragraph is left below as it was written. This correction was made by the
+coordinating session on the owner's instruction of 2026-10-08, in their words: "yes, make the one docs-only
+correction to the channelling entry".
+
 **Also said first: a spin ended from outside goes on swinging.** Read while writing the tests and NOT changed,
 because nothing ends a spin from outside today and the layer that will is the next one ("Taking damage while
 channeling interrupts the channel immediately"). `UCataclysmStrikeSkill::EndAbility`
@@ -380,6 +390,8 @@ forbidden to walk by `CannotWalkByARow` and one with no row is not.
 - **`spell_damage` under the window.** Read, not tested: it is asked through `StatForSkill`.
 - **A swing on the 2 second mark of a real spin.** The boundary is tested from a struct only.
 - **That a spin ended from outside stops swinging.** It does not. Said first.
+  **CORRECTED 2026-10-08: it does stop; see the correction near the top of this entry. What this layer's tests do
+  not do is assert it: they assert the state after a spin is ended from outside, not that the swings stop.**
 - **A free start of a channelled skill**, by Follow Through. Judgement 1 was read from `CommitAndBegin` and is
   not exercised.
 - **Death, a respawn and the ability system being torn down** while channelling.
