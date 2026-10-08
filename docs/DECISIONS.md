@@ -111,6 +111,39 @@ waits a second and a half between its blows, so it reads the same under either c
 **Not tested here:** a first hit by a wearer of the real ailments row; an enemy dying beside a wearer of the real
 six pieces.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the layer below this one, on top of the eleven layers of the two mechanism
+windows before it, on `development` 55961898. The build, the whole suite and the Python of record are in the
+table of the entry of the same day "One status name applies each of the five damage over time ailments" and were
+run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before this layer's rows | ae3887cc | 304 tests performed, 301 succeeded, 3 failed, this layer's three; 3 failed assertions, one in each |
+| The enchantment assets, regenerated with the editor | 414ea54c | effect rows 577 to 579 |
+| Whole suite, every asset built | 414ea54c | 3453 tests performed, 3453 succeeded, 0 failed |
+| Python of record | 414ea54c | 5942 passed, 8 skipped; JUnit tests 5950, failures 0 |
+
+**Each of the three tests fails against the older table and passes with the new one.** Against the older table
+the wearer of the first-hit ailments row held no action naming the status for all five; the wearer of six
+Chronomancer pieces held no stun near the dying, and with five pieces it held none in both runs; and the second
+of two creatures first struck in the same instant was not staggered, because the stagger row's trigger cooldown
+was still a quarter of a second there.
+
+**The merged test of the stagger row passed in both runs**, as said above: it waits between its blows.
+
+**The check that every stun states its length passed with the change described first in this entry**, in the
+Python of record. Before the change, in a copy, it had failed on the Chronomancer row with the words quoted
+there.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the entry
+that built the two proved, read in its table: three guard proofs, each failed with its break in and passed with
+it out: the status walking the five ailments, the loop going on past a refusal, and the stun being a designed
+one. **That table says no proof was run for the single roll of the chance, the reach of 5 metres, which
+ailments raise the event, the stun's own rules for a boss, the health ceiling and the five seconds, or a
+row-killed death not rolling**; those are tested and not proved.
+
 ---
 
 ## 2026-10-08 — One status name applies each of the five damage over time ailments, and one action stuns every enemy near an enemy that died afflicted: `All DoTs` on `apply_status`, and `stun_near_the_dying` with a chance and a duration on one row. Engine and generator only; no row authored
