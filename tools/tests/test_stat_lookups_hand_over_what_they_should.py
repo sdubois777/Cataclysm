@@ -99,6 +99,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: 2026-10-07: one helper on the movement skill asks all four stats.
 #: The crowd control health ceiling added one more on 2026-10-07, asked of
 #: the applier where a stun, a knockdown, a fear or a displacement is applied.
+#: Ricochet and pierce from a worn row added two more on 2026-10-07, the
+#: bounces a row adds to a projectile skill and the flag by which it pierces
+#: all, each asked by one helper of `UCataclysmProjectileSkill`.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -726,6 +729,15 @@ INVENTORY = {
     ('game/Source/Cataclysm/Interface/CataclysmSkillBar.cpp',
      'FName(UCataclysmSkillSlots::LockedStat), Skill->SkillTags, 0.0f'):
         'what the skill bar shows, which has no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ProjectileBouncesStat), SkillTags, 0.0f'):
+        "the bounces a row adds to a projectile skill's own (ruled 2026-10-07), "
+        "asked with the skill's tags where it fires, before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ProjectilePierceAllStat), SkillTags, 0.0f'):
+        "whether a row makes a projectile skill pierce all (ruled 2026-10-07), "
+        "asked with the skill's tags where it fires, lands and leaves ground; "
+        "a flag, not a modifier of a blow",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

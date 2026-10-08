@@ -536,6 +536,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmSkillTemplate::ScaledProjectileSpeed with the skill's tags.
 		// Issue #1833: "Ranged skills have 30%-60% increased projectile speed".
 		TEXT("projectile_speed"),
+		// Two more a projectile skill reads where it fires, each with the
+		// skill's tags, in UCataclysmProjectileSkill::BouncesWithRows and
+		// PierceWithRows. Ruled 2026-10-07. A whole number added to the bounces
+		// the skill states: "Projectiles ricochet 1-4 times". And a flag by
+		// which the skill pierces all: "Spells pierce through all enemies in
+		// their path". Neither has a base.
+		TEXT("projectile_bounces"),
+		TEXT("projectile_pierce_all"),
 		// Increases, read by ACataclysmMinion::Spawn at the summoning, on the
 		// reach and notice radius the minion's type states. Issue #1833:
 		// "Gadgets have 20%-40% increased attack range".

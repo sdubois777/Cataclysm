@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -16,6 +17,7 @@
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
+#include "Templates/UniquePtr.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -305,6 +307,557 @@ bool FCataclysmGadgetRangeTest::RunTest(const FString&)
 			  GearedImp->ReachCm, PlainImp->ReachCm, 0.01f);
 	TestEqual(TEXT("and its notice radius"),
 			  GearedImp->NoticeRadiusCm, PlainImp->NoticeRadiusCm, 0.01f);
+	return true;
+}
+
+/**
+ * Ricochets and pierce from a worn row. Ruled 2026-10-07 under the owner's delegation: `projectile_bounces` is a
+ * whole number added to the bounces a projectile skill states, and `projectile_pierce_all` is a flag by which a
+ * projectile skill pierces all. Each is asked with the skill's tags.
+ *
+ * EVERY CASE HAS ITS OWN LANE, 60 m from the next, and a user at the lane's start facing along it. A skill used
+ * with no player controller is aimed its whole range along its user's facing. Each case reports what each enemy
+ * LOST, and every amount is compared with what an enemy of a user with no row lost in the same test.
+ */
+namespace CataclysmRicochetPierceTest
+{
+	constexpr float Metre = 100.0f;
+	constexpr float Pool = 100000.0f;
+	constexpr float LaneApart = 60.0f * Metre;
+
+	/** A character an overlap finds, standing where it was spawned, with health, mana and 100 attack damage. */
+	struct FBody
+	{
+		FBody(UWorld* World, const FVector& Where)
+		{
+			Actor = World->SpawnActor<AActor>(Where, FRotator::ZeroRotator);
+			check(Actor);
+
+			USphereComponent* Sphere = NewObject<USphereComponent>(Actor);
+			Sphere->InitSphereRadius(34.0f);
+			Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Sphere->SetCollisionObjectType(ECC_Pawn);
+			Sphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+			Actor->SetRootComponent(Sphere);
+			Sphere->RegisterComponent();
+			Actor->SetActorLocation(Where);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+			AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmVitalAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmCombatAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmResistanceAttributeSet>(Actor));
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Pool);
+			AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+			AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+			AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+			AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		}
+
+		~FBody()
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+		}
+
+		float Health() const
+		{
+			return AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+		}
+
+		/** Replace the stat lines with one flat line of this stat, as a row's, scoped by a tag cell. */
+		void CarryFlatLine(const TCHAR* Stat, float Value, const TCHAR* RequiredTags) const
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::Enchantment;
+			Row.Value = Value;
+			Row.RequiredTags = UCataclysmSkillShapes::TagsFromCell(RequiredTags);
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Row};
+			AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+
+		/** A projectile skill granted in a slot with these params and tags, dealing 100% of weapon damage. */
+		UCataclysmProjectileSkill* Skill(ECataclysmAbilitySlot Slot, const TCHAR* ParamText,
+										 const TCHAR* TagCell) const
+		{
+			const FGameplayAbilitySpecHandle Handle = AbilitySystem->GiveAbilityInSlot(
+				UCataclysmProjectileSkill::StaticClass(), Slot, /*Level=*/1, Actor);
+			FGameplayAbilitySpec* Spec =
+				Handle.IsValid() ? AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmProjectileSkill* Granted =
+				Spec ? Cast<UCataclysmProjectileSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Granted)
+			{
+				Granted->SkillName = TEXT("Test Shot");
+				Granted->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+				Granted->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+				Granted->DamagePercentOverride = 100.0f;
+			}
+			return Granted;
+		}
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	};
+
+	/**
+	 * Use a skill, and step whatever it put in the air until that says it has finished. False when the skill did
+	 * not run. A beam puts nothing in the air and has landed by the time the use returns.
+	 */
+	bool UseAndFly(const FBody& User, UCataclysmProjectileSkill* Skill)
+	{
+		if (!Skill || !User.AbilitySystem->TryActivateAbility(
+				Skill->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false))
+		{
+			return false;
+		}
+		ACataclysmProjectile* Shot = Skill->InFlight.Get();
+		for (int32 Steps = 0; Shot && Steps < 600 && !Shot->bFinished; ++Steps)
+		{
+			Shot->Step(1.0f / 60.0f);
+		}
+		return true;
+	}
+
+	/** What each of these has lost from a full pool, in order. */
+	TArray<float> LostBy(const TArray<TUniquePtr<FBody>>& Enemies)
+	{
+		TArray<float> Lost;
+		for (const TUniquePtr<FBody>& Enemy : Enemies)
+		{
+			Lost.Add(Pool - Enemy->Health());
+		}
+		return Lost;
+	}
+
+	constexpr const TCHAR* AttackTags = TEXT("Type.Ranged, Type.Projectile");
+	constexpr const TCHAR* SpellTags = TEXT("Type.Spell, Type.Projectile, Type.Ranged");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRicochetRowAddsBouncesTest,
+	"Cataclysm.ProjectileRange.ARowsRicochetsAreAddedToTheBouncesAProjectileSkillStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRicochetRowAddsBouncesTest::RunTest(const FString&)
+{
+	using namespace CataclysmRicochetPierceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// ONE LANE: the user at its start, and enemies 3 m apart along it, the first 3 m from the user. The shot is
+	// aimed 10 m along the lane and a glance looks 10 m, the skill's range, so every enemy is within a glance of
+	// the one before it and the only thing that stops the shot is running out of bounces.
+	int32 LanesUsed = 0;
+	const auto LostInALane = [&](const TCHAR* ParamText, float Ricochets, const TCHAR* RowTags, int32 Enemies,
+								 bool& bOutRan)
+	{
+		const float Y = LaneApart * LanesUsed++;
+		FBody User(World, FVector(0.0f, Y, 0.0f));
+		TArray<TUniquePtr<FBody>> Row;
+		for (int32 Index = 0; Index < Enemies; ++Index)
+		{
+			Row.Add(MakeUnique<FBody>(World, FVector((3.0f + 3.0f * Index) * Metre, Y, 0.0f)));
+		}
+		if (Ricochets > 0.0f)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileBouncesStat, Ricochets, RowTags);
+		}
+		bOutRan = UseAndFly(User, User.Skill(ECataclysmAbilitySlot::Special, ParamText, AttackTags));
+		return LostBy(Row);
+	};
+
+	// THE SAME, WITH EACH ENEMY PLACED BY HAND: metres along the lane, and metres to its side.
+	const auto LostAtPlaces = [&](const TCHAR* ParamText, float Ricochets, const TArray<FVector2D>& Places,
+								  bool& bOutRan)
+	{
+		const float Y = LaneApart * LanesUsed++;
+		FBody User(World, FVector(0.0f, Y, 0.0f));
+		TArray<TUniquePtr<FBody>> Placed;
+		for (const FVector2D& Place : Places)
+		{
+			Placed.Add(MakeUnique<FBody>(World, FVector(Place.X * Metre, Y + Place.Y * Metre, 0.0)));
+		}
+		if (Ricochets > 0.0f)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileBouncesStat, Ricochets, TEXT("Type.Projectile"));
+		}
+		bOutRan = UseAndFly(User, User.Skill(ECataclysmAbilitySlot::Special, ParamText, AttackTags));
+		return LostBy(Placed);
+	};
+
+	const TCHAR* Glancing = TEXT("Range=10; Radius=1; Speed=2000; Bounces=1");
+	const TCHAR* Plain = TEXT("Range=10; Radius=1; Speed=2000");
+	bool bRan = false;
+
+	// CONTROL: a skill stating one bounce, no row. It strikes two enemies.
+	const TArray<float> Stated = LostInALane(Glancing, 0.0f, TEXT(""), 5, bRan);
+	if (!TestTrue(TEXT("set-up: the control's shot ran"), bRan)
+		|| !TestTrue(TEXT("set-up: and its first enemy lost health"), Stated[0] > 0.0f))
+	{
+		return false;
+	}
+	const float OneHit = Stated[0];
+	TestEqual(TEXT("control: one stated bounce strikes the second enemy for what the first took"),
+			  Stated[1], OneHit, 0.01f);
+	TestEqual(TEXT("control: and not the third"), Stated[2], 0.0f, 0.01f);
+
+	// THE SAME SKILL, its user carrying 2 ricochets scoped to projectile skills: three bounces, four enemies.
+	const TArray<float> Added = LostInALane(Glancing, 2.0f, TEXT("Type.Projectile"), 5, bRan);
+	TestTrue(TEXT("the carrying user's shot ran"), bRan);
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("2 ricochets on 1 stated bounce: enemy %d is struck once, for what a "
+										"control enemy took"), Index + 1),
+				  Added[Index], OneHit, 0.01f);
+	}
+	TestEqual(TEXT("and the fifth is not struck, because the bounces ran out"), Added[4], 0.0f, 0.01f);
+
+	// A ROW SCOPED TO SPELLS DOES NOT REACH AN ATTACK: the lookup is asked with the skill's tags.
+	const TArray<float> Scoped = LostInALane(Glancing, 2.0f, TEXT("Type.Spell"), 5, bRan);
+	TestTrue(TEXT("the shot of a user whose row names spells ran"), bRan);
+	TestEqual(TEXT("a row scoped to spells leaves an attack's second enemy as the control's"),
+			  Scoped[1], OneHit, 0.01f);
+	TestEqual(TEXT("and its third unstruck, as the control's"), Scoped[2], 0.0f, 0.01f);
+
+	// A SKILL THAT STATES NO BOUNCE. Control: it stops at the first enemy and goes off in its 1 m radius, which
+	// the second enemy, 3 m on, is outside. Carrying 2, it strikes the first two by glancing from them and goes
+	// off at the third, which its 1 m blast reaches and nothing else.
+	const TArray<float> PlainControl = LostInALane(Plain, 0.0f, TEXT(""), 5, bRan);
+	TestTrue(TEXT("the plain control's shot ran"), bRan);
+	TestEqual(TEXT("control: a skill stating no bounce strikes its first enemy"), PlainControl[0], OneHit, 0.01f);
+	TestEqual(TEXT("control: and not its second"), PlainControl[1], 0.0f, 0.01f);
+
+	const TArray<float> PlainAdded = LostInALane(Plain, 2.0f, TEXT("Type.Projectile"), 5, bRan);
+	TestTrue(TEXT("the carrying user's plain shot ran"), bRan);
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("2 ricochets on no stated bounce: enemy %d is struck once, for what a "
+										"control enemy took"), Index + 1),
+				  PlainAdded[Index], OneHit, 0.01f);
+	}
+	TestEqual(TEXT("and the fourth is not struck"), PlainAdded[3], 0.0f, 0.01f);
+
+	// NO SECOND ENEMY IN REACH: the one enemy is struck once, as a control's is, and nothing more happens.
+	const TArray<float> AloneControl = LostInALane(Plain, 0.0f, TEXT(""), 1, bRan);
+	TestTrue(TEXT("the lone control's shot ran"), bRan);
+	const TArray<float> Alone = LostInALane(Plain, 2.0f, TEXT("Type.Projectile"), 1, bRan);
+	TestTrue(TEXT("the lone carrying user's shot ran"), bRan);
+	TestEqual(TEXT("control: a lone enemy is struck once"), AloneControl[0], OneHit, 0.01f);
+	TestEqual(TEXT("with ricochets and nothing to glance to, the lone enemy is struck once and not twice"),
+			  Alone[0], AloneControl[0], 0.01f);
+
+	// THE ROW ONLY ADDS: A SKILL THAT STATES NO BOUNCE KEEPS ITS BLAST FOR WHERE IT FINALLY STOPS. Ruled
+	// 2026-10-07. A bolt stating a 2 m radius. Four enemies 3 m apart along the lane, the first 3 m from the
+	// user, and a fifth 2.1 m to the side of the THIRD. Control: the bolt goes off at the first enemy, and
+	// nothing else is within its blast. Carrying 2: it glances from the first and the second, striking each, and
+	// goes off at the third. The blast reaches the third and the one beside it, which the bolt never touched.
+	// The fourth is 3 m on and outside it. The second is glanced from and is left out of the blast.
+	const TCHAR* Blasting = TEXT("Range=10; Radius=2; Speed=2000");
+	const TArray<FVector2D> BesideTheThird = {FVector2D(3.0, 0.0), FVector2D(6.0, 0.0), FVector2D(9.0, 0.0),
+											  FVector2D(12.0, 0.0), FVector2D(9.0, 2.1)};
+	const TArray<float> BlastControl = LostAtPlaces(Blasting, 0.0f, BesideTheThird, bRan);
+	TestTrue(TEXT("the blasting control's shot ran"), bRan);
+	TestEqual(TEXT("control: a bolt with a blast strikes its first enemy"), BlastControl[0], OneHit, 0.01f);
+	TestEqual(TEXT("control: and not the second"), BlastControl[1], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the enemy beside the third"), BlastControl[4], 0.0f, 0.01f);
+
+	const TArray<float> BlastAdded = LostAtPlaces(Blasting, 2.0f, BesideTheThird, bRan);
+	TestTrue(TEXT("the carrying user's blasting shot ran"), bRan);
+	TestEqual(TEXT("2 ricochets on a bolt with a blast: the first enemy is struck once"),
+			  BlastAdded[0], OneHit, 0.01f);
+	TestEqual(TEXT("the second is struck once, and the blast two bounces on does not strike it again"),
+			  BlastAdded[1], OneHit, 0.01f);
+	TestEqual(TEXT("the third, where the last bounce ends, is struck once"), BlastAdded[2], OneHit, 0.01f);
+	TestEqual(TEXT("the enemy beside the third, never touched, takes the blast"), BlastAdded[4], OneHit, 0.01f);
+	TestEqual(TEXT("and the fourth, outside the blast, takes nothing"), BlastAdded[3], 0.0f, 0.01f);
+
+	// CONTROL FOR THE BLAST ITSELF: with no row the same bolt goes off at its first contact, and reaches an enemy
+	// 2.1 m beside that one.
+	const TArray<FVector2D> BesideTheFirst = {FVector2D(3.0, 0.0), FVector2D(3.0, 2.1)};
+	const TArray<float> FirstBlast = LostAtPlaces(Blasting, 0.0f, BesideTheFirst, bRan);
+	TestTrue(TEXT("the first-contact control's shot ran"), bRan);
+	TestEqual(TEXT("control: with no row the blast goes off at the first contact"), FirstBlast[0], OneHit, 0.01f);
+	TestEqual(TEXT("control: and reaches the enemy beside it"), FirstBlast[1], OneHit, 0.01f);
+
+	// A SKILL THAT STATES ITS OWN BOUNCE KEEPS ITS OWN RULE: no blast, with or without the row. The same 2 m
+	// radius and one stated bounce. Four enemies along the lane and a fifth 2.1 m beside the FOURTH. Control:
+	// two struck. Carrying 2: four struck, and the one beside the fourth takes nothing, because no blast goes off.
+	const TCHAR* GlancingWide = TEXT("Range=10; Radius=2; Speed=2000; Bounces=1");
+	const TArray<FVector2D> BesideTheFourth = {FVector2D(3.0, 0.0), FVector2D(6.0, 0.0), FVector2D(9.0, 0.0),
+											   FVector2D(12.0, 0.0), FVector2D(12.0, 2.1)};
+	const TArray<float> OwnRuleControl = LostAtPlaces(GlancingWide, 0.0f, BesideTheFourth, bRan);
+	TestTrue(TEXT("the own-rule control's shot ran"), bRan);
+	TestEqual(TEXT("control: a skill stating one bounce strikes its second enemy"),
+			  OwnRuleControl[1], OneHit, 0.01f);
+	TestEqual(TEXT("control: and not its third"), OwnRuleControl[2], 0.0f, 0.01f);
+	const TArray<float> OwnRuleAdded = LostAtPlaces(GlancingWide, 2.0f, BesideTheFourth, bRan);
+	TestTrue(TEXT("the own-rule carrying user's shot ran"), bRan);
+	TestEqual(TEXT("a skill stating a bounce, carrying 2: the fourth enemy is struck once"),
+			  OwnRuleAdded[3], OneHit, 0.01f);
+	TestEqual(TEXT("and no blast goes off there: the enemy beside the fourth takes nothing"),
+			  OwnRuleAdded[4], 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPierceAllRowOnAFlyingSpellTest,
+	"Cataclysm.ProjectileRange.ARowMakesAFlyingSpellPierceEveryEnemyOnItsLineAndLeavesAnAttackAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPierceAllRowOnAFlyingSpellTest::RunTest(const FString&)
+{
+	using namespace CataclysmRicochetPierceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// A BOLT STATING A 2 M RADIUS, aimed 12 m along its lane. THREE ENEMIES ON THE LINE, 3 m, 6 m and 9 m from the
+	// user, and ONE BESIDE THE FIRST, 2.1 m to its side. A bolt that does not pierce stops at the first enemy it
+	// touches and goes off there: the blast reaches the one beside it, because a blast counts a body's own 34 cm,
+	// and neither of the two further on. A bolt that pierces is a line with a half-width of the same 2 m, measured
+	// to a body's centre, so the one beside the first is 10 cm outside it.
+	const TCHAR* Bolt = TEXT("Range=12; Radius=2; Speed=2000");
+	struct FLane
+	{
+		FLane(UWorld* InWorld, float LaneY)
+			: User(InWorld, FVector(0.0f, LaneY, 0.0f))
+		{
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(3.0f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(6.0f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(9.0f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(3.0f * Metre, LaneY + 2.1f * Metre, 0.0f)));
+		}
+		FBody User;
+		TArray<TUniquePtr<FBody>> Enemies;
+	};
+
+	FLane Control(World, 0.0f);
+	FLane Wearing(World, LaneApart);
+	Wearing.User.CarryFlatLine(UCataclysmProjectileSkill::ProjectilePierceAllStat, 1.0f, TEXT("Type.Spell"));
+
+	if (!TestTrue(TEXT("set-up: the control's spell ran"),
+			UseAndFly(Control.User, Control.User.Skill(ECataclysmAbilitySlot::Special, Bolt, SpellTags))))
+	{
+		return false;
+	}
+	const TArray<float> Blast = LostBy(Control.Enemies);
+	if (!TestTrue(TEXT("set-up: the control's first enemy lost health"), Blast[0] > 0.0f))
+	{
+		return false;
+	}
+	const float OneHit = Blast[0];
+	TestEqual(TEXT("control: the spell does not reach the second enemy on the line"), Blast[1], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the third"), Blast[2], 0.0f, 0.01f);
+	TestEqual(TEXT("control: its blast reaches the enemy beside the first"), Blast[3], OneHit, 0.01f);
+
+	if (!TestTrue(TEXT("the wearer's spell ran"),
+			UseAndFly(Wearing.User, Wearing.User.Skill(ECataclysmAbilitySlot::Special, Bolt, SpellTags))))
+	{
+		return false;
+	}
+	const TArray<float> Line = LostBy(Wearing.Enemies);
+	TestEqual(TEXT("the wearer's spell strikes the first enemy once, for what a control enemy took"),
+			  Line[0], OneHit, 0.01f);
+	TestEqual(TEXT("and the second on the line, once"), Line[1], OneHit, 0.01f);
+	TestEqual(TEXT("and the third on the line, once"), Line[2], OneHit, 0.01f);
+	TestEqual(TEXT("and not the enemy beside the first: no blast went off there"), Line[3], 0.0f, 0.01f);
+
+	// THE SAME WEARER'S ATTACK, the same bolt in another slot without the spell tag, down the same lane. It is
+	// what the control's spell was: the first enemy and the one beside it lose one more hit, the other two none.
+	if (!TestTrue(TEXT("the wearer's attack ran"),
+			UseAndFly(Wearing.User, Wearing.User.Skill(ECataclysmAbilitySlot::Heavy, Bolt, AttackTags))))
+	{
+		return false;
+	}
+	const TArray<float> After = LostBy(Wearing.Enemies);
+	TestEqual(TEXT("the wearer's attack strikes the first enemy"), After[0] - Line[0], OneHit, 0.01f);
+	TestEqual(TEXT("it does not pierce to the second"), After[1] - Line[1], 0.0f, 0.01f);
+	TestEqual(TEXT("nor the third"), After[2] - Line[2], 0.0f, 0.01f);
+	TestEqual(TEXT("and it goes off where it stopped, reaching the enemy beside the first"),
+			  After[3] - Line[3], OneHit, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPierceAllRowOnASpellBeamTest,
+	"Cataclysm.ProjectileRange.ARowMakesASpellBeamStrikeAlongItsLineAndNotWhereItWasAimed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPierceAllRowOnASpellBeamTest::RunTest(const FString&)
+{
+	using namespace CataclysmRicochetPierceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// A BEAM, WHICH STATES NO SPEED, aimed 10 m along its lane with a 2 m radius. THREE ENEMIES ON THE LINE, 3 m,
+	// 6.5 m and 10 m from the user, the last where the beam is aimed, and ONE BESIDE THAT POINT, 2.1 m to its side.
+	// Without the row the beam lands in its radius at the aimed point and reaches the last enemy and the one
+	// beside it. With it the beam is a line from the user to that point, 2 m to each side measured to a body's
+	// centre, so the one beside the aimed point is 10 cm outside it.
+	const TCHAR* Beam = TEXT("Range=10; Radius=2; Speed=0");
+	const auto LostInALane = [&](float Y, bool bCarries, bool& bOutRan)
+	{
+		FBody User(World, FVector(0.0f, Y, 0.0f));
+		TArray<TUniquePtr<FBody>> Enemies;
+		Enemies.Add(MakeUnique<FBody>(World, FVector(3.0f * Metre, Y, 0.0f)));
+		Enemies.Add(MakeUnique<FBody>(World, FVector(6.5f * Metre, Y, 0.0f)));
+		Enemies.Add(MakeUnique<FBody>(World, FVector(10.0f * Metre, Y, 0.0f)));
+		Enemies.Add(MakeUnique<FBody>(World, FVector(10.0f * Metre, Y + 2.1f * Metre, 0.0f)));
+		if (bCarries)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectilePierceAllStat, 1.0f, TEXT("Type.Spell"));
+		}
+		bOutRan = UseAndFly(User, User.Skill(ECataclysmAbilitySlot::Special, Beam, SpellTags));
+		return LostBy(Enemies);
+	};
+
+	bool bRan = false;
+	const TArray<float> Landed = LostInALane(0.0f, /*bCarries=*/false, bRan);
+	if (!TestTrue(TEXT("set-up: the control's beam ran"), bRan)
+		|| !TestTrue(TEXT("set-up: and the enemy where it was aimed lost health"), Landed[2] > 0.0f))
+	{
+		return false;
+	}
+	const float OneHit = Landed[2];
+	TestEqual(TEXT("control: the beam does not strike the first enemy on its line"), Landed[0], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the second"), Landed[1], 0.0f, 0.01f);
+	TestEqual(TEXT("control: it reaches the enemy beside where it was aimed"), Landed[3], OneHit, 0.01f);
+
+	const TArray<float> Line = LostInALane(LaneApart, /*bCarries=*/true, bRan);
+	TestTrue(TEXT("the wearer's beam ran"), bRan);
+	TestEqual(TEXT("the wearer's beam strikes the first enemy on its line once, for what a control enemy took"),
+			  Line[0], OneHit, 0.01f);
+	TestEqual(TEXT("and the second, once"), Line[1], OneHit, 0.01f);
+	TestEqual(TEXT("and the one where it was aimed, once"), Line[2], OneHit, 0.01f);
+	TestEqual(TEXT("and not the enemy beside where it was aimed: it did not land in a radius"),
+			  Line[3], 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRicochetStrikesNoEnemyTwiceTest,
+	"Cataclysm.ProjectileRange.AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRicochetStrikesNoEnemyTwiceTest::RunTest(const FString&)
+{
+	using namespace CataclysmRicochetPierceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// A BOLT STATING A 2.8 M RADIUS AND NO BOUNCE, aimed 10 m along its lane. Three lanes, 60 m apart, each with its
+	// user at the lane's start.
+	//
+	// WHERE EACH ENEMY STANDS, in the two lanes that hold five: the first 3 m along the lane from the user, the
+	// second 4.5 m, the third 6 m, so each is 1.5 m from the next; the fourth 2.5 m to the side of the third, which
+	// is 2.5 m from the third and 2.9 m from the second; the fifth 10 m along the lane, 4 m from the third.
+	//
+	// THE WEARER, carrying 2 ricochets: the bolt glances from the first and from the second and stops at the third,
+	// where it goes off. That place is about 5.67 m along the lane. The first is 2.67 m from it and the second
+	// 1.17 m, so BOTH ENEMIES IT GLANCED FROM STAND INSIDE THE BLAST, and a blast that did not leave them out would
+	// strike each a second time. The fourth is 2.52 m from it and was never touched: only the blast can reach it.
+	// The fifth is 4.33 m from it, outside.
+	//
+	// THE CONTROL, no row: the bolt goes off once at its first contact, about 2.67 m along the lane. The first and
+	// the second, 1.83 m on, are inside; the third is 3.33 m from it, outside a blast that reaches 2.8 m and a
+	// body's own 34 cm.
+	const TCHAR* Bolt = TEXT("Range=10; Radius=2.8; Speed=2000");
+	struct FLane
+	{
+		FLane(UWorld* InWorld, float LaneY)
+			: User(InWorld, FVector(0.0f, LaneY, 0.0f))
+		{
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(3.0f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(4.5f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(6.0f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(6.0f * Metre, LaneY + 2.5f * Metre, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(10.0f * Metre, LaneY, 0.0f)));
+		}
+		FBody User;
+		TArray<TUniquePtr<FBody>> Enemies;
+	};
+
+	// WHAT ONE CONTACT TAKES: a third lane, one enemy 3 m along it, and the same bolt stating one bounce of its
+	// own with no row. A shot with a bounce left strikes the enemy it touches by contact.
+	FBody ContactUser(World, FVector(0.0f, 2.0f * LaneApart, 0.0f));
+	FBody ContactEnemy(World, FVector(3.0f * Metre, 2.0f * LaneApart, 0.0f));
+	if (!TestTrue(TEXT("set-up: the contact control's shot ran"),
+			UseAndFly(ContactUser, ContactUser.Skill(ECataclysmAbilitySlot::Special,
+				TEXT("Range=10; Radius=2.8; Speed=2000; Bounces=1"), AttackTags))))
+	{
+		return false;
+	}
+	const float OneContact = Pool - ContactEnemy.Health();
+
+	FLane Control(World, 0.0f);
+	if (!TestTrue(TEXT("set-up: the control's shot ran"),
+			UseAndFly(Control.User, Control.User.Skill(ECataclysmAbilitySlot::Special, Bolt, AttackTags))))
+	{
+		return false;
+	}
+	const TArray<float> Once = LostBy(Control.Enemies);
+	const float OneBlast = Once[0];
+	if (!TestTrue(TEXT("set-up: a contact and a blast each took health"), OneContact > 0.0f && OneBlast > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: the blast at the first contact reaches the second enemy, once"),
+			  Once[1], OneBlast, 0.01f);
+	TestEqual(TEXT("control: and not the third"), Once[2], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the fourth, beside the third"), Once[3], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the fifth"), Once[4], 0.0f, 0.01f);
+
+	FLane Wearing(World, LaneApart);
+	Wearing.User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileBouncesStat, 2.0f, TEXT("Type.Projectile"));
+	if (!TestTrue(TEXT("the wearer's shot ran"),
+			UseAndFly(Wearing.User, Wearing.User.Skill(ECataclysmAbilitySlot::Special, Bolt, AttackTags))))
+	{
+		return false;
+	}
+	const TArray<float> Lost = LostBy(Wearing.Enemies);
+	TestEqual(TEXT("the first enemy, glanced from and inside the blast, lost exactly one contact"),
+			  Lost[0], OneContact, 0.01f);
+	TestEqual(TEXT("the second enemy, glanced from and inside the blast, lost exactly one contact"),
+			  Lost[1], OneContact, 0.01f);
+	TestEqual(TEXT("the third enemy, where the shot stopped, lost exactly one blast"), Lost[2], OneBlast, 0.01f);
+	TestEqual(TEXT("the fourth enemy, which only the blast can reach, lost exactly one blast"),
+			  Lost[3], OneBlast, 0.01f);
+	TestEqual(TEXT("the fifth enemy, outside the blast, lost nothing"), Lost[4], 0.0f, 0.01f);
+	const float Most = FMath::Max(OneContact, OneBlast);
+	for (int32 Index = 0; Index < Lost.Num(); ++Index)
+	{
+		TestTrue(*FString::Printf(TEXT("enemy %d lost no more than one hit"), Index + 1),
+				 Lost[Index] <= Most + 0.01f);
+	}
 	return true;
 }
 

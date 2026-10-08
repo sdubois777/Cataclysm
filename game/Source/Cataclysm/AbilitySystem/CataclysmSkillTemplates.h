@@ -521,6 +521,36 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	int32 Land();
 
+	/**
+	 * Two stats by which a worn row changes this skill's shape numbers. Ruled 2026-10-07. Neither has a gameplay
+	 * attribute; both are in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. Each is asked with this skill's
+	 * tags, so a row's Required Tags decide which projectile skills it reaches.
+	 *
+	 * `projectile_bounces` is "Projectiles ricochet 1-4 times": a whole number added to the bounces the skill
+	 * states. `projectile_pierce_all` is "Spells pierce through all enemies in their path": a flag, above nought
+	 * is yes, and the skill then pierces `PierceAllCount` enemies if it states fewer.
+	 */
+	static const TCHAR* ProjectileBouncesStat;
+	static const TCHAR* ProjectilePierceAllStat;
+
+	/**
+	 * What "all enemies" is as a pierce count: the 99 that each designed piercing skill states (`Pierce=99` on
+	 * Emberhurl and Skewer). A number and not a flag, because `ACataclysmProjectile` counts pierces down.
+	 */
+	static constexpr int32 PierceAllCount = 99;
+
+	/**
+	 * The bounces this skill states plus what the user's rows add, rounded to a whole number. The stated number
+	 * alone for a user with no row, and for a skill no character holds.
+	 */
+	int32 BouncesWithRows() const;
+
+	/**
+	 * The pierce this skill states, or `PierceAllCount` when a row of the user's says this skill pierces all and
+	 * it states fewer. The stated number alone for a user with no row, and for a skill no character holds.
+	 */
+	int32 PierceWithRows() const;
+
 	/** How many times it has landed or a projectile of its has finished. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 Landings = 0;
@@ -685,6 +715,12 @@ private:
 
 	/** Called when a fired projectile stops. Leaves ground and ends the ability. */
 	void OnProjectileFinished(ACataclysmProjectile* Projectile);
+
+	/**
+	 * Tell a fired projectile how many times it glances onward, how far a glance looks and what each adds.
+	 * Nothing for a null projectile or a skill with no bounces, stated or added by a row.
+	 */
+	void LetItGlance(ACataclysmProjectile* Shot);
 
 	/** Burn the path a projectile took, or the point it stopped at. */
 	void LeaveGroundForFlight(const FVector& From, const FVector& To);
