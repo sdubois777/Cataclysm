@@ -382,6 +382,27 @@ time, until the shot says it has finished or 600 steps have passed. No test chec
 loop. 600 steps is 10 seconds, or 200 metres at the tests' speed of 20 metres a second, against ranges of 10 and
 12 metres; that the shots finished rests on that arithmetic, a judgement by the registering session.
 
+**Assertions that can be true only after a shot has ended, read by the registering session.** A shot's blast goes
+off in `ACataclysmProjectile::Finish`, which is also what sets the finished flag, so an enemy that only the blast
+can reach losing health shows that shot's loop ended on the flag. All of these passed:
+
+- `AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce`: "the fourth enemy, which only the blast can
+  reach, lost exactly one blast" (the wearer's shot), and "control: the blast at the first contact reaches the
+  second enemy, once" (the control's shot).
+- `ARowsRicochetsAreAddedToTheBouncesAProjectileSkillStates`: "the enemy beside the third, never touched, takes the
+  blast" (the carrying user's shot with a blast), and "control: and reaches the enemy beside it" (the first-contact
+  control).
+- `ARowMakesAFlyingSpellPierceEveryEnemyOnItsLineAndLeavesAnAttackAlone`: "control: its blast reaches the enemy
+  beside the first" (the control's spell), and "and it goes off where it stopped, reaching the enemy beside the
+  first" (the wearer's attack).
+
+**No such assertion exists** for the wearer's piercing spell in that last test, since a shot that pierces has no
+blast, nor for the other shots of the ricochet test, which the list above does not name. For those the
+arithmetic above is the only ground. `ARowMakesASpellBeamStrikeAlongItsLineAndNotWhereItWasAimed` puts nothing in the air.
+
+No test was changed for this: a labelled judgement by the coordinating session under the owner's delegation,
+2026-10-08.
+
 **Not run:** either row read from the effect table, since no row exists.
 
 ---
