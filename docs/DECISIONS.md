@@ -550,8 +550,9 @@ list of stats that are a yes or a no, and the row counts), `docs/README.md`. Iss
   cost stays paid and its cooldown stays running. A self buff in its duration, an aura that is on, a weapon
   standing in the ground and a shot already in the air are left alone.
 - **The tests here read the stat's answer and do not throw a blow.** That a real blow ends a real skill is tested
-  in the entry that built the stat, with the row made by hand. **Whether a basic attack is cut short in its
-  wind-up was not shown by that entry's run in a worktree**, which has none of the player's attack clips.
+  in the entry that built the stat, with the row made by hand. **That a basic attack is cut short in its
+  wind-up IS shown by that entry's run of 2026-10-08**; this line first said it was not, on the wrong belief that
+  a worktree has none of the player's attack clips.
 
 ### WHAT WAS BUILT
 
@@ -594,6 +595,30 @@ Each wears the real row, and first asserts that the name it wears is a row of `E
 
 **Not tested here:** a blow thrown at a wearer of either real row; Pyroclasm used under the channel row. The
 entry that built the stat tests each with the row made by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the three layers below this one, on `development` c17bda32. The build, the
+whole suite and the Python of record are in the table of the entry of the same day "A character knows it is
+channelling" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 41e03c74 | 297 tests performed, 292 succeeded, 5 failed, this layer's two among them; 4 of the 13 failed assertions are this layer's: the row for any skill 3, the row for a channel 1 |
+| The enchantment assets, regenerated with the editor | c7aa4e58 | effect rows 570 to 572 |
+| Whole suite, every asset built | c7aa4e58 | 3379 tests performed, 3379 succeeded, 0 failed |
+
+**Each of the two tests fails against a table without its row and passes with it.** Without the rows the flag
+answered nought for a melee skill, for a channelled skill and for a skill with no tags under the first name
+worn, and nought for a channelled skill under the second.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the entry
+that built the stat proved, read in its table: three guard proofs, each failed with its break in and passed with
+it out: an ended spin's two timers cleared by name, a spin asking whether its own first swing ended it, and a
+tick of damage over time refused. **That table says no proof was run for the guards on a rack and on a flicker,
+for what is and is not interruptible, for the wearer's own blow, for the cost and the cooldown being kept, or
+for the order of the cancel and the `hit_taken` event**; those are tested and not proved.
 
 ---
 
