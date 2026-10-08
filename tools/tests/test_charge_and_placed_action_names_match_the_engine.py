@@ -89,6 +89,8 @@ CONSTANTS = {
     "AilmentSpreadOnDeathAction": "ailment_spread_on_death",
     "AilmentDetonatesWhenReappliedAction": "ailment_detonates_when_reapplied",
     "AilmentSpreadOnApplicationAction": "ailment_spread_on_application",
+    # AND THE ONE THAT LOWERS ITS CARRIER'S MAXIMUM HEALTH, ruled 2026-10-08.
+    "AilmentMaxHealthRiderAction": "ailment_max_health_removed",
     # AND THE TWO THAT TRIGGER A DIFFERENT HELD SKILL, ruled 2026-10-06.
     "TriggerHeldSkillAction": "trigger_held_skill",
     "TriggerHeldSpellAction": "trigger_held_spell",

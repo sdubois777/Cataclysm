@@ -784,6 +784,21 @@ public:
 	static const TCHAR* ArmorPenetrationSuppressedStat;
 
 	/**
+	 * `minion_defences_percent_of_yours`: the share of its summoner's armour
+	 * and resistances a minion takes, in percent. Ruled 2026-10-08 under the
+	 * owner's delegation: "Summoned minions inherit 10%-25% of your armor and
+	 * resistances". Asked of the SUMMONER with the minion's own type tags, at
+	 * the two places `Resolve` takes a defender's armour and its resistance,
+	 * and nowhere else. No gameplay attribute: rows only.
+	 *
+	 * READ AT THE BLOW AND NEVER COPIED ONTO THE MINION, which holds neither a
+	 * combat set nor a resistance set, so a change of the summoner's gear
+	 * reaches a minion already out. ONE FIGURE SERVES BOTH. See
+	 * `InheritedDefencesOf` in the `.cpp`.
+	 */
+	static const TCHAR* MinionDefencesPercentOfYoursStat;
+
+	/**
 	 * The share of armour a critical strike ignores on top of the rest, asked of
 	 * the ATTACKER where armour penetration is. Issue #1833, "Your critical
 	 * strikes ignore 20%-40% of enemy armor". Carried on
