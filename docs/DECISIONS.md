@@ -2,6 +2,411 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Two stats a worn row can state for a projectile skill: `projectile_bounces` adds to the bounces the skill states, and `projectile_pierce_all` makes it pierce every enemy on its line. Engine only; no row authored
+
+**Built and run on 2026-10-08 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
+
+**Not built and not run.** No Unreal build and no Unreal test was run by the writing session. One Python dry run
+was made and is described under "What the row needs". The Python suite, the lint and the conflict check were run
+before the commit; their figures are in the commit's report and not here.
+
+**Said first: the pierce row changes the shape of a spell.** "Spells pierce through all enemies in their path"
+makes a projectile spell hit along a line and stop landing in a radius. Ruled in on 2026-10-07. Two skills are
+reached today, not three. Counted on 2026-10-07 by reading `game/Data/WeaponSkills.csv` with Python's `csv`
+module: 403 rows; 9 whose Shape cell equals `Projectile`; 2 of those 9 whose Tags cell holds `Type.Spell`.
+**The line a spell pierces along is as wide as the spell's radius was**: 1 m to each side for Malefice, 1.5 m
+for Compel. Accepted by the coordinating session on 2026-10-07. The two skills:
+
+| Skill | Row | Without the pierce row | With it | Loses | Gains |
+|---|---|---|---|---|---|
+| Malefice (`Demonic_Wand_Heavy`, `Range=14; Radius=1; Speed=2600; Burn=1; SpreadCurses=2`) | a bolt that flies | stops at the first enemy it touches and goes off there in a 1 m radius | flies on to the point it was aimed at, as a line 1 m to each side, and strikes every enemy on it once | the blast at the first enemy | every enemy behind the first, up to the aimed point. Each one struck is set alight and has its curses copied to the two nearest enemies not struck |
+| Compel (`Demonic_Staff_Heavy`, `Range=14; Radius=1.5; Pierce=0; Speed=0; Burn=1; CommandStrike=1`) | a beam, no flight | lands at the aimed point and strikes every enemy in a 1.5 m radius there | strikes every enemy on the line from the caster to the aimed point, 1.5 m to each side | the landing in a radius at the aimed point | every enemy between the caster and the aimed point |
+
+Neither skill states ground, so neither leaves a ground effect with or without the row.
+
+**Also said first: the line is as wide as the radius was.** In this code a piercing skill's `Radius` is the
+half-width of its line (`CataclysmProjectile.cpp`, where `BodyRadiusCm` is set in `Fire`). So an enemy standing
+beside the landing point, inside the old radius, is in most places still struck by the line. The exception is
+narrow: a blast counts a body's own 34 cm and a line measures to a body's centre. The tests place an enemy in
+that 34 cm band, 2.1 m to the side of a skill stating 2 m. The sentence "and not the one beside the landing point"
+is true there and is not true of an enemy 1 m to the side.
+
+**Also said first: "in their path" ends at the point the skill was aimed at.** A projectile skill is aimed at the
+cursor, no further than its range (`UCataclysmProjectileSkill::ActivateAbility`, `Destination =
+AimedPointWithin(ScaledRangeCm())`). A piercing shot flies to that point and stops. It does not fly its whole
+range. That is what Emberhurl and Skewer do today and this layer did not change it.
+
+**Also said first: Compel's commanded strike changes target.** Compel orders every commanded creature onto
+`Targets[0]`. Without the row that is the enemy nearest the aimed point. With it, it is the enemy nearest the
+caster on the line, because a line's targets are sorted from its start. Not changed by this layer; a judgement for
+the coordinating session, number 6.
+
+**Also said first: a ricochet does not remove a blast.** Ruled 2026-10-07, after the first version of this layer
+was reported. As first written, a skill that states no bounce followed Carom's rule whole and lost its blast. Now
+a skill that states no bounce, given bounces by the row, strikes each enemy it glances from and still goes off
+in its radius where it finally stops: at the enemy it reaches with no bounce left, or where it has nothing to
+glance to, or where it runs out of range. An enemy it glanced from is left out of that blast, so no enemy takes
+the contact and the blast both. A skill that states its own bounces, Carom, keeps its own rule exactly: no
+blast. **NO ENEMY IS STRUCK TWICE BY ONE SHOT.** Confirmed 2026-10-07. So with the ricochet row:
+
+| Skill | States | With N ricochets |
+|---|---|---|
+| Carom (`Bounces=3; Returns=1`) | 3 bounces, 4 enemies | 3 + N bounces. Each enemy after the first still adds 20% of the skill's damage |
+| Harrower (`Radius=1`) | a 1 m blast at the first enemy | glances from up to N enemies, striking each, then its 1 m blast where it stops. ONE buried axe, in the last enemy it touched |
+| Blood Pyre (`Radius=3`, ground) | a 3 m blast at the first enemy and its pyre there | glances from up to N enemies, then its 3 m blast and its pyre where it stops, once |
+| Malefice (`Radius=1`, spell) | a 1 m blast | glances from up to N enemies, then its 1 m blast. Each enemy it touched has its curses spread; an enemy only the blast reached does not, as today |
+| Tether (`Radius=1.5`) | a 1.5 m blast | glances from up to N enemies, then its 1.5 m blast. The tether is bound at release and is not changed |
+| Butcher's Bill (`Count=30`) | 30 axes, each a 1 m blast | each of the 30 axes glances from up to N enemies, then its 1 m blast |
+| Emberhurl, Skewer (`Pierce=99`) | pierce | nothing: a projectile that pierces never bounces |
+| Compel (`Speed=0`) | a beam | nothing: a beam is not an actor in flight and has no bounce |
+
+A shot that touches no enemy at all still goes off in its radius where it stops, as before.
+
+**The row does not take an axe away from Harrower.** With no row Harrower buries one axe, in the one enemy it
+hits. With the row it buries one axe, in the last enemy the throw touched. Confirmed 2026-10-07.
+
+**Size of the change in the projectile for the blast ruling**, counted from the diff: 39 lines added and 3
+removed in `CataclysmProjectile.cpp` and `.h` together, comments included; about 20 of the added are code. One new argument of
+`GlancesOnward`, one flag, one set, one weak pointer, one branch in `HitAlongStep` and one test in `Finish`.
+
+### Said first: where the code did not match what the writing session was told
+
+1. **Two projectile spells exist, not three.** Counted from `game/Data/WeaponSkills.csv`: Malefice and Compel.
+2. **`Land()` is not how a flying projectile hits.** The brief described the change from radius to line at
+   `CataclysmSkillTemplates.cpp` near lines 1703-1740. That function, `Land`, runs only for a beam (a speed of
+   nought) or a throw with nowhere to go. A projectile with a speed is an `ACataclysmProjectile`, which does its
+   own hitting; for it the same change happens inside `ACataclysmProjectile::Fire` (`bPierces`, `BodyRadiusCm`)
+   and `Finish` (no blast for one that pierces). Passing the pierce count to `Fire` reaches both.
+3. **The line is as wide as the radius**, as said above. The brief's test expected the enemy beside the landing
+   point to be missed. That holds only in the 34 cm band described above, and the tests say so in their comments.
+4. **A basic attack fires no projectile, and neither does a turret.** `CataclysmBasicAttack.cpp` does not mention
+   a projectile. A minion, the Bolt Turret included, strikes through `ApplyHit` in `CataclysmMinion.cpp` and never
+   calls `ACataclysmProjectile::Fire`. So neither is reached by either stat. The only callers of `Fire` outside
+   tests are the projectile skill (twice), four enemies, and the dungeon's Infernal Rain; only the skill reads the
+   new stats.
+5. **A projectile that pierces cannot bounce in this code.** `HitAlongStep` reads `BouncesLeft` only inside
+   `if (!bPierces)`. So "what it does with a skill that already pierces" was already decided by the code: nothing.
+6. **The generator needed no change.** A stat with no attribute and no base, stated by a `flat` row with no
+   condition and no scale, needs nothing in `tools/generate_datatables.py`. What did need a change in Python is
+   the inventory of stat lookups.
+7. **The existing bounce tests do not go through a skill.** They call `GlancesOnward` on a projectile fired by
+   hand. The new tests fire through `UCataclysmProjectileSkill`, on the rig of
+   `CataclysmProjectileRangeTests.cpp`.
+
+### What was read before writing
+
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`, `UCataclysmProjectileSkill`: `ActivateAbility`
+  (the aim, the call of `Fire`, the call of `GlancesOnward` with the skill's range as the glance's reach),
+  `OnProjectileFinished`, `SpreadCursesFrom`, `ThrowOne`, `BuryInStruck`, `LeaveGroundForFlight`, `Land`,
+  `LandThenFinish`, `Return`. Line numbers after this change: `BouncesWithRows` 1177, `PierceWithRows` 1194,
+  `LetItGlance` 1209, the two calls of `Fire` 1343 and 1583, `LeaveGroundForFlight` 1746, `Land` 1776.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp`, whole file: `Fire` (162), `Step` (318),
+  `HitAlongStep` (502), `HitOne` (599), `GlancesOnward` (729), `GlanceOnwardFrom` (778), `BeginReturn` (815),
+  `Finish` (829). And the public members of `CataclysmProjectile.h`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.cpp`: `IsInLine` (63), `Gather` (186),
+  `FindEnemiesInSphere` (253), `FindEnemiesInLine` (282). A sphere search is a physical overlap with no further
+  test; a line search is that overlap plus a test of the body's centre against the line.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`: `ScaledRangeCm` and `ScaledProjectileSpeed`
+  (the precedent for a skill asking its user's stat with its own tags), `LeaveRowZoneAt` (2944), `AimedPointWithin`
+  (2026), `WhenTheSwingConnects` (517).
+- `UCataclysmAbilitySystemComponent::SkillChargesMaximum` (`CataclysmAbilitySystemComponent.cpp` 4014): the
+  precedent for a whole number rolled by a row. `game/Data/EnchantmentEffects.csv` line 376,
+  `Positive_Ultimate_has_1_3_additional_charges#1`: `skill_charges_bonus,flat,1.0,3.0,Slot.Ultimate`.
+- How a flag is stated: `Positive_Unaffected_by_bleeding#1`, `ailment_immunity,flat,1.0,1.0,Keyword.DoT.Bleed`.
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute` (`CataclysmPlayerClassStats.cpp`), the probe tables of
+  `CataclysmStatExemptionTests.cpp`, and `tools/tests/test_stat_lookups_hand_over_what_they_should.py`.
+- `CataclysmMinion.cpp` and `CataclysmBasicAttack.cpp`, searched for a projectile; none.
+
+### What it is for
+
+Two sentences in `game/Data/EnchantmentsPositive.csv` that have no row:
+
+- `Positive_Projectiles_ricochet_1_4_times`: "Projectiles ricochet 1-4 times". Tags `Type.Projectile, Type.Ranged`.
+- `Positive_Spells_pierce_through_all_enemies_in_their_path`: "Spells pierce through all enemies in their path".
+  Tags `Type.Spell, Type.Projectile`.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **Ricochet.** "A wearer stat added to a projectile skill's own number of bounces." A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-07.
+2. **Pierce is ruled in.** "Spells pierce through all enemies in their path" makes a projectile spell hit along
+   its line and not land in a radius, because that is what the sentence says. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-07.
+3. **A ricochet must not remove a blast.** Keep the blast on the last contact: a projectile that had a blast
+   bounces off each enemy it touches, striking that one, and goes off in its radius where its last bounce ends
+   or where it runs out of range. So the row only adds. This applies to a skill that states no bounce of its
+   own. A skill that states its own bounces keeps its own rule exactly. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-07.
+4. **Accepted the same day**, each a labelled judgement by the coordinating session under the owner's
+   delegation, 2026-10-07: a piercing spell's line is as wide as the spell's radius; a projectile that pierces
+   does not bounce; the row is written with Required Tags `Type.Spell` and 99 stands for "all"; neither stat
+   reaches a basic attack or a turret.
+5. **Confirmed on 2026-10-07**, each a labelled judgement by the coordinating session under the owner's
+   delegation, 2026-10-07: the enemy reached with no bounce left takes the blast alone; every enemy the shot
+   glanced from is left out of the blast, in its plain form NO ENEMY IS STRUCK TWICE BY ONE SHOT; Harrower
+   buries one axe, in the last enemy the throw touched; Malefice's curses spread from every enemy the bolt
+   touched and not from enemies only the blast reached; "states no bounce" is a `Bounces` of nought or less,
+   and a skill stating a bounce keeps Carom's rule for all of them.
+
+### How it is built
+
+- **Two stats with no attribute and no base**, `projectile_bounces` and `projectile_pierce_all`, added to
+  `StatsWithNoAttribute`. Their names are `UCataclysmProjectileSkill::ProjectileBouncesStat` and
+  `ProjectilePierceAllStat`.
+- **`UCataclysmProjectileSkill::BouncesWithRows`** answers the bounces the skill states plus the stat, asked with
+  the skill's tags, rounded to a whole number and never below nought. **`LetItGlance`** is the old block that
+  called `GlancesOnward`, moved into one function and given that number. It is called for a single throw, as
+  before, and now also for each axe of a rack.
+- **The blast is kept for a skill that states no bounce.** `LetItGlance` passes `Params.Bounces <= 0` to
+  `GlancesOnward` as a new last argument, `bInKeepsItsBlast`, false by default. For such a shot
+  `HitAlongStep` does not clear `bDetonatesWhenItStops` when it glances; it records the enemy in
+  `StruckOnAGlance`, and the blast in `Finish` leaves those enemies out. A shot without the flag takes the old
+  path line for line, and its set is empty.
+- **Harrower leaves one axe.** For a shot that kept its blast, `OnProjectileFinished` buries in
+  `LastEnemyTouched()` only. Any other throw buries in every enemy struck, as before. Blood Pyre's pyre needed
+  no change: `LeaveGroundForFlight` leaves ground once, where the shot finally stopped.
+- **`UCataclysmProjectileSkill::PierceWithRows`** answers the pierce the skill states, or 99
+  (`PierceAllCount`) when the stat is above nought and the skill states fewer. 99 is how "all" is already stated:
+  each designed piercing skill is written `Pierce=99`, and the projectile counts pierces down. It replaces
+  `Params.Pierce` at the five places that read it: the two calls of `Fire`, `LeaveGroundForFlight`, and twice in
+  `Land`.
+- **Only spells.** The lookup is asked with the skill's tags and the row is scoped to `Type.Spell`. The engine
+  does not test the spell tag itself. A row written with no Required Tags would make every projectile skill
+  pierce.
+- **A wearer without either row is as before.** With no line recorded the lookups answer nought, and each helper
+  then answers the skill's own number. One difference exists in code and reaches no designed row: a rack that
+  stated `Bounces` would now glance, where before a rack never did. No rack states one.
+- **A skill that both pierces and bounces: pierce, and no bounce.** That is the projectile's existing rule. A
+  wearer of both rows has spells that pierce and do not ricochet, and attacks that ricochet.
+- **The zone row `zone_at_impact_seconds`**, built 2026-10-06, is left by `LeaveGroundForFlight` at the far end
+  of the flight for a skill that states no ground. For a shot that pierces that is the aimed point, or the wall
+  that stopped it: a point, not the path, as that layer ruled. For a shot that bounces it is where the shot
+  finally stopped, which is at or near the last enemy it touched. For a shot that returns it is the furthest point it
+  reached. For a beam it is the aimed point. A skill that states ground gets no zone from the row; its own ground
+  is left along the line when it pierces (by its row or by this stat) and at the stopping point when it does not.
+
+### For the owner's play-check
+
+What a player sees: with the ricochet row, a thrown axe or bolt strikes an enemy and turns to the nearest enemy
+it has not struck, 1 to 4 more times than the skill says. With the pierce row, Malefice's bolt passes through
+every enemy up to the cursor, and Compel's lance strikes everything between the caster and the cursor.
+
+Every judged number, and the reading not taken:
+
+- **A ricochet deals the skill's full hit.** Not taken: a reduced hit for each ricochet. The existing negative
+  row, "Projectiles deal 20%-35% less damage on each subsequent hit after the first", still applies to every
+  contact after the first.
+- **A ricochet looks as far as the skill's own range** (Carom's rule). Not taken: a shorter fixed reach.
+- **A ricochet picks the nearest enemy not yet struck by that projectile.** Not taken: a random one.
+- **The line a spell pierces along is as wide as the spell's radius.** Accepted 2026-10-07. Also listed below.
+- **A skill that states no bounce keeps its blast for where it finally stops**, ruled 2026-10-07. Not taken:
+  it loses the blast (the first version); the blast goes off at the first enemy and the shot then bounces.
+- **An enemy the shot glanced from is left out of the blast.** Not taken: it takes the contact and the blast.
+  A shot with no ricochet deals its target one hit, the blast, so one hit each is the same.
+- **Butcher's Bill: each of its 30 axes ricochets.** Not taken: a rack is left out.
+- **Harrower leaves one axe, in the last enemy the throw touched.** With no row Harrower buries one axe, in
+  the one enemy it hits, so the row does not take an axe away. Not taken: one in every enemy struck.
+- **No enemy is struck twice by one shot.** Not taken: an enemy glanced from that stands inside the blast
+  takes both.
+- **"All" is 99 enemies.** Not taken: no limit at all.
+- **Pierce ends at the cursor.** Not taken: the spell flies its whole range.
+- **The pierce line is as wide as the skill's radius**: 1 m to each side for Malefice, 1.5 m for Compel. Not
+  taken: a narrow bolt 0.4 m to each side, the width of a shot that does not pierce.
+- **A spell with both rows pierces and does not ricochet.** Not taken: it ricochets after its last pierce.
+
+### Judgements by the writing session
+
+Numbers 1 to 9 were confirmed by the coordinating session on 2026-10-07, number 3 by being replaced. Numbers 10
+to 14 were decided while building ruling 3 and were confirmed by the coordinating session on 2026-10-07.
+
+1. **A ricochet's hit is what the skill's own bounce deals**: the full hit, plus Carom's 20% for each enemy after
+   the first where the row counts bounces. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+2. **The reach of a ricochet is the skill's range**, the same expression the stated bounces use. A judgement by
+   the writing session, confirmed by the coordinating session on 2026-10-07.
+3. **Replaced by ruling 3.** The first version had a skill stating no bounce lose its blast. It now keeps it.
+4. **A rack's axes ricochet.** "Projectiles" names no kind. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+5. **Pierce wins over ricochet, and no bounce follows the last pierce.** The code already did this; with 99
+   pierces the last one is not reached in play. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+6. **Compel's commanded strike goes to the first enemy on the line.** Left as the code gives it. A judgement by
+   the writing session, confirmed by the coordinating session on 2026-10-07.
+7. **Spells are told apart by the row's Required Tags and not by the engine.** A judgement by the writing
+   session, confirmed by the coordinating session on 2026-10-07.
+8. **A row can add bounces and cannot take them away**: a total below nought is read as nought added. A judgement
+   by the writing session, confirmed by the coordinating session on 2026-10-07.
+9. **The stat is read each time it is needed, not kept from the moment of firing.** A flying spell asks when it
+   fires and again when it finishes and leaves ground. A row with a condition that changed in between could
+   answer differently. No such row is proposed. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+10. **The enemy at the last contact takes one hit, not two.** The enemy the shot reaches with no bounce left
+   is struck by the blast alone, as the target of a shot with no ricochet is today. An enemy the shot glanced
+   from, and then stopped beside because it had nothing to glance to, is struck by the contact alone. A
+   judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+11. **Every enemy glanced from is left out of the blast, not only the last.** If the shot comes back near an
+   enemy it struck earlier, the blast does not strike that enemy again. A judgement by the writing session,
+   confirmed by the coordinating session on 2026-10-07.
+12. **Harrower's one axe goes in the last enemy the throw TOUCHED.** If the throw then flew on and went off in
+   empty ground, the axe is still in that enemy. An enemy only the blast reached gets no axe, as today. A
+   judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+13. **Malefice's curses still spread from every enemy the bolt touched**, and not from an enemy only the blast
+   reached, which is what a bolt with no ricochet does today. The ruling named the axe and the pyre and not
+   the curses. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+14. **"States no bounce" is `Bounces` of nought or less in the skill's row.** A skill that states one bounce
+   and is given more keeps Carom's rule for all of them. A judgement by the writing session,
+   confirmed by the coordinating session on 2026-10-07.
+
+### Research
+
+`https://www.poewiki.net/wiki/Pierce` and `https://www.poewiki.net/wiki/Chain` both failed: each returned an
+"Access Denied" page and no source was read from them. Two pages of `poedb.tw` were fetched instead, on
+2026-10-07, through a tool that returns the page's text as quoted by a small model, so each quotation is as that
+tool gave it.
+
+- `https://poedb.tw/us/Pierce` (Path of Exile): "Pierce is a behaviour of projectiles that enables them to pass
+  through targets they hit, continuing along their original trajectory." And: "Only one projectile behaviour can
+  be applied each time a projectile hits a target. Pierce has first priority for projectile behaviours, followed
+  by fork, chain, then return."
+- `https://poedb.tw/us/Chain` (Path of Exile): "When a projectile chains, it bounces off the target it hits and
+  continues in the direction of another nearby target." And: "A projectile cannot chain to a target it has
+  already hit."
+
+What the pages settle: pierce comes before chain; one behaviour per hit; a chain goes to another nearby target
+and never to one already hit. This game's code already had all three before this layer: a piercing projectile
+does not glance, a glance turns toward the nearest enemy, and an enemy already struck is skipped.
+
+What is this game's own judgement and cannot be read off those pages: that a projectile with pierces left never
+bounces even afterwards (in Path of Exile it chains once its pierces are spent; here "all" is 99 and they are not
+spent); that a bounce looks as far as the skill's range; that a bounced hit is the full hit; and that a piercing
+spell's line is as wide as its radius. The order this layer uses when a skill both pierces and bounces: pierce
+only.
+
+### Tests
+
+In `game/Source/Cataclysm/Tests/CataclysmProjectileRangeTests.cpp`, each through a real
+`UCataclysmProjectileSkill` used by a character, with the critical roll pinned so nothing critically strikes:
+
+- `Cataclysm.ProjectileRange.ARowsRicochetsAreAddedToTheBouncesAProjectileSkillStates`. Twelve lanes, 60 m apart.
+  In each a user at the lane's start and enemies 3 m apart, the first 3 m away. Control: a skill stating one
+  bounce strikes two enemies and not the third. Its user carrying 2: four enemies, each for what a control enemy
+  took, and not the fifth. A row scoped to spells: as the control. A skill stating no bounce: control strikes
+  one; carrying 2, three, and not the fourth. One enemy alone: struck once with and without the stat.
+  Five more lanes for the blast ruling, a bolt stating a 2 m radius. With an enemy 2.1 m beside the third:
+  control strikes the first only; carrying 2, the first three once each and the one beside the third, never
+  touched, by the blast, and not the fourth. With no row and an enemy 2.1 m beside the first: both, the blast
+  at the first contact. A skill stating one bounce with the same radius and an enemy 2.1 m beside the fourth:
+  control strikes two; carrying 2, four, and the one beside the fourth takes nothing.
+- `Cataclysm.ProjectileRange.AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce`, added 2026-10-07.
+  A bolt stating a 2.8 m radius and no bounce. Enemies 3 m, 4.5 m and 6 m along the lane, one 2.5 m beside the
+  third, one 10 m along. Control, no row: one blast at the first contact strikes the first and the second and
+  no other. Carrying 2: the first and the second, both glanced from and both inside the blast where the shot
+  stops, lose exactly one contact each; the third and the one beside it lose exactly one blast each; the fifth
+  loses nothing; no enemy loses more than one hit. One contact is measured in a third lane, from the same bolt
+  stating one bounce with no row.
+- `Cataclysm.ProjectileRange.ARowMakesAFlyingSpellPierceEveryEnemyOnItsLineAndLeavesAnAttackAlone`. Two lanes.
+  Enemies 3 m, 6 m and 9 m along the lane and one 2.1 m beside the first. Control spell: the first and the one
+  beside it. The wearer's spell: the three on the line once each for what a control enemy took, and not the one
+  beside. The same wearer's attack, then fired down the same lane: the first and the one beside it, and not the
+  other two.
+- `Cataclysm.ProjectileRange.ARowMakesASpellBeamStrikeAlongItsLineAndNotWhereItWasAimed`. Two lanes. Enemies 3 m,
+  6.5 m and 10 m along the lane, the last at the aimed point, and one 2.1 m beside it. Control beam: the last
+  and the one beside it. The wearer's beam: the three on the line once each, and not the one beside.
+
+In `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, two probes in the table of stats with no
+attribute: `ProbeProjectileBounces` (1 stated, 3 with 2 granted) and `ProbeProjectilePierceAll` (0 stated, 99 with
+the flag).
+
+In `tools/tests/test_stat_lookups_hand_over_what_they_should.py`, the two new lookups are in the inventory.
+
+### Not covered by a test
+
+- Where ground is left: no test fires a spell that states ground with the pierce stat, and none checks where a
+  bouncing skill's ground or a row's zone is left.
+- Carom's own row with added bounces, and its 20% for each enemy. Butcher's Bill's rack. Harrower's one buried
+  axe. A shot that runs out of range between glances and goes off in empty ground.
+  Malefice's spread of curses from each enemy pierced. Compel's commanded strike.
+- A returning shot with either stat. A shot stopped by a wall.
+- A real enchantment row worn on a real item: no row exists.
+- Rounding of a value that is not whole. Two worn copies of the ricochet row, which add.
+- The second use by one character in the pierce test relies on a second slot being free to use straight after
+  the first; that has not been run.
+
+### What the row needs, for the session that writes rows
+
+- **"Projectiles ricochet 1-4 times"**: Enchantment `Positive_Projectiles_ricochet_1_4_times`, Stat
+  `projectile_bounces`, Value Kind `flat`, Value Low `1`, Value High `4`, Required Tags `Type.Projectile`. No
+  condition, no scale. A whole number is rolled the way `skill_charges_bonus` rolls 1 to 3.
+- **"Spells pierce through all enemies in their path"**: Enchantment
+  `Positive_Spells_pierce_through_all_enemies_in_their_path`, Stat `projectile_pierce_all`, Value Kind `flat`,
+  Value Low `1`, Value High `1`, REQUIRED TAGS `Type.Spell`. No condition, no scale. **THE REQUIRED TAGS CELL
+  MUST BE `Type.Spell`. IT IS THE ONLY THING THAT KEEPS THE ROW TO SPELLS; WITHOUT IT EVERY PROJECTILE SKILL
+  PIERCES.**
+
+Dry run by the writing session, in a temporary workbook copy through the helper class of
+`tools/tests/test_generate_datatables.py`: `enchantment_effects` produced both rows as written above, and
+`validate_enchantment_effects`, given the two tag names as known tags, reported no problem for either. Not
+determined: whether the checks that compare a row with its sentence (`test_enchantment_effects_match_the_row_text.py`)
+accept "1-4 times" against a flat 1 to 4 and a flag of 1 against a sentence with no number; the flag list in that
+file may need `projectile_pierce_all` added when the row is written.
+
+### Run
+
+One window on 2026-10-08 for a stack of two, at `feat/ricochet-and-pierce-2` b709cbdc: the crowd control health
+ceiling, then the ricochet and pierce stats. Development was da3150bb. One attempt; nothing was corrected during
+it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3353 tests performed, 3353 succeeded, 0 failed`; `Declared: 3353 tests in the tree at b709cbdc; 3353 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 331.56s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**How the two layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the Python
+changes beyond the lists they add to, and the three probes in the stat-exemption tables beyond their set-up; their
+tests passed.
+
+**Guard proofs, at b709cbdc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| L5a | `CataclysmSkillTemplates.cpp`: the row's bounces are not added | `Cataclysm.ProjectileRange.ARowsRicochetsAreAddedToTheBouncesAProjectileSkillStates` | 1 performed, 1 failed, 8 failed assertions | 1 performed, 1 succeeded |
+| L5b | `CataclysmProjectile.cpp`: the blast also strikes the enemies the shot glanced off | `Cataclysm.ProjectileRange.AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| L5c | `CataclysmSkillTemplates.cpp`: the pierce row is never read as set | `Cataclysm.ProjectileRange.ARowMakesAFlyingSpellPierceEveryEnemyOnItsLineAndLeavesAnAttackAlone` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+
+**No proof was run for the spell beam.** Its test passed in the whole suite.
+
+**A limit of these tests, not shown by the run.** Each test steps its shot by hand, a sixtieth of a second at a
+time, until the shot says it has finished or 600 steps have passed. No test checks which of the two ended the
+loop. 600 steps is 10 seconds, or 200 metres at the tests' speed of 20 metres a second, against ranges of 10 and
+12 metres; that the shots finished rests on that arithmetic, a judgement by the registering session.
+
+**Assertions that can be true only after a shot has ended, read by the registering session.** A shot's blast goes
+off in `ACataclysmProjectile::Finish`, which is also what sets the finished flag, so an enemy that only the blast
+can reach losing health shows that shot's loop ended on the flag. All of these passed:
+
+- `AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce`: "the fourth enemy, which only the blast can
+  reach, lost exactly one blast" (the wearer's shot), and "control: the blast at the first contact reaches the
+  second enemy, once" (the control's shot).
+- `ARowsRicochetsAreAddedToTheBouncesAProjectileSkillStates`: "the enemy beside the third, never touched, takes the
+  blast" (the carrying user's shot with a blast), and "control: and reaches the enemy beside it" (the first-contact
+  control).
+- `ARowMakesAFlyingSpellPierceEveryEnemyOnItsLineAndLeavesAnAttackAlone`: "control: its blast reaches the enemy
+  beside the first" (the control's spell), and "and it goes off where it stopped, reaching the enemy beside the
+  first" (the wearer's attack).
+
+**No such assertion exists** for the wearer's piercing spell in that last test, since a shot that pierces has no
+blast, nor for the other shots of the ricochet test, which the list above does not name. For those the
+arithmetic above is the only ground. `ARowMakesASpellBeamStrikeAlongItsLineAndNotWhereItWasAimed` puts nothing in the air.
+
+No test was changed for this: a labelled judgement by the coordinating session under the owner's delegation,
+2026-10-08.
+
+**Not run:** either row read from the effect table, since no row exists.
+
+---
+
 ## 2026-10-07 — A character can carry a health ceiling above which it cannot apply crowd control to an enemy, stated by a new stat, `crowd_control_health_ceiling_reduction`. Engine only; no row authored
 
 **Built and run on 2026-10-08 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.

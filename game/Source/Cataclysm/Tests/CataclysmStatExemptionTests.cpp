@@ -5247,6 +5247,69 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `projectile_bounces` and `projectile_pierce_all`, read by `UCataclysmProjectileSkill::BouncesWithRows` and
+	 * `PierceWithRows` where the skill fires. Ruled 2026-10-07.
+	 *
+	 * ONE CHARACTER at the origin holding a projectile skill that states one bounce and no pierce. Asked with
+	 * nothing granted, each answers what the skill states. Granted 2 flat, the bounces are 3; granted the flag,
+	 * the pierce is the 99 that stands for all.
+	 */
+	UCataclysmProjectileSkill* ProjectileSkillOn(FScopedSwinger& Holder)
+	{
+		const FGameplayAbilitySpecHandle Handle = Holder.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmProjectileSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Holder.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid()
+			? Holder.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmProjectileSkill* Skill =
+			Spec ? Cast<UCataclysmProjectileSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Range=10; Radius=1; Speed=2000; Bounces=1"));
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Spell, Type.Projectile"));
+		}
+		return Skill;
+	}
+
+	void ProbeProjectileBounces(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Holder(World, FVector::ZeroVector);
+		const UCataclysmProjectileSkill* Skill = ProjectileSkillOn(Holder);
+		if (!Test.TestNotNull(TEXT("a projectile skill"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("nothing granted: the 1 bounce stated"), Skill->BouncesWithRows(), 1);
+		GrantFlat(Holder.Actor, UCataclysmProjectileSkill::ProjectileBouncesStat, 2.0f);
+		Test.TestEqual(TEXT("projectile_bounces is read: 2 granted gives 3"), Skill->BouncesWithRows(), 3);
+	}
+
+	void ProbeProjectilePierceAll(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Holder(World, FVector::ZeroVector);
+		const UCataclysmProjectileSkill* Skill = ProjectileSkillOn(Holder);
+		if (!Test.TestNotNull(TEXT("a projectile skill"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("nothing granted: the pierce of nought stated"), Skill->PierceWithRows(), 0);
+		GrantFlat(Holder.Actor, UCataclysmProjectileSkill::ProjectilePierceAllStat, 1.0f);
+		Test.TestEqual(TEXT("projectile_pierce_all is read: the flag gives the count that stands for all"),
+					   Skill->PierceWithRows(), UCataclysmProjectileSkill::PierceAllCount);
+	}
+
+	/**
 	 * `minion_range`, read by `ACataclysmMinion::Spawn` at the summoning on the
 	 * reach and the notice radius the type row states. Issue #1833, "Gadgets
 	 * have 20%-40% increased attack range". Two imps, one from a summoner
@@ -7249,6 +7312,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("debuff_duration"), &ProbeDebuffDuration},
 			{TEXT("skill_range"), &ProbeSkillRange},
 			{TEXT("projectile_speed"), &ProbeProjectileSpeed},
+			{TEXT("projectile_bounces"), &ProbeProjectileBounces},
+			{TEXT("projectile_pierce_all"), &ProbeProjectilePierceAll},
 			{TEXT("minion_range"), &ProbeMinionRange},
 			{TEXT("critical_armor_penetration"), &ProbeCriticalArmorPenetration},
 			{TEXT("max_crit_chance"), &ProbeMaxCritChance},

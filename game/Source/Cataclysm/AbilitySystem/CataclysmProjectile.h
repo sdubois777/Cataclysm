@@ -455,10 +455,19 @@ public:
 	 * @param InReachCm          how far it looks for the next enemy
 	 * @param InDamagePercentPer percentage points of increased damage each
 	 *                           enemy after the first adds
+	 * @param bInKeepsItsBlast   true for a skill that states no bounce and was given them by a row. Ruled
+	 *                           2026-10-07: such a shot strikes each enemy it glances from and still goes
+	 *                           off in its radius where it finally stops. False, Carom's rule, by default
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Projectile")
 	void GlancesOnward(int32 InBounces, float InReachCm,
-					   float InDamagePercentPer);
+					   float InDamagePercentPer, bool bInKeepsItsBlast = false);
+
+	/** Whether a glance leaves the blast for where the shot finally stops. See `GlancesOnward`. */
+	bool bKeepsItsBlast = false;
+
+	/** The enemy it most recently touched, or null: one it has touched none, or that one is gone. */
+	AActor* LastEnemyTouched() const { return LastTouchedEnemy.Get(); }
 
 	/** How many more times it may glance onward. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
@@ -679,4 +688,13 @@ private:
 	 * still inside them.
 	 */
 	TSet<TWeakObjectPtr<AActor>> AlreadyHit;
+
+	/**
+	 * Who a shot that keeps its blast has struck by glancing from them. Its blast leaves these out, so no enemy
+	 * takes the contact and the blast both. Empty for every other projectile.
+	 */
+	TSet<TWeakObjectPtr<AActor>> StruckOnAGlance;
+
+	/** What `LastEnemyTouched` answers. */
+	TWeakObjectPtr<AActor> LastTouchedEnemy;
 };
