@@ -1619,6 +1619,117 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — The first-hit ailments row and Chronomancer's six-piece are built as rows, and the first-hit stagger row now rolls for each enemy first struck
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two new rows of the Enchantment Effects sheet and one Trigger
+Cooldown cell of a merged row), `game/Data/EnchantmentEffects.csv` and its asset, three new tests in
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
+`tools/tests/test_stun_durations_are_stated.py` (one action accepted, and its refusals), `docs/README.md`.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: A MERGED ROW CHANGES WHAT IT DOES IN PLAY
+
+**"Your first hit against each enemy has a 50%-100% chance to stagger them" now rolls the stagger for EACH enemy
+first struck by one swing, where before it rolled for one.** Its Trigger Cooldown goes from the default quarter
+of a second to nought. Before, one swing that first-struck several enemies rolled for the first of them, and the
+others had then been struck and never got their roll. Ruled 2026-10-08 by the coordinating session under the
+owner's delegation, because the sentence says "each enemy" and the other four first-hit rows already reach every
+enemy first struck. **On the owner's play-check list.**
+
+### SAID FIRST: A CHECK NOW ACCEPTS ONE THING IT DID NOT
+
+**The check that every stun states its length did not see the Chronomancer row's length**, and it now accepts
+this one action when the row's own seconds and its sentence's agree. The check is
+`tools/tests/test_stun_durations_are_stated.py::test_everything_that_applies_a_stun_states_how_long`. With the
+row authored and the check as it was, the Python suite in a copy printed:
+
+> [('EnchantmentEffects', 'Positive_Chronomancer_s_Time_Lock_6_Piece_Bonus_When_a#1')] apply a stun without
+> saying how long it lasts. Since the anti-stun-lock rule gave stun a 5 second immunity window, a duration is a
+> number that interacts with another number and 'briefly' is not enough. Add the duration to
+> docs/All_Things_Cataclysm.xlsx and regenerate. Issue #271.
+
+**Why.** The check takes every row whose text contains "stun" and looks, for an effect row, in the enchantment's
+sentence for "stun... for N seconds". The row's action is named `stun_near_the_dying`, so it counts as applying
+a stun; its sentence says "This freezes all nearby enemies for 2 seconds", so the pattern finds no length. The
+length is stated twice, as "for 2 seconds" in the sentence and as 2 in the row's Stack Seconds, where the engine
+reads it. The owner ruled on 2026-10-08 that the freeze "acts like a stun".
+
+**What changed, ruled 2026-10-08 by the coordinating session under the owner's delegation.** An effect row whose
+Action is `stun_near_the_dying` is accepted only when BOTH hold: its own Stack Seconds is above nought, and its
+enchantment's sentence states that same number as "for N seconds". No other action is accepted this way, and
+the pattern that reads "stun" was not widened to "freeze". A new test,
+`test_a_stun_near_the_dying_is_excused_only_when_its_seconds_and_its_sentence_agree`, shows the refusals on
+made-up rows: Stack Seconds 2 under a sentence that says only "briefly"; under one that says "for 3 seconds";
+Stack Seconds of nought, and none; an enchantment no table holds; and another action with the same seconds and
+words. **This is a change to what a check accepts, approved by its reason.**
+
+### SAID FIRST: WHAT A PLAYER GETS FROM THE TWO NEW ROWS, AND WHAT NO TEST SHOWS
+
+- **The first-hit ailments row applies five ailments at once, to every enemy, once each**: Bleed, Poison,
+  Disease, Necrosis and Burn. The owner, 2026-10-08: "Go with the first". It is the same weight, 2, as "Your
+  first hit against each enemy deals 100%-300% bonus damage"; the entry that built the status has the
+  comparison.
+- **The owner's rule of 2026-09-02 (#917) applies: nothing is applied unless the first hit takes at least a
+  tenth of the enemy's maximum health. Against a boss the first hit will seldom apply them**, for that reason
+  and no other. The first hit is spent either way.
+- **"One of your debuffs" in Chronomancer's six-piece is narrower in the game than its word**: the Time-Lock
+  rolls only when the dying enemy carried one of the wearer's six damage over time ailments (Bleed, Poison,
+  Disease, Necrosis, Burn, Void Splinter). A Cripple, a Weaken, a Shred, a Madness or a curse does not count.
+- **The freeze is the game's stun with every rule it has.** The owner, 2026-10-08: "Yes it acts like a stun". A
+  boss is never frozen; an enemy stunned in the last five seconds is not frozen again; a wearer of "You cannot
+  apply CC effects to enemies above 50% HP" freezes no enemy above half health.
+- **An afflicted enemy killed by a row's own action (a smite, a strike action, Plague Doctor's blast) does not
+  roll the Time-Lock**; one killed by the wearer's own hit or by a tick does.
+- **"Nearby" is 5 metres from the enemy that died.**
+- **Chronomancer's ten-piece bonus has no row**; the set now has its two-piece and its six-piece.
+- **The tests of the two new rows read what the wearer holds; they strike nobody.** That a first hit then leaves
+  the five, and that a death then stuns those near it, are tested in the entry that built them, with the rows
+  made by hand.
+
+### WHAT WAS BUILT
+
+The rows the entry "One status name applies each of the five damage over time ailments, and one action stuns
+every enemy near an enemy that died afflicted" of 2026-10-08 left to the session holding the design workbook,
+each as that entry's table states it. No engine code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Your first hit against each enemy applies all your active DoTs instantly | Action `apply_status` on `first_hit_dealt`, 100, Ailment `All DoTs`, Trigger Cooldown 0 |
+| Chronomancer's Time-Lock (6-Piece Bonus): When an enemy dies while affected by one of your debuffs, there is a 25% chance for a 'Time-Lock' to occur. This freezes all nearby enemies for 2 seconds | Action `stun_near_the_dying` on `afflicted_death`, 25, Stack Seconds 2 |
+| Your first hit against each enemy has a 50%-100% chance to stagger them (merged) | its Trigger Cooldown cell, empty before, now 0 |
+
+EnchantmentEffects 577 to 579, over 487 to 489 enchantments.
+
+**The first row's Trigger Cooldown cell says 0 on purpose.** Left empty, the generator writes the default 0.25
+for an event a hit fires, and one swing would give the five to one enemy.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the two new sentences is that entry's and its rulings of 2026-10-08.
+
+### Tests
+
+Each first asserts that the name it wears is a row of `EnchantmentsPositive.csv`.
+
+- `Cataclysm.Enchantments.TheFirstHitAilmentsRowHandsItsWearerOneStatusActionForAllFiveWithNoTriggerCooldown`:
+  the real row worn by a real player: it holds exactly one action on a first hit that names the status for all
+  five, at a chance of 100, with a trigger cooldown of nought.
+- `Cataclysm.Enchantments.ChronomancersSixPieceRowHandsItsWearerAStunNearTheDyingAtSixPiecesAndNothingAtFive`:
+  the real set worn: with six pieces the wearer holds exactly one stun near the dying, on the death of an enemy
+  it afflicted, at a chance of 25 for 2 seconds; with five pieces, none.
+- `Cataclysm.Enchantments.TheFirstHitStaggerRowRollsForEachOfTwoEnemiesFirstStruckInTheSameInstant`: the real
+  stagger row worn by a real player at the top of its roll, 100: its first blows on two creatures, dealt in the
+  same instant, stagger both.
+
+The merged test of the stagger row, `TheFirstHitStaggerRowStaggersOnEachEnemysFirstBlowOnly`, is unchanged: it
+waits a second and a half between its blows, so it reads the same under either cooldown.
+
+**Not tested here:** a first hit by a wearer of the real ailments row; an enemy dying beside a wearer of the real
+six pieces.
+
+---
+
 ## 2026-10-08 — One status name applies each of the five damage over time ailments, and one action stuns every enemy near an enemy that died afflicted: `All DoTs` on `apply_status`, and `stun_near_the_dying` with a chance and a duration on one row. Engine and generator only; no row authored
 
 **Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
