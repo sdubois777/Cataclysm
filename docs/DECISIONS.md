@@ -2,6 +2,422 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Four stats, each read at one existing place: an energy shield that loses more to a blow, a leech payment that takes longer, a heavy strike that hits every enemy in a half circle, and a stagger that also roots. Engine only; no row authored
+
+**Built and run on 2026-10-07 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
+
+**Not built and not run.** No Unreal build was made and no Unreal test was run by the writing session. The C++
+below has not been compiled. The Python suite under `tools/tests`, the lint and the conflict check were run, and
+one Python dry run of the four row shapes was made; they are described under "Tests" and "What the row needs".
+
+**Said first: a wearer's health can take MORE from a blow that empties the shield.** The ruling is that the shield
+loses more points for the same blow and the blow is not made larger for health. That is what is built, and it has
+this consequence. A shield of 70 stops 70 of a blow of 100 on a character without the row, and health takes 30.
+On a wearer at 40%, the same shield of 70 is emptied after stopping 50 of the blow, and health takes 50. Health
+never takes more than the blow held. It does take the part the smaller shield could not stop. While the shield is
+large enough to stop the whole blow, health takes the same on both, which is nothing.
+
+**Also said first: the heavy attack row turns four single-target heavy attacks into attacks on every enemy in the
+half circle, with everything they carry.** Nine heavy attack rows in `game/Data/WeaponSkills.csv` are strikes
+today. Four of them state `MaxTargets=1`: the Shield's (a stun of 1.5 seconds), the Dagger's (more damage from
+behind), the Spear's (a pin of 4 seconds) and the Fist's (a knockback). With the row, each lands on
+every enemy inside its reach in the 180 degrees, so the Spear pins all of them and the Shield stuns all of them.
+That is what "hits all enemies" lifting the target limit means for those rows. It is on the play-check list.
+
+**Also said first: "rooted" is built as the existing pin.** The enemy cannot walk. It still turns, still attacks
+what comes within reach and still uses its abilities. Everything in the game that asks whether a target is pinned
+answers yes for a rooted one. The list is under "For the owner's play-check".
+
+**Also said first: "50% less tick rate" is built as the payment taking twice as long.** Leech has no ticks. The
+sentence's words are "tick rate". What is built: the same total, paid over 6 seconds where it was 3. The readings
+not taken are on the play-check list.
+
+### Said first: where the code did not match what the writing session was told
+
+1. **`ApplyPin` does not ask about crowd control immunity.** Its own comment says none of the anti-stun-lock rules
+   is checked there, and `crowd_control_resistance` does not shorten a pin. So the ruling "refused for a creature
+   immune to crowd control" is not met by calling `ApplyPin` alone. The refusal is written at the one new call:
+   no root for a target whose crowd control resistance takes a hold to nothing (100 or more, which is the enemy
+   modifier Unyielding), and none for a target a running skill makes immune to `Pin` or to `CrowdControl`.
+   `ApplyPin` itself is unchanged, so the four skills and the terrain that pin behave as before.
+2. **The heavy slot is known from the skill's data row and not from the slot it is granted in.** A stat lookup is
+   asked with the skill's `SkillTags`. `UCataclysmWeaponSkills::StampOnto` copies them from the row's `Tags`
+   column. All 79 heavy rows in `game/Data/WeaponSkills.csv` carry `Slot.Heavy` there (counted 2026-10-07). The
+   tag the engine adds to an ability when it is granted in a slot is on the ability's spec and is not in
+   `SkillTags`. So a row requiring `Slot.Heavy` reaches a heavy attack because its data row says so.
+3. **The other sites were as described.** The energy shield block in `Resolve`, the two places a leech payment is
+   made, `PayoutSeconds`, `ArcDegrees` and its precedent `melee_arc_full_circle`, and `ApplyStagger`.
+4. **The generator needed one line.** Three of the four stats have no base and need nothing in the generator: it
+   reads the engine's list out of the C++ source and a `flat` row supplies its own stat. The leech rate has a
+   base of 100 and is added to `ENGINE_SUPPLIED_BASES`. None of the four needs `STATS_WITH_AN_ASKER` or
+   `CONDITIONED_STATS_WITH_AN_ASKER`: no row below is scaled or conditioned.
+
+### What was read before writing
+
+Line numbers are at commit 8c44c278, before this change.
+
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp`, lines 1046 to 1101: the energy shield
+  step. The block that sets `Result.AbsorbedByShield` multiplies the damage by the `Magic` sub-type bonus, caps it
+  at the shield held, and then divides what the shield lost by the same bonus to find how much of the blow was
+  stopped. Lines 1002 to 1020: the temporary absorb is taken before it. Lines 146 to 157: `DefenderStat`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`, lines 1155 to 1200, 1264, 1433 and 2008:
+  what else reads the shield's share of a blow.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp`, lines 46 to 180 and 196 to 308, and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmLeech.h`, line 97. A payment is made at lines 120 and 178, each
+  with `SecondsLeft = PayoutSeconds`. `PayOutStep` pays `Remaining * step / SecondsLeft` and pays the whole
+  balance in the last step.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`, lines 335 to 472: `ArcDegrees` and
+  `SwingOnce`. The target limit is `Params.MaxTargets`, passed to `FindEnemiesInCone` at line 382 and nowhere
+  else in a swing. Lines 666 to 720: a released hold swings through `SwingOnce`. Line 885: pulling a planted
+  weapon free finds its targets with the row's own angle and limit and does not go through `ArcDegrees`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.cpp`, lines 12 to 40 and 186 to 280: a cone of 360 or
+  more is a ring, the nearest are taken first, and a limit of nought is no limit.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWeaponSkills.cpp`, line 85: `SkillTags` come from the row.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`, lines 2939 to 3021 (`ApplyStagger`), 3656 to
+  3759 (`ApplyPin`), 3318 to 3418 (crowd control resistance), 3801 to 3906 (`ApplyTagForDuration`), and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h`, lines 2326 to 2370.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`, lines 989 to 1045: `IsImmuneTo`.
+- `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`, lines 640 to 660 and 1545 to 1562: a pinned
+  creature is told to stop walking on every pass, faces its target, and reaches that line only after it has been
+  offered its abilities and its attack. `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`, line 1059:
+  a pinned creature's charge is cancelled. `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`, lines
+  282 to 284: a pinned player cannot walk and can use skills.
+- How the newest stats were added: `class_resource_generation`, `overheal_absorb_percent_of_maximum_health`,
+  `ailment_immunity`, `bleed_damage_taken_from_energy_shield` and `melee_arc_full_circle`, in
+  `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+  `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py` and
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`.
+
+### What it is for
+
+Four sentences, verbatim, each with its Name. No effect row exists for any of them and none is written here.
+
+| Sentence | Name | File |
+|---|---|---|
+| "Your energy shield takes 30%-50% increased damage" | `Negative_Your_energy_shield_takes_30_50_increased_damag` | `game/Data/EnchantmentsNegative.csv` |
+| "50% less tick rate for your leech effects" | `Negative_50_less_tick_rate_for_your_leech_effects` | `game/Data/EnchantmentsNegative.csv` |
+| "Your heavy attack hits all enemies in a 180 degree arc in front of you" | `Positive_Your_heavy_attack_hits_all_enemies_in_a_180_degr` | `game/Data/EnchantmentsPositive.csv` |
+| "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds" | `Positive_Enemies_you_stagger_are_also_briefly_rooted_for` | `game/Data/EnchantmentsPositive.csv` |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **The energy shield.** "The shield loses more points for the same blow, and health takes what it took before
+   (the blow is not made larger for health)." The temporary absorb, which is taken before the shield, is
+   untouched. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+2. **Leech.** "Leech has no ticks, so it is read as the pay-out taking twice as long: the same total paid over 6
+   seconds where it was 3." A labelled judgement by the coordinating session under the owner's delegation,
+   2026-10-07.
+3. **The heavy attack.** "Both: the arc becomes 180 degrees and the target limit is lifted for that attack; 'all
+   enemies' is in the sentence." A heavy attack whose arc is already wider is never narrowed. A labelled judgement
+   by the coordinating session under the owner's delegation, 2026-10-07.
+4. **The root.** "The enemy cannot move and can still attack and turn; it is refused for a creature immune to
+   crowd control." A stagger that was refused roots nobody. A labelled judgement by the coordinating session
+   under the owner's delegation, 2026-10-07.
+
+5. **The follow-up, the same day.** After reading this entry the coordinating session accepted all four as built
+   and confirmed every judgement in "Judgements by the writing session". It added what is marked "Ruled in the
+   follow-up" below. Each is a labelled judgement by the coordinating session under the owner's delegation,
+   2026-10-07.
+
+### How it is built
+
+Each stat has no gameplay attribute. Each is in `UCataclysmPlayerClassStats::StatsWithNoAttribute` and is asked
+for by name at one place.
+
+**1. `energy_shield_damage_taken`.** Percent points, flat, nought for unchanged. Read from the defender in
+`UCataclysmDamageCalculation::Resolve`, inside the energy shield block, with no blow and no tags. The arithmetic,
+with `Magic` the existing sub-type bonus (1 for a blow that is not magic):
+
+```
+ShieldTakes       = Magic x (1 + stat / 100)
+shield loses      = the smaller of (shield held) and (blow x ShieldTakes)
+blow stopped      = shield loses / ShieldTakes
+health is sent    = blow - blow stopped
+```
+
+A blow of 100 on a wearer at 40%: a shield of 1000 loses 140 and health is sent nothing. A shield of 70 loses 70,
+which stopped 50, and health is sent 50. With no shield the stat is not read and nothing changes. The stat is
+floored at nought, so no sum of rows makes a shield lose less than the blow. It multiplies with the magic bonus:
+a magic blow with a bonus of 50% on a wearer at 40% takes 1.5 x 1.4 = 2.1 points of shield for each point
+stopped. The share of a bleed that `bleed_damage_taken_from_energy_shield` puts to the shield goes through the
+same block, so it costs the wearer's shield 30% to 50% more as well.
+
+**2. `leech_payout_rate`.** A percent of normal, based at 100 by
+`UCataclysmPlayerClassStats::EngineSuppliedBases`. Read by a new function, `UCataclysmLeech::PayoutSecondsFor`,
+with no tags, at the two places a payment is made: a hit's (`NoteHit`, once for its three pools) and a
+retaliation's (`NoteRetaliation`). The arithmetic:
+
+```
+seconds to pay = 3 x 100 / the larger of (rate) and (10)
+```
+
+A `more` row of -50 gives a rate of 50 and 6 seconds. The amount owed is unchanged. `PayOutStep` is unchanged: it
+already pays a payment evenly over the seconds the payment holds. A rate of 100 or no line at all gives 3 seconds.
+A `more` of -100 is held at -99 by the stat pipeline, giving a rate of 1; the floor of 10 then gives 30 seconds.
+A rate above 100 would pay faster; no row gives one.
+
+**3. `strike_arc_at_least_degrees`.** Degrees, flat, nought for none. Read by a new function,
+`UCataclysmStrikeSkill::ArcAtLeastDegrees`, with the skill's own tags, and clamped between nought and 360.
+`ArcDegrees` answers the larger of the row's own angle and that figure, so a strike already wider is not
+narrowed. `SwingOnce` passes a target limit of nought, which is no limit, when the figure is above nought. A
+swing whose caster holds Every Swing Lands is still 360 degrees.
+
+**4. `stagger_root_seconds`.** Seconds, flat, nought for none. Read from the staggering character at the end of
+`UCataclysmSkillEffects::ApplyStagger`, after the stagger's tag has been applied and only if it was. It then
+calls `ApplyPin` with those seconds and no damage taken increase, unless the target is not an enemy of the
+staggering character, or its crowd control resistance takes a hold to nothing, or a running skill makes it immune
+to `Pin` or `CrowdControl`.
+
+### For the owner's play-check
+
+**The energy shield.**
+
+- What a player sees: the shield bar falls 30% to 50% further for each blow. While the shield lasts, health does
+  not move. The shield empties sooner, and the blow that empties it lets more through to health than it would
+  have (see the top of this entry).
+- **The emptied shield, accepted as built. Ruled in the follow-up.** A shield of 70 against a blow of 100: a
+  control's shield stops 70 and health takes 30; a wearer at 40% is emptied after stopping 50 and health takes
+  50. The wearer's health takes 20 more from that blow, and never more than the blow held.
+- Judged number: none new. The 30 to 50 is the sentence's.
+- Reading not taken: the blow made 30% to 50% larger before it reaches the shield, so that health also takes more
+  on a blow the shield cannot stop. Ruled out by ruling 1.
+- Reading not taken: added to the magic bonus instead of multiplied (1 + 0.5 + 0.4 = 1.9 where this gives 2.1).
+- Not changed, and following from the shield losing more points: an attacker's leech counts the points the shield
+  lost, so an attacker that leeches gains more from a wearer; the wearer's own store of shield-absorbed damage for
+  its next attack fills faster; and "damage that would break your Energy Shield" is reached by a smaller blow.
+  None of these was tested.
+
+**Leech.**
+
+- What a player sees: health, mana or energy shield from leech arrives at half the speed and for twice as long.
+  The total is the same. A payment already running when the item is put on or taken off keeps its own time.
+- Judged number: 6 seconds, from the ruling.
+- **JUDGED NUMBER: the slowest pay-out is 30 seconds.** The rate is floored at 10, a tenth of normal, and 3
+  seconds at a tenth of the rate is 30. A judgement by the writing session, accepted in the follow-up. No row
+  reaches it: the one row gives 6 seconds.
+- Reading not taken: no floor. Rows that summed to a rate near nought would then make a payment that takes
+  minutes, and a rate of nought one that never arrives.
+- Reading not taken: half the amount leeched. The sentence says rate and not amount.
+- Reading not taken: a payment step every half second where it is every quarter second, with the same 3 seconds.
+  That would change how the bar moves and not how fast leech arrives.
+- Reading not taken: the stat read as each step is paid, so that taking the item off speeds up payments already
+  running.
+- Following from it: more payments are running at once for a wearer who keeps hitting, about six hits' worth
+  where it was three. The count that the scale `leech_pools_in_flight` reads is of pools and not of payments, so
+  it is not higher; it stays above nought for twice as long after the last hit.
+
+**The heavy attack.**
+
+- What a player sees: the heavy attack lands on every enemy within its reach in the half circle in front of the
+  aim. Its reach is unchanged. The swing's drawn effect is unchanged: it is drawn from the reach and not from the
+  angle.
+- "In front of you" is in front of the aim, which is toward the cursor, as every strike's cone is.
+- **The riders that now reach every enemy in the half circle, accepted as the consequence of "hits all
+  enemies". Ruled in the follow-up.** Each of these heavy attacks states one target today, and under the row
+  lands on every enemy within its reach in the 180 degrees, with what it carries:
+  - the War Shield's heavy attack: its stun of 1.5 seconds, on each of them;
+  - the Demonic Spear's: its pin of 4 seconds, on each of them, with the 30% more damage taken its row states
+    for a pinned target;
+  - the Demonic Fist's: its knockback, on each of them, and so the stagger a knockback leaves;
+  - the Demonic Dagger's: its rider is more damage from behind, which its row states as 40. It has no hold and
+    no shove. How "from behind" is judged for several enemies at once was not read.
+  The three Demonic ones also set alight each enemy they strike, as they do their one target today.
+- Judged number: none. 180 is the sentence's.
+- A heavy attack that is not a strike (the three projectile rows, and the 67 heavy rows that state no shape yet)
+  is not changed. The stat is read only by a strike.
+- A heavy strike that is not melee is widened too. This is a judgement by the writing session; see judgement 5.
+  No such row exists today: all nine heavy strikes carry `Type.Melee`.
+- A heavy strike already wider than 180 degrees keeps its width and still loses its target limit.
+- With Every Swing Lands as well, the heavy attack is a full circle with no target limit.
+- A heavy attack that swings more than once swings each time under the row. A held swing released swings under
+  it. Pulling a planted weapon free does not: that blow has its own search and is not widened, as it is not by
+  Every Swing Lands.
+
+**The root.**
+
+- What a player sees: an enemy the wearer staggers stops walking for the seconds rolled. It turns to face its
+  target and attacks anything within its reach, and uses its abilities.
+- What staggers: a knockback, a pull or a knockdown that lands, a zone that staggers on entry, and a row whose
+  action staggers an enemy. Each one roots. A row whose action staggers the wearer itself roots nobody. A second
+  stagger while rooted renews the root and never shortens it.
+- **A BOSS IS ROOTED.** A pin has no boss exemption, and the root is a pin. Accepted as built. Ruled in the
+  follow-up.
+- **Who is not rooted.** An enemy whose crowd control resistance is 100 or more, which is the modifier
+  Unyielding, and an enemy a running skill makes immune to `Pin` or to `CrowdControl`. Each is staggered and not
+  rooted. Ruled in the follow-up.
+- **Crowd control resistance below 100 does not shorten the root.** An enemy at 99 is rooted for the whole of the
+  seconds rolled. Ruled in the follow-up.
+- **The root opens no "applied crowd control" window.** The wearer gains nothing from a row that pays for
+  applying a crowd control effect. Ruled in the follow-up.
+- **A later layer's rule, "cannot apply crowd control to enemies above 50% health", does NOT stop this root.**
+  That rule follows the crowd control immunity, and the crowd control immunity is never asked for a pin. This
+  root asks two things of its own at its one call, the resistance of 100 and a running skill's immunity, and
+  neither is that rule. So a wearer of both roots an enemy at full health that it staggers. Ruled in the
+  follow-up. Not tested: that layer is not in this branch.
+- A charging creature that is rooted has its charge cancelled, as any pinned creature's is.
+- Everything that asks whether a target is pinned answers yes: a row conditioned on a crowd-controlled target,
+  and a skill that acts only on pinned enemies.
+- The root's seconds are lengthened by the wearer's `debuff_duration` and by the target's own
+  `debuff_duration_taken`, as a stagger's are. They are not lengthened by `stagger_duration`.
+- Judged number: none. 0.5 to 1.5 is the sentence's.
+- Reading not taken: a root that crowd control resistance below 100 shortens. No other pin is shortened by it.
+- Reading not taken: a root that opens the window of "applying a crowd control effect grants movement speed".
+  A pin does not open it today, so the root does not.
+- Reading not taken: a root that also stops the enemy attacking. Ruled out by ruling 4.
+
+### Judgements by the writing session
+
+1. **The shield stat is flat percent points with no base, floored at nought.** The precedent is
+   `bleed_damage_taken_from_energy_shield`. The other form, a stat based at 100 that an `increased` row moves,
+   needs a base in two more places and allows a `less` row nobody has written. A judgement by the writing
+   session, confirmed by the coordinating session on 2026-10-07.
+2. **The shield stat multiplies with the magic sub-type bonus.** One is the attacker's damage sub-type and the
+   other is the defender's own stat; there is no single bracket in which two characters' figures add. A judgement
+   by the writing session, confirmed by the coordinating session on 2026-10-07.
+3. **The shield stat is asked with no blow and no tags.** A row on it cannot say "from spells" or name an
+   ailment. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+4. **The leech rate is read when a payment is made, with no tags, for all three pools and for a retaliation's
+   payment, and its floor is 10.** "Your leech effects" names no pool. A row on it cannot be scoped to a kind of
+   skill. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+5. **The arc stat reaches a strike of any kind, melee or not.** The sentence says "your heavy attack" and does not
+   say melee. The existing rule that a spell's cone is never widened belongs to Every Swing Lands, whose sentence
+   says "your melee arc", and is kept for that node. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+6. **The arc stat is a number of degrees and not a flag, and the target limit is lifted whenever it is above
+   nought for the skill,** including for a strike already wider than the figure. A judgement by the writing
+   session, confirmed by the coordinating session on 2026-10-07.
+7. **"Immune to crowd control" is read as: crowd control resistance of 100 or more, or a running skill that makes
+   the target immune to `Pin` or `CrowdControl`.** Those are the two ways the code expresses it today. A
+   resistance below 100 does not shorten the root. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+8. **The root is laid only on an enemy of the staggering character.** "Enemies you stagger" is the sentence. A
+   character that staggers itself or an ally roots nobody. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+9. **The root stat is asked with no tags,** as the two stagger stats beside it are, so a row on it cannot be
+   scoped to a kind of skill. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+10. **Two of the four tests run the probe of their stat and nothing more.** The shield's and the leech's
+    assertions are written once, in the probe that `EveryStatWithNoAttributeIsActuallyRead` also runs, and each
+    is given a test of its own that calls it. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+
+### Tests
+
+Written and not run. Four tests in the group `Cataclysm.OneSiteStats`, and four probes in the table of
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, one for each stat.
+
+- `AWearersEnergyShieldLosesMoreForTheSameBlowAndItsHealthTakesNoMoreThanTheBlow`. One attacker and three pairs
+  of a control and a wearer at 40%. With a shield of 1000 the wearer's shield loses 1.4 times what the control's
+  loses and both lose no health. With a shield of seven tenths of the blow both shields are emptied, the control's
+  health takes three tenths of the blow and the wearer's takes half. With no shield the wearer takes what the
+  control takes.
+- `ALeechPaymentMadeUnderTheRowPaysHalfAsFastAndTheSameTotalInTwiceTheTime`. A control and a character carrying
+  a `more` of -50, each owed the same payment. The first quarter second pays the second character half what it
+  pays the control. By 3 seconds the control is paid in full and the other has half. By 6 seconds the other has
+  the control's total and owes nothing.
+- `AHeavyStrikeUnderTheRowHitsEveryEnemyInAHalfCircleAndNoOtherStrikeChanges`, in
+  `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`. A real Ravager with one strike of 60 degrees and
+  two targets, and six enemies: three inside the 60 degrees, two outside it and inside the half circle, one
+  behind. The control hurts the nearest two inside its own arc. Under the row the heavy strike hurts all five in
+  front and not the one behind. The same wearer's strike that is not tagged as the heavy attack hurts what the
+  control hurt. A heavy strike tagged as a spell hurts the five. A full-circle heavy strike of two targets hurts
+  two without the row and all six with it.
+- `AnEnemyStaggeredUnderTheRowStopsWalkingAndStillAttacksAndAnImmuneOneWalksOn`, in
+  `game/Source/Cataclysm/Tests/CataclysmEnemyBehaviourTests.cpp`. Four monsters, each with its own staggerer.
+  Each chases first. One staggered without the row still chases. One staggered under the row stands still, its
+  pin runs one and a half times as long as its one-second stagger, and brought within reach it attacks for what
+  the unrooted monster's blow takes. One with a crowd control resistance of 100 is staggered and still chases.
+  One whose stagger the health ceiling refuses still chases.
+- Python: `test_a_more_row_on_the_leech_payout_rate_stands_on_the_engines_base` in
+  `tools/tests/test_generate_datatables.py`, with a control on a stat nothing supplies. Three entries were added
+  to the inventory in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`.
+- Run by the writing session on 2026-10-07, in the worktree, with every change of this entry in place:
+  `python -m pytest tools/tests -p no:cacheprovider` printed `4050 passed, 7 skipped`; `python -m ruff check .`
+  printed `All checks passed!`; `python tools/check_resolved_cpp.py --changed` printed `12 files read, 0 with
+  complaints`. `sim/tests` was not run.
+
+### Not covered by a test
+
+- Nothing here was compiled or run in Unreal.
+- The shield: a magic blow, so the multiplication with the magic bonus; a bleed's share; the stat on a real
+  player through worn equipment; what an attacker leeches from a wearer.
+- Leech: mana and energy shield leech; a retaliation's payment; the floor of 10; a payment running when the stat
+  arrives or leaves.
+- The arc: a real heavy attack row from the weapon skills table; a held and released swing; a repeating strike;
+  Every Swing Lands together with the row; the drawn effect.
+- The root: a creature moved across ticks. The test reads what the creature's brain decides, which is the place a
+  pin is visible, and no test world is ticked. A target a running skill makes immune; a boss; a stagger laid by a
+  knockback, a pull or a zone; a rooted player; the root's seconds under `debuff_duration`.
+- No test wears a real row, since no row exists.
+
+### What the row needs, for the session that writes rows
+
+One stat row for each sentence. No Action, no Scale and no Condition on any of them.
+
+| Enchantment | Stat | Value Kind | Value Low | Value High | Required Tags |
+|---|---|---|---|---|---|
+| `Negative_Your_energy_shield_takes_30_50_increased_damag` | `energy_shield_damage_taken` | `flat` | 30 | 50 | empty |
+| `Negative_50_less_tick_rate_for_your_leech_effects` | `leech_payout_rate` | `more` | -50 | -50 | empty |
+| `Positive_Your_heavy_attack_hits_all_enemies_in_a_180_degr` | `strike_arc_at_least_degrees` | `flat` | 180 | 180 | `Slot.Heavy` |
+| `Positive_Enemies_you_stagger_are_also_briefly_rooted_for` | `stagger_root_seconds` | `flat` | 0.5 | 1.5 | empty |
+
+The shield row is `flat` although the sentence says "increased": the stat has no base, and an `increased` row on
+it would multiply nought. Required Tags on the shield, leech and root rows would do nothing or stop the row
+applying: none of the three is asked with a skill's tags.
+
+**THE HEAVY ATTACK ROW IS WRITTEN WITH REQUIRED TAGS `Slot.Heavy`. WITHOUT IT EVERY STRIKE THE WEARER MAKES IS
+WIDENED TO 180 DEGREES AND LOSES ITS TARGET LIMIT, A BASIC ATTACK THAT IS A STRIKE INCLUDED.** The stat is asked with the tags
+of the skill being swung, and a row with no required tags applies to whatever is asked. Ruled in the follow-up.
+
+Each of the four was put through `gen.enchantment_effects`, the two asker checks and
+`gen.validate_enchantment_effects` in a temporary workbook on 2026-10-07, with its sentence in that workbook's
+Enchantments sheet and the tags the real sheet gives it. All four were accepted, and the row names the generator
+made matched the four Names above. A control row, the leech row on a misspelt stat, was refused by the validator.
+The four generated rows were then appended in memory to the rows of `game/Data/EnchantmentEffects.csv` and every
+row-text check in `tools/tests/test_enchantment_effects_match_the_row_text.py` that takes only the rows was
+called. One failed, and it is the pinned count of effect rows, 544, which the rows change moves. That run did not
+touch the real workbook or `game/Data/`, and it does not show what the asset import does.
+
+Not determined: whether either ranged row should be marked in the Rolls Down column; what the character sheet
+shows for the four stats; whether the asset import accepts the rows.
+
+### Research
+
+None of the four adds a formula of a new shape. The shield stat reuses the arithmetic of the magic bonus beside
+it, the leech rate divides an existing time, the arc is a larger number in an existing cone, and the root is the
+existing pin. No source was read.
+
+### Run
+
+One window on 2026-10-07 for a stack of three, at `feat/movement-skill-riders-3` 7b601c3c: the two conditions and
+the scale, the four stats read at one place each, and the movement skill rows, in that order. Development was
+8025764e. One attempt; nothing was corrected during it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3338 tests performed, 3338 succeeded, 0 failed`; `Declared: 3338 tests in the tree at 7b601c3c; 3338 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 336.62s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**How the three layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the Python
+changes to the generator and its tests beyond the lists they add to, and the eight probes in the stat-exemption
+tables; their tests passed.
+
+**Guard proofs, at 7b601c3c, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| L2a | `CataclysmDamageCalculation.cpp`: what passes the shield is worked out without the stat | `Cataclysm.OneSiteStats.AWearersEnergyShieldLosesMoreForTheSameBlowAndItsHealthTakesNoMoreThanTheBlow` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| L2c | `CataclysmSkillTemplates.cpp`: the row no longer lifts the target limit | `Cataclysm.OneSiteStats.AHeavyStrikeUnderTheRowHitsEveryEnemyInAHalfCircleAndNoOtherStrikeChanges` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| L2d | `CataclysmSkillEffects.cpp`: a target wholly resistant to crowd control is rooted | `Cataclysm.OneSiteStats.AnEnemyStaggeredUnderTheRowStopsWalkingAndStillAttacksAndAnImmuneOneWalksOn` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+
+**No proof was run for the leech pay-out stat.** Its test passed in the whole suite. Its last step ends exactly when
+the pay-out ends; that was stated as a risk before the run and the test passed as written.
+
+**Not run:** any of the four rows read from the effect table, since no row exists.
+
+---
+
 ## 2026-10-07 — Two conditions, `while_under_damage_over_time` and `in_combat_for_seconds`, and one scale, `seconds_leeching`, for three enchantment sentences that have no row. Engine and generator only; no row authored
 
 **Built and run on 2026-10-07 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.

@@ -97,6 +97,33 @@ public:
 	static constexpr float PayoutSeconds = 3.0f;
 
 	/**
+	 * `leech_payout_rate`: how fast a payment of leech arrives, as a percent of normal. Ruled 2026-10-07 for "50%
+	 * less tick rate for your leech effects". Leech has no ticks, so the sentence is read as the pay-out taking
+	 * longer: the same total, over `PayoutSeconds` times 100 and divided by this rate. A `more` of -50 is a rate of
+	 * 50 and a pay-out of 6 seconds.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE. Asked with no tags by `PayoutSecondsFor` when a payment is made, and based at
+	 * `NormalPayoutRate` by `UCataclysmPlayerClassStats::EngineSuppliedBases`. A payment already running keeps the
+	 * time it was made with.
+	 */
+	static const TCHAR* PayoutRateStat;
+
+	/** `PayoutRateStat`'s base: a payment arrives over `PayoutSeconds`. */
+	static constexpr float NormalPayoutRate = 100.0f;
+
+	/**
+	 * The lowest rate `PayoutSecondsFor` uses, so no sum of rows makes a payment that never arrives. A tenth of
+	 * normal: ten times `PayoutSeconds`, which is 30 seconds. A judgement by the writing session.
+	 */
+	static constexpr float SlowestPayoutRate = 10.0f;
+
+	/**
+	 * Seconds a payment made now by this character takes to arrive in full: `PayoutSeconds` for a character with
+	 * nothing recorded for `PayoutRateStat`, and for an ability system that is not this project's.
+	 */
+	static float PayoutSecondsFor(const UAbilitySystemComponent* Leecher);
+
+	/**
 	 * What a hit leeches, given the damage the target really took.
 	 *
 	 * @param DamageTaken   after mitigation and already capped at what the

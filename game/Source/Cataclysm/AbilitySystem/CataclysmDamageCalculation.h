@@ -730,6 +730,14 @@ public:
 	static const TCHAR* DamageOverTimeTakenFromManaFirstStat;
 
 	/**
+	 * `energy_shield_damage_taken`: "Your energy shield takes 30%-50% increased damage". Ruled 2026-10-07. Percent
+	 * points, flat, nought for unchanged. No gameplay attribute. Read in `Resolve` at the energy shield step and
+	 * nowhere else: the shield loses that much more for each point of the blow it stops, and what reaches health is
+	 * not made larger. Floored at nought where it is read.
+	 */
+	static const TCHAR* EnergyShieldDamageTakenStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *

@@ -21,6 +21,28 @@ float UCataclysmLeech::AmountFrom(float DamageTaken, float LeechPercent)
 	return DamageTaken * LeechPercent / 100.0f;
 }
 
+const TCHAR* UCataclysmLeech::PayoutRateStat = TEXT("leech_payout_rate");
+
+float UCataclysmLeech::PayoutSecondsFor(const UAbilitySystemComponent* Leecher)
+{
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(Leecher);
+	if (!Asking)
+	{
+		return PayoutSeconds;
+	}
+
+	// NO TAGS: how fast leech arrives is the character's and not a skill's, and
+	// a retaliation's payment has no skill to speak for it. THE FALLBACK IS THE
+	// BASE, so a character nothing was recorded for is paid over the normal time.
+	const float Rate = Asking->StatForSkill(
+		FName(PayoutRateStat), FGameplayTagContainer(), NormalPayoutRate);
+
+	// A RATE, SO THE TIME IS DIVIDED BY IT: half the rate is twice the time.
+	// FLOORED, because a rate of nought would be a payment that never arrives.
+	return PayoutSeconds * NormalPayoutRate / FMath::Max(SlowestPayoutRate, Rate);
+}
+
 float UCataclysmLeech::PaidInStep(const FCataclysmLeechPayment& Payment,
 								  float SecondsInStep)
 {
@@ -106,6 +128,11 @@ void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,
 		 Asked(TEXT("energy_shield_leech"), Vitals->GetEnergyShieldLeech())},
 	};
 
+	// HOW LONG EACH PAYMENT OF THIS HIT TAKES, asked once for the three pools.
+	// Ruled 2026-10-07. Read here, where the payment is made, so a payment
+	// already running keeps the time it was made with.
+	const float SecondsToPay = PayoutSecondsFor(Cataclysm);
+
 	for (const FSource& Source : Sources)
 	{
 		const float Amount = AmountFrom(DamageTaken, Source.Percent);
@@ -117,7 +144,7 @@ void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,
 		FCataclysmLeechPayment Payment;
 		Payment.Pool = Source.Pool;
 		Payment.Remaining = Amount;
-		Payment.SecondsLeft = PayoutSeconds;
+		Payment.SecondsLeft = SecondsToPay;
 		Cataclysm->AddLeechPayment(Payment);
 	}
 }
@@ -175,7 +202,8 @@ void UCataclysmLeech::NoteRetaliation(UAbilitySystemComponent* Retaliator,
 	FCataclysmLeechPayment Payment;
 	Payment.Pool = ECataclysmLeechPool::Health;
 	Payment.Remaining = Amount;
-	Payment.SecondsLeft = PayoutSeconds;
+	// OVER THE SAME TIME A HIT'S PAYMENT TAKES. Ruled 2026-10-07.
+	Payment.SecondsLeft = PayoutSecondsFor(Cataclysm);
 	Cataclysm->AddLeechPayment(Payment);
 }
 

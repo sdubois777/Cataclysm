@@ -6583,6 +6583,307 @@ namespace CataclysmStatExemptionTest
 					   Held.AbilitySystem->TemporaryAbsorbHeld(), 100.0f, 0.01f);
 	}
 
+	/**
+	 * Grant a flat figure that reaches only a skill carrying the tags of this cell. For a stat asked with a skill's
+	 * own tags, where `GrantFlat` above would reach every skill.
+	 */
+	void GrantFlatRequiring(AActor* Who, const TCHAR* Stat, float Value, const TCHAR* TagCell)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!System)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Scoped;
+		Scoped.Bucket = ECataclysmStatBucket::Flat;
+		Scoped.Source = ECataclysmModifierSource::Enchantment;
+		Scoped.Value = Value;
+		Scoped.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Scoped};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** What one blow took from a defender's energy shield and from its health. */
+	struct FShieldAndHealthLost
+	{
+		float Shield = 0.0f;
+		float Health = 0.0f;
+	};
+
+	/** One blow of 100% on a defender holding this much energy shield, read off the two attributes. */
+	FShieldAndHealthLost BlowOnAShield(FScopedSwinger& Attacker, FScopedSwinger& Defender, float ShieldHeld)
+	{
+		if (ShieldHeld > 0.0f)
+		{
+			Defender.Set(Vital::GetMaxEnergyShieldAttribute(), ShieldHeld);
+			Defender.Set(Vital::GetEnergyShieldAttribute(), ShieldHeld);
+		}
+		const float ShieldBefore = Defender.Get(Vital::GetEnergyShieldAttribute());
+		const float HealthBefore = Defender.Get(Vital::GetHealthAttribute());
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+
+		FShieldAndHealthLost Lost;
+		Lost.Shield = ShieldBefore - Defender.Get(Vital::GetEnergyShieldAttribute());
+		Lost.Health = HealthBefore - Defender.Get(Vital::GetHealthAttribute());
+		return Lost;
+	}
+
+	/**
+	 * `energy_shield_damage_taken` is the percent more a character's energy shield loses for each point of a blow
+	 * it stops, read by `UCataclysmDamageCalculation::Resolve` at the energy shield step. Ruled 2026-10-07: "Your
+	 * energy shield takes 30%-50% increased damage".
+	 *
+	 * ONE ATTACKER AT THE ORIGIN AND SIX DEFENDERS, three metres apart along X from three metres out. They are three
+	 * pairs, a control and a wearer carrying the stat at 40: a pair holding a shield far larger than the blow, a pair
+	 * holding seven tenths of the blow, and a pair holding none. Every figure is read against the control's.
+	 */
+	void ProbeEnergyShieldDamageTaken(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll NeverCritical(100.0f);
+
+		FScopedSwinger Attacker(World, FVector::ZeroVector);
+		FScopedSwinger ControlWhole(World, FVector(3 * M, 0, 0));
+		FScopedSwinger WearerWhole(World, FVector(6 * M, 0, 0));
+		FScopedSwinger ControlShort(World, FVector(9 * M, 0, 0));
+		FScopedSwinger WearerShort(World, FVector(12 * M, 0, 0));
+		FScopedSwinger ControlBare(World, FVector(15 * M, 0, 0));
+		FScopedSwinger WearerBare(World, FVector(18 * M, 0, 0));
+		for (FScopedSwinger* Wearer : {&WearerWhole, &WearerShort, &WearerBare})
+		{
+			GrantFlat(Wearer->Actor, UCataclysmDamageCalculation::EnergyShieldDamageTakenStat, 40.0f);
+		}
+
+		// A SHIELD THE BLOW CANNOT EMPTY. The control's shield loses the whole blow and its health nothing.
+		const FShieldAndHealthLost OnControlWhole = BlowOnAShield(Attacker, ControlWhole, 1000.0f);
+		const FShieldAndHealthLost OnWearerWhole = BlowOnAShield(Attacker, WearerWhole, 1000.0f);
+		const float Blow = OnControlWhole.Shield;
+		if (!Test.TestTrue(TEXT("set-up: the control's shield absorbs the whole of a blow smaller than 700"),
+						   Blow > 0.0f && Blow < 700.0f && FMath::IsNearlyZero(OnControlWhole.Health, 0.001f)))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a wearer's shield loses 40% more than the control's for the same blow, so Resolve "
+							"really reads energy_shield_damage_taken"),
+					   OnWearerWhole.Shield, Blow * 1.4f, 0.01f);
+		Test.TestEqual(TEXT("and the wearer's health takes what the control's took, which is nothing"),
+					   OnWearerWhole.Health, OnControlWhole.Health, 0.001f);
+
+		// A SHIELD OF SEVEN TENTHS OF THE BLOW. The control's stops seven tenths. The wearer's is emptied having
+		// stopped 0.7 / 1.4, which is half, so half reaches health and never more than the blow held.
+		const FShieldAndHealthLost OnControlShort = BlowOnAShield(Attacker, ControlShort, Blow * 0.7f);
+		const FShieldAndHealthLost OnWearerShort = BlowOnAShield(Attacker, WearerShort, Blow * 0.7f);
+		Test.TestEqual(TEXT("control: a shield of seven tenths of the blow is emptied"),
+					   OnControlShort.Shield, Blow * 0.7f, 0.01f);
+		Test.TestEqual(TEXT("control: and three tenths of the blow reach health"),
+					   OnControlShort.Health, Blow * 0.3f, 0.01f);
+		Test.TestEqual(TEXT("the wearer's shield of the same size is emptied too, losing no more than it held"),
+					   OnWearerShort.Shield, OnControlShort.Shield, 0.01f);
+		Test.TestEqual(TEXT("and it stopped only half the blow, so the other half reaches the wearer's health"),
+					   OnWearerShort.Health, Blow * 0.5f, 0.01f);
+
+		// NO SHIELD AT ALL. The stat is about the shield, so a wearer without one is unchanged.
+		const FShieldAndHealthLost OnControlBare = BlowOnAShield(Attacker, ControlBare, 0.0f);
+		const FShieldAndHealthLost OnWearerBare = BlowOnAShield(Attacker, WearerBare, 0.0f);
+		if (Test.TestTrue(TEXT("set-up: with no shield the control's health takes the blow"),
+						  OnControlBare.Health > 0.0f))
+		{
+			Test.TestEqual(TEXT("a wearer with no shield takes what the control takes"),
+						   OnWearerBare.Health, OnControlBare.Health, 0.001f);
+			Test.TestEqual(TEXT("and loses no shield, having none"), OnWearerBare.Shield, 0.0f, 0.001f);
+		}
+	}
+
+	/** Health gained over this many quarter-second steps of the leech pay-out. */
+	float LeechPaidOverSteps(FScopedSwinger& Who, int32 Steps)
+	{
+		const float Before = Who.Get(Vital::GetHealthAttribute());
+		for (int32 Step = 0; Step < Steps; ++Step)
+		{
+			UCataclysmLeech::PayOutStep(Who.Actor, 0.25f);
+		}
+		return Who.Get(Vital::GetHealthAttribute()) - Before;
+	}
+
+	/**
+	 * `leech_payout_rate` is how fast a payment of leech arrives, read by `UCataclysmLeech::PayoutSecondsFor` where
+	 * a payment is made. Ruled 2026-10-07: "50% less tick rate for your leech effects", read as the pay-out taking
+	 * twice as long.
+	 *
+	 * TWO CHARACTERS A HUNDRED METRES APART, each at half health with 10% life leech, each told of one hit that
+	 * took 1200. The second carries the stat at its base of 100 with a `more` of -50. Each is paid a quarter second
+	 * at a time by calling the pay-out step, which is what the regeneration timer calls.
+	 */
+	void ProbeLeechPayoutRate(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Slow(World, FVector(0, 100 * M, 0));
+		for (FScopedSwinger* One : {&Plain, &Slow})
+		{
+			One->Set(Vital::GetLifeLeechAttribute(), 10.0f);
+			One->Set(Vital::GetHealthAttribute(), TargetHealthPool * 0.5f);
+		}
+		{
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			CarryOnAHundred(Inputs, UCataclysmLeech::PayoutRateStat, ECataclysmStatBucket::More, -50.0f);
+			Slow.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+
+		UCataclysmLeech::NoteHit(Plain.AbilitySystem, 1200.0f, FGameplayTagContainer());
+		UCataclysmLeech::NoteHit(Slow.AbilitySystem, 1200.0f, FGameplayTagContainer());
+		if (!Test.TestTrue(TEXT("set-up: each character is owed one payment of leech"),
+						   Plain.AbilitySystem->GetLeechPayments().Num() == 1
+							   && Slow.AbilitySystem->GetLeechPayments().Num() == 1))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("the payment made under the stat is the same size as the control's"),
+					   Slow.AbilitySystem->GetLeechPayments()[0].Remaining,
+					   Plain.AbilitySystem->GetLeechPayments()[0].Remaining, 0.001f);
+
+		// THE FIRST QUARTER SECOND.
+		const float PlainFirst = LeechPaidOverSteps(Plain, 1);
+		const float SlowFirst = LeechPaidOverSteps(Slow, 1);
+		if (!Test.TestTrue(TEXT("set-up: the control is paid something in the first step"), PlainFirst > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("a payment made under a more of -50 pays half as much in the first step, so "
+							"PayoutSecondsFor really reads leech_payout_rate"),
+					   SlowFirst, PlainFirst * 0.5f, 0.01f);
+
+		// BY THREE SECONDS, eleven more steps: the control has been paid in full and owes nothing.
+		const float PlainByThree = PlainFirst + LeechPaidOverSteps(Plain, 11);
+		const float SlowByThree = SlowFirst + LeechPaidOverSteps(Slow, 11);
+		Test.TestEqual(TEXT("control: after 3 seconds nothing is owed"),
+					   Plain.AbilitySystem->GetLeechPayments().Num(), 0);
+		Test.TestEqual(TEXT("under the stat half the control's total has arrived by 3 seconds"),
+					   SlowByThree, PlainByThree * 0.5f, 0.01f);
+		Test.TestEqual(TEXT("and the payment is still running"), Slow.AbilitySystem->GetLeechPayments().Num(), 1);
+
+		// BY SIX SECONDS, twelve more: the same total, in twice the time.
+		const float SlowBySix = SlowByThree + LeechPaidOverSteps(Slow, 12);
+		Test.TestEqual(TEXT("and by 6 seconds the same total as the control was paid in 3"),
+					   SlowBySix, PlainByThree, 0.01f);
+		Test.TestEqual(TEXT("with nothing owed after it"), Slow.AbilitySystem->GetLeechPayments().Num(), 0);
+		Test.TestEqual(TEXT("control: three more seconds pay the control nothing further"),
+					   LeechPaidOverSteps(Plain, 12), 0.0f, 0.001f);
+	}
+
+	/**
+	 * `strike_arc_at_least_degrees`, asked by `UCataclysmStrikeSkill::ArcAtLeastDegrees` with the skill's tags.
+	 * Ruled 2026-10-07: "Your heavy attack hits all enemies in a 180 degree arc in front of you".
+	 *
+	 * TWO CHARACTERS A HUNDRED METRES APART, each with the same 60-degree melee strike tagged as the heavy attack.
+	 * The second carries the stat at 180 on a line requiring `Slot.Heavy`. Then the second's strike is retagged as
+	 * a strike that is not the heavy attack.
+	 */
+	void ProbeStrikeArcAtLeastDegrees(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Carrying(World, FVector(0, 100 * M, 0));
+		GrantFlatRequiring(Carrying.Actor, UCataclysmStrikeSkill::StrikeArcAtLeastDegreesStat, 180.0f,
+						   TEXT("Slot.Heavy"));
+
+		const auto HeavyStrike = [&Test](FScopedSwinger& Who) -> UCataclysmStrikeSkill*
+		{
+			const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy,
+				/*Level=*/1, Who.Actor);
+			FGameplayAbilitySpec* Spec = Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+			UCataclysmStrikeSkill* Skill =
+				Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=60"));
+				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee, Slot.Heavy"));
+			}
+			Test.TestTrue(TEXT("set-up: a melee strike tagged as the heavy attack is granted"),
+						  Skill && Skill->SkillTags.Num() == 2);
+			return Skill;
+		};
+		UCataclysmStrikeSkill* PlainStrike = HeavyStrike(Plain);
+		UCataclysmStrikeSkill* CarryingStrike = HeavyStrike(Carrying);
+		if (!PlainStrike || !CarryingStrike)
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("control: a heavy strike without strike_arc_at_least_degrees keeps its 60 degrees"),
+					   PlainStrike->ArcDegrees(), 60.0f, 0.001f);
+		Test.TestEqual(TEXT("and one carrying it at 180 is 180 degrees wide, so ArcAtLeastDegrees really reads it"),
+					   CarryingStrike->ArcDegrees(), 180.0f, 0.001f);
+
+		CarryingStrike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+		Test.TestEqual(TEXT("and the same character's strike that is not the heavy attack keeps its 60"),
+					   CarryingStrike->ArcDegrees(), 60.0f, 0.001f);
+	}
+
+	/**
+	 * `stagger_root_seconds`, read by `UCataclysmSkillEffects::ApplyStagger` from the staggering character once
+	 * the stagger has landed. Ruled 2026-10-07: "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds".
+	 *
+	 * TWO PAIRS A HUNDRED METRES APART, a staggerer at X = 0 and its target two metres along X. The second staggerer
+	 * carries the stat at half a second. The root is read as the seconds left on the pin its target carries,
+	 * against the seconds left on the stagger the same call laid, which runs for one second.
+	 */
+	void ProbeStaggerRootSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger PlainTarget(World, FVector(2 * M, 0, 0));
+		FScopedSwinger Carrying(World, FVector(0, 100 * M, 0));
+		FScopedSwinger CarryingTarget(World, FVector(2 * M, 100 * M, 0));
+		GrantFlat(Carrying.Actor, UCataclysmSkillEffects::StaggerRootSecondsStat, 0.5f);
+
+		const bool bPlainStaggered = UCataclysmSkillEffects::ApplyStagger(Plain.Actor, PlainTarget.Actor);
+		const bool bCarryingStaggered = UCataclysmSkillEffects::ApplyStagger(Carrying.Actor, CarryingTarget.Actor);
+		const float StaggerLeft =
+			SecondsLeftOfTag(CarryingTarget.AbilitySystem, UCataclysmSkillEffects::StaggeredTag());
+		if (!Test.TestTrue(TEXT("set-up: both staggers land, and the stagger has seconds to run"),
+						   bPlainStaggered && bCarryingStaggered && StaggerLeft > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: a target staggered by a character without stagger_root_seconds is not pinned"),
+					   SecondsLeftOfTag(PlainTarget.AbilitySystem, UCataclysmSkillEffects::PinnedTag()), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and one staggered by a character carrying it at 0.5 is pinned for half as long as "
+							"its one-second stagger, so ApplyStagger really reads it"),
+					   SecondsLeftOfTag(CarryingTarget.AbilitySystem, UCataclysmSkillEffects::PinnedTag()),
+					   StaggerLeft * 0.5f / UCataclysmSkillEffects::StaggerSeconds, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -6698,6 +6999,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_cost_as_maximum_mana_percent"), &ProbeManaCostAsMaximumManaPercent},
 			{TEXT("class_resource_generation"), &ProbeClassResourceGeneration},
 			{TEXT("overheal_absorb_percent_of_maximum_health"), &ProbeOverhealAbsorb},
+			{TEXT("energy_shield_damage_taken"), &ProbeEnergyShieldDamageTaken},
+			{TEXT("leech_payout_rate"), &ProbeLeechPayoutRate},
+			{TEXT("strike_arc_at_least_degrees"), &ProbeStrikeArcAtLeastDegrees},
+			{TEXT("stagger_root_seconds"), &ProbeStaggerRootSeconds},
 		};
 		return Made;
 	}
@@ -8042,6 +8347,40 @@ bool FCataclysmDamageOverTimeOnTheWearerByAilmentTest::RunTest(const FString&)
 					  UCataclysmGameplayAbility::PoolPaying(Wearer.AbilitySystem, 40.0f).IsValid());
 		}
 	}
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Two of the four one-site stats of 2026-10-07, each as a test of its own
+// --------------------------------------------------------------------------
+//
+// EACH RUNS THE PROBE OF ITS STAT AND NOTHING ELSE. The probe is also run by
+// `EveryStatWithNoAttributeIsActuallyRead` above; it is given a test of its own
+// so that a break of its one site fails a test that names the sentence. The
+// other two stats have theirs in `CataclysmPassiveTreeTests.cpp` (the arc) and
+// `CataclysmEnemyBehaviourTests.cpp` (the root).
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnergyShieldDamageTakenTest,
+	"Cataclysm.OneSiteStats.AWearersEnergyShieldLosesMoreForTheSameBlowAndItsHealthTakesNoMoreThanTheBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Your energy shield takes 30%-50% increased damage". See `ProbeEnergyShieldDamageTaken` for where each stands. */
+bool FCataclysmEnergyShieldDamageTakenTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+	ProbeEnergyShieldDamageTaken(*this);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeechPayoutRateTest,
+	"Cataclysm.OneSiteStats.ALeechPaymentMadeUnderTheRowPaysHalfAsFastAndTheSameTotalInTwiceTheTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "50% less tick rate for your leech effects". See `ProbeLeechPayoutRate` for where each stands. */
+bool FCataclysmLeechPayoutRateTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+	ProbeLeechPayoutRate(*this);
 	return true;
 }
 

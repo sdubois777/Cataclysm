@@ -91,6 +91,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: the one helper every gain of class resource goes through.
 #: Overheal becoming a temporary absorb added one more on 2026-10-07, the cap
 #: of what overheal may fill, asked where a heal of health did not all fit.
+#: The four one-site stats of 2026-10-07 added three more: how fast a payment
+#: of leech arrives, the least width of a strike's arc, and the seconds a
+#: staggered enemy is rooted. The fourth, the energy shield's own damage taken,
+#: is asked through `DefenderStat`, whose one call was already here.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -604,6 +608,21 @@ INVENTORY = {
         "2026-10-07), asked of the healed character by NoteOverheal where a "
         "heal of health did not all fit; a heal is not a skill and has no "
         "target, so no tags and no state",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
+     'FName(PayoutRateStat), FGameplayTagContainer(), NormalPayoutRate'):
+        "how fast a payment of leech arrives (ruled 2026-10-07), asked of the "
+        "leecher by PayoutSecondsFor where a payment is made; the rate is the "
+        "character's and a retaliation has no skill, so no tags and no state",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(StrikeArcAtLeastDegreesStat), SkillTags, 0.0f'):
+        "the least width of a strike's arc (ruled 2026-10-07), asked as a "
+        "strike picks its targets; with the tags of the skill, which carry "
+        "its slot, and no blow in hand yet",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(UCataclysmSkillEffects::StaggerRootSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds a staggered enemy is rooted (ruled 2026-10-07), asked of "
+        "the staggering character once its stagger has landed; a stagger is "
+        "not a skill and carries no tags, as the stagger stats beside it",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(RendPercentStat), FGameplayTagContainer(), 0.0f'):
         "Rendering Blows' share, asked of the striker as a count of landed "

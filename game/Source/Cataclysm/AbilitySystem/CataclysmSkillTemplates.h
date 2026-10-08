@@ -150,8 +150,23 @@ public:
 	 * `MeleeArcFullCircleStat`. Ruled 2026-09-30 under the owner's delegation:
 	 * every melee swing, the basic attack included, with its target limit
 	 * unchanged and no damage taken off; a spell's cone is never widened.
+	 *
+	 * AND NEVER NARROWER THAN `ArcAtLeastDegrees`, for a strike of any kind.
 	 */
 	float ArcDegrees() const;
+
+	/**
+	 * `strike_arc_at_least_degrees`: "Your heavy attack hits all enemies in a 180 degree arc in front of you". Ruled
+	 * 2026-10-07. The least width, in degrees, a strike with these tags picks its targets across; nought for no
+	 * such row. Flat. No gameplay attribute: asked with the skill's tags, so its row requires `Slot.Heavy`.
+	 *
+	 * A STRIKE IT REACHES ALSO HAS NO TARGET LIMIT, because "all enemies" is in the sentence. `SwingOnce` reads it
+	 * for that.
+	 */
+	static const TCHAR* StrikeArcAtLeastDegreesStat;
+
+	/** What `StrikeArcAtLeastDegreesStat` comes to for this skill, between nought and 360. */
+	float ArcAtLeastDegrees() const;
 
 	/**
 	 * Drive the weapon into the ground and leave it standing. Public so a test

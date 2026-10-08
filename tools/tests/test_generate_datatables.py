@@ -4396,6 +4396,25 @@ class TestEnchantmentEffects:
         problems = gen.validate_enchantment_effects(tables, set())
         assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
 
+    def test_a_more_row_on_the_leech_payout_rate_stands_on_the_engines_base(self):
+        """Ruled 2026-10-07: "50% less tick rate for your leech effects" is a
+        `more` row of -50 on `leech_payout_rate`. No class line, attribute or
+        flat row supplies that stat; its base of 100 is the engine's, listed in
+        `ENGINE_SUPPLIED_BASES`, and that entry is what lets the row through.
+        The same row on a stat that list does not hold is refused, which is
+        the control."""
+        slower = {"Name": "X#1", "Enchantment": "X", "Stat": "leech_payout_rate",
+                  "ValueKind": "more", "RequiredTags": ""}
+        tables = {"EnchantmentEffects": [slower], "ClassStats": [{"Stat": "armor"}]}
+        assert "leech_payout_rate" in gen.ENGINE_SUPPLIED_BASES
+        assert gen.validate_enchantment_effects(tables, set()) == []
+
+        unsupplied = dict(slower, Stat="leech_payout_rate_nothing_supplies")
+        tables = {"EnchantmentEffects": [unsupplied], "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert "'leech_payout_rate_nothing_supplies' is not a stat" in problems[0]
+
     def test_the_validator_reports_an_undeclared_tag(self):
         tables = {"EnchantmentEffects": [
             {"Name": "X#1", "Enchantment": "X", "Stat": "armor",
