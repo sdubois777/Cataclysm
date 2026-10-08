@@ -1017,6 +1017,34 @@ public:
 	static const TCHAR* AilmentDetonatesWhenReappliedAction;
 	static const TCHAR* AilmentSpreadOnApplicationAction;
 
+	/**
+	 * `ailment_max_health_removed`, the rider that lowers its carrier's maximum
+	 * health while it carries the ailment. Ruled 2026-10-08: "Enemies with
+	 * Necrosis have 1%-2% less maximum health". `AILMENT_MAX_HEALTH_ACTION` in
+	 * `tools/generate_datatables.py` holds the same name. See
+	 * `RewriteMaximumHealthForAilments`.
+	 */
+	static const TCHAR* AilmentMaxHealthRiderAction;
+
+	/**
+	 * The most of its maximum health a carrier may have removed by its
+	 * ailments' riders, in percent, however many ailments carry one.
+	 * `MAX_AILMENT_MAX_HEALTH_REMOVED` in `tools/generate_datatables.py` refuses
+	 * a row above it. Half, so a lowered maximum is never nought and nothing
+	 * dies of it. A sanity bound, a judgement of the writing session.
+	 */
+	static constexpr float MaxAilmentMaxHealthRemovedPercent = 50.0f;
+
+	/**
+	 * The share of this character's maximum health its ailments' riders hold
+	 * off it at this moment, in percent, or 0 when none does. What
+	 * `RewriteMaximumHealthForAilments` last wrote, not a fresh sum.
+	 */
+	float AilmentMaxHealthRemovedPercentInForce() const
+	{
+		return AilmentMaxHealthRemovedInForce;
+	}
+
 	/** Which rider an action name is, or None. */
 	static ECataclysmAilmentRider AilmentRiderNamed(const FString& Action);
 	static const TCHAR* SmiteNearbyByArmourAction;
@@ -3516,6 +3544,53 @@ protected:
 
 	/** The riders this character carries, by the ailment's tag. See `ReceiveAilmentRiders`. */
 	TMap<FGameplayTag, FCarriedRiders> AilmentRiders;
+
+	/**
+	 * Write this character's maximum health as its ailments' riders leave it:
+	 * its unlowered maximum times (100 - the percentage) / 100, the percentage
+	 * being `ECataclysmAilmentRider::MaxHealthRemoved` summed over the ailments
+	 * it carries now and held to `MaxAilmentMaxHealthRemovedPercent`. Ruled
+	 * 2026-10-08: "Enemies with Necrosis have 1%-2% less maximum health".
+	 *
+	 * CALLED AT THREE MOMENTS AND READ NOWHERE ELSE. When the number is
+	 * RECEIVED: the ailment's tag arriving with the number on record, or
+	 * `ReceiveAilmentRiders` for an ailment already carried. When it is
+	 * REPLACED: `ReceiveAilmentRiders`, for another applier's number or for an
+	 * applier that no longer has one. When the ailment ENDS: its tag leaving,
+	 * by time, by removal or by a cleanse. A call that finds the percentage
+	 * unchanged writes nothing, which is what a refresh is.
+	 *
+	 * THE UNLOWERED MAXIMUM IS REMEMBERED, so the return writes that figure
+	 * back and not one worked out by dividing. If something else has written
+	 * the maximum while it was lowered, the difference it made is kept: the
+	 * unlowered figure becomes the remembered one plus that difference.
+	 *
+	 * HEALTH IS BROUGHT DOWN BY `UCataclysmVitalAttributeSet::PostAttributeChange`
+	 * and by nothing here, and that hook never raises it. Nothing is announced
+	 * as damage.
+	 *
+	 * @param Changed       the ailment whose tag has just come or gone, or none
+	 * @param ChangedCount  how many of it the character holds now. Handed over
+	 *                      and not asked, so the answer does not depend on
+	 *                      whether the engine has finished its own count
+	 */
+	void RewriteMaximumHealthForAilments(const FGameplayTag& Changed = FGameplayTag(),
+										 int32 ChangedCount = 0);
+
+	/** An ailment that carries a maximum health rider came or went. */
+	void OnMaxHealthRiderAilmentTagChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** The ailments whose tag is watched for the above, each registered once. */
+	TSet<FGameplayTag> MaxHealthRiderAilmentsWatched;
+
+	/** The percentage `RewriteMaximumHealthForAilments` holds off the maximum now. */
+	float AilmentMaxHealthRemovedInForce = 0.0f;
+
+	/** The maximum health base before it was lowered. Meaningless when nothing is in force. */
+	float UnloweredMaximumHealth = 0.0f;
+
+	/** The lowered base as the engine stored it, to tell whether something else has written it since. */
+	float LoweredMaximumHealthWritten = 0.0f;
 
 	/** One "every Nth" row's count, and the combat it was counted in, if any. */
 	struct FNthCount
