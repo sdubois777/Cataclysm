@@ -18641,4 +18641,57 @@ bool FCataclysmShieldFromOverhealRowTest::RunTest(const FString&)
 	}
 	return true;
 }
+// TRAPS LAST LONGER. Ruled 2026-10-07: the gadget duration row with the trap tag in place of the deployable tag.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapDurationRowTest,
+	"Cataclysm.Enchantments.TheTrapDurationRowLengthensASpikeTrapsLifeAndNoOtherMachines",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Traps last 50%-100% longer before expiring". Issue #1833, ruled 2026-10-07:
+ * `minion_duration` increased 50 to 100, requiring `Type.Trap`. A minion is
+ * asked for its life span with its own type tags, so the real row WORN at its
+ * best roll doubles the life span of a Spike Trap summoned from the built
+ * table and leaves a Ballista's and an Imp's what they were. Every figure is a
+ * ratio against the same machine of a summoner wearing nothing.
+ */
+bool FCataclysmTrapDurationRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_Traps_last_50_100_longer_before_expiring");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	// TWO SUMMONERS A HUNDRED METRES APART, each placing its machines four metres from the last.
+	FSummoner Plain(Scope.World, nullptr);
+	FSummoner Longer(Scope.World, RowName);
+	Longer.Along = 10000.0f;
+
+	const float PlainTrap = Plain.LifeOf(TEXT("SpikeTrap"));
+	const float PlainBallista = Plain.LifeOf(TEXT("Ballista"));
+	const float PlainImp = Plain.LifeOf(TEXT("Imp"));
+	if (!TestTrue(TEXT("set-up: a plain spike trap has a life span"), PlainTrap > 0.0f)
+		|| !TestTrue(TEXT("set-up: a plain ballista has a life span"), PlainBallista > 0.0f)
+		|| !TestTrue(TEXT("set-up: a plain imp has a life span"), PlainImp > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(*(FString(TEXT("worn: a spike trap lasts twice as long.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Longer.LifeOf(TEXT("SpikeTrap")) / PlainTrap, 2.0f, 0.001f);
+	TestEqual(TEXT("worn: a ballista is no trap and lasts what it did"),
+		Longer.LifeOf(TEXT("Ballista")) / PlainBallista, 1.0f, 0.001f);
+	TestEqual(TEXT("worn: an imp lasts what it did"), Longer.LifeOf(TEXT("Imp")) / PlainImp, 1.0f, 0.001f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
