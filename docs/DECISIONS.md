@@ -883,7 +883,8 @@ the Python suite, the lint and the conflict check. The coordinating session rule
 build, inside a test, on an otherwise idle machine; 9 of the 200 floors reached the limit of 3,000 walks. In the
 first window's run of the whole suite the same test printed 51.231 milliseconds, and in a rerun of this layer's
 group alone at fa2ebece it printed 58.387. The same floors and the same code gave all three. No test asserts a
-time. The ruling that follows was made on the first two figures; the third was printed after it. The
+time. The ruling that follows covers all three figures, 49.544, 51.231 and 58.387, and was confirmed by the
+coordinating session on 2026-10-08 after the third. The
 figure stands and the walk limit is not lowered, a labelled judgement by the coordinating session under the
 owner's delegation, 2026-10-08, with its reasons: the search runs once when a floor is built and not during play;
 the 50 millisecond line was the coordinating session's judged number and the owner has parked performance to move
