@@ -22914,6 +22914,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechExistingDrainTest,
  * `every_seconds`, FractionOf `maximum`, EverySeconds 5, every other cell nought or empty. The action here is
  * built by hand in that shape; the row is not loaded, so the table and the item loader are not what is tested.
  *
+ * BUILT BY HAND FROM THE CSV LINE AND NOT LOADED FROM THE TABLE, which the coordinating session accepted on
+ * 2026-10-07. So A CHANGE TO THAT ROW IN THE TABLE WOULD NOT BE SEEN BY THIS TEST: it would go on passing
+ * against the cells written above.
+ *
  * EVERY FIGURE IS WORKED OUT FROM THE ROW: one share is 15% of maximum health, and one is due for each whole 5
  * seconds of the current combat. So nothing out of combat; nothing four and a half seconds in; one share five
  * and a half seconds in; still one at nine and a half; two at ten and a half; no more once combat lapses; in a
