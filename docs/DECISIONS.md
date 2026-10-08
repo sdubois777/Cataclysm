@@ -1673,6 +1673,28 @@ Every reading of the sentence is that entry's and its rulings of 2026-10-08.
 
 **Not tested here:** a charge used under the real rows; any of the six charge skills by its own row.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. The build, the whole suite and the Python of record are in the table of the entry of the same day on the
+retirement of "Can’t use a basic attack" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any change of the stack | 58367e1f | 301 tests performed, 297 succeeded, 4 failed, this layer's among them; 2 of the 8 failed assertions are this layer's, one for each stat |
+| The enchantment assets, regenerated with the editor | cee98975 | effect rows 575 to 577 |
+| Whole suite, every asset built | cee98975 | 3401 tests performed, 3401 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**: without the rows neither attack
+damage nor spell damage held a modifier on the share of a charge's range.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the entry
+that built the scale proved, read in its table: three guard proofs, each failed with its break in and passed
+with it out: a walked blow told the walk so far, a charge that moves at once told the ground it covered, and the
+share capped at the whole. **That table says no proof was run for the distance being filled by mode, for the
+range being the one the skill used, for the hit along the path and the explosions carrying nothing, or for the
+generator's refusals**; those are tested and not proved.
+
 ---
 
 ## 2026-10-08 — A charge's blow is told how far the charge went, and one scale reads it: `share_of_range_moved`, the first scale whose count is a fraction. Engine and generator only; no row authored
