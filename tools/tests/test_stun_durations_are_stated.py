@@ -156,6 +156,40 @@ def stated_by_its_enchantment(effect_row: dict[str, str], sentences: dict[str, s
     return sentence is not None and DURATION.search(sentence) is not None
 
 
+#: The one action whose row applies a stun under a sentence that does not say
+#: "stun". Ruled 2026-10-08, issue #1833: "Chronomancer's Time-Lock (6-Piece
+#: Bonus): ... This freezes all nearby enemies for 2 seconds", and the owner
+#: the same day, "Yes it acts like a stun". The sentence says "freezes", so
+#: `DURATION` finds no length in it; the row holds the length itself, in
+#: `StackSeconds`, which is where the engine reads it.
+STUN_NEAR_THE_DYING = "stun_near_the_dying"
+
+#: Every "for N seconds" a sentence states, whatever the verb before it.
+FOR_SECONDS = re.compile(r"\bfor\s+([\d.]+)\s*seconds?\b", re.IGNORECASE)
+
+
+def its_own_seconds_agree_with_its_sentence(effect_row: dict[str, str],
+                                            sentences: dict[str, str]) -> bool:
+    """Whether a `stun_near_the_dying` row states a length its sentence states too.
+
+    NARROWER THAN `stated_by_its_enchantment`, WHICH READS THE SENTENCE ALONE.
+    Both must hold: the row's own `StackSeconds` is above nought, and the
+    enchantment's sentence states that same number as "for N seconds". So the
+    excuse cannot be claimed by a row with no length, by a sentence that says
+    only "briefly", or by a row and a sentence that state different lengths.
+    No other action is excused this way."""
+    if effect_row.get("Action") != STUN_NEAR_THE_DYING:
+        return False
+    try:
+        seconds = float(effect_row.get("StackSeconds") or 0.0)
+    except ValueError:
+        return False
+    sentence = sentences.get(effect_row.get("Enchantment", ""))
+    if seconds <= 0.0 or sentence is None:
+        return False
+    return any(float(stated) == seconds for stated in FOR_SECONDS.findall(sentence))
+
+
 def enchantment_sentences() -> dict[str, str]:
     return {row["Name"]: row["Effect"] for table in ENCHANTMENT_TABLES for row in rows_of(table)}
 
@@ -223,7 +257,9 @@ def test_everything_that_applies_a_stun_states_how_long():
     missing = [(table, key) for table, key, text in stun_rows()
                if (table, key) not in exempt and not DURATION.search(text)
                and not (table == "EnchantmentEffects"
-                        and stated_by_its_enchantment(built.get(key, {}), sentences))]
+                        and (stated_by_its_enchantment(built.get(key, {}), sentences)
+                             or its_own_seconds_agree_with_its_sentence(
+                                 built.get(key, {}), sentences)))]
     assert not missing, (
         f"{missing} apply a stun without saying how long it lasts. Since the "
         "anti-stun-lock rule gave stun a 5 second immunity window, a duration "
@@ -242,6 +278,30 @@ def test_an_effect_row_is_excused_only_by_a_sentence_that_states_the_duration():
     assert not stated_by_its_enchantment({"Enchantment": "Brief"}, sentences)
     assert not stated_by_its_enchantment({"Enchantment": "Nowhere"}, sentences)
     assert not stated_by_its_enchantment({}, sentences)
+
+
+def test_a_stun_near_the_dying_is_excused_only_when_its_seconds_and_its_sentence_agree():
+    """What stops the excuse of 2026-10-08 being a way to say nothing. Made-up
+    rows under made-up sentences: the one that agrees, and the four refusals,
+    a sentence that says only "briefly", a sentence that states another length,
+    a row with no length, and another action with the same length and words."""
+    sentences = {"Agrees": "This freezes all nearby enemies for 2 seconds",
+                 "Brief": "This briefly freezes all nearby enemies",
+                 "Another": "This freezes all nearby enemies for 3 seconds"}
+
+    def row(enchantment, seconds, action=STUN_NEAR_THE_DYING):
+        return {"Enchantment": enchantment, "Action": action, "StackSeconds": seconds}
+
+    assert its_own_seconds_agree_with_its_sentence(row("Agrees", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Brief", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Another", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Agrees", "0.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Agrees", ""), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Nowhere", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(
+        row("Agrees", "2.0", action="apply_status"), sentences)
+    # AND THE SENTENCE-ONLY EXCUSE STILL DOES NOT REACH IT: "freezes" is not "stun".
+    assert not stated_by_its_enchantment(row("Agrees", "2.0"), sentences)
 
 
 @pytest.mark.parametrize(("table", "key"), sorted(DEFINITIONS))
