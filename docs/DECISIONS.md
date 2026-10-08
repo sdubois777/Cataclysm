@@ -2,6 +2,298 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — A landed hit cuts short the skill its wearer is using: one flag stat, `hit_taken_cancels_skills`, for two enchantment sentences that have no row. Engine only; no row authored
+
+**Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
+was run by the writing session. The C++ in this entry has never been compiled. The Python checks were run; their
+output is not recorded here. The two row shapes under "What the row needs" were each passed through the
+generator in a temporary workbook, by the Python tests named there.
+
+**Said first, for the play-check.**
+
+- **"Taking damage" in the channel sentence is read as a LANDED HIT.** A burn, a bleed or any other damage over
+  time does not end a channel, and neither does a cost paid in health.
+- **Under "Taking a hit interrupts any skill currently being used", a player hit while winding up loses the
+  swing, its cost and its cooldown.** Among several enemies most slow skills will not land.
+- **Under the channel row, Pyroclasm ends at the first landed hit and its 300% final hit is lost.** It is the
+  one built skill that carries `Type.Channel`.
+- **A leap or a blink is never caught part-way: for those modes there is no part-way.** Every movement mode but
+  two moves its user with ONE `SetActorLocation(End, /*bSweep=*/true)` inside the call that used it and ends in
+  that call (`UCataclysmMovementSkill::ActivateAbility`), so a hit never finds one running. **The two that last
+  are a walked charge and a flicker.** A walked charge interrupted part-way leaves the character where the walk
+  had carried it, standing still, and does none of what it does on arriving: no ground along the walk, no row's
+  zones, explosions or pull. A flicker makes no further arrival; the seconds of being untargetable it was given
+  as it began stay, because that is an effect already on the character.
+- **A row on `hit_taken` that is also conditioned on `while_channelling` will NOT act on the hit that ends the
+  channel**, when its wearer also wears the channel row. The cancel comes before the event's rows act (the
+  ruled order, below), so by the time they act the character is no longer channelling. No such row exists; it
+  is a consequence of the order and is said so that nobody writes one expecting otherwise.
+
+**Said first: the finding F2 was a misreading, and the sentence "That a spin ended from outside stops swinging.
+It does not." in the entry below this one is corrected by this entry.** F2, as this layer was briefed: "by
+reading and not run: `UCataclysmStrikeSkill::EndAbility` clears `WindowTimer` and `HoldTimer` and not
+`RepeatTimer` or `FinishTimer`. A Pyroclasm ended from outside would go on swinging every half second and land
+its 300% final hit." The first half is true of the project's code and the second does not follow. The engine's
+`UGameplayAbility::EndAbility` (`GameplayAbility.cpp` 826 to 836 in Unreal Engine 5.8) calls
+`ClearAllTimersForObject(this)` while the console variable `AbilitySystem.ClearAbilityTimers` is on, which is
+its default (line 57), and every timer of every skill template is bound to the ability itself: each `SetTimer`
+in `CataclysmSkillTemplates.cpp` names `this` and a member function, and the swing's own is a weak lambda on
+`this`. So a spin ended from outside stopped swinging before this layer. The project's code already said so:
+`UCataclysmStrikeSkill::ReturnTheWeapon` records a guard proof that "ended the skill without cancelling it
+[and] found the timer cleared all the same". **By reading, not by a run.**
+
+**What the same reading did find, and it is the real fault of F2's kind: a timer SET AFTER the skill has ended
+is cleared by nothing.** A strike that spins sets its two timers after its first swing has returned. A blow can
+come back on the swinger inside that swing, a retaliation for one, and under this layer's stat that cancels
+the spin there and then: the engine ends an ability at once even from inside its own call (below). The two
+timers would then be set on a spin that was over, and it would swing for its whole length and land its final
+hit. Three skills had that shape and each now asks whether it is still running first: the spinning strike, a
+rack of throws after its first throw, and a flicker after its first arrival.
+
+**What every interruptible skill class now clears by name when it ends, and what each timer would have done.**
+The engine's sweep already cleared all of them; these lines are what holds with that console variable off, and
+one test turns it off to show so.
+
+| Class | Timer | What it would have done |
+| :-- | :-- | :-- |
+| Strike | `RepeatTimer` | the next swing of a spin, every `Interval` |
+| Strike | `FinishTimer` | the spin's final hit, and its end |
+| Strike | `HoldTimer`, `WindowTimer` | already cleared by name before this layer: a held swing letting go; a planted sword coming back |
+| Projectile | `ThrowTimer` | the next throw of a rack |
+| Projectile | `RackTimer` | the rack's own end when its time is up |
+| Projectile | `FlightTimer` | nothing. It is declared and never set |
+| Movement | `AdvanceTimer` | a walked charge striking what it has passed, ten times a second |
+| Movement | `FlickerTimer` | a flicker's next arrival |
+| Movement | `StopTimer` | the end of either at its `Duration`; for a walk, the ground, zones, explosions and pull of arriving. **It was a local variable in each of the two places that set it and is a member now** |
+| Summon | `SpawnTimer` | the next imp out of an open rift |
+| Summon | `CollapseTimer` | the rift's collapse: its blow, and the destroying of the imps it made |
+| any | `SwingTimer` | already cleared on a cancel before this layer: a blow still waiting for its swing to connect |
+
+Self buff and Aura keep timers of their own and are not interruptible; nothing of theirs is changed.
+Deployable keeps none, and Debuff none but the swing's.
+
+**Said first: a tick of damage over time DOES reach `NoteHitTaken`, against what this layer was briefed.** The
+brief said "A tick of damage over time does not reach it; confirm that by reading and say where." It reaches
+it: `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls `NoteHitTaken` for every blow that changes
+the Damage attribute, a tick included, and the line under it refuses a tick for the "every Nth hit" count by
+name (`!Hit.bIsDamageOverTime`), which it would not need to do otherwise. So the caller now says whether the
+blow was a tick, and the cancel refuses one. Nothing else `NoteHitTaken` does is changed: the clock, combat
+and the `hit_taken` event go on counting a tick as they did.
+
+### What was found in the code before writing
+
+- **A hit taken is noted at one place.** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, in the
+  Damage branch, after health is written. A blocked blow, one the energy shield took whole and one the
+  temporary absorb took whole all reach it; an evaded blow reaches it and is told apart by `Outcome.bEvaded`.
+  **A contagious touch does not**: it returns before anything is dealt (the dungeon rule of issues #1820 and
+  #41), so it is not a hit taken and interrupts nothing.
+- **A cost is not a hit.** A cost in health is taken with `ApplyModToAttribute` on the Health attribute, in
+  `UCataclysmSkillTemplate::PayHealthCost` and `UCataclysmGameplayAbility::ApplyCost`. A hit is a change of the
+  Damage attribute, and `NoteHitTaken` is called from that branch and no other.
+- **A retaliation IS a hit taken by whoever it is paid to.** `UCataclysmRetaliation::Pay` sends it with
+  `ApplyDirectDamage`, through the Damage attribute, and it is paid inside the call of the blow that provoked
+  it. The comment above its caller still says "ReduceHealthDirectly writes to the Health attribute"; that was
+  true before retaliation "started going through the damage formula" and is stale. Not changed here.
+- **Nothing cancelled a skill on a hit.** The only `CancelAbilityHandle` calls were in `ClearWhatDeathEnds`.
+- **How the engine treats a cancel from inside the ability's own call.** `UGameplayAbility::CancelAbility`
+  and `EndAbility` put the end off only while the ability holds a scope lock (`ScopeLockCount`), which
+  `FScopedTargetListLock` takes, and nothing in this project takes one. So the end runs at once:
+  timers swept, tasks told, the ability no longer active, `NotifyAbilityEnded`. Every skill template is
+  `InstancedPerActor`, so the object is not destroyed and the function on the stack goes on running on a skill
+  that is over.
+- **Every move a movement skill makes is swept.** Three `SetActorLocation` calls in
+  `CataclysmSkillTemplates.cpp`, each with `/*bSweep=*/true`: the arrival of every instant mode ("Swept, so a
+  leap into a wall stops at the wall"), the creature a swap sends back, and each arrival of a flicker. The
+  walked charge is pushed by `UAbilityTask_ApplyRootMotionConstantForce` through the character movement
+  component. No move that is not swept was found.
+- **Terrain.** `CataclysmTerrain.h`: "FOUR KINDS AND ONLY ONE OF THEM IS GEOMETRY. Pit, Fissure and Thicket
+  are swept zones", and a Wall is solid. So an interrupted walk leaves the character at a point its own swept
+  movement reached.
+- **Where the engine stops the walk.** `UGameplayAbility::EndAbility` calls `TaskOwnerEnded` on every task of
+  the ability (`GameplayAbility.cpp`, a few lines below the sweep of its timers); `UGameplayTask::TaskOwnerEnded` calls `OnDestroy`;
+  `UAbilityTask_ApplyRootMotionConstantForce::OnDestroy` removes its root motion source from the movement
+  component; and the source was made with `ERootMotionFinishVelocityMode::SetVelocity` and a velocity of
+  nought, which `RootMotionSource.cpp` (1395 to 1403) writes when a source is removed. **By reading.**
+
+### What it is for
+
+| Sentence | The row the mechanism makes possible |
+| :-- | :-- |
+| Taking a hit interrupts any skill currently being used | `hit_taken_cancels_skills`, flat 1, no Required Tags |
+| Taking damage while channeling interrupts the channel immediately | `hit_taken_cancels_skills`, flat 1, Required Tags `Type.Channel` |
+
+One stat serves both because it is asked once for EACH running interruptible skill, with THAT skill's
+`SkillTags`: the row with no tags answers for every skill, the row requiring `Type.Channel` only for a
+channelled one. This layer does not read the channelling state of the layer below.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08
+
+- **K1. A cancel refunds nothing.** The cost stays paid and the cooldown stays running.
+- **K2. Lost: everything the skill had not yet done** (a swing still waiting to connect, a spin's remaining
+  swings and its final hit, a volley's remaining shots, a held swing, a move still under way, which stops where
+  it is). **Kept: everything already in the world** (a projectile in flight, ground, a zone, a summoned
+  machine).
+- **K3. Interruptible: a running Strike, Projectile, Movement, Debuff, Summon or Deployable skill before it
+  has finished acting. NOT interruptible: a self buff in its duration, an aura that is on, a planted weapon.**
+- **K4. The basic attack is interrupted** like any other skill. The skill lock's exemption of the basic attack
+  is not copied here.
+- **K5. Only a hit that LANDED interrupts.** Not an evaded blow. Not a tick of damage over time. A blocked blow
+  and a blow wholly absorbed by the energy shield or the temporary absorb DO interrupt. Both sentences are read
+  as "a landed hit".
+- **K6. A hit whose attacker is the wearer does not interrupt, and a cost is not a hit.**
+- **K7. The stat is asked of any character with this project's ability system component**; only a worn row
+  grants it.
+- **The stat is `hit_taken_cancels_skills`, a flag written 1, asked with each running skill's own tags, at ONE
+  place: `UCataclysmAbilitySystemComponent::NoteHitTaken`.**
+
+**A labelled judgement by the enchantment session: the cancel happens BEFORE the `hit_taken` event's rows
+act.** The skills running when the hit landed are collected and cancelled, and only then is the event raised.
+A row that answers a hit by starting a skill must not have that skill cut short by the same hit.
+
+### How it is built
+
+- **`NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime)`**, a third form beside the two
+  that were there, which now hand it nobody and no tick. The one resolved-blow caller passes
+  `UCataclysmCombatEvents::AttackerOf` of the blow, the same call the evade beside it makes, and
+  `Hit.bIsDamageOverTime`.
+- **The cancel**, for a blow that landed, was not a tick and was not the character's own: for each active
+  ability that is a `UCataclysmSkillTemplate` and answers `CanBeInterruptedByAHit`, ask
+  `StatForSkill(hit_taken_cancels_skills, <its SkillTags>, 0)`; above nought, `CancelAbilityHandle`. Collected
+  first and cancelled after. Then `hit_taken` is raised.
+- **`UCataclysmSkillTemplate::CanBeInterruptedByAHit`**, a virtual: yes while the skill is active. Self buff
+  and Aura: no. Strike: no while its weapon stands in the ground. Projectile: no once its one shot is in the
+  air.
+- **`EndAbility`** on Strike (two timers added), and new overrides on Projectile, Movement and Summon, each
+  clearing its timers by name and calling up. Nothing is asked of `bWasCancelled`: they clear on every end, as
+  the Strike's two older clears do, and an ordinary end has nothing left for them to stop.
+- **Three guards**, each `IsActive()` before timers are set after a blow of the skill's own: the spinning
+  strike, the rack, the flicker.
+- **The stat's name** is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, with a probe,
+  `ProbeHitTakenCancelsSkills`, and its one call is in the inventory of stat lookups.
+- **No change to `tools/generate_datatables.py`.** A flat row with no condition names a stat with no attribute
+  and is carried through.
+
+### Judgements by the writing session
+
+1. **`NoteHitTaken` is told the attacker and whether the blow was a tick, and decides for itself.** The other
+   choice was one flag worked out by the caller. The stat is ruled to be asked at one place, and the three
+   facts that decide it (landed, not a tick, not the wearer's own) are then in that place too, where a reader
+   of the function sees the whole rule.
+2. **A hit with nobody named as its attacker interrupts.** K6 excludes the wearer's own blow and nothing else.
+   The two older forms of `NoteHitTaken` name nobody; nothing but tests calls them.
+3. **"The wearer" is its body or its owner.** A player's ability system is owned by the player state and worn
+   by the pawn, and a blow may name either.
+4. **A projectile skill whose one shot is in the air has finished acting and is not interruptible.** It stays
+   active only so that it can leave the ground its flight earned when the shot finishes. K2 keeps the shot;
+   ending the skill would lose nothing and would only make its end a cancel. A rack between throws is
+   interruptible, and the throws already made fly on.
+5. **A strike that plants is interruptible until the weapon is in the ground.** Before that it is a swing
+   waiting to connect like any other, and a hit loses it: nothing is planted.
+6. **An interrupted rift keeps the imps it has made.** Its collapse is what destroys them, and the collapse is
+   "what it had not yet done". Each imp still has the lifetime it was made with, and the rift's burning ground
+   stays for its own length.
+7. **What a skill does in the call in which its own blow lands is one act, and a cancel arriving inside that
+   call does not undo the rest of it.** A spin cut short by the retaliation for its first swing still leaves
+   the ground and the terrain that swing leaves; an instant move still does what it does on arriving. What is
+   lost is everything that would have come LATER: the timers are not set. The other reading, stopping dead
+   after the blow, would put a check after every blow in every template, and would change what an
+   uninterrupted skill's code looks like for a case one row makes possible.
+8. **The timers are cleared on every end and not only on a cancel.** See "How it is built".
+9. **The order is tested with a listener and not a row**, because no row action starts a skill on `hit_taken`:
+   the action that uses a held skill fires only on an event that names a skill. The listener is the
+   component's own `OnActionEvent`, which `ActOnEvent` announces before any row acts.
+10. **One test turns the engine's console variable off.** It is the only way a test can tell the skill's own
+    clears from the engine's sweep. It is set at the console's priority, as this project's tests set theirs,
+    and put back when the test ends.
+
+### What a retaliation taken while swinging does
+
+It interrupts. The retaliating enemy's blow is a hit on the wearer from an enemy, paid inside the wearer's own
+`SwingOnce`. `NoteHitTaken` cancels the spin at once; `SwingOnce` then returns into a skill that is over. What
+it goes on to use in that call is the skill's own parameters and its user, both still valid, and for a strike
+that does not repeat an `EndAbility` the engine refuses as a second end. For one that does repeat, the guard
+above returns before the timers are set. Read at `UCataclysmRetaliation::Pay`, at
+`UGameplayAbility::CancelAbility` and `EndAbility`, and in the strike's own lambda. Tested with a retaliating
+fighter.
+
+### Research
+
+**Nothing new was fetched for this layer.** From the layer below, fetched by the enchantment session on
+2026-10-08 and quoted as it gave it: Torchlight Infinite, tlidb.com/en/Channeled, "Channeled stacks are lost
+when channeling is interrupted." A search summary, **not a fetched quotation**, says a stun interrupts a
+channel in Path of Exile. So the genre interrupts on a stun or a threshold, and "any hit" is this game's own
+drawback, taken as written.
+
+### Tests
+
+Unreal, in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group `Cataclysm.HitCancels.`. None
+has been run. A hit is a real blow in every one, resolved by the wearer's own attribute set, and what became of
+each blow is read back before anything is concluded from it.
+
+- `ASpinEndedFromOutsideMakesNoFurtherSwingAndNoFinalHitEvenWithTheEnginesTimerSweepOff`. A 3 second spin with
+  a final hit, ended after its first swing, takes nothing more from its target in four and a quarter seconds;
+  the same spin left alone makes at least seven swings. Then again with `AbilitySystem.ClearAbilityTimers`
+  off. **Only the second half fails if the Strike's two clears are taken out.**
+- `ALandedHitCutsShortTheWearersSkillAndGivesBackNeitherItsCostNorItsCooldown`. K1, on test fighters: the
+  wearer spent what a fighter with no row spent, and its slot is on cooldown. Then a real player hit in its
+  wind-up: the swing is lost and its target is not hurt; a player with no row connects.
+- `TheRowRequiringTheChannelTagEndsAChannelledSkillAndLeavesAnyOtherRunning`.
+- `ASelfBuffAnAuraAndAPlantedWeaponAreLeftRunningByAHitThatEndsASpin`. K3.
+- `ABasicAttackInItsWindUpIsCutShortLikeAnyOtherSkill`. K4, on a real player.
+- `AnEvadedBlowAndATickDoNotInterruptAndABlockedBlowAndOneTheShieldTookWholeDo`. K5.
+- `AHitWhoseAttackerIsTheWearerDoesNotInterrupt`. K6.
+- `AnInterruptedWalkStepsNoFurtherAndLeavesNoGroundAndAShotAlreadyInTheAirStillLands`. K2.
+- `ASkillStartedInAnswerToTheHitIsNotCutShortByThatHit`. The order.
+- `ASpinCutShortByTheRetaliationForItsOwnFirstSwingNeverGoesOnSpinning`. A cancel from inside the skill's own
+  blow.
+
+**Two of them need the player's attack clips** for a swing that waits: the second half of the second, and the
+whole of the fifth. Where the clips are absent each reports itself with `ReportSkippedHalf`.
+
+And in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, `ProbeHitTakenCancelsSkills`, run by the
+existing `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+Python, in `tools/tests/test_generate_datatables.py`, class `TestAHitCutsShortTheSkillInUse`: each of the two
+row shapes is carried through; the flag is a stat with no attribute and a made-up name is not.
+
+### Not covered by a test
+
+- **Any real row.** None exists. Every row in a test is built by hand.
+- **A dash interrupted on real terrain.** That the character stops is read from the engine and not run: a test
+  fighter has no movement component, so nothing pushes it.
+- **Animation.** A cancelled swing's clip plays on; nothing here stops a clip.
+- **The skill bar's display of the lost use.**
+- **A blow the temporary absorb takes whole.** The energy shield's is tested; the absorb's is read to reach the
+  same line.
+- **A rack and a rift interrupted.** Their timers are cleared by name and by the engine; no test uses either.
+- **A flicker interrupted.** It makes its user untargetable for its length, so a hit seldom lands on one.
+- **A held swing interrupted.** It was already broken by `HoldTimer`'s clear; under the untagged row The Whole
+  Weight, which counts the hits taken while it is held, ends at the first.
+- **A hit by a trap, a gadget or a minion.** Each is a landed hit like any other; a minion of the wearer's own
+  whose blows count as the summoner's names the wearer and does not interrupt it.
+- **Death, a respawn and an equipment refresh** while a skill is being cut short.
+- **Not run in play.**
+
+### What the row needs, for the session that writes rows
+
+| Sentence | Row |
+| :-- | :-- |
+| Taking a hit interrupts any skill currently being used | `hit_taken_cancels_skills`, `flat`, Value Low 1, Value High 1, NO Required Tags, no Condition |
+| Taking damage while channeling interrupts the channel immediately | `hit_taken_cancels_skills`, `flat`, Value Low 1, Value High 1, Required Tags `Type.Channel`, no Condition |
+
+**Each was dry run through `gen.enchantment_effects` in a temporary workbook holding the real sentence**, by
+the Python tests named above, and was carried through. No file in the repository was written.
+
+**`hit_taken_cancels_skills` is NOT in `FLAG_STATS` yet.** `test_every_flag_stat_is_still_used` refuses a flag
+no row grants, so the session that writes the rows adds it to `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` in the same change. Whether a row's value of 1 is
+refused without it was not tried.
+
+**It needs no entry in `CONDITIONED_STATS_WITH_AN_ASKER`** while its rows state no condition. A row that put a
+condition on it would be refused until it had one.
+
+---
+
 ## 2026-10-08 — Three sentences on channelling are built as five rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),

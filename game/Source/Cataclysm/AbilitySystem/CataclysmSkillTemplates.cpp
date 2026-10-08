@@ -324,6 +324,24 @@ void UCataclysmStrikeSkill::ActivateAbility(
 			return;
 		}
 
+		// A SPIN ENDED BY ITS OWN FIRST SWING DOES NOT GO ON SPINNING. Ruled
+		// 2026-10-08. `SwingOnce` above lands blows, and a blow can come back
+		// on the caster before it returns -- a retaliation, a reflected share --
+		// which under `hit_taken_cancels_skills` cancels this skill there and
+		// then: the engine ends an ability at once, even from inside its own
+		// call. Whatever ends a skill clears the timers it HOLDS, and these two
+		// are not set yet, so setting them now would start a spin on a skill
+		// that is over: nothing would clear them, and it would swing for its
+		// whole length and land its final hit.
+		//
+		// WHAT THIS CALL HAD ALREADY DONE STAYS DONE: the first swing, the
+		// ground and the terrain above. Only what was still to come is lost.
+		const bool bEndedByItsOwnFirstSwing = !IsActive();
+		if (bEndedByItsOwnFirstSwing)
+		{
+			return;
+		}
+
 		World->GetTimerManager().SetTimer(
 			RepeatTimer, this, &UCataclysmStrikeSkill::Repeat,
 			Params.Interval, /*bLoop=*/true, /*InFirstDelay=*/Params.Interval);
@@ -1119,6 +1137,22 @@ void UCataclysmStrikeSkill::EndAbility(
 		// -- so no route out of a hold can leave a timer behind to swing on
 		// behalf of somebody who is no longer there.
 		World->GetTimerManager().ClearTimer(HoldTimer);
+
+		// AND A SPIN STOPS SPINNING, BY NAME. Ruled 2026-10-08. `RepeatTimer`
+		// makes the next swing of a spin and `FinishTimer` its last and heaviest
+		// one, Pyroclasm's 300%; a spin cut short by a hit makes neither.
+		//
+		// THE ENGINE CLEARS THEM AS WELL, AND THIS DOES NOT LEAN ON THAT.
+		// `UGameplayAbility::EndAbility` clears every timer bound to the ability
+		// while the console variable `AbilitySystem.ClearAbilityTimers` is on,
+		// which it is by default; `ReturnTheWeapon` above records a guard proof
+		// that found as much. These two lines are what holds with it off.
+		//
+		// ON EVERY END AND NOT ONLY A CANCEL, as the two above are. An ordinary
+		// end is `Finish`, called by `FinishTimer` itself after it has cleared
+		// `RepeatTimer`, so there is nothing left for these to stop.
+		World->GetTimerManager().ClearTimer(RepeatTimer);
+		World->GetTimerManager().ClearTimer(FinishTimer);
 	}
 	bHolding = false;
 
@@ -1155,6 +1189,19 @@ void UCataclysmStrikeSkill::EndAbility(
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);
+}
+
+bool UCataclysmStrikeSkill::CanBeInterruptedByAHit() const
+{
+	// A SWORD STANDING IN THE GROUND IS NOT A SKILL BEING USED. See the header.
+	// Behind the row's own flag, for the reason `EndAbility` gives: `HeldBy`
+	// walks the level's actors, and only one row in the sheet plants anything.
+	if (Params.bDisarmsUntilRecalled && ACataclysmPlantedWeapon::HeldBy(Avatar()))
+	{
+		return false;
+	}
+
+	return Super::CanBeInterruptedByAHit();
 }
 
 // ==========================================================================
@@ -1707,6 +1754,17 @@ void UCataclysmProjectileSkill::BeginEmptyingTheRack()
 		return;
 	}
 
+	// A RACK ENDED BY ITS OWN FIRST THROW IS NOT EMPTIED. Ruled 2026-10-08, and
+	// the same guard `UCataclysmStrikeSkill` makes before it starts a spin: a
+	// throw with no speed lands at once, a blow can come back on the caster
+	// before it returns, and under `hit_taken_cancels_skills` that ends this
+	// skill there and then. The timers below would then be set on a skill that
+	// is over.
+	if (!IsActive())
+	{
+		return;
+	}
+
 	UWorld* World = GetWorld();
 	if (!World)
 	{
@@ -1748,6 +1806,46 @@ void UCataclysmProjectileSkill::StopThrowing()
 
 	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
 			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmProjectileSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// A RACK CUT SHORT THROWS NOTHING MORE, BY NAME. Ruled 2026-10-08.
+	// `ThrowTimer` throws the next axe of a rack and `RackTimer` closes it when
+	// its time is up; Butcher's Bill is the one row that has either.
+	//
+	// THE ENGINE CLEARS THEM AS WELL, as `UCataclysmStrikeSkill::EndAbility`
+	// says of its own, and this does not lean on that. An ordinary end is
+	// `StopThrowing`, which has cleared both already.
+	//
+	// THE AXES ALREADY THROWN FLY ON. Each is an actor of its own and nothing
+	// here reaches it. `FlightTimer` is declared and never set, so there is
+	// nothing of it to clear.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThrowTimer);
+		World->GetTimerManager().ClearTimer(RackTimer);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
+bool UCataclysmProjectileSkill::CanBeInterruptedByAHit() const
+{
+	// ONE SHOT, ALREADY IN THE AIR. See the header. `InFlight` is set only by a
+	// skill that throws once, and is cleared when that shot finishes; a rack
+	// never sets it, so a rack answers as every running skill does.
+	if (InFlight)
+	{
+		return false;
+	}
+
+	return Super::CanBeInterruptedByAHit();
 }
 
 int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
@@ -2930,6 +3028,16 @@ void UCataclysmMovementSkill::ActivateAbility(
 		// mention.
 		FlickerOnce();
 
+		// A FLICKER ENDED BY ITS OWN FIRST ARRIVAL MAKES NO MORE. Ruled
+		// 2026-10-08, and the same guard `UCataclysmStrikeSkill` makes before it
+		// starts a spin: the arrival above lands a blow, and a blow that came
+		// back on the caster may have ended this skill before it returned. The
+		// timers below would then be set on a skill that is over.
+		if (!IsActive())
+		{
+			return;
+		}
+
 		if (UWorld* World = GetWorld();
 			World && Params.Interval > 0.0f && Params.Duration > 0.0f)
 		{
@@ -2938,9 +3046,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 				Params.Interval, /*bLoop=*/true,
 				/*InFirstDelay=*/Params.Interval);
 
-			FTimerHandle Stop;
+			// IN A MEMBER, so `EndAbility` can clear it by name. See `StopTimer`.
 			World->GetTimerManager().SetTimer(
-				Stop, this, &UCataclysmMovementSkill::FinishFlicker,
+				StopTimer, this, &UCataclysmMovementSkill::FinishFlicker,
 				Params.Duration, /*bLoop=*/false);
 			return;
 		}
@@ -3417,10 +3525,50 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 		SecondsPerAdvanceStep, /*bLoop=*/true,
 		/*InFirstDelay=*/SecondsPerAdvanceStep);
 
-	FTimerHandle Stop;
+	// IN A MEMBER, so `EndAbility` can clear it by name. See `StopTimer`.
 	World->GetTimerManager().SetTimer(
-		Stop, this, &UCataclysmMovementSkill::FinishAdvance,
+		StopTimer, this, &UCataclysmMovementSkill::FinishAdvance,
 		Params.Duration, /*bLoop=*/false);
+}
+
+void UCataclysmMovementSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// A MOVE CUT SHORT STOPS WHERE IT IS, BY NAME. Ruled 2026-10-08.
+	// `AdvanceTimer` strikes what a walk has passed through, ten times a
+	// second; `FlickerTimer` makes a flicker's next arrival; `StopTimer` ends
+	// either at its `Duration`, and for a walk that end is `FinishAdvance`: the
+	// ground along the walk, a row's zones, its explosions and its pull. A move
+	// a hit interrupts does none of them.
+	//
+	// THE ENGINE CLEARS THEM AS WELL, as `UCataclysmStrikeSkill::EndAbility`
+	// says of its own, and this does not lean on that. An ordinary end is
+	// `FinishAdvance` or `FinishFlicker`, called by `StopTimer` itself after it
+	// has cleared the repeating one, so there is nothing left for these to stop.
+	//
+	// THE WALK ITSELF IS STOPPED BY THE ENGINE AND NOT HERE.
+	// `UGameplayAbility::EndAbility` tells every task of the ability that its
+	// owner has ended, and `UAbilityTask_ApplyRootMotionConstantForce::OnDestroy`
+	// then removes its root motion source from the movement component. The
+	// source was made with `ERootMotionFinishVelocityMode::SetVelocity` and a
+	// velocity of nought, which the movement component applies when it removes
+	// a source, so the character is left standing where the push had carried it
+	// rather than sliding on.
+	//
+	// EVERY OTHER MODE ARRIVES IN THE CALL THAT USED IT and is never found
+	// running between two calls, so there is nothing of theirs to stop.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(AdvanceTimer);
+		World->GetTimerManager().ClearTimer(FlickerTimer);
+		World->GetTimerManager().ClearTimer(StopTimer);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
 }
 
 void UCataclysmMovementSkill::AdvanceOneStep()
@@ -4229,6 +4377,35 @@ void UCataclysmSummonSkill::ActivateAbility(
 	// per actor and outlives the activation -- but the cap only works if the
 	// same instance is used next time, which InstancedPerActor guarantees.
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+void UCataclysmSummonSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// A RIFT CUT SHORT SPAWNS NOTHING MORE AND DOES NOT COLLAPSE, BY NAME. Ruled
+	// 2026-10-08. `SpawnTimer` tears the next imp out of an open rift and
+	// `CollapseTimer` closes it: the collapse's blow, and the destroying of the
+	// imps it made. Open the Rift is the one row that has either.
+	//
+	// SO THE IMPS AN INTERRUPTED RIFT ALREADY MADE ARE NOT DESTROYED, and its
+	// burning ground stays for its own length. Both are already in the world,
+	// which the ruling keeps; each imp still has the lifetime it was made with.
+	//
+	// THE ENGINE CLEARS THEM AS WELL, as `UCataclysmStrikeSkill::EndAbility`
+	// says of its own, and this does not lean on that. An ordinary end is
+	// `Collapse`, called by `CollapseTimer` itself after it has cleared
+	// `SpawnTimer`.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SpawnTimer);
+		World->GetTimerManager().ClearTimer(CollapseTimer);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
 }
 
 void UCataclysmSummonSkill::SpawnTick()

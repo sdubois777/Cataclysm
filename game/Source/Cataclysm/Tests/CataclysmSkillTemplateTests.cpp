@@ -86,6 +86,8 @@
 #include "Misc/ScopeExit.h"
 // For pinning the critical strike roll in the one test whose subject it is.
 #include "Tests/CataclysmTestWorld.h"
+// For saying a half was skipped where a swing has no wind-up to interrupt.
+#include "Tests/CataclysmTestSkip.h"
 
 /**
  * Tests for what the seven shared skill templates actually do.
@@ -25059,6 +25061,997 @@ bool FCataclysmTimedRowsCountApartTest::RunTest(const FString&)
 			  Lost(Three) + Lost(Five), 0.01f);
 	TestEqual(TEXT("and once the waiting row begins, it pays its own periods and the other row goes on paying"),
 			  Lost(Waiting), Lost(Three) + WaitingShare * 2.0f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A hit cuts short the skill its wearer is using. Ruled 2026-10-08 under the
+// owner's delegation, for two sentences: "Taking a hit interrupts any skill
+// currently being used" and "Taking damage while channeling interrupts the
+// channel immediately". One flag stat, `hit_taken_cancels_skills`, asked in
+// `UCataclysmAbilitySystemComponent::NoteHitTaken` once for each running skill
+// with that skill's own tags. Engine only; no row is authored, so every row
+// here is made by hand in the shape `docs/DECISIONS.md` of that day gives.
+//
+// A HIT IS A REAL BLOW in every test here: `UCataclysmSkillEffects::ApplyHit`
+// from another fighter, resolved by the wearer's own attribute set, which is
+// the one caller of the form of `NoteHitTaken` that does the work. What became
+// of each blow is read back and checked before anything is concluded from it.
+//
+// THE SKILL IN USE IS MOSTLY A STRIKE THAT SPINS FOR 3 SECONDS, the fixture the
+// channelling tests above use, because it stays running after it is used and a
+// test fighter has no wind-up. Two tests need a swing that WAITS to connect;
+// only a real player character has one, and only where its attack clips are
+// present, so each says so with `ReportSkippedHalf` where they are not.
+//
+// WHERE THE ACTORS STAND is said at the top of each test; no two are within a
+// metre of each other, and whoever throws the blow stands outside every reach.
+// TIME IS RUN WITH `RunClock` and every reading is taken a quarter or a half of
+// a second off the moments a spin's timers fall due.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmHitCancelsTest
+{
+	using namespace CataclysmChannellingTest;
+
+	/** The row either sentence makes: the flag at a flat 1, requiring `Type.Channel` or nothing. */
+	FCataclysmStatModifier TheFlag(bool bChannelOnly)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 1.0f;
+		if (bChannelOnly)
+		{
+			Row.RequiredTags.AddTag(ChannelTag());
+		}
+		return Row;
+	}
+
+	/** Wear that row and nothing else. */
+	void WearTheFlag(FScopedFighter& Who, bool bChannelOnly = false)
+	{
+		WearOne(Who, UCataclysmAbilitySystemComponent::HitTakenCancelsSkillsStat, TheFlag(bChannelOnly));
+	}
+
+	/** A spin of the same shape WITHOUT the channel tag, with no cooldown. */
+	UCataclysmStrikeSkill* GrantPlainSpin(FScopedFighter& Who, ECataclysmAbilitySlot Slot, const TCHAR* Name)
+	{
+		UCataclysmStrikeSkill* Spin = GrantSkill<UCataclysmStrikeSkill>(
+			Who, Slot, SpinParams, Name, TEXT("Element.Demonic, Type.Melee"));
+		if (Spin)
+		{
+			Spin->CooldownOverride = 0.0f;
+		}
+		return Spin;
+	}
+
+	/** One blow of the thrower's weapon damage on this actor, through the game's own hit path; what became of it. */
+	FCataclysmDamageResult BlowOn(const FScopedFighter& From, AActor* To)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 0.0f;
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From.Actor, To, 100.0f, FGameplayTagContainer(), Delivery, &Resolved);
+		return Resolved;
+	}
+
+	/** How many patches of burning ground lie within ten metres of a point. */
+	int32 GroundZonesNear(UWorld* World, const FVector& Where)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (FVector::Dist2D(It->GetActorLocation(), Where) < 10 * M)
+			{
+				++Count;
+			}
+		}
+		return Count;
+	}
+
+	/** What happened to one real player that used a strike and was hit before its swing connected. */
+	struct FWindUpOutcome
+	{
+		/** The world, the player and the strike were all made, and the strike was used. */
+		bool bUsed = false;
+		/** The swing was waiting to connect before the hit, so there was a wind-up to interrupt. */
+		bool bWaitedBeforeTheHit = false;
+		/** The blow thrown at the player was not evaded. */
+		bool bHitLanded = false;
+		bool bWaitingAfterTheHit = false;
+		bool bRunningAfterTheHit = false;
+		/** What the strike's target had lost two and a half seconds after the hit. */
+		float TargetLost = 0.0f;
+	};
+
+	/**
+	 * A real player character uses a strike in this slot, is hit before the swing connects, and the clock is then
+	 * run two and a half seconds, which is longer than any attack clip takes to connect.
+	 *
+	 * A WORLD OF ITS OWN FOR EACH CALL, so that a wearer and its control share nothing.
+	 *
+	 * STANDING: the player at the origin; the strike's target 2 m along X, inside its 3 m; whoever hits the player
+	 * 20 m along Y, outside it.
+	 */
+	FWindUpOutcome UseInAWindUpAndBeHit(ECataclysmAbilitySlot Slot, bool bWearsTheFlag)
+	{
+		FWindUpOutcome Outcome;
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return Outcome;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* System =
+			PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+		if (!System)
+		{
+			return Outcome;
+		}
+
+		// THE ROW IS WRITTEN BEFORE THE PAWN EXISTS, as the channelling tests above write theirs.
+		if (bWearsTheFlag)
+		{
+			FCataclysmStatInputs Line;
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(TheFlag(/*bChannelOnly=*/false));
+			TMap<FName, FCataclysmStatInputs> Stats;
+			Stats.Add(FName(UCataclysmAbilitySystemComponent::HitTakenCancelsSkillsStat), Line);
+			System->SetStatInputs(MoveTemp(Stats));
+		}
+
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!Character)
+		{
+			return Outcome;
+		}
+		Character->SetPlayerState(PlayerState);
+		Character->OnRep_PlayerState();
+
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), WeaponDamage);
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+
+		UCataclysmStrikeSkill* Chop = GrantSkillOn<UCataclysmStrikeSkill>(
+			System, Character, Slot, TEXT("Radius=3; Angle=360"), TEXT("Chop"),
+			TEXT("Element.Demonic, Type.Melee"));
+		if (!Chop)
+		{
+			return Outcome;
+		}
+
+		FScopedFighter Target(World, FVector(2 * M, 0, 0));
+		FScopedFighter Attacker(World, FVector(0, 20 * M, 0));
+		Defences(Target, 0.0f, 0.0f);
+
+		Outcome.bUsed = System->TryActivateAbility(Chop->GetCurrentAbilitySpecHandle(),
+												   /*bAllowRemoteActivation=*/false);
+		Outcome.bWaitedBeforeTheHit = Chop->IsWaitingForTheSwingToConnect();
+		if (!Outcome.bUsed || !Outcome.bWaitedBeforeTheHit)
+		{
+			return Outcome;
+		}
+
+		Outcome.bHitLanded = !BlowOn(Attacker, Character).bEvaded;
+		Outcome.bWaitingAfterTheHit = Chop->IsWaitingForTheSwingToConnect();
+		Outcome.bRunningAfterTheHit = Chop->IsActive();
+
+		CataclysmTestWorld::RunClock(World, 2.5f);
+		Outcome.TargetLost = Pool - Target.Health();
+		return Outcome;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsSpinStopsTest,
+	"Cataclysm.HitCancels.ASpinEndedFromOutsideMakesNoFurtherSwingAndNoFinalHitEvenWithTheEnginesTimerSweepOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A spin of 3 seconds, swinging every half second with a final hit, ended from outside straight after its first
+ * swing. Nothing in this test wears a row; it holds what `UCataclysmStrikeSkill::EndAbility` does to the spin's
+ * two timers, which is what a hit's cancel relies on.
+ *
+ * THE CONTROL is the same spin on a second fighter, left alone: over the same four and a quarter seconds it makes
+ * at least seven swings, its target loses more than six times what the first swing took, and it ends by itself.
+ *
+ * TWICE, AND THE SECOND TIME IS THE ONE THAT HOLDS THE REPAIR. The engine's `UGameplayAbility::EndAbility` clears
+ * every timer bound to an ability while the console variable `AbilitySystem.ClearAbilityTimers` is on, which is its
+ * default, so the first half passes whether or not the skill clears its own. The second half turns that variable
+ * off for its length and puts it back: there, only the skill's own two lines stop the spin.
+ *
+ * STANDING: the spinner at the origin with its target 2 m along X; the control 20 m along Y with its target 2 m
+ * along X from it. A spin reaches 3.5 m, so neither reaches the other pair.
+ */
+bool FCataclysmHitCancelsSpinStopsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Spinner(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter PlainTarget(World, FVector(2 * M, 20 * M, 0));
+	Defences(Spinner, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(PlainTarget, 0.0f, 0.0f);
+
+	UCataclysmStrikeSkill* Spin = GrantSpin(Spinner, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* PlainSpin = GrantSpin(Plain, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	if (!TestTrue(TEXT("set-up: both fighters were granted the spin"), Spin && PlainSpin))
+	{
+		return false;
+	}
+
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+
+	// BOTH SPINS BEGIN, and each makes its first swing as it does.
+	if (!TestTrue(TEXT("set-up: both spins are used and both are running"),
+				  Activate(Spinner, Spin) && Activate(Plain, PlainSpin) && Spin->IsActive() && PlainSpin->IsActive()))
+	{
+		return false;
+	}
+	const float FirstSwing = Lost(Target);
+	if (!TestTrue(TEXT("set-up: the first swing hurt its target"), FirstSwing > 1.0f)
+		|| !TestEqual(TEXT("set-up: the control's first swing took the same"), Lost(PlainTarget), FirstSwing, 0.01f))
+	{
+		return false;
+	}
+
+	CancelFromOutside(Spinner.AbilitySystem, Spin);
+	if (!TestFalse(TEXT("set-up: the spin was ended from outside"), Spin->IsActive()))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 4.25f);
+
+	TestEqual(TEXT("a spin ended after its first swing takes nothing more from its target in the next four seconds"),
+			  Lost(Target), FirstSwing, 0.01f);
+	TestEqual(TEXT("and has made the one swing and no other, the final hit included"), Spin->SwingsMade, 1);
+	TestFalse(TEXT("control: the same spin left alone has ended by its own timer"), PlainSpin->IsActive());
+	TestTrue(TEXT("control: and made at least seven swings, its final hit among them"), PlainSpin->SwingsMade >= 7);
+	TestTrue(TEXT("control: and its target lost more than six times what the first swing took"),
+			 Lost(PlainTarget) > FirstSwing * 6.0f);
+
+	// THE SAME AGAIN WITH THE ENGINE'S OWN SWEEP OF AN ENDED ABILITY'S TIMERS TURNED OFF.
+	IConsoleVariable* Sweep =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("AbilitySystem.ClearAbilityTimers"));
+	if (!TestNotNull(TEXT("set-up: the engine's console variable for clearing an ended ability's timers exists"),
+					 Sweep))
+	{
+		return false;
+	}
+	const int32 SweepWas = Sweep->GetInt();
+	const int32 SweepOff = 0;
+	Sweep->Set(SweepOff, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { Sweep->Set(SweepWas, ECVF_SetByConsole); };
+	if (!TestEqual(TEXT("set-up: the engine's sweep is off for the rest of this test"), Sweep->GetInt(), 0))
+	{
+		return false;
+	}
+
+	Target.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	Spinner.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	if (!TestTrue(TEXT("set-up: the spin is used again and is running"), Activate(Spinner, Spin) && Spin->IsActive()))
+	{
+		return false;
+	}
+	const float FirstSwingAgain = Lost(Target);
+	if (!TestTrue(TEXT("set-up: its first swing hurt its target again"), FirstSwingAgain > 1.0f))
+	{
+		return false;
+	}
+	CancelFromOutside(Spinner.AbilitySystem, Spin);
+	if (!TestFalse(TEXT("set-up: the spin was ended from outside again"), Spin->IsActive()))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 4.25f);
+
+	TestEqual(TEXT("with the engine's sweep off, the ended spin still takes nothing more from its target"),
+			  Lost(Target), FirstSwingAgain, 0.01f);
+	TestEqual(TEXT("and has still made the one swing and no other"), Spin->SwingsMade, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsAnySkillTest,
+	"Cataclysm.HitCancels.ALandedHitCutsShortTheWearersSkillAndGivesBackNeitherItsCostNorItsCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Taking a hit interrupts any skill currently being used": the flag with no Required Tags.
+ *
+ * FIRST, ON TEST FIGHTERS, WHAT A CANCEL COSTS. A wearer and a fighter with no row each use the same spin, with
+ * the Heavy slot's own cost and cooldown, and each is struck once. The wearer's spin is over and the other's is
+ * not. The wearer has spent exactly the mana the other spent, and its slot is on cooldown as the other's is: a
+ * cancel gives nothing back.
+ *
+ * THEN, ON A REAL PLAYER, THE SWING THAT WAS STILL WAITING TO CONNECT. A player wearing the flag uses a strike,
+ * is hit during the wind-up, and its target has lost nothing two and a half seconds later. THE CONTROL is a second
+ * player with no row, hit the same way: its swing goes on waiting, and its target is hurt when it connects. That
+ * half needs the player's attack clips; without them a swing lands as it is used and there is nothing to
+ * interrupt, so it is reported as skipped.
+ *
+ * STANDING, the fighters: the wearer at the origin, the fighter with no row 20 m along Y, whoever strikes them
+ * 20 m along -Y. Nobody is within a spin's 3.5 m of anybody. The players: said at `UseInAWindUpAndBeHit`.
+ */
+bool FCataclysmHitCancelsAnySkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	{
+		UWorld* World = MakeWorld();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedFighter Wearer(World, FVector::ZeroVector);
+		FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+		FScopedFighter Attacker(World, FVector(0, -20 * M, 0));
+		Defences(Wearer, 0.0f, 0.0f);
+		Defences(Plain, 0.0f, 0.0f);
+		WearTheFlag(Wearer);
+
+		UCataclysmStrikeSkill* WearerSpin = GrantSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+		UCataclysmStrikeSkill* PlainSpin = GrantSpin(Plain, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+		if (!TestTrue(TEXT("set-up: both fighters were granted the spin"), WearerSpin && PlainSpin))
+		{
+			return false;
+		}
+		// THE SLOT'S OWN COOLDOWN, which `GrantSpin` takes away so that its tests can use a spin twice.
+		WearerSpin->CooldownOverride = -1.0f;
+		PlainSpin->CooldownOverride = -1.0f;
+
+		const float WearerManaBefore = Wearer.Mana();
+		const float PlainManaBefore = Plain.Mana();
+		if (!TestTrue(TEXT("set-up: both spins are used and both are running"),
+					  Activate(Wearer, WearerSpin) && Activate(Plain, PlainSpin) && WearerSpin->IsActive()
+						  && PlainSpin->IsActive()))
+		{
+			return false;
+		}
+
+		const FCataclysmDamageResult OnWearer = BlowOn(Attacker, Wearer.Actor);
+		const FCataclysmDamageResult OnPlain = BlowOn(Attacker, Plain.Actor);
+		if (!TestTrue(TEXT("set-up: each fighter was struck and the blow reached its health"),
+					  !OnWearer.bEvaded && !OnPlain.bEvaded && Pool - Wearer.Health() > 1.0f
+						  && Pool - Plain.Health() > 1.0f))
+		{
+			return false;
+		}
+
+		TestFalse(TEXT("a landed hit ends the spin of a wearer of the flag"), WearerSpin->IsActive());
+		TestTrue(TEXT("control: the same hit leaves the spin of a fighter with no row running"),
+				 PlainSpin->IsActive());
+
+		const float PlainSpent = PlainManaBefore - Plain.Mana();
+		if (!TestTrue(TEXT("control: a spin that runs spends mana and puts its slot on cooldown"),
+					  PlainSpent > 0.0f && IsOnCooldown(Plain, ECataclysmAbilitySlot::Heavy)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("the interrupted spin's cost stays paid: the wearer spent what the control spent"),
+				  WearerManaBefore - Wearer.Mana(), PlainSpent, 0.001f);
+		TestTrue(TEXT("and its cooldown stays running"), IsOnCooldown(Wearer, ECataclysmAbilitySlot::Heavy));
+	}
+
+	// THE SWING THAT WAS STILL WAITING, on real players.
+	const FWindUpOutcome Worn = UseInAWindUpAndBeHit(ECataclysmAbilitySlot::Heavy, /*bWearsTheFlag=*/true);
+	const FWindUpOutcome Bare = UseInAWindUpAndBeHit(ECataclysmAbilitySlot::Heavy, /*bWearsTheFlag=*/false);
+	if (!TestTrue(TEXT("set-up: both players were built and each used its strike"), Worn.bUsed && Bare.bUsed))
+	{
+		return false;
+	}
+	if (!Worn.bWaitedBeforeTheHit || !Bare.bWaitedBeforeTheHit)
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this,
+			TEXT("the player's attack clips are not present, so a swing connects as it is used and there is no "
+				 "wind-up to interrupt. That a hit loses a swing still waiting to connect was NOT checked here."));
+		return true;
+	}
+	if (!TestTrue(TEXT("set-up: the blow thrown at each player landed"), Worn.bHitLanded && Bare.bHitLanded))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a hit in the wind-up leaves the wearer's swing no longer waiting to connect"),
+			  Worn.bWaitingAfterTheHit);
+	TestFalse(TEXT("and its strike no longer running"), Worn.bRunningAfterTheHit);
+	TestEqual(TEXT("so two and a half seconds on, its target has lost nothing"), Worn.TargetLost, 0.0f, 0.001f);
+	TestTrue(TEXT("control: a player with no row, hit the same way, is still waiting for its swing to connect"),
+			 Bare.bWaitingAfterTheHit && Bare.bRunningAfterTheHit);
+	TestTrue(TEXT("control: and two and a half seconds on, its swing has connected and hurt its target"),
+			 Bare.TargetLost > 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsChannelOnlyTest,
+	"Cataclysm.HitCancels.TheRowRequiringTheChannelTagEndsAChannelledSkillAndLeavesAnyOtherRunning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Taking damage while channeling interrupts the channel immediately": the flag requiring `Type.Channel`.
+ *
+ * ONE WEARER RUNNING TWO SPINS OF THE SAME SHAPE, one tagged `Type.Channel` and one not. A landed hit ends the
+ * channelled one, the character is no longer channelling, and the other goes on.
+ *
+ * THE CONTROL IS THE SAME WEARER AND THE SAME SPIN WITHOUT THE TAG, a moment later, wearing the row with no
+ * Required Tags instead: the next hit ends it. So the spin without the tag is one a hit CAN end, and what spared
+ * it the first time was the row's tag and nothing else.
+ *
+ * STANDING: the wearer at the origin; whoever strikes it 10 m along Y, outside a spin's 3.5 m.
+ */
+bool FCataclysmHitCancelsChannelOnlyTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Type.Channel is a tag this build knows"), ChannelTag().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(0, 10 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	WearTheFlag(Wearer, /*bChannelOnly=*/true);
+
+	UCataclysmStrikeSkill* Channelled = GrantSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Channelled Spin"));
+	UCataclysmStrikeSkill* Unchannelled = GrantPlainSpin(Wearer, ECataclysmAbilitySlot::Special, TEXT("Spin"));
+	if (!TestTrue(TEXT("set-up: a channelled spin and a spin without the tag were granted"),
+				  Channelled && Unchannelled)
+		|| !TestTrue(TEXT("set-up: both are used, both are running and the wearer is channelling"),
+					 Activate(Wearer, Channelled) && Activate(Wearer, Unchannelled) && Channelled->IsActive()
+						 && Unchannelled->IsActive() && Wearer.AbilitySystem->IsChannelling()))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: a blow lands on the wearer and reaches its health"),
+				  !BlowOn(Attacker, Wearer.Actor).bEvaded && Pool - Wearer.Health() > 1.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a landed hit ends the channelled spin"), Channelled->IsActive());
+	TestFalse(TEXT("and the wearer is no longer channelling"), Wearer.AbilitySystem->IsChannelling());
+	TestTrue(TEXT("and the spin without the tag goes on running"), Unchannelled->IsActive());
+
+	// THE CONTROL: the row with no Required Tags reaches the spin the channel row left alone.
+	WearTheFlag(Wearer, /*bChannelOnly=*/false);
+	if (!TestFalse(TEXT("set-up: a second blow lands on the wearer"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: under the row with no Required Tags, the next hit ends the spin without the tag"),
+			  Unchannelled->IsActive());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsLeavesAloneTest,
+	"Cataclysm.HitCancels.ASelfBuffAnAuraAndAPlantedWeaponAreLeftRunningByAHitThatEndsASpin",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * What a hit does not interrupt, one of each, on a wearer of the flag with no Required Tags: a self buff in its
+ * duration, an aura that is on, and a strike whose weapon stands in the ground.
+ *
+ * THE CONTROL IS A SPIN THE SAME WEARER IS ALSO RUNNING, which the same hit ends. So the three were left alone by
+ * what they are, and not because the hit did nothing.
+ *
+ * STANDING: the wearer at the origin; whoever strikes it 25 m along Y, outside the aura's 10 m, the buff's 15 m
+ * and the spin's 3.5 m.
+ */
+bool FCataclysmHitCancelsLeavesAloneTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(0, 25 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	WearTheFlag(Wearer);
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Wearer, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"));
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Wearer, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"), TEXT("Conflagration"));
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Wearer, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	UCataclysmStrikeSkill* Spin = GrantPlainSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	if (!TestTrue(TEXT("set-up: a self buff, an aura, a planting strike and a spin were granted"),
+				  Buff && Aura && Plant && Spin))
+	{
+		return false;
+	}
+
+	// THE PLANT IS USED LAST, so that nothing here is asked for while the wearer's weapon is in the ground. Each is
+	// then read again together, so that one of them ending another would show here and not as a result below.
+	if (!TestTrue(TEXT("set-up: the self buff is used"), Activate(Wearer, Buff))
+		|| !TestTrue(TEXT("set-up: the aura is switched on"), Activate(Wearer, Aura))
+		|| !TestTrue(TEXT("set-up: the spin is used"), Activate(Wearer, Spin))
+		|| !TestTrue(TEXT("set-up: the planting strike is used"), Activate(Wearer, Plant))
+		|| !TestTrue(TEXT("set-up: all four are running and the weapon stands in the ground"),
+					 Buff->IsActive() && Aura->IsActive() && Spin->IsActive() && Plant->IsActive()
+						 && ACataclysmPlantedWeapon::HeldBy(Wearer.Actor) != nullptr))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: a blow lands on the wearer and reaches its health"),
+				  !BlowOn(Attacker, Wearer.Actor).bEvaded && Pool - Wearer.Health() > 1.0f))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("control: the hit ended the spin the same wearer was running"), Spin->IsActive());
+	TestTrue(TEXT("a self buff in its duration is still running after the hit"), Buff->IsActive());
+	TestTrue(TEXT("an aura that is on is still on after the hit"), Aura->IsActive());
+	TestTrue(TEXT("a strike whose weapon stands in the ground is still running after the hit"), Plant->IsActive());
+	TestNotNull(TEXT("and the weapon is still standing"), ACataclysmPlantedWeapon::HeldBy(Wearer.Actor));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsBasicAttackTest,
+	"Cataclysm.HitCancels.ABasicAttackInItsWindUpIsCutShortLikeAnyOtherSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The basic attack is interrupted like any other skill; the skill lock's exemption of it is not copied here.
+ *
+ * A REAL PLAYER wearing the flag uses a strike in the basic attack slot and is hit during the wind-up: the swing
+ * is lost and its target has lost nothing two and a half seconds later. THE CONTROL is a player with no row, whose
+ * basic attack connects after the same hit.
+ *
+ * THE WHOLE TEST NEEDS A WIND-UP, which only the player's attack clips give. Without them it is reported as
+ * skipped: on a test fighter a basic attack lands as it is used and is never found running.
+ *
+ * STANDING: said at `UseInAWindUpAndBeHit`.
+ */
+bool FCataclysmHitCancelsBasicAttackTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const FWindUpOutcome Worn = UseInAWindUpAndBeHit(ECataclysmAbilitySlot::BasicAttack, /*bWearsTheFlag=*/true);
+	const FWindUpOutcome Bare = UseInAWindUpAndBeHit(ECataclysmAbilitySlot::BasicAttack, /*bWearsTheFlag=*/false);
+	if (!TestTrue(TEXT("set-up: both players were built and each used its basic attack"), Worn.bUsed && Bare.bUsed))
+	{
+		return false;
+	}
+	if (!Worn.bWaitedBeforeTheHit || !Bare.bWaitedBeforeTheHit)
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this,
+			TEXT("the player's attack clips are not present, so a basic attack connects as it is used and is "
+				 "never found in a wind-up. That a hit interrupts a basic attack was NOT checked here."));
+		return true;
+	}
+	if (!TestTrue(TEXT("set-up: the blow thrown at each player landed"), Worn.bHitLanded && Bare.bHitLanded))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a hit in the wind-up leaves the wearer's basic attack no longer waiting to connect"),
+			  Worn.bWaitingAfterTheHit);
+	TestFalse(TEXT("and no longer running"), Worn.bRunningAfterTheHit);
+	TestEqual(TEXT("so two and a half seconds on, its target has lost nothing"), Worn.TargetLost, 0.0f, 0.001f);
+	TestTrue(TEXT("control: the basic attack of a player with no row connects after the same hit"),
+			 Bare.bWaitingAfterTheHit && Bare.bRunningAfterTheHit && Bare.TargetLost > 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsWhichBlowsTest,
+	"Cataclysm.HitCancels.AnEvadedBlowAndATickDoNotInterruptAndABlockedBlowAndOneTheShieldTookWholeDo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Only a hit that LANDED interrupts. Four blows on one wearer of the flag, each read back before anything is
+ * concluded from it.
+ *
+ * IN ORDER, the two that do not interrupt first, on one running spin: a blow the wearer evades, and one tick of a
+ * burn another fighter laid on it, which takes health. Then a blow the wearer blocks, which ends the spin. The
+ * spin is used again, and a blow the wearer's energy shield takes whole, with nothing reaching health, ends that
+ * one.
+ *
+ * THE TWO THAT INTERRUPT ARE THE CONTROLS FOR THE TWO THAT DO NOT, and the other way about: it is the same wearer,
+ * the same row and the same spin throughout.
+ *
+ * STANDING: the wearer at the origin; whoever strikes it 10 m along Y, outside a spin's 3.5 m.
+ */
+bool FCataclysmHitCancelsWhichBlowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(0, 10 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	WearTheFlag(Wearer);
+
+	UCataclysmStrikeSkill* Spin = GrantPlainSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	if (!TestNotNull(TEXT("set-up: the wearer was granted the spin"), Spin)
+		|| !TestTrue(TEXT("set-up: the spin is used and is running"), Activate(Wearer, Spin) && Spin->IsActive()))
+	{
+		return false;
+	}
+
+	// AN EVADED BLOW.
+	Wearer.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	const bool bWasEvaded = BlowOn(Attacker, Wearer.Actor).bEvaded;
+	Wearer.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	if (!TestTrue(TEXT("set-up: the first blow was evaded"), bWasEvaded))
+	{
+		return false;
+	}
+	TestTrue(TEXT("an evaded blow does not interrupt"), Spin->IsActive());
+
+	// A TICK OF DAMAGE OVER TIME, laid by somebody else and taking health.
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	const float HealthBeforeTheTick = Wearer.Health();
+	if (!TestTrue(TEXT("set-up: a burn is laid on the wearer by another fighter"),
+				  UCataclysmSkillEffects::ApplyDamageOverTime(Attacker.Actor, Wearer.Actor, /*DamagePerTick=*/10.0f,
+															  /*DurationSeconds=*/4.0f, Burn,
+															  /*bScalesWithInstigator=*/false))
+		|| !TestEqual(TEXT("set-up: one tick of it runs"),
+					  Wearer.AbilitySystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1)
+		|| !TestTrue(TEXT("set-up: and takes health"), Wearer.Health() < HealthBeforeTheTick))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a tick of damage over time does not interrupt"), Spin->IsActive());
+
+	// A BLOCKED BLOW.
+	Wearer.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
+	const FCataclysmDamageResult Blocked = BlowOn(Attacker, Wearer.Actor);
+	Wearer.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	if (!TestTrue(TEXT("set-up: the next blow was blocked and not evaded"), Blocked.bBlocked && !Blocked.bEvaded))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a blocked blow interrupts"), Spin->IsActive());
+
+	// A BLOW THE ENERGY SHIELD TAKES WHOLE.
+	Wearer.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	if (!TestTrue(TEXT("set-up: the spin is used again and is running"), Activate(Wearer, Spin) && Spin->IsActive()))
+	{
+		return false;
+	}
+	Wearer.Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 1000.0f);
+	Wearer.Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 1000.0f);
+	const FCataclysmDamageResult Shielded = BlowOn(Attacker, Wearer.Actor);
+	if (!TestTrue(TEXT("set-up: the energy shield took the whole of the last blow and none reached health"),
+				  !Shielded.bEvaded && Shielded.AbsorbedByShield > 1.0f && Shielded.DealtToHealth <= 0.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a blow the energy shield takes whole interrupts"), Spin->IsActive());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsOwnBlowTest,
+	"Cataclysm.HitCancels.AHitWhoseAttackerIsTheWearerDoesNotInterrupt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A hit the wearer deals to itself does not interrupt it.
+ *
+ * THE WEARER STRIKES ITSELF through the same hit path, the blow reaches its health, and its spin goes on. THE
+ * CONTROL is the next blow, thrown by another fighter at the same wearer, which ends the spin.
+ *
+ * STANDING: the wearer at the origin; the other fighter 10 m along Y, outside a spin's 3.5 m.
+ */
+bool FCataclysmHitCancelsOwnBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(0, 10 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	WearTheFlag(Wearer);
+
+	UCataclysmStrikeSkill* Spin = GrantPlainSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	if (!TestNotNull(TEXT("set-up: the wearer was granted the spin"), Spin)
+		|| !TestTrue(TEXT("set-up: the spin is used and is running"), Activate(Wearer, Spin) && Spin->IsActive()))
+	{
+		return false;
+	}
+
+	const float HealthBeforeItsOwnBlow = Wearer.Health();
+	if (!TestTrue(TEXT("set-up: the wearer's blow on itself lands and reaches its health"),
+				  !BlowOn(Wearer, Wearer.Actor).bEvaded && Wearer.Health() < HealthBeforeItsOwnBlow - 1.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a hit whose attacker is the wearer does not interrupt"), Spin->IsActive());
+
+	if (!TestFalse(TEXT("set-up: another fighter's blow on the wearer lands"),
+				   BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: the same blow thrown by another fighter ends the spin"), Spin->IsActive());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsMoveAndShotTest,
+	"Cataclysm.HitCancels.AnInterruptedWalkStepsNoFurtherAndLeavesNoGroundAndAShotAlreadyInTheAirStillLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * What a cancel loses and what it keeps, for a move and for a shot.
+ *
+ * A WALK. A charge that lasts 3 seconds and leaves ground along its walk when it ends, on a wearer of the flag
+ * and on a fighter with no row. Each is moved 2 m by hand, as the movement component would move it, and the clock
+ * is run 0.45 seconds so that each has made searches. Each is then struck. The wearer's walk is over: four and a
+ * quarter seconds later it has made no further search and no ground lies near it. THE CONTROL went on searching,
+ * ended by its own timer, and left its ground.
+ *
+ * WHAT THIS CANNOT SHOW: that the character itself stops. A test fighter has no movement component, so nothing
+ * pushes it; `UCataclysmMovementSkill::EndAbility` says where the engine stops the push.
+ *
+ * A SHOT. A third wearer throws a projectile with a speed, so it is an actor in the air, and is struck while it
+ * flies. The skill that threw it is not ended, the shot flies on and its target is hurt when it arrives. THE
+ * CONTROL is a spin the same wearer is running, which the same hit ends.
+ *
+ * STANDING: the walking wearer at the origin, the walking control 40 m along Y, the thrower 80 m along Y with its
+ * target 6 m along X from it, and whoever strikes them 40 m along -Y. Each walker ends 2 m along X from where it
+ * began. A walk reaches 2.5 m, a spin 3.5 m and the throw 12 m along X, so nobody reaches anybody but the
+ * thrower its target.
+ */
+bool FCataclysmHitCancelsMoveAndShotTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+	using namespace CataclysmProjectileTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Walker(World, FVector::ZeroVector);
+	FScopedFighter PlainWalker(World, FVector(0, 40 * M, 0));
+	FScopedFighter Thrower(World, FVector(0, 80 * M, 0));
+	FScopedFighter ShotAt(World, FVector(6 * M, 80 * M, 0));
+	FScopedFighter Attacker(World, FVector(0, -40 * M, 0));
+	Defences(Walker, 0.0f, 0.0f);
+	Defences(PlainWalker, 0.0f, 0.0f);
+	Defences(Thrower, 0.0f, 0.0f);
+	Defences(ShotAt, 0.0f, 0.0f);
+	WearTheFlag(Walker);
+	WearTheFlag(Thrower);
+
+	// A WALK.
+	const TCHAR* const WalkParams =
+		TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=3; GroundRadius=1.5; GroundDuration=4; GroundPercent=25");
+	UCataclysmMovementSkill* Walk = GrantSkill<UCataclysmMovementSkill>(
+		Walker, ECataclysmAbilitySlot::Movement, WalkParams, TEXT("Advance"));
+	UCataclysmMovementSkill* PlainWalk = GrantSkill<UCataclysmMovementSkill>(
+		PlainWalker, ECataclysmAbilitySlot::Movement, WalkParams, TEXT("Advance"));
+	if (!TestTrue(TEXT("set-up: both walkers were granted the advance"), Walk && PlainWalk)
+		|| !TestTrue(TEXT("set-up: both advances are used and both are running"),
+					 Activate(Walker, Walk) && Activate(PlainWalker, PlainWalk) && Walk->IsActive()
+						 && PlainWalk->IsActive()))
+	{
+		return false;
+	}
+
+	Walker.Actor->SetActorLocation(Walker.Actor->GetActorLocation() + FVector(2 * M, 0, 0));
+	PlainWalker.Actor->SetActorLocation(PlainWalker.Actor->GetActorLocation() + FVector(2 * M, 0, 0));
+	CataclysmTestWorld::RunClock(World, 0.45f);
+	const int32 StepsAtTheHit = Walk->StepsTaken;
+	const int32 PlainStepsAtTheHit = PlainWalk->StepsTaken;
+	if (!TestTrue(TEXT("set-up: 0.45 seconds in, both advances have made searches and are still running"),
+				  StepsAtTheHit > 0 && PlainStepsAtTheHit > 0 && Walk->IsActive() && PlainWalk->IsActive())
+		|| !TestTrue(TEXT("set-up: a blow lands on each walker"),
+					 !BlowOn(Attacker, Walker.Actor).bEvaded && !BlowOn(Attacker, PlainWalker.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a landed hit ends the wearer's walk"), Walk->IsActive());
+
+	CataclysmTestWorld::RunClock(World, 4.25f);
+
+	TestEqual(TEXT("an interrupted walk makes no further search for what it passed"), Walk->StepsTaken,
+			  StepsAtTheHit);
+	TestEqual(TEXT("and leaves none of the ground a finished walk leaves"),
+			  GroundZonesNear(World, Walker.Actor->GetActorLocation()), 0);
+	TestTrue(TEXT("control: the walk of a fighter with no row went on searching after the same hit"),
+			 PlainWalk->StepsTaken > PlainStepsAtTheHit);
+	TestFalse(TEXT("control: and ended by its own timer"), PlainWalk->IsActive());
+	TestTrue(TEXT("control: and left its ground where it walked"),
+			 GroundZonesNear(World, PlainWalker.Actor->GetActorLocation()) > 0);
+
+	// A SHOT.
+	UCataclysmProjectileSkill* Throw = GrantSkill<UCataclysmProjectileSkill>(
+		Thrower, ECataclysmAbilitySlot::Special, TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"),
+		TEXT("Emberhurl"));
+	UCataclysmStrikeSkill* Spin = GrantPlainSpin(Thrower, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	if (!TestTrue(TEXT("set-up: the thrower was granted a throw and a spin"), Throw && Spin)
+		|| !TestTrue(TEXT("set-up: both are used and both are running"),
+					 Activate(Thrower, Throw) && Activate(Thrower, Spin) && Throw->IsActive() && Spin->IsActive()))
+	{
+		return false;
+	}
+	ACataclysmProjectile* Shot = Throw->InFlight;
+	if (!TestNotNull(TEXT("set-up: the throw put a shot in the air"), Shot))
+	{
+		return false;
+	}
+	FlyFor(Shot, 3);
+	const float ShotAtBefore = ShotAt.Health();
+	if (!TestTrue(TEXT("set-up: three frames on, the shot is still flying and has not reached its target"),
+				  !Shot->bFinished && ShotAtBefore >= Pool - 0.001f)
+		|| !TestFalse(TEXT("set-up: a blow lands on the thrower"), BlowOn(Attacker, Thrower.Actor).bEvaded))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("control: the hit ended the spin the thrower was running"), Spin->IsActive());
+	TestTrue(TEXT("the skill whose one shot is in the air is not ended by the hit"), Throw->IsActive());
+	TestFalse(TEXT("and the shot is still flying"), Shot->bFinished);
+
+	FlyToCompletion(Shot);
+	TestTrue(TEXT("a shot launched before the hit still lands on its target"), ShotAt.Health() < ShotAtBefore - 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsOrderTest,
+	"Cataclysm.HitCancels.ASkillStartedInAnswerToTheHitIsNotCutShortByThatHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The cancel comes BEFORE the `hit_taken` event is raised, so whatever answers the hit by starting a skill keeps
+ * it.
+ *
+ * NO ROW ACTION STARTS A SKILL ON `hit_taken` TODAY, so this cannot be a hand-made row: the pool actions a hit
+ * fires grant, drain, stack and lay statuses, and the one that uses a held skill fires only on an event that
+ * names a skill. What stands in for one is a listener on the component's own `OnActionEvent`, which
+ * `ActOnEvent` announces before any row acts: when it hears `hit_taken` it uses a second spin.
+ *
+ * ONE HIT, TWO SPINS. The one running when the hit landed is ended. The one the listener started in answer to
+ * that same hit is running afterwards. With the cancel after the event, the second would have been collected
+ * with the first.
+ *
+ * STANDING: the wearer at the origin; whoever strikes it 10 m along Y, outside a spin's 3.5 m.
+ */
+bool FCataclysmHitCancelsOrderTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(0, 10 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	WearTheFlag(Wearer);
+
+	UCataclysmStrikeSkill* Running = GrantPlainSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* Answer = GrantPlainSpin(Wearer, ECataclysmAbilitySlot::Special, TEXT("Answering Spin"));
+	if (!TestTrue(TEXT("set-up: the wearer was granted two spins"), Running && Answer)
+		|| !TestTrue(TEXT("set-up: the first is used and is running, and the second is not"),
+					 Activate(Wearer, Running) && Running->IsActive() && !Answer->IsActive()))
+	{
+		return false;
+	}
+
+	int32 TimesHeard = 0;
+	UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+	const FGameplayAbilitySpecHandle AnswerHandle = Answer->GetCurrentAbilitySpecHandle();
+	const FDelegateHandle Listening = System->OnActionEvent.AddLambda(
+		[System, AnswerHandle, &TimesHeard](FName Raised)
+		{
+			if (Raised == FName(TEXT("hit_taken")))
+			{
+				++TimesHeard;
+				System->TryActivateAbility(AnswerHandle, /*bAllowRemoteActivation=*/false);
+			}
+		});
+	const bool bLanded = !BlowOn(Attacker, Wearer.Actor).bEvaded;
+	System->OnActionEvent.Remove(Listening);
+
+	if (!TestTrue(TEXT("set-up: one blow landed on the wearer and its hit_taken event was heard once"),
+				  bLanded && TimesHeard == 1))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: the spin running when the hit landed was ended by it"), Running->IsActive());
+	TestTrue(TEXT("the spin started in answer to that hit is still running after it"), Answer->IsActive());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsOwnSwingTest,
+	"Cataclysm.HitCancels.ASpinCutShortByTheRetaliationForItsOwnFirstSwingNeverGoesOnSpinning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A hit that lands on the wearer from inside its own blow. An enemy that retaliates strikes back in the same call
+ * as the swing that provoked it, so the wearer's spin is cancelled while its first swing is still being made.
+ *
+ * THE ENGINE ENDS AN ABILITY AT ONCE EVEN FROM INSIDE ITS OWN CALL, so when that first swing returns the spin is
+ * over, and what it holds has been cleared. The two timers that make the rest of a spin are set AFTER the first
+ * swing; set on a spin that is over, nothing would clear them and it would swing for its whole length.
+ * `UCataclysmStrikeSkill` asks whether it is still running before it sets them, and this is the test of that
+ * question.
+ *
+ * THE WEARER'S SPIN is over as soon as it is used, has made one swing four and a quarter seconds later, and its
+ * target has lost what that one swing took. THE CONTROL is a fighter with no row spinning at a retaliating target
+ * of its own: it is struck back just the same, goes on spinning, and makes at least seven swings.
+ *
+ * STANDING: the wearer at the origin with its retaliating target 2 m along X; the control 20 m along Y with its
+ * own 2 m along X from it. A spin reaches 3.5 m, so neither reaches the other pair.
+ */
+bool FCataclysmHitCancelsOwnSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Thorned(World, FVector(2 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter PlainThorned(World, FVector(2 * M, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Thorned, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(PlainThorned, 0.0f, 0.0f);
+	Thorned.Set(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 50.0f);
+	PlainThorned.Set(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 50.0f);
+	WearTheFlag(Wearer);
+
+	UCataclysmStrikeSkill* WearerSpin = GrantPlainSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* PlainSpin = GrantPlainSpin(Plain, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	if (!TestTrue(TEXT("set-up: both fighters were granted the spin"), WearerSpin && PlainSpin)
+		|| !TestTrue(TEXT("set-up: both spins are used"), Activate(Wearer, WearerSpin) && Activate(Plain, PlainSpin)))
+	{
+		return false;
+	}
+
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	const float FirstSwing = Lost(Thorned);
+	if (!TestTrue(TEXT("set-up: each first swing hurt its target"), FirstSwing > 1.0f && Lost(PlainThorned) > 1.0f)
+		|| !TestTrue(TEXT("set-up: and each target struck back in the same call, taking health from its attacker"),
+					 Lost(Wearer) > 1.0f && Lost(Plain) > 1.0f))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a wearer struck back for its own first swing is no longer spinning when that swing returns"),
+			  WearerSpin->IsActive());
+	TestTrue(TEXT("control: a fighter with no row, struck back the same way, is still spinning"),
+			 PlainSpin->IsActive());
+
+	CataclysmTestWorld::RunClock(World, 4.25f);
+
+	TestEqual(TEXT("the wearer's spin makes no swing after the one that ended it"), WearerSpin->SwingsMade, 1);
+	TestEqual(TEXT("and its target loses nothing more in the next four seconds"), Lost(Thorned), FirstSwing, 0.01f);
+	TestTrue(TEXT("control: the spin with no row went on to make at least seven swings"),
+			 PlainSpin->SwingsMade >= 7);
 	return true;
 }
 
