@@ -3716,6 +3716,18 @@ enum class ECataclysmAilmentRider : uint8
 	 * `UCataclysmSkillEffects::SpreadOnApplication`.
 	 */
 	SpreadOnApplication UMETA(DisplayName = "Spread on application, how many"),
+
+	/**
+	 * Taken off the carrier's MAXIMUM HEALTH while it carries the ailment, and
+	 * given back when the ailment ends: "Enemies with Necrosis have 1%-2% less
+	 * maximum health". Ruled 2026-10-08. Health above the lowered maximum is
+	 * brought down to it and is not given back. NOT READ WHERE A BLOW IS
+	 * WORKED OUT, as the others carried are: the maximum is rewritten when the
+	 * number is received, when another applier's replaces it and when the
+	 * ailment ends. See
+	 * `UCataclysmAbilitySystemComponent::RewriteMaximumHealthForAilments`.
+	 */
+	MaxHealthRemoved UMETA(DisplayName = "Maximum health, removed"),
 };
 
 /**
