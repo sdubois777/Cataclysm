@@ -800,8 +800,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-08, from 570 over 481: two rows on two enchantments.
 #: AND 573 OVER 484 SINCE THE CAST DELAY ROW,
 #: issue #1833, 2026-10-08, from 572 over 483: one row on one enchantment.
-AUTHORED_ROWS = 573
-AUTHORED_ENCHANTMENTS = 484
+#: AND 575 OVER 486 SINCE THE NECROSIS ROW AND THE MINIONS' DEFENCES ROW,
+#: issue #1833, 2026-10-08, from 573 over 484: two rows on two enchantments.
+AUTHORED_ROWS = 575
+AUTHORED_ENCHANTMENTS = 486
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
