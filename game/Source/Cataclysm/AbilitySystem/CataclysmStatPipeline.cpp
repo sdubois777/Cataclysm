@@ -137,6 +137,9 @@ namespace
 		{ TEXT("mana_below"),                   ECataclysmStatCondition::ManaBelowPercent },
 		{ TEXT("while_under_damage_over_time"), ECataclysmStatCondition::WhileUnderDamageOverTime },
 		{ TEXT("in_combat_for_seconds"),        ECataclysmStatCondition::InCombatForSeconds },
+		{ TEXT("while_channelling"),            ECataclysmStatCondition::WhileChannelling },
+		{ TEXT("channelling_for_under_seconds"),
+												ECataclysmStatCondition::ChannellingForUnderSeconds },
 	};
 
 	struct FNamedStatScale
@@ -297,8 +300,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 	case ECataclysmStatCondition::TargetStandsInYourZone:
 	case ECataclysmStatCondition::WhileUnderDamageOverTime:
+	case ECataclysmStatCondition::WhileChannelling:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty says
+		// nothing for a number to be compared against. Each of the thirty-one says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -434,7 +438,16 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// with nothing written to the character; a combat's length is a clock.
 	case C::WhileUnderDamageOverTime:
 	case C::InCombatForSeconds:
+	// AND THE WINDOW AT THE START OF A CHANNEL, ruled 2026-10-08. It opens when
+	// a channelled skill begins, which is announced, and closes when its seconds
+	// run out, which nothing announces; the closing edge is what puts it here.
+	case C::ChannellingForUnderSeconds:
 		return EOn::Time;
+
+	// WHETHER THE CHARACTER IS CHANNELLING AT ALL. Ruled 2026-10-08. Both of its
+	// edges are announced by `UCataclysmAbilitySystemComponent::OnChannellingChanged`.
+	case C::WhileChannelling:
+		return EOn::Channelling;
 
 	case C::WhileMoving:
 	case C::WhileStationary:
@@ -706,6 +719,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// is the parent of the tag the case above asks for, read on the character
 		// itself; `TargetCarriesADot` below asks the same of the character struck.
 		return State.bIsUnderDamageOverTime;
+
+	case ECataclysmStatCondition::WhileChannelling:
+		// NO THRESHOLD, SO `Value` IS NOT READ, and nothing to refuse as unknown,
+		// for the reasons `WhileBleeding` gives above. Ruled 2026-10-08. The
+		// field is written in one place, `CurrentConditions`, from the count of
+		// channelled skills the character's ability system keeps.
+		return State.bIsChannelling;
 
 	case ECataclysmStatCondition::ClassResourceAtMaximum:
 		// NO THRESHOLD, SO `Value` IS NOT READ, the same as the predicate above.
@@ -1032,6 +1052,19 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// `StationaryForSeconds` makes. Ruled 2026-10-07. Negative is out of
 		// combat, or no character to read, and refuses whatever the value.
 		return State.SecondsInCombat >= 0.0f && State.SecondsInCombat >= Value;
+
+	case ECataclysmStatCondition::ChannellingForUnderSeconds:
+		// CHANNELLING, AND FOR STRICTLY LESS THAN THAT LONG. Ruled 2026-10-08:
+		// "during the first 2 seconds" is under 2, so exactly 2 seconds in refuses
+		// and a blow landing on the mark is whole. The other seconds conditions
+		// compare AT LEAST; this one is a window that closes.
+		//
+		// `bIsChannelling` IS ASKED FIRST AND IS NOT REDUNDANT. A state built by
+		// hand may hold seconds with the flag clear, and a character that is not
+		// channelling holds nothing whatever that figure says. A negative reading
+		// refuses as well, the way every unread clock does.
+		return State.bIsChannelling && State.SecondsChannelling >= 0.0f
+			&& State.SecondsChannelling < Value;
 
 	case ECataclysmStatCondition::OutOfCombat:
 		// Issue #1815. Its own reading rather than `!InCombat`, so a lookup with

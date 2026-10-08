@@ -329,6 +329,19 @@ public:
 	float ThisUseHitsAllWithinCm = 0.0f;
 
 	/**
+	 * Set, the use now running was counted as a channelled skill on its
+	 * character's ability system, and `EndAbility` owes that system one
+	 * `NoteChannelEnded`. Ruled 2026-10-08.
+	 *
+	 * WRITTEN IN `CommitAndBegin` AND CLEARED IN `EndAbility`, AND NOWHERE ELSE.
+	 * It is what makes the count exact: a use the cost or the cooldown refused
+	 * returns before it is set, so its `EndAbility` takes nothing away, and a
+	 * second `EndAbility` on a use that has ended finds it clear.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	bool bThisUseCountedAsChannel = false;
+
+	/**
 	 * Whether a use of this skill delivers damage itself, through its own hits
 	 * or ground, and so spends next-use charges. Issue #1833, phase 2.
 	 *

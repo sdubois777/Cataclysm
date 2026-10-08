@@ -2688,6 +2688,26 @@ bool UCataclysmSkillEffects::IsPinned(const AActor* Actor)
 	return HasTag(Actor, PinnedTag());
 }
 
+const TCHAR* UCataclysmSkillEffects::CannotWalkStat = TEXT("cannot_walk");
+
+bool UCataclysmSkillEffects::CannotWalkByARow(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Walker =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Actor));
+	if (!Walker)
+	{
+		return false;
+	}
+
+	// THE FALLBACK IS NOUGHT: there is no gameplay attribute, and a character
+	// with no such row answers nought and walks. NO TAGS: walking is not a
+	// skill. The row's condition is judged inside the lookup, from the
+	// character's state now, which is what makes "while channeling" true only
+	// while it is.
+	return Walker->StatForSkill(FName(CannotWalkStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
 bool UCataclysmSkillEffects::IsStaggered(const AActor* Actor)
 {
 	return HasTag(Actor, StaggeredTag());

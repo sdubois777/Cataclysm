@@ -43,7 +43,11 @@ from test_condition_lists_agree_with_the_code import (  # noqa: E402,F401  (fixt
 UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
          "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
          "sixteen", "seventeen", "eighteen", "nineteen"]
-TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60}
+TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+        # ADDED 2026-10-08, when the count of conditions reached sixty-nine and
+        # the header's sentence had to say "a seventieth": the table stopped at
+        # sixty and the check raised KeyError on the word.
+        "seventy": 70, "eighty": 80, "ninety": 90}
 ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
             "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9}
 

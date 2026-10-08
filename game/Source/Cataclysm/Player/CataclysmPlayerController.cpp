@@ -317,15 +317,38 @@ bool ACataclysmPlayerController::PawnCannotWalk() const
 	// them there would take the player's other skills away during their own
 	// advance.
 	//
+	// AND A FIFTH ON 2026-10-08, WHICH IS A ROW AND NOT A SKILL: a worn row may
+	// forbid the step. "You cannot move while channeling any skill" is an
+	// enchantment's row on the flag stat `cannot_walk`, held only while a
+	// channelled skill of the player's own is running, and
+	// `UCataclysmSkillEffects::CannotWalkByARow` is what asks for it. So it is
+	// something a worn item does to the player during a thing the player chose:
+	// the skill is theirs, the standing still is the item's.
+	//
+	// NO SPEED IS MOVED FOR IT. A walking speed taken to nothing was the other
+	// way to write that sentence, and
+	// `ACataclysmPlayerCharacter::ApplyMovementSpeed` refuses a speed of nought
+	// on purpose. The row is granted where every worn row is, by the equipment
+	// refresh, and carries its own condition; nothing here knows what a channel
+	// is.
+	//
+	// HERE AND NOT IN `IsPawnStunned`, for the reason the third and fourth are:
+	// the ability gate reads that one, and a player forbidden to walk by this
+	// row must still be able to act. A movement SKILL is refused by a second
+	// row, on the skill lock.
+	//
 	// **THIS HAS NO AUTOMATION COVERAGE AND CANNOT HAVE ANY.** The automation
 	// tests run with no player controller at all, so nothing they do reaches this
 	// function. Every other part of the advance and of the hold -- the walk, what
 	// it strikes, how far it counts, the immunity it grants, what a held swing
 	// lands for and what breaks it -- is covered by tests; whether the player can
-	// still take a step has to be judged by pressing a key.
+	// still take a step has to be judged by pressing a key. The fifth is the
+	// same: what `CannotWalkByARow` answers under the row is tested, and that
+	// the step is then refused is not.
 	return IsPawnStunned() || IsPawnPinned()
 		|| UCataclysmMovementSkill::IsBeingWalkedByASkill(GetPawn())
-		|| UCataclysmStrikeSkill::IsHoldingASwing(GetPawn());
+		|| UCataclysmStrikeSkill::IsHoldingASwing(GetPawn())
+		|| UCataclysmSkillEffects::CannotWalkByARow(GetPawn());
 }
 
 void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const bool bGamePaused)

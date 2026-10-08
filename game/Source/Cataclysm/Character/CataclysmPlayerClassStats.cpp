@@ -295,6 +295,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// 2026-10-07: "You cannot apply CC effects to enemies above 50% HP". A
 		// reduction, so nought refuses nothing. No gameplay attribute and no base.
 		TEXT("crowd_control_health_ceiling_reduction"),
+		// Whether a worn row forbids this character to walk, read by
+		// UCataclysmSkillEffects::CannotWalkByARow for the player controller's
+		// refusal of a step. Ruled 2026-10-08: "You cannot move while channeling
+		// any skill". A flag. No gameplay attribute and no base.
+		TEXT("cannot_walk"),
 		// Shared Blood's share of the summoner's maximum energy shield that each
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.

@@ -922,6 +922,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsInCombat = SecondsInCombat();
 	State.SecondsOutOfCombat = SecondsOutOfCombat();
 
+	// AND WHETHER A CHANNELLED SKILL OF ITS OWN IS RUNNING, AND FOR HOW LONG.
+	// Ruled 2026-10-08. THE ONE PLACE THE STATE IS READ FOR A CONDITION: every
+	// asker of a stat, a timed row's `PoolActionAllowed` and the lock a skill
+	// asks before it activates all build their state here, so none of them can
+	// hold a different answer. The seconds are -1 while it is not channelling.
+	State.bIsChannelling = IsChannelling();
+	State.SecondsChannelling = SecondsChannelling();
+
 	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
 	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
 	// by 1% for each point of Fervour you currently hold."
@@ -2944,6 +2952,62 @@ float UCataclysmAbilitySystemComponent::SecondsLeeching() const
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LeechingSinceSeconds);
 }
 
+void UCataclysmAbilitySystemComponent::NoteChannelBegan()
+{
+	++ChannelsRunning;
+	if (ChannelsRunning != 1)
+	{
+		// A SECOND CHANNELLED SKILL BEGUN WHILE ONE RUNS. The character was
+		// channelling already, so the clock is left where it is and nothing is
+		// announced: "the first 2 seconds of channeling" are not begun again.
+		return;
+	}
+
+	// THE FIRST: THE CLOCK IS STAMPED. With no world there is no time to stamp
+	// and it is stamped at nought, so the state is still set;
+	// `SecondsChannelling` then answers -1 for the want of a world.
+	const UWorld* World = GetWorld();
+	ChannellingSinceSeconds = World ? World->GetTimeSeconds() : 0.0f;
+
+	// ANNOUNCED AFTER THE STATE IS WRITTEN, so a listener that asks reads it.
+	OnChannellingChanged.Broadcast(true);
+}
+
+void UCataclysmAbilitySystemComponent::NoteChannelEnded()
+{
+	if (ChannelsRunning <= 0)
+	{
+		// NOTHING WAS COUNTED, SO NOTHING IS TAKEN AWAY. See the header.
+		return;
+	}
+
+	--ChannelsRunning;
+	if (ChannelsRunning > 0)
+	{
+		// ANOTHER CHANNELLED SKILL IS STILL RUNNING, so the character still is.
+		return;
+	}
+
+	ChannellingSinceSeconds = -1.0f;
+	OnChannellingChanged.Broadcast(false);
+}
+
+bool UCataclysmAbilitySystemComponent::IsChannelling() const
+{
+	return ChannelsRunning > 0;
+}
+
+float UCataclysmAbilitySystemComponent::SecondsChannelling() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || ChannelsRunning <= 0 || ChannellingSinceSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - ChannellingSinceSeconds);
+}
+
 void UCataclysmAbilitySystemComponent::RefreshLiveMaximumHealth()
 {
 	const FName Stat(TEXT("max_health"));
@@ -4170,6 +4234,29 @@ void UCataclysmAbilitySystemComponent::RefillSkillCharges(
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
 	TEXT("every_seconds");
 
+FName UCataclysmAbilitySystemComponent::TimedGrantKeyOf(const FCataclysmPoolAction& Action)
+{
+	if (!Action.NextUseKey.IsNone())
+	{
+		return Action.NextUseKey;
+	}
+	if (!Action.StackKey.IsNone())
+	{
+		return Action.StackKey;
+	}
+
+	// THE ROW'S OWN KEY, SO TWO ROWS ON ONE POOL AND PERIOD COUNT APART. Ruled
+	// 2026-10-08. See the header for why this key and what it is built from.
+	if (!Action.TriggerKey.IsNone())
+	{
+		return Action.TriggerKey;
+	}
+
+	// AN ACTION BUILT BY HAND WITH NO KEY AT ALL, counted as every pool row was
+	// before that ruling.
+	return FName(*FString::Printf(TEXT("%s@%g"), *Action.Pool.ToString(), Action.EverySeconds));
+}
+
 void UCataclysmAbilitySystemComponent::StepTimedGrants()
 {
 	const float InCombat = SecondsInCombat();
@@ -4195,10 +4282,7 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 		{
 			continue;
 		}
-		const FName Key = !Action.NextUseKey.IsNone() ? Action.NextUseKey
-			: !Action.StackKey.IsNone() ? Action.StackKey
-			: FName(*FString::Printf(TEXT("%s@%g"), *Action.Pool.ToString(),
-									 Action.EverySeconds));
+		const FName Key = TimedGrantKeyOf(Action);
 
 		// ONCE FOR EVERY WHOLE PERIOD OF THIS COMBAT, N seconds in first.
 		const int32 Due = FMath::FloorToInt(InCombat / Action.EverySeconds);

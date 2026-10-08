@@ -102,6 +102,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Ricochet and pierce from a worn row added two more on 2026-10-07, the
 #: bounces a row adds to a projectile skill and the flag by which it pierces
 #: all, each asked by one helper of `UCataclysmProjectileSkill`.
+#: The flag by which a worn row forbids walking added one more on 2026-10-08,
+#: asked by the one helper the player controller's refusal of a step calls.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -738,6 +740,11 @@ INVENTORY = {
         "whether a row makes a projectile skill pierce all (ruled 2026-10-07), "
         "asked with the skill's tags where it fires, lands and leaves ground; "
         "a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(CannotWalkStat), FGameplayTagContainer(), 0.0f'):
+        "whether a worn row forbids the character to walk (ruled 2026-10-08), "
+        "asked by CannotWalkByARow for the player controller's refusal of a "
+        "step; walking is not a skill, so no tags, and there is no blow",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
