@@ -9,14 +9,18 @@ was run by the writing session. The C++ in this entry has never been compiled. T
 output is not recorded here. The two row shapes under "What the row needs" were each passed through the
 generator in a temporary workbook, by the Python tests named there.
 
-**The basic attack's interruption is written and NOT shown by any run, because a worktree has no attack clips.**
-Only a real player character has a swing that waits to connect, and only where its clips are present; without
-them a swing lands as it is used and there is nothing to interrupt. Two tests skip a half for it and say so with
-`ReportSkippedHalf`: `Cataclysm.HitCancels.ABasicAttackInItsWindUpIsCutShortLikeAnyOtherSkill`, the whole of
-which needs the wind-up, and
-`Cataclysm.HitCancels.ALandedHitCutsShortTheWearersSkillAndGivesBackNeitherItsCostNorItsCooldown`, whose second
-half is the swing lost in a wind-up. **That a hit in the wind-up loses a basic attack, and any other swing, goes
-on the owner's play-check list.**
+**The basic attack's interruption IS shown by the run of 2026-10-08 at `c7aa4e58`, where the player's attack
+clips are present. THIS PARAGRAPH FIRST SAID THE OPPOSITE**: that it was "written and NOT shown by any run,
+because a worktree has no attack clips". That was wrong. The clips are the Mannequin clips under
+`game/Content/Characters`, which are tracked in git (47 files) and so are in a worktree; only the Paragon packs
+are not. The registration of the window predicted 42 tests skipping part of what they check and the run printed
+40: the two tests named here ran in full and passed. Only a real player character has a swing that waits to
+connect, and only where its clips are present; without them a swing lands as it is used and there is nothing to
+interrupt. Two tests still report a skipped half where the clips are absent, with `ReportSkippedHalf`:
+`Cataclysm.HitCancels.ABasicAttackInItsWindUpIsCutShortLikeAnyOtherSkill`, the whole of which needs the wind-up,
+and `Cataclysm.HitCancels.ALandedHitCutsShortTheWearersSkillAndGivesBackNeitherItsCostNorItsCooldown`, whose
+second half is the swing lost in a wind-up. **For the owner's play-check list: a hit in the wind-up loses a basic
+attack.**
 
 **Said first, for the play-check.**
 
@@ -318,6 +322,40 @@ refused without it was not tried.
 
 **It needs no entry in `CONDITIONED_STATS_WITH_AN_ASKER`** while its rows state no condition. A row that put a
 condition on it would be refused until it had one.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the two layers below this one and the one above it, on `development`
+c17bda32. The build, the whole suite and the Python of record are in the table of the entry of the same day "A
+character knows it is channelling" and were run with this layer in the stack. **The ids are the commits as they
+stood when each step ran.** It was the first time the C++ of this layer was compiled.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of all four layers, the first compile of this layer's code and tests | 41e03c74 | Build: Succeeded - 33 actions, 30 files compiled |
+| Whole suite, every asset built | c7aa4e58 | 3379 tests performed, 3379 succeeded, 0 failed. 40 skipped part of what they check |
+| Proof 4, an ended spin's two timers are not cleared by name (both clears pointed at `HoldTimer`) | c7aa4e58 | PROVED: with the break in, 12 tests performed, 11 succeeded, 1 failed: `ASpinEndedFromOutsideMakesNoFurtherSwingAndNoFinalHitEvenWithTheEnginesTimerSweepOff`, 2 failed assertions; restored, 12 of 12 |
+| Proof 5, a spin does not ask whether its own first swing ended it (`= !IsActive();` made `= false;`) | c7aa4e58 | PROVED: 12 performed, 1 failed: `ASpinCutShortByTheRetaliationForItsOwnFirstSwingNeverGoesOnSpinning`, 2 failed assertions; restored, 12 of 12 |
+| Proof 6, a tick of damage over time is not refused (`!bDamageOverTime &&` taken out) | c7aa4e58 | PROVED: 12 performed, 1 failed: `AnEvadedBlowAndATickDoNotInterruptAndABlockedBlowAndOneTheShieldTookWholeDo`, 1 failed assertion; restored, 12 of 12 |
+
+**The whole suite was stated before it ran as 42 tests skipping part of what they check, and printed 40.** The
+two tests that need the player's attack clips,
+`Cataclysm.HitCancels.ABasicAttackInItsWindUpIsCutShortLikeAnyOtherSkill` and
+`Cataclysm.HitCancels.ALandedHitCutsShortTheWearersSkillAndGivesBackNeitherItsCostNorItsCooldown`, were stated as
+skipping a half. Neither did: each built its real players, found the swing waiting to connect, ran every
+assertion and passed, and the words of their skip message are nowhere in the run's log. The paragraph near the
+top of this entry was corrected with this table. Every other figure of the window was as stated.
+
+**The three proofs were each as stated before they ran**: the one test named, and 2, 2 and 1 failed assertions.
+For every proof the broken file's hash was the same after the proof as before it. In proof 4 the two assertions
+that failed are the two in the half of the test that runs with the engine's console variable
+`AbilitySystem.ClearAbilityTimers` off; the half with it on passed with the break in, which is the engine's own
+clearing of an ended ability's timers at work.
+
+**No proof was run for**: the guard on a rack of throws and the guard on a flicker (each has a test, which
+passed); what is and is not interruptible (the self buff, the aura, the planted weapon, the shot in the air);
+that a hit whose attacker is the wearer does not interrupt; that the cost and the cooldown are kept; or the
+order of the cancel and the `hit_taken` event. Each is tested and passed in the whole suite; none is proved.
 
 ---
 
