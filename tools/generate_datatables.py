@@ -5411,6 +5411,28 @@ TIMED_EVENT = "every_seconds"
 #: The longest period a timed row may state, in seconds.
 MAX_EVERY_SECONDS = 60.0
 
+#: The action that GRANTS ITS WEARER A TEMPORARY ABSORB, with its value as the
+#: amount: a percentage of the wearer's maximum health. The project owner,
+#: 2026-10-07: it is separate from the energy shield. "Every 12 seconds gain a
+#: shield absorbing 15%-25% of your maximum HP in damage" is the row. A grant
+#: refreshes what is held to its own amount and never adds, and the absorb has
+#: no duration (both ruled 2026-10-07).
+#: `UCataclysmAbilitySystemComponent::TemporaryAbsorbAction` holds the same name.
+#:
+#: NOT ONE OF `POOL_ACTIONS`, AND ON PURPOSE. Each of those names two
+#: attributes, what is held and the most that can be held, and the absorb is
+#: one plain number with no maximum of its own.
+TEMPORARY_ABSORB_ACTION = "temporary_absorb"
+
+#: The events a temporary absorb may be granted on: the clock, and no other
+#: until a sentence asks for one. The clock counts only while the wearer is in
+#: combat, which is what the ruling of 2026-10-07 asks of this row.
+TEMPORARY_ABSORB_EVENTS = (TIMED_EVENT,)
+
+#: The most a temporary absorb may be, in per cent of maximum health. A bound
+#: for typing mistakes; the one sentence is 15 to 25.
+MAX_TEMPORARY_ABSORB_PERCENT = 100.0
+
 #: Events an action may hang on that have NO clock of their own.
 #:
 #: EVERY CLOCK IS SOMETHING DONE TO THE CHARACTER and these are things the
@@ -5639,6 +5661,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_strike_target_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
         return
+    if action == TEMPORARY_ABSORB_ACTION:
+        _check_temporary_absorb_action(index, who, action, event, fraction_of,
+                                       kind, raw, headers)
+        return
     if action in AILMENT_RIDER_ACTIONS:
         _check_ailment_rider_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
@@ -5661,6 +5687,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {STRIKE_TARGET_ACTION}; "
+            f"or {TEMPORARY_ABSORB_ACTION}; "
             f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
             f"or a rider on an ailment, {', '.join(AILMENT_RIDER_ACTIONS)}.")
 
@@ -5945,6 +5972,33 @@ def _check_overkill_explosion_action(index: int, who: str, action: str,
                 f"for its overkill and states {column} {written!r}. Its value is "
                 f"a share of the overkill and nothing else, so the column must "
                 f"be empty.")
+
+
+def _check_temporary_absorb_action(index: int, who: str, action: str,
+                                   event: str, fraction_of: str, kind: str,
+                                   raw, headers: dict[str, int]) -> None:
+    """Everything a temporary absorb row must say, and everything it must not.
+    The project owner, 2026-10-07: the absorb is separate from the energy
+    shield. Ruled the same day: its clock runs in combat only, which is the
+    timed event, and its value is a percentage of maximum health; the size is
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in TEMPORARY_ABSORB_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} grants a temporary absorb "
+            f"on the event {event or '(none)'!r}. It is granted on a clock "
+            f"that counts only in combat and on nothing else: "
+            f"{', '.join(TEMPORARY_ABSORB_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} grants a temporary "
+                f"absorb and states {column} {written!r}. Its value is a "
+                f"percentage of maximum health and nothing else, so the "
+                f"column must be empty.")
 
 
 def _check_strike_target_action(index: int, who: str, action: str, event: str,
@@ -6352,6 +6406,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != CLEANSE_ACTION \
                     and action != OVERKILL_EXPLOSION_ACTION \
                     and action != STRIKE_TARGET_ACTION \
+                    and action != TEMPORARY_ABSORB_ACTION \
                     and action not in SKILL_IN_HAND_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
@@ -6538,6 +6593,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} strikes for "
                     f"{low:g} to {high:g} per cent of attack damage. A strike "
                     f"is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
+
+        # A TEMPORARY ABSORB'S VALUE IS A PERCENTAGE OF THE WEARER'S MAXIMUM
+        # HEALTH, above 0 and up to the bound. Ruled 2026-10-07.
+        if action == TEMPORARY_ABSORB_ACTION:
+            if not (0 < low <= MAX_TEMPORARY_ABSORB_PERCENT
+                    and 0 < high <= MAX_TEMPORARY_ABSORB_PERCENT):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} grants a temporary "
+                    f"absorb of {low:g} to {high:g} per cent of maximum health. "
+                    f"It is above 0 and up to {MAX_TEMPORARY_ABSORB_PERCENT:g}.")
 
         # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
         if action in SKILL_IN_HAND_ACTIONS:

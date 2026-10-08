@@ -59,7 +59,8 @@ bool UCataclysmImpactEffect::ShouldDrawFor(const FCataclysmIncomingHit& Hit,
 										   const FCataclysmDamageResult& Outcome)
 {
 	// Nothing arrived. Evaded, or mitigated to nothing.
-	if (Outcome.DealtToHealth <= 0.0f && Outcome.AbsorbedByShield <= 0.0f)
+	if (Outcome.DealtToHealth <= 0.0f && Outcome.AbsorbedByShield <= 0.0f
+		&& Outcome.AbsorbedByTemporary <= 0.0f)
 	{
 		return false;
 	}

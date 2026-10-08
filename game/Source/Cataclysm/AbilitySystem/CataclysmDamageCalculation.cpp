@@ -992,6 +992,33 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		}
 	}
 
+	// 6b. THE TEMPORARY ABSORB, BEFORE EVERY POOL. The project owner, 2026-10-07:
+	// it is separate from the energy shield. Ruled the same day under the owner's
+	// delegation: it is taken before the energy shield, and it absorbs every kind
+	// of damage, a bleed and every other tick included. So nothing here asks what
+	// kind of blow this is.
+	//
+	// ONE POINT FOR ONE POINT OF WHAT IS LEFT AFTER EVERY MULTIPLIER ABOVE. The
+	// magic sub-type's bonus below is against the energy shield and the slashing
+	// one is against health, so neither reaches it.
+	//
+	// BEFORE THE MANA OF STEP 7 AS WELL, a judgement by the writing session: the
+	// ruling says arriving damage meets it first, and names no pool before it.
+	//
+	// ONLY THE FIGURE IS DECIDED HERE. `UCataclysmVitalAttributeSet` takes it
+	// from the amount held, beside the line that takes the shield's share. A
+	// defender whose ability system is not this project's holds none.
+	if (Damage > 0.0f)
+	{
+		if (const UCataclysmAbilitySystemComponent* Absorbing =
+				Cast<const UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Result.AbsorbedByTemporary =
+				FMath::Min(FMath::Max(0.0f, Absorbing->TemporaryAbsorbHeld()), Damage);
+			Damage -= Result.AbsorbedByTemporary;
+		}
+	}
+
 	// 7. Mana, but only for damage over time and only for a character carrying
 	// `damage_over_time_taken_from_mana_first`: "DoTs deal damage to your mana
 	// pool first". Ruled 2026-10-06. One point of mana for one point of damage,

@@ -1486,6 +1486,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bStrikeTarget = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::StrikeTargetAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT GRANTS A TEMPORARY ABSORB. The owner, 2026-10-07: separate
+					// from the energy shield. The value is a percentage of maximum health.
+					Action.bTemporaryAbsorb = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TemporaryAbsorbAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))
