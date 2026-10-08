@@ -221,8 +221,6 @@ Positive_Summoned_minions_deal_30_50_increased_damage_f#1,Positive_Summoned_mini
 Negative_After_blocking_you_cannot_block_again_for_1_2_se#1,Negative_After_blocking_you_cannot_block_again_for_1_2_se,block_chance,removed,1.0,1.0,,seconds_after_block,1.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,2.0,0.0,0.0,,0.0
 Negative_After_dodging_you_cannot_dodge_again_for_1_2_sec#1,Negative_After_dodging_you_cannot_dodge_again_for_1_2_sec,evasion,removed,1.0,1.0,,seconds_after_dodge,1.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,2.0,0.0,0.0,,0.0
 Positive_Each_hit_you_take_increases_your_retaliation_dam#1,Positive_Each_hit_you_take_increases_your_retaliation_dam,retaliation,increased,5.0,10.0,,,0.0,bloodlust_stacks,1.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
-Positive_Traps_deal_20_40_increased_damage#1,Positive_Traps_deal_20_40_increased_damage,attack_damage,increased,20.0,40.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
-Positive_Traps_deal_20_40_increased_damage#2,Positive_Traps_deal_20_40_increased_damage,spell_damage,increased,20.0,40.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Gadgets_deal_20_40_increased_damage#1,Positive_Gadgets_deal_20_40_increased_damage,attack_damage,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Gadgets_deal_20_40_increased_damage#2,Positive_Gadgets_deal_20_40_increased_damage,spell_damage,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Can_t_inflict_bleeding#1,Negative_Can_t_inflict_bleeding,bleed_chance,removed,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
@@ -543,3 +541,4 @@ Negative_DoTs_on_you_have_100_300_more_duration#1,Negative_DoTs_on_you_have_100_
 Positive_Your_class_resource_generates_20_40_faster#1,Positive_Your_class_resource_generates_20_40_faster,class_resource_generation,increased,20.0,40.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Your_class_resource_generates_30_50_slower#1,Negative_Your_class_resource_generates_30_50_slower,class_resource_generation,increased,-30.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_DoTs_on_you_tick_twice_as_fast_while_moving#1,Negative_DoTs_on_you_tick_twice_as_fast_while_moving,damage_over_time_taken,more,100.0,100.0,,while_moving,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Traps_deal_20_40_increased_damage#1,Positive_Traps_deal_20_40_increased_damage,minion_damage,increased,20.0,40.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
