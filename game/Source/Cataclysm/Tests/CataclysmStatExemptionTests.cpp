@@ -7358,6 +7358,88 @@ namespace CataclysmStatExemptionTest
 					   CarrierOther->IsWaitingForTheSwingToConnect());
 	}
 
+	/**
+	 * `minion_defences_percent_of_yours`, asked of the SUMMONER by `UCataclysmDamageCalculation::Resolve` with the
+	 * minion's own type tags, at the two places it takes a defender's armour and its resistance. Ruled 2026-10-08:
+	 * "Summoned minions inherit 10%-25% of your armor and resistances".
+	 *
+	 * TWO SUMMONERS, each holding 1,600 armour and 60 Demonic resistance, and the second granted the stat at a flat
+	 * 25. Each has one imp, with health enough that a blow of 100 is not cut short by what the imp has left. The same
+	 * blow is resolved against each imp at the first difficulty tier with every roll pinned: untyped, which meets
+	 * armour, and then Demonic, which meets armour and that resistance. The granted summoner's imp takes less of
+	 * each, and less of the Demonic one than of the untyped one, so both reads are shown.
+	 *
+	 * WHAT THIS DOES NOT REACH. How large the share is, the summoner's cap, penetration, a machine and a summoner
+	 * that is gone: `Cataclysm.DefenderStats.*` in `CataclysmSkillTemplateTests.cpp` holds those, through real blows.
+	 *
+	 * STANDING: the plain summoner at the origin with its imp 2 m along X, the granted one's imp 2 m along X and
+	 * 4 m along Y. This file's `FScopedFighter` spawns at the origin; nobody is struck by a skill.
+	 */
+	void ProbeMinionDefencesPercentOfYours(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Geared(World, /*AttackDamage=*/0.0f);
+		for (FScopedFighter* Each : {&Plain, &Geared})
+		{
+			Each->AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 1600.0f);
+			Each->AbilitySystem->SetNumericAttributeBase(
+				UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(), 60.0f);
+		}
+		GrantFlat(Geared.Actor, UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat, 25.0f);
+
+		const auto ImpAt = [&Test](FScopedFighter& Summoner, const FVector& Where) -> UAbilitySystemComponent*
+		{
+			ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+				Summoner.Actor, Where, /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+			UAbilitySystemComponent* System = Imp ? UCataclysmTargeting::AbilitySystemOf(Imp) : nullptr;
+			if (!System || Imp->TypeName != FString(TEXT("Imp")))
+			{
+				Test.AddError(TEXT("set-up: DT_MinionTypes could not supply the Imp row. Run "
+								   "tools/generate_datatable_assets.py"));
+				return nullptr;
+			}
+			System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), TargetHealthPool);
+			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), TargetHealthPool);
+			return System;
+		};
+		UAbilitySystemComponent* PlainImp = ImpAt(Plain, FVector(2 * M, 0, 0));
+		UAbilitySystemComponent* GearedImp = ImpAt(Geared, FVector(2 * M, 4 * M, 0));
+		if (!PlainImp || !GearedImp)
+		{
+			return;
+		}
+
+		const auto Taken = [](const UAbilitySystemComponent* Defender, FName DamageType)
+		{
+			FCataclysmIncomingHit Blow;
+			Blow.Damage = 100.0f;
+			Blow.DamageType = DamageType;
+			return UCataclysmDamageCalculation::Resolve(Blow, Defender, /*Tier=*/1,
+				/*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f, /*CritRoll=*/100.0f).DealtToHealth;
+		};
+		const float PlainUntyped = Taken(PlainImp, NAME_None);
+		const float GearedUntyped = Taken(GearedImp, NAME_None);
+		const float PlainDemonic = Taken(PlainImp, FName(TEXT("Demonic")));
+		const float GearedDemonic = Taken(GearedImp, FName(TEXT("Demonic")));
+		if (!Test.TestTrue(TEXT("control: the imp of a summoner with no row takes the whole of both blows"),
+						   PlainUntyped > 99.0f && PlainDemonic > 99.0f))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("minion_defences_percent_of_yours is read for armour: the granted summoner's imp takes "
+						   "less of an untyped blow"),
+					  GearedUntyped < PlainUntyped * 0.99f);
+		Test.TestTrue(TEXT("and for resistance: it takes less again of a blow of a type its summoner resists"),
+					  GearedDemonic < GearedUntyped * 0.99f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7487,6 +7569,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("cannot_walk"), &ProbeCannotWalk},
 			{TEXT("hit_taken_cancels_skills"), &ProbeHitTakenCancelsSkills},
 			{TEXT("blow_delay_seconds"), &ProbeBlowDelaySeconds},
+			{TEXT("minion_defences_percent_of_yours"), &ProbeMinionDefencesPercentOfYours},
 		};
 		return Made;
 	}
