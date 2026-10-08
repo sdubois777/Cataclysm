@@ -1960,6 +1960,14 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// Issues #1820 and #41.
 		ForgetTheSarcophagi();
 		PlaceTheSarcophagi();
+
+		// AND ANGELIC WARDENS' STATUES, LAST OF THE ARENA'S OBJECTS, so every object placed above is already held and
+		// no statue is put on its cell; and before the creatures below, which the populator places only on walkable
+		// cells, so none stands on a statue. A Horde arena's waves keep its statues and its woken wardens. Forgotten
+		// here and not with the per-floor resets in `ApplyFloorRulesToPlayer`, which runs after this function and on
+		// every wave. Issues #1820 and #41.
+		ForgetTheAngelicStatues();
+		PlaceTheAngelicStatues();
 	}
 	else
 	{
@@ -6408,14 +6416,20 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::CellsOnlyBarrierHolds(int32 Barrier
 bool ACataclysmDungeonGameMode::AClosedBarrierStandsBetween(const ACataclysmEnemyCharacter* One,
 															const ACataclysmEnemyCharacter* Other) const
 {
-	if (!One || !Other || One->FloorSection == INDEX_NONE || Other->FloorSection == INDEX_NONE)
+	// THE QUESTION IS ABOUT TWO SECTIONS, and Angelic Wardens asks it of a statue's cell and the player's.
+	return One && Other && AClosedBarrierStandsBetweenSections(One->FloorSection, Other->FloorSection);
+}
+
+bool ACataclysmDungeonGameMode::AClosedBarrierStandsBetweenSections(int32 One, int32 Other) const
+{
+	if (One == INDEX_NONE || Other == INDEX_NONE)
 	{
 		return false;
 	}
 	// BARRIER i LIES BETWEEN SECTIONS i AND i + 1, so the barriers between two sections are those numbered from the
 	// lower section up to, and not including, the higher.
-	const int32 Lower = FMath::Min(One->FloorSection, Other->FloorSection);
-	const int32 Higher = FMath::Max(One->FloorSection, Other->FloorSection);
+	const int32 Lower = FMath::Min(One, Other);
+	const int32 Higher = FMath::Max(One, Other);
 	for (int32 Barrier = Lower; Barrier < Higher; ++Barrier)
 	{
 		if (SectionBarrierIsClosed(Barrier))
@@ -6450,6 +6464,231 @@ FCataclysmFloorPopulation ACataclysmDungeonGameMode::FloorPopulationNow(const TS
 	// THE ONE CALL OF THE POPULATOR IN THIS FILE. See the declaration.
 	return FCataclysmFloorPopulator::Populate(PlanWithSectionBarriersOpen(), ChooseEnemyScale(), FloorBrief,
 											  NoCreatureOn);
+}
+
+// ---------------------------------------------------------------------------
+// Angelic Wardens: statues that stand as pillars until the player comes near one or uses a skill near it, and then
+// become Abyssal Wardens that come for the player. Issues #1820 and #41. Ruled 2026-10-08.
+// ---------------------------------------------------------------------------
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::AngelicStatueCellsStanding() const
+{
+	TArray<FIntPoint> Standing;
+	for (const FAngelicStatue& One : AngelicStatues)
+	{
+		if (!One.bWoken)
+		{
+			Standing.Add(One.Cell);
+		}
+	}
+	return Standing;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::AngelicWardensNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Awake;
+	for (const FAngelicStatue& One : AngelicStatues)
+	{
+		// A SLAIN WARDEN IS NOT AWAKE. Its weak pointer stays valid until its body is removed, so the dead mark is
+		// asked too.
+		ACataclysmEnemyCharacter* Warden = One.Warden.Get();
+		if (IsValid(Warden) && !UCataclysmSkillEffects::IsDead(Warden))
+		{
+			Awake.Add(Warden);
+		}
+	}
+	return Awake;
+}
+
+bool ACataclysmDungeonGameMode::PlaceAnAngelicStatueOn(FIntPoint Cell)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return false;
+	}
+
+	// ASKED AS EVERY OBSTACLE RAISED DURING PLAY IS ASKED: not a cell the floor holds, not a shortcut's corridor, not
+	// one whose closing would strand a walkable cell, and on a floor in sections not one whose closing would split an
+	// area. FROM THE ENTRANCE AND NOT FROM THE PLAYER'S CELL: the statues are placed while the floor is populated,
+	// when the player has not been stood on it yet, and the entrance is where they will stand.
+	const FCataclysmFloorPlan& Plan = CurrentFloor->GetPlan();
+	const TArray<FIntPoint> Cells = {Cell};
+	if (!AnObstacleMayClose(Cells, Plan.Entrance, CellsHeldOrWarned()))
+	{
+		return false;
+	}
+
+	FAngelicStatue One;
+	One.Cell = Cell;
+	// READ BEFORE THE CELL IS CLOSED, though the answer is by the cell's place in the plan and does not change.
+	One.Section = FloorSections.SectionOf(Plan, Cell);
+	BlockCellsWithPillars(Cells, FName(Effects::AngelicWardensKey), One.Pillars);
+	if (One.Pillars.IsEmpty())
+	{
+		// NO PILLAR CAME, so nothing stands there: the cell is given back and there is no statue.
+		CurrentFloor->UnblockCell(Cell);
+		return false;
+	}
+	AngelicStatues.Add(One);
+	return true;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheAngelicStatues()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::AngelicWardensKey)))
+	{
+		return;
+	}
+
+	// BESIDE A WALL, AT LEAST `EternalChorusApartCm` FROM THE ENTRANCE AND FROM EACH OTHER, by the picker Infested
+	// Veins uses. A CELL REFUSED IS SKIPPED and no other is tried, so a floor may have fewer than the row's count.
+	int32 Refused = 0;
+	for (const FIntPoint& Cell :
+		 FloorSourceCells(*CurrentFloor, Effects::AngelicWardensStatuesPerFloor, /*bBesideAWallOnly=*/true))
+	{
+		Refused += PlaceAnAngelicStatueOn(Cell) ? 0 : 1;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Angelic Wardens: %d statue(s) on floor %d, %d cell(s) refused"),
+		   AngelicStatues.Num(), FloorNumber, Refused);
+}
+
+void ACataclysmDungeonGameMode::ForgetTheAngelicStatues()
+{
+	for (FAngelicStatue& One : AngelicStatues)
+	{
+		// ONLY A STATUE WHOSE PILLAR STILL STANDS GIVES ITS CELL BACK. When a floor is replaced, the sweep of the last
+		// floor's actors has already taken the pillar, and the cell it names is a cell of the last floor's plan:
+		// `UnblockCell` on it could open a cell the new floor has closed for a barrier of its own.
+		const bool bItsPillarStands = One.Pillars.ContainsByPredicate(
+			[](const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar) { return Pillar.IsValid(); });
+		if (!One.bWoken && bItsPillarStands)
+		{
+			const TArray<FIntPoint> Cells = {One.Cell};
+			UnblockCellsAndDestroyPillars(Cells, One.Pillars);
+		}
+	}
+	AngelicStatues.Reset();
+	AngelicWardensPanelStanding = -1;
+	AngelicWardensPanelAwake = -1;
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::WakeTheAngelicStatue(FAngelicStatue& One)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONCE, WHETHER OR NOT THE SPAWN SUCCEEDS, as the Reaper is raised once: a statue that could not raise its warden
+	// does not try again four times a second, and its cell is not left closed with nothing to open it.
+	One.bWoken = true;
+	const TArray<FIntPoint> Cells = {One.Cell};
+	UnblockCellsAndDestroyPillars(Cells, One.Pillars);
+
+	// AN ABYSSAL WARDEN ON THE STATUE'S CELL, AT THE ELITE RUNG, its modifiers drawn for that rung as any creature's
+	// are. The rung is set before they are drawn; see `SpawnPlacedCreature`. The three lines after it are the
+	// Reaper's: one of the floor's creatures, raised by a rule by both marks.
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = One.Cell;
+	Placement.Creature = ECataclysmDungeonCreature::AbyssalWarden;
+	ACataclysmEnemyCharacter* Warden = SpawnPlacedCreature(
+		Placement, Effects::AngelicWardensSightMultiplier, Effects::AngelicWardensRung);
+	if (!Warden)
+	{
+		return nullptr;
+	}
+	FloorEnemies.Add(Warden);
+	Warden->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Warden);
+	One.Warden = Warden;
+	UE_LOG(LogCataclysm, Log, TEXT("Angelic Wardens: a statue woke on floor %d and %s stands where it stood"),
+		   FloorNumber, *Warden->GetName());
+	return Warden;
+}
+
+int32 ACataclysmDungeonGameMode::WakeTheAngelicStatuesNear(const FVector& PlayerAt, float WithinCm)
+{
+	if (!CurrentFloor || AngelicStatues.IsEmpty())
+	{
+		return 0;
+	}
+
+	// THE SECTION OF THE CELL THE PLAYER IS IN, none on a floor with no sections and none on a boundary's cell, where
+	// a player can stand only once that barrier is open.
+	const int32 PlayersSection =
+		FloorSections.SectionOf(CurrentFloor->GetPlan(), CurrentFloor->CellOfWorld(PlayerAt));
+	int32 Woken = 0;
+	for (FAngelicStatue& One : AngelicStatues)
+	{
+		if (One.bWoken)
+		{
+			continue;
+		}
+
+		// FLAT, FROM THE MIDDLE OF THE STATUE'S CELL, AND NO WALL TEST, as no target search has one. AT OR WITHIN.
+		const bool bAStatueIsNear = FVector::Dist2D(CurrentFloor->WorldOfCell(One.Cell), PlayerAt) <= WithinCm;
+
+		// AND NOT ACROSS A CLOSED BARRIER, the test Sacrificial Bond's ally search uses, asked of the two sections.
+		const bool bAStatueIsParted = AClosedBarrierStandsBetweenSections(One.Section, PlayersSection);
+		if (bAStatueIsNear && !bAStatueIsParted)
+		{
+			WakeTheAngelicStatue(One);
+			++Woken;
+		}
+	}
+	if (Woken > 0)
+	{
+		RefreshFloorModifierPanel();
+	}
+	return Woken;
+}
+
+void ACataclysmDungeonGameMode::StepAngelicWardens(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!Player)
+	{
+		return;
+	}
+
+	// THE FIRST TRIGGER: the player within five metres of a statue's centre.
+	WakeTheAngelicStatuesNear(Player->GetActorLocation(), Effects::AngelicWardensWakeWithinCm);
+
+	// AND THE PANEL IS DRAWN AGAIN WHEN EITHER FIGURE OF ITS LINE HAS MOVED: a statue woke, or a warden was slain.
+	const int32 StatuesStanding = AngelicStatueCellsStanding().Num();
+	const int32 WardensAwake = AngelicWardensNow().Num();
+	if (StatuesStanding != AngelicWardensPanelStanding || WardensAwake != AngelicWardensPanelAwake)
+	{
+		AngelicWardensPanelStanding = StatuesStanding;
+		AngelicWardensPanelAwake = WardensAwake;
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteSkillUseForAngelicWardens(const FCataclysmSkillUsedNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (AngelicStatues.IsEmpty())
+	{
+		return;
+	}
+
+	// THE SECOND TRIGGER: THE PLAYER'S OWN SKILL, NOT THE BASIC ATTACK. The notice is sent for creatures too. A skill
+	// a rule triggers or copies sends none, so Wild Magic's and Echo Chamber's never reach here. `Notice.Location` is
+	// where the user stood when the skill was used.
+	const UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	const bool bTheBasicAttackWakesNothing = Notice.Slot == ECataclysmAbilitySlot::BasicAttack;
+	if (!Player || Notice.User != Player || bTheBasicAttackWakesNothing)
+	{
+		return;
+	}
+	WakeTheAngelicStatuesNear(Notice.Location, Effects::AngelicWardensSkillWakesWithinCm);
 }
 
 void ACataclysmDungeonGameMode::PlaceTheShortcutGates()
@@ -12136,6 +12375,9 @@ void ACataclysmDungeonGameMode::OnSkillWasUsed(const FCataclysmSkillUsedNotice& 
 	// are about Wild Magic's own row.
 	NoteSkillUseForEchoChamber(Notice);
 
+	// AND ANGELIC WARDENS, ON ITS OWN TEST FOR THE SAME REASON. Issues #1820 and #41.
+	NoteSkillUseForAngelicWardens(Notice);
+
 	// THE PLAYER'S OWN SKILL, NOT THE BASIC ATTACK, ON A FLOOR CARRYING THE ROW, AND NOT INSIDE THE WAIT. The notice
 	// is sent for creatures too. A triggered skill sends none, so it never reaches here. Ruled 2026-10-04.
 	UWorld* World = GetWorld();
@@ -12962,6 +13204,9 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheCarrion();
 	ForgetTheShadowLights();
 	ForgetTheSarcophagi();
+	// AND ANGELIC WARDENS' STATUES: the floor still stands here, so each standing statue gives its cell back.
+	// Issues #1820 and #41.
+	ForgetTheAngelicStatues();
 	ForgetTheTotems();
 	ForgetTheRelics();
 	ForgetTheBoxes();
@@ -13613,6 +13858,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::LightforgedWallsKey));
 	// AND THE SECTIONS' BARRIERS, ON A FLOOR THAT HAS ANY, whichever row gave it sections. Issues #1820 and #41.
 	const bool bSectionBarriers = !FloorSections.Boundaries.IsEmpty();
+	// AND ANGELIC WARDENS, WHILE THIS ARENA HOLDS A STATUE, STANDING OR WOKEN. Issues #1820 and #41.
+	const bool bAngelicWardens = !AngelicStatues.IsEmpty();
 	// AND WINGS OF THE HOST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
 	// and #41.
 	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
@@ -13787,7 +14034,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPactOfTemptation
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
-		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers)
+		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers && !bAngelicWardens)
 	{
 		return;
 	}
@@ -14023,6 +14270,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 			LightforgedWallsPanelSectionCount = WallsSectionStanding;
 			RefreshFloorModifierPanel();
 		}
+	}
+
+	// AND ANGELIC WARDENS, AFTER THE BARRIERS HAVE BEEN STEPPED, so a barrier that opened on this beat is read as
+	// open: a statue the player stands near wakes. Issues #1820 and #41.
+	if (bAngelicWardens)
+	{
+		StepAngelicWardens(Player);
 	}
 
 	// AND WINGS OF THE HOST, WHICH PLACES ZONES. Issues #1820 and #41.
@@ -18073,6 +18327,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 								: LightforgedWallsSealTheStairs()
 								? FString::Printf(TEXT("lightforged walls: %d still standing"), LightforgedWallsStanding())
 								: FString(TEXT("lightforged walls: open")));
+	}
+
+	// AND ANGELIC WARDENS: the statues not yet woken, and the woken wardens that still stand. Issues #1820 and #41.
+	const FName AngelicRow(Effects::AngelicWardensKey);
+	if (FloorBrief.Modifiers.Contains(AngelicRow))
+	{
+		Counting.Add(AngelicRow, FString::Printf(TEXT("angelic wardens: %d statues standing, %d awake"),
+												 AngelicStatueCellsStanding().Num(), AngelicWardensNow().Num()));
 	}
 
 	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.

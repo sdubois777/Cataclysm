@@ -3780,6 +3780,26 @@ def test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names
             "LightforgedWallsKey in CataclysmDungeonModifierEffects.h. " + words)
 
 
+def test_angelic_wardens_row_still_names_statues_that_animate_and_hunt_and_the_traps_not_built():
+    """The phrases Angelic Wardens' readings rest on, and the one that is not built.
+
+    "Massive angelic statues are scattered throughout the dungeon. When players trigger certain traps or violate
+    "divine laws," these statues animate and relentlessly hunt them for the rest of the floor." STATUES ARE SCATTERED
+    is the pillars a floor begins with; ANIMATE is a statue waking into a creature; RELENTLESSLY HUNT THEM is the
+    warden's sight; FOR THE REST OF THE FLOOR is why a woken warden stays awake and goes with the floor. VIOLATE
+    "DIVINE LAWS" is read, on the owner's words of 2026-10-08, as the player coming near a statue or using a skill
+    near it. TRIGGER CERTAIN TRAPS is NOT built: the game has no trap a player triggers. If any changes, the reading
+    built on it must be revisited; see AngelicWardensKey in CataclysmDungeonModifierEffects.h.
+    """
+    words = flat(rows()["Celestial_Angelic_Wardens"]["Description"])
+    lower = words.lower()
+    for phrase in ("angelic statues are scattered", "trigger certain traps", 'violate "divine laws,"',
+                   "these statues animate", "relentlessly hunt them", "for the rest of the floor"):
+        assert phrase in lower, (
+            f"Celestial_Angelic_Wardens no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "AngelicWardensKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
 def test_warzone_row_still_names_allied_soldiers_and_shortcuts():
     """The phrases Warzone Control Points' readings rest on.
 

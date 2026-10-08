@@ -1844,6 +1844,48 @@ public:
 	static const TCHAR* LightforgedWallsKey;
 
 	/**
+	 * The row whose statues wake and come for the player. Issues #1820 and #41.
+	 *
+	 * "Massive angelic statues are scattered throughout the dungeon. When players trigger certain traps or violate
+	 * "divine laws," these statues animate and relentlessly hunt them for the rest of the floor."
+	 *
+	 * THE OWNER, 2026-10-08, asked what wakes a statue: "I forget the exact wording of this one, but i'm pretty sure it
+	 * was meant to be when you get close or use an ability near them?"
+	 *
+	 * NOT BUILT, AND SAID FIRST: "trigger certain traps". The game has no trap a player triggers. Only the owner's two
+	 * triggers are built. AND THE GAME HAS NO CELESTIAL CREATURE: all seven creature kinds are the Demonic roster, so
+	 * a demon stands where an angelic statue was.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-08, each a labelled judgement resting on
+	 * the owner's words above. Every figure is a judged number for the owner's play-check:
+	 * - BEFORE IT WAKES A STATUE IS A PILLAR ON ONE CELL (`ACataclysmFloorObstacle`, the pillar kind, in this row's
+	 *   colour) and not a creature. It cannot be hurt, targeted or counted. A dormant creature is not built: nothing
+	 *   in the code stops and restarts a creature thinking, and every rule that counts or targets creatures would
+	 *   have to learn to leave a dormant one out.
+	 * - `AngelicWardensStatuesPerFloor` A FLOOR, on cells beside a wall at least `EternalChorusApartCm` from the
+	 *   entrance and from each other (`ACataclysmDungeonGameMode::FloorSourceCells`), each asked of
+	 *   `ACataclysmDungeonGameMode::AnObstacleMayClose`. A cell refused is skipped, so a floor may have fewer.
+	 * - WHAT WAKES ONE, EITHER OF TWO: the player within `AngelicWardensWakeWithinCm` of the statue's centre, asked
+	 *   on the quarter-second beat; or the player using a skill other than the basic attack while within
+	 *   `AngelicWardensSkillWakesWithinCm` of it, asked when the skill is used. The basic attack is left out as Wild
+	 *   Magic leaves it out. Neither has a wall test, as no target search has.
+	 * - WAKING: the pillar is removed, its cell is walkable again, and an Abyssal Warden at `AngelicWardensRung` is
+	 *   raised on that cell at once, with no warning marker. Each statue wakes once.
+	 * - THE HUNT IS `AngelicWardensSightMultiplier`. The warden is raised by a rule, by both marks, so it never holds
+	 *   the stairs sealed and holds no section's barrier. It can be killed and pays for its death as its rung does.
+	 * - THE ABYSSAL WARDEN, as the Reaper and the Unstable Portal's mini-boss are: the kind every rule already uses
+	 *   for a single creature that comes for the player. Its designed walk is 2.8 metres a second and the slowest
+	 *   class moves at 3.5.
+	 * - A WOKEN WARDEN STAYS AWAKE AND A SLAIN ONE STAYS SLAIN after the player dies and returns: nothing is built
+	 *   for it, and nothing in a death or a return touches the statues or the floor's creatures.
+	 * - ON A FLOOR IN SECTIONS a statue is not woken by a player in another section while a barrier between the two
+	 *   sections is closed (`ACataclysmDungeonGameMode::AClosedBarrierStandsBetweenSections`). A woken warden carries
+	 *   no section.
+	 * - THE PANEL: "angelic wardens: N statues standing, M awake".
+	 */
+	static const TCHAR* AngelicWardensKey;
+
+	/**
 	 * `Celestial_Heaven_s_Quake`: "Radiant pillars crash through the ceiling, creating impassable terrain and forcing
 	 * reroutes mid-combat." Issues #1820 and #41.
 	 *
@@ -6337,6 +6379,36 @@ public:
 			&& PlagueConvergenceMostStacks > 0,
 		"A convergence that begins at once, never sends a wave, or has no room for one is not "
 		"the row.");
+
+	/**
+	 * Angelic Wardens' figures. See the key. Each is a judged number for the owner's play-check, ruled by the
+	 * coordinating session under the owner's delegation, 2026-10-08, with its reason:
+	 * - THREE STATUES A FLOOR: the count of Shadowy Enemies' light zones, which the same picker places; the row's
+	 *   danger is 10, the lowest band.
+	 * - WOKEN FROM 5 METRES: a cell is 4 metres, so a statue against the wall of a hall two or more cells wide can be
+	 *   passed along the far wall.
+	 * - A SKILL WAKES FROM 12 METRES, three cells: a fight beside a statue wakes it and a fight in the next room does
+	 *   not.
+	 * - THE ELITE RUNG, step 1 of `game/Data/EnemyRarities.csv`.
+	 */
+	static constexpr int32 AngelicWardensStatuesPerFloor = 3;
+	static constexpr float AngelicWardensWakeWithinCm = 500.0f;
+	static constexpr float AngelicWardensSkillWakesWithinCm = 1200.0f;
+	static constexpr int32 AngelicWardensRung = 1;
+
+	/**
+	 * What a woken warden notices the player from, times its own sight: the Vengeful Wraiths' figure, which covers
+	 * the largest floor corner to corner, as `TheReaperSightMultiplier` is. It is the row's "relentlessly hunt them
+	 * for the rest of the floor". A NEW CONSTANT FOR THIS ROW, as ruled, so the row's hunt can be tuned without
+	 * moving the Reaper's or the wraiths'.
+	 */
+	static constexpr float AngelicWardensSightMultiplier = VengefulWraithsSightMultiplier;
+
+	static_assert(
+		AngelicWardensStatuesPerFloor > 0 && AngelicWardensWakeWithinCm > 0.0f
+			&& AngelicWardensSkillWakesWithinCm > AngelicWardensWakeWithinCm,
+		"A floor with no statue, a statue nothing wakes, or a skill that reaches no further than walking up to it is "
+		"not the row.");
 
 	/** The Reaper's rung: Common, the rung that adds nothing to the Warden. Ruled. */
 	static constexpr int32 TheReaperRung = 0;

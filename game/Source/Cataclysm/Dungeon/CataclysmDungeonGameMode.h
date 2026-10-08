@@ -2131,6 +2131,26 @@ public:
 	FCataclysmFloorPlan PlanWithSectionBarriersOpen() const;
 	FCataclysmFloorPopulation FloorPopulationNow(const TSet<FIntPoint>& NoCreatureOn = TSet<FIntPoint>()) const;
 
+	/**
+	 * Angelic Wardens, for the panel and tests. Issues #1820 and #41. Ruled 2026-10-08, each a labelled judgement by
+	 * the coordinating session under the owner's delegation; see `UCataclysmDungeonModifierEffects::AngelicWardensKey`.
+	 *
+	 * `AngelicStatueCellsStanding` is the cells of the statues not yet woken. `AngelicWardensNow` is the woken
+	 * wardens that still stand; a slain one is not among them.
+	 *
+	 * `PlaceAnAngelicStatueOn` IS THE ONE WAY A STATUE IS PLACED, and public so a test can place one where it means
+	 * to. It asks `AnObstacleMayClose` about the one cell, from the floor's entrance, with the cells
+	 * `CellsHeldOrWarned` names held, and answers false when that refuses. Otherwise the cell is Solid in the plan, a
+	 * raised pillar in the row's colour stands on it, and the statue remembers the section of its cell.
+	 *
+	 * `AClosedBarrierStandsBetweenSections` is `AClosedBarrierStandsBetween`'s question asked of two section
+	 * numbers: true when both are sections, they differ, and any barrier between them is closed.
+	 */
+	TArray<FIntPoint> AngelicStatueCellsStanding() const;
+	TArray<ACataclysmEnemyCharacter*> AngelicWardensNow() const;
+	bool PlaceAnAngelicStatueOn(FIntPoint Cell);
+	bool AClosedBarrierStandsBetweenSections(int32 One, int32 Other) const;
+
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
 
@@ -4116,6 +4136,60 @@ private:
 
 	/** The player's cell on this floor, or (-1, -1). */
 	FIntPoint ThePlayersCell() const;
+
+	// ----------------------------------------------------------------------
+	// Angelic Wardens. Issues #1820 and #41. Ruled 2026-10-08.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * One statue of this arena: its cell, the section of that cell or `INDEX_NONE` on a floor with no sections,
+	 * whether it has woken, its pillar while it stands, and its warden once it has woken.
+	 */
+	struct FAngelicStatue
+	{
+		FIntPoint Cell = FIntPoint(-1, -1);
+		int32 Section = INDEX_NONE;
+		bool bWoken = false;
+		TArray<TWeakObjectPtr<ACataclysmFloorObstacle>> Pillars;
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Warden;
+	};
+
+	/**
+	 * This arena's statues, woken or not. NOT IN `CellsTheFloorHolds`: a standing statue's cell is Solid in the
+	 * plan, which the placement rule refuses before it asks what is held, and a woken statue's cell is ordinary
+	 * floor with a creature on it, held as any creature's cell is.
+	 */
+	TArray<FAngelicStatue> AngelicStatues;
+
+	/** The two figures the panel last showed for the row. */
+	int32 AngelicWardensPanelStanding = -1;
+	int32 AngelicWardensPanelAwake = -1;
+
+	/** Angelic Wardens: this arena's statues placed, where a new arena is populated. None without the row. */
+	void PlaceTheAngelicStatues();
+
+	/**
+	 * Angelic Wardens: every statue forgotten. A statue whose pillar still stands gives its cell back; one whose
+	 * pillar went with the last floor's actors names a cell of a plan that no longer exists, and touches nothing.
+	 * The woken wardens are the floor's creatures and go as those go.
+	 */
+	void ForgetTheAngelicStatues();
+
+	/** Angelic Wardens, on the beat: a statue the player stands near wakes, and the panel follows the two counts. */
+	void StepAngelicWardens(class ACataclysmPlayerCharacter* Player);
+
+	/** Angelic Wardens, on every skill use: the player's skill, not the basic attack, wakes the statues near them. */
+	void NoteSkillUseForAngelicWardens(const struct FCataclysmSkillUsedNotice& Notice);
+
+	/**
+	 * Wakes every standing statue whose centre is within `WithinCm` of `PlayerAt`, flat, unless a closed barrier
+	 * stands between the statue's section and the section of the cell `PlayerAt` is in. Both triggers ask here.
+	 * Answers how many woke.
+	 */
+	int32 WakeTheAngelicStatuesNear(const FVector& PlayerAt, float WithinCm);
+
+	/** One statue woken: its pillar gone, its cell walkable, and its warden raised on that cell, or null. */
+	ACataclysmEnemyCharacter* WakeTheAngelicStatue(FAngelicStatue& One);
 
 	/** Infernal Rain: a patch at this point, typed and burning once a second with the others; null if none came. */
 	class ACataclysmGroundZone* PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where, float DamagePerSecond,
