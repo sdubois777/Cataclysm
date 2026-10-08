@@ -2194,6 +2194,15 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// the skill was paid for. Issue #41, slice 2.
 	Delivery.MetresMovedBeforeBlow = LastMetresMovedBeforeUse;
 
+	// AND HOW FAR A CHARGE HAS GONE, WITH THE RANGE IT USED, WHEN THE SKILL IS A
+	// CHARGE DEALING ITS OWN BLOW. Ruled 2026-10-08. A different distance from
+	// the one above: that is the walk before the press, this is the ground the
+	// skill covered after it. Both are -1 except inside
+	// `UCataclysmMovementSkill::HitScaledAsACharge`, so every other skill's blow
+	// carries nothing and the scale `share_of_range_moved` gives it nothing.
+	Delivery.MetresCharged = BlowMetresCharged;
+	Delivery.ChargeRangeMetres = BlowChargeRangeMetres;
+
 	// AND THIS SKILL ITSELF, SO WHAT IT HITS CAN NAME IT. Issue #41, slice 4.
 	// Carried on the effect context; see `FCataclysmHitDelivery::Skill`.
 	Delivery.Skill = this;

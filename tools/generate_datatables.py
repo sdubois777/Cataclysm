@@ -4141,6 +4141,12 @@ CONDITIONS = {
 #: the bonus for being at death's door handed to one at full health. Refusing an
 #: unknown name when the file is written is where it should be caught instead.
 #:
+#: EVERY SCALE HERE COUNTS WHOLE STEPS, ROUNDED DOWN, BUT ONE.
+#: `share_of_range_moved`, the last entry, counts a FRACTION: its row is worth
+#: its value times a share from 0 to 1 and nothing is rounded. Ruled
+#: 2026-10-08. `SCALES_THAT_COUNT_A_FRACTION` below names it and says what a
+#: row on it may not state.
+#:
 #: The value is (lowest step, highest step, what the step means).
 SCALES = {
     # "for every 5% of your maximum health that is missing" is `health_missing`
@@ -4465,6 +4471,19 @@ SCALES = {
     #
     # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
     "seconds_leeching": (0.0, 60.0, "a number of seconds"),
+
+    # "Charge skills deal 30%-60% bonus damage proportional to distance
+    # traveled" is `share_of_range_moved` with a step of 1. Ruled 2026-10-08
+    # under the owner's delegation: the row's value is the bonus AT THE SKILL'S
+    # FULL RANGE and falls in proportion below it, so a 14 metre charge that
+    # has moved 7 metres gets half; capped at the whole value.
+    #
+    # THE ONE SCALE WHOSE COUNT IS A FRACTION. Every other entry counts whole
+    # steps. There is no distance per step, so THE STEP IS 1 AND NOTHING ELSE:
+    # the whole range is worth one value. It is nought for every blow that is
+    # not a charge's own, so the row requires `Keyword.Charge` only to say
+    # which skills it is about.
+    "share_of_range_moved": (1.0, 1.0, "the whole of a charge's range"),
 }
 
 
@@ -4541,6 +4560,30 @@ MAX_SCALE_OFFSET = 230
 #: UNCAPPED. The row is refused instead. The Passive Effects sheet has no
 #: such column, so a row there naming one of these is refused outright.
 SCALES_THAT_NEED_A_CAP = frozenset({"seconds_leeching"})
+
+#: The scales whose count is a FRACTION and not a number of whole steps. Ruled
+#: 2026-10-08. EVERY OTHER SCALE COUNTS WHOLE STEPS, ROUNDED DOWN.
+#: `share_of_range_moved` is the metres a charge had moved when its blow
+#: landed over the range the skill used, from 0 to 1, and its row is worth the
+#: value times that.
+#:
+#: A ROW ON ONE MAY STATE NEITHER A CAP NOR AN OFFSET. `Scale Max Steps` caps a
+#: number of whole steps, and there are none: the scale holds its own cap, at
+#: the whole value. `Scale Offset` is how much of a reading is not counted,
+#: and no sentence leaves part of a charge uncounted. The cap is refused where
+#: `Scale Max Steps` is read; the offset is refused already, because the scale
+#: is not in `SCALES_THAT_TAKE_AN_OFFSET`. The engine's `ValidateModifier`
+#: refuses both as well.
+SCALES_THAT_COUNT_A_FRACTION = frozenset({"share_of_range_moved"})
+
+#: The stats whose asker hands over how far a charge went, which is what
+#: `share_of_range_moved` reads. Ruled 2026-10-08. The two figures travel on
+#: the blow (`FCataclysmHitDelivery::MetresCharged` and `ChargeRangeMetres`)
+#: and `UCataclysmSkillEffects::ApplyHit` passes them to the lookups of these
+#: two stats and to no other. On any other stat the scale reads nought every
+#: time, so the row would be accepted and dead; `refuse_a_scale_nothing_asks_for`
+#: refuses it.
+STATS_ASKED_WITH_A_CHARGES_DISTANCE = frozenset({"attack_damage", "spell_damage"})
 
 
 #: The value kinds a stat row may carry, on both sheets that write one.
@@ -6546,6 +6589,13 @@ def enchantment_effects(book) -> list[dict]:
         # steps, from 1 up to the largest a sentence states.
         cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
         scale_max_steps = 0
+        if cap_text and scale in SCALES_THAT_COUNT_A_FRACTION:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} scales by {scale!r} "
+                f"and states Scale Max Steps {cap_text!r}. That scale counts a "
+                f"fraction of a charge's range and not whole steps, and is "
+                f"capped at the row's whole value by itself, so there is "
+                f"nothing for a cap in steps to limit. Leave the column empty.")
         if cap_text:
             cap = number(cap_text, "Scale Max Steps", index)
             if not scale and action not in NEXT_USE_ACTIONS \
@@ -7921,6 +7971,20 @@ def refuse_a_scale_nothing_asks_for(sheet: str, rows: list[dict]) -> list[str]:
                 f"a lookup where its value is used, and add it to "
                 f"STATS_WITH_AN_ASKER here and to the probe table in "
                 f"CataclysmStatExemptionTests.cpp; or take the scale off.")
+        elif (scale.lower() in SCALES_THAT_COUNT_A_FRACTION
+              and stat not in STATS_ASKED_WITH_A_CHARGES_DISTANCE):
+            # AND A SCALE THAT READS THE BLOW NEEDS AN ASKER THAT HANDS THE
+            # BLOW OVER. Ruled 2026-10-08. The stat is asked for, so the check
+            # above passes it, and the row would still be dead.
+            problems.append(
+                f"{sheet}/{row['Name']}: scales {stat!r} by {scale!r}, which "
+                f"reads how far a charge had gone when its blow landed, and "
+                f"the code that asks for {stat!r} is not handed that. The "
+                f"scale would read nought every time, so this row would grant "
+                f"NOTHING and say nothing. Only "
+                f"{', '.join(sorted(STATS_ASKED_WITH_A_CHARGES_DISTANCE))} are "
+                f"asked for with a charge's distance "
+                f"(STATS_ASKED_WITH_A_CHARGES_DISTANCE).")
     return problems
 
 

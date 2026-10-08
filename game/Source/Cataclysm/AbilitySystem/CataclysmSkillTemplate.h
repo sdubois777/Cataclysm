@@ -285,6 +285,25 @@ public:
 	float LastMetresMovedBeforeUse = -1.0f;
 
 	/**
+	 * How far a charge has gone, for the blow it is dealing at this moment, in
+	 * metres; and the range it used. Ruled 2026-10-08.
+	 *
+	 * NOT THE FIELD ABOVE. That is the walk BEFORE the press and is written once
+	 * when the skill is paid for. These two are the ground the skill covered
+	 * AFTER the press, and they hold a figure ONLY WHILE A CHARGE IS DEALING ITS
+	 * OWN BLOW: `UCataclysmMovementSkill::HitScaledAsACharge` writes them, calls
+	 * `HitScaled`, and puts back what they held. `HitTargets` copies them onto
+	 * the delivery of every blow it deals, so at any other moment, and for every
+	 * other skill shape, a blow is told -1 and -1.
+	 *
+	 * THEY DO NOT OUTLIVE THE BLOW, unlike the field above, and that is the
+	 * point: a walked charge strikes what it passes as it passes it, and each
+	 * of those blows is told the walk so far.
+	 */
+	float BlowMetresCharged = -1.0f;
+	float BlowChargeRangeMetres = -1.0f;
+
+	/**
 	 * The next-use charges the last use spent, as increased damage. Issue #1833,
 	 * phase 2: "your next skill deals 30%-60% increased damage".
 	 *

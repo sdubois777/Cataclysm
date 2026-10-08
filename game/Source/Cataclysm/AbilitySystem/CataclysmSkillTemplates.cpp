@@ -2767,6 +2767,27 @@ void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Cross
 	}
 }
 
+void UCataclysmMovementSkill::HitScaledAsACharge(const TArray<AActor*>& Targets,
+												 const TArray<AActor*>& Consumed,
+												 float ChargedCm)
+{
+	// WHAT THEY HELD IS PUT BACK RATHER THAN -1 WRITTEN, so a blow of this
+	// skill that began inside another of its own blows cannot leave the outer
+	// one telling its later targets nothing.
+	const float MetresHeld = BlowMetresCharged;
+	const float RangeHeld = BlowChargeRangeMetres;
+
+	// METRES, because the delivery and the conditions hold metres and the
+	// engine keeps centimetres.
+	BlowMetresCharged = FMath::Max(0.0f, ChargedCm) / 100.0f;
+	BlowChargeRangeMetres = ScaledRangeCm() / 100.0f;
+
+	HitScaled(Targets, Consumed);
+
+	BlowMetresCharged = MetresHeld;
+	BlowChargeRangeMetres = RangeHeld;
+}
+
 void UCataclysmMovementSkill::HitAlongThePath(const FVector& From, const FVector& To)
 {
 	// ONLY A CHARGE HAS A PATH. "A run along the ground, hitting everything on the way" is the charge; a leap
@@ -3252,7 +3273,22 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// it damages, so consuming and then hitting delivers both halves in order.
 	// Inert for a movement skill that does not state `ConsumeBurn`.
 	const TArray<AActor*> Consumed = ConsumeBurnFrom(Targets);
-	HitScaled(Targets, Consumed);
+
+	// A CHARGE'S BLOW IS TOLD HOW FAR THE CHARGE WENT: from where it began to
+	// where it arrived, along the ground, as a walked charge's tally is
+	// measured. Ruled 2026-10-08. BY MODE AND NOT FOR EVERY MOVEMENT SKILL: a
+	// leap, a blink, a return and a trade are not charges, and their blows
+	// carry nothing. Where it ARRIVED and not where it aimed, so a charge
+	// stopped short by a wall is paid for the ground it covered.
+	if (Params.MovementMode == ECataclysmMovementMode::Charge)
+	{
+		HitScaledAsACharge(Targets, Consumed,
+						   static_cast<float>(FVector::Dist2D(Start, ArrivedAt)));
+	}
+	else
+	{
+		HitScaled(Targets, Consumed);
+	}
 	IgniteAroundConsumed(Consumed);
 
 	// AND THE COOLDOWN COMES BACK IF THE ARRIVAL KILLED. The Axe's Emberhaul:
@@ -3627,7 +3663,13 @@ void UCataclysmMovementSkill::AdvanceOneStep()
 	// walked, the harder it hits", written as `MoreDamagePer=3;
 	// ScalingSource=Meter`. `HitScaled` reads the skill's own damage percent, so
 	// the multiplier is applied to that rather than to the character.
-	HitScaled(Caught, TArray<AActor*>());
+	//
+	// AND THE BLOW IS TOLD THE WALK SO FAR, which is `WalkedCm` with this
+	// step's ground already added above. Ruled 2026-10-08: not the whole walk,
+	// and no blow is held back until the walk ends. An enemy met early is
+	// struck with a small share of the range behind the blow and one met at
+	// the end with nearly all of it.
+	HitScaledAsACharge(Caught, TArray<AActor*>(), WalkedCm);
 
 	// AND THE HIT A ROW GIVES EVERYTHING ON THE PATH, once each: `Caught` holds only what no earlier step struck.
 	// Ruled 2026-10-07.

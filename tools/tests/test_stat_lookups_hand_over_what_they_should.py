@@ -111,6 +111,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: The share of its summoner's armour and resistances a minion takes added one
 #: more on 2026-10-08, asked of the summoner in `InheritedDefencesOf` with the
 #: minion's own type tags, once for each blow a minion takes.
+#: A charge's blow being told how far the charge went added NONE on
+#: 2026-10-08 and changed what one existing lookup hands over: the spell
+#: damage lookup now passes the metres charged and the range the skill used,
+#: the eleventh and twelfth arguments, so its key here changed with it.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -125,7 +129,8 @@ A_COMMENT_IN_THAT_FILE = "NEGATIVE IS CLAMPED AWAY FOR THE SAME REASON"
 #: What each optional parameter is when the caller says nothing. Positions are
 #: zero-based into the argument list.
 DEFAULTS = {3: "-1.0f", 4: "FCataclysmBlowContext()", 5: "-1.0f",
-            6: "-1.0f", 7: "false", 8: "nullptr", 9: "-1"}
+            6: "-1.0f", 7: "false", 8: "nullptr", 9: "-1",
+            10: "-1.0f", 11: "-1.0f"}
 DISTANCE, STAGGER, TARGET = 6, 7, 8
 
 
@@ -419,10 +424,11 @@ INVENTORY = {
      'FName(Stat), FGameplayTagContainer(), Held'):
         "retaliation's own figures, read off the character that was hit",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
-     'FName(TEXT("spell_damage")), SkillTags, FromAttribute, SkillHealthCostPercent, FCataclysmBlowContext(), -1.0f, TargetDistanceMetres, bTargetIsStaggered, Target, EnemiesStruckTogether'):
+     'FName(TEXT("spell_damage")), SkillTags, FromAttribute, SkillHealthCostPercent, FCataclysmBlowContext(), -1.0f, TargetDistanceMetres, bTargetIsStaggered, Target, EnemiesStruckTogether, MetresCharged, ChargeRangeMetres'):
         "the attacker's damage for one blow, and the only call that "
         'hands over the whole blow: distance, stagger, target and the '
-        'group struck',
+        'group struck; and, since 2026-10-08, how far a charge had gone '
+        'and the range it used, for the scale share_of_range_moved',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'StatName, SkillTags, FromAttribute'):
         'a figure read off the attacker with no blow in hand',
