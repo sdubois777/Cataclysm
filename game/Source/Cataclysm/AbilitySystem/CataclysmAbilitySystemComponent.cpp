@@ -3707,6 +3707,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusSecondsAction =
 	TEXT("apply_status_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
+const TCHAR* UCataclysmAbilitySystemComponent::AllDotsStatus = TEXT("All DoTs");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfAction = TEXT("apply_status_to_self");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSecondsAction = TEXT("apply_status_to_self_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSizedAction = TEXT("apply_status_to_self_sized");
@@ -3716,6 +3717,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::SkillEndEvent = TEXT("skill_end")
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
 const TCHAR* UCataclysmAbilitySystemComponent::BlastFromTheDyingAction = TEXT("blast_from_the_dying");
+const TCHAR* UCataclysmAbilitySystemComponent::StunNearTheDyingAction = TEXT("stun_near_the_dying");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageTakenAction = TEXT("ailment_damage_taken");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentArmorRiderAction = TEXT("ailment_armor_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentDamageDealtAction = TEXT("ailment_damage_dealt");
@@ -5280,6 +5282,38 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// A STUN ON EVERY ENEMY NEAR AN ENEMY THAT DIED CARRYING THE WEARER'S
+		// AILMENT. Ruled 2026-10-08, for "Chronomancer's Time-Lock (6-Piece
+		// Bonus)". Landed only, once per row per event, and only for an event
+		// that names who died.
+		//
+		// ONE ROLL FOR THE DEATH, and then every enemy in reach is stunned or
+		// none is; not a roll for each enemy. The value is the chance, where 100
+		// is always, compared as the status actions compare theirs.
+		//
+		// NOT REACHED AT DEPTH ONE. An afflicted enemy that dies to a row's own
+		// action is heard while this character is already acting, and only a
+		// blast is kept then; see `PoolActionDepth`.
+		if (Action.bStunNearTheDying)
+		{
+			AActor* Dead = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Dead && Self && Action.StackSeconds > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Pinned = CVarStatusRoll.GetValueOnAnyThread();
+				const bool bTimeLockComesUp = Action.Percent >= 100.0f
+					|| (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f))
+						< Action.Percent;
+				if (bTimeLockComesUp)
+				{
+					NoteTriggerFired(Action);
+					UCataclysmContagion::StunNearTheDying(Self, Dead, Action.StackSeconds);
+				}
+			}
+			continue;
+		}
 		// A SHARE OF WHAT A BLOCK REMOVED, PAID BACK TO THE ATTACKER. Issue #1833
 		// group E part 3, ruled 2026-10-02: as retaliation pays, through the
 		// attacker's armour and resistance, never retaliated against, never a
@@ -5697,6 +5731,34 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 	{
 		return UCataclysmAilments::ApplyRandomDebuff(Applier, Other, EventAmount)
 			!= nullptr;
+	}
+	// EACH OF THE FIVE DAMAGE OVER TIME AILMENTS, IN TURN. The owner, 2026-10-08,
+	// for "Your first hit against each enemy applies all your active DoTs
+	// instantly". Each through the call a single name makes below, at the normal
+	// magnitude and its own row's duration.
+	//
+	// THE LOOP DOES NOT STOP AT A REFUSAL, so a target unaffected by one of the
+	// five still takes the other four. APPLIED WHEN AT LEAST ONE LANDED, which
+	// is what starts the row's trigger cooldown. The chance was rolled once by
+	// the caller, for all five.
+	//
+	// THE CHANCE FORM ONLY. The generator refuses this name on
+	// `apply_status_seconds`; a row that reached here with it applies nothing.
+	if (Action.StatusName.Equals(AllDotsStatus, ESearchCase::IgnoreCase))
+	{
+		bool bAnyOfTheFiveLanded = false;
+		if (!bSeconds)
+		{
+			for (const FCataclysmAilmentKind* Each : UCataclysmAilments::RandomDamageOverTimePool())
+			{
+				if (Each && UCataclysmAilments::Apply(Applier, Other, *Each, /*Magnitude=*/1.0f,
+						/*Skill=*/nullptr, NAME_None, /*Seconds=*/0.0f))
+				{
+					bAnyOfTheFiveLanded = true;
+				}
+			}
+		}
+		return bAnyOfTheFiveLanded;
 	}
 	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(Action.StatusName);
 	if (!Kind)
