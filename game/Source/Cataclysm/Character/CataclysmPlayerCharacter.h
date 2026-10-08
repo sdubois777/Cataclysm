@@ -821,6 +821,14 @@ private:
 	/** The binding of `OnCrippleChanged`, kept so a second set-up does not leave two. */
 	FDelegateHandle CrippleChangedHandle;
 
+	/** Refreshes the walking speed when the character begins channelling and when it stops. Ruled 2026-10-08, for
+	 *  "You cannot move while channeling any skill": a speed row under `while_channelling` moves no attribute.
+	 *  Bound in InitAbilityActorInfo to `UCataclysmAbilitySystemComponent::OnChannellingChanged`. */
+	void OnChannellingChanged(bool bIsChannelling);
+
+	/** The binding of `OnChannellingChanged`, kept so a second set-up does not leave two. */
+	FDelegateHandle ChannellingChangedHandle;
+
 	/** Re-asks for the movement speed when the class resource pool or its
 	 *  maximum moves, so a bonus conditioned on the pool being full reaches the
 	 *  movement component. Issue #1825. Bound in InitAbilityActorInfo. */

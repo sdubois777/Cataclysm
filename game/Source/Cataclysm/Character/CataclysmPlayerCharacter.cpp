@@ -1305,6 +1305,15 @@ void ACataclysmPlayerCharacter::OnCrippleChanged(const FGameplayTag /*Tag*/, int
 	RefreshMovementSpeed();
 }
 
+void ACataclysmPlayerCharacter::OnChannellingChanged(bool /*bIsChannelling*/)
+{
+	// WHICHEVER WAY IT WENT, THE SPEED IS WORKED OUT AGAIN. Ruled 2026-10-08. The
+	// component raises this after its state has changed, so the pipeline pass
+	// below reads the new answer; a character wearing no row under the condition
+	// gets the speed it already had.
+	RefreshMovementSpeed();
+}
+
 void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 {
 	const UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent();
@@ -1455,6 +1464,9 @@ bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
 				case ECataclysmConditionDependsOn::Health:
 				case ECataclysmConditionDependsOn::ClassResource:
 				case ECataclysmConditionDependsOn::TheBlowOrSkill:
+				// AND A FOURTH THIS CHARACTER LISTENS FOR, since 2026-10-08:
+				// `OnChannellingChanged` announces both edges of channelling.
+				case ECataclysmConditionDependsOn::Channelling:
 					break;
 				case ECataclysmConditionDependsOn::OtherAttributes:
 				case ECataclysmConditionDependsOn::Time:
@@ -2297,6 +2309,13 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 		CrippleChanged.Remove(CrippleChangedHandle);
 		CrippleChangedHandle = CrippleChanged.AddUObject(this, &ACataclysmPlayerCharacter::OnCrippleChanged);
 	}
+
+	// AND WHEN THE CHARACTER BEGINS OR STOPS CHANNELLING, WHICH MOVES NO ATTRIBUTE EITHER. Ruled 2026-10-08. "You
+	// cannot move while channeling any skill" is a speed row under `while_channelling`, and a conditioned row is
+	// never folded into the attribute, so nothing above hears it. Replaced rather than added, as above.
+	ASC->OnChannellingChanged.Remove(ChannellingChangedHandle);
+	ChannellingChangedHandle = ASC->OnChannellingChanged.AddUObject(
+		this, &ACataclysmPlayerCharacter::OnChannellingChanged);
 
 	SpeedChanged.Remove(MovementSpeedChangedHandle);
 	MovementSpeedChangedHandle = SpeedChanged.AddUObject(

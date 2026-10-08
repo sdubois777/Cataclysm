@@ -24004,4 +24004,934 @@ bool FCataclysmCrowdControlCeilingWhoseStatTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A character knows it is channelling. Ruled 2026-10-08 under the owner's
+// delegation: a skill tagged `Type.Channel` is running, from the moment it is
+// paid for until it ends, whatever ended it. Two conditions read it,
+// `while_channelling` and `channelling_for_under_seconds`. Engine only; no row
+// is authored, so every row here is made by hand in the shape
+// `docs/DECISIONS.md` of that day gives.
+//
+// THE CHANNELLED SKILL IS A STRIKE THAT SPINS FOR 3 SECONDS, the shape of the
+// one built skill that carries the tag (Pyroclasm), with no burn and no ground
+// so that nothing but its blows is in the world.
+//
+// WHERE THE ACTORS STAND is said at the top of each test; no two are within a
+// metre of each other. TIME IS WRITTEN BY HAND where a test reads a clock, and
+// is run with `RunClock` only where a spin has to end by its own timer; no
+// reading is taken on the moment a timer falls due.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmChannellingTest
+{
+	using namespace CataclysmDotCombatLeechTest;
+
+	/** A spin of 3 seconds swinging every half second, as Pyroclasm's row states it, less its burn and ground. */
+	const TCHAR* const SpinParams = TEXT("Radius=3.5; Angle=360; Duration=3; Interval=0.5; FinalHitPercent=300");
+
+	/** The tag that makes a skill a channel, asked as the skill template asks it. Invalid before the table loads. */
+	FGameplayTag ChannelTag()
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Type.Channel"), /*ErrorIfNotFound=*/false);
+	}
+
+	/**
+	 * A skill granted on any ability system of this project's, stamped as `GrantSkill` stamps one, and with no
+	 * cooldown so that one test can use it more than once. For a real player character, which is not a fighter.
+	 */
+	template <typename T>
+	T* GrantSkillOn(UCataclysmAbilitySystemComponent* System, UObject* Source, ECataclysmAbilitySlot Slot,
+			   const FString& ParamText, const FString& Name, const FString& TagCell)
+	{
+		const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(T::StaticClass(), Slot, /*Level=*/100, Source);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
+		T* Instance = Spec ? Cast<T>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Instance)
+		{
+			Instance->SkillName = Name;
+			Instance->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+			Instance->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+			Instance->CooldownOverride = 0.0f;
+		}
+		return Instance;
+	}
+
+	/** A channelled spin on a fighter, in this slot, with no cooldown. */
+	UCataclysmStrikeSkill* GrantSpin(FScopedFighter& Who, ECataclysmAbilitySlot Slot, const TCHAR* Name)
+	{
+		UCataclysmStrikeSkill* Spin = GrantSkill<UCataclysmStrikeSkill>(
+			Who, Slot, SpinParams, Name, TEXT("Element.Demonic, Type.Melee, Type.Channel"));
+		if (Spin)
+		{
+			Spin->CooldownOverride = 0.0f;
+		}
+		return Spin;
+	}
+
+	/** End a running skill from outside, as an interruption would. */
+	void CancelFromOutside(UCataclysmAbilitySystemComponent* System, const UGameplayAbility* Skill)
+	{
+		System->CancelAbilityHandle(Skill->GetCurrentAbilitySpecHandle());
+	}
+
+	/**
+	 * A drain of health while channelling, as the loader would build "Channel skills drain 8%-15% of your maximum HP
+	 * per second while active": the pool `health`, a negative percentage of the maximum, every second, under
+	 * `while_channelling`, with the key the loader gives every row.
+	 */
+	FCataclysmPoolAction ADrainWhileChannelling(float PercentOfMaximumHealth)
+	{
+		FCataclysmPoolAction Action = ADrainOnTheClock(PercentOfMaximumHealth, 1.0f, /*AfterSecondsInCombat=*/0.0f);
+		Action.Condition = ECataclysmStatCondition::WhileChannelling;
+		Action.TriggerKey = FName(TEXT("A_channel_row:health:every_seconds"));
+		return Action;
+	}
+
+	/** A timed drain with a row's own key, as the loader builds every action it reads from a row. */
+	FCataclysmPoolAction AKeyedDrain(const TCHAR* Row, float PercentOfMaximumHealth, float AfterSecondsInCombat)
+	{
+		FCataclysmPoolAction Action = ADrainOnTheClock(PercentOfMaximumHealth, 1.0f, AfterSecondsInCombat);
+		Action.TriggerKey = FName(*FString::Printf(TEXT("%s:health:every_seconds"), Row));
+		return Action;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannellingStateTest,
+	"Cataclysm.Channelling.TheStateBeginsWithAChannelledSkillAndEndsWithItHoweverItEnds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The state itself, read from the component and from `CurrentConditions`, through real uses of real skills.
+ *
+ * IN ORDER: nothing is channelling to begin with. A skill WITHOUT the tag is used and sets nothing. A channelled
+ * spin begins and the state is set, with its clock at nought; a second and a quarter on the clock reads that. A
+ * SECOND channelled skill begun while the first runs does not restart the clock; the first ended from outside
+ * leaves the character channelling, and the second ended from outside clears it. A new use starts the clock from
+ * nought and ENDS BY ITS OWN TIMER after three seconds. The cancelled spins' timers have run out by then and called
+ * `EndAbility` on skills that had already ended, so a further use shows the count was not taken below nought. A
+ * press the character cannot pay for is refused and counts nothing.
+ *
+ * TWO USES CAN OVERLAP because they are two abilities: no skill here blocks another, and the engine refuses only a
+ * second start of the SAME ability while it runs.
+ *
+ * STANDING: one fighter at the origin and nobody else. Nothing is struck.
+ */
+bool FCataclysmChannellingStateTest::RunTest(const FString&)
+{
+	using namespace CataclysmChannellingTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Type.Channel is a tag this build knows"), ChannelTag().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Channeller(World, FVector::ZeroVector);
+	UCataclysmAbilitySystemComponent* System = Channeller.AbilitySystem;
+
+	UCataclysmStrikeSkill* Spin = GrantSpin(Channeller, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* SecondSpin = GrantSpin(Channeller, ECataclysmAbilitySlot::Special, TEXT("Second Spin"));
+	UCataclysmStrikeSkill* Chop = GrantSkill<UCataclysmStrikeSkill>(
+		Channeller, ECataclysmAbilitySlot::Support, TEXT("Radius=3; Angle=120"), TEXT("Chop"),
+		TEXT("Element.Demonic, Type.Melee"));
+	if (!TestTrue(TEXT("set-up: two channelled spins and a skill without the tag were granted"),
+				  Spin && SecondSpin && Chop))
+	{
+		return false;
+	}
+
+	World->TimeSeconds = 10.0f;
+
+	// 1. NOTHING YET.
+	TestFalse(TEXT("before any skill is used, the character is not channelling"), System->IsChannelling());
+	TestTrue(TEXT("and the seconds it has been channelling read negative"), System->SecondsChannelling() < 0.0f);
+	TestFalse(TEXT("and the conditions every row is judged from say the same"),
+			  System->CurrentConditions().bIsChannelling);
+
+	// 2. A SKILL WITHOUT THE TAG.
+	if (!TestTrue(TEXT("set-up: the skill without the tag is used"), Activate(Channeller, Chop)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a skill without the tag does not set the state"), System->IsChannelling());
+	TestFalse(TEXT("and was not counted as a channel"), Chop->bThisUseCountedAsChannel);
+
+	// 3. A CHANNELLED SPIN BEGINS.
+	if (!TestTrue(TEXT("set-up: the channelled spin is used and is still running"),
+				  Activate(Channeller, Spin) && Spin->IsActive()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a running skill tagged Type.Channel sets the state"), System->IsChannelling());
+	TestEqual(TEXT("its clock starts at nought"), System->SecondsChannelling(), 0.0f, 0.001f);
+	TestTrue(TEXT("the conditions every row is judged from say the character is channelling"),
+			 System->CurrentConditions().bIsChannelling);
+
+	World->TimeSeconds += 1.25f;
+	TestEqual(TEXT("a second and a quarter on, the component reads that"), System->SecondsChannelling(), 1.25f,
+			  0.001f);
+	TestEqual(TEXT("and so do the conditions"), System->CurrentConditions().SecondsChannelling, 1.25f, 0.001f);
+
+	// 4. A SECOND CHANNELLED SKILL WHILE THE FIRST RUNS, and each ended from outside.
+	if (!TestTrue(TEXT("set-up: a second channelled skill is used while the first runs, and both are running"),
+				  Activate(Channeller, SecondSpin) && SecondSpin->IsActive() && Spin->IsActive()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a second channelled skill does not start the clock again"), System->SecondsChannelling(), 1.25f,
+			  0.001f);
+
+	CancelFromOutside(System, Spin);
+	if (!TestTrue(TEXT("set-up: the first spin was ended from outside and the second still runs"),
+				  !Spin->IsActive() && SecondSpin->IsActive()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("with one of two channelled skills ended, the character is still channelling"),
+			 System->IsChannelling());
+
+	CancelFromOutside(System, SecondSpin);
+	if (!TestFalse(TEXT("set-up: the second spin was ended from outside"), SecondSpin->IsActive()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a channelled skill ended from outside clears the state once none is running"),
+			  System->IsChannelling());
+	TestTrue(TEXT("and the seconds read negative again"), System->SecondsChannelling() < 0.0f);
+	TestFalse(TEXT("and the conditions say it is not channelling"), System->CurrentConditions().bIsChannelling);
+
+	// 5. A NEW USE, ENDED BY ITS OWN TIMER. Half a second past its three, so the reading is not on the timer.
+	if (!TestTrue(TEXT("set-up: the spin is used again"), Activate(Channeller, Spin) && Spin->IsActive()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a new channel starts its clock from nought"), System->SecondsChannelling(), 0.0f, 0.001f);
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	TestTrue(TEXT("two and a half seconds into a three second spin, the character is still channelling"),
+			 System->IsChannelling());
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	if (!TestFalse(TEXT("set-up: three and a half seconds on, the spin has ended by its own timer"),
+				   Spin->IsActive()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a channelled skill that finishes clears the state"), System->IsChannelling());
+
+	// 6. THE COUNT WAS NOT TAKEN BELOW NOUGHT by the ends that arrived after a skill had ended.
+	if (!TestTrue(TEXT("set-up: the spin is used a third time"), Activate(Channeller, Spin) && Spin->IsActive()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("after ends that arrived on skills already ended, one new use still sets the state"),
+			 System->IsChannelling());
+	CancelFromOutside(System, Spin);
+	TestFalse(TEXT("and ending that one use clears it"), System->IsChannelling());
+
+	// 7. A PRESS THE CHARACTER CANNOT PAY FOR.
+	Channeller.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 0.0f);
+	if (!TestFalse(TEXT("set-up: with no mana the spin is refused"), Activate(Channeller, Spin)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a refused press does not set the state"), System->IsChannelling());
+	TestFalse(TEXT("and was not counted as a channel"), Spin->bThisUseCountedAsChannel);
+	Channeller.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	if (!TestTrue(TEXT("set-up: with mana again the spin is used"), Activate(Channeller, Spin)))
+	{
+		return false;
+	}
+	CancelFromOutside(System, Spin);
+	TestFalse(TEXT("after a refused press, one use and one end leave the character not channelling"),
+			  System->IsChannelling());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannellingWindowTest,
+	"Cataclysm.Channelling.TheWindowAtTheStartOfAChannelIsUnderItsSecondsAndHalvesOnlyAChannelledSkillsEarlyBlows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `channelling_for_under_seconds`, its boundary first and then through real blows.
+ *
+ * THE BOUNDARY is judged from a conditions struct built by hand: 1.999 seconds of channelling holds a value of 2
+ * and exactly 2.0 does not, and a character that is not channelling holds nothing whatever its seconds say.
+ * `while_channelling` is the flag and nothing else.
+ *
+ * IN A WORLD, "Channel skills deal 30%-50% less damage during the first 2 seconds of channeling" as `attack_damage`
+ * `more` -50, requiring `Type.Channel`, under the condition with 2. THE CONTROL is a fighter with no row, using the
+ * same two skills at the same moments on a target of its own; EVERY FIGURE IS A RATIO AGAINST ITS BLOW. The wearer's
+ * spin deals half the control's half a second into the channel and all of it two and a half seconds in. A skill
+ * WITHOUT the tag, used by the wearer half a second into its channel, deals what the control's deals. A second
+ * channel halves its first blow again, so the window belongs to each channel.
+ *
+ * TIME IS WRITTEN BY HAND and no timer runs, so every blow is one this test asks for: the swing a use makes as it
+ * begins, or `SwingOnce` on the running spin.
+ *
+ * STANDING: the wearer at the origin with its target 2 m along X; the control 20 m along Y with its target 2 m
+ * along X from it. A spin reaches 3.5 m, so neither reaches the other pair.
+ */
+bool FCataclysmChannellingWindowTest::RunTest(const FString&)
+{
+	using namespace CataclysmChannellingTest;
+
+	// THE BOUNDARY, FROM A STRUCT.
+	ECataclysmStatCondition While = ECataclysmStatCondition::Always;
+	ECataclysmStatCondition Under = ECataclysmStatCondition::Always;
+	if (!TestTrue(TEXT("while_channelling is a condition the engine reads"),
+				  UCataclysmStatPipeline::ConditionNamed(TEXT("while_channelling"), While))
+		|| !TestTrue(TEXT("channelling_for_under_seconds is a condition the engine reads"),
+					 UCataclysmStatPipeline::ConditionNamed(TEXT("channelling_for_under_seconds"), Under)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the first name is its enumerator"), While == ECataclysmStatCondition::WhileChannelling);
+	TestTrue(TEXT("the second name is its enumerator"), Under == ECataclysmStatCondition::ChannellingForUnderSeconds);
+	TestFalse(TEXT("while_channelling compares no value"), UCataclysmStatPipeline::ConditionTakesAValue(While));
+	TestTrue(TEXT("channelling_for_under_seconds compares its seconds"),
+			 UCataclysmStatPipeline::ConditionTakesAValue(Under));
+
+	FCataclysmStatConditions Channelling;
+	Channelling.bIsChannelling = true;
+	Channelling.SecondsChannelling = 1.999f;
+	TestTrue(TEXT("1.999 seconds of channelling is under 2"),
+			 UCataclysmStatPipeline::ConditionHolds(Under, 2.0f, Channelling));
+	Channelling.SecondsChannelling = 2.0f;
+	TestFalse(TEXT("exactly 2.0 seconds of channelling is not under 2"),
+			  UCataclysmStatPipeline::ConditionHolds(Under, 2.0f, Channelling));
+	Channelling.SecondsChannelling = 0.0f;
+	TestTrue(TEXT("the moment a channel begins is under 2"),
+			 UCataclysmStatPipeline::ConditionHolds(Under, 2.0f, Channelling));
+	TestTrue(TEXT("while_channelling holds for a character that is channelling"),
+			 UCataclysmStatPipeline::ConditionHolds(While, 0.0f, Channelling));
+
+	FCataclysmStatConditions NotChannelling;
+	NotChannelling.SecondsChannelling = 0.5f;
+	TestFalse(TEXT("a character that is not channelling is not in the window, whatever its seconds say"),
+			  UCataclysmStatPipeline::ConditionHolds(Under, 2.0f, NotChannelling));
+	TestFalse(TEXT("and while_channelling does not hold for it"),
+			  UCataclysmStatPipeline::ConditionHolds(While, 0.0f, NotChannelling));
+	TestFalse(TEXT("a state nothing was read into is not in the window"),
+			  UCataclysmStatPipeline::ConditionHolds(Under, 2.0f, FCataclysmStatConditions()));
+
+	// IN A WORLD.
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Type.Channel is a tag this build knows"), ChannelTag().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter PlainTarget(World, FVector(2 * M, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(PlainTarget, 0.0f, 0.0f);
+
+	FCataclysmStatModifier Row;
+	Row.Bucket = ECataclysmStatBucket::More;
+	Row.Source = ECataclysmModifierSource::Enchantment;
+	Row.Value = -50.0f;
+	Row.RequiredTags.AddTag(ChannelTag());
+	Row.Condition = ECataclysmStatCondition::ChannellingForUnderSeconds;
+	Row.ConditionValue = 2.0f;
+	WearOne(Wearer, TEXT("attack_damage"), Row);
+
+	const TCHAR* const ChopParams = TEXT("Radius=3.5; Angle=360");
+	const TCHAR* const ChopTags = TEXT("Element.Demonic, Type.Melee");
+	UCataclysmStrikeSkill* WearerSpin = GrantSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* PlainSpin = GrantSpin(Plain, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* WearerChop = GrantSkill<UCataclysmStrikeSkill>(
+		Wearer, ECataclysmAbilitySlot::Special, ChopParams, TEXT("Chop"), ChopTags);
+	UCataclysmStrikeSkill* PlainChop = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::Special, ChopParams, TEXT("Chop"), ChopTags);
+	if (!TestTrue(TEXT("set-up: both fighters were granted the spin and the skill without the tag"),
+				  WearerSpin && PlainSpin && WearerChop && PlainChop))
+	{
+		return false;
+	}
+
+	// What a use takes with the swing it makes as it begins, and what one more swing of a running spin takes.
+	const auto UseOn = [](FScopedFighter& Who, UCataclysmStrikeSkill* Skill, FScopedFighter& Victim)
+	{
+		Victim.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+		const bool bUsed = Activate(Who, Skill);
+		return bUsed ? Pool - Victim.Health() : -1.0f;
+	};
+	const auto SwingOn = [](UCataclysmStrikeSkill* Skill, FScopedFighter& Victim)
+	{
+		Victim.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+		Skill->SwingOnce();
+		return Pool - Victim.Health();
+	};
+
+	// BOTH SPINS BEGIN TOGETHER.
+	World->TimeSeconds = 10.0f;
+	const float PlainFirst = UseOn(Plain, PlainSpin, PlainTarget);
+	const float WearerFirst = UseOn(Wearer, WearerSpin, Target);
+	if (!TestTrue(TEXT("control: the spin of a character with no row hurts its target as it begins"),
+				  PlainFirst > 1.0f)
+		|| !TestTrue(TEXT("set-up: both spins are running and both characters are channelling"),
+					 PlainSpin->IsActive() && WearerSpin->IsActive() && Plain.AbilitySystem->IsChannelling()
+						 && Wearer.AbilitySystem->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the swing a channel begins with is halved by the row"), WearerFirst, PlainFirst * 0.5f, 0.01f);
+
+	// HALF A SECOND IN.
+	World->TimeSeconds = 10.5f;
+	const float PlainEarly = SwingOn(PlainSpin, PlainTarget);
+	TestEqual(TEXT("control: half a second in, the spin with no row deals what it began with"), PlainEarly,
+			  PlainFirst, 0.01f);
+	TestEqual(TEXT("half a second in, the wearer's channelled blow is half the control's"),
+			  SwingOn(WearerSpin, Target), PlainEarly * 0.5f, 0.01f);
+
+	// A SKILL WITHOUT THE TAG, USED WHILE THE WINDOW IS OPEN.
+	const float PlainChopBlow = UseOn(Plain, PlainChop, PlainTarget);
+	if (!TestTrue(TEXT("control: the skill without the tag hurts its target"), PlainChopBlow > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a skill without the tag, used half a second into the wearer's channel, is not touched"),
+			  UseOn(Wearer, WearerChop, Target), PlainChopBlow, 0.01f);
+
+	// TWO AND A HALF SECONDS IN.
+	World->TimeSeconds = 12.5f;
+	if (!TestTrue(TEXT("set-up: two and a half seconds in, the wearer is still channelling"),
+				  Wearer.AbilitySystem->IsChannelling()))
+	{
+		return false;
+	}
+	const float PlainLate = SwingOn(PlainSpin, PlainTarget);
+	TestEqual(TEXT("control: two and a half seconds in, the spin with no row deals what it began with"), PlainLate,
+			  PlainFirst, 0.01f);
+	TestEqual(TEXT("two and a half seconds in, the wearer's channelled blow is whole"), SwingOn(WearerSpin, Target),
+			  PlainLate, 0.01f);
+
+	// A SECOND CHANNEL HAS A WINDOW OF ITS OWN.
+	CancelFromOutside(Wearer.AbilitySystem, WearerSpin);
+	CancelFromOutside(Plain.AbilitySystem, PlainSpin);
+	World->TimeSeconds = 20.0f;
+	const float PlainAgain = UseOn(Plain, PlainSpin, PlainTarget);
+	TestEqual(TEXT("control: a second spin with no row begins as the first did"), PlainAgain, PlainFirst, 0.01f);
+	TestEqual(TEXT("a second channel halves the swing it begins with again"), UseOn(Wearer, WearerSpin, Target),
+			  PlainAgain * 0.5f, 0.01f);
+	CancelFromOutside(Wearer.AbilitySystem, WearerSpin);
+	CancelFromOutside(Plain.AbilitySystem, PlainSpin);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannellingDrainTest,
+	"Cataclysm.Channelling.ADrainWhileChannellingTakesOneShareForEachWholeSecondOfTheCombatInsideTheChannelAndCannotKill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Channel skills drain 8%-15% of your maximum HP per second while active", as a timed drain of 10% of maximum
+ * health every second under `while_channelling`, stepped by `StepTimedGrants` a quarter of a second at a time as
+ * the game steps it, with the spin ended by its own timer.
+ *
+ * THE DRAIN IS ON THE COMBAT'S CLOCK, NOT THE CHANNEL'S: one share for each whole second of the combat that falls
+ * inside the channel. The spin begins 2.375 seconds into a fight and lasts 3, so the fight's third, fourth and
+ * fifth seconds fall inside it: three shares. Before it, in the same fight, nothing; after it, with the fight
+ * going on, nothing more.
+ *
+ * FOUR CHARACTERS. The wearer. A fighter with NO ROW that spins in the same fight and loses nothing. A fighter
+ * wearing the row that spins OUT OF COMBAT and loses nothing. A fighter wearing the row left with less health than
+ * one share, which is left at 1 and is not killed.
+ *
+ * EVERY READING IS AN EIGHTH OF A SECOND OFF A QUARTER STEP'S WHOLE SECONDS, and none is taken at the three second
+ * mark of the spin, where its timer falls due.
+ *
+ * STANDING: the wearer at the origin, the fighter with no row 20 m along Y, the one out of combat 20 m along -Y,
+ * the one with little health 20 m along X. A spin reaches 3.5 m, so nobody is struck and the one out of combat
+ * stays out of it.
+ */
+bool FCataclysmChannellingDrainTest::RunTest(const FString&)
+{
+	using namespace CataclysmChannellingTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Type.Channel is a tag this build knows"), ChannelTag().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Bare(World, FVector(0, 20 * M, 0));
+	FScopedFighter Idle(World, FVector(0, -20 * M, 0));
+	FScopedFighter Low(World, FVector(20 * M, 0, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Bare, 0.0f, 0.0f);
+	Defences(Idle, 0.0f, 0.0f);
+	Defences(Low, 0.0f, 0.0f);
+	Wearer.AbilitySystem->SetPoolActions({ADrainWhileChannelling(10.0f)});
+	Idle.AbilitySystem->SetPoolActions({ADrainWhileChannelling(10.0f)});
+	Low.AbilitySystem->SetPoolActions({ADrainWhileChannelling(10.0f)});
+
+	UCataclysmStrikeSkill* WearerSpin = GrantSpin(Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* BareSpin = GrantSpin(Bare, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* IdleSpin = GrantSpin(Idle, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmStrikeSkill* LowSpin = GrantSpin(Low, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	if (!TestTrue(TEXT("set-up: all four were granted the spin"), WearerSpin && BareSpin && IdleSpin && LowSpin))
+	{
+		return false;
+	}
+
+	const float Share = Pool * 10.0f / 100.0f;
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	FScopedFighter* const Fighting[] = {&Wearer, &Bare, &Low};
+
+	// A FIGHT: its first blow now, then every fighter kept in it and stepped each quarter second.
+	World->TimeSeconds = 50.0f;
+	for (FScopedFighter* Each : Fighting)
+	{
+		Each->AbilitySystem->NoteHitDealt();
+	}
+	const auto StepAll = [&]()
+	{
+		for (FScopedFighter* Each : Fighting)
+		{
+			Each->AbilitySystem->NoteHitDealt();
+			Each->AbilitySystem->StepTimedGrants();
+		}
+		Idle.AbilitySystem->StepTimedGrants();
+	};
+	const auto Quarters = [&](int32 Count)
+	{
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			CataclysmTestWorld::RunClock(World, 0.25f);
+			StepAll();
+		}
+	};
+
+	// AN EIGHTH OF A SECOND FIRST, so every reading after it is off the whole seconds.
+	CataclysmTestWorld::RunClock(World, 0.125f, 0.125f);
+	StepAll();
+
+	// 2.375 SECONDS IN, AND NOBODY HAS CHANNELLED.
+	Quarters(9);
+	if (!TestEqual(TEXT("set-up: the fight is 2.375 seconds old"), Wearer.AbilitySystem->SecondsInCombat(), 2.375f,
+				   0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("in combat and not channelling, the wearer has lost nothing"), Lost(Wearer), 0.0f, 0.001f);
+
+	// THE SPINS BEGIN. The one with little health is left less than one share first.
+	Low.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Share * 0.25f);
+	if (!TestTrue(TEXT("set-up: all four spins are used and all four characters are channelling"),
+				  Activate(Wearer, WearerSpin) && Activate(Bare, BareSpin) && Activate(Idle, IdleSpin)
+					  && Activate(Low, LowSpin) && Wearer.AbilitySystem->IsChannelling()
+					  && Bare.AbilitySystem->IsChannelling() && Idle.AbilitySystem->IsChannelling()
+					  && Low.AbilitySystem->IsChannelling()))
+	{
+		return false;
+	}
+	StepAll();
+	TestEqual(TEXT("as the channel begins, with no whole second of the fight passed in it, nothing is lost"),
+			  Lost(Wearer), 0.0f, 0.001f);
+
+	Quarters(3);
+	TestEqual(TEXT("3.125 seconds into the fight, one share: the fight's third second fell inside the channel"),
+			  Lost(Wearer), Share, 0.01f);
+	TestEqual(TEXT("the fighter left with a quarter of a share is left with 1 health"), Low.Health(), 1.0f, 0.001f);
+
+	Quarters(4);
+	TestEqual(TEXT("4.125 seconds in, two shares"), Lost(Wearer), Share * 2.0f, 0.01f);
+
+	Quarters(4);
+	if (!TestTrue(TEXT("set-up: 5.125 seconds in, 2.75 into the spin, the wearer is still channelling"),
+				  Wearer.AbilitySystem->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("5.125 seconds in, three shares"), Lost(Wearer), Share * 3.0f, 0.01f);
+
+	// THE SPIN ENDS BY ITS OWN TIMER, 3 seconds after it began: 5.375 into the fight. Read at 5.625.
+	Quarters(2);
+	if (!TestFalse(TEXT("set-up: 5.625 seconds in, the wearer's spin has ended by its own timer"),
+				   WearerSpin->IsActive() || Wearer.AbilitySystem->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("as the channel ends, still three shares"), Lost(Wearer), Share * 3.0f, 0.01f);
+
+	// THE FIGHT GOES ON AND THE CHANNEL DOES NOT.
+	Quarters(6);
+	if (!TestTrue(TEXT("set-up: 7.125 seconds in, the wearer is still in combat"),
+				  Wearer.AbilitySystem->SecondsInCombat() > 7.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the fight going on after the channel, nothing more is lost: three payments for one spin"),
+			  Lost(Wearer), Share * 3.0f, 0.01f);
+
+	TestEqual(TEXT("control: a fighter with no row, spinning in the same fight, has lost nothing"), Lost(Bare), 0.0f,
+			  0.001f);
+	if (!TestTrue(TEXT("set-up: the fighter that spun out of combat was never in combat"),
+				  Idle.AbilitySystem->SecondsInCombat() < 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same row on a character that channelled out of combat has taken nothing"), Lost(Idle), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("the fighter left with a quarter of a share still has 1 health after every payment was due"),
+			  Low.Health(), 1.0f, 0.001f);
+	TestFalse(TEXT("and was not killed"), UCataclysmSkillEffects::IsDead(Low.Actor));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannellingWalkingSpeedTest,
+	"Cataclysm.Channelling.APlayersWalkingSpeedIsWorkedOutAgainWhenChannellingBeginsAndWhenItEnds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A real player character's walking speed follows a `movement_speed` row under `while_channelling`, at both edges,
+ * with nothing asking for it again on a clock.
+ *
+ * THE ROW HERE IS `more` -50, AND NOT THE `removed` ROW THE SENTENCE "You cannot move while channeling any skill"
+ * WAS GIVEN. `ACataclysmPlayerCharacter::ApplyMovementSpeed` refuses a speed of nought or less and leaves the last
+ * one standing, so a removed speed changes nothing on a player today; `docs/DECISIONS.md`, 2026-10-08, puts that
+ * to the session that rules. What this test holds is the part that is built: the speed is worked out again when
+ * channelling begins and when it ends.
+ *
+ * EVERY SPEED IS A RATIO OF THE ONE READ BEFORE ANY SKILL WAS USED. Half of it the moment the spin is used; all of
+ * it once the spin has ended by its own timer; half again on a second use; all of it the moment that use is ended
+ * from outside. THE COUNT OF REFRESHES MADE ON THE STEP DOES NOT MOVE, so each change came by the announcement.
+ *
+ * STANDING: the player at the origin and nobody else.
+ */
+bool FCataclysmChannellingWalkingSpeedTest::RunTest(const FString&)
+{
+	using namespace CataclysmChannellingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* System =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a player state with an ability system"), System)
+		|| !TestTrue(TEXT("set-up: Type.Channel is a tag this build knows"), ChannelTag().IsValid()))
+	{
+		return false;
+	}
+
+	// THE STAT'S LINE AS A REFRESH WOULD LEAVE IT, written before the pawn exists, as
+	// `Cataclysm.Player.MovementSpeedFollowsABonusThatDependsOnHealth` writes its own.
+	const float MetresPerSecond = 6.0f;
+	System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(), MetresPerSecond);
+	FCataclysmStatInputs Line;
+	Line.Base = MetresPerSecond;
+	FCataclysmStatModifier Row;
+	Row.Bucket = ECataclysmStatBucket::More;
+	Row.Source = ECataclysmModifierSource::Enchantment;
+	Row.Value = -50.0f;
+	Row.Condition = ECataclysmStatCondition::WhileChannelling;
+	Line.Modifiers.Add(Row);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Line);
+	System->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a player character with a movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	UCataclysmStrikeSkill* Spin = GrantSkillOn<UCataclysmStrikeSkill>(
+		System, Character, ECataclysmAbilitySlot::Heavy, SpinParams, TEXT("Spin"),
+		TEXT("Element.Demonic, Type.Melee, Type.Channel"));
+	if (!TestNotNull(TEXT("set-up: the player was granted the spin"), Spin))
+	{
+		return false;
+	}
+
+	const float Before = Movement->MaxWalkSpeed;
+	const int32 RefreshesOnTheStep = Character->GetUnannouncedSpeedRefreshCount();
+	if (!TestTrue(TEXT("set-up: the player walks at a real speed before any skill is used"), Before > 1.0f)
+		|| !TestFalse(TEXT("set-up: the player is not channelling"), System->IsChannelling()))
+	{
+		return false;
+	}
+
+	// THE SPIN IS USED, AND NO TIME PASSES.
+	if (!TestTrue(TEXT("set-up: the spin is used and the player is channelling"),
+				  System->TryActivateAbility(Spin->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)
+					  && System->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the moment channelling begins, the walking speed is half what it was"), Movement->MaxWalkSpeed,
+			  Before * 0.5f, 0.01f);
+
+	// IT ENDS BY ITS OWN TIMER. Four and a half seconds, which is past its three and any wind-up before them.
+	CataclysmTestWorld::RunClock(World, 4.5f);
+	if (!TestFalse(TEXT("set-up: four and a half seconds on, the spin has ended and the player is not channelling"),
+				   Spin->IsActive() || System->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("once the channel has ended, the walking speed is what it was"), Movement->MaxWalkSpeed, Before,
+			  0.01f);
+
+	// A SECOND USE, ENDED FROM OUTSIDE, with no time passing after either.
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	if (!TestTrue(TEXT("set-up: the spin is used again and the player is channelling"),
+				  System->TryActivateAbility(Spin->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)
+					  && System->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a second channel halves the walking speed again"), Movement->MaxWalkSpeed, Before * 0.5f,
+			  0.01f);
+	CancelFromOutside(System, Spin);
+	if (!TestFalse(TEXT("set-up: the spin was ended from outside and the player is not channelling"),
+				   Spin->IsActive() || System->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the moment a channel is ended from outside, the walking speed is what it was"),
+			  Movement->MaxWalkSpeed, Before, 0.01f);
+
+	TestEqual(TEXT("and none of those changes was a refresh made on the step"),
+			  Character->GetUnannouncedSpeedRefreshCount(), RefreshesOnTheStep);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannellingMovementLockTest,
+	"Cataclysm.Channelling.AMovementSkillIsRefusedWhileChannellingAndAllowedAfterAndAHeavyAttackIsNeverRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The second row of "You cannot move while channeling any skill": `skill_locked` flat 1, requiring `Slot.Movement`,
+ * under `while_channelling`, on a real player character, asked as the game asks it, through `CanActivateAbility`.
+ *
+ * THE CONTROLS ARE THE SAME TWO SKILLS BEFORE THE CHANNEL: both may be used. While the player channels, the
+ * movement skill is refused and the heavy attack is not; the lock stat itself is read for both, so the refusal is
+ * shown to be the lock's and the heavy attack is shown to carry none. With the channel ended from outside the
+ * movement skill may be used again.
+ *
+ * THE CHANNELLED SPIN SITS IN THE SPECIAL SLOT HERE, so that the heavy attack is a different skill from it.
+ *
+ * STANDING: the player at the origin and nobody else. Neither asked skill is used; each is only asked.
+ */
+bool FCataclysmChannellingMovementLockTest::RunTest(const FString&)
+{
+	using namespace CataclysmChannellingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* System =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	const FGameplayTag MovementSlot =
+		FGameplayTag::RequestGameplayTag(TEXT("Slot.Movement"), /*ErrorIfNotFound=*/false);
+	if (!TestNotNull(TEXT("set-up: a player state with an ability system"), System)
+		|| !TestTrue(TEXT("set-up: Type.Channel and Slot.Movement are tags this build knows"),
+					 ChannelTag().IsValid() && MovementSlot.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatInputs Line;
+	Line.Base = 0.0f;
+	FCataclysmStatModifier Row;
+	Row.Bucket = ECataclysmStatBucket::Flat;
+	Row.Source = ECataclysmModifierSource::Enchantment;
+	Row.Value = 1.0f;
+	Row.RequiredTags.AddTag(MovementSlot);
+	Row.Condition = ECataclysmStatCondition::WhileChannelling;
+	Line.Modifiers.Add(Row);
+	const FName Locked(UCataclysmSkillSlots::LockedStat);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(Locked, Line);
+	System->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	UCataclysmStrikeSkill* Spin = GrantSkillOn<UCataclysmStrikeSkill>(
+		System, Character, ECataclysmAbilitySlot::Special, SpinParams, TEXT("Spin"),
+		TEXT("Element.Demonic, Type.Melee, Type.Channel, Slot.Special"));
+	UCataclysmMovementSkill* Step = GrantSkillOn<UCataclysmMovementSkill>(
+		System, Character, ECataclysmAbilitySlot::Movement, TEXT("Mode=Blink; Range=6"), TEXT("Step"),
+		TEXT("Element.Demonic, Slot.Movement"));
+	UCataclysmStrikeSkill* Heavy = GrantSkillOn<UCataclysmStrikeSkill>(
+		System, Character, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=120"), TEXT("Chop"),
+		TEXT("Element.Demonic, Type.Melee, Slot.Heavy"));
+	if (!TestTrue(TEXT("set-up: the player was granted the spin, a movement skill and a heavy attack"),
+				  Spin && Step && Heavy))
+	{
+		return false;
+	}
+
+	const auto MayUse = [System](const UCataclysmSkillTemplate* Skill)
+	{
+		return Skill->CanActivateAbility(Skill->GetCurrentAbilitySpecHandle(), System->AbilityActorInfo.Get());
+	};
+	const auto LockOn = [System, Locked](const UCataclysmSkillTemplate* Skill)
+	{
+		return System->StatForSkill(Locked, Skill->SkillTags, 0.0f);
+	};
+
+	// THE CONTROLS: before the channel, both may be used and neither is locked.
+	if (!TestTrue(TEXT("control: before channelling, the movement skill may be used"), MayUse(Step))
+		|| !TestTrue(TEXT("control: before channelling, the heavy attack may be used"), MayUse(Heavy)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("before channelling, the movement skill carries no lock"), LockOn(Step), 0.0f, 0.001f);
+
+	if (!TestTrue(TEXT("set-up: the spin is used and the player is channelling"),
+				  System->TryActivateAbility(Spin->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)
+					  && System->IsChannelling()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("while channelling, the movement skill is refused"), MayUse(Step));
+	TestTrue(TEXT("and it is the lock that refuses it"), LockOn(Step) > 0.0f);
+	TestTrue(TEXT("while channelling, the heavy attack is not refused"), MayUse(Heavy));
+	TestEqual(TEXT("and the heavy attack carries no lock"), LockOn(Heavy), 0.0f, 0.001f);
+
+	CancelFromOutside(System, Spin);
+	if (!TestFalse(TEXT("set-up: the spin was ended from outside and the player is not channelling"),
+				   Spin->IsActive() || System->IsChannelling()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("once the channel has ended, the movement skill may be used again"), MayUse(Step));
+	TestEqual(TEXT("and carries no lock"), LockOn(Step), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTimedRowsCountApartTest,
+	"Cataclysm.Channelling.TwoTimedRowsOnOnePoolAndPeriodEachPayEveryPeriodAndOneRefusedDoesNotStopTheOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The fault of 2026-10-08 in `StepTimedGrants`: a timed pool row with neither a stack key nor a next-use key was
+ * counted under its pool and period, so two rows draining health every second shared one count. The first in the
+ * list paid and the second never did; and a row refused by its condition marked each period passed for the other.
+ * Each row is now counted under its own key, `FCataclysmPoolAction::TriggerKey`.
+ *
+ * EVERY ROW HERE CARRIES THE KEY THE LOADER GIVES A ROW. Two drains of health every second, 3% and 5% of maximum:
+ *   - worn together, they take what the two take worn apart, each by a control of its own;
+ *   - the 3% worn with a 7% drain that begins "after 3 seconds in combat", LISTED BEFORE IT, takes what the 3%
+ *     takes alone while the other is refused, and both pay once it is not.
+ *
+ * WITHOUT THE FIX the pair loses only the first row's share each second, and the 3% row listed after the waiting
+ * row never pays at all, because the waiting row marks each period passed while refused and takes it once it is
+ * not. All four comparisons below then fail, and the two controls, each a row worn alone, do not.
+ *
+ * THE CLOCK IS READ HALF A SECOND OFF EVERY WHOLE SECOND and written by hand, as the drain tests above write it.
+ *
+ * STANDING: the pair's wearer at the origin, the 3% alone 20 m along Y, the 5% alone 20 m along -Y, the one with
+ * the waiting row 20 m along X.
+ */
+bool FCataclysmTimedRowsCountApartTest::RunTest(const FString&)
+{
+	using namespace CataclysmChannellingTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Pair(World, FVector::ZeroVector);
+	FScopedFighter Three(World, FVector(0, 20 * M, 0));
+	FScopedFighter Five(World, FVector(0, -20 * M, 0));
+	FScopedFighter Waiting(World, FVector(20 * M, 0, 0));
+	Defences(Pair, 0.0f, 0.0f);
+	Defences(Three, 0.0f, 0.0f);
+	Defences(Five, 0.0f, 0.0f);
+	Defences(Waiting, 0.0f, 0.0f);
+
+	Pair.AbilitySystem->SetPoolActions({AKeyedDrain(TEXT("Row_three"), 3.0f, 0.0f),
+										AKeyedDrain(TEXT("Row_five"), 5.0f, 0.0f)});
+	Three.AbilitySystem->SetPoolActions({AKeyedDrain(TEXT("Row_three"), 3.0f, 0.0f)});
+	Five.AbilitySystem->SetPoolActions({AKeyedDrain(TEXT("Row_five"), 5.0f, 0.0f)});
+	// THE WAITING ROW FIRST IN THE LIST, which is the order in which a refused row stopped the one after it.
+	Waiting.AbilitySystem->SetPoolActions({AKeyedDrain(TEXT("Row_waits"), 7.0f, /*AfterSecondsInCombat=*/3.0f),
+										   AKeyedDrain(TEXT("Row_three"), 3.0f, 0.0f)});
+
+	const float WaitingShare = Pool * 7.0f / 100.0f;
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	FScopedFighter* const Fighting[] = {&Pair, &Three, &Five, &Waiting};
+
+	// A FIGHT: its first blow now, then one a second, read half a second after each.
+	World->TimeSeconds = 50.0f;
+	const float Began = World->TimeSeconds;
+	for (FScopedFighter* Each : Fighting)
+	{
+		Each->AbilitySystem->NoteHitDealt();
+	}
+	World->TimeSeconds += 0.5f;
+	const auto FightUntil = [&](float SecondsIn)
+	{
+		while (World->TimeSeconds < Began + SecondsIn - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			for (FScopedFighter* Each : Fighting)
+			{
+				Each->AbilitySystem->NoteHitDealt();
+				Each->AbilitySystem->StepTimedGrants();
+			}
+		}
+	};
+
+	// TWO AND A HALF SECONDS IN: two periods, and the waiting row still refused.
+	FightUntil(2.5f);
+	if (!TestEqual(TEXT("control: the 3% drain worn alone has taken two shares"), Lost(Three), Pool * 0.03f * 2.0f,
+				   0.01f)
+		|| !TestEqual(TEXT("control: the 5% drain worn alone has taken two shares"), Lost(Five),
+					  Pool * 0.05f * 2.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two drains of one pool and period, worn together, take what the two take apart"), Lost(Pair),
+			  Lost(Three) + Lost(Five), 0.01f);
+	TestEqual(TEXT("a drain listed after a row its condition refuses takes what it takes alone"), Lost(Waiting),
+			  Lost(Three), 0.01f);
+
+	// FOUR AND A HALF SECONDS IN: four periods, the waiting row paying for the third and the fourth.
+	FightUntil(4.5f);
+	TestEqual(TEXT("four and a half seconds in, the pair has still taken what the two take apart"), Lost(Pair),
+			  Lost(Three) + Lost(Five), 0.01f);
+	TestEqual(TEXT("and once the waiting row begins, it pays its own periods and the other row goes on paying"),
+			  Lost(Waiting), Lost(Three) + WaitingShare * 2.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

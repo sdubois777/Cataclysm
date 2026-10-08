@@ -111,6 +111,13 @@ struct FCataclysmGrantedImmunity
 DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnActionEvent, FName);
 
 /**
+ * Raised by `UCataclysmAbilitySystemComponent` when its character begins
+ * channelling and when it stops, with whether it is channelling now. Ruled
+ * 2026-10-08.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnChannellingChanged, bool);
+
+/**
  * The project's ability system component.
  *
  * Exists as a subclass from the start so that behaviour common to every actor
@@ -3179,6 +3186,62 @@ public:
 	float SecondsLeeching() const;
 
 	/**
+	 * Record that a skill of this character's tagged `Type.Channel` has begun.
+	 * Ruled 2026-10-08. CALLED FROM ONE PLACE,
+	 * `UCataclysmSkillTemplate::CommitAndBegin`, once the use has been paid for,
+	 * and answered by exactly one `NoteChannelEnded` from
+	 * `UCataclysmSkillTemplate::EndAbility`.
+	 *
+	 * A COUNT AND NOT A FLAG, because two channelled skills can run together: a
+	 * skill a worn row starts is its own ability beside the one the player
+	 * pressed. The first to begin stamps the clock and raises
+	 * `OnChannellingChanged`; a second begun while the first runs does neither.
+	 */
+	void NoteChannelBegan();
+
+	/**
+	 * Record that a channelled skill counted by `NoteChannelBegan` has ended,
+	 * however it ended. Ruled 2026-10-08. The last to end clears the clock and
+	 * raises `OnChannellingChanged`.
+	 *
+	 * A CALL WITH NOTHING COUNTED DOES NOTHING, so the count cannot go below
+	 * nought. The skill template keeps its own flag and calls this once for
+	 * each use it counted; this guard is for a caller that did not.
+	 */
+	void NoteChannelEnded();
+
+	/**
+	 * Whether a skill of this character's tagged `Type.Channel` is running.
+	 * Ruled 2026-10-08. READ BY `CurrentConditions`, which is where every
+	 * condition gets it; a test may ask directly.
+	 */
+	bool IsChannelling() const;
+
+	/**
+	 * How long this character has been channelling, in seconds, or -1 when it
+	 * is not channelling or there is no world to read the time from. Ruled
+	 * 2026-10-08. Counted from the first channelled skill to begin while none
+	 * was running.
+	 */
+	float SecondsChannelling() const;
+
+	/**
+	 * Raised when this character begins channelling and when it stops: on the
+	 * count going from nought to one, and on its return to nought. Ruled
+	 * 2026-10-08.
+	 *
+	 * WHAT IT IS FOR. A stat that is asked for when it matters reads the state
+	 * as it is. Walking speed is not asked for then: it is written onto the
+	 * movement component and kept, so `ACataclysmPlayerCharacter` binds this to
+	 * work its speed out again, as it binds the cripple tag. "You cannot move
+	 * while channeling any skill" is a speed row under `while_channelling`.
+	 *
+	 * RAISED AFTER THE STATE HAS CHANGED, so a listener asking
+	 * `CurrentConditions` inside it reads the new answer.
+	 */
+	FCataclysmOnChannellingChanged OnChannellingChanged;
+
+	/**
 	 * What the last blow aimed at this character resolved to.
 	 *
 	 * WHY THIS HAS TO BE RECORDED AT ALL. Issue #1156. The damage a caller hands
@@ -3437,10 +3500,32 @@ protected:
 
 	/**
 	 * How many times each timed action has been granted in the current combat,
-	 * by its stack or next-use key, and which combat that was. Issue #1833.
+	 * and which combat that was. Issue #1833.
+	 *
+	 * KEPT FOR EACH ROW, by `TimedGrantKeyOf`. Until 2026-10-08 a pool row with
+	 * neither a next-use nor a stack key was counted under its pool and period,
+	 * so two such rows on one character shared one count.
 	 */
 	TMap<FName, int32> TimedGrantsGiven;
 	float TimedGrantsCombatStartedAt = -1.0f;
+
+	/**
+	 * What one timed action's count of periods is kept under. Ruled 2026-10-08.
+	 *
+	 * ITS NEXT-USE KEY, ELSE ITS STACK KEY, AS BEFORE; THEN ITS TRIGGER KEY,
+	 * which is new. `FCataclysmPoolAction::TriggerKey` is the enchantment, the
+	 * action and the event, "a triple no two rows share", set on every action
+	 * read from a row, and built from the row's own cells, so it is the same
+	 * after an equipment refresh inside one combat. Two rows that both drain
+	 * health every second ("After 10 seconds in combat you begin losing 2%-4%
+	 * of your maximum HP per second" and a drain while channelling) therefore
+	 * keep a count each.
+	 *
+	 * LAST, THE POOL AND THE PERIOD, for an action built by hand with none of
+	 * the three. That is what every pool row was counted under until this
+	 * ruling, and it is why two of them shared one count.
+	 */
+	static FName TimedGrantKeyOf(const FCataclysmPoolAction& Action);
 
 	/**
 	 * Every row's held next-use charges, by `FCataclysmPoolAction::NextUseKey`.
@@ -3605,6 +3690,22 @@ protected:
 	 * only by `NoteLeechPaymentsChanged`. Not replicated, as the list is not.
 	 */
 	float LeechingSinceSeconds = -1.0f;
+
+	/**
+	 * How many of this character's skills tagged `Type.Channel` are running.
+	 * Ruled 2026-10-08. Written only by `NoteChannelBegan` and
+	 * `NoteChannelEnded`. Not replicated, as the leech clock above is not: the
+	 * conditions that read it are judged where damage and pools are, on the
+	 * server.
+	 */
+	int32 ChannelsRunning = 0;
+
+	/**
+	 * When the current channelling began, in world seconds, or -1 while the
+	 * count above is nought. Ruled 2026-10-08. Stamped when the count goes from
+	 * nought to one and cleared when it returns to nought.
+	 */
+	float ChannellingSinceSeconds = -1.0f;
 
 	/** Whether this character has the pool: a maximum above nought. */
 	bool HasLeechPool(ECataclysmLeechPool LeechPool) const;

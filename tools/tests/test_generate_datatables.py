@@ -4842,3 +4842,116 @@ class TestTheConditionsAndTheScaleOfTheSeventhOfOctober:
         problems = gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", conditioned)
         assert len(problems) == 1 and "resistance_cap" in problems[0]
+
+
+class TestTheChannellingConditionsOfTheEighthOfOctober:
+    """`while_channelling` and `channelling_for_under_seconds`, ruled
+    2026-10-08 and built ahead of their rows. Each row here is the shape
+    `docs/DECISIONS.md` of that day gives the session that writes rows, on
+    made-up enchantment sheets holding the real sentence. Five rows for three
+    sentences: the drain, the two that stop movement, and the two damage rows.
+    """
+
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+    DRAIN = ("Channel skills drain 8%-15% of your maximum HP per second while "
+             "active")
+    STILL = "You cannot move while channeling any skill"
+    EARLY = ("Channel skills deal 30%-50% less damage during the first 2 "
+             "seconds of channeling")
+
+    def out(self, tmp_path, words, rows):
+        """The generator's rows for one Negative sentence and these effect
+        rows, each a dict of columns."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Negative", words[:48]),
+                      "Effect": words}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = ["Double your energy shield", "Generic", 1,
+                     "Stat.Defense.EnergyShield", None,
+                     words, "Generic", 3, "Type.Channel"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "eighth.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    DRAIN_ROW = {"Value Low": -8, "Value High": -15, "Action": "health",
+                 "Action Event": "every_seconds", "Fraction Of": "maximum",
+                 "Every Seconds": 1, "Condition": "while_channelling"}
+    SPEED_ROW = {"Stat": "movement_speed", "Value Kind": "removed",
+                 "Value Low": 1, "Value High": 1,
+                 "Condition": "while_channelling"}
+    LOCK_ROW = {"Stat": "skill_locked", "Value Kind": "flat",
+                "Value Low": 1, "Value High": 1,
+                "Required Tags": "Slot.Movement",
+                "Condition": "while_channelling"}
+    EARLY_ROW = {"Stat": "attack_damage", "Value Kind": "more",
+                 "Value Low": -30, "Value High": -50,
+                 "Required Tags": "Type.Channel",
+                 "Condition": "channelling_for_under_seconds",
+                 "Condition Value": 2}
+
+    def test_the_drain_is_carried_through_on_the_clock_under_the_condition(
+            self, tmp_path):
+        out = self.out(tmp_path, self.DRAIN, [self.DRAIN_ROW])
+        assert len(out) == 1
+        assert (out[0]["Stat"], out[0]["Action"], out[0]["ActionEvent"],
+                out[0]["FractionOf"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["EverySeconds"], out[0]["Condition"],
+                out[0]["ConditionValue"]) == (
+            "", "health", "every_seconds", "maximum", -8.0, -15.0, 1.0,
+            "while_channelling", 0.0)
+        # AN ACTION ROW'S CONDITION IS JUDGED WHERE THE ACTION FIRES, so the
+        # check on stats that are asked for has nothing to say about it.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_two_rows_that_stop_movement_are_carried_through_together(
+            self, tmp_path):
+        out = self.out(tmp_path, self.STILL, [self.SPEED_ROW, self.LOCK_ROW])
+        assert [(row["Stat"], row["ValueKind"], row["RequiredTags"],
+                 row["Condition"], row["ConditionValue"]) for row in out] == [
+            ("movement_speed", "removed", "", "while_channelling", 0.0),
+            ("skill_locked", "flat", "Slot.Movement", "while_channelling", 0.0)]
+        # BOTH STATS ARE ASKED FOR WITH THE WEARER'S OWN STATE, which is all
+        # the condition needs.
+        assert gen.what_a_condition_needs("while_channelling") == ""
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_two_damage_rows_are_carried_through_with_their_window(
+            self, tmp_path):
+        out = self.out(tmp_path, self.EARLY, [
+            self.EARLY_ROW, dict(self.EARLY_ROW, Stat="spell_damage")])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["ConditionValue"]) for row in out] == [
+            (stat, "more", -30.0, -50.0, "Type.Channel",
+             "channelling_for_under_seconds", 2.0)
+            for stat in ("attack_damage", "spell_damage")]
+        assert gen.what_a_condition_needs("channelling_for_under_seconds") == ""
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_a_value_beside_while_channelling_is_refused(self, tmp_path):
+        """It names a state. The control is the same row without the value,
+        which the first test of this class carries through."""
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            self.out(tmp_path, self.DRAIN,
+                     [dict(self.DRAIN_ROW, **{"Condition Value": 1})])
+
+    def test_the_window_must_be_stated_and_inside_a_minute(self, tmp_path):
+        """The control is the same row with its 2, which the test of the
+        damage rows carries through."""
+        with pytest.raises(gen.DataError, match="Condition Value"):
+            self.out(tmp_path, self.EARLY,
+                     [dict(self.EARLY_ROW, **{"Condition Value": None})])
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, self.EARLY,
+                     [dict(self.EARLY_ROW, **{"Condition Value": 61})])
+
+    def test_both_names_are_conditions_the_generator_knows(self):
+        """The names themselves, so a rename in one place fails here by name
+        and not only in the test that compares the table with the engine's."""
+        assert gen.CONDITIONS["while_channelling"] is None
+        assert gen.CONDITIONS["channelling_for_under_seconds"] == (
+            0.0, 60.0, "a number of seconds")

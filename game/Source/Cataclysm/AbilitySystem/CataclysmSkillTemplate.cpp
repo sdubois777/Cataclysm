@@ -187,6 +187,38 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		return false;
 	}
 
+	// A SKILL TAGGED `Type.Channel` IS A CHANNEL FROM HERE UNTIL IT ENDS. Ruled
+	// 2026-10-08. THE ONE PLACE THE STATE IS SET, and `EndAbility` is the one
+	// place it is cleared; every designed skill begins here and ends there.
+	//
+	// PAST BOTH COMMITS, so a press the cost or the cooldown refused has
+	// already returned and was never counted: its `EndAbility` above ran with
+	// the flag clear and took nothing away.
+	//
+	// A FREE START IS COUNTED TOO. Follow Through's repeat of a channelled skill
+	// and a skill a worn row starts run exactly as a pressed one does, for the
+	// skill's whole time, and the ruling is about a skill that is RUNNING and
+	// not about one that was paid for. Nothing above this line returned for it.
+	//
+	// ErrorIfNotFound IS FALSE, as it is for the tags asked for below: a test
+	// may run before the tag table is loaded, and an invalid tag matches
+	// nothing, so such a skill is simply not a channel.
+	//
+	// NOT COUNTED TWICE. The flag is clear at every start, because `EndAbility`
+	// clears it and the engine does not start an instance that is running; the
+	// test guards a count that could never be given back if that ever changed.
+	const FGameplayTag ChannelTag = FGameplayTag::RequestGameplayTag(
+		TEXT("Type.Channel"), /*ErrorIfNotFound=*/false);
+	if (ChannelTag.IsValid() && SkillTags.HasTag(ChannelTag) && !bThisUseCountedAsChannel)
+	{
+		if (UCataclysmAbilitySystemComponent* Channelling =
+				Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+		{
+			Channelling->NoteChannelBegan();
+			bThisUseCountedAsChannel = true;
+		}
+	}
+
 	// ANNOUNCED ONCE IT HAS BEEN PAID FOR, which is the commit above. Issue #41,
 	// slice 4. Every one of the eight skill shapes and the basic attack pass
 	// through here, and a skill the cost or the cooldown refused has already
@@ -577,6 +609,36 @@ void UCataclysmSkillTemplate::EndAbility(
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);
+
+	// AND A CHANNEL THAT WAS COUNTED IS GIVEN BACK, HOWEVER THE SKILL ENDED.
+	// Ruled 2026-10-08. Its own finish, a cancel from outside and the engine
+	// ending it as its ability system is torn down all arrive here, cancelled
+	// or not, which is why this does not ask `bWasCancelled` as the event below
+	// does.
+	//
+	// ONLY A USE THAT WAS COUNTED, AND ONLY ONCE. The flag is set in
+	// `CommitAndBegin` past the commit and cleared here, so a refused press and
+	// a second call on an ended skill both find it clear.
+	//
+	// AND ONLY ONCE THE ABILITY REALLY HAS ENDED. The engine may put an end off
+	// while it holds a scope lock and call this again later; the skill is still
+	// running until then, and so is the channel.
+	//
+	// BEFORE THE `skill_end` EVENT BELOW, so a row acting on that event finds
+	// the character no longer channelling: the skill has ended.
+	if (bThisUseCountedAsChannel && !IsActive())
+	{
+		bThisUseCountedAsChannel = false;
+
+		// THE ACTOR INFORMATION THE ENGINE HANDED IN, as the event below reads
+		// it. With none, or with its ability system already gone, there is no
+		// count left to give back to.
+		if (UCataclysmAbilitySystemComponent* Channelled = ActorInfo
+				? Cast<UCataclysmAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get()) : nullptr)
+		{
+			Channelled->NoteChannelEnded();
+		}
+	}
 
 	// AND THE SKILL HAS ENDED, WHICH A ROW MAY WAIT ON. Ruled 2026-10-06, for "After using a charge skill you are
 	// briefly stunned": `skill_use` is raised when the skill is paid, before a charge has moved, and two charge
