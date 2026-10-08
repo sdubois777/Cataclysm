@@ -1596,6 +1596,42 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	InCombatForSeconds
 		UMETA(DisplayName = "In Combat For Seconds"),
+
+	/**
+	 * The character is channelling: a skill of its own tagged `Type.Channel` is
+	 * running. Ruled 2026-10-08 for "Channel skills drain 8%-15% of your maximum
+	 * HP per second while active" and "You cannot move while channeling any
+	 * skill".
+	 *
+	 * FROM THE SKILL'S START TO ITS END, WHATEVER ENDED IT. The start is the
+	 * moment the skill is paid for, in `UCataclysmSkillTemplate::CommitAndBegin`,
+	 * and the end is `UCataclysmSkillTemplate::EndAbility`: its own finish, a
+	 * cancel from outside, or its character being destroyed. No held-button
+	 * skill is built, so a channel here is a skill that runs for a stated time.
+	 * `docs/DECISIONS.md`, 2026-10-08, lists what that reaches today.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 * Read from `FCataclysmStatConditions::bIsChannelling`.
+	 */
+	WhileChannelling
+		UMETA(DisplayName = "While Channelling"),
+
+	/**
+	 * The character is channelling and has been for LESS THAN `ConditionValue`
+	 * seconds. Ruled 2026-10-08 for "Channel skills deal 30%-50% less damage
+	 * during the first 2 seconds of channeling", which is a value of 2.
+	 *
+	 * STRICTLY LESS THAN, the one seconds condition that is: 1.999 seconds of
+	 * channelling holds a value of 2 and exactly 2 does not, so a blow landing
+	 * on the two second mark is whole. Not channelling refuses whatever the
+	 * value. The clock starts with the first channelled skill to begin and is
+	 * not restarted by a second begun while the first runs.
+	 *
+	 * Read from `FCataclysmStatConditions::SecondsChannelling`, which is
+	 * negative while the character is not channelling.
+	 */
+	ChannellingForUnderSeconds
+		UMETA(DisplayName = "Channelling For Under Seconds"),
 };
 
 /**
@@ -1651,6 +1687,16 @@ enum class ECataclysmConditionDependsOn : uint8
 	 * with neither in hand.
 	 */
 	TheBlowOrSkill,
+
+	/**
+	 * Whether the character is channelling. Ruled 2026-10-08. It changes only
+	 * when a channelled skill begins or ends, and
+	 * `UCataclysmAbilitySystemComponent::OnChannellingChanged` announces both,
+	 * so a reader that listens for that has nothing to ask again on a clock.
+	 * `ChannellingForUnderSeconds` is NOT here: its window also closes with
+	 * nothing announced, so it is classed under `Time`.
+	 */
+	Channelling,
 };
 
 /**
@@ -2769,6 +2815,25 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bIsUnderDamageOverTime = false;
+
+	/**
+	 * Whether a skill of the character's own tagged `Type.Channel` is running.
+	 * Ruled 2026-10-08. False is the only "nothing" it needs, for the reason
+	 * `bIsBleeding` gives: a caller with no character in hand is not
+	 * channelling. See `ECataclysmStatCondition::WhileChannelling`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsChannelling = false;
+
+	/**
+	 * How long the character has been channelling, in seconds, or negative
+	 * while it is not. Ruled 2026-10-08. Counted from the first channelled
+	 * skill to begin while none was running. `ChannellingForUnderSeconds`
+	 * reads it, and asks `bIsChannelling` first, so a figure left here by hand
+	 * holds nothing for a character that is not channelling.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsChannelling = -1.0f;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 DebuffsCarried = 0;
@@ -4555,7 +4620,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a sixty-eighth, which is the drift that put the passive tree eight
+	 * adds a seventieth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -4564,7 +4629,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY OF THE SIXTY-SEVEN COMPARE NOTHING. They are the case labels
+	 * THIRTY-ONE OF THE SIXTY-NINE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

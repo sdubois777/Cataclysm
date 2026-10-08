@@ -3758,6 +3758,23 @@ CONDITIONS = {
     # wearer's own state, so every asker can judge it.
     "while_under_damage_over_time": None,
 
+    # "Channel skills drain 8%-15% of your maximum HP per second while active"
+    # and "You cannot move while channeling any skill" are `while_channelling`,
+    # and it takes no value. Ruled 2026-10-08. A skill of the wearer's own
+    # tagged `Type.Channel` is running, from the moment it is paid for until it
+    # ends, whatever ended it. It asks only the wearer's own state, so every
+    # asker can judge it.
+    "while_channelling": None,
+
+    # "Channel skills deal 30%-50% less damage during the first 2 seconds of
+    # channeling" is `channelling_for_under_seconds` with 2. Ruled 2026-10-08.
+    # STRICTLY LESS THAN, the one seconds condition that is: a blow landing
+    # exactly 2 seconds in is whole. Not channelling refuses whatever the
+    # value. The wearer's own state again.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "channelling_for_under_seconds": (0.0, 60.0, "a number of seconds"),
+
     # "Debuffed enemies take 10%-20% increased damage from all sources" is
     # `target_carries_any_debuff`, and "Strike skills deal 20%-40% increased
     # damage against enemies affected by a DoT" is `target_carries_a_dot`. Issue
@@ -7973,6 +7990,11 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
+    # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
+    # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
+    # cannot move while channeling any skill". Its probe is `ProbeCannotWalk`,
+    # which observes that function and not the step.
+    "cannot_walk": ASKER_PASSES_NOTHING_MORE,
     "cooldown_reduction": ASKER_PASSES_NOTHING_MORE,
     "cooldown_skip_chance": ASKER_PASSES_NOTHING_MORE,
     "crowd_control_resistance": ASKER_PASSES_NOTHING_MORE,
