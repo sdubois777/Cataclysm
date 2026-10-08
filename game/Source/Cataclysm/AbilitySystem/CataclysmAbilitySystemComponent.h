@@ -398,7 +398,9 @@ public:
 		float TargetDistanceMetres = -1.0f,
 		bool bTargetIsStaggered = false,
 		const AActor* Target = nullptr,
-		int32 EnemiesStruckTogether = -1) const;
+		int32 EnemiesStruckTogether = -1,
+		float MetresCharged = -1.0f,
+		float ChargeRangeMetres = -1.0f) const;
 
 	/**
 	 * The increases this character carries for a named stat, as a fraction.
@@ -535,7 +537,9 @@ public:
 		float TargetDistanceMetres = -1.0f,
 		bool bTargetIsStaggered = false,
 		const AActor* Target = nullptr,
-		int32 EnemiesStruckTogether = -1) const;
+		int32 EnemiesStruckTogether = -1,
+		float MetresCharged = -1.0f,
+		float ChargeRangeMetres = -1.0f) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
@@ -1568,7 +1572,9 @@ public:
 					   float TargetDistanceMetres = -1.0f,
 					   bool bTargetIsStaggered = false,
 					   const AActor* Target = nullptr,
-					   int32 EnemiesStruckTogether = -1) const;
+					   int32 EnemiesStruckTogether = -1,
+					   float MetresCharged = -1.0f,
+					   float ChargeRangeMetres = -1.0f) const;
 
 	/**
 	 * The same pipeline pass as `StatForSkill` with no state handed over, but
@@ -1754,6 +1760,12 @@ public:
 	 *        hand belongs to struck together, counted before any of its blows
 	 *        resolved, or -1 for no group of blows in hand. Passed in for the
 	 *        reason `MetresMovedBeforeBlow` is. Issue #1515.
+	 * @param MetresCharged  how far the charge dealing the blow in hand had
+	 *        gone when that blow landed, or -1 for a blow that is not a
+	 *        charge's own. NOT `MetresMovedBeforeBlow`, which is the walk before
+	 *        the press. Ruled 2026-10-08.
+	 * @param ChargeRangeMetres  the range that charge used, or -1. The scale
+	 *        `share_of_range_moved` divides the one above by this.
 	 */
 	FCataclysmStatConditions CurrentConditions(
 		float SkillHealthCostPercent = -1.0f,
@@ -1761,7 +1773,9 @@ public:
 		float MetresMovedBeforeBlow = -1.0f,
 		float TargetDistanceMetres = -1.0f,
 		bool bTargetIsStaggered = false,
-		int32 EnemiesStruckTogether = -1) const;
+		int32 EnemiesStruckTogether = -1,
+		float MetresCharged = -1.0f,
+		float ChargeRangeMetres = -1.0f) const;
 
 	/**
 	 * The same conditions with the nearby enemies' distances filled in, when a
