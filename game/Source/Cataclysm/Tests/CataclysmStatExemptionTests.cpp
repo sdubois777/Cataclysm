@@ -7231,6 +7231,68 @@ namespace CataclysmStatExemptionTest
 					  UCataclysmSkillEffects::CannotWalkByARow(Carrier.Actor));
 	}
 
+	/**
+	 * `hit_taken_cancels_skills`, asked by `UCataclysmAbilitySystemComponent::NoteHitTaken` once for each running
+	 * skill with that skill's tags. Ruled 2026-10-08: "Taking a hit interrupts any skill currently being used".
+	 *
+	 * TWO CHARACTERS A HUNDRED METRES APART, each spinning the same strike for three seconds, so that each has a
+	 * skill running. The second carries the stat at a flat 1. Each is then told of one landed hit, by the form of
+	 * `NoteHitTaken` a resolved blow calls, with nobody named as the attacker. The plain one goes on spinning and
+	 * the carrying one does not.
+	 *
+	 * WHAT THIS DOES NOT REACH. Which hits count and which skills are left alone: `Cataclysm.HitCancels.*` in
+	 * `CataclysmSkillTemplateTests.cpp` holds those, through real blows.
+	 */
+	void ProbeHitTakenCancelsSkills(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Carrier(World, FVector(0, 100 * M, 0));
+		GrantFlat(Carrier.Actor, UCataclysmAbilitySystemComponent::HitTakenCancelsSkillsStat, 1.0f);
+
+		const auto SpinningStrike = [&Test](FScopedSwinger& Who) -> UCataclysmStrikeSkill*
+		{
+			const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy,
+				/*Level=*/1, Who.Actor);
+			FGameplayAbilitySpec* Spec = Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+			UCataclysmStrikeSkill* Skill =
+				Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->Params = UCataclysmSkillShapes::ParseParams(
+					TEXT("Radius=3; Angle=360; Duration=3; Interval=0.5"));
+				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+			}
+			const bool bSpinning = Skill
+				&& Who.AbilitySystem->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)
+				&& Skill->IsActive();
+			Test.TestTrue(TEXT("set-up: a strike that spins for three seconds is used and is still running"),
+						  bSpinning);
+			return bSpinning ? Skill : nullptr;
+		};
+		UCataclysmStrikeSkill* PlainSpin = SpinningStrike(Plain);
+		UCataclysmStrikeSkill* CarrierSpin = SpinningStrike(Carrier);
+		if (!PlainSpin || !CarrierSpin)
+		{
+			return;
+		}
+
+		Plain.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
+		Carrier.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
+
+		Test.TestTrue(TEXT("control: a character with no row goes on spinning after a landed hit"),
+					  PlainSpin->IsActive());
+		Test.TestFalse(TEXT("and one carrying hit_taken_cancels_skills at 1 does not, so NoteHitTaken really reads it"),
+					   CarrierSpin->IsActive());
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7358,6 +7420,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("stagger_root_seconds"), &ProbeStaggerRootSeconds},
 			{TEXT("crowd_control_health_ceiling_reduction"), &ProbeCrowdControlHealthCeiling},
 			{TEXT("cannot_walk"), &ProbeCannotWalk},
+			{TEXT("hit_taken_cancels_skills"), &ProbeHitTakenCancelsSkills},
 		};
 		return Made;
 	}

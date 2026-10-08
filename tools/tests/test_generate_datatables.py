@@ -4980,3 +4980,51 @@ class TestTheChannellingConditionsOfTheEighthOfOctober:
         assert gen.CONDITIONS["while_channelling"] is None
         assert gen.CONDITIONS["channelling_for_under_seconds"] == (
             0.0, 60.0, "a number of seconds")
+
+
+class TestAHitCutsShortTheSkillInUse:
+    """`hit_taken_cancels_skills`, ruled 2026-10-08 and built ahead of its
+    rows. Each row here is the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentence. Two rows for two sentences, and one stat for both: the engine
+    asks it once for each running skill with that skill's own tags, so the
+    Required Tags cell is the whole difference between them.
+    """
+
+    ANY = "Taking a hit interrupts any skill currently being used"
+    CHANNEL = "Taking damage while channeling interrupts the channel immediately"
+    ROW = {"Stat": "hit_taken_cancels_skills", "Value Kind": "flat",
+           "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, words, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, words, rows)
+
+    def test_the_row_for_any_skill_is_carried_through_with_no_tags(
+            self, tmp_path):
+        out = self.out(tmp_path, self.ANY, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"])
+                for row in out] == [
+            ("hit_taken_cancels_skills", "flat", 1.0, 1.0, "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert "hit_taken_cancels_skills" not in gen.CONDITIONED_STATS_WITH_AN_ASKER
+
+    def test_the_row_for_a_channel_is_carried_through_with_its_tag(
+            self, tmp_path):
+        out = self.out(tmp_path, self.CHANNEL,
+                       [dict(self.ROW, **{"Required Tags": "Type.Channel"})])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"])
+                for row in out] == [
+            ("hit_taken_cancels_skills", "flat", 1.0, 1.0, "Type.Channel", "")]
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the rows above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none. The
+        control is a made-up name that is on no list."""
+        assert "hit_taken_cancels_skills" in gen.stats_with_no_attribute()
+        assert "hit_taken_interrupts" not in gen.stats_with_no_attribute()

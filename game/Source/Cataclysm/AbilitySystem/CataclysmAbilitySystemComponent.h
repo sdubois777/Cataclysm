@@ -2813,6 +2813,54 @@ public:
 	void NoteHitTaken(bool bLanded);
 
 	/**
+	 * `hit_taken_cancels_skills`: a hit landing on this character cuts short the
+	 * skills it is using. Ruled 2026-10-08 for two sentences: "Taking a hit
+	 * interrupts any skill currently being used", a row with no Required Tags,
+	 * and "Taking damage while channeling interrupts the channel immediately",
+	 * a row requiring `Type.Channel`.
+	 *
+	 * A FLAG: a row writes 1 and above nought is yes. No gameplay attribute; it
+	 * is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 *
+	 * ASKED ONCE FOR EACH RUNNING SKILL, WITH THAT SKILL'S OWN TAGS, which is how
+	 * one stat serves both sentences: the row with no tags answers for every
+	 * skill and the row requiring `Type.Channel` only for a channelled one.
+	 * Asked in one place, the form of `NoteHitTaken` below.
+	 */
+	static const TCHAR* HitTakenCancelsSkillsStat;
+
+	/**
+	 * The same, saying who threw the blow and whether it was a tick of damage
+	 * over time. Ruled 2026-10-08. This is the form a resolved blow calls, and
+	 * the one that does the work; the two beside it hand it nobody and no tick.
+	 *
+	 * IT CUTS SHORT THE SKILLS THIS CHARACTER IS USING, for a character holding
+	 * `HitTakenCancelsSkillsStat`, when the blow LANDED, was NOT A TICK, and was
+	 * NOT THE CHARACTER'S OWN. An evaded blow is not a hit. A burn's tick is not
+	 * a hit, though it reaches here as every blow does. A blocked blow landed,
+	 * and so did one the energy shield or the temporary absorb took whole.
+	 * Each skill is asked `UCataclysmSkillTemplate::CanBeInterruptedByAHit`
+	 * first, so a self buff, an aura and a planted weapon are left alone.
+	 *
+	 * A CANCEL GIVES NOTHING BACK. The cost was paid and the cooldown started
+	 * when the skill was used, and neither is touched here.
+	 *
+	 * BEFORE THE `hit_taken` EVENT'S ROWS ACT, a judgement of the enchantment
+	 * session: a row that answers a hit by starting something must not have it
+	 * cut short by the hit that started it. The skills running when the hit
+	 * landed are collected and cancelled first, and only then is the event
+	 * raised.
+	 *
+	 * @param bLanded          false for an evaded blow
+	 * @param Attacker         whoever `UCataclysmCombatEvents::AttackerOf` names
+	 *                         for the blow. Null when nobody is named, and such
+	 *                         a blow interrupts: only this character's own does
+	 *                         not.
+	 * @param bDamageOverTime  whether the blow was a tick and not a hit
+	 */
+	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime);
+
+	/**
 	 * The same, for a blow that landed. Kept as a form of its own rather than
 	 * a default argument, because a default does not change a function's type:
 	 * `CataclysmDeathTests.cpp` stores this one's address as a pointer to a
