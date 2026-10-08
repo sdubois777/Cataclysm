@@ -47901,4 +47901,295 @@ bool FCataclysmSectionsReachTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The order a floor in sections begins in, ruled a second time on 2026-10-08: the barriers close BEFORE any rule
+// chooses a cell for an object, the creatures are placed on a copy of the plan with the barriers' cells walkable, and
+// a barrier whose section then holds no creature opens at once. And every population asked for during play reads that
+// same copy. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** How many placements differ between two populations: the difference in their counts, and each unlike pair. */
+	int32 PlacementsThatDiffer(const FCataclysmFloorPopulation& One, const FCataclysmFloorPopulation& Other)
+	{
+		int32 Unlike = FMath::Abs(One.Enemies.Num() - Other.Enemies.Num());
+		for (int32 Index = 0; Index < FMath::Min(One.Enemies.Num(), Other.Enemies.Num()); ++Index)
+		{
+			Unlike += (One.Enemies[Index].Cell != Other.Enemies[Index].Cell
+					   || One.Enemies[Index].Creature != Other.Enemies[Index].Creature) ? 1 : 0;
+		}
+		return Unlike;
+	}
+}
+
+// NO CELL THE SHARED PICKER CHOOSES IS A CLOSED BARRIER'S, on the twenty dungeon seeds of the sections search.
+//
+// THE PICKER NEEDS A BUILT FLOOR, so this is a world test and not a pure one: `EternalChorusCells` and
+// `InfestedVeinsCells` take an `ACataclysmDungeonFloor`. Each is asked twenty times a floor, because it shuffles on the
+// global random. THE CONTROL is that closed barrier cells far enough from the entrance for the picker to take exist on
+// these floors, so "none chosen" is the closing and not the distance rule.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsPickerTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsNoCellTheObjectPickerChoosesIsAClosedBarriersCell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsPickerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+
+	int32 Sealed = 0;
+	int32 Chosen = 0;
+	int32 ChosenOnABarrier = 0;
+	int32 BarrierCellsFarEnough = 0;
+	const int32 FloorNumbers[2] = {1, 10};
+	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	{
+		for (const int32 FloorNumber : FloorNumbers)
+		{
+			Mode->DungeonSeed = 1000 + Seed * 37;
+			if (!Mode->GoToFloor(FloorNumber))
+			{
+				continue;
+			}
+			const TArray<FIntPoint> ClosedCells = Mode->ClosedSectionBarrierCells();
+			if (ClosedCells.IsEmpty())
+			{
+				continue;
+			}
+			++Sealed;
+			const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+			for (const FIntPoint& Cell : ClosedCells)
+			{
+				BarrierCellsFarEnough += FVector::Dist2D(Floor.WorldOfCell(Cell), Floor.EntranceWorld())
+					>= Effects::EternalChorusApartCm ? 1 : 0;
+			}
+			for (int32 Ask = 0; Ask < 20; ++Ask)
+			{
+				TArray<FIntPoint> Picked = ACataclysmDungeonGameMode::EternalChorusCells(Floor, 8);
+				Picked.Append(ACataclysmDungeonGameMode::InfestedVeinsCells(Floor, 8));
+				for (const FIntPoint& Cell : Picked)
+				{
+					++Chosen;
+					ChosenOnABarrier += ClosedCells.Contains(Cell) ? 1 : 0;
+				}
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: some of the twenty floors have a closed barrier"), Sealed > 0)
+		|| !TestTrue(TEXT("set-up: the picker chose cells"), Chosen > 0)
+		|| !TestTrue(TEXT("set-up: barrier cells far enough from the entrance to be chosen exist"),
+					 BarrierCellsFarEnough > 0))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("PICKER floors=%d chosen=%d barrierCellsFarEnough=%d"), Sealed, Chosen,
+							BarrierCellsFarEnough));
+	TestEqual(TEXT("no cell the picker chose is a closed barrier's"), ChosenOnABarrier, 0);
+	return true;
+}
+
+// NO REALITY RIFT IS DRAWN ON A BARRIER'S CELL, on floors that carry both rows. The rifts are the cells the player is
+// carried to, so one on a barrier's cell would put the player inside a pillar.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsRiftCellsTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsNoRealityRiftIsDrawnOnABarriersCell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsRiftCellsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow, RealityRow};
+
+	int32 Divided = 0;
+	int32 Rifts = 0;
+	int32 RiftsOnABarrier = 0;
+	int32 RiftsOffTheFloor = 0;
+	for (int32 Seed = 1; Seed <= SectionFloorSeedsTried; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!Mode->GoToFloor(2) || Mode->FloorSectionsNow().SectionCount() == 0)
+		{
+			continue;
+		}
+		++Divided;
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		for (const FIntPoint& Rift : Mode->RealityRiftCellsNow())
+		{
+			++Rifts;
+			RiftsOffTheFloor += Plan.IsFloor(Rift) ? 0 : 1;
+			for (const TArray<FIntPoint>& Boundary : Mode->FloorSectionsNow().Boundaries)
+			{
+				RiftsOnABarrier += Boundary.Contains(Rift) ? 1 : 0;
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: some floors have sections"), Divided > 0)
+		|| !TestTrue(TEXT("set-up: rifts were drawn on them"), Rifts > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no rift is on a barrier's cell"), RiftsOnABarrier, 0);
+	TestEqual(TEXT("and every rift is on a cell that is walkable now"), RiftsOffTheFloor, 0);
+	return true;
+}
+
+// A FLOOR WITHOUT SECTIONS IS POPULATED EXACTLY AS THE POPULATOR ANSWERS FOR ITS PLAN. The population asked through the
+// game mode's helper is the populator's own for the plan, placement by placement, and the creatures standing are those
+// placements in order. THE CONTROL is that two different floors differ.
+//
+// WHAT THIS CANNOT SHOW: that these are the placements the same seeds gave before the change. That needs figures
+// recorded from a run made before it, and none were. The object picker shuffles on the global random, so its cells on
+// one seed are not the same twice and cannot be compared at all.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSectionsNoSectionsSameTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithNoSectionsIsPopulatedAsThePopulatorAnswersForItsPlan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSectionsNoSectionsSameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {};
+
+	int32 Floors = 0;
+	int32 Placements = 0;
+	int32 HelperUnlike = 0;
+	int32 StandingUnlike = 0;
+	FCataclysmFloorPopulation Earlier;
+	int32 UnlikeTheFloorBefore = 0;
+	for (int32 Seed = 1; Seed <= 6; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("set-up: the floor has no sections"), Mode->FloorSectionsNow().SectionCount(), 0);
+		const FCataclysmFloorPopulation Direct = FCataclysmFloorPopulator::Populate(
+			Mode->CurrentFloor->GetPlan(), Mode->ChooseEnemyScale(), Mode->FloorBrief);
+		++Floors;
+		Placements += Direct.Enemies.Num();
+		HelperUnlike += PlacementsThatDiffer(Mode->FloorPopulationNow(), Direct);
+
+		// THE CREATURES STANDING, IN THE ORDER THEY WERE PLACED, EACH ON ITS PLACEMENT'S CELL.
+		StandingUnlike += FMath::Abs(Mode->FloorEnemies.Num() - Direct.Enemies.Num());
+		for (int32 Index = 0; Index < FMath::Min(Mode->FloorEnemies.Num(), Direct.Enemies.Num()); ++Index)
+		{
+			const ACataclysmEnemyCharacter* Creature = Mode->FloorEnemies[Index].Get();
+			StandingUnlike += (!IsValid(Creature) || Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation())
+														 != Direct.Enemies[Index].Cell) ? 1 : 0;
+		}
+		if (Seed > 1)
+		{
+			UnlikeTheFloorBefore += PlacementsThatDiffer(Earlier, Direct);
+		}
+		Earlier = Direct;
+	}
+	if (!TestTrue(TEXT("set-up: creatures were placed"), Placements > 0)
+		|| !TestTrue(TEXT("control: one floor's population differs from the next's"), UnlikeTheFloorBefore > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("asked through the helper, every placement is the populator's own for the plan"), HelperUnlike, 0);
+	TestEqual(TEXT("and every creature stands on its placement's cell, in order"), StandingUnlike, 0);
+	return true;
+}
+
+// A POPULATION ASKED FOR DURING PLAY ON A FLOOR WITH A SEALED SECTION IS THAT OF THE SAME FLOOR WITHOUT SECTIONS: the
+// same dungeon seed with the row off. THE CONTROL is the populator asked about the plan as it stands, barriers Solid,
+// which answers differently.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsKindsTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsAPopulationAskedDuringPlayIsThatOfTheSameFloorWithoutSections",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsKindsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true))
+	{
+		return false;
+	}
+	const int32 SeedFound = Mode->DungeonSeed;
+	const FCataclysmFloorPopulation Sealed = Mode->FloorPopulationNow();
+	const FCataclysmFloorPopulation AsItStands = FCataclysmFloorPopulator::Populate(
+		Mode->CurrentFloor->GetPlan(), Mode->ChooseEnemyScale(), Mode->FloorBrief);
+
+	Mode->DungeonModifiers = {};
+	Mode->DungeonSeed = SeedFound;
+	if (!TestTrue(TEXT("set-up: the same floor without the row was reached"), Mode->GoToFloor(2))
+		|| !TestEqual(TEXT("set-up: it has no sections"), Mode->FloorSectionsNow().SectionCount(), 0))
+	{
+		return false;
+	}
+	const FCataclysmFloorPopulation Unsealed = Mode->FloorPopulationNow();
+	if (!TestTrue(TEXT("set-up: the floor without sections has a population"), Unsealed.Enemies.Num() > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("asked on the sealed floor, the population is the unsealed floor's, placement by placement"),
+			  PlacementsThatDiffer(Sealed, Unsealed), 0);
+	TestTrue(TEXT("control: the populator asked about the sealed plan as it stands answers differently"),
+			 PlacementsThatDiffer(AsItStands, Unsealed) > 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

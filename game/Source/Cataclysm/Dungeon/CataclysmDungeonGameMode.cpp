@@ -1822,6 +1822,17 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// Harbingers; their trails go with the wave's other rule zones. Issues #1820 and #41.
 	ForgetThePlagueHarbingers();
 
+	// AND THE SECTIONS' BARRIERS CLOSE HERE, BEFORE ANY RULE BELOW CHOOSES A CELL FOR AN OBJECT, so every picker reads a
+	// barrier's cells as Solid and nothing is placed inside a pillar. Issues #1820 and #41. Ruled a second time on
+	// 2026-10-08: the order first ruled closed them after the creatures were placed, which left every object below
+	// chosen with those cells walkable; it was corrected before any run. Every barrier closes, because no creature
+	// stands yet to say which sections are empty; the empty ones open again below, once the creatures stand. A floor
+	// populated a second time without being built again opens and closes them afresh. None on a Horde arena.
+	if (!FloorBrief.bWaveWalksIn)
+	{
+		CloseTheSectionBarriers();
+	}
+
 	// AND FORCED TITHES, ONCE A FLOOR OR WAVE, before the branch below: a Horde arena asks a tithe of each wave but the
 	// last, as the row asks one at "the end of each floor". Leaving the last altar unpaid owes the angels, brought at
 	// the next beat to this floor's entrance. Issues #1820 and #41.
@@ -1969,25 +1980,17 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// a Gatekeeper on the exit of a boss floor and gathers a Horde dungeon's
 	// creatures into one wave. `BuildFloor` decided it; this only spends it.
 	//
-	// ON A FLOOR IN SECTIONS NO CREATURE IS PLACED ON A CELL A BARRIER WILL STAND ON. Issues #1820 and #41, ruled
-	// 2026-10-08. The plan is still open here, so the populator, which places only where the entrance can be walked
-	// from, fills every section; the barriers are closed after the loop below. A floor populated a second time
-	// without being built again has its barriers opened first, for the same reason. On a floor with no sections
-	// the set is empty and this is the call it always was.
-	//
-	// THE RULES' OBJECTS PLACED ABOVE WERE CHOSEN WITH THOSE CELLS STILL WALKABLE, so nothing above keeps one off a
-	// barrier's cell. That is stated in the entry of 2026-10-08 and is not settled here.
+	// ON A FLOOR IN SECTIONS THE BARRIERS ARE ALREADY CLOSED, AND THE POPULATOR IS ASKED ABOUT THE PLAN WITH THEIR CELLS
+	// WALKABLE (`FloorPopulationNow`). Issues #1820 and #41, ruled 2026-10-08. It places only where the entrance can
+	// be walked from, so on that copy it fills every section, and the cells of every boundary are barred to it, so
+	// no creature stands on a barrier's cell. On a floor with no sections nothing is closed and the set is empty:
+	// the populator is asked about the plan, as it always was.
 	TSet<FIntPoint> NoCreatureOn;
-	if (!FloorBrief.bWaveWalksIn)
+	for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
 	{
-		OpenEverySectionBarrier();
-		for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
-		{
-			NoCreatureOn.Append(Boundary);
-		}
+		NoCreatureOn.Append(Boundary);
 	}
-	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
-		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief, NoCreatureOn);
+	const FCataclysmFloorPopulation Population = FloorPopulationNow(NoCreatureOn);
 
 	// AND ITS GROUPS, NUMBERED AFTER EVERY GROUP PLACED BEFORE, for Morale Break. Issues #1820 and #41.
 	ArrivingPackGroupBase = PackGroupsPlaced;
@@ -2040,9 +2043,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		}
 		WaveSpawned = Spawned;
 
-		// AND THE SECTIONS' BARRIERS CLOSE, now that every creature stands and carries its section. Before the
-		// choices below, none of which chooses a cell. Issues #1820 and #41, ruled 2026-10-08.
-		CloseTheSectionBarriers();
+		// AND A BARRIER WHOSE SECTION HOLDS NO CREATURE OPENS AT ONCE, now that every creature stands and carries its
+		// section: before the floor's first beat, so such a barrier is never seen closed. It was closed while the
+		// objects above were placed, which only kept them off its cells. Issues #1820 and #41, ruled 2026-10-08.
+		StepTheSectionBarriers();
 
 		// AND ONE OF THEM IS THE FLOOR'S MEDIC, if the floor carries that rule.
 		// After the loop rather than inside it, because the choice is the
@@ -3083,8 +3087,7 @@ void ACataclysmDungeonGameMode::StepPlagueConvergence(
 	}
 
 	// THE FLOOR'S OWN KINDS, drawn from a fresh population as Grave Tide draws them.
-	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
-		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	const FCataclysmFloorPopulation Population = FloorPopulationNow();
 	const TArray<FIntPoint> Cells = ConvergenceArrivalCells(
 		CurrentFloor->GetPlan(), CurrentFloor->CellOfWorld(Player->GetActorLocation()), Wanted);
 	if (Population.Enemies.IsEmpty() || Cells.IsEmpty())
@@ -4107,7 +4110,7 @@ void ACataclysmDungeonGameMode::StepNecroticBloom()
 		// beat and only when a wave is due.
 		if (!Population.IsSet())
 		{
-			Population = FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+			Population = FloorPopulationNow();
 		}
 		const TArray<FIntPoint> Cells =
 			NecroticBloomWaveCells(*CurrentFloor, One.Flower.Get()->GetActorLocation());
@@ -4709,7 +4712,7 @@ void ACataclysmDungeonGameMode::NoteDeathForObsidianSarcophagi(const FCataclysmD
 		// seeing across the floor. It pays and is one of the floor's creatures.
 		One.bLordCame = true;
 		const FCataclysmFloorPopulation Population =
-			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+			FloorPopulationNow();
 		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Coffin->GetActorLocation());
 		if (Population.Enemies.IsEmpty() || Cells.IsEmpty())
 		{
@@ -4991,7 +4994,7 @@ void ACataclysmDungeonGameMode::StepPortalUnleashing()
 		// THE FLOOR'S OWN KINDS, as Necrotic Bloom draws them, asked once a beat and only when one is due.
 		if (!Population.IsSet())
 		{
-			Population = FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+			Population = FloorPopulationNow();
 		}
 		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
 		if (Population->Enemies.IsEmpty() || Cells.IsEmpty())
@@ -6192,6 +6195,24 @@ void ACataclysmDungeonGameMode::PlanTheSections(const FCataclysmFloorPlan& Plan)
 		MayClose.Append(One.Shortcut.Gate);
 	}
 	FloorSections = FCataclysmFloorGenerator::FindSections(Plan, MayClose);
+
+	// A WARZONE POINT PLANNED ON A BOUNDARY'S CELL WOULD STAND INSIDE A PILLAR. The points are chosen before sections
+	// exist, each with a shortcut measured from it, so the point cannot be moved here and the search cannot be told
+	// to avoid it. Such a floor gets no sections and the row is the sealed stairs there. A judgement by the writing
+	// session, 2026-10-08.
+	bool bAPointIsOnABoundary = false;
+	for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
+	{
+		for (const FIntPoint& Point : WarzonePlannedPoints)
+		{
+			bAPointIsOnABoundary = bAPointIsOnABoundary || Boundary.Contains(Point);
+		}
+	}
+	if (bAPointIsOnABoundary)
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Sections: none on floor %d, a Warzone point lies on a boundary"), FloorNumber);
+		FloorSections = FCataclysmFloorSections();
+	}
 	SectionBarrierClosed.Init(false, FloorSections.Boundaries.Num());
 	SectionBarrierPillars.SetNum(FloorSections.Boundaries.Num());
 	UE_LOG(LogCataclysm, Log, TEXT("Sections: %d on floor %d, behind %d barrier(s)"), FloorSections.SectionCount(),
@@ -6214,25 +6235,20 @@ void ACataclysmDungeonGameMode::CloseTheSectionBarriers()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	// A BARRIER STANDS FROM THE MOMENT THE FLOOR BEGINS, raised at once and with no warning. ONE WHOSE SECTION HOLDS NO
-	// CREATURE IS NEVER CLOSED, which is "a section with no creature in it opens when the floor begins". The last
-	// section has no barrier of its own: the stairs are its seal.
-	bool bClosedOne = false;
+	// EVERY BARRIER, OPENED FIRST IF IT WAS CLOSED, so a floor populated again starts from the open plan and each
+	// barrier's pillars are placed afresh. A barrier stands from the moment the floor begins, raised at once and
+	// with no warning. The last section has no barrier of its own: the stairs are its seal. Which sections are
+	// empty is not known yet; `PopulateFloor` opens those once the creatures stand.
+	OpenEverySectionBarrier();
 	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
 	{
-		if (!SectionBarrierClosed.IsValidIndex(Barrier) || !SectionBarrierPillars.IsValidIndex(Barrier)
-			|| StandingInSection(Barrier) <= 0)
+		if (!SectionBarrierClosed.IsValidIndex(Barrier) || !SectionBarrierPillars.IsValidIndex(Barrier))
 		{
 			continue;
 		}
 		BlockCellsWithPillars(FloorSections.Boundaries[Barrier], FName(Effects::LightforgedWallsKey),
 							  SectionBarrierPillars[Barrier]);
 		SectionBarrierClosed[Barrier] = true;
-		bClosedOne = true;
-	}
-	if (bClosedOne)
-	{
-		RefreshFloorModifierPanel();
 	}
 }
 
@@ -6326,6 +6342,23 @@ bool ACataclysmDungeonGameMode::AnObstacleMayClose(const TArray<FIntPoint>& Cell
 	// says what is added and why.
 	return CurrentFloor
 		&& CataclysmFloorCanBlockBesideBarriers(CurrentFloor->GetPlan(), Cells, From, Held, ClosedSectionBarrierCells());
+}
+
+FCataclysmFloorPlan ACataclysmDungeonGameMode::PlanWithSectionBarriersOpen() const
+{
+	FCataclysmFloorPlan Open = CurrentFloor ? CurrentFloor->GetPlan() : FCataclysmFloorPlan();
+	for (const FIntPoint& Cell : ClosedSectionBarrierCells())
+	{
+		Open.Carve(Cell);
+	}
+	return Open;
+}
+
+FCataclysmFloorPopulation ACataclysmDungeonGameMode::FloorPopulationNow(const TSet<FIntPoint>& NoCreatureOn) const
+{
+	// THE ONE CALL OF THE POPULATOR IN THIS FILE. See the declaration.
+	return FCataclysmFloorPopulator::Populate(PlanWithSectionBarriersOpen(), ChooseEnemyScale(), FloorBrief,
+											  NoCreatureOn);
 }
 
 void ACataclysmDungeonGameMode::PlaceTheShortcutGates()
@@ -6895,7 +6928,7 @@ int32 ACataclysmDungeonGameMode::BringWarzoneAllies(const FVector& Point, ACatac
 	// THE FLOOR'S OWN KINDS AT COMMON, on the cells around the captured point, as a wave's fall back to them; then each
 	// taken onto the player's side, keeping its own brain and abilities, as a thrall is (issue #1202).
 	const FCataclysmFloorPopulation Population =
-		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		FloorPopulationNow();
 	const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Point);
 	int32 Came = 0;
 	for (int32 Which = 0; Which < Effects::WarzoneAlliesPerPoint && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
@@ -6937,7 +6970,7 @@ int32 ACataclysmDungeonGameMode::SendWarzoneWave(const FVector& Point)
 	const FVector Where(Point.X + Effects::WarzoneWaveAwayCm * FMath::Cos(Angle),
 						Point.Y + Effects::WarzoneWaveAwayCm * FMath::Sin(Angle), Point.Z);
 	const FCataclysmFloorPopulation Population =
-		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		FloorPopulationNow();
 	// A POINT WITH NO FLOOR WITHIN REACH FALLS BACK TO THE CELLS AROUND THE CONTROL POINT, which stands on the floor.
 	// Until this, such a point lost that beat's wave in play and the wave came only when a later beat's point landed on
 	// the floor. Ruled by the coordinating session, 2026-09-26.
@@ -7358,7 +7391,7 @@ void ACataclysmDungeonGameMode::StepAbyssalRifts(
 	if (Effects::AbyssalRiftsWaveIsDue(AbyssalRiftSecondsOpen, AbyssalRiftWavesSent))
 	{
 		const FCataclysmFloorPopulation Population =
-			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+			FloorPopulationNow();
 		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, At);
 		int32 Placed = 0;
 		for (int32 Which = 0; Which < Effects::AbyssalRiftsCreaturesPerWave && !Population.Enemies.IsEmpty() && !Cells.IsEmpty();
@@ -7630,7 +7663,7 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::InfectionBloomSend(
 	}
 	// THE FLOOR'S OWN KINDS, as Necrotic Bloom draws them, at Common, on cells beside where it stood.
 	const FCataclysmFloorPopulation Population =
-		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		FloorPopulationNow();
 	const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
 	for (int32 Which = 0; Which < Count && !Population.Enemies.IsEmpty() && !Cells.IsEmpty(); ++Which)
 	{
@@ -7857,7 +7890,7 @@ void ACataclysmDungeonGameMode::PlaceTheQuarantine()
 	}
 	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::QuarantineBreachPerFloor);
 	const FCataclysmFloorPopulation Population =
-		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		FloorPopulationNow();
 	if (Cells.IsEmpty() || Population.Enemies.IsEmpty())
 	{
 		return;
@@ -8246,7 +8279,7 @@ void ACataclysmDungeonGameMode::PlaceTheHoards()
 		return;
 	}
 	const FCataclysmFloorPopulation Population =
-		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		FloorPopulationNow();
 	float MagicFind = 0.0f;
 	float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
 	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
@@ -8400,7 +8433,7 @@ void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
 		const FVector Where(Feet.X + Effects::IllusionAppearsAwayCm * FMath::Cos(Angle),
 							Feet.Y + Effects::IllusionAppearsAwayCm * FMath::Sin(Angle), Feet.Z);
 		const FCataclysmFloorPopulation Population =
-			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+			FloorPopulationNow();
 		// A POINT WITH NO FLOOR WITHIN REACH FALLS BACK TO THE CELLS AROUND THE PLAYER, who stands on the floor. Until
 		// this, such a point lost that beat's pair in play and the pair came only when a later beat's point landed on the
 		// floor. Ruled by the coordinating session, 2026-09-26.
@@ -8905,7 +8938,7 @@ void ACataclysmDungeonGameMode::StepCarrionFeast()
 		}
 		if (!Population.IsSet())
 		{
-			Population = FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+			Population = FloorPopulationNow();
 		}
 		if (Population->Enemies.IsEmpty())
 		{
@@ -9426,8 +9459,7 @@ void ACataclysmDungeonGameMode::StepInfestedVeins(
 				bInfestedVeinsGuardiansCame = true;
 				// THE FLOOR'S OWN KINDS, as Grave Tide draws them, at the Elite rung, on floor cells
 				// beside the vein as Necrotic Bloom's waves stand beside their flower.
-				const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
-					CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+				const FCataclysmFloorPopulation Population = FloorPopulationNow();
 				const TArray<FIntPoint> Cells =
 					NecroticBloomWaveCells(*CurrentFloor, CurrentFloor->WorldOfCell(One.Cell));
 				int32 Placed = 0;
@@ -9863,7 +9895,7 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::BringCreaturesNear(
 	const float Angle = DungeonGameModeBringCreaturesAngle();
 	const FVector Where(At.X + AwayCm * FMath::Cos(Angle), At.Y + AwayCm * FMath::Sin(Angle), At.Z);
 	const FCataclysmFloorPopulation Population =
-		FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		FloorPopulationNow();
 	TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
 	if (Cells.IsEmpty())
 	{
@@ -19519,8 +19551,7 @@ void ACataclysmDungeonGameMode::StepGraveTide()
 
 	// WHERE THEY STAND IS THE FLOOR POPULATOR'S ANSWER, asked for this floor's own plan
 	// and density, so a wave cannot put a creature anywhere the floor would not.
-	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
-		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	const FCataclysmFloorPopulation Population = FloorPopulationNow();
 	if (Population.Enemies.IsEmpty())
 	{
 		// NOTHING TO PLACE IS NOT A WAVE, and the clock is left alone so the next beat
