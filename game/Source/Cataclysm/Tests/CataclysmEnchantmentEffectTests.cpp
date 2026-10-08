@@ -19685,4 +19685,109 @@ bool FCataclysmMinionDefencesRowTest::RunTest(const FString&)
 	TestEqual(TEXT("taken off: asked with no tags, the share is nought"), For(NoTags), 0.0f, 0.001f);
 	return true;
 }
+// THE CHARGE ROWS. Ruled 2026-10-08; the two rows are as the entry "A charge's blow is told how far the charge
+// went" states them. THE WORN MODIFIER IS READ OFF THE WEARER and priced by the pipeline from the two figures a charge's
+// blow carries; that a real charge then deals more is that entry's tests, with the row made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeShareRowsTest,
+	"Cataclysm.Enchantments.TheChargeRowsGiveTheirFigureAtTheWholeRangeHalfOfItAtHalfAndNothingToASkillWithoutTheKeyword",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Charge skills deal 30%-60% bonus damage proportional to distance traveled".
+ * Two rows, `attack_damage` and `spell_damage`, increased 30 to 60, requiring
+ * `Keyword.Charge`, on the scale `share_of_range_moved` with a step of 1. The
+ * real rows WORN at the top of their range, 60.
+ *
+ * THE ROW'S OWN FIGURES are read off the wearer: each stat holds exactly one
+ * modifier on that scale, of 60, with a step of 1.
+ *
+ * WHAT IT IS WORTH is worked out by the pipeline from the worn modifier and the
+ * two figures a charge's blow carries, so nothing the wearer's class gives is
+ * read: 30 at half the range, 60 at the whole of it and past it, and nothing
+ * for a blow told no distance. That it requires `Keyword.Charge` is read off
+ * the modifier.
+ */
+bool FCataclysmChargeShareRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_Charge_skills_deal_30_60_bonus_damage_proporti");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	const FGameplayTagContainer Charge = CataclysmRepeatRowsTest::Tagged(TEXT("Keyword.Charge"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: the charge keyword exists"), Charge.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const TCHAR* const Stats[] = {TEXT("attack_damage"), TEXT("spell_damage")};
+	for (const TCHAR* StatName : Stats)
+	{
+		const FName Stat(StatName);
+		int32 OnTheScale = 0;
+		FCataclysmStatModifier Row;
+		if (const FCataclysmStatInputs* Line = Worn.ASC()->GetStatInputs(Stat))
+		{
+			for (const FCataclysmStatModifier& Modifier : Line->Modifiers)
+			{
+				if (Modifier.Scale == ECataclysmStatScale::ShareOfRangeMoved)
+				{
+					++OnTheScale;
+					Row = Modifier;
+				}
+			}
+		}
+		if (!TestEqual(FString::Printf(TEXT("%s: worn, one modifier on the share of a charge's range.%s"), StatName,
+						   CataclysmRepeatRowsTest::OlderAsset),
+				OnTheScale, 1))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s: it is 60 at the top of the row's range"), StatName), Row.Value, 60.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: with a step of 1"), StatName), Row.ScaleStep, 1.0f, 0.001f);
+		TestTrue(FString::Printf(TEXT("%s: it is an increase"), StatName), Row.Bucket == ECataclysmStatBucket::Increased);
+		TestTrue(FString::Printf(TEXT("%s: it requires the charge keyword and nothing else"), StatName),
+			Row.RequiredTags == Charge);
+
+		// WHAT THE WORN ROW IS WORTH, as the pipeline works it out from the two figures a charge's blow carries.
+		const auto Worth = [&](float Metres, float Range)
+		{
+			FCataclysmStatConditions State;
+			State.MetresCharged = Metres;
+			State.ChargeRangeMetres = Range;
+			return UCataclysmStatPipeline::ScaledValue(Row, State);
+		};
+		TestEqual(FString::Printf(TEXT("%s: 7 metres of a 14 metre range is worth 30"), StatName), Worth(7.0f, 14.0f),
+			30.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: the whole range is worth 60"), StatName), Worth(14.0f, 14.0f), 60.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: past the range is still worth 60"), StatName), Worth(21.0f, 14.0f), 60.0f,
+			0.001f);
+		TestEqual(FString::Printf(TEXT("%s: a blow told no distance is worth nothing"), StatName), Worth(-1.0f, -1.0f),
+			0.0f, 0.001f);
+	}
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	int32 Left = 0;
+	for (const TCHAR* StatName : Stats)
+	{
+		if (const FCataclysmStatInputs* Line = Worn.ASC()->GetStatInputs(FName(StatName)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Line->Modifiers)
+			{
+				Left += Modifier.Scale == ECataclysmStatScale::ShareOfRangeMoved ? 1 : 0;
+			}
+		}
+	}
+	TestEqual(TEXT("taken off: no modifier on that scale is left on either stat"), Left, 0);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

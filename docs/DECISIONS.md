@@ -531,6 +531,62 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — "Charge skills deal 30%-60% bonus damage proportional to distance traveled" is built as two rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHAT NO TEST SHOWS
+
+- **The rolled figure is the bonus at the skill's FULL range** and falls in proportion below it. There is no
+  distance per step.
+- **Three of the six charge skills travel TO an enemy, so their bonus is set by how far away that enemy stood.**
+  Used on an enemy 3 metres away under a row that rolled 60, Flashpoint gives about 13% and Emberhaul and Nail
+  Down 15%. A player who closes in first gets almost nothing from the row.
+- **An enemy met early in a walked charge gets a small bonus and one met at the end the full one.**
+- **The hit along a charge's path and the explosions at both ends, which other worn rows give, get NO bonus from
+  this row.**
+- **The `spell_damage` row gives nothing to any charge skill today**: all six are melee skills, and a hit adds
+  spell damage only for a spell. It is written because the sentence says "damage" and a charge that is a spell
+  would need it.
+- **More skill range makes the full bonus harder to reach**, because the share is of the range the skill used.
+- **The test here reads the worn modifier and prices it with the pipeline; it uses no charge.** That a real
+  charge then deals more is tested in the entry that built the scale, with the row made by hand.
+
+### WHAT WAS BUILT
+
+The rows the entry "A charge's blow is told how far the charge went" of 2026-10-08 left to the session holding
+the design workbook, each as that entry's table states it. No engine code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Charge skills deal 30%-60% bonus damage proportional to distance traveled | Two rows: `attack_damage` and `spell_damage`, each increased, 30 to 60, Required Tags `Keyword.Charge`, Scale `share_of_range_moved`, Scale Step 1 |
+
+EnchantmentEffects 575 to 577, over 486 to 487 enchantments.
+
+**With the rows, one list moves.** `share_of_range_moved` leaves the list of scales built ahead of their rows,
+and the count of scales a row names goes from 39 to 40.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the sentence is that entry's and its rulings of 2026-10-08.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheChargeRowsGiveTheirFigureAtTheWholeRangeHalfOfItAtHalfAndNothingToASkillWithoutTheKeyword`:
+  the test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. The real rows worn at the
+  top of their range. For attack damage and for spell damage the wearer holds exactly one modifier on the scale:
+  60, a step of 1, an increase, requiring `Keyword.Charge` and nothing else. Priced by the pipeline from the two
+  figures a charge's blow carries, it is worth 30 at 7 metres of a 14 metre range, 60 at the whole range, 60 past
+  it, and nothing for a blow told no distance. Taken off, no such modifier is left on either stat.
+
+**Not tested here:** a charge used under the real rows; any of the six charge skills by its own row.
+
+---
+
 ## 2026-10-08 — A charge's blow is told how far the charge went, and one scale reads it: `share_of_range_moved`, the first scale whose count is a fraction. Engine and generator only; no row authored
 
 **Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
