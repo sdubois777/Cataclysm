@@ -13,6 +13,8 @@
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+// For the overkill explosion row a test wears. Issue #2289.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -3138,6 +3140,182 @@ CATACLYSM_MODIFIER_TEST(FCataclysmBondTickKillsTest,
 	TestTrue(TEXT("a tick whose half is at least the bonded creature's health kills it"), HasDied(Bonded));
 	TestEqual(TEXT("and its ally loses half of the whole tick again"),
 			  AllyBefore - HealthOf(Ally), WholeTick, 0.02f);
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondAllyShareOverkillTest,
+	"Cataclysm.EnemyModifiers.AnAllyKilledByItsShareOfABondedKillAddsNoOverkillExplosion")
+{
+	// RULED 2026-10-08, a labelled judgement by the coordinating session under the owner's delegation: an ally killed
+	// by its share of a blow on the bonded creature records an overkill of nought, because the figure is another
+	// creature's. So "Enemies killed by you explode for the overkill amount" explodes the bonded creature's body
+	// and not the ally's.
+	//
+	// STANDING, in each of two worlds: the player 50 m along Y, wearing the overkill explosion row at 100%. The bonded
+	// creature at the origin. Its ally 2 m along X. A bystander 3 m along Y from the bonded creature, 3.6 m from the
+	// ally: inside the explosion's 5 m of both bodies. The bystander is a creature of the same team, so it is the
+	// bond's second ally and each of the three keeps or is paid a third. A creature with no bond 30 m along -X,
+	// out of every explosion, on which the blow and the explosion's blow are measured.
+	//
+	// WHAT HAPPENS, AS READ. W is what the blow takes from a creature with health to spare. The bonded creature
+	// holds 0.2 W, keeps a third of the blow and dies; its death records an overkill of the blow less 0.2 W. Its
+	// death is handled inside its health write, so its body explodes before its allies are paid: the ally and the
+	// bystander each take E, what a blow of that overkill delivered as the explosion's takes. Then each is paid a
+	// third of the blow.
+	//
+	// THE CONTROL: the ally has health to spare. One death, one explosion, and the bystander loses W / 3 + E.
+	// THE CASE: the ally holds E + W / 6, so the explosion leaves it W / 6 and its share of W / 3 kills it. That
+	// death is the player's kill and the row hears it. The bystander must lose what it lost in the control.
+	//
+	// THE TWO OBSERVABLES, and why both. The overkill on each death notice is the figure the ruled line writes,
+	// and the only thing the explosion is sized from. What the bystander loses is what a player would see.
+	// WITHOUT THE RULED LINE the ally's notice carries the bonded creature's overkill, about 0.8 W, and the
+	// bystander loses a second E.
+	using namespace CataclysmBondKillsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		int32 Deaths = 0;
+		bool bAllyDied = false;
+		bool bAllyKilledByThePlayer = false;
+		float BondedOverkill = -1.0f;
+		float AllyOverkill = -1.0f;
+		float BystanderLost = 0.0f;
+		float Whole = 0.0f;
+		float ExplosionTakes = 0.0f;
+	};
+
+	const auto Run = [this](const TCHAR* Who, bool bAllyDies) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Player = Striker(World);
+		ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+		ACataclysmEnemyCharacter* Ally = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100000.0f);
+		ACataclysmEnemyCharacter* Bystander = Creature(World, FVector(0.0f, 300.0f, 0.0f), 100000.0f);
+		ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+		UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+		UCataclysmAbilitySystemComponent* PlayerSystem =
+			Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a player"), Who), Player)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: the player's ability system"), Who), PlayerSystem)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: the announcements"), Who), Events)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: a bonded creature"), Who), Bonded)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: an ally"), Who), Ally)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: a bystander"), Who), Bystander)
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: a creature with no bond"), Who), Control))
+		{
+			return Read;
+		}
+		Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+
+		// THE BLOW, AND THEN THE EXPLOSION'S BLOW FOR THE OVERKILL IT WILL HAVE, both measured on the creature with
+		// no bond before the row is worn. The delivery is the one `ExplodeForOverkill` builds.
+		Read.Whole = WholeBlowOn(Player, Control);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the blow takes health from a creature with no bond, and "
+										   "under half of what it holds (%.2f)"), Who, Read.Whole),
+					  Read.Whole > 10.0f && Read.Whole < 50000.0f)
+			|| !TestEqual(*FString::Printf(TEXT("%s: set-up: the bond shares with its two allies"), Who),
+						  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 1.0f / 3.0f, 0.001f))
+		{
+			return Read;
+		}
+		FCataclysmHitDelivery AsTheExplosion;
+		AsTheExplosion.bIsArea = true;
+		AsTheExplosion.bCannotBeRetaliatedAgainst = true;
+		AsTheExplosion.bCannotCriticallyStrike = true;
+		AsTheExplosion.bCarriesNoWeaponSubType = true;
+		AsTheExplosion.bCannotLeech = true;
+		AsTheExplosion.bIsConsequenceOfADeath = true;
+		const float ControlBefore = HealthOf(Control);
+		UCataclysmSkillEffects::ApplyDirectDamage(Player, Control, Read.Whole * 0.8f, AsTheExplosion);
+		Read.ExplosionTakes = ControlBefore - HealthOf(Control);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a blow of the overkill, delivered as the explosion's, takes "
+										   "health (%.2f)"), Who, Read.ExplosionTakes),
+					  Read.ExplosionTakes > 1.0f))
+		{
+			return Read;
+		}
+
+		// THE ROW, as the loader builds it: on `kill`, the value as the share.
+		FCataclysmPoolAction Row;
+		Row.Event = FName(TEXT("kill"));
+		Row.Pool = FName(UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction);
+		Row.Percent = 100.0f;
+		Row.bExplodeVictimForOverkill = true;
+		Row.TriggerKey = FName(TEXT("Test:bond-overkill"));
+		TArray<FCataclysmPoolAction> Rows;
+		Rows.Add(Row);
+		PlayerSystem->SetPoolActions(MoveTemp(Rows));
+
+		PutHealthAt(Bonded, Read.Whole * 0.2f);
+		if (bAllyDies)
+		{
+			PutHealthAt(Ally, Read.ExplosionTakes + Read.Whole / 6.0f);
+		}
+		const float BystanderBefore = HealthOf(Bystander);
+
+		const FDelegateHandle Heard = Events->OnDeath.AddLambda(
+			[&Read, Bonded, Ally, Player](const FCataclysmDeathNotice& Notice)
+			{
+				++Read.Deaths;
+				if (Notice.Victim == Bonded)
+				{
+					Read.BondedOverkill = Notice.Overkill;
+				}
+				if (Notice.Victim == Ally)
+				{
+					Read.AllyOverkill = Notice.Overkill;
+					Read.bAllyKilledByThePlayer = Notice.Killer == Player;
+				}
+			});
+
+		// THE ONE BLOW.
+		UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+		Events->OnDeath.Remove(Heard);
+
+		Read.bAllyDied = HasDied(Ally);
+		Read.BystanderLost = BystanderBefore - HealthOf(Bystander);
+		Read.bSetUp = TestTrue(*FString::Printf(TEXT("%s: set-up: the blow killed the bonded creature"), Who),
+							   HasDied(Bonded))
+			&& TestFalse(*FString::Printf(TEXT("%s: set-up: the bystander, with health to spare, still stands"), Who),
+						 HasDied(Bystander));
+		return Read;
+	};
+
+	const FRead Spared = Run(TEXT("the ally lives"), false);
+	const FRead Slain = Run(TEXT("the ally dies of its share"), true);
+	if (!Spared.bSetUp || !Slain.bSetUp)
+	{
+		return false;
+	}
+
+	// THE CONTROL: ONE DEATH AND ONE EXPLOSION.
+	TestEqual(TEXT("control: one creature dies"), Spared.Deaths, 1);
+	TestFalse(TEXT("control: the ally lives"), Spared.bAllyDied);
+	TestEqual(TEXT("control: the bonded creature's death records the whole blow less the health it held"),
+			  Spared.BondedOverkill, Spared.Whole * 0.8f, 0.05f);
+	TestEqual(TEXT("control: the bystander loses its third of the blow and what one explosion takes"),
+			  Spared.BystanderLost, Spared.Whole / 3.0f + Spared.ExplosionTakes, 0.05f);
+
+	// THE CASE: TWO DEATHS, AND STILL ONE EXPLOSION.
+	TestEqual(TEXT("two creatures die: the bonded creature and its ally"), Slain.Deaths, 2);
+	TestTrue(TEXT("the ally died"), Slain.bAllyDied);
+	TestTrue(TEXT("and its death names the player as the killer, so the row hears it"), Slain.bAllyKilledByThePlayer);
+	TestEqual(TEXT("the bonded creature's death records the same overkill as in the control"),
+			  Slain.BondedOverkill, Spared.BondedOverkill, 0.05f);
+	TestEqual(TEXT("the ally's death records an overkill of nought"), Slain.AllyOverkill, 0.0f, 0.001f);
+	TestEqual(TEXT("the bystander loses what it lost in the control: the ally's death adds no explosion"),
+			  Slain.BystanderLost, Spared.BystanderLost, 0.05f);
 	return true;
 }
 
