@@ -77,8 +77,7 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # in combat you begin losing 2%-4% of your maximum HP per second".
     # `docs/DECISIONS.md` of that day gives the shape of each row. Each leaves
     # with its row.
-    "while_under_damage_over_time",
-    "in_combat_for_seconds",
+    # BOTH LEFT with their rows, issue #1833.
     # `target_in_your_zone` JOINED AND LEFT ON 2026-10-06: the engine half of "You
     # deal 15%-30% increased damage to enemies standing in your persistent AOE
     # zones" landed first and its row the same day, issue #1833.

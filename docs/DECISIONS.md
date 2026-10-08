@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — Three sentences on damage over time, time in combat and leeching are built as four rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, three new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`,
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The rows the entry "Two conditions, `while_under_damage_over_time` and `in_combat_for_seconds`, and one scale,
+`seconds_leeching`" of 2026-10-07 left to the session holding the design workbook, each as that entry states it.
+The conditions, the scale and the timed action were read in the merged code. No engine code and no generator code
+is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Gain 50%-100% increased damage while under the effect of a DoT | Two rows: `attack_damage` and `spell_damage`, each increased 50 to 100, Condition `while_under_damage_over_time` |
+| After 10 seconds in combat you begin losing 2%-4% of your maximum HP per second | One row: Action `health` on `every_seconds`, Every Seconds 1, -2 to -4 of `maximum`, Condition `in_combat_for_seconds` 10 |
+| While leeching, reduce your max resistances by 1%-3% per second | One row: `resistance_cap`, flat, -1 to -3, Scale `seconds_leeching`, Scale Step 1, Scale Max Steps 10 |
+
+EnchantmentEffects 550 to 554, over 464 to 467 enchantments.
+
+**With the rows, three names leave their lists of things built ahead of their rows**: the two conditions, and
+the scale, whose pinned count of scales named by a row moves from 38 to 39.
+
+### TWO THINGS A READER OF THE ROWS SHOULD KNOW
+
+- **The 10 in Scale Max Steps is not a number the leech sentence states.** It is that entry's ruling: the loss
+  stops growing after 10 seconds of unbroken leeching. A row without it would grow without end, and the
+  generator refuses such a row.
+- **A worn item at the top of the drain row's range carries 4**, the larger loss; the row is written -2 to -4.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the three sentences is that entry's: what counts as damage over time on the wearer, when a
+combat's ten seconds begin and end, what "leeching" is and when its clock is cleared.
+
+### Tests
+
+Each wears the real row at the top of its range, and first asserts that the name it wears is a row of its table.
+
+- `Cataclysm.Enchantments.TheDamageWhileUnderADotRowRaisesAttackAndSpellDamageOnlyWhileItsWearerCarriesOne`: with
+  a bleed the wearer laid on itself, the wearer's summed increases to attack damage and to spell damage are each
+  1.0 higher than before, and with the bleed taken off each is what it was. Differences, so nothing the wearer's
+  class gives is read.
+- `Cataclysm.Enchantments.TheDrainAfterTenSecondsInCombatRowHandsItsWearerATimedLossOfMaximumHealth`: the wearer
+  holds exactly one timed action on health that waits for seconds in combat: 4 of maximum health, every 1 second,
+  after 10 seconds; and none when the item is taken off.
+- `Cataclysm.Enchantments.TheResistanceCapWhileLeechingRowHandsItsWearerALossForEachSecondOfLeechingCappedAtTen`:
+  the wearer's line for the resistance cap holds exactly one modifier scaled by seconds of leeching: flat, 3 lost
+  for each 1 second, at most 10 seconds counted; and none when the item is taken off.
+
+**Not tested here:** a blow raised by the worn row, health lost to the worn row over a combat, or the cap falling
+while a worn row's wearer leeches. That entry tests each with the row made by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the other three layers of the stack, on `development` 8a46f17f. The build, the
+whole suite and the Python of record are in the table of the entry of the same day on "Traps last 50%-100%
+longer before expiring" and were run with this layer in the stack. **The ids are the commits as they stood when
+each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 239a6647 | 290 tests performed, 284 succeeded, 6 failed, this layer's three among them; 8 of the 17 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 46d47900 | effect rows 550 to 554 |
+| Whole suite, every asset built | 00b537ed | 3344 tests performed, 3344 succeeded, 0 failed |
+
+**The three tests fail against a table without their rows and pass with them**: under a bleed the summed
+increases were no higher on either stat; no timed action on health waited for seconds in combat; and the
+resistance cap's line held no modifier on the scale.
+
+**A set-up that rested on reading held**: the test wearer laid a bleed on itself and carried it, asserted by
+name before anything was read.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The two conditions and the scale were proved by the session that built them.
+
+---
+
 ## 2026-10-08 — "Traps last 50%-100% longer before expiring" is built as a row, and two trap sentences and one on healing skills are recorded as not written
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
