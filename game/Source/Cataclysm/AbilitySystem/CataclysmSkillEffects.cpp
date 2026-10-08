@@ -403,7 +403,9 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 										   float TargetDistanceMetres,
 										   bool bTargetIsStaggered,
 										   const AActor* Target,
-										   int32 EnemiesStruckTogether)
+										   int32 EnemiesStruckTogether,
+										   float MetresCharged,
+										   float ChargeRangeMetres)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -432,12 +434,18 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 		//
 		// AND HOW MANY ENEMIES THE ATTACK STRUCK, since issue #1686, which the
 		// point blank drawback's spell damage row asks about.
+		//
+		// AND HOW FAR A CHARGE HAD GONE, WITH THE RANGE IT USED, ruled
+		// 2026-10-08, which the charge sentence's spell damage row is scaled
+		// by. That is NOT the distance moved before the blow, which this call
+		// still does not receive.
 		? Cataclysm->StatForSkill(FName(TEXT("spell_damage")), SkillTags,
 								  FromAttribute, SkillHealthCostPercent,
 								  FCataclysmBlowContext(),
 								  /*MetresMovedBeforeBlow=*/-1.0f,
 								  TargetDistanceMetres, bTargetIsStaggered,
-								  Target, EnemiesStruckTogether)
+								  Target, EnemiesStruckTogether,
+								  MetresCharged, ChargeRangeMetres)
 		: FromAttribute;
 
 	return FMath::Max(0.0f, Value);
@@ -461,7 +469,7 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
 	bool bTargetIsStaggered, const AActor* Target,
-	int32 EnemiesStruckTogether)
+	int32 EnemiesStruckTogether, float MetresCharged, float ChargeRangeMetres)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -477,7 +485,7 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
 				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
 				  TargetDistanceMetres, bTargetIsStaggered, Target,
-				  EnemiesStruckTogether));
+				  EnemiesStruckTogether, MetresCharged, ChargeRangeMetres));
 }
 
 float UCataclysmSkillEffects::MoreForSkill(
@@ -485,7 +493,7 @@ float UCataclysmSkillEffects::MoreForSkill(
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
 	bool bTargetIsStaggered, const AActor* Target,
-	int32 EnemiesStruckTogether)
+	int32 EnemiesStruckTogether, float MetresCharged, float ChargeRangeMetres)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -498,7 +506,8 @@ float UCataclysmSkillEffects::MoreForSkill(
 											  MetresMovedBeforeBlow,
 											  TargetDistanceMetres,
 											  bTargetIsStaggered, Target,
-											  EnemiesStruckTogether)
+											  EnemiesStruckTogether,
+											  MetresCharged, ChargeRangeMetres)
 		: 1.0f;
 }
 
@@ -553,7 +562,9 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 											 float TargetDistanceMetres,
 											 bool bTargetIsStaggered,
 											 const AActor* Target,
-											 int32 EnemiesStruckTogether)
+											 int32 EnemiesStruckTogether,
+											 float MetresCharged,
+											 float ChargeRangeMetres)
 {
 	// An ability system component this project did not make carries no modifier
 	// list, which is not a fault: an enemy's plain melee attack goes through
@@ -654,7 +665,9 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 										 MetresMovedBeforeBlow,
 										 TargetDistanceMetres,
 										 bTargetIsStaggered,
-										 EnemiesStruckTogether))).Final;
+										 EnemiesStruckTogether,
+										 MetresCharged,
+										 ChargeRangeMetres))).Final;
 }
 
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
@@ -803,11 +816,16 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		Delivery.bCarriesNoTargetState ? nullptr : Target;
 
 	const float Folded = IncreasesBehindAttackDamage(Source);
+	// AND HOW FAR A CHARGE HAD GONE WHEN THIS BLOW LANDED, WITH THE RANGE IT
+	// USED, to the same four lookups the facts above reach. Ruled 2026-10-08.
+	// Both are -1 for every blow that is not a charge's own, and a row scaled by
+	// `share_of_range_moved` is then worth nothing.
 	const float Applying =
 		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						  Delivery.MetresMovedBeforeBlow,
 						  TargetDistanceMetres, bTargetIsStaggered,
-						  AilmentTarget, Delivery.EnemiesStruckTogether);
+						  AilmentTarget, Delivery.EnemiesStruckTogether,
+						  Delivery.MetresCharged, Delivery.ChargeRangeMetres);
 	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
 	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
 	// point to enemies carrying a debuff you also carry."
@@ -854,11 +872,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
 					  Delivery.MetresMovedBeforeBlow, TargetDistanceMetres,
 					  bTargetIsStaggered, AilmentTarget,
-					  Delivery.EnemiesStruckTogether);
+					  Delivery.EnemiesStruckTogether,
+					  Delivery.MetresCharged, Delivery.ChargeRangeMetres);
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						TargetDistanceMetres, bTargetIsStaggered,
-						AilmentTarget, Delivery.EnemiesStruckTogether)
+						AilmentTarget, Delivery.EnemiesStruckTogether,
+						Delivery.MetresCharged, Delivery.ChargeRangeMetres)
 		: 0.0f;
 
 	// THE SAME FOUR FACTS THE TWO CALLS ABOVE ALREADY USE. Issue #1729. They were
@@ -889,7 +909,9 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		TargetDistanceMetres,
 		bTargetIsStaggered,
 		AilmentTarget,
-		Delivery.EnemiesStruckTogether);
+		Delivery.EnemiesStruckTogether,
+		Delivery.MetresCharged,
+		Delivery.ChargeRangeMetres);
 	if (Damage <= 0.0f)
 	{
 		// A character with no weapon damage. Expected before a weapon is
