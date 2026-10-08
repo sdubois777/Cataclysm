@@ -12,15 +12,24 @@ One Python dry run of the four row shapes was made and is described under "What 
 "touches nothing under the arc" and a blink strikes "both ends, nothing between" (the movement skill's own
 comments). So a wearer whose movement skill is a leap, a blink or a trade gets nothing from "deals 50%-100% of your
 weapon damage to all enemies along its path". Of the fourteen skills in the Movement slot today, seven are
-charges and seven are not; the lists are under "Which skills each row reaches". This follows the ruling as worded.
-Whether a leap or a blink should also strike along the straight line between its two ends is for the coordinating
-session and the owner; it is on the play-check list.
+charges and seven are not. **The seven that get the hit:** Flashpoint, Inexorable, Emberhaul, Lunge, Nail Down,
+Cinder Rush and Reel. **The seven that do not:** Ashwalk, Whip Swing and Foul Wake (blinks), Shockwave Leap,
+Infernal Plunge and Crater (leaps), and Vesselstep (a trade). **Confirmed on 2026-10-07**, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07:
+"A leap or a blink has no path in this game." Both sevens are on the owner's play-check list.
 
 **Also said first: a pull in this game does more than move.** The pull is `UCataclysmSkillEffects::ApplyPull`, so
 it leaves each enemy it moved **staggered for one second**, counts as crowd control applied by the wearer, is
 shortened by the enemy's crowd control resistance, and moves an enemy **half as far** if that enemy was displaced
-in the last five seconds. An enemy pulled twice inside five seconds therefore does not end 1.5 metres away the
-second time. None of that was changed.
+in the last five seconds. None of that was changed. **Accepted with all of it on 2026-10-07**, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+The reason recorded: one pull rule for the game is worth more than a bare move.
+
+**"1.5 metres" holds for an enemy's FIRST displacement in that five second window.** An enemy displaced in the
+last five seconds is moved half of the way a first pull would move it, a quarter on the next, and so ends further
+than 1.5 metres from the wearer. An enemy with crowd control resistance is also moved a shorter way.
+
+**A later layer's rule, "cannot apply crowd control to enemies above 50% health", refuses this pull on such
+enemies for a wearer of both rows**, because a pull is displacement and displacement is crowd control. Stated
+here by the same ruling; that rule is not built in this layer.
 
 **Also said first: nothing here can be tested at the end of a walked charge.** A walked charge (Inexorable,
 Cinder Rush) ends from a timer, and a timer never fires in an automation-test world. The explosions and the pull
@@ -89,6 +98,19 @@ Four sentences that have no row. Each is quoted as it stands in `game/Data/`.
   skill began and where it arrived, and not a nearby smite. The start follows the same test as the end, so a
   skill moved to another key explodes at both ends or at neither.
 
+**Ruled on 2026-10-07 after the layer was written, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.**
+
+- **The hit along the path reaches the seven charges and not the seven leaps, blinks and the trade: confirmed.**
+  "A leap or a blink has no path in this game."
+- **The pull is the game's pull, accepted with all it does**: the 1 second stagger, counting as crowd control
+  applied, shortened by crowd control resistance, halved for an enemy displaced in the last 5 seconds. One pull
+  rule for the game is worth more than a bare move. "1.5 metres" holds for an enemy's first displacement in that
+  window.
+- **The random direction on the ten skills, skipping the six: accepted.** The ten and the six are named under
+  "Which skills each row reaches".
+- **The two explosions as built are accepted**: area damage, may critically strike, both may strike one enemy,
+  widened by area of effect. **The order where the skill arrives is accepted.**
+
 ### How it is built
 
 - **Four stats with no gameplay attribute**, each added to `UCataclysmPlayerClassStats::StatsWithNoAttribute`:
@@ -151,8 +173,10 @@ Everywhere at Once are Movement skills in other slots, do not carry the tag, and
   and Reel. **Not** Ashwalk, Whip Swing or Foul Wake (blinks), Shockwave Leap, Infernal Plunge or Crater (leaps),
   or Vesselstep (a trade).
 - **The random direction:** the ten that go where the player pointed: Inexorable, Ashwalk, Shockwave Leap,
-  Infernal Plunge, Lunge, Whip Swing, Cinder Rush, Foul Wake, Reel and Crater. **Not** Flashpoint, Emberhaul or
-  Nail Down, which travel to an enemy, or Vesselstep, which travels to a commanded creature.
+  Infernal Plunge, Lunge, Whip Swing, Cinder Rush, Foul Wake, Reel and Crater. **The six it skips:** Flashpoint,
+  Emberhaul and Nail Down, which travel to an enemy; Vesselstep, which travels to a commanded creature; and Echo
+  and Everywhere at Once, which are Movement skills outside the Movement slot and are reached by no row here.
+  Accepted on 2026-10-07.
 
 ### For the owner's play-check
 
@@ -171,18 +195,23 @@ Every judged number, with the reading not taken:
   skill; the skill's whole hit a second time.
 - **3 metres**, the radius of each explosion, widened by area of effect. Not taken: the skill's own radius; a
   radius area of effect does not widen.
-- **The hit along the path reaches a charge only.** Not taken: a leap or a blink also striking along the
-  straight line between its two ends, at a width that would have to be judged.
+- **The hit along the path reaches a charge only.** It reaches Flashpoint, Inexorable, Emberhaul, Lunge, Nail
+  Down, Cinder Rush and Reel. It does nothing for Ashwalk, Whip Swing, Foul Wake, Shockwave Leap, Infernal
+  Plunge, Crater and Vesselstep. Not taken: a leap or a blink also striking along the straight line between its
+  two ends, at a width that would have to be judged.
 - **The random direction keeps the distance the player aimed.** Not taken: always the skill's full range. A
   player can aim close to the character to make the move short, with or without the drawback.
 - **An enemy within 3 metres of both ends of a short move takes both explosions.** Not taken: once.
 - **The pull is last**, after the hits. Not taken: the pull first, so that pulled enemies are caught by the
   explosion where the skill arrived.
-- **The pull staggers and is halved on repeat**, because it is this game's pull. Not taken: a bare move.
+- **The pull staggers and is halved on repeat**, because it is this game's pull. So a pulled enemy ends 1.5
+  metres away only on its first displacement in five seconds. Not taken: a bare move.
+- **A wearer who also wears "cannot apply crowd control to enemies above 50% health" pulls no enemy above half
+  health**, once that later rule is built.
 
 ### Judgements by the writing session
 
-Each is a judgement by the writing session, for the coordinating session to confirm.
+Each is a judgement by the writing session. Each was confirmed by the coordinating session on 2026-10-07.
 
 1. **The hit along the path is a charge's only**, as said first. The ruling's own test, "unless the code already
    treats its line as a path", gives that answer for every other mode.
@@ -266,7 +295,9 @@ automation tests:
 
 ### Not covered by a test
 
-- The explosions and the pull at the end of a walked charge, which end from a timer.
+- **THE ARRIVAL OF A WALKED CHARGE IS WRITTEN AND UNTESTED. THE EXPLOSIONS AND THE PULL AT THE END OF A WALKED
+  CHARGE (INEXORABLE, CINDER RUSH) ARE NOT COVERED BY ANY TEST.** A walked charge ends from a timer, and a timer
+  never fires in an automation-test world.
 - Recall and Swap under the random direction. They are excluded by the same line that the tested case uses.
 - The explosions and the pull on Recall and Swap.
 - The crowd control resistance, the halving on a repeated displacement and the stagger of a pulled enemy. They
