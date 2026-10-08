@@ -27,6 +27,9 @@
 // For driving one step of health regeneration by hand, which is how a test
 // reaches a rate the game applies on a timer. Issue #1162.
 #include "AbilitySystem/CataclysmRegeneration.h"
+// For paying one step of leech by hand, which the overheal tests do. Ruled
+// 2026-10-07.
+#include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For turning an effect name into its tag, which is what a skill cell writing
@@ -21978,6 +21981,591 @@ bool FCataclysmTemporaryAbsorbRefillWaitTest::RunTest(const FString&)
 	TestEqual(TEXT("health is still untouched after both"), Player.AbilitySystem->GetNumericAttribute(Health),
 			  HealthBefore, 0.001f);
 	TestEqual(TEXT("and neither blow raised an energy shield break"), Breaks.Count, 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// OVERHEAL BECOMES A TEMPORARY ABSORB. "Overheal converts to a temporary shield
+// absorbing up to 10%-20% of your max HP". The project owner, 2026-10-07: the
+// shield is the temporary absorb above and not the energy shield. No row is
+// authored yet, so every wearer here is given the row's stat by hand, as the
+// row will give it: a flat figure on `overheal_absorb_percent_of_maximum_health`.
+//
+// EVERY AMOUNT IS COMPARED WITH A CONTROL: a character that does not carry the
+// stat and is healed the same way, or a second wearer in the other state.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. No two are within two
+// metres of each other. Nobody swings and nobody waits: every heal is called by
+// hand, through the function the game calls.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmOverhealAbsorbTest
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	/** The cap every wearer here carries unless a test says otherwise, as a percentage of maximum health. */
+	constexpr float WornCapPercent = 20.0f;
+
+	/** Wears the overheal stat at this many per cent, on a base of nothing. Replaces whatever was worn. */
+	void WearOverheal(FScopedFighter& Who, float Percent = WornCapPercent)
+	{
+		Wear(Who, {{FName(UCataclysmAbilitySystemComponent::OverhealAbsorbCapStat), Percent}});
+	}
+
+	/** This many per cent of the character's maximum health, in points. */
+	float CapOf(const FScopedFighter& Who, float Percent = WornCapPercent)
+	{
+		return Who.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * Percent / 100.0f;
+	}
+
+	/** Health this far below the maximum, and no temporary absorb. */
+	void StartMissing(FScopedFighter& Who, float MissingHealth)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				Who.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) - MissingHealth);
+		Who.AbilitySystem->SpendTemporaryAbsorb(Who.AbilitySystem->TemporaryAbsorbHeld());
+	}
+
+	/** One heal of health through the ordinary top-up, carrying no tags; what health gained. */
+	float HealBy(FScopedFighter& Who, float Amount)
+	{
+		const float HealthBefore = Who.Health();
+		UCataclysmRegeneration::TopUp(*Who.AbilitySystem, UCataclysmVitalAttributeSet::GetHealthAttribute(),
+									  UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Amount);
+		return Who.Health() - HealthBefore;
+	}
+
+	/** A restore of this share of a pool's maximum on this event, as the loader builds a pool action. */
+	FCataclysmPoolAction ARestoreRow(const TCHAR* EventName, const TCHAR* PoolName, float PercentOfMaximum)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(EventName);
+		Action.Pool = FName(PoolName);
+		Action.Percent = PercentOfMaximum;
+		return Action;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbBecomesTest,
+	"Cataclysm.OverhealAbsorb.AHealLargerThanTheMissingHealthLeavesTheOverhealAsAnAbsorbOnTheWearerOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A heal of 500 on a character missing 300 health. The control gains 300 health, stops at its maximum and holds no
+ * temporary absorb. The wearer gains the same health and holds an absorb of what was offered less what the control
+ * gained.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmOverhealAbsorbBecomesTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverhealAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	WearOverheal(Wearer);
+	StartMissing(Wearer, 300.0f);
+	StartMissing(Plain, 300.0f);
+
+	// THE CONTROL: the same heal on a character that does not carry the stat.
+	const float PlainGained = HealBy(Plain, 500.0f);
+	if (!TestEqual(TEXT("control: a heal of 500 on a character missing 300 restores 300"), PlainGained, 300.0f, 0.01f)
+		|| !TestEqual(TEXT("control: and leaves it at its maximum, not above"), Plain.Health(),
+					  Plain.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a character without the stat holds no temporary absorb after the heal"),
+			  AbsorbHeldBy(Plain), 0.0f);
+
+	const float WearerGained = HealBy(Wearer, 500.0f);
+	TestEqual(TEXT("the wearer's health gains what the control's gained"), WearerGained, PlainGained, 0.01f);
+	TestEqual(TEXT("and the wearer holds an absorb of what was offered less what fitted"), AbsorbHeldBy(Wearer),
+			  500.0f - PlainGained, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbCapTest,
+	"Cataclysm.OverhealAbsorb.AnOverhealLargerThanTheCapLeavesExactlyTheStatsShareOfMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 2 of 2026-10-07: the row's value is the most the absorb can hold from overheal, as a percentage of maximum
+ * health. A heal of 5,000 on a character missing 300 overflows by 4,700. A wearer at 20 holds exactly a fifth of
+ * its maximum health; the same wearer at 10 holds exactly a tenth; the control holds nothing.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmOverhealAbsorbCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverhealAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	WearOverheal(Wearer, 20.0f);
+	StartMissing(Wearer, 300.0f);
+	StartMissing(Plain, 300.0f);
+
+	const float Fifth = CapOf(Wearer, 20.0f);
+	const float Tenth = CapOf(Wearer, 10.0f);
+	const float PlainGained = HealBy(Plain, 5000.0f);
+	if (!TestTrue(TEXT("set-up: the heal overflows the control by more than a fifth of maximum health"),
+				  5000.0f - PlainGained > Fifth + 1.0f)
+		|| !TestTrue(TEXT("set-up: and a tenth of maximum health is a real amount"), Tenth > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a character without the stat holds nothing however large the overheal"),
+			  AbsorbHeldBy(Plain), 0.0f);
+
+	HealBy(Wearer, 5000.0f);
+	TestEqual(TEXT("at 20 the wearer holds exactly a fifth of its maximum health"), AbsorbHeldBy(Wearer), Fifth,
+			  0.01f);
+
+	WearOverheal(Wearer, 10.0f);
+	StartMissing(Wearer, 300.0f);
+	HealBy(Wearer, 5000.0f);
+	TestEqual(TEXT("at 10 the same heal leaves exactly a tenth of its maximum health"), AbsorbHeldBy(Wearer), Tenth,
+			  0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbAddsTest,
+	"Cataclysm.OverhealAbsorb.ItAddsAcrossHealsUpToTheCapAndNoFurther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Four heals of 700 on a character at full health. The wearer, capped at a fifth of 10,000, holds 700, then 1,400,
+ * then 2,000, then still 2,000. After damage takes 500 of it, a heal of 200 adds 200 and does not refill it to the
+ * cap. The control is healed the same four times and holds nothing.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmOverhealAbsorbAddsTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverhealAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	WearOverheal(Wearer);
+	StartMissing(Wearer, 0.0f);
+	StartMissing(Plain, 0.0f);
+
+	const float Cap = CapOf(Wearer);
+	if (!TestTrue(TEXT("set-up: the cap is above two heals of 700 and below three"),
+				  Cap > 1400.0f + 1.0f && Cap < 2100.0f - 1.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("set-up: a heal at full health restores no health"), HealBy(Wearer, 700.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("the first heal of 700 leaves 700"), AbsorbHeldBy(Wearer), 700.0f, 0.01f);
+	HealBy(Wearer, 700.0f);
+	TestEqual(TEXT("the second adds to it: 1,400"), AbsorbHeldBy(Wearer), 1400.0f, 0.01f);
+	HealBy(Wearer, 700.0f);
+	TestEqual(TEXT("the third stops at the cap"), AbsorbHeldBy(Wearer), Cap, 0.01f);
+	HealBy(Wearer, 700.0f);
+	TestEqual(TEXT("and a fourth adds nothing past it"), AbsorbHeldBy(Wearer), Cap, 0.01f);
+
+	Wearer.AbilitySystem->SpendTemporaryAbsorb(500.0f);
+	HealBy(Wearer, 200.0f);
+	TestEqual(TEXT("after damage took 500, a heal of 200 adds 200 and does not refill to the cap"),
+			  AbsorbHeldBy(Wearer), Cap - 500.0f + 200.0f, 0.01f);
+
+	for (int32 Heals = 0; Heals < 4; ++Heals)
+	{
+		HealBy(Plain, 700.0f);
+	}
+	TestEqual(TEXT("control: the same four heals leave a character without the stat holding nothing"),
+			  AbsorbHeldBy(Plain), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbFitsTest,
+	"Cataclysm.OverhealAbsorb.AHealThatFitsWhollyWithinMissingHealthGivesNoAbsorb",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A heal of 300 on a character missing 500, then one of exactly the 200 still missing. Both fit, so the wearer
+ * holds no absorb, as the control holds none. Then a heal of 100 at full health, which the wearer keeps as an
+ * absorb: that shows the nought before it was the heals fitting and not the stat being absent.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmOverhealAbsorbFitsTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverhealAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	WearOverheal(Wearer);
+	StartMissing(Wearer, 500.0f);
+	StartMissing(Plain, 500.0f);
+
+	const float PlainGained = HealBy(Plain, 300.0f);
+	if (!TestEqual(TEXT("control: a heal of 300 on a character missing 500 restores all 300"), PlainGained, 300.0f,
+				   0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's health gains the same 300"), HealBy(Wearer, 300.0f), PlainGained, 0.01f);
+	TestEqual(TEXT("and a heal that fitted wholly leaves the wearer no absorb"), AbsorbHeldBy(Wearer), 0.0f);
+
+	TestEqual(TEXT("a heal of exactly what is still missing restores all of it"), HealBy(Wearer, 200.0f), 200.0f,
+			  0.01f);
+	TestEqual(TEXT("and leaves no absorb either"), AbsorbHeldBy(Wearer), 0.0f);
+	TestEqual(TEXT("control: the character without the stat holds none after its heal"), AbsorbHeldBy(Plain), 0.0f);
+
+	// THE NOUGHT ABOVE IS THE HEALS FITTING: the same wearer, now full, keeps the next heal.
+	HealBy(Wearer, 100.0f);
+	TestEqual(TEXT("control: now at full health, the same wearer keeps a heal of 100 as an absorb"),
+			  AbsorbHeldBy(Wearer), 100.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbOneAmountTest,
+	"Cataclysm.OverhealAbsorb.HoldingMoreThanTheCapFromAGrantAnOverhealChangesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 1 of 2026-10-07: the clock's grant and overheal fill one amount, and each raises it to its own cap and
+ * never lowers it. FIRST CASE: a wearer capped at 20% and holding 25% of maximum health from `GrantTemporaryAbsorb`
+ * is healed 700 at full health and still holds 25%. The control is a second wearer that holds nothing and is
+ * healed the same: it holds 700. SECOND CASE: a wearer holding its full 20% from overheal is granted 25% and then
+ * holds 25%.
+ *
+ * STANDING: the wearer that holds the grant at the origin, the second wearer 20 m along X, the character without
+ * the stat 20 m along Y.
+ */
+bool FCataclysmOverhealAbsorbOneAmountTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverhealAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter HoldsGrant(World, FVector::ZeroVector);
+	FScopedFighter HoldsNothing(World, FVector(20 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	for (FScopedFighter* Each : {&HoldsGrant, &HoldsNothing, &Plain})
+	{
+		Defences(*Each, 0.0f, 0.0f);
+		StartMissing(*Each, 0.0f);
+	}
+	WearOverheal(HoldsGrant);
+	WearOverheal(HoldsNothing);
+
+	const float Quarter = CapOf(HoldsGrant, 25.0f);
+	const float Fifth = CapOf(HoldsGrant, 20.0f);
+	HoldsGrant.AbilitySystem->GrantTemporaryAbsorb(Quarter);
+	Plain.AbilitySystem->GrantTemporaryAbsorb(Quarter);
+	if (!TestEqual(TEXT("set-up: the wearer holds a quarter of its maximum health from a grant"),
+				   AbsorbHeldBy(HoldsGrant), Quarter, 0.01f)
+		|| !TestTrue(TEXT("set-up: which is more than the fifth the stat caps overheal at"), Quarter > Fifth + 1.0f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: the same heal on a wearer that holds nothing does give an absorb.
+	HealBy(HoldsNothing, 700.0f);
+	if (!TestEqual(TEXT("control: a wearer holding nothing keeps a heal of 700 at full health"), AbsorbHeldBy(HoldsNothing),
+				   700.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// THE FIRST CASE.
+	HealBy(HoldsGrant, 700.0f);
+	TestEqual(TEXT("holding more than the cap from the grant, the overheal adds nothing and lowers nothing"),
+			  AbsorbHeldBy(HoldsGrant), Quarter, 0.01f);
+	HealBy(Plain, 700.0f);
+	TestEqual(TEXT("control: a character without the stat keeps exactly its grant through the same heal"),
+			  AbsorbHeldBy(Plain), Quarter, 0.01f);
+
+	// THE SECOND CASE.
+	HealBy(HoldsNothing, 5000.0f);
+	if (!TestEqual(TEXT("set-up: the second wearer now holds its full fifth from overheal"), AbsorbHeldBy(HoldsNothing),
+				   Fifth, 0.01f))
+	{
+		return false;
+	}
+	HoldsNothing.AbilitySystem->GrantTemporaryAbsorb(Quarter);
+	TestEqual(TEXT("a grant of a quarter raises a fifth held from overheal to a quarter"), AbsorbHeldBy(HoldsNothing),
+			  Quarter, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbKindsOfHealTest,
+	"Cataclysm.OverhealAbsorb.LeechAndARowsRestoreFillItAndRegenerationAndAnEnergyShieldRestoreDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 3 of 2026-10-07: every heal that goes through the ordinary top-up counts, leech and regeneration
+ * included. Each kind is driven through the function the game calls, on a wearer and on a control without the
+ * stat:
+ *
+ *   leech         `UCataclysmLeech::PayOutStep`, a payment of 400 on characters missing 100
+ *   a row         a pool action restoring a tenth of maximum health, fired by `NoteEnergyShieldBroken`, on
+ *                 characters missing 100
+ *   regeneration  `UCataclysmRegeneration::ApplyStep` for one second; the control starts half empty, so what it
+ *                 gains is the step's whole size, and the wearer starts full
+ *
+ * AND ONE KIND THAT DOES NOT COUNT: a pool action restoring half the maximum energy shield, fired by
+ * `NoteEnergyShieldRecharged`, on characters whose shield is 100 short. It goes through the same top-up and
+ * overflows, and it is not a heal of health.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmOverhealAbsorbKindsOfHealTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverhealAbsorbTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	WearOverheal(Wearer);
+	FScopedFighter* const Both[] = {&Wearer, &Plain};
+
+	// LEECH.
+	for (FScopedFighter* Each : Both)
+	{
+		StartMissing(*Each, 100.0f);
+		FCataclysmLeechPayment Owed;
+		Owed.Pool = ECataclysmLeechPool::Health;
+		Owed.Remaining = 400.0f;
+		Owed.SecondsLeft = 1.0f;
+		Each->AbilitySystem->AddLeechPayment(Owed);
+	}
+	const float PlainBeforeLeech = Plain.Health();
+	const float WearerBeforeLeech = Wearer.Health();
+	UCataclysmLeech::PayOutStep(Plain.Actor, /*SecondsInStep=*/1.0f);
+	UCataclysmLeech::PayOutStep(Wearer.Actor, /*SecondsInStep=*/1.0f);
+	const float PlainLeeched = Plain.Health() - PlainBeforeLeech;
+	if (!TestEqual(TEXT("control: a leech payment of 400 restores the 100 missing"), PlainLeeched, 100.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and leaves a character without the stat no absorb"), AbsorbHeldBy(Plain), 0.0f);
+	TestEqual(TEXT("leech restores the wearer's health as it restores the control's"),
+			  Wearer.Health() - WearerBeforeLeech, PlainLeeched, 0.01f);
+	TestEqual(TEXT("and the rest of the leech payment becomes the wearer's absorb"), AbsorbHeldBy(Wearer),
+			  400.0f - PlainLeeched, 0.01f);
+
+	// A ROW'S RESTORE OF HEALTH.
+	for (FScopedFighter* Each : Both)
+	{
+		StartMissing(*Each, 100.0f);
+		Each->AbilitySystem->SetPoolActions({ARestoreRow(TEXT("energy_shield_broken"), TEXT("health"), 10.0f)});
+	}
+	const float Restore = CapOf(Plain, 10.0f);
+	const float PlainBeforeRow = Plain.Health();
+	const float WearerBeforeRow = Wearer.Health();
+	Plain.AbilitySystem->NoteEnergyShieldBroken();
+	Wearer.AbilitySystem->NoteEnergyShieldBroken();
+	const float PlainRestored = Plain.Health() - PlainBeforeRow;
+	if (!TestEqual(TEXT("control: the row's restore of a tenth of maximum health restores the 100 missing"),
+				   PlainRestored, 100.0f, 0.01f)
+		|| !TestTrue(TEXT("set-up: and a tenth of maximum health is more than that"), Restore > 100.0f + 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and leaves a character without the stat no absorb"), AbsorbHeldBy(Plain), 0.0f);
+	TestEqual(TEXT("the row restores the wearer's health as it restores the control's"),
+			  Wearer.Health() - WearerBeforeRow, PlainRestored, 0.01f);
+	TestEqual(TEXT("and the rest of the row's restore becomes the wearer's absorb"), AbsorbHeldBy(Wearer),
+			  Restore - PlainRestored, 0.01f);
+
+	// REGENERATION DOES NOT COUNT, ruled 2026-10-07. The control starts half empty, so what it gains is the whole
+	// step and shows regeneration is running. The wearer stands at full health for three steps and gains nothing.
+	for (FScopedFighter* Each : Both)
+	{
+		Each->AbilitySystem->SetPoolActions(TArray<FCataclysmPoolAction>());
+		Each->Set(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 50.0f);
+	}
+	StartMissing(Plain, 5000.0f);
+	StartMissing(Wearer, 0.0f);
+	const float PlainBeforeRegen = Plain.Health();
+	UCataclysmRegeneration::ApplyStep(Plain.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/100.0f);
+	UCataclysmRegeneration::ApplyStep(Wearer.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/100.0f);
+	const float PlainRegenerated = Plain.Health() - PlainBeforeRegen;
+	if (!TestTrue(TEXT("control: one second of regeneration restores a real amount of health"),
+				  PlainRegenerated > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and leaves a character without the stat no absorb"), AbsorbHeldBy(Plain), 0.0f);
+	TestEqual(TEXT("at full health, one second of regeneration gives the wearer no absorb"), AbsorbHeldBy(Wearer),
+			  0.0f, 0.001f);
+	UCataclysmRegeneration::ApplyStep(Wearer.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/100.0f);
+	UCataclysmRegeneration::ApplyStep(Wearer.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("and none after three steps"), AbsorbHeldBy(Wearer), 0.0f, 0.001f);
+
+	// THE CONTROL FOR THAT: the same wearer, still at full health, is paid a leech of 300 and keeps all of it.
+	{
+		FCataclysmLeechPayment Owed;
+		Owed.Pool = ECataclysmLeechPool::Health;
+		Owed.Remaining = 300.0f;
+		Owed.SecondsLeft = 1.0f;
+		Wearer.AbilitySystem->AddLeechPayment(Owed);
+		UCataclysmLeech::PayOutStep(Wearer.Actor, /*SecondsInStep=*/1.0f);
+		TestEqual(TEXT("control: at full health a leech payment of 300 becomes the same wearer's absorb"),
+				  AbsorbHeldBy(Wearer), 300.0f, 0.01f);
+	}
+
+	// NOT COUNTED: A RESTORE OF THE ENERGY SHIELD THAT OVERFLOWS.
+	for (FScopedFighter* Each : Both)
+	{
+		StartMissing(*Each, 0.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 0.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 1000.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 900.0f);
+		Each->AbilitySystem->SetPoolActions(
+			{ARestoreRow(TEXT("energy_shield_recharged"), TEXT("energy_shield"), 50.0f)});
+	}
+	Plain.AbilitySystem->NoteEnergyShieldRecharged();
+	Wearer.AbilitySystem->NoteEnergyShieldRecharged();
+	const float PlainShieldGained = ShieldHeldBy(Plain) - 900.0f;
+	if (!TestTrue(TEXT("control: the shield restore of 500 overflowed: the shield gained something, and less "
+					   "than 500"),
+				  PlainShieldGained > 1.0f && PlainShieldGained < 500.0f - 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's shield gains what the control's gained"), ShieldHeldBy(Wearer) - 900.0f,
+			  PlainShieldGained, 0.01f);
+	TestEqual(TEXT("and an energy shield restore that overflows gives the wearer no absorb"), AbsorbHeldBy(Wearer),
+			  0.0f);
+
+	// THE NOUGHT ABOVE IS THE KIND OF RESTORE: the same wearer keeps a heal of health straight after.
+	HealBy(Wearer, 100.0f);
+	TestEqual(TEXT("control: the same wearer, healed 100 health at full health, holds 100"), AbsorbHeldBy(Wearer),
+			  100.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverhealAbsorbRespawnTest,
+	"Cataclysm.OverhealAbsorb.ARespawnsRefillGivesNoAbsorb",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 3 of 2026-10-07: a respawn's refill must not count. `ACataclysmPlayerCharacter::Revive` writes health
+ * back without calling the top-up, so a wearer that dies and stands back up at full health holds no absorb.
+ *
+ * A REAL PLAYER CHARACTER, because the refill is the character's and not the ability system's.
+ *
+ * THE CONTROL IS THE SAME WEARER, HEALED THROUGH THE TOP-UP BEFORE THE DEATH AND AGAIN AFTER THE RESPAWN. Each
+ * time it keeps a heal of a tenth of its maximum health as an absorb. So the nought read straight after the
+ * respawn is the refill not counting, and not the stat having gone. A second character would not be a better
+ * control: it would not carry the stat, and a character without the stat holds nothing whatever the refill does.
+ *
+ * STANDING: the player at the origin; the creature that kills it 4 m along +X.
+ */
+bool FCataclysmOverhealAbsorbRespawnTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Player(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Striker = CreatureAt(World, FVector(4 * M, 0, 0), 1000.0f);
+	if (!TestNotNull(TEXT("set-up: the creature that kills"), Striker))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute HealthAttribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealthAttribute = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	UCataclysmAbilitySystemComponent* Abilities = Player.AbilitySystem;
+
+	// THE STAT, BY HAND, as the row will give it: a flat 20 on a base of nothing.
+	FCataclysmStatModifier Flat;
+	Flat.Bucket = ECataclysmStatBucket::Flat;
+	Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+	Flat.Value = CataclysmOverhealAbsorbTest::WornCapPercent;
+	TMap<FName, FCataclysmStatInputs> Worn;
+	FCataclysmStatInputs& Line = Worn.FindOrAdd(FName(UCataclysmAbilitySystemComponent::OverhealAbsorbCapStat));
+	Line.Base = 0.0f;
+	Line.Modifiers = {Flat};
+	Abilities->SetStatInputs(MoveTemp(Worn));
+
+	const float MaximumBefore = Abilities->GetNumericAttribute(MaxHealthAttribute);
+	if (!TestTrue(TEXT("set-up: the player has a maximum health"), MaximumBefore > 10.0f))
+	{
+		return false;
+	}
+	Abilities->SetNumericAttributeBase(HealthAttribute, MaximumBefore);
+
+	// THE CONTROL, BEFORE: at full health, a heal of a tenth of the maximum is kept.
+	const float TenthBefore = MaximumBefore * 0.1f;
+	UCataclysmRegeneration::TopUp(*Abilities, HealthAttribute, MaxHealthAttribute, TenthBefore);
+	if (!TestEqual(TEXT("control: before the death, a heal through the top-up at full health is kept as an absorb"),
+				   Abilities->TemporaryAbsorbHeld(), TenthBefore, 0.01f))
+	{
+		return false;
+	}
+	Abilities->SpendTemporaryAbsorb(Abilities->TemporaryAbsorbHeld());
+
+	// THE DEATH AND THE RESPAWN.
+	FCataclysmHitDelivery Area;
+	Area.bIsArea = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Striker, Player.Character, /*Damage=*/100000.0f, Area);
+	if (!TestTrue(TEXT("set-up: the blow killed the player"), UCataclysmSkillEffects::IsDead(Player.Character))
+		|| !TestEqual(TEXT("set-up: and left it no health"), Abilities->GetNumericAttribute(HealthAttribute), 0.0f,
+					  0.01f))
+	{
+		return false;
+	}
+	Player.Character->Revive();
+	const float MaximumAfter = Abilities->GetNumericAttribute(MaxHealthAttribute);
+	if (!TestFalse(TEXT("set-up: it stood back up"), UCataclysmSkillEffects::IsDead(Player.Character))
+		|| !TestTrue(TEXT("set-up: it still has a maximum health"), MaximumAfter > 10.0f)
+		|| !TestEqual(TEXT("set-up: and the respawn refilled its health from nought to the maximum"),
+					  Abilities->GetNumericAttribute(HealthAttribute), MaximumAfter, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the respawn's refill gave no absorb"), Abilities->TemporaryAbsorbHeld(), 0.0f);
+
+	// THE CONTROL, AFTER: the same wearer still keeps a heal through the top-up.
+	const float TenthAfter = MaximumAfter * 0.1f;
+	UCataclysmRegeneration::TopUp(*Abilities, HealthAttribute, MaxHealthAttribute, TenthAfter);
+	TestEqual(TEXT("control: after the respawn, a heal through the top-up at full health is kept as an absorb, so "
+				   "the stat is still carried"),
+			  Abilities->TemporaryAbsorbHeld(), TenthAfter, 0.01f);
 	return true;
 }
 
