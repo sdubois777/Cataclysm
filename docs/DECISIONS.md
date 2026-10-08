@@ -45,7 +45,7 @@ a skill that states no bounce, given bounces by the row, strikes each enemy it g
 in its radius where it finally stops: at the enemy it reaches with no bounce left, or where it has nothing to
 glance to, or where it runs out of range. An enemy it glanced from is left out of that blast, so no enemy takes
 the contact and the blast both. A skill that states its own bounces, Carom, keeps its own rule exactly: no
-blast. So with the ricochet row:
+blast. **NO ENEMY IS STRUCK TWICE BY ONE SHOT.** Confirmed 2026-10-07. So with the ricochet row:
 
 | Skill | States | With N ricochets |
 |---|---|---|
@@ -59,6 +59,9 @@ blast. So with the ricochet row:
 | Compel (`Speed=0`) | a beam | nothing: a beam is not an actor in flight and has no bounce |
 
 A shot that touches no enemy at all still goes off in its radius where it stops, as before.
+
+**The row does not take an axe away from Harrower.** With no row Harrower buries one axe, in the one enemy it
+hits. With the row it buries one axe, in the last enemy the throw touched. Confirmed 2026-10-07.
 
 **Size of the change in the projectile for the blast ruling**, counted from the diff: 39 lines added and 3
 removed in `CataclysmProjectile.cpp` and `.h` together, comments included; about 20 of the added are code. One new argument of
@@ -136,6 +139,12 @@ Two sentences in `game/Data/EnchantmentsPositive.csv` that have no row:
    delegation, 2026-10-07: a piercing spell's line is as wide as the spell's radius; a projectile that pierces
    does not bounce; the row is written with Required Tags `Type.Spell` and 99 stands for "all"; neither stat
    reaches a basic attack or a turret.
+5. **Confirmed on 2026-10-07**, each a labelled judgement by the coordinating session under the owner's
+   delegation, 2026-10-07: the enemy reached with no bounce left takes the blast alone; every enemy the shot
+   glanced from is left out of the blast, in its plain form NO ENEMY IS STRUCK TWICE BY ONE SHOT; Harrower
+   buries one axe, in the last enemy the throw touched; Malefice's curses spread from every enemy the bolt
+   touched and not from enemies only the blast reached; "states no bounce" is a `Bounces` of nought or less,
+   and a skill stating a bounce keeps Carom's rule for all of them.
 
 ### How it is built
 
@@ -193,7 +202,10 @@ Every judged number, and the reading not taken:
 - **An enemy the shot glanced from is left out of the blast.** Not taken: it takes the contact and the blast.
   A shot with no ricochet deals its target one hit, the blast, so one hit each is the same.
 - **Butcher's Bill: each of its 30 axes ricochets.** Not taken: a rack is left out.
-- **Harrower leaves one axe, in the last enemy the throw touched.** Not taken: one in every enemy struck.
+- **Harrower leaves one axe, in the last enemy the throw touched.** With no row Harrower buries one axe, in
+  the one enemy it hits, so the row does not take an axe away. Not taken: one in every enemy struck.
+- **No enemy is struck twice by one shot.** Not taken: an enemy glanced from that stands inside the blast
+  takes both.
 - **"All" is 99 enemies.** Not taken: no limit at all.
 - **Pierce ends at the cursor.** Not taken: the spell flies its whole range.
 - **The pierce line is as wide as the skill's radius**: 1 m to each side for Malefice, 1.5 m for Compel. Not
@@ -203,7 +215,7 @@ Every judged number, and the reading not taken:
 ### Judgements by the writing session
 
 Numbers 1 to 9 were confirmed by the coordinating session on 2026-10-07, number 3 by being replaced. Numbers 10
-to 14 were decided while building ruling 3 and are not yet confirmed.
+to 14 were decided while building ruling 3 and were confirmed by the coordinating session on 2026-10-07.
 
 1. **A ricochet's hit is what the skill's own bounce deals**: the full hit, plus Carom's 20% for each enemy after
    the first where the row counts bounces. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
@@ -225,19 +237,19 @@ to 14 were decided while building ruling 3 and are not yet confirmed.
 10. **The enemy at the last contact takes one hit, not two.** The enemy the shot reaches with no bounce left
    is struck by the blast alone, as the target of a shot with no ricochet is today. An enemy the shot glanced
    from, and then stopped beside because it had nothing to glance to, is struck by the contact alone. A
-   judgement by the writing session, for the coordinating session to confirm.
+   judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 11. **Every enemy glanced from is left out of the blast, not only the last.** If the shot comes back near an
    enemy it struck earlier, the blast does not strike that enemy again. A judgement by the writing session,
-   for the coordinating session to confirm.
+   confirmed by the coordinating session on 2026-10-07.
 12. **Harrower's one axe goes in the last enemy the throw TOUCHED.** If the throw then flew on and went off in
    empty ground, the axe is still in that enemy. An enemy only the blast reached gets no axe, as today. A
-   judgement by the writing session, for the coordinating session to confirm.
+   judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 13. **Malefice's curses still spread from every enemy the bolt touched**, and not from an enemy only the blast
    reached, which is what a bolt with no ricochet does today. The ruling named the axe and the pyre and not
-   the curses. A judgement by the writing session, for the coordinating session to confirm.
+   the curses. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 14. **"States no bounce" is `Bounces` of nought or less in the skill's row.** A skill that states one bounce
    and is given more keeps Carom's rule for all of them. A judgement by the writing session,
-   for the coordinating session to confirm.
+   confirmed by the coordinating session on 2026-10-07.
 
 ### Research
 
@@ -279,6 +291,13 @@ In `game/Source/Cataclysm/Tests/CataclysmProjectileRangeTests.cpp`, each through
   touched, by the blast, and not the fourth. With no row and an enemy 2.1 m beside the first: both, the blast
   at the first contact. A skill stating one bounce with the same radius and an enemy 2.1 m beside the fourth:
   control strikes two; carrying 2, four, and the one beside the fourth takes nothing.
+- `Cataclysm.ProjectileRange.AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce`, added 2026-10-07.
+  A bolt stating a 2.8 m radius and no bounce. Enemies 3 m, 4.5 m and 6 m along the lane, one 2.5 m beside the
+  third, one 10 m along. Control, no row: one blast at the first contact strikes the first and the second and
+  no other. Carrying 2: the first and the second, both glanced from and both inside the blast where the shot
+  stops, lose exactly one contact each; the third and the one beside it lose exactly one blast each; the fifth
+  loses nothing; no enemy loses more than one hit. One contact is measured in a third lane, from the same bolt
+  stating one bounce with no row.
 - `Cataclysm.ProjectileRange.ARowMakesAFlyingSpellPierceEveryEnemyOnItsLineAndLeavesAnAttackAlone`. Two lanes.
   Enemies 3 m, 6 m and 9 m along the lane and one 2.1 m beside the first. Control spell: the first and the one
   beside it. The wearer's spell: the three on the line once each for what a control enemy took, and not the one

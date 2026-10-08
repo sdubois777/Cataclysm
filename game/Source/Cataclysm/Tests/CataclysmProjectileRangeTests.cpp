@@ -758,4 +758,107 @@ bool FCataclysmPierceAllRowOnASpellBeamTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRicochetStrikesNoEnemyTwiceTest,
+	"Cataclysm.ProjectileRange.AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRicochetStrikesNoEnemyTwiceTest::RunTest(const FString&)
+{
+	using namespace CataclysmRicochetPierceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// A BOLT STATING A 2.8 M RADIUS AND NO BOUNCE, aimed 10 m along its lane. Three lanes, 60 m apart, each with its
+	// user at the lane's start.
+	//
+	// WHERE EACH ENEMY STANDS, in the two lanes that hold five: the first 3 m along the lane from the user, the
+	// second 4.5 m, the third 6 m, so each is 1.5 m from the next; the fourth 2.5 m to the side of the third, which
+	// is 2.5 m from the third and 2.9 m from the second; the fifth 10 m along the lane, 4 m from the third.
+	//
+	// THE WEARER, carrying 2 ricochets: the bolt glances from the first and from the second and stops at the third,
+	// where it goes off. That place is about 5.67 m along the lane. The first is 2.67 m from it and the second
+	// 1.17 m, so BOTH ENEMIES IT GLANCED FROM STAND INSIDE THE BLAST, and a blast that did not leave them out would
+	// strike each a second time. The fourth is 2.52 m from it and was never touched: only the blast can reach it.
+	// The fifth is 4.33 m from it, outside.
+	//
+	// THE CONTROL, no row: the bolt goes off once at its first contact, about 2.67 m along the lane. The first and
+	// the second, 1.83 m on, are inside; the third is 3.33 m from it, outside a blast that reaches 2.8 m and a
+	// body's own 34 cm.
+	const TCHAR* Bolt = TEXT("Range=10; Radius=2.8; Speed=2000");
+	struct FLane
+	{
+		FLane(UWorld* InWorld, float LaneY)
+			: User(InWorld, FVector(0.0f, LaneY, 0.0f))
+		{
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(3.0f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(4.5f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(6.0f * Metre, LaneY, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(6.0f * Metre, LaneY + 2.5f * Metre, 0.0f)));
+			Enemies.Add(MakeUnique<FBody>(InWorld, FVector(10.0f * Metre, LaneY, 0.0f)));
+		}
+		FBody User;
+		TArray<TUniquePtr<FBody>> Enemies;
+	};
+
+	// WHAT ONE CONTACT TAKES: a third lane, one enemy 3 m along it, and the same bolt stating one bounce of its
+	// own with no row. A shot with a bounce left strikes the enemy it touches by contact.
+	FBody ContactUser(World, FVector(0.0f, 2.0f * LaneApart, 0.0f));
+	FBody ContactEnemy(World, FVector(3.0f * Metre, 2.0f * LaneApart, 0.0f));
+	if (!TestTrue(TEXT("set-up: the contact control's shot ran"),
+			UseAndFly(ContactUser, ContactUser.Skill(ECataclysmAbilitySlot::Special,
+				TEXT("Range=10; Radius=2.8; Speed=2000; Bounces=1"), AttackTags))))
+	{
+		return false;
+	}
+	const float OneContact = Pool - ContactEnemy.Health();
+
+	FLane Control(World, 0.0f);
+	if (!TestTrue(TEXT("set-up: the control's shot ran"),
+			UseAndFly(Control.User, Control.User.Skill(ECataclysmAbilitySlot::Special, Bolt, AttackTags))))
+	{
+		return false;
+	}
+	const TArray<float> Once = LostBy(Control.Enemies);
+	const float OneBlast = Once[0];
+	if (!TestTrue(TEXT("set-up: a contact and a blast each took health"), OneContact > 0.0f && OneBlast > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: the blast at the first contact reaches the second enemy, once"),
+			  Once[1], OneBlast, 0.01f);
+	TestEqual(TEXT("control: and not the third"), Once[2], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the fourth, beside the third"), Once[3], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the fifth"), Once[4], 0.0f, 0.01f);
+
+	FLane Wearing(World, LaneApart);
+	Wearing.User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileBouncesStat, 2.0f, TEXT("Type.Projectile"));
+	if (!TestTrue(TEXT("the wearer's shot ran"),
+			UseAndFly(Wearing.User, Wearing.User.Skill(ECataclysmAbilitySlot::Special, Bolt, AttackTags))))
+	{
+		return false;
+	}
+	const TArray<float> Lost = LostBy(Wearing.Enemies);
+	TestEqual(TEXT("the first enemy, glanced from and inside the blast, lost exactly one contact"),
+			  Lost[0], OneContact, 0.01f);
+	TestEqual(TEXT("the second enemy, glanced from and inside the blast, lost exactly one contact"),
+			  Lost[1], OneContact, 0.01f);
+	TestEqual(TEXT("the third enemy, where the shot stopped, lost exactly one blast"), Lost[2], OneBlast, 0.01f);
+	TestEqual(TEXT("the fourth enemy, which only the blast can reach, lost exactly one blast"),
+			  Lost[3], OneBlast, 0.01f);
+	TestEqual(TEXT("the fifth enemy, outside the blast, lost nothing"), Lost[4], 0.0f, 0.01f);
+	const float Most = FMath::Max(OneContact, OneBlast);
+	for (int32 Index = 0; Index < Lost.Num(); ++Index)
+	{
+		TestTrue(*FString::Printf(TEXT("enemy %d lost no more than one hit"), Index + 1),
+				 Lost[Index] <= Most + 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
