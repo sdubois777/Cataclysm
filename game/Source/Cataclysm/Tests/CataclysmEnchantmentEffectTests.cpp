@@ -18598,4 +18598,47 @@ bool FCataclysmShieldEveryTwelveSecondsRowTest::RunTest(const FString&)
 
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShieldFromOverhealRowTest,
+	"Cataclysm.Enchantments.TheOverhealShieldRowRaisesTheShareOfMaximumHealthThatOverhealMayKeep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Overheal converts to a temporary shield absorbing up to 10%-20% of your max
+ * HP". Issue #1833, ruled 2026-10-07:
+ * `overheal_absorb_percent_of_maximum_health` flat 10 to 20. The real row WORN
+ * at its best roll raises the stat by 20 over what it reads with the item
+ * taken off. What overheal then does is the tests of the entry that built it.
+ */
+bool FCataclysmShieldFromOverhealRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const OverhealRow = TEXT("Positive_Overheal_converts_to_a_temporary_shield_absorbin");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(OverhealRow))))
+	{
+		return false;
+	}
+
+	{
+		FWorn Worn(OverhealRow, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(TEXT("overheal_absorb_percent_of_maximum_health"));
+		const float WornReading = Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f);
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		const float OffReading = Worn.ASC()->StatForSkill(Stat, FGameplayTagContainer(), 0.0f);
+		// A DIFFERENCE, as every reading of a stat on a refreshed wearer is in this file since 2026-10-07.
+		TestEqual(*(FString(TEXT("the overheal row, worn: the stat is 20 above what it is with the item taken off.")) +
+					CataclysmRepeatRowsTest::OlderAsset),
+			WornReading - OffReading, 20.0f, 0.01f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
