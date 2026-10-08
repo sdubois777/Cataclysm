@@ -1837,6 +1837,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							UCataclysmTargeting::AbilitySystemOf(Ally)))
 					{
 						FCataclysmLastBlow Blow = Bonded ? Bonded->GetLastBlow() : FCataclysmLastBlow();
+						// AND NO OVERKILL COMES WITH THE COPY. A labelled judgement by the coordinating session under the
+						// owner's delegation, 2026-10-08: the figure is another creature's. Since issue #2289 the blow can
+						// kill the bonded creature, and its record then holds how far the blow went past ITS health. An
+						// ally its share kills would carry that figure on its death, and a body is exploded for the
+						// overkill on its death notice. So an ally killed by its share still explodes for nought.
+						Blow.Overkill = 0.0f;
 						Blow.KillingTags = EachShare >= Theirs->GetNumericAttribute(GetHealthAttribute())
 							? AssetTags
 							: FGameplayTagContainer();
