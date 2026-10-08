@@ -249,7 +249,13 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # ONE MORE JOINED with its row, issue #1833: "You cannot move while
               # channeling any skill". The player controller asks whether it is
               # above nought before it lets the character take a step.
-              "cannot_walk"}
+              "cannot_walk",
+              # ONE MORE JOINED with its rows, issue #1833: "Taking a hit
+              # interrupts any skill currently being used" and "Taking damage
+              # while channeling interrupts the channel immediately". The game
+              # asks whether it is above nought for each running skill when a
+              # hit lands.
+              "hit_taken_cancels_skills"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -790,8 +796,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-08, from 563 over 476: two rows on two enchantments.
 #: AND 570 OVER 481 SINCE THREE SENTENCES ON CHANNELLING,
 #: issue #1833, 2026-10-08, from 565 over 478: five rows on three enchantments.
-AUTHORED_ROWS = 570
-AUTHORED_ENCHANTMENTS = 481
+#: AND 572 OVER 483 SINCE TWO SENTENCES ON A HIT THAT CUTS A SKILL SHORT,
+#: issue #1833, 2026-10-08, from 570 over 481: two rows on two enchantments.
+AUTHORED_ROWS = 572
+AUTHORED_ENCHANTMENTS = 483
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
