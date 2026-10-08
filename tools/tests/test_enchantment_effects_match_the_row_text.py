@@ -242,7 +242,10 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # movement abilities cause an explosion at the starting and end
               # locations". A movement skill asks each whether it is above nought.
               "movement_pulls_nearby_on_arrival", "movement_random_direction",
-              "movement_explodes_at_both_ends"}
+              "movement_explodes_at_both_ends",
+              # ONE MORE JOINED with its row, issue #1833: "Spells pierce through all
+              # enemies in their path". A projectile skill asks whether it is above nought.
+              "projectile_pierce_all"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -779,8 +782,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-08, from 558 over 471: four rows on four enchantments.
 #: AND 563 OVER 476 SINCE THE CROWD CONTROL HEALTH CEILING ROW,
 #: issue #1833, 2026-10-08, from 562 over 475: one row on one enchantment.
-AUTHORED_ROWS = 563
-AUTHORED_ENCHANTMENTS = 476
+#: AND 565 OVER 478 SINCE THE RICOCHET ROW AND THE SPELLS PIERCE ROW,
+#: issue #1833, 2026-10-08, from 563 over 476: two rows on two enchantments.
+AUTHORED_ROWS = 565
+AUTHORED_ENCHANTMENTS = 478
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
