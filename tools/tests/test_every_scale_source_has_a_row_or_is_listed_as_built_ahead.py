@@ -123,7 +123,8 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: session. `docs/DECISIONS.md` of that day gives the shape of each row. It
 #: leaves with them, and `EXPECTED_NAMED_BY_A_ROW` below moves then and not
 #: before.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"share_of_range_moved"}
+#: IT LEFT with its two rows, issue #1833, and the list is empty again.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -169,7 +170,9 @@ KNOWN_USED = "debuffs_carried"
 #: issue #2284, 2026-10-07.
 #:
 #: AND 39 WHEN `seconds_leeching` GAINED ITS ROW, issue #1833.
-EXPECTED_NAMED_BY_A_ROW = 39
+#:
+#: AND 40 WHEN `share_of_range_moved` GAINED ITS TWO ROWS, issue #1833.
+EXPECTED_NAMED_BY_A_ROW = 40
 
 
 def scales_named_by_a_row() -> set[str]:
