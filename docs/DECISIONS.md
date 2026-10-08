@@ -1163,6 +1163,27 @@ Every reading of the sentence is that entry's and its rulings of 2026-10-08.
 
 **Not tested here:** a strike used under the real row; Pyroclasm under this row and the channel rows together.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. The build, the whole suite and the Python of record are in the table of the entry of the same day on the
+retirement of "Can’t use a basic attack" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any change of the stack | 58367e1f | 301 tests performed, 297 succeeded, 4 failed, this layer's among them; 1 of the 8 failed assertions is this layer's |
+| The enchantment assets, regenerated with the editor | a186fa3c | effect rows 572 to 573 |
+| Whole suite, every asset built | cee98975 | 3401 tests performed, 3401 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: asked for a point blank skill, the delay
+read nought where 1.5 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the entry
+that built the stat proved, read in its table: three guard proofs, each failed with its break in and passed with
+it out: the row's seconds reaching the wait, the floor at nought, and the delay added to the wind-up and not put
+in its place. **That table says no proof was run for the skill's own tags being what the stat is asked with, for
+the skills that are not delayed, or for the cost and the cooldown being paid at the press.**
+
 ---
 
 ## 2026-10-08 — A cast delay on a skill's blow: one stat, `blow_delay_seconds`, added to the wind-up a skill already has. The charge's damage by the share of its range moved is NOT built: no charge tells its blow how far the charge went. Engine only; no row authored
