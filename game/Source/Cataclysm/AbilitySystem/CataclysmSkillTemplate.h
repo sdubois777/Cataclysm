@@ -447,6 +447,43 @@ public:
 	bool IsWaitingForTheSwingToConnect() const;
 
 	/**
+	 * The stat a worn row lengthens a skill's wind-up with, in seconds. Ruled
+	 * 2026-10-08, for "Point blank AOE skills have a 0.75-1.5 second cast delay
+	 * before firing". Nought for a character with no such row.
+	 *
+	 * ASKED AT ONE PLACE, `SecondsUntilTheSwingConnects`, with the skill's own
+	 * tags, so the row's Required Tags decide which skills it reaches.
+	 *
+	 * IT REACHES ONLY A SKILL THAT WAITS BEFORE A BLOW: a strike, a projectile
+	 * skill and a curse, the three shapes that call `WhenTheSwingConnects`. A
+	 * movement skill, a self buff, a summon, a deployable, an aura and a strike
+	 * that is held never ask, so a row naming one of them delays nothing.
+	 *
+	 * THE COST AND THE COOLDOWN ARE PAID AT THE PRESS, before the delay, because
+	 * `CommitAndBegin` has returned before the wait is asked for.
+	 *
+	 * NOTHING NEW STOPS THE CHARACTER WALKING. It is a longer wind-up and no more.
+	 *
+	 * THE SKILL IS RUNNING FOR THE WHOLE DELAY, so everything that asks whether
+	 * a skill is running sees the longer time: a hit that cancels a skill in
+	 * use, the channelling state of a skill tagged `Type.Channel`, and an
+	 * immunity a skill's row states while it runs.
+	 */
+	static const TCHAR* BlowDelaySecondsStat;
+
+	/**
+	 * The wait before a blow: the wind-up the animation gave, and the seconds a
+	 * row adds to it. Ruled 2026-10-08.
+	 *
+	 * ADDED, never in place of the wind-up. A row figure below nought adds
+	 * nothing, so the answer is never shorter than the wind-up.
+	 *
+	 * Static and public so a test can ask without a character that animates;
+	 * `SecondsUntilTheSwingConnects` is its one caller in the game.
+	 */
+	static float SwingWaitWithDelay(float WindUpSeconds, float RowDelaySeconds);
+
+	/**
 	 * The stat saying this character's skills cost no health at all.
 	 * Issue #1051. Zero for no.
 	 *
@@ -788,6 +825,10 @@ protected:
 	 *
 	 * Zero when the avatar is not a Cataclysm character, or played no animation.
 	 * Separated from WhenTheSwingConnects so a test can ask without waiting.
+	 *
+	 * AND THE SECONDS A WORN ROW ADDS, since 2026-10-08: `BlowDelaySecondsStat`,
+	 * asked with this skill's tags and added through `SwingWaitWithDelay`. So
+	 * the answer is above nought for a wearer of such a row whatever animated.
 	 */
 	float SecondsUntilTheSwingConnects() const;
 
