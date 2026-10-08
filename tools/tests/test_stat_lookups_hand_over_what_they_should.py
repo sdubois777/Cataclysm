@@ -108,6 +108,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: 2026-10-08, asked in `NoteHitTaken` with each running skill's tags.
 #: The seconds a worn row adds to a skill's wind-up added one more on
 #: 2026-10-08, asked in `SecondsUntilTheSwingConnects` with the skill's tags.
+#: The share of its summoner's armour and resistances a minion takes added one
+#: more on 2026-10-08, asked of the summoner in `InheritedDefencesOf` with the
+#: minion's own type tags, once for each blow a minion takes.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -761,6 +764,13 @@ INVENTORY = {
         "asked by SecondsUntilTheSwingConnects with the skill's tags once it "
         "is paid for; the skill has struck nothing yet, so there is no blow "
         "and no target to hand over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp',
+     'FName(UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat), Minion->TypeTags, 0.0f'):
+        "the share of its summoner's armour and resistances a minion takes "
+        "(ruled 2026-10-08), asked of the SUMMONER by InheritedDefencesOf with "
+        "the minion's own type tags; how large the share is does not depend "
+        "on the blow, and the summoner's armour is then asked WITH the blow "
+        "through DefenderStat",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

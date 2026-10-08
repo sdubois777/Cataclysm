@@ -5269,7 +5269,24 @@ AILMENT_RIDER_ACTIONS = (
     # HOW MANY enemies near the target the ailment also goes to when it is
     # applied. A count and not a percent; read on the applier and not carried.
     "ailment_spread_on_application",
+    # Taken off the carrier's MAXIMUM HEALTH while it carries the ailment, and
+    # given back when the ailment ends. Up to `MAX_AILMENT_MAX_HEALTH_REMOVED`
+    # and not the 100 the others may reach.
+    "ailment_max_health_removed",
 )
+
+#: The rider that lowers its carrier's maximum health, and the most it may take.
+#: Ruled 2026-10-08 for "Enemies with Necrosis have 1%-2% less maximum health".
+#: `UCataclysmAbilitySystemComponent::AilmentMaxHealthRiderAction` holds the
+#: name and `MaxAilmentMaxHealthRemovedPercent` the same bound, which the game
+#: holds a carried figure to as well.
+#:
+#: HALF AND NOT THE WHOLE, a sanity bound chosen by the writing session: the one
+#: sentence asks for 2, and a row that took the whole maximum would leave a
+#: creature at the 1 point the game holds any maximum to. A maximum lowered by
+#: half or less is never nought, so nothing can die of the row.
+AILMENT_MAX_HEALTH_ACTION = "ailment_max_health_removed"
+MAX_AILMENT_MAX_HEALTH_REMOVED = 50.0
 
 #: The rider that makes an ailment DETONATE, and the ailments it can be hung on.
 #: Ruled 2026-10-06 for "Void splinter stacks detonate for 50%-100% increased
@@ -6698,6 +6715,15 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} hangs a number on "
                     f"an ailment and states Scale Max Steps. It has no stacks, "
                     f"so it would be dropped.")
+            # AND THE ONE THAT LOWERS MAXIMUM HEALTH STOPS AT HALF. Ruled
+            # 2026-10-08. See `MAX_AILMENT_MAX_HEALTH_REMOVED`.
+            if (action == AILMENT_MAX_HEALTH_ACTION
+                    and max(low, high) > MAX_AILMENT_MAX_HEALTH_REMOVED):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} takes {low:g} to "
+                    f"{high:g} per cent off its carrier's maximum health. A "
+                    f"lowered maximum takes above 0 and up to "
+                    f"{MAX_AILMENT_MAX_HEALTH_REMOVED:g} per cent.")
 
         # A CLEANSE'S VALUE IS 100, which the game does not read. Issue #1833.
         if action == CLEANSE_ACTION:
