@@ -19523,4 +19523,57 @@ bool FCataclysmAHitInterruptsAChannelRowTest::RunTest(const FString&)
 	TestEqual(TEXT("taken off: asked for a channelled skill, it answers nought"), For(Channelled), 0.0f, 0.001f);
 	return true;
 }
+// THE CAST DELAY ROW. Ruled 2026-10-08; the row is as the entry "A cast delay on a skill's blow" states it. THE
+// STAT IS READ AS THE GAME ASKS FOR IT, with a skill's own tags; that a real strike then waits is that entry's
+// tests, with the row made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCastDelayRowTest,
+	"Cataclysm.Enchantments.TheCastDelayRowAnswersItsSecondsForAPointBlankSkillAndForNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Point blank AOE skills have a 0.75-1.5 second cast delay before firing".
+ * One row: `blow_delay_seconds` flat 0.75 to 1.5 requiring
+ * `Type.AOE.PointBlank`. The real row WORN at the top of its range, which for
+ * this drawback is 1.5, the longer wait. Asked for a point blank skill the
+ * stat answers 1.5; asked for a melee skill without that tag, or for a skill
+ * with no tags, it answers nought; and nought for a point blank skill when the
+ * item is taken off.
+ */
+bool FCataclysmCastDelayRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Negative_Point_blank_AOE_skills_have_a_0_75_1_5_second_ca");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	const FGameplayTagContainer NoTags;
+	const FGameplayTagContainer PointBlank = CataclysmRepeatRowsTest::Tagged(TEXT("Type.AOE.PointBlank"));
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: the two tags exist"), PointBlank.Num() == 1 && Melee.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Delay(UCataclysmSkillTemplate::BlowDelaySecondsStat);
+	const auto For = [&](const FGameplayTagContainer& Tags) { return Worn.ASC()->StatForSkill(Delay, Tags, 0.0f); };
+
+	TestEqual(*(FString(TEXT("worn: asked for a point blank skill, the delay is 1.5 seconds.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		For(PointBlank), 1.5f, 0.001f);
+	TestEqual(TEXT("worn: asked for a melee skill without the tag, it is nought"), For(Melee), 0.0f, 0.001f);
+	TestEqual(TEXT("worn: asked for a skill with no tags, it is nought"), For(NoTags), 0.0f, 0.001f);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: asked for a point blank skill, it is nought"), For(PointBlank), 0.0f, 0.001f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
