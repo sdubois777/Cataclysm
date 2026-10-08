@@ -4428,6 +4428,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bBlastFromTheDying = false;
 
 	/**
+	 * Whether this row stuns every enemy near an enemy that died carrying the
+	 * wearer's damage over time ailment. Ruled 2026-10-08, for "Chronomancer's
+	 * Time-Lock (6-Piece Bonus)". `Percent` is the chance, rolled once for the
+	 * death, and `StackSeconds` is how long the stun lasts: on this row that
+	 * field holds no stack's time. See `UCataclysmContagion::StunNearTheDying`.
+	 */
+	bool bStunNearTheDying = false;
+
+	/**
 	 * The window an "every Nth event" count runs in, in seconds, for an action
 	 * that is not one of the every-Nth kinds: it acts on the Nth of its events
 	 * inside the window, and the count starts again. Issue #1833 group E part 3,

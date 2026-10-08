@@ -367,4 +367,26 @@ public:
 	 * @return how many enemies the blast struck
 	 */
 	static int32 BlastAt(AActor* Wearer, const FCataclysmBlastRead& Read, float Damage);
+
+	/**
+	 * The freeze of "Chronomancer's Time-Lock (6-Piece Bonus)". The owner,
+	 * 2026-10-08: "Yes it acts like a stun".
+	 *
+	 * EVERY ENEMY OF `Wearer` WITHIN `SpreadFromTheDyingMetres` OF `Dead`, the
+	 * body left out and the dead passed over, is stunned by `Wearer` for
+	 * `Seconds`. The reach is the one the blast above and Disease's spread use,
+	 * because all three are centred on a dying body.
+	 *
+	 * THE GAME'S STUN WITH EVERY RULE IT HAS, through
+	 * `UCataclysmSkillEffects::ApplyStun` as a designed stun: no hit is dealt,
+	 * so the tenth-of-maximum-health rule is the one rule skipped. A boss is
+	 * never stunned, an enemy stunned in the last five seconds is not stunned
+	 * again, the target's crowd control resistance shortens it, and a wearer
+	 * who cannot control enemies above a share of health stuns none above it.
+	 *
+	 * NO CHANCE IS ROLLED HERE. The caller rolls once for the death.
+	 *
+	 * @return how many enemies were stunned
+	 */
+	static int32 StunNearTheDying(AActor* Wearer, AActor* Dead, float Seconds);
 };
