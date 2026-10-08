@@ -19220,4 +19220,209 @@ bool FCataclysmRicochetAndPierceRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+// THREE SENTENCES ON CHANNELLING. Ruled 2026-10-08; each row is as the entry "A character knows it is channelling"
+// states it. A TEST WEARER IS MADE TO CHANNEL BY THE COMPONENT'S OWN NOTE, `NoteChannelBegan`, which is what a
+// skill tagged `Type.Channel` calls when it is paid for; what a real channelled skill does is that entry's tests.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChannelDrainRowTest,
+	"Cataclysm.Enchantments.TheChannelDrainRowHandsItsWearerATimedLossOfMaximumHealthWhileChannelling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Channel skills drain 8%-15% of your maximum HP per second while active".
+ * One timed action on the health pool, every 1 second, of maximum health,
+ * under `while_channelling`. The real row WORN at the top of its range, which
+ * for this drawback is 15: the wearer holds exactly one such action, and none
+ * when the item is taken off.
+ */
+bool FCataclysmChannelDrainRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Negative_Channel_skills_drain_8_15_of_your_maximum_HP_p");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Timed(UCataclysmAbilitySystemComponent::TimedEvent);
+	const FName Health(TEXT("health"));
+	const auto OfItsKind = [&](float* Share, float* Seconds, bool* bOfMaximum)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			if (Action.Event == Timed && Action.Pool == Health
+				&& Action.Condition == ECataclysmStatCondition::WhileChannelling)
+			{
+				++Found;
+				if (Share) { *Share = Action.Percent; }
+				if (Seconds) { *Seconds = Action.EverySeconds; }
+				if (bOfMaximum) { *bOfMaximum = Action.Base == ECataclysmPoolActionBase::Maximum; }
+			}
+		}
+		return Found;
+	};
+	float Share = 0.0f;
+	float Seconds = -1.0f;
+	bool bOfMaximum = false;
+	TestEqual(*(FString(TEXT("worn: one timed action on health that acts only while channelling.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		OfItsKind(&Share, &Seconds, &bOfMaximum), 1);
+	TestEqual(TEXT("it takes 15 at the top of the row's range"), Share, -15.0f, 0.01f);
+	TestEqual(TEXT("every 1 second"), Seconds, 1.0f, 0.01f);
+	TestTrue(TEXT("of maximum health"), bOfMaximum);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: no such action is left"), OfItsKind(nullptr, nullptr, nullptr), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCannotMoveWhileChannellingRowsTest,
+	"Cataclysm.Enchantments.TheCannotMoveWhileChannellingRowsForbidWalkingAndLockTheMovementSlotOnlyWhileChannelling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You cannot move while channeling any skill". Two rows on one enchantment:
+ * `cannot_walk` flat 1 with no required tags, and `skill_locked` flat 1
+ * requiring `Slot.Movement`, both under `while_channelling`. The real rows
+ * WORN. Each stat is read as the game asks for it, before channelling, while
+ * channelling and after: `cannot_walk` with no tags; the lock with a movement
+ * skill's slot tag, and with a heavy attack's, which it must never reach.
+ * WHETHER THE PLAYER CAN STILL STEP is not tested here or anywhere: the player
+ * controller refuses the step and no automation test has one.
+ */
+bool FCataclysmCannotMoveWhileChannellingRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const RowName = TEXT("Negative_You_cannot_move_while_channeling_any_skill");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	const FGameplayTagContainer NoTags;
+	const FGameplayTagContainer Movement = CataclysmRepeatRowsTest::Tagged(TEXT("Slot.Movement"));
+	const FGameplayTagContainer Heavy = CataclysmRepeatRowsTest::Tagged(TEXT("Slot.Heavy"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: the two slot tags exist"), Movement.Num() == 1 && Heavy.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName CannotWalk(UCataclysmSkillEffects::CannotWalkStat);
+	const FName Locked(UCataclysmSkillSlots::LockedStat);
+	const auto Walk = [&]() { return Worn.ASC()->StatForSkill(CannotWalk, NoTags, 0.0f); };
+	const auto LockOn = [&](const FGameplayTagContainer& Tags) { return Worn.ASC()->StatForSkill(Locked, Tags, 0.0f); };
+
+	if (!TestFalse(TEXT("set-up: the wearer is not channelling"), Worn.ASC()->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("before channelling: cannot_walk answers nought"), Walk(), 0.0f, 0.001f);
+	TestEqual(TEXT("before channelling: a movement skill carries no lock"), LockOn(Movement), 0.0f, 0.001f);
+
+	Worn.ASC()->NoteChannelBegan();
+	if (!TestTrue(TEXT("set-up: the wearer is channelling"), Worn.ASC()->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(*(FString(TEXT("while channelling: cannot_walk answers 1.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Walk(), 1.0f, 0.001f);
+	TestTrue(TEXT("while channelling: the function the player controller asks says the wearer cannot walk"),
+		UCataclysmSkillEffects::CannotWalkByARow(Worn.Wearer->Actor));
+	TestEqual(TEXT("while channelling: a movement skill carries the lock"), LockOn(Movement), 1.0f, 0.001f);
+	TestEqual(TEXT("while channelling: a heavy attack carries no lock"), LockOn(Heavy), 0.0f, 0.001f);
+
+	Worn.ASC()->NoteChannelEnded();
+	if (!TestFalse(TEXT("set-up: the wearer is no longer channelling"), Worn.ASC()->IsChannelling()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("after the channel: cannot_walk answers nought"), Walk(), 0.0f, 0.001f);
+	TestEqual(TEXT("after the channel: a movement skill carries no lock"), LockOn(Movement), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLessDamageEarlyInAChannelRowsTest,
+	"Cataclysm.Enchantments.TheLessDamageEarlyInAChannelRowsHalveAChannelledSkillsDamageOnlyInItsFirstTwoSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Channel skills deal 30%-50% less damage during the first 2 seconds of
+ * channeling". Two rows, `attack_damage` and `spell_damage`, more -30 to -50,
+ * requiring `Type.Channel`, under `channelling_for_under_seconds` 2. The real
+ * rows WORN at the top of their range, 50. EVERY FIGURE IS A RATIO of the
+ * stat applied to 100 against the same reading while not channelling, so
+ * nothing the wearer's class gives is read: half early in a channel for a
+ * skill tagged `Type.Channel`, whole for a skill without the tag, and whole
+ * two and a half seconds in.
+ */
+bool FCataclysmLessDamageEarlyInAChannelRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const RowName = TEXT("Negative_Channel_skills_deal_30_50_less_damage_during_t");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	const FGameplayTagContainer Channelled = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Channel"));
+	const FGameplayTagContainer Melee = CataclysmRepeatRowsTest::Tagged(TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName)))
+		|| !TestTrue(TEXT("set-up: the two tags exist"), Channelled.Num() == 1 && Melee.Num() == 1))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()) || !TestNotNull(TEXT("its world"), Worn.World))
+	{
+		return false;
+	}
+	const TCHAR* const Stats[] = {TEXT("attack_damage"), TEXT("spell_damage")};
+	for (const TCHAR* StatName : Stats)
+	{
+		const FName Stat(StatName);
+		const auto Of = [&](const FGameplayTagContainer& Tags) { return Worn.ASC()->StatAppliedTo(Stat, Tags, 100.0f); };
+
+		if (!TestFalse(TEXT("set-up: the wearer is not channelling"), Worn.ASC()->IsChannelling()))
+		{
+			return false;
+		}
+		const float ChannelledBefore = Of(Channelled);
+		const float MeleeBefore = Of(Melee);
+		if (!TestTrue(FString::Printf(TEXT("set-up: %s applied to 100 is above nought while not channelling"), StatName),
+				ChannelledBefore > 0.0f && MeleeBefore > 0.0f))
+		{
+			return false;
+		}
+
+		Worn.World->TimeSeconds = 100.0f;
+		Worn.ASC()->NoteChannelBegan();
+		Worn.World->TimeSeconds = 100.5f;
+		TestEqual(FString::Printf(TEXT("%s, half a second into a channel: a channelled skill's is half.%s"), StatName,
+					  CataclysmRepeatRowsTest::OlderAsset),
+			Of(Channelled) / ChannelledBefore, 0.5f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s, half a second into a channel: a skill without the tag is whole"), StatName),
+			Of(Melee) / MeleeBefore, 1.0f, 0.001f);
+
+		Worn.World->TimeSeconds = 102.5f;
+		TestEqual(FString::Printf(TEXT("%s, two and a half seconds in: a channelled skill's is whole"), StatName),
+			Of(Channelled) / ChannelledBefore, 1.0f, 0.001f);
+
+		Worn.ASC()->NoteChannelEnded();
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
