@@ -300,6 +300,36 @@ CATACLYSM_API bool CataclysmFloorCanBlock(const FCataclysmFloorPlan& Plan, const
 										  const TArray<FIntPoint>& TreatedAsOpen = TArray<FIntPoint>());
 
 /**
+ * How many connected areas of walkable cells the plan holds, walking orthogonally. A built floor with nothing closed
+ * has one. Issues #1820 and #41.
+ */
+CATACLYSM_API int32 CataclysmFloorAreaCount(const FCataclysmFloorPlan& Plan);
+
+/**
+ * Whether closing these cells leaves the plan with more connected areas of walkable cells than it has now. The plan is
+ * read as it is, so a barrier that is Solid in it is shut for this question.
+ */
+CATACLYSM_API bool CataclysmFloorClosingSplitsAnArea(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells);
+
+/**
+ * `CataclysmFloorCanBlock` for a floor on which section barriers may be closed. Issues #1820 and #41. Ruled 2026-10-08.
+ *
+ * `ClosedBarriers` IS THE CELLS OF EVERY SECTION BARRIER STILL CLOSED, which are Solid in `Plan`. WITH NONE this is
+ * `CataclysmFloorCanBlock(Plan, Cells, From, Held)` and nothing else. WITH ANY, the cells are refused when either:
+ * (a) closing them would strand a cell with those barriers treated as open, which is `CataclysmFloorCanBlock` given
+ *     them as `TreatedAsOpen`; or
+ * (b) with those barriers shut, closing them would split a connected area of the floor in two
+ *     (`CataclysmFloorClosingSplitsAnArea`).
+ * (b) IS WHY A FLOOR WITH SEALED SECTIONS MAY REFUSE AN OBSTACLE THE SAME FLOOR WITHOUT SECTIONS WOULD ALLOW. A
+ * boundary may be several lines. An obstacle can cut a sealed section into the part the player stands in and a pocket
+ * that is reached only round through the next section: question (a) allows that, because with the barrier open the
+ * pocket is reached, and yet the pocket's creatures could not be reached to open the barrier.
+ */
+CATACLYSM_API bool CataclysmFloorCanBlockBesideBarriers(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells,
+														FIntPoint From, const TSet<FIntPoint>& Held,
+														const TArray<FIntPoint>& ClosedBarriers);
+
+/**
  * How far every cell is from the floor's rim, in cells, walking orthogonally.
  *
  * THE RIM IS EVERY WALKABLE CELL THAT TOUCHES SOMETHING THAT IS NOT FLOOR --
