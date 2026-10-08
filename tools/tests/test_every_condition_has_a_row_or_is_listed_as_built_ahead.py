@@ -84,8 +84,7 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # and "Channel skills deal 30%-50% less damage during the first 2 seconds
     # of channeling" is under the second. `docs/DECISIONS.md` of that day gives
     # the shape of each row. Each leaves with its rows.
-    "while_channelling",
-    "channelling_for_under_seconds",
+    # BOTH LEFT with their rows, issue #1833.
     # `target_in_your_zone` JOINED AND LEFT ON 2026-10-06: the engine half of "You
     # deal 15%-30% increased damage to enemies standing in your persistent AOE
     # zones" landed first and its row the same day, issue #1833.
