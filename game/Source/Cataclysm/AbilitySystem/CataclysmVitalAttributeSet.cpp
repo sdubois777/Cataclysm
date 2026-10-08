@@ -1937,7 +1937,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// AND WHETHER IT LANDED, which only a row's own stack asks. Issue
 				// #1833: an evaded blow is not a hit (2026-09-04), and the clocks
 				// and pool actions go on counting it as they always did.
-				Cataclysm->NoteHitTaken(!Outcome.bEvaded);
+				//
+				// AND WHO THREW IT AND WHETHER IT WAS A TICK, ruled 2026-10-08 for
+				// `hit_taken_cancels_skills`: a landed hit cuts short the skills
+				// its wearer is using, and neither a tick nor the wearer's own
+				// blow does. A TICK REACHES THIS LINE, as the count just below
+				// says by refusing one, so it is said here and not assumed. The
+				// same `AttackerOf` the evade above passes.
+				Cataclysm->NoteHitTaken(
+					!Outcome.bEvaded,
+					UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
+					Hit.bIsDamageOverTime);
 
 				// AND AN "EVERY Nth HIT YOU TAKE" ROW COUNTS IT, ruled 2026-09-24:
 				// a landed hit, not a tick and not an evaded blow; a blocked blow
