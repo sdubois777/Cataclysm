@@ -1497,6 +1497,11 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	// and #41. The same dungeon and floor always carve the same ones: everything is drawn from the plan's seed.
 	FCataclysmFloorPlan Plan = FCataclysmFloorGenerator::Generate(Request);
 	PlanTheGatedShortcuts(Plan);
+
+	// AND THE FLOOR'S SECTIONS ARE ASKED FOR, AFTER THE SHORTCUTS ARE CARVED, so the search reads the plan the floor is
+	// built from and is told every gate's cells. Nothing is closed here: the barriers are closed in `PopulateFloor`,
+	// once the floor's creatures stand. Issues #1820 and #41, ruled 2026-10-08.
+	PlanTheSections(Plan);
 	if (!CurrentFloor->Build(Plan))
 	{
 		return nullptr;
@@ -1732,6 +1737,12 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 			// an actor twice.
 			Enemy->Destroy();
 		}
+		else if (IsValid(Enemy))
+		{
+			// A THRALL LEAVES THE FLOOR'S LIST AND ITS SECTION WITH IT: the number is this floor's and means nothing on
+			// the next. Issues #1820 and #41.
+			Enemy->FloorSection = INDEX_NONE;
+		}
 	}
 
 	FloorEnemies.Reset();
@@ -1957,8 +1968,26 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// THE BRIEF IS WHAT MAKES A DUNGEON'S SUB-TYPE REACH ITS CREATURES. It puts
 	// a Gatekeeper on the exit of a boss floor and gathers a Horde dungeon's
 	// creatures into one wave. `BuildFloor` decided it; this only spends it.
+	//
+	// ON A FLOOR IN SECTIONS NO CREATURE IS PLACED ON A CELL A BARRIER WILL STAND ON. Issues #1820 and #41, ruled
+	// 2026-10-08. The plan is still open here, so the populator, which places only where the entrance can be walked
+	// from, fills every section; the barriers are closed after the loop below. A floor populated a second time
+	// without being built again has its barriers opened first, for the same reason. On a floor with no sections
+	// the set is empty and this is the call it always was.
+	//
+	// THE RULES' OBJECTS PLACED ABOVE WERE CHOSEN WITH THOSE CELLS STILL WALKABLE, so nothing above keeps one off a
+	// barrier's cell. That is stated in the entry of 2026-10-08 and is not settled here.
+	TSet<FIntPoint> NoCreatureOn;
+	if (!FloorBrief.bWaveWalksIn)
+	{
+		OpenEverySectionBarrier();
+		for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
+		{
+			NoCreatureOn.Append(Boundary);
+		}
+	}
 	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
-		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief, NoCreatureOn);
 
 	// AND ITS GROUPS, NUMBERED AFTER EVERY GROUP PLACED BEFORE, for Morale Break. Issues #1820 and #41.
 	ArrivingPackGroupBase = PackGroupsPlaced;
@@ -2000,12 +2029,20 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
 			{
 				NoteThePack(Enemy, Placement);
+
+				// AND THE SECTION OF THE CELL IT WAS PLACED ON, none on a floor with no sections. The one place a
+				// creature is given a section. Issues #1820 and #41.
+				Enemy->FloorSection = FloorSections.SectionOf(CurrentFloor->GetPlan(), Placement.Cell);
 				FloorEnemies.Add(Enemy);
 				CurrentWave.Add(Enemy);
 				++Spawned;
 			}
 		}
 		WaveSpawned = Spawned;
+
+		// AND THE SECTIONS' BARRIERS CLOSE, now that every creature stands and carries its section. Before the
+		// choices below, none of which chooses a cell. Issues #1820 and #41, ruled 2026-10-08.
+		CloseTheSectionBarriers();
 
 		// AND ONE OF THEM IS THE FLOOR'S MEDIC, if the floor carries that rule.
 		// After the loop rather than inside it, because the choice is the
@@ -6042,8 +6079,8 @@ bool ACataclysmDungeonGameMode::CloseTheGate(FGatedShortcut& One, bool bAsk)
 
 	// ASKED WHEN A GATE CLOSES DURING PLAY: never onto a cell the floor holds, nor one whose closing would strand a
 	// walkable cell. Not asked when the floor begins, where the gate's cells were chosen for exactly this.
-	if (bAsk && !CataclysmFloorCanBlock(CurrentFloor->GetPlan(), One.Shortcut.Gate, ThePlayersCell(),
-										CellsTheFloorHolds()))
+	// WHILE A SECTION BARRIER IS CLOSED THE QUESTION IS WIDER; see `AnObstacleMayClose`.
+	if (bAsk && !AnObstacleMayClose(One.Shortcut.Gate, ThePlayersCell(), CellsTheFloorHolds()))
 	{
 		return false;
 	}
@@ -6107,6 +6144,188 @@ void ACataclysmDungeonGameMode::UnblockCellsAndDestroyPillars(const TArray<FIntP
 			CurrentFloor->UnblockCell(Cell);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Lightforged Walls' sections: a Halls floor in two or three sections, each sealed by a barrier of pillars until the
+// creatures the floor placed in it are slain. Issues #1820 and #41. Ruled 2026-10-08.
+// ---------------------------------------------------------------------------
+
+bool ACataclysmDungeonGameMode::FloorGetsSections(const FCataclysmFloorPlan& Plan) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONE CONDITION, IN ONE PLACE, ruled 2026-10-08: the floor carries Lightforged Walls, is Halls, is not a Horde
+	// arena, and does not carry Shadowy Enemies. Under that row a creature takes no damage unless lit and still counts
+	// as standing, and its light zones are placed without regard to sections, so a character with no fire damage
+	// could be unable to clear a section. A second row that needs sections adds its key to the first line.
+	return FloorBrief.Modifiers.Contains(FName(Effects::LightforgedWallsKey))
+		&& Plan.Layout == ECataclysmFloorLayout::Halls
+		&& !FloorBrief.bWaveWalksIn
+		&& !FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey));
+}
+
+void ACataclysmDungeonGameMode::ForgetTheSections()
+{
+	// EVERY BARRIER STILL CLOSED IS OPENED FIRST, so its pillars go and the floor still standing gets its cells back.
+	OpenEverySectionBarrier();
+	SectionBarrierPillars.Reset();
+	SectionBarrierClosed.Reset();
+	FloorSections = FCataclysmFloorSections();
+	LightforgedWallsPanelSection = INDEX_NONE;
+	LightforgedWallsPanelSectionCount = -1;
+}
+
+void ACataclysmDungeonGameMode::PlanTheSections(const FCataclysmFloorPlan& Plan)
+{
+	ForgetTheSections();
+	if (!FloorGetsSections(Plan))
+	{
+		return;
+	}
+
+	// EVERY PLANNED SHORTCUT'S GATE MAY CLOSE DURING PLAY, so the search takes only a division that holds with every
+	// gate open and with every gate shut. The plan is read with the shortcuts carved and their gates still walkable.
+	TArray<FIntPoint> MayClose;
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		MayClose.Append(One.Shortcut.Gate);
+	}
+	FloorSections = FCataclysmFloorGenerator::FindSections(Plan, MayClose);
+	SectionBarrierClosed.Init(false, FloorSections.Boundaries.Num());
+	SectionBarrierPillars.SetNum(FloorSections.Boundaries.Num());
+	UE_LOG(LogCataclysm, Log, TEXT("Sections: %d on floor %d, behind %d barrier(s)"), FloorSections.SectionCount(),
+		   FloorNumber, FloorSections.Boundaries.Num());
+}
+
+void ACataclysmDungeonGameMode::OpenEverySectionBarrier()
+{
+	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
+	{
+		if (SectionBarrierIsClosed(Barrier) && SectionBarrierPillars.IsValidIndex(Barrier))
+		{
+			UnblockCellsAndDestroyPillars(FloorSections.Boundaries[Barrier], SectionBarrierPillars[Barrier]);
+			SectionBarrierClosed[Barrier] = false;
+		}
+	}
+}
+
+void ACataclysmDungeonGameMode::CloseTheSectionBarriers()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A BARRIER STANDS FROM THE MOMENT THE FLOOR BEGINS, raised at once and with no warning. ONE WHOSE SECTION HOLDS NO
+	// CREATURE IS NEVER CLOSED, which is "a section with no creature in it opens when the floor begins". The last
+	// section has no barrier of its own: the stairs are its seal.
+	bool bClosedOne = false;
+	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
+	{
+		if (!SectionBarrierClosed.IsValidIndex(Barrier) || !SectionBarrierPillars.IsValidIndex(Barrier)
+			|| StandingInSection(Barrier) <= 0)
+		{
+			continue;
+		}
+		BlockCellsWithPillars(FloorSections.Boundaries[Barrier], FName(Effects::LightforgedWallsKey),
+							  SectionBarrierPillars[Barrier]);
+		SectionBarrierClosed[Barrier] = true;
+		bClosedOne = true;
+	}
+	if (bClosedOne)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::StepTheSectionBarriers()
+{
+	// BARRIER i OPENS WHEN NO CREATURE THE FLOOR PLACED IN SECTION i STILL STANDS, AND STAYS OPEN: nothing closes one
+	// again, so a creature a rule adds later, or the player dying and returning, changes nothing.
+	bool bOpenedOne = false;
+	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
+	{
+		if (SectionBarrierIsClosed(Barrier) && SectionBarrierPillars.IsValidIndex(Barrier)
+			&& StandingInSection(Barrier) == 0)
+		{
+			UnblockCellsAndDestroyPillars(FloorSections.Boundaries[Barrier], SectionBarrierPillars[Barrier]);
+			SectionBarrierClosed[Barrier] = false;
+			bOpenedOne = true;
+			UE_LOG(LogCataclysm, Log, TEXT("Sections: barrier %d opened on floor %d"), Barrier, FloorNumber);
+		}
+	}
+	if (bOpenedOne)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
+int32 ACataclysmDungeonGameMode::StandingInSection(int32 Section) const
+{
+	if (Section == INDEX_NONE)
+	{
+		return 0;
+	}
+	int32 Standing = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		// THE SAME PREDICATE THE STAIRS' SEAL COUNTS BY, and the section the creature was placed in.
+		Standing += (IsOneOfTheFloorsOwnStanding(Enemy.Get()) && Enemy->FloorSection == Section) ? 1 : 0;
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::LightforgedWallsSectionHeld() const
+{
+	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
+	{
+		if (SectionBarrierIsClosed(Barrier) && StandingInSection(Barrier) > 0)
+		{
+			return Barrier;
+		}
+	}
+	return INDEX_NONE;
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::ClosedSectionBarrierCells() const
+{
+	TArray<FIntPoint> Closed;
+	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
+	{
+		if (SectionBarrierIsClosed(Barrier))
+		{
+			Closed.Append(FloorSections.Boundaries[Barrier]);
+		}
+	}
+	return Closed;
+}
+
+bool ACataclysmDungeonGameMode::AClosedBarrierStandsBetween(const ACataclysmEnemyCharacter* One,
+															const ACataclysmEnemyCharacter* Other) const
+{
+	if (!One || !Other || One->FloorSection == INDEX_NONE || Other->FloorSection == INDEX_NONE)
+	{
+		return false;
+	}
+	// BARRIER i LIES BETWEEN SECTIONS i AND i + 1, so the barriers between two sections are those numbered from the
+	// lower section up to, and not including, the higher.
+	const int32 Lower = FMath::Min(One->FloorSection, Other->FloorSection);
+	const int32 Higher = FMath::Max(One->FloorSection, Other->FloorSection);
+	for (int32 Barrier = Lower; Barrier < Higher; ++Barrier)
+	{
+		if (SectionBarrierIsClosed(Barrier))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ACataclysmDungeonGameMode::AnObstacleMayClose(const TArray<FIntPoint>& Cells, FIntPoint From,
+												   const TSet<FIntPoint>& Held) const
+{
+	// WITH NO BARRIER CLOSED THIS IS `CataclysmFloorCanBlock` AND NOTHING ELSE. With one closed, the function asked
+	// says what is added and why.
+	return CurrentFloor
+		&& CataclysmFloorCanBlockBesideBarriers(CurrentFloor->GetPlan(), Cells, From, Held, ClosedSectionBarrierCells());
 }
 
 void ACataclysmDungeonGameMode::PlaceTheShortcutGates()
@@ -6507,7 +6726,7 @@ bool ACataclysmDungeonGameMode::ChooseObstacleCells(const ACataclysmPlayerCharac
 				Cells.Add(Corner + FIntPoint(X, Y));
 			}
 		}
-		if (CataclysmFloorCanBlock(CurrentFloor->GetPlan(), Cells, From, Held))
+		if (AnObstacleMayClose(Cells, From, Held))
 		{
 			Out = MoveTemp(Cells);
 			return true;
@@ -6522,7 +6741,7 @@ ACataclysmFloorObstacle* ACataclysmDungeonGameMode::WarnOfAnObstacle(const TArra
 	using Effects = UCataclysmDungeonModifierEffects;
 	UWorld* World = GetWorld();
 	if (!World || !CurrentFloor
-		|| !CataclysmFloorCanBlock(CurrentFloor->GetPlan(), Cells, ThePlayersCell(), CellsHeldOrWarned()))
+		|| !AnObstacleMayClose(Cells, ThePlayersCell(), CellsHeldOrWarned()))
 	{
 		return nullptr;
 	}
@@ -6552,8 +6771,7 @@ void ACataclysmDungeonGameMode::RaiseOrCancel(ACataclysmFloorObstacle* Obstacle)
 
 	// ASKED AGAIN, ruled 2026-10-02: the player or a creature may have walked onto the cells during the warning, and
 	// then nothing rises. Nothing is ever raised onto anyone, so the obstacle needs no damage and no push.
-	if (!CataclysmFloorCanBlock(CurrentFloor->GetPlan(), Obstacle->CoveredCells(), ThePlayersCell(),
-								CellsHeldOrWarned(Obstacle)))
+	if (!AnObstacleMayClose(Obstacle->CoveredCells(), ThePlayersCell(), CellsHeldOrWarned(Obstacle)))
 	{
 		FloorObstacles.RemoveAll([Obstacle](const TWeakObjectPtr<ACataclysmFloorObstacle>& One)
 		{
@@ -13270,6 +13488,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND LIGHTFORGED WALLS, ON EVERY FLOOR CARRYING IT, for the panel's count. Issues #1820 and #41.
 	const bool bLightforgedWalls =
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::LightforgedWallsKey));
+	// AND THE SECTIONS' BARRIERS, ON A FLOOR THAT HAS ANY, whichever row gave it sections. Issues #1820 and #41.
+	const bool bSectionBarriers = !FloorSections.Boundaries.IsEmpty();
 	// AND WINGS OF THE HOST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
 	// and #41.
 	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
@@ -13444,7 +13664,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPactOfTemptation
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
-		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls)
+		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers)
 	{
 		return;
 	}
@@ -13658,12 +13878,26 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 
 	// AND LIGHTFORGED WALLS' COUNT OF THE STANDING, shown when it changed. The seal itself is asked when the stairs are
 	// taken. Issues #1820 and #41.
+	//
+	// AND FIRST, A SECTION'S BARRIER OPENS WHEN ITS CREATURES ARE SLAIN, so the panel below reads the barriers as
+	// they now stand. Ruled 2026-10-08.
+	if (bSectionBarriers)
+	{
+		StepTheSectionBarriers();
+	}
 	if (bLightforgedWalls)
 	{
+		// THE PANEL IS DRAWN AGAIN WHEN ANY OF THE THREE FIGURES ITS LINE CAN SHOW HAS MOVED: the floor's count, the
+		// section it names, and that section's count.
 		const int32 WallsStanding = LightforgedWallsStanding();
-		if (WallsStanding != LightforgedWallsPanelCount)
+		const int32 WallsSection = LightforgedWallsSectionHeld();
+		const int32 WallsSectionStanding = StandingInSection(WallsSection);
+		if (WallsStanding != LightforgedWallsPanelCount || WallsSection != LightforgedWallsPanelSection
+			|| WallsSectionStanding != LightforgedWallsPanelSectionCount)
 		{
 			LightforgedWallsPanelCount = WallsStanding;
+			LightforgedWallsPanelSection = WallsSection;
+			LightforgedWallsPanelSectionCount = WallsSectionStanding;
 			RefreshFloorModifierPanel();
 		}
 	}
@@ -17701,11 +17935,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	}
 
 	// AND HOW MANY OF THE CREATURES THE FLOOR PLACED STILL STAND BEFORE LIGHTFORGED WALLS OPENS. Issues #1820 and #41.
+	// WHILE A SECTION'S BARRIER STANDS WITH CREATURES BEHIND IT, THAT SECTION'S COUNT COMES FIRST: the lowest-numbered
+	// such section, and then the whole floor's. With every barrier open the line is what it was before sections.
+	// Ruled 2026-10-08.
 	const FName WallsRow(Effects::LightforgedWallsKey);
 	if (FloorBrief.Modifiers.Contains(WallsRow))
 	{
+		const int32 WallsSectionHeld = LightforgedWallsSectionHeld();
 		Counting.Add(WallsRow, FloorBrief.bWaveWalksIn
 								? FString(TEXT("lightforged walls: no stairs on a Horde floor"))
+								: WallsSectionHeld != INDEX_NONE
+								? FString::Printf(TEXT("lightforged walls: %d standing in this section, %d on the floor"),
+												  StandingInSection(WallsSectionHeld), LightforgedWallsStanding())
 								: LightforgedWallsSealTheStairs()
 								? FString::Printf(TEXT("lightforged walls: %d still standing"), LightforgedWallsStanding())
 								: FString(TEXT("lightforged walls: open")));

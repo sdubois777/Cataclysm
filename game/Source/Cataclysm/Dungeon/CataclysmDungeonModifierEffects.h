@@ -1808,9 +1808,28 @@ public:
 	 *
 	 * "Radiant barriers seal sections until all enemies in the area are slain, forcing full clears."
 	 *
-	 * `Partly` BUILT, AND THE MISSING HALF IS "SECTIONS": nothing divides a floor into areas a barrier could close, and
-	 * nothing changes a floor's layout during play. What is built is the floor-wide reading: the stairs are the one
-	 * barrier, and the floor the one area.
+	 * `Built` SINCE 2026-10-08, when "sections" were built on `FCataclysmFloorGenerator::FindSections`. Until then it was
+	 * `Partly`: the stairs were the one barrier and the floor the one area, which is still what the row is on every
+	 * floor that gets no sections.
+	 *
+	 * SECTIONS, RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-08, each a labelled judgement:
+	 * - WHICH FLOORS: one that carries this row, has the Halls layout, is not a Horde arena and does not carry
+	 *   `ShadowyEnemiesKey` (`ACataclysmDungeonGameMode::FloorGetsSections`). Under Shadowy Enemies a creature takes
+	 *   no damage unless lit and still counts as standing, and the light zones are placed without regard to
+	 *   sections, so a character with no fire damage could be unable to clear a section. A Halls floor on which the
+	 *   search finds no sections has none either.
+	 * - A BARRIER is the cells of one boundary closed with pillars in this row's colour, standing from the moment the
+	 *   floor begins with no warning. Barrier i opens when no creature the floor placed in section i still stands,
+	 *   asked on the quarter-second beat, and stays open for the floor, also after the player dies and returns. A
+	 *   section with no creature in it is open when the floor begins. The last section has no barrier: the stairs
+	 *   are its seal, as below.
+	 * - A CREATURE'S SECTION is that of the cell the floor placed it on (`ACataclysmEnemyCharacter::FloorSection`).
+	 *   A creature a rule adds later has none, holds no barrier, and still holds the stairs when it is counted.
+	 * - AN OBSTACLE RAISED DURING PLAY is refused, while a barrier is closed, when it would strand a cell with the
+	 *   barriers treated as open or split an area with them shut (`CataclysmFloorCanBlockBesideBarriers`).
+	 * - SACRIFICIAL BOND does not reach an ally across a closed barrier (`UCataclysmEnemyModifiers::ShareOfDamageKept`).
+	 * - A REALITY RIFT CAN CARRY THE PLAYER PAST A BARRIER AND NOTHING PREVENTS IT. Its row says players "can use these
+	 *   rifts strategically to teleport", and the stairs still hold the floor to a full clear.
 	 *
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-01, each a labelled judgement:
 	 * - "ALL ENEMIES" IS EVERY CREATURE THE FLOOR PLACED: one in the floor's creatures that was not raised by a rule,
