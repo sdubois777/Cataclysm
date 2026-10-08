@@ -26055,4 +26055,286 @@ bool FCataclysmHitCancelsOwnSwingTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A cast delay on a skill's blow. Ruled 2026-10-08 under the owner's
+// delegation, for "Point blank AOE skills have a 0.75-1.5 second cast delay
+// before firing". One stat, `blow_delay_seconds`, asked with the skill's own
+// tags at one place, `UCataclysmSkillTemplate::SecondsUntilTheSwingConnects`,
+// and added to the wind-up the skill already has. Engine only; no row is
+// authored, so every row here is made by hand in the shape `docs/DECISIONS.md`
+// of that day gives.
+//
+// A TEST FIGHTER HAS NO WIND-UP OF ITS OWN, so the row's seconds are its whole
+// wait, and a fighter with no row lands its blow as the skill is used. That is
+// the control in every test here.
+//
+// WHERE THE ACTORS STAND is said at the top of each test; no two are within a
+// metre of each other. TIME IS RUN WITH `RunClock`, and every reading is taken
+// half a second off the moment the delayed blow falls due.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmBlowDelayTest
+{
+	using namespace CataclysmHitCancelsTest;
+
+	/** A strike all round its user, reaching 3 m, with nothing else in its row. */
+	const TCHAR* const DelayStrikeParams = TEXT("Radius=3; Angle=360");
+
+	/** The tags of a point-blank strike, and of the same strike without the tag the row requires. */
+	const TCHAR* const DelayTaggedCell = TEXT("Element.Demonic, Type.Melee, Type.AOE.PointBlank");
+	const TCHAR* const DelayUntaggedCell = TEXT("Element.Demonic, Type.Melee");
+
+	/** The tag the row requires, asked as the skill template asks for a tag. Invalid before the table loads. */
+	FGameplayTag PointBlankTag()
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Type.AOE.PointBlank"), /*ErrorIfNotFound=*/false);
+	}
+
+	/** The row the sentence makes: this many seconds, flat, requiring `Type.AOE.PointBlank`. */
+	FCataclysmStatModifier ADelayRow(float Seconds)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Seconds;
+		Row.RequiredTags.AddTag(PointBlankTag());
+		return Row;
+	}
+
+	/** Wear that row and nothing else. */
+	void WearTheDelay(FScopedFighter& Who, float Seconds)
+	{
+		WearOne(Who, UCataclysmSkillTemplate::BlowDelaySecondsStat, ADelayRow(Seconds));
+	}
+
+	/** What a fighter's target has lost since its pool was last filled. */
+	float LostBy(const FScopedFighter& Victim)
+	{
+		return Pool - Victim.Health();
+	}
+
+	/** Fill a target's pool, so the next reading of what it lost starts from nothing. */
+	void Refill(FScopedFighter& Victim)
+	{
+		Victim.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlowDelayHoldsBackTheBlowTest,
+	"Cataclysm.SkillStats.ACastDelayRowHoldsBackATaggedStrikesBlowAndNoOtherAndItsCostIsPaidAtThePress",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Point blank AOE skills have a 0.75-1.5 second cast delay before firing" as `blow_delay_seconds`, flat 1.0,
+ * requiring `Type.AOE.PointBlank`.
+ *
+ * THE CONTROL is a fighter with no row using the same tagged strike on a target of its own: its blow lands as the
+ * skill is used, and what it paid is what the wearer's payment is compared with.
+ *
+ * THE WEARER presses the same strike. At the press its target has lost nothing, the strike is running and waiting,
+ * and it has ALREADY paid the mana the control paid and its slot is on cooldown. Half a second on, nothing has
+ * landed. A strike WITHOUT the tag, used by the wearer at that moment, lands at once and deals what the control's
+ * untagged strike deals. A second and a half after the press the tagged blow has landed, whole, and landing it
+ * cost nothing more.
+ *
+ * STANDING: the wearer at the origin with its target 2 m along X; the control 20 m along Y with its target 2 m
+ * along X from it. A strike reaches 3 m, so neither reaches the other pair.
+ */
+bool FCataclysmBlowDelayHoldsBackTheBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlowDelayTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Type.AOE.PointBlank is a tag this build knows"), PointBlankTag().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter PlainTarget(World, FVector(2 * M, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(PlainTarget, 0.0f, 0.0f);
+	WearTheDelay(Wearer, 1.0f);
+
+	UCataclysmStrikeSkill* WearerBlast = GrantSkill<UCataclysmStrikeSkill>(
+		Wearer, ECataclysmAbilitySlot::Heavy, DelayStrikeParams, TEXT("Blast"), DelayTaggedCell);
+	UCataclysmStrikeSkill* PlainBlast = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::Heavy, DelayStrikeParams, TEXT("Blast"), DelayTaggedCell);
+	UCataclysmStrikeSkill* WearerChop = GrantSkill<UCataclysmStrikeSkill>(
+		Wearer, ECataclysmAbilitySlot::Special, DelayStrikeParams, TEXT("Chop"), DelayUntaggedCell);
+	UCataclysmStrikeSkill* PlainChop = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::Special, DelayStrikeParams, TEXT("Chop"), DelayUntaggedCell);
+	if (!TestTrue(TEXT("set-up: both fighters were granted the tagged strike and the one without the tag"),
+				  WearerBlast && PlainBlast && WearerChop && PlainChop)
+		|| !TestTrue(TEXT("set-up: the tagged strike carries the tag the row requires and the other does not"),
+					 WearerBlast->SkillTags.HasTag(PointBlankTag()) && !WearerChop->SkillTags.HasTag(PointBlankTag())))
+	{
+		return false;
+	}
+
+	// THE CONTROL: no row, so the blow lands as the skill is used.
+	const float PlainManaBefore = Plain.Mana();
+	const bool bPlainUsed = Activate(Plain, PlainBlast);
+	const float PlainBlow = LostBy(PlainTarget);
+	const float PlainSpent = PlainManaBefore - Plain.Mana();
+	if (!TestTrue(TEXT("control: with no row, a tagged strike hurts its target as it is used"),
+				  bPlainUsed && PlainBlow > 1.0f)
+		|| !TestTrue(TEXT("control: and it spent mana and put its slot on cooldown"),
+					 PlainSpent > 0.0f && IsOnCooldown(Plain, ECataclysmAbilitySlot::Heavy)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: and it is not waiting for anything"), PlainBlast->IsWaitingForTheSwingToConnect());
+
+	// THE PRESS.
+	const float WearerManaBefore = Wearer.Mana();
+	if (!TestTrue(TEXT("set-up: the wearer's tagged strike is used"), Activate(Wearer, WearerBlast)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at the press, the wearer's target has lost nothing"), LostBy(Target), 0.0f, 0.001f);
+	TestTrue(TEXT("the wearer's strike is waiting for its blow"), WearerBlast->IsWaitingForTheSwingToConnect());
+	TestTrue(TEXT("and is running"), WearerBlast->IsActive());
+	TestEqual(TEXT("the cost is paid at the press: before any blow, the wearer has spent what the control spent"),
+			  WearerManaBefore - Wearer.Mana(), PlainSpent, 0.001f);
+	TestTrue(TEXT("and its slot is on cooldown before any blow"),
+			 IsOnCooldown(Wearer, ECataclysmAbilitySlot::Heavy));
+
+	// HALF A SECOND ON.
+	CataclysmTestWorld::RunClock(World, 0.5f);
+	TestEqual(TEXT("half a second after the press, the wearer's target has still lost nothing"), LostBy(Target), 0.0f,
+			  0.001f);
+	TestTrue(TEXT("and the strike is still waiting for its blow"), WearerBlast->IsWaitingForTheSwingToConnect());
+
+	// A STRIKE WITHOUT THE TAG, UNDER THE SAME ROW, WHILE THE TAGGED ONE WAITS.
+	Refill(PlainTarget);
+	const bool bPlainChopUsed = Activate(Plain, PlainChop);
+	const float PlainChopBlow = LostBy(PlainTarget);
+	if (!TestTrue(TEXT("control: with no row, a strike without the tag hurts its target as it is used"),
+				  bPlainChopUsed && PlainChopBlow > 1.0f))
+	{
+		return false;
+	}
+	const bool bWearerChopUsed = Activate(Wearer, WearerChop);
+	if (!TestTrue(TEXT("set-up: the wearer's strike without the tag is used"), bWearerChopUsed))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's strike without the tag lands as it is used and deals what the control's deals"),
+			  LostBy(Target), PlainChopBlow, 0.01f);
+	TestFalse(TEXT("and it is not waiting for anything"), WearerChop->IsWaitingForTheSwingToConnect());
+	TestTrue(TEXT("while the tagged strike is still waiting for its blow"),
+			 WearerBlast->IsWaitingForTheSwingToConnect());
+
+	// A SECOND AND A HALF AFTER THE PRESS.
+	Refill(Target);
+	const float WearerManaWhileWaiting = Wearer.Mana();
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	TestEqual(TEXT("a second and a half after the press, the tagged blow has landed and is what the control's was"),
+			  LostBy(Target), PlainBlow, 0.01f);
+	TestFalse(TEXT("the strike is no longer waiting"), WearerBlast->IsWaitingForTheSwingToConnect());
+	TestFalse(TEXT("and is over"), WearerBlast->IsActive());
+	TestEqual(TEXT("and landing the blow cost nothing more"), Wearer.Mana(), WearerManaWhileWaiting, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlowDelayBelowNoughtTest,
+	"Cataclysm.SkillStats.ACastDelayIsAddedToTheWindUpAndAFigureBelowNoughtAddsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The sum itself, and a row below nought in a world.
+ *
+ * THE SUM is `UCataclysmSkillTemplate::SwingWaitWithDelay`, the one function
+ * `SecondsUntilTheSwingConnects` answers through. A wind-up of 0.6 seconds under a row of 1 second is 1.6: the
+ * delay is added and does not replace it. Under a row of -1 it is still 0.6: a figure below nought adds nothing,
+ * and does not take the wind-up away. THAT LINE IS THE ONE THAT NEEDS THE FLOOR; in a world a test fighter has no
+ * wind-up, and a wait of nought or less lands the blow at once whichever way the sum is written.
+ *
+ * IN A WORLD, three fighters use the same tagged strike, each on a target of its own: one with no row, one under a
+ * row of -1 second and one under a row of +1 second. The first two land their blows as the skill is used and the
+ * blows are equal. THE THIRD IS THE CONTROL that the row is read at all: its strike is waiting and its target has
+ * lost nothing.
+ *
+ * STANDING: the fighter with no row at the origin, the one below nought 20 m along Y, the one above 40 m along Y;
+ * each has its target 2 m along X from it. A strike reaches 3 m.
+ */
+bool FCataclysmBlowDelayBelowNoughtTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlowDelayTest;
+
+	// THE SUM.
+	TestEqual(TEXT("a delay of 1 second is added to a wind-up of 0.6: the wait is 1.6"),
+			  UCataclysmSkillTemplate::SwingWaitWithDelay(0.6f, 1.0f), 1.6f, 0.0001f);
+	TestEqual(TEXT("a delay below nought adds nothing: a wind-up of 0.6 is still 0.6"),
+			  UCataclysmSkillTemplate::SwingWaitWithDelay(0.6f, -1.0f), 0.6f, 0.0001f);
+	TestEqual(TEXT("no row at all leaves a wind-up of 0.6 as it was"),
+			  UCataclysmSkillTemplate::SwingWaitWithDelay(0.6f, 0.0f), 0.6f, 0.0001f);
+	TestEqual(TEXT("with no wind-up, a delay of 0.75 is the whole wait"),
+			  UCataclysmSkillTemplate::SwingWaitWithDelay(0.0f, 0.75f), 0.75f, 0.0001f);
+	TestEqual(TEXT("with no wind-up, a delay below nought is no wait"),
+			  UCataclysmSkillTemplate::SwingWaitWithDelay(0.0f, -1.0f), 0.0f, 0.0001f);
+
+	// IN A WORLD.
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Type.AOE.PointBlank is a tag this build knows"), PointBlankTag().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter PlainTarget(World, FVector(2 * M, 0, 0));
+	FScopedFighter Below(World, FVector(0, 20 * M, 0));
+	FScopedFighter BelowTarget(World, FVector(2 * M, 20 * M, 0));
+	FScopedFighter Above(World, FVector(0, 40 * M, 0));
+	FScopedFighter AboveTarget(World, FVector(2 * M, 40 * M, 0));
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(PlainTarget, 0.0f, 0.0f);
+	Defences(Below, 0.0f, 0.0f);
+	Defences(BelowTarget, 0.0f, 0.0f);
+	Defences(Above, 0.0f, 0.0f);
+	Defences(AboveTarget, 0.0f, 0.0f);
+	WearTheDelay(Below, -1.0f);
+	WearTheDelay(Above, 1.0f);
+
+	UCataclysmStrikeSkill* PlainBlast = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::Heavy, DelayStrikeParams, TEXT("Blast"), DelayTaggedCell);
+	UCataclysmStrikeSkill* BelowBlast = GrantSkill<UCataclysmStrikeSkill>(
+		Below, ECataclysmAbilitySlot::Heavy, DelayStrikeParams, TEXT("Blast"), DelayTaggedCell);
+	UCataclysmStrikeSkill* AboveBlast = GrantSkill<UCataclysmStrikeSkill>(
+		Above, ECataclysmAbilitySlot::Heavy, DelayStrikeParams, TEXT("Blast"), DelayTaggedCell);
+	if (!TestTrue(TEXT("set-up: all three fighters were granted the tagged strike"),
+				  PlainBlast && BelowBlast && AboveBlast)
+		|| !TestTrue(TEXT("set-up: all three strikes are used"),
+					 Activate(Plain, PlainBlast) && Activate(Below, BelowBlast) && Activate(Above, AboveBlast)))
+	{
+		return false;
+	}
+
+	const float PlainBlow = LostBy(PlainTarget);
+	if (!TestTrue(TEXT("control: with no row, the strike hurts its target as it is used"), PlainBlow > 1.0f)
+		|| !TestTrue(TEXT("control: under a row of +1 second the strike is waiting, so the row is read"),
+					 AboveBlast->IsWaitingForTheSwingToConnect()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and the target of the strike that waits has lost nothing"), LostBy(AboveTarget), 0.0f,
+			  0.001f);
+	TestFalse(TEXT("under a row of -1 second the strike is not waiting for anything"),
+			  BelowBlast->IsWaitingForTheSwingToConnect());
+	TestEqual(TEXT("and its blow landed as it was used, and is what the blow with no row was"), LostBy(BelowTarget),
+			  PlainBlow, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
