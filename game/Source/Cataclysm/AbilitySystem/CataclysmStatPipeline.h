@@ -1714,6 +1714,12 @@ enum class ECataclysmConditionDependsOn : uint8
  * and off the genre: Path of Exile pays a "per 10 Strength" bonus once at 15
  * Strength, not one and a half times. `docs/DECISIONS.md` carries the sources.
  *
+ * ONE SCALE'S COUNT IS A FRACTION, AND EVERY OTHER ONE'S IS WHOLE.
+ * `ShareOfRangeMoved`, the last enumerator, is worth its value times a share
+ * from 0 to 1 and rounds nothing: "proportional to distance traveled" is not a
+ * count of completed blocks. Ruled 2026-10-08. Everything said of steps above
+ * and below is said of the others.
+ *
  * AN UNKNOWN STATE SCALES TO NOTHING, for the reason an unknown state refuses a
  * condition. The character sheet has no character in hand, and a bonus whose
  * size depends on where health is must not be written onto a gameplay attribute
@@ -2349,6 +2355,38 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerSecondLeeching
 		UMETA(DisplayName = "Per Second Leeching"),
+
+	/**
+	 * `Value` times the SHARE of its range a charge had moved when the blow in
+	 * hand landed. Ruled 2026-10-08 for "Charge skills deal 30%-60% bonus damage
+	 * proportional to distance traveled".
+	 *
+	 * THE ONE SCALE WHOSE COUNT IS A FRACTION. Every other scale counts whole
+	 * steps and rounds down; this one multiplies `Value` by the metres charged
+	 * over the range the skill used, from 0 to 1. `Value` is therefore the bonus
+	 * AT THE SKILL'S FULL RANGE, and there is no distance per step: a 14 metre
+	 * charge that has moved 7 metres gets half.
+	 *
+	 * CAPPED AT THE WHOLE VALUE. A charge that goes further than its range, by a
+	 * step of a walk landing past the end, gets the full figure and no more.
+	 *
+	 * NOUGHT WHEN EITHER FIGURE IS UNKNOWN, AND NOUGHT FOR A BLOW THAT IS NOT A
+	 * CHARGE'S OWN, which are the same thing: only a charge's own blow carries
+	 * the two figures. Read from `FCataclysmStatConditions::MetresCharged` and
+	 * `ChargeRangeMetres`, which say who fills them.
+	 *
+	 * `ScaleStep` IS THE SHARE OF THE RANGE THAT ONE `Value` IS WORTH, and the
+	 * data states 1: the whole range. `ScaleMaxSteps` and `ScaleOffset` mean
+	 * nothing here and `ValidateModifier` refuses both: there are no whole steps
+	 * to cap, the scale holds its own cap, and no sentence leaves part of a
+	 * charge uncounted.
+	 *
+	 * NOT `FCataclysmStatConditions::MetresMovedBeforeBlow`. That is how far the
+	 * character walked BEFORE it pressed the skill, and a scale on it would pay
+	 * a charge for walking up to the press and nothing for charging.
+	 */
+	ShareOfRangeMoved
+		UMETA(DisplayName = "Share Of Range Moved"),
 };
 
 /**
@@ -3033,6 +3071,33 @@ struct CATACLYSM_API FCataclysmStatConditions
 	int32 EnemiesStruckTogether = -1;
 
 	/**
+	 * How far the charge dealing the blow in hand had gone when that blow
+	 * landed, in metres. Ruled 2026-10-08. See
+	 * `ECataclysmStatScale::ShareOfRangeMoved`, its one reader.
+	 *
+	 * A PROPERTY OF THE BLOW BEING DEALT, carried as `MetresMovedBeforeBlow` is:
+	 * set on `FCataclysmHitDelivery::MetresCharged` by the one skill shape that
+	 * charges, and passed into the lookup rather than read off the character.
+	 *
+	 * A FOURTH DISTANCE-SHAPED READING, AND NOT ANY OF THE THREE LISTED ABOVE.
+	 * `MetresMovedBeforeBlow` is the walk BEFORE the skill was pressed. This is
+	 * the ground the skill itself covered AFTER the press.
+	 *
+	 * NEGATIVE MEANS THE BLOW IN HAND IS NOT A CHARGE'S OWN, or no blow is in
+	 * hand. Zero is a real reading: a charge that struck before it had moved.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MetresCharged = -1.0f;
+
+	/**
+	 * The range the charge dealing the blow in hand used, in metres: its stated
+	 * range after the character's own increases to skill range. Ruled
+	 * 2026-10-08. Carried with `MetresCharged` above, and negative when that is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ChargeRangeMetres = -1.0f;
+
+	/**
 	 * How far away the character being HIT stood, in metres, when the blow was
 	 * worked out. Issue #1596.
 	 *
@@ -3493,6 +3558,9 @@ struct CATACLYSM_API FCataclysmStatModifier
 	 * ONE PLACE, `ScaledValue`, applies it to every scale, so a scale written
 	 * later needs nothing of its own. A cap on a modifier that does not scale
 	 * caps nothing and `ValidateModifier` refuses it.
+	 *
+	 * AND IT IS REFUSED ON `ShareOfRangeMoved`, which counts a fraction and not
+	 * whole steps, and holds its own cap at the whole value. Ruled 2026-10-08.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	int32 ScaleMaxSteps = 0;
