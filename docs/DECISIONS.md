@@ -87,6 +87,16 @@ session, not the coordinating session, made the readings they name.
 11. **The new order of events is accepted as read**: the bonded creature can die before its allies are
     paid. The second and third tests show it.
 12. **The guard proof is approved as proposed**, with the note under "The guard proof proposed" below.
+13. **An ally the bonded creature's EXPLOSION kills is not changed.** It dies of a blow of its own and explodes
+    for its own overkill, as any creature an explosion kills does. Ruling 7 covers only an ally its share
+    kills. No test reaches this case. A labelled judgement by the coordinating session under the owner's
+    delegation, 2026-10-08.
+14. **A second guard proof is approved**, for the line of ruling 7: `Blow.Overkill = 0.0f;` becomes
+    `Blow.Overkill = Blow.Overkill;`, and the sixth test should then fail on "the ally's death records an
+    overkill of nought" and "the bystander loses what it lost in the control: the ally's death adds no
+    explosion". Proposed by the registering session because the line was added on a ruling and that test is
+    the only thing holding it. A labelled judgement by the coordinating session under the owner's delegation,
+    2026-10-08.
 
 ### What it is for
 
@@ -229,6 +239,8 @@ line it put in. Neither entry is edited.
   that kills. It is the second thing said in this entry.
 - With "Enemies killed by you explode for the overkill amount" worn, a bonded creature a blow kills explodes
   for the whole blow less its health. An ally its share then kills does not explode.
+- An ally that the bonded creature's explosion kills, and not its share, explodes for its own overkill, as
+  any creature an explosion kills does.
 - No number was judged in this layer. The bond's reach of 6 metres and its even division are unchanged.
 - The reading not taken for "large enough" is ruling 5(a): any blow that would have killed without the bond.
 
@@ -335,7 +347,6 @@ are expected to fail under the same break as well.
 
 ### Not covered by a test
 
-- An ally the bonded creature's explosion itself kills, before its share is paid.
 - The order the sixth test rests on, other than by that test's own figures: the explosion before the
   shares.
 - A share exactly equal to the remaining health.
