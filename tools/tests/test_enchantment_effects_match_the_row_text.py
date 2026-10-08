@@ -750,8 +750,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-07, from 544 over 457: two rows removed and one written, on one enchantment.
 #: AND 546 OVER 460 SINCE THREE TRAP ROWS ON THE COUNTS OF TRAPS AND GADGETS,
 #: issue #1833, 2026-10-07, from 543 over 457: three rows on three enchantments.
-AUTHORED_ROWS = 546
-AUTHORED_ENCHANTMENTS = 460
+#: AND 547 OVER 461 SINCE THE STRIKE ON AN EVADED RANGED ATTACK,
+#: issue #1833, 2026-10-07, from 546 over 460: one row on one enchantment.
+AUTHORED_ROWS = 547
+AUTHORED_ENCHANTMENTS = 461
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
