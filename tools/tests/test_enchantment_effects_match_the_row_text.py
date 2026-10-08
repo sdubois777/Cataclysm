@@ -764,8 +764,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-07, from 548 over 462: one row on one enchantment.
 #: AND 550 OVER 464 SINCE THE ROW THAT MAKES TRAPS LAST LONGER,
 #: issue #1833, 2026-10-08, from 549 over 463: one row on one enchantment.
-AUTHORED_ROWS = 550
-AUTHORED_ENCHANTMENTS = 464
+#: AND 554 OVER 467 SINCE THREE SENTENCES ON DAMAGE OVER TIME, TIME IN COMBAT AND LEECHING,
+#: issue #1833, 2026-10-08, from 550 over 464: four rows on three enchantments.
+AUTHORED_ROWS = 554
+AUTHORED_ENCHANTMENTS = 467
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

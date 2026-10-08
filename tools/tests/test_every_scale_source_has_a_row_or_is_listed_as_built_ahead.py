@@ -116,7 +116,8 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: ONE JOINED THE SAME DAY, `seconds_leeching`, for "While leeching,
 #: reduce your max resistances by 1%-3% per second", on the same terms. It leaves
 #: with its row.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"seconds_leeching"}
+#: IT LEFT with its row, issue #1833, and the list is empty again.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -160,7 +161,9 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 38 WHEN `traps_active` AND `gadgets_active` GAINED THEIR THREE ROWS,
 #: issue #2284, 2026-10-07.
-EXPECTED_NAMED_BY_A_ROW = 38
+#:
+#: AND 39 WHEN `seconds_leeching` GAINED ITS ROW, issue #1833.
+EXPECTED_NAMED_BY_A_ROW = 39
 
 
 def scales_named_by_a_row() -> set[str]:

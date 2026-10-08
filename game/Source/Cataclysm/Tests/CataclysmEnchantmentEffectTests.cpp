@@ -18694,4 +18694,215 @@ bool FCataclysmTrapDurationRowTest::RunTest(const FString&)
 	TestEqual(TEXT("worn: an imp lasts what it did"), Longer.LifeOf(TEXT("Imp")) / PlainImp, 1.0f, 0.001f);
 	return true;
 }
+// THREE SENTENCES ON TWO CONDITIONS AND ONE SCALE. Ruled 2026-10-07; each row is as the entry "Two conditions,
+// `while_under_damage_over_time` and `in_combat_for_seconds`, and one scale, `seconds_leeching`" states it.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageUnderADotRowTest,
+	"Cataclysm.Enchantments.TheDamageWhileUnderADotRowRaisesAttackAndSpellDamageOnlyWhileItsWearerCarriesOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Gain 50%-100% increased damage while under the effect of a DoT". Two rows,
+ * `attack_damage` and `spell_damage`, increased 50 to 100 under
+ * `while_under_damage_over_time`. The real row WORN at its best roll. EVERY
+ * FIGURE IS A DIFFERENCE in the wearer's summed increases, so what the
+ * wearer's class gives of its own is not read: with a bleed the wearer laid on
+ * itself the sum is 1.0 higher on each stat, and with the bleed taken off it
+ * is what it was.
+ */
+bool FCataclysmDamageUnderADotRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_Gain_50_100_increased_damage_while_under_the_e");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayTag AnyDot = UCataclysmDebuffs::DamageOverTimeTag();
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FName Attack(TEXT("attack_damage"));
+	const FName Spell(TEXT("spell_damage"));
+	const auto Increases = [&Worn](FName Stat)
+	{
+		return Worn.ASC()->IncreasesForStat(Stat, FGameplayTagContainer());
+	};
+	if (!TestTrue(TEXT("set-up: the two tags exist and the wearer carries no damage over time"),
+				  AnyDot.IsValid() && Bleed.IsValid() && !Worn.ASC()->HasMatchingGameplayTag(AnyDot)))
+	{
+		return false;
+	}
+	const float AttackBefore = Increases(Attack);
+	const float SpellBefore = Increases(Spell);
+
+	const bool bLaid = UCataclysmSkillEffects::ApplyDamageOverTime(
+		Worn.Wearer->Actor, Worn.Wearer->Actor, /*DamagePerTick=*/5.0f, /*DurationSeconds=*/4.0f, Bleed,
+		/*bScalesWithInstigator=*/false);
+	// THE BLEED IS ASSERTED TO BE ON THE WEARER BEFORE ANYTHING IS READ, so a set-up that did nothing fails here
+	// by name and not as a row that granted nothing. Ruled 2026-10-08.
+	if (!TestTrue(TEXT("set-up: laying a bleed on the wearer by the wearer was accepted"), bLaid)
+		|| !TestTrue(TEXT("set-up: the wearer carries the bleed"), Worn.ASC()->HasMatchingGameplayTag(Bleed))
+		|| !TestTrue(TEXT("set-up: and so carries damage over time"), Worn.ASC()->HasMatchingGameplayTag(AnyDot)))
+	{
+		return false;
+	}
+	TestEqual(*(FString(TEXT("under a bleed: attack damage's increases are 1.0 higher.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		Increases(Attack) - AttackBefore, 1.0f, 0.001f);
+	TestEqual(TEXT("under a bleed: spell damage's increases are 1.0 higher"),
+		Increases(Spell) - SpellBefore, 1.0f, 0.001f);
+
+	UCataclysmSkillEffects::RemoveEffectsGranting(Worn.Wearer->Actor, Bleed);
+	if (!TestFalse(TEXT("set-up: with the bleed taken off the wearer carries no damage over time"),
+				   Worn.ASC()->HasMatchingGameplayTag(AnyDot)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the bleed taken off: attack damage's increases are what they were"),
+		Increases(Attack), AttackBefore, 0.001f);
+	TestEqual(TEXT("with the bleed taken off: spell damage's increases are what they were"),
+		Increases(Spell), SpellBefore, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDrainAfterTenSecondsRowTest,
+	"Cataclysm.Enchantments.TheDrainAfterTenSecondsInCombatRowHandsItsWearerATimedLossOfMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per
+ * second". One timed action on the health pool, every 1 second, of maximum
+ * health, under `in_combat_for_seconds` 10. The real row WORN at the top of
+ * its range, which for this drawback is 4: the wearer holds exactly one such
+ * action, and none when the item is taken off. What the action then takes is
+ * the tests of the entry that built the condition.
+ */
+bool FCataclysmDrainAfterTenSecondsRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const RowName = TEXT("Negative_After_10_seconds_in_combat_you_begin_losing_2_4");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Timed(UCataclysmAbilitySystemComponent::TimedEvent);
+	const FName Health(TEXT("health"));
+	const auto OfItsKind = [&](float* Share, float* Seconds, float* After, bool* bOfMaximum)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			if (Action.Event == Timed && Action.Pool == Health
+				&& Action.Condition == ECataclysmStatCondition::InCombatForSeconds)
+			{
+				++Found;
+				if (Share) { *Share = Action.Percent; }
+				if (Seconds) { *Seconds = Action.EverySeconds; }
+				if (After) { *After = Action.ConditionValue; }
+				if (bOfMaximum) { *bOfMaximum = Action.Base == ECataclysmPoolActionBase::Maximum; }
+			}
+		}
+		return Found;
+	};
+	float Share = 0.0f;
+	float Seconds = -1.0f;
+	float After = -1.0f;
+	bool bOfMaximum = false;
+	TestEqual(*(FString(TEXT("worn: one timed action on health that waits for seconds in combat.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		OfItsKind(&Share, &Seconds, &After, &bOfMaximum), 1);
+	TestEqual(TEXT("it takes 4 at the top of the row's range"), Share, -4.0f, 0.01f);
+	TestEqual(TEXT("every 1 second"), Seconds, 1.0f, 0.01f);
+	TestEqual(TEXT("after 10 seconds in combat"), After, 10.0f, 0.01f);
+	TestTrue(TEXT("of maximum health"), bOfMaximum);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: no such action is left"), OfItsKind(nullptr, nullptr, nullptr, nullptr), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResistanceCapWhileLeechingRowTest,
+	"Cataclysm.Enchantments.TheResistanceCapWhileLeechingRowHandsItsWearerALossForEachSecondOfLeechingCappedAtTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "While leeching, reduce your max resistances by 1%-3% per second". One row
+ * on `resistance_cap`, flat, scaled by `seconds_leeching` with a step of 1
+ * and at most 10 steps. The real row WORN at the top of its range, which for
+ * this drawback is 3: the wearer's line for the stat holds exactly one
+ * modifier on that scale, and none when the item is taken off. THE CAP OF 10
+ * IS READ HERE BECAUSE A ROW WITHOUT IT WOULD GROW WITHOUT END. What the scale
+ * then counts is the tests of the entry that built it.
+ */
+bool FCataclysmResistanceCapWhileLeechingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const RowName = TEXT("Negative_While_leeching_reduce_your_max_resistances_by_1");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Cap(TEXT("resistance_cap"));
+	const auto OnTheScale = [&](const FCataclysmStatModifier** Found)
+	{
+		int32 Count = 0;
+		if (const FCataclysmStatInputs* Line = Worn.ASC()->GetStatInputs(Cap))
+		{
+			for (const FCataclysmStatModifier& Modifier : Line->Modifiers)
+			{
+				if (Modifier.Scale == ECataclysmStatScale::PerSecondLeeching)
+				{
+					++Count;
+					if (Found) { *Found = &Modifier; }
+				}
+			}
+		}
+		return Count;
+	};
+	const FCataclysmStatModifier* Row = nullptr;
+	if (!TestEqual(*(FString(TEXT("worn: one modifier on the resistance cap scaled by seconds of leeching.")) +
+					 CataclysmRepeatRowsTest::OlderAsset),
+			OnTheScale(&Row), 1)
+		|| !TestNotNull(TEXT("that modifier"), Row))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is a flat amount"), Row->Bucket == ECataclysmStatBucket::Flat);
+	TestEqual(TEXT("of 3 lost at the top of the row's range"), Row->Value, -3.0f, 0.01f);
+	TestEqual(TEXT("for each 1 second"), Row->ScaleStep, 1.0f, 0.01f);
+	TestEqual(TEXT("and at most 10 seconds are counted"), static_cast<int32>(Row->ScaleMaxSteps), 10);
+
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(TEXT("taken off: no such modifier is left"), OnTheScale(nullptr), 0);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
