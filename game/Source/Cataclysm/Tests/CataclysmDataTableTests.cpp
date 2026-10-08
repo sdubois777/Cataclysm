@@ -777,7 +777,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 575 SINCE THE NECROSIS ROW AND THE MINIONS' DEFENCES ROW, issue #1833, from 573.
 	//
 	// AND 577 SINCE THE CHARGE ROWS, issue #1833, from 575.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    577)
+	//
+	// AND 579 SINCE THE FIRST-HIT AILMENTS ROW AND CHRONOMANCER'S SIX-PIECE, issue #1833, from 577.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    579)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
