@@ -6884,6 +6884,214 @@ namespace CataclysmStatExemptionTest
 					   StaggerLeft * 0.5f / UCataclysmSkillEffects::StaggerSeconds, 0.01f);
 	}
 
+	/**
+	 * What one use of a Movement skill did, for the four stats a worn row states that only that skill reads.
+	 * Ruled 2026-10-07.
+	 */
+	struct FMovementRiderRun
+	{
+		/** Whether the skill ran. An empty answer is also what a skill that did nothing gives. */
+		bool bUsed = false;
+		/** Where the user stood afterwards. */
+		FVector ArrivedAt = FVector::ZeroVector;
+		/** For a walked charge: the way it was walking, read before its first step. */
+		FVector WalkingToward = FVector::ZeroVector;
+		/** The health each enemy lost, in the order the enemies were given. */
+		TArray<float> Lost;
+		/** Where each enemy stood afterwards, in the same order. */
+		TArray<FVector> EndedAt;
+		/** What one plain hit of the asked per cent, with the skill's tags, took from the control enemy. */
+		float PlainHitLost = 0.0f;
+		/** Set-up: whether the enemy made immune to displacement answered that it was. */
+		bool bTheImmuneOneWasImmune = false;
+	};
+
+	/**
+	 * One use of one Movement skill by a user at the origin facing +X, among enemies at the places given.
+	 *
+	 * NO ACTOR IS SPAWNED WITHIN 2 M OF ANOTHER BY ANY CALLER. A control enemy stands 30 m to the side at
+	 * (0, -30 m), outside everything, and takes one plain hit after the use when `PlainHitPercent` is above nought.
+	 * The skill states its own hit as 100 per cent of weapon damage, so nothing here reads the slot table. The
+	 * critical strike roll is pinned at 100, which never critically strikes. With no player controller the aimed
+	 * point is the user's own facing at the skill's full range.
+	 *
+	 * `WalkTo` drives a walked charge by hand: the user is put at each point in turn and one step is taken there,
+	 * because no timer fires in this world.
+	 */
+	FMovementRiderRun UseAMovementSkillAmong(const TCHAR* ParamsCell, const TCHAR* TagsCell,
+		TFunctionRef<void(TMap<FName, FCataclysmStatInputs>&)> Carry, const TArray<FVector>& EnemiesAt,
+		int32 ImmuneToDisplacement = INDEX_NONE, float PlainHitPercent = 0.0f,
+		const TArray<FVector>& WalkTo = TArray<FVector>())
+	{
+		FMovementRiderRun Run;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return Run;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+
+		FScopedSwinger User(World, FVector::ZeroVector);
+		FScopedSwinger ControlEnemy(World, FVector(0.0f, -3000.0f, 0.0f));
+		TArray<TUniquePtr<FScopedSwinger>> Enemies;
+		for (const FVector& EnemyAt : EnemiesAt)
+		{
+			Enemies.Add(MakeUnique<FScopedSwinger>(World, EnemyAt));
+		}
+		if (Enemies.IsValidIndex(ImmuneToDisplacement))
+		{
+			Enemies[ImmuneToDisplacement]->AbilitySystem->GrantImmunity(FName(TEXT("Displacement")), User.Actor, 60.0f);
+			Run.bTheImmuneOneWasImmune =
+				UCataclysmSkillTemplate::IsImmuneTo(Enemies[ImmuneToDisplacement]->Actor, TEXT("Displacement"));
+		}
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Carry(Inputs);
+		if (Inputs.Num() > 0)
+		{
+			User.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+
+		const FGameplayAbilitySpecHandle Handle = User.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmMovementSkill::StaticClass(), ECataclysmAbilitySlot::Movement, /*Level=*/100, User.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? User.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmMovementSkill* Skill = Spec ? Cast<UCataclysmMovementSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Skill)
+		{
+			return Run;
+		}
+		Skill->SkillName = TEXT("A movement skill a row may add to");
+		Skill->Params = UCataclysmSkillShapes::ParseParams(ParamsCell);
+		Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagsCell);
+		Skill->DamagePercentOverride = 100.0f;
+
+		TArray<float> HealthBefore;
+		for (const TUniquePtr<FScopedSwinger>& Enemy : Enemies)
+		{
+			HealthBefore.Add(Enemy->Get(Vital::GetHealthAttribute()));
+		}
+
+		Run.bUsed = User.AbilitySystem->TryActivateAbility(Handle);
+		Run.WalkingToward = UCataclysmMovementSkill::AdvanceDirectionFor(User.Actor);
+		for (const FVector& Step : WalkTo)
+		{
+			User.Actor->SetActorLocation(Step);
+			Skill->AdvanceOneStep();
+		}
+		Run.ArrivedAt = User.Actor->GetActorLocation();
+
+		for (int32 Index = 0; Index < Enemies.Num(); ++Index)
+		{
+			Run.Lost.Add(HealthBefore[Index] - Enemies[Index]->Get(Vital::GetHealthAttribute()));
+			Run.EndedAt.Add(Enemies[Index]->Actor->GetActorLocation());
+		}
+		if (PlainHitPercent > 0.0f)
+		{
+			const float ControlBefore = ControlEnemy.Get(Vital::GetHealthAttribute());
+			UCataclysmSkillEffects::ApplyHit(User.Actor, ControlEnemy.Actor, PlainHitPercent, Skill->SkillTags);
+			Run.PlainHitLost = ControlBefore - ControlEnemy.Get(Vital::GetHealthAttribute());
+		}
+		return Run;
+	}
+
+	/** The tags of a movement skill in the Movement slot, which is what each of the four rows is restricted to. */
+	const TCHAR* const MovementRiderTags = TEXT("Item.Weapon.Wand, Element.Demonic, Slot.Movement");
+
+	/**
+	 * `movement_pulls_nearby_on_arrival` is read by a Movement skill where it arrived. A blink of 8 m with one enemy
+	 * 3 m beyond where it lands: with no row the enemy stays; with the flag it ends 1.5 m from the user.
+	 */
+	void ProbeMovementPullsNearby(FAutomationTestBase& Test)
+	{
+		const TArray<FVector> OneEnemy = {FVector(1100.0f, 0.0f, 0.0f)};
+		const FMovementRiderRun Plain = UseAMovementSkillAmong(TEXT("Mode=Blink; Range=8"), MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>&) {}, OneEnemy);
+		const FMovementRiderRun Carrying = UseAMovementSkillAmong(TEXT("Mode=Blink; Range=8"), MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>& Inputs)
+			{
+				CarryFlat(Inputs, UCataclysmMovementSkill::PullsNearbyOnArrivalStat, 1.0f);
+			}, OneEnemy);
+		if (!Test.TestTrue(TEXT("both users blinked"), Plain.bUsed && Carrying.bUsed))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("with no row the enemy stays 3 m from where the blink arrived"),
+					   static_cast<float>(FVector::Dist2D(Plain.EndedAt[0], Plain.ArrivedAt)), 300.0f, 1.0f);
+		Test.TestEqual(TEXT("movement_pulls_nearby_on_arrival is read: the enemy ends 1.5 m from the user"),
+					   static_cast<float>(FVector::Dist2D(Carrying.EndedAt[0], Carrying.ArrivedAt)), 150.0f, 1.0f);
+	}
+
+	/**
+	 * `movement_path_damage_percent` is read by a charge for what its path crossed. One enemy stands on the line of
+	 * an 8 m charge: a user carrying 75 takes more from it than a plain user's charge does.
+	 */
+	void ProbeMovementPathDamage(FAutomationTestBase& Test)
+	{
+		const TArray<FVector> OneEnemy = {FVector(300.0f, 0.0f, 0.0f)};
+		const TCHAR* Charge = TEXT("Mode=Charge; Range=8; Radius=1.5");
+		const FMovementRiderRun Plain = UseAMovementSkillAmong(Charge, MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>&) {}, OneEnemy);
+		const FMovementRiderRun Carrying = UseAMovementSkillAmong(Charge, MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>& Inputs)
+			{
+				CarryFlat(Inputs, UCataclysmMovementSkill::PathDamagePercentStat, 75.0f);
+			}, OneEnemy);
+		if (!Test.TestTrue(TEXT("both users charged"), Plain.bUsed && Carrying.bUsed)
+			|| !Test.TestTrue(TEXT("set-up: the plain charge's own blow hurt the enemy on its line"), Plain.Lost[0] > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("movement_path_damage_percent is read: the carrying user's charge takes more"),
+					  Carrying.Lost[0] > Plain.Lost[0] + 1.0f);
+	}
+
+	/**
+	 * `movement_random_direction` is read by a Movement skill that goes where the player pointed. With the roll
+	 * pinned at 90 degrees a plain user's blink still goes 8 m along +X and a carrying user's goes 8 m along +Y.
+	 */
+	void ProbeMovementRandomDirection(FAutomationTestBase& Test)
+	{
+		const FPinnedRoll TowardY(TEXT("Cataclysm.MovementDirectionRoll"), 90.0f);
+		const FMovementRiderRun Plain = UseAMovementSkillAmong(TEXT("Mode=Blink; Range=8"), MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>&) {}, TArray<FVector>());
+		const FMovementRiderRun Carrying = UseAMovementSkillAmong(TEXT("Mode=Blink; Range=8"), MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>& Inputs)
+			{
+				CarryFlat(Inputs, UCataclysmMovementSkill::RandomDirectionStat, 1.0f);
+			}, TArray<FVector>());
+		if (!Test.TestTrue(TEXT("both users blinked"), Plain.bUsed && Carrying.bUsed))
+		{
+			return;
+		}
+		Test.TestTrue(TEXT("with no row the blink goes where it was aimed"),
+					  Plain.ArrivedAt.Equals(FVector(800.0f, 0.0f, 0.0f), 1.0));
+		Test.TestTrue(TEXT("movement_random_direction is read: the blink goes the rolled way instead"),
+					  Carrying.ArrivedAt.Equals(FVector(0.0f, 800.0f, 0.0f), 1.0));
+	}
+
+	/**
+	 * `movement_explodes_at_both_ends` is read by a Movement skill where it began and where it arrived. A blink
+	 * that strikes nobody, with one enemy 2.8 m from where it began: untouched with no row, hurt with the flag.
+	 */
+	void ProbeMovementExplodesAtBothEnds(FAutomationTestBase& Test)
+	{
+		const TArray<FVector> OneEnemy = {FVector(0.0f, 280.0f, 0.0f)};
+		const FMovementRiderRun Plain = UseAMovementSkillAmong(TEXT("Mode=Blink; Range=8"), MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>&) {}, OneEnemy);
+		const FMovementRiderRun Carrying = UseAMovementSkillAmong(TEXT("Mode=Blink; Range=8"), MovementRiderTags,
+			[](TMap<FName, FCataclysmStatInputs>& Inputs)
+			{
+				CarryFlat(Inputs, UCataclysmMovementSkill::ExplodesAtBothEndsStat, 1.0f);
+			}, OneEnemy);
+		if (!Test.TestTrue(TEXT("both users blinked"), Plain.bUsed && Carrying.bUsed))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("with no row the enemy near where the blink began loses nothing"), Plain.Lost[0], 0.0f, 0.001f);
+		Test.TestTrue(TEXT("movement_explodes_at_both_ends is read: under the flag it is hurt"), Carrying.Lost[0] > 1.0f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -6977,6 +7185,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_applies_own_ailment"), &ProbeZoneAppliesOwnAilment},
 			{TEXT("zone_at_start_and_end_seconds"), &ProbeZoneAtStartAndEndSeconds},
 			{TEXT("zone_at_impact_seconds"), &ProbeZoneAtImpactSeconds},
+			{TEXT("movement_pulls_nearby_on_arrival"), &ProbeMovementPullsNearby},
+			{TEXT("movement_path_damage_percent"), &ProbeMovementPathDamage},
+			{TEXT("movement_random_direction"), &ProbeMovementRandomDirection},
+			{TEXT("movement_explodes_at_both_ends"), &ProbeMovementExplodesAtBothEnds},
 			{TEXT("zone_damages_its_owner"), &ProbeZoneDamagesItsOwner},
 			{TEXT("zone_applies_effects_to_owner"), &ProbeZoneAppliesEffectsToOwner},
 			{TEXT("zone_follows_owner_percent"), &ProbeZoneFollowsOwnerPercent},
@@ -8381,6 +8593,247 @@ bool FCataclysmLeechPayoutRateTest::RunTest(const FString&)
 {
 	using namespace CataclysmStatExemptionTest;
 	ProbeLeechPayoutRate(*this);
+	return true;
+}
+
+// FOUR THINGS A WORN ROW MAKES A MOVEMENT SKILL DO. Ruled 2026-10-07: "Your movement abilities pull all nearby
+// enemies to you on arrival", "Your movement ability deals 50%-100% of your weapon damage to all enemies along its
+// path", "Your movement abilities now move you in a random direction" and "Your movement abilities cause an explosion
+// at the starting and end locations". Each through a real Movement skill, against a user without the stat. In every
+// case the user begins at the origin facing +X and, with no cursor, the skill is aimed 8 m along +X.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMovementPullRowTest,
+	"Cataclysm.StatExemption.AMovementSkillPullsNearbyEnemiesToStandOneAndAHalfMetresFromItsUser",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMovementPullRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	// A BLINK OF 8 M THAT STRIKES NOBODY, so it arrives at (8 m, 0). Five enemies, placed from where it arrives:
+	//   0  3 m beyond it, at (11 m, 0)          pulled
+	//   1  4.5 m to its side, at (8 m, 4.5 m)   pulled
+	//   2  8 m to its other side, at (8 m, -8 m)  out of reach
+	//   3  3 m to that side, at (8 m, -3 m)     in reach and immune to displacement
+	//   4  1 m short of it, at (7 m, 0)         already nearer than 1.5 m
+	const TArray<FVector> Five = {FVector(1100.0f, 0.0f, 0.0f), FVector(800.0f, 450.0f, 0.0f),
+		FVector(800.0f, -800.0f, 0.0f), FVector(800.0f, -300.0f, 0.0f), FVector(700.0f, 0.0f, 0.0f)};
+	const TCHAR* Blink = TEXT("Mode=Blink; Range=8");
+	const FMovementRiderRun Plain = UseAMovementSkillAmong(Blink, MovementRiderTags,
+		[](TMap<FName, FCataclysmStatInputs>&) {}, Five, /*ImmuneToDisplacement=*/3);
+	const FMovementRiderRun Pulling = UseAMovementSkillAmong(Blink, MovementRiderTags,
+		[](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmMovementSkill::PullsNearbyOnArrivalStat, 1.0f);
+		}, Five, /*ImmuneToDisplacement=*/3);
+	if (!TestTrue(TEXT("set-up: both users blinked"), Plain.bUsed && Pulling.bUsed)
+		|| !TestTrue(TEXT("set-up: both arrived 8 m along +X"),
+					 Plain.ArrivedAt.Equals(FVector(800.0f, 0.0f, 0.0f), 1.0) && Pulling.ArrivedAt.Equals(Plain.ArrivedAt, 1.0))
+		|| !TestTrue(TEXT("set-up: the fourth enemy is immune to displacement in both"),
+					 Plain.bTheImmuneOneWasImmune && Pulling.bTheImmuneOneWasImmune))
+	{
+		return false;
+	}
+
+	// CONTROL: WITH NO ROW NOBODY MOVES, so every move below is the row's.
+	for (int32 Index = 0; Index < Five.Num(); ++Index)
+	{
+		TestTrue(FString::Printf(TEXT("control: with no row enemy %d stays where it stood"), Index),
+				 Plain.EndedAt[Index].Equals(Five[Index], 0.5));
+	}
+
+	TestEqual(TEXT("the enemy 3 m away ends 1.5 m from the user"),
+			  static_cast<float>(FVector::Dist2D(Pulling.EndedAt[0], Pulling.ArrivedAt)), 150.0f, 1.0f);
+	TestTrue(TEXT("on the line it was hauled along"), Pulling.EndedAt[0].Equals(FVector(950.0f, 0.0f, 0.0f), 1.0));
+	TestEqual(TEXT("the enemy 4.5 m away ends 1.5 m from the user"),
+			  static_cast<float>(FVector::Dist2D(Pulling.EndedAt[1], Pulling.ArrivedAt)), 150.0f, 1.0f);
+	TestTrue(TEXT("the enemy 8 m away does not move"), Pulling.EndedAt[2].Equals(Five[2], 0.5));
+	TestTrue(TEXT("the enemy immune to displacement does not move"), Pulling.EndedAt[3].Equals(Five[3], 0.5));
+	TestTrue(TEXT("the enemy already nearer than 1.5 m does not move"), Pulling.EndedAt[4].Equals(Five[4], 0.5));
+	for (int32 Index = 0; Index < Five.Num(); ++Index)
+	{
+		TestEqual(FString::Printf(TEXT("the pull takes no health from enemy %d"), Index), Pulling.Lost[Index], 0.0f, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargePathRowTest,
+	"Cataclysm.StatExemption.AChargeDealsTheRowsHitOnceToEachEnemyItsPathCrossed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChargePathRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	const auto Nothing = [](TMap<FName, FCataclysmStatInputs>&) {};
+	const auto Path75 = [](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmMovementSkill::PathDamagePercentStat, 75.0f);
+	};
+
+	// A CHARGE OF 8 M ALONG +X, 1.5 M TO EACH SIDE. Enemy 0 stands on the line at (3 m, 0); enemy 1 stands 1 m off
+	// it at (6 m, 1 m), inside the half-width; enemy 2 stands 4 m off it at (4 m, 4 m), beside the path.
+	const TArray<FVector> Three = {FVector(300.0f, 0.0f, 0.0f), FVector(600.0f, 100.0f, 0.0f), FVector(400.0f, 400.0f, 0.0f)};
+	const TCHAR* Charge = TEXT("Mode=Charge; Range=8; Radius=1.5");
+	const FMovementRiderRun Plain = UseAMovementSkillAmong(Charge, MovementRiderTags, Nothing, Three, INDEX_NONE, 75.0f);
+	const FMovementRiderRun Carrying = UseAMovementSkillAmong(Charge, MovementRiderTags, Path75, Three, INDEX_NONE, 75.0f);
+	if (!TestTrue(TEXT("set-up: both users charged"), Plain.bUsed && Carrying.bUsed)
+		|| !TestTrue(TEXT("set-up: a plain hit of 75 per cent takes something from the control enemy"), Carrying.PlainHitLost > 1.0f)
+		|| !TestTrue(TEXT("set-up: the plain charge's own blow hurt both enemies on its path"),
+					 Plain.Lost[0] > 1.0f && Plain.Lost[1] > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: the two users' plain hits are the same"), Plain.PlainHitLost, Carrying.PlainHitLost, 0.01f);
+	TestEqual(TEXT("control: with no row the enemy beside the path loses nothing"), Plain.Lost[2], 0.0f, 0.001f);
+
+	// WHAT THE ROW ADDS IS ONE PLAIN HIT OF 75 PER CENT, to each. Twice would be double this figure.
+	TestEqual(TEXT("the enemy on the line loses one plain hit of 75 per cent more than under a plain charge"),
+			  Carrying.Lost[0] - Plain.Lost[0], Carrying.PlainHitLost, 0.01f);
+	TestEqual(TEXT("and so does the enemy inside the half-width"),
+			  Carrying.Lost[1] - Plain.Lost[1], Carrying.PlainHitLost, 0.01f);
+	TestEqual(TEXT("the enemy beside the path loses nothing"), Carrying.Lost[2], 0.0f, 0.001f);
+
+	// A LEAP HAS NO PATH. The same enemies under a leap of 8 m that strikes nobody: the row adds nothing.
+	const FMovementRiderRun Leaping = UseAMovementSkillAmong(TEXT("Mode=Leap; Range=8"), MovementRiderTags, Path75, Three);
+	if (TestTrue(TEXT("the carrying user leapt"), Leaping.bUsed))
+	{
+		TestEqual(TEXT("an enemy under a leap's arc loses nothing to the row"), Leaping.Lost[0], 0.0f, 0.001f);
+	}
+
+	// A WALKED CHARGE, DRIVEN BY HAND IN TWO STEPS OF 4 M. One enemy at (4 m, 1 m) lies on the line of both steps.
+	// It is struck by the first and remembered, so the row's hit reaches it once.
+	const TArray<FVector> OneOnBothSteps = {FVector(400.0f, 100.0f, 0.0f)};
+	const TArray<FVector> TwoSteps = {FVector(400.0f, 0.0f, 0.0f), FVector(800.0f, 0.0f, 0.0f)};
+	const TCHAR* Walked = TEXT("Mode=Charge; Range=8; Radius=1.5; Duration=1");
+	const FMovementRiderRun PlainWalk = UseAMovementSkillAmong(Walked, MovementRiderTags, Nothing, OneOnBothSteps, INDEX_NONE, 75.0f, TwoSteps);
+	const FMovementRiderRun CarryingWalk = UseAMovementSkillAmong(Walked, MovementRiderTags, Path75, OneOnBothSteps, INDEX_NONE, 75.0f, TwoSteps);
+	if (TestTrue(TEXT("both users began the walked charge"), PlainWalk.bUsed && CarryingWalk.bUsed)
+		&& TestTrue(TEXT("set-up: the plain walk's own blow hurt the enemy"), PlainWalk.Lost[0] > 1.0f))
+	{
+		TestEqual(TEXT("over two steps the row adds one plain hit of 75 per cent, not two"),
+				  CarryingWalk.Lost[0] - PlainWalk.Lost[0], CarryingWalk.PlainHitLost, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomDirectionRowTest,
+	"Cataclysm.StatExemption.ARowSendsAnAimedMovementSkillInARolledDirectionAndLeavesATargetedOneAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRandomDirectionRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	const auto Nothing = [](TMap<FName, FCataclysmStatInputs>&) {};
+	const auto Random = [](TMap<FName, FCataclysmStatInputs>& Inputs)
+	{
+		CarryFlat(Inputs, UCataclysmMovementSkill::RandomDirectionStat, 1.0f);
+	};
+	const TArray<FVector> Nobody;
+	const TCHAR* Blink = TEXT("Mode=Blink; Range=8");
+	// For the targeted skill: one enemy 5 m away behind the user, at (-3 m, -4 m).
+	const TArray<FVector> OneBehind = {FVector(-300.0f, -400.0f, 0.0f)};
+	const TCHAR* Hauled = TEXT("Mode=Charge; Range=12; Radius=1.5; Requires=Target");
+	const TCHAR* Walked = TEXT("Mode=Charge; Range=8; Radius=1.5; Duration=1");
+
+	FMovementRiderRun Aimed;
+	FMovementRiderRun TowardY;
+	FMovementRiderRun TargetedPlain;
+	FMovementRiderRun TargetedCarrying;
+	FMovementRiderRun WalkPlain;
+	FMovementRiderRun WalkCarrying;
+	{
+		// THE ROLL IS PINNED AT 90 DEGREES, which is +Y. The control wears no row under the same pin.
+		const FPinnedRoll Ninety(TEXT("Cataclysm.MovementDirectionRoll"), 90.0f);
+		Aimed = UseAMovementSkillAmong(Blink, MovementRiderTags, Nothing, Nobody);
+		TowardY = UseAMovementSkillAmong(Blink, MovementRiderTags, Random, Nobody);
+		TargetedPlain = UseAMovementSkillAmong(Hauled, MovementRiderTags, Nothing, OneBehind);
+		TargetedCarrying = UseAMovementSkillAmong(Hauled, MovementRiderTags, Random, OneBehind);
+		WalkPlain = UseAMovementSkillAmong(Walked, MovementRiderTags, Nothing, Nobody);
+		WalkCarrying = UseAMovementSkillAmong(Walked, MovementRiderTags, Random, Nobody);
+	}
+	FMovementRiderRun TowardMinusX;
+	{
+		// AND AT 180 DEGREES, which is -X.
+		const FPinnedRoll OneEighty(TEXT("Cataclysm.MovementDirectionRoll"), 180.0f);
+		TowardMinusX = UseAMovementSkillAmong(Blink, MovementRiderTags, Random, Nobody);
+	}
+	if (!TestTrue(TEXT("set-up: every user's skill ran"),
+				  Aimed.bUsed && TowardY.bUsed && TowardMinusX.bUsed && TargetedPlain.bUsed && TargetedCarrying.bUsed
+					  && WalkPlain.bUsed && WalkCarrying.bUsed))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("control: with no row the blink ends where it was aimed, 8 m along +X"),
+			 Aimed.ArrivedAt.Equals(FVector(800.0f, 0.0f, 0.0f), 1.0));
+	TestTrue(TEXT("with the roll at 90 the carrying user ends 8 m along +Y"),
+			 TowardY.ArrivedAt.Equals(FVector(0.0f, 800.0f, 0.0f), 1.0));
+	TestTrue(TEXT("with the roll at 180 the carrying user ends 8 m along -X"),
+			 TowardMinusX.ArrivedAt.Equals(FVector(-800.0f, 0.0f, 0.0f), 1.0));
+	TestTrue(TEXT("the two rolls end in two different places"), FVector::Dist2D(TowardY.ArrivedAt, TowardMinusX.ArrivedAt) > 400.0);
+	TestEqual(TEXT("the first is as far from the start as the aimed blink"),
+			  static_cast<float>(TowardY.ArrivedAt.Size2D()), static_cast<float>(Aimed.ArrivedAt.Size2D()), 1.0f);
+	TestEqual(TEXT("and so is the second"),
+			  static_cast<float>(TowardMinusX.ArrivedAt.Size2D()), static_cast<float>(Aimed.ArrivedAt.Size2D()), 1.0f);
+
+	// A SKILL THAT TRAVELS TO A CREATURE IS UNCHANGED: it arrives at the enemy with the row as without.
+	TestTrue(TEXT("control: with no row the targeted skill arrives at its enemy"),
+			 FVector::Dist2D(TargetedPlain.ArrivedAt, OneBehind[0]) < 1.0);
+	TestTrue(TEXT("and with the row and the roll at 90 it arrives at the same enemy"),
+			 FVector::Dist2D(TargetedCarrying.ArrivedAt, OneBehind[0]) < 1.0);
+
+	// AND A WALKED CHARGE TAKES THE ROLLED DIRECTION WHEN IT BEGINS.
+	TestTrue(TEXT("control: with no row a walked charge walks the way it was aimed, +X"),
+			 WalkPlain.WalkingToward.Equals(FVector(1.0f, 0.0f, 0.0f), 0.001));
+	TestTrue(TEXT("with the row and the roll at 90 it walks toward +Y"),
+			 WalkCarrying.WalkingToward.Equals(FVector(0.0f, 1.0f, 0.0f), 0.001));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEndExplosionsRowTest,
+	"Cataclysm.StatExemption.AMovementSkillExplodesWhereItBeganAndWhereItArrivedForATenthOfItsHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEndExplosionsRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	// A LEAP OF 8 M WHOSE OWN BLOW REACHES 2 M AROUND WHERE IT LANDS, at (8 m, 0). Four enemies:
+	//   0  2.8 m from where it began, at (0, 2.8 m)        outside the leap's own blow, inside the first explosion
+	//   1  2.8 m from where it lands, at (8 m, 2.8 m)      outside the leap's own blow, inside the second explosion
+	//   2  5 m from both, at (4 m, 3 m)                    outside everything
+	//   3  2 m from where it lands, at (8 m, -2 m)         THE CONTROL ENEMY: it takes the leap's own blow
+	const TArray<FVector> Four = {FVector(0.0f, 280.0f, 0.0f), FVector(800.0f, 280.0f, 0.0f),
+		FVector(400.0f, 300.0f, 0.0f), FVector(800.0f, -200.0f, 0.0f)};
+	const TCHAR* Leap = TEXT("Mode=Leap; Range=8; Radius=2");
+	const FMovementRiderRun Plain = UseAMovementSkillAmong(Leap, MovementRiderTags,
+		[](TMap<FName, FCataclysmStatInputs>&) {}, Four);
+	const FMovementRiderRun Exploding = UseAMovementSkillAmong(Leap, MovementRiderTags,
+		[](TMap<FName, FCataclysmStatInputs>& Inputs)
+		{
+			CarryFlat(Inputs, UCataclysmMovementSkill::ExplodesAtBothEndsStat, 1.0f);
+		}, Four);
+	if (!TestTrue(TEXT("set-up: both users leapt"), Plain.bUsed && Exploding.bUsed)
+		|| !TestTrue(TEXT("set-up: the plain leap's own blow hurt the control enemy"), Plain.Lost[3] > 10.0f))
+	{
+		return false;
+	}
+	const float TheSkillsHit = Plain.Lost[3];
+
+	// CONTROL: WITH NO ROW THE OTHER THREE LOSE NOTHING, so every loss below is the row's.
+	TestEqual(TEXT("control: with no row the enemy near the start loses nothing"), Plain.Lost[0], 0.0f, 0.001f);
+	TestEqual(TEXT("control: nor the enemy near the end"), Plain.Lost[1], 0.0f, 0.001f);
+	TestEqual(TEXT("control: nor the enemy 5 m from both"), Plain.Lost[2], 0.0f, 0.001f);
+
+	TestEqual(TEXT("the enemy within 3 m of the start loses a tenth of the skill's hit"),
+			  Exploding.Lost[0], TheSkillsHit / 10.0f, 0.01f);
+	TestEqual(TEXT("the enemy within 3 m of the end loses a tenth of the skill's hit"),
+			  Exploding.Lost[1], TheSkillsHit / 10.0f, 0.01f);
+	TestEqual(TEXT("the enemy 5 m from both loses nothing"), Exploding.Lost[2], 0.0f, 0.001f);
+	TestEqual(TEXT("the enemy the leap struck loses that hit and a tenth of it"),
+			  Exploding.Lost[3], TheSkillsHit * 1.1f, 0.01f);
 	return true;
 }
 
