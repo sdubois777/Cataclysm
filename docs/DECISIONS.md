@@ -2,6 +2,604 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — A search finds where a Halls floor can be divided into three sections, or two, by closing short lines of cells. Engine only; nothing a player sees changes and no row changes state
+
+**Built and run.** The search in this entry is the third version. The first two were built and run by the
+registering session on 2026-10-08. The third, the fewest-lines search, was measured by the registering session as
+a temporary test, written into the generator by the writing session, then built and run by the registering
+session: this layer's own groups in a short turn at df008d57, and the whole suite in the window of the stack at
+fa2ebece. The Run section at the end of this entry has every printed figure. The writing session ran nothing but
+the Python suite, the lint and the conflict check. The coordinating session ruled and ran nothing.
+
+**Said first: on the slowest of 200 measured Halls floors the search took 49.544 milliseconds in one run and
+58.387 in another; it is not under 50 on every run.** The first figure is from the short turn: a Development
+build, inside a test, on an otherwise idle machine; 9 of the 200 floors reached the limit of 3,000 walks. In the
+first window's run of the whole suite the same test printed 51.231 milliseconds, and in a rerun of this layer's
+group alone at fa2ebece it printed 58.387. The same floors and the same code gave all three. No test asserts a
+time. The ruling that follows was made on the first two figures; the third was printed after it. The
+figure stands and the walk limit is not lowered, a labelled judgement by the coordinating session under the
+owner's delegation, 2026-10-08, with its reasons: the search runs once when a floor is built and not during play;
+the 50 millisecond line was the coordinating session's judged number and the owner has parked performance to move
+forward; lowering the limit would cost floors their sections to buy headroom nobody has asked for. For the
+owner's play-check it is a cost when a floor loads.
+
+**Said first, for the owner: the pass line changed, and the coordinating session changed it.** A labelled judgement
+by the coordinating session under the owner's delegation, 2026-10-08, in its words. The requirement is that the
+rows do something on every Halls floor: sections, three or two, on all 20, with the slowest floor under 50
+milliseconds. "Three sections on at least 18 of 20" is withdrawn as a requirement. It was the coordinating
+session's number, set before anything was measured, on the expectation that three would be easy. The sentence says
+"sections", and two sections with one barrier is that. Three stays preferred wherever the search finds it. "This is
+the coordinator lowering its own number with its reason stated, not the test being lowered to pass".
+
+The four runs on the 20 Halls floors, by the registering session, each reported to the coordinating session, which
+ran nothing and ruled on each:
+
+| Run | Three sections | Three or two | Slowest floor | |
+|---|---|---|---|---|
+| 1. The search first ruled, the 10 lines nearest each share | 13 | 17 | 4.837 ms | failed |
+| 2. That search under sixteen settings | best 16 | 18 | | no setting passed |
+| 3. Fewest lines, with a band of shares for each boundary | 10 | 20 | 20.781 ms | |
+| 4. Fewest lines, one search between the nearest and the farthest tenth, 3,000 walks | 17 | 20 | 35.219 ms | |
+
+Run 4 is the search this entry now describes. On it two sections were found on dungeon seeds 1074 floor 10, 1185
+floor 1 and 1370 floor 10, and one floor reached the limit of 3,000 walks.
+
+**Said first: no test reaches the rule that three areas lie in a row, and that is a search that found nothing and
+not a proof.** The rule's line stays in the search as a guard that nothing reaches; ruled so on 2026-10-08. What
+was searched for a plan on which a pocket pairing is formed: a plan made by hand with a room off to one side,
+under the second version of the search with its skip rule off (8 pocket pairings formed) and on (none), and under
+the fewest-lines search (none); 3,000 random small plans in a Python model of the second version (none); and about
+2,700 random small plans in a Python model of the fewest-lines search (none). The models are not the C++.
+
+**Said first: the rule that each boundary alone parts the entrance from the exit is now held twice, so no single
+line carries it.** The search always puts the exit in the far part and the entrance is always in the near part,
+so every separation it finds parts them. The acceptance of a boundary then asks the same thing again. Breaking
+either line alone is not expected to fail any test; breaking both is. See "Not covered by a test".
+
+**Said first: a floor's far corners can stop the search finding anything.** The far part is the farthest tenth of
+the floor by walking distance, wherever those cells are. If some of them are in a dead-end corner on the
+entrance's side of every line, no lines part the near part from them and the search finds no separation at all.
+One of the first version's hand-made plans did exactly this and was redrawn. Whether it is what happened on the
+three measured floors with two sections is not known to the writing session. **The share of floors with no
+sections is not yet known.** It is measured by the log of the test on 200 further plans, on that test's first run.
+What follows from the count is ruling 16.
+
+**Said first: this layer changes nothing a player can see.** It adds a search, two helpers and two arguments.
+Nothing calls the search or the helpers outside tests, and every existing caller of the two changed functions
+passes nothing new.
+
+**Said first: a floor with sections can differ from the same seed without them in every group after the first
+barred cell, because a barred site draws nothing.** The populator's new set keeps creatures off the cells a barrier
+will stand on. A candidate site that is in the set is skipped before it draws a group kind or a Succubus roll, so
+every draw after it is a different draw. Nothing passes the set yet, so no floor differs today.
+
+**Said first: the search is told which cells may close during play, and takes only an answer that holds both
+ways.** Ruled after the first version of this layer was reported. The search still reads the plan with those cells
+open. An answer is taken only if every rule also holds with them closed. One plan made by hand shows a division
+refused for it and, by the Python model, another three-section division taken in its place. The second version
+passed the shortcut test on a generated plan, gate open and gate closed, in the registering session's run; under
+the fewest-lines search every test of this layer passed in the short turn and in the window; see Run.
+
+**Said first: "the same as today" for the populator is not pinned against recorded figures.** That would need a
+run. What holds today's behaviour is the eleven existing population tests passing unchanged, plus one new test
+that compares the old call with the new call given an empty set, placement by placement.
+
+### Said first: where the code did not match what the writing session was told
+
+1. **The two rows are dungeon modifier rows.** Their sentences are in `game/Data/DungeonModifiers.csv`, not in
+   the enchantment files the common rules name. Nothing here reads either row.
+2. **The search needed no stat, condition or scale.** So nothing was added to the generator in `tools/`, no
+   Python inventory changed, and there was no row to pass through a dry run.
+3. **No Python check pins anything this layer touches.** Searched in `tools/` and `tools/tests/` for
+   `CataclysmFloorCanBlock`, `Populate(`, `CloseTheGate`, `OpenTheGate`, `FindShortcuts` and the two test files'
+   names. One file names `CataclysmFloorGeneratorTests.cpp` in a comment and pins nothing in it.
+
+### What was read before writing
+
+Line numbers are of the files as this change leaves them.
+
+- `game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.h`: `FCataclysmFloorShortcut`, the shortcut constants
+  and `FindShortcuts`, `FindShortcutBetween`, `CarveShortcut`. The new struct is at line 84, the new constants
+  from line 341 and `FindSections` at line 410.
+- `game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.cpp`: `GenKeepLargestRegion`, `GenConnectionCells`,
+  `GenCheckShortcut` (342), `FindShortcutBetween` (1433), `FindShortcuts` (1486), `CarveShortcut` (1563) and
+  `Generate`. The new helpers are at lines 716 to 1357 and `FindSections` at 1571.
+- The registering session's temporary test of 2026-10-08, kept in the writing session's scratch folder and never
+  committed, whole. Its two functions `Explore` and `FindByFewestLines` are the search that was measured.
+- `game/Source/Cataclysm/Dungeon/CataclysmFloorPlan.h` and `CataclysmFloorPlan.cpp`, whole.
+  `CataclysmFloorCanBlock` is at line 51 of the `.cpp` and `CataclysmFloorDistancesFrom` at 87.
+- `game/Source/Cataclysm/Dungeon/CataclysmFloorPopulation.cpp`, whole: `CataclysmCellsNear` (128) and `Populate`
+  (195 to 505). `CataclysmFloorPopulation.h` from line 150.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `PlanTheGatedShortcuts`, `CloseTheGate` (6035),
+  `OpenTheGate` (6086), `PlaceTheShortcutGates`, `OpenTheShortcutOf`. The header's `FGatedShortcut` and the
+  declarations beside it, which are in a `private:` section.
+- `game/Source/Cataclysm/Tests/CataclysmFloorGeneratorTests.cpp`, its shortcut tests and its last lines.
+  `game/Source/Cataclysm/Tests/CataclysmFloorPopulationTests.cpp`, its helpers and its last two tests.
+  `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, the hand-made plans of
+  `FCataclysmObstaclePlacementTest` (44384).
+
+**Which floors are Halls, read from the code on 2026-10-08 and not measured.** The game mode's `Layout` is Halls
+by default (`CataclysmDungeonGameMode.h` line 222). `ChooseLayout` (`CataclysmDungeonGameMode.cpp` lines 1381 to
+1392) answers that `Layout` unless the console variable `Cataclysm.DungeonLayout` holds a layout's number.
+`FCataclysmDungeonFloorRules::LayoutFor` (`CataclysmFloorBrief.cpp` lines 56 to 71) answers Arena for a Horde
+dungeon and the dungeon's own layout for every other. So sections on Halls reach every dungeon a player meets
+today except Horde ones. That Caverns is reached only by a console setting is true of the C++ only; no Blueprint
+was checked. The writing session checked the three citations.
+
+### What it is for
+
+Two rows of `game/Data/DungeonModifiers.csv`. Neither row changes state here; neither is read by this layer.
+
+- `Celestial_Lightforged_Walls`: "Radiant barriers seal sections until all enemies in the area are slain, forcing
+  full clears."
+- `Chaos_Fragmented_Reality`: "Certain sections of the dungeon are "Fragmented." When you enter one, your stats
+  are randomly scrambled. For example, your power might be increased but your defenses are halved, or your health
+  is doubled but you can no longer use skills."
+
+A later layer will divide a Halls floor into three sections by closing short lines of cells, and open a barrier
+when its section is cleared. This layer gives that layer four pieces: the search, a pair of helpers that close and
+open a list of cells with pillars, an argument that lets the stranding check look past a closed barrier, and an
+argument that keeps creatures off cells.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08
+
+1. **A line.** "A LINE is 2 to 6 walkable cells in a straight row (along X or along Y) with a cell that is not
+   walkable (rock or off the grid) at each end. None of its cells is the entrance or the exit. A line is LEFT OUT
+   when the same line lies on both its sides: that is, shifting it one cell sideways in each direction gives a row
+   of the same length that is also walkable with a not-walkable cell at each end." A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-08.
+2. **A line's share. WITHDRAWN, see ruling 11.** "The fraction of the plan's walkable cells whose walking distance from the entrance is less
+   than the smallest walking distance of the line's own cells." A labelled judgement by the coordinating session
+   under the owner's delegation, 2026-10-08.
+3. **An offer and a boundary. The offer is WITHDRAWN, see ruling 11; the boundary stands.** "An OFFER is one, two or three lines closed together, of at most 12 distinct cells
+   in all. It is a BOUNDARY when closing its cells leaves exactly two connected areas of walkable cells, each
+   holding at least a tenth of the plan's walkable cells (rounded up, counted on the open plan), with the entrance
+   in one and the exit in the other." A labelled judgement by the coordinating session under the owner's
+   delegation, 2026-10-08.
+4. **The order and the bound. The 10 lines and the 175 offers are WITHDRAWN, see ruling 11; the rest stands.** "For the wanted share one third: take the 10 lines whose share is nearest (ties by
+   the lower first cell, comparing Y then X); offer each alone, then each two, then each three of them, skipping
+   any offer of more than 12 cells: at most 10 + 45 + 120 = 175 offers. Keep the 8 boundaries whose entrance-side
+   size is nearest a third of the walkable cells. Do the same for two thirds. Then try each of the at most 64
+   pairings of a kept one-third boundary with a kept two-thirds boundary: it is a DIVISION when closing both leaves
+   exactly three areas, each a tenth or more, the entrance and the exit in different areas, and each of the two
+   boundaries alone still parts the entrance from the exit. Take the division whose smallest area is largest; on a
+   tie the fewer cells closed; then the lower first cell. If there is none, make the same 175 offers at one half
+   and take the boundary whose smaller side is largest (same tie order): that is the TWO-SECTION answer, one
+   boundary. If there is none, there are no sections." A labelled judgement by the coordinating session under the
+   owner's delegation, 2026-10-08.
+5. **Section numbers.** "0 is the entrance's, the last is the exit's. Boundary 0 lies between sections 0 and 1,
+   boundary 1 between sections 1 and 2." A labelled judgement by the coordinating session under the owner's
+   delegation, 2026-10-08.
+6. **Halls only, and nothing drawn at random.** The search takes only the plan. On a plan whose layout is not
+   Halls it returns no sections at once. A labelled judgement by the coordinating session under the owner's
+   delegation, 2026-10-08.
+7. **Cells that may close during play.** `FindSections` takes one more argument, the cells that may be closed
+   during play, which are a shortcut gate's cells. A division, and a two-section boundary, is accepted only if
+   every rule holds with those cells open and with them closed. Lines, shares, offers and boundaries are still
+   found on the plan as given. The added check is made where a pairing is accepted as a division and where a
+   boundary is accepted as the two-section answer: the same count of areas, each a tenth or more with the tenth
+   still counted on the plan as given, the entrance and the exit in different areas, and the same row order.
+   Checking the two extremes is enough for every mix of open and shut gates: "sections stay whole because they are
+   whole with every gate shut, and stay apart because they are apart with every gate open". With an empty list
+   nothing changes and no extra labelling is done. The count of offers does not change. A labelled judgement by
+   the coordinating session under the owner's delegation, 2026-10-08.
+8. **Three areas in a row, never a pocket. This corrects the coordinating session's own wording in ruling 4.** A
+   pairing is accepted only when the three areas lie in a row. A third area off to one side, which both
+   boundaries seal, is rejected. Ruling 4 as first worded did not exclude it. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-08.
+9. **No line is closed that parts nothing. The rule stands; this way of keeping it left with the offers, see ruling 11.** An offer of two or three lines is skipped when one of its lines, or
+   two of them, is already a boundary by itself. "Already a boundary" means an earlier offer of exactly those
+   lines, among the same 10 lines for the same wanted share, was accepted as a boundary. Singles are offered
+   first, then pairs, then triples. A skipped offer is not counted as an offer. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-08.
+10. **The populator's cells are not closed in the plan.** The populator places only on cells reachable from the
+   entrance and its wanted count comes from the plan's walkable cells, and both stay as they are. A labelled
+   judgement by the coordinating session under the owner's delegation, 2026-10-08.
+11. **The ruling on "the 10 lines nearest a share, 8 kept, 175 offers" is withdrawn and replaced by the
+   fewest-lines search.** The reason is measured: on every floor that fell short, the lines of a good division
+   were not among the 10 offered, and no setting of 10, 14, 18 or 24 lines, 8 or 16 kept, 12 or 16 cells passed.
+   The replacement: lines as before. The near part is every walkable cell with fewer than a tenth of the floor's
+   walkable cells nearer the entrance than it, by walking distance; the far part is every walkable cell with nine
+   tenths or more nearer, and the exit. A line may be closed only if none of its cells is in either part. One
+   search for the whole floor: walk from the near part to the far part with the chosen lines closed. No walk: the
+   chosen lines are a separation. A walk: every separation must close one of the closable lines that walk crosses,
+   so each is tried in turn, to three lines, never more than 12 distinct cells, each set of lines once, 3,000
+   walks at most. Only separations that hold no smaller separation are kept. Each becomes a boundary if closing
+   it leaves exactly two areas, each a tenth or more, the entrance and the exit apart. From that one collection:
+   the 8 whose entrance side is nearest one third, the 8 nearest two thirds, the at most 64 pairings, three areas
+   in a row, the closed-gate check, the best by the largest smallest area, then the fewer cells closed, then the
+   lower lowest cell. With no division: the two-section answer from the same collection, the boundary whose
+   smaller side is largest, with the same ties and the closed-gate check. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-08.
+12. **The pass line.** As written under "said first, for the owner" above. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-08.
+13. **The row rule's line stays as an unproven guard.** No guard proof is asked of it and it is not counted among
+   the layer's three. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+14. **The closed-gate check asks both forms**, the same section numbers and each boundary alone, as it was built.
+   Accepted. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+15. **The guard proof for "each boundary alone parts the entrance from the exit" is one proof with two edits in
+   the one file**, because the search holds that rule in two places and one edit alone changes nothing. A labelled
+   judgement by the coordinating session under the owner's delegation, 2026-10-08.
+16. **What follows from the count on 200 further plans.** If no sections occurs on more than one floor in twenty,
+   how the far part is chosen will be changed before layer 2. If it is at or under that, it is stated with its
+   measured share on the owner's play-check list. A labelled judgement by the coordinating session under the
+   owner's delegation, 2026-10-08.
+
+**The time, measured.** The arithmetic this entry first carried, about 70 microseconds an offer, was about nine
+times too high and is withdrawn. Measured by the registering session on 2026-10-08: the first search took 4.837
+milliseconds on its slowest floor. The fewest-lines search took 35.219 milliseconds on its slowest floor, which is
+the floor that reached the limit of 3,000 walks: about 12 microseconds a walk. That time is from a Development
+build, inside a test's code. The same search written into the generator has not been timed. The check with the
+may-close cells closed adds up to three labellings of the floor for each pair that would otherwise be taken; it
+makes no walk.
+
+**What was measured that day, by a temporary test that was never committed.** On the 20 Halls plans of seeds
+`1000 + Seed * 37` for Seed 1 to 10, floors 1 and 10: with lines of exactly the corridor's width and boundaries of
+one line, three sections existed on 6 of 20. With boundaries of up to two lines, 14 of 20. With lines 2 to 6 wide
+and boundaries of up to three lines, 20 of 20, and two sections on 20 of 20. That measurement tried far more
+offers than the first search did and had no 12-cell limit. The writing session did not make it and did not repeat it.
+
+### How it is built
+
+**The search, `FCataclysmFloorGenerator::FindSections`.** In the order the code works:
+
+1. A plan that is not Halls, or is not built, has no sections.
+2. Every line is found, cell by cell in index order, along X before along Y from one cell. A line starts at a
+   walkable cell whose neighbour before it is not walkable, and runs to the next cell that is not walkable. It is
+   a line when it is 2 to 6 cells, holds neither the entrance nor the exit, and is not left out. It is left out
+   when the row one cell to each side of it is the same: the same length, all walkable, with a cell that is not
+   walkable at each end. Lines are numbered in the order met. Each cell remembers the first line met that holds it
+   and the second.
+3. One search from the entrance gives every cell's walking distance, and from it how many walkable cells are
+   nearer than each distance. A cell is in the near part when fewer than a tenth of the walkable cells are nearer
+   than it. It is in the far part when nine tenths or more are nearer, and the exit is in the far part whatever
+   its distance. A line with a cell in either part may not be closed.
+4. The walk. With a set of lines closed, a breadth-first walk starts from every near cell at once, in index order,
+   stepping right, left, down, up, and stops at the first far cell it takes from its queue. If it reaches none and
+   lines are closed, those lines are a separation. If it reaches one and fewer than three lines are closed, the
+   walk is followed back from that far cell to where it started, and the lines it crosses that may be closed are
+   listed, a cell's first line before its second. Each in turn is added to the closed lines and the walk is made
+   again, unless the lines together hold more than 12 distinct cells or that set of lines was walked with before.
+   The search starts with no line closed and stops making walks at 3,000.
+5. The separations are sorted by how many lines they hold. One that holds every line of a smaller one already
+   taken is dropped. So no line is closed that parts nothing.
+6. Each one left is closed on a working copy of the plan, the areas counted, and the cells opened again. It is a
+   boundary when there are exactly two areas, each a tenth of the walkable cells or more, with the entrance in one
+   and the exit in the other. A boundary is dropped when one already taken has the same entrance side, the same
+   lowest cell and as many cells. This is the one collection.
+7. A copy of the collection is sorted by how far the entrance's side is from a third of the walkable cells, then
+   by the fewer cells, then by the lower lowest cell, and its first 8 kept. Another copy likewise for two thirds.
+8. Each of the first 8 is tried with each of the second 8, the one-third boundaries outermost. Both are closed and
+   the areas counted. The pair is a division when there are exactly three areas, each a tenth or more, the
+   entrance and the exit in different areas, and the three areas lie in a row (ruling 8): one boundary alone
+   leaves the third area on the exit's side, and the other alone leaves it on the entrance's side. The division
+   kept is the one whose smallest area is largest; then the one closing fewer cells; then the one whose lowest
+   cell is lower. A pair that would be kept is asked one thing more when cells that may close were passed
+   (ruling 7), and is passed over if it fails.
+9. With a division: its two boundaries are the answer, the one next to the entrance's section first. Every cell of
+   the entrance's area is numbered 0, the exit's 2 and the third area's 1.
+10. With none: of the whole collection, the boundary whose smaller side is largest is the answer; then the one
+   closing fewer cells; then the one whose lowest cell is lower. It too is passed over if it fails with the
+   may-close cells closed. The entrance's side is numbered 0 and the exit's 1.
+11. With none of those: no sections. `Boundaries` and `Section` are both empty.
+
+The answer also says how many walks were made and whether the search stopped at 3,000, in `Walks` and
+`bReachedTheWalkLimit`, for the test's log.
+
+**With the may-close cells closed**, the question asked of an answer is, in order: with those cells and every
+boundary closed, are there as many areas as sections; does each hold a tenth or more; are the entrance and the
+exit in different areas; is every cell that is still walkable in the section it was in. Then, for three sections,
+with those cells and each boundary alone closed: does the entrance reach exactly the sections before that
+boundary. A may-close cell that is rock in the plan is left out. With no walkable may-close cell nothing is asked.
+
+**The answer also carries each boundary's lines**, `BoundaryLines`, the same cells grouped by line.
+
+Each boundary alone parts the entrance from the exit for two reasons: the search parts the near part, which
+holds the entrance, from the far part, which holds the exit (step 3); and the acceptance of a boundary asks it
+again (step 6). A tenth is worked out in whole numbers: the walkable cells plus 9, divided by 10, so 111 cells
+give 12. The near and far parts use the same one-in-ten, also in whole numbers.
+
+**The port must reproduce the temporary test's order,** a labelled judgement by the coordinating session under the
+owner's delegation, 2026-10-08: the counts depend on the order cells are visited and lines are tried, so the
+first run of this code is compared with the measured run floor by floor and not only in its totals.
+
+**Where the code written here departs from the code that was measured.** The measured functions were ported with
+their order kept: the order lines are numbered, the order the walk starts and steps, the walk back through the
+parents, a cell's first line before its second, the test for a set of lines already walked with, the two sorts
+with the same comparisons, the duplicate test and the pairing loop. The departures, none of which the writing
+session expects to change an answer, and none of which has been run:
+
+- Areas are labelled by this file's own flood fill, not by one distance search for each area. Both number areas
+  in the order their first cell is met, row by row.
+- The near and far parts are worked out as "times 10 against the walkable cells" and "times 10 against 9 times
+  the walkable cells", where the measured code multiplied by 1,000 against 100 and 900. The same comparison.
+- The plan is closed and opened again on one working copy, where the measured code copied the plan each time.
+- The closed-gate check is asked of a pair that would be taken and of the two-section boundary. The measured code
+  had no such check. With no may-close cells it is not asked.
+- A plan that is not Halls or not built is answered at once. The measured code was run on every layout.
+- The two sorts are `TArray::Sort`, which is not stable, with exactly the measured comparisons: separations by
+  their number of lines alone, boundaries by nearness, cells and lowest cell. Neither is given a last
+  tie-breaker, because one would change which of two like separations or boundaries comes first, and the measured
+  figures came from this order. The sort gives the same order for the same input, so the same plan still gives
+  the same answer.
+
+**The gate helpers.** `CloseTheGate` kept its check for a world and a built floor, its asking with
+`CataclysmFloorCanBlock`, and its `bOpen` flag. Its per-cell part is now `BlockCellsWithPillars`, which takes the
+cells, the row key and the caller's array of pillars. `OpenTheGate` kept its flag and calls
+`UnblockCellsAndDestroyPillars`. Both helpers are declared beside `OpenTheGate`, in the same `private:` section.
+The lines moved are the same lines with `One.Shortcut.Gate`, `One.RowKey` and `One.GateActors` replaced by the
+arguments. Nothing else calls the helpers.
+
+**The stranding check.** `CataclysmFloorCanBlock` takes a last argument, `TreatedAsOpen`, empty by default. Those
+cells are carved on the function's copy of the plan before the obstacle's cells are closed on it. The refusals
+that come first still read the plan as it is.
+
+**The populator.** `FCataclysmFloorPopulator::Populate` takes a last argument, `NoCreatureOn`, an empty set by
+default. In two places:
+
+- After the boss is placed and before anything is drawn, each cell of the set is added to `Occupied`, the set of
+  cells that already hold a creature. `CataclysmCellsNear` leaves those cells out, so no member of a group and no
+  Succubus is placed on one.
+- In the loop over candidate sites, a site that is in the set is skipped before anything is claimed or drawn.
+
+The plan is not changed, so the count wanted and every walking distance are what they were. The candidates are
+shuffled before the set is read, so the shuffle is the same with the set and without it. With an empty set neither
+place does anything. **A set that is not empty does change later draws.** A skipped site draws no group kind and
+no Succubus roll, and a group beside a barred cell may be smaller, so the floor can differ in every group after
+the first one that would have used a barred cell. The boss stands on the exit whatever the set holds.
+
+### For the owner's play-check
+
+A player sees nothing from this layer. When the later layer builds barriers from it, these numbers decide where
+they stand. Each is judged and none has been played.
+
+| Number | What it does | The reading not taken |
+|---|---|---|
+| 2 | The fewest cells in a line that may be closed | 1, which no Halls floor has: the narrowest connection is 2 cells |
+| 6 | The most cells in a line that may be closed | Exactly the corridor's width, 2 to 4. Measured: three sections on 6 of 20 plans with one line, 14 of 20 with two |
+| 3 | The most lines closed together as one boundary | 1 or 2 lines. Measured on those plans: 6 of 20 and 14 of 20 |
+| 12 | The most cells one boundary closes | No limit, which is what the measurement had |
+| 8 | How many boundaries are kept for each wanted share | Every boundary found |
+| 64 | The most pairings tried: 8 times 8 | Every pair of every boundary |
+| a tenth | The least of the walkable cells any section holds, rounded up | A fixed count of cells, or a larger share such as a fifth |
+| a tenth, again | The near part of the floor is its nearest tenth and the far part its farthest tenth; a line touching either is never closed, so no barrier stands in the first or the last tenth of the walk | A band of shares for each boundary, measured: three sections on 10 of 20 |
+| 3,000 | The most walks the search makes on one floor before it stops with what it has. One of the 20 measured floors reached it | No limit, or a smaller one. `Walks` in the test's log is how many a floor took |
+| one third, two thirds | The shares the two boundaries of three sections are nearest | Looking at every share |
+| 50 ms | The slowest floor allowed by the requirement; measured 35.219 ms | |
+| 15 of 20 | A pin in the test, not a requirement: the measured 17 less two | 18, the number withdrawn |
+
+**17 of the 20 measured floors have three sections and 3 have two.** On a floor with two sections there is one
+barrier.
+
+### Judgements by the writing session
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The search was ported with its order kept, and the departures are listed under "How it is built".** A
+   judgement by the writing session, for the coordinating session to confirm.
+2. **Ties are left as the measured code left them.** Divisions that tie on smallest area, cells closed and lowest
+   cell: the pair tried first. The two-section boundary likewise: the one met first. The two sorts are not given
+   a last tie-breaker. A judgement by the writing session, for the coordinating session to confirm.
+3. **"The lower first cell" of a boundary or a division is its lowest cell.** That is the lowest of all the cells
+   it closes, comparing Y and then X. A judgement by the writing session, for the coordinating session to confirm.
+4. **A line is a whole run.** It runs from one cell that is not walkable to the next. A part of a longer row is
+   never a line. A judgement by the writing session, for the coordinating session to confirm.
+5. **The rows beside a line are not asked about the entrance or the exit.** A line is left out when both rows
+   beside it are the same run, even if one of those rows holds the entrance or the exit and so is not itself a
+   line. A judgement by the writing session, for the coordinating session to confirm.
+6. **A boundary's lines are recorded in the answer, not worked out again by the test.** `BoundaryLines` holds each
+   boundary's cells grouped by line. Working lines out from the cells is not always possible: two lines may share
+   a cell, and two lines side by side read as lines the other way. A judgement by the writing session, for the
+   coordinating session to confirm.
+7. **The tenth that defines the near and far parts is the same constant as the tenth an area must hold**,
+   `SectionLeastAreaOneIn`. The measurement used one tenth for both and the constant's comment says it is used for
+   both. A cell that cannot be walked to is in neither part. A judgement by the writing session, for the
+   coordinating session to confirm.
+8. **No sections is two empty arrays**, and a plan that is not built has none. A judgement by the writing
+   session, for the coordinating session to confirm.
+9. **The wanted shares are written where they are used**, as 1 and 3, and 2 and 3. 64 follows from the 8 and is
+   not a constant. The limit of walks is a new constant, `SectionMostWalks`. `SectionLinesOffered` is gone. A
+   judgement by the writing session, for the coordinating session to confirm.
+10. **`BlockCellsWithPillars` does nothing when there is no world or no floor.** `CloseTheGate` already returned
+    before reaching it in that case, so the gate rows are not changed. A judgement by the writing session, for the
+    coordinating session to confirm.
+11. **A cell listed in `TreatedAsOpen` that is rock in the plan is still refused as an obstacle's cell.** The
+    argument changes the stranding question only. A judgement by the writing session, for the coordinating
+    session to confirm.
+12. **The populator's set does not move the boss.** The Gatekeeper stands on the exit even if the exit is in the
+    set. A judgement by the writing session, for the coordinating session to confirm.
+13. **The hand-made plans are six tests and not one**, so a failure names its case. Two cases were added to the
+    five asked for: a tiny last room that holds the exit, and a line that leaves the entrance and the exit on one
+    side. The tests of the stranding check's argument are in the same new group. A judgement by the writing
+    session, for the coordinating session to confirm.
+14. **The tests assert one rule more than the list they were given.** With boundary N alone closed, the cells
+    reached from the entrance are exactly those of sections 0 to N. That is ruling 5 worked out. A judgement by
+    the writing session, for the coordinating session to confirm.
+
+15. **The question with the may-close cells closed is asked last, and only of an answer that would otherwise be
+    taken.** A better pair that fails it is passed over and the search goes on, so the answer is the best of those
+    that hold both ways. A judgement by the writing session, for the coordinating session to confirm.
+16. **The answer carries the walks made and whether the limit was reached**, two fields of
+    `FCataclysmFloorSections`, so the test can log them. They are filled whether or not sections are found. A
+    judgement by the writing session, for the coordinating session to confirm.
+17. **A may-close cell that is rock in the plan is ignored**, and so is one named twice. A judgement by the
+    writing session, for the coordinating session to confirm.
+18. **One hand-made plan was redrawn and one test's expected values changed with it.** The plan of a big room and
+    a last room had its corridor in the middle of a wall. Under the fewest-lines search the big room's far corners
+    are in the far part, so the search finds nothing whatever the last room's size, and the control could not
+    pass. The corridor now leaves the big room's far corner. A judgement by the writing session, for the
+    coordinating session to confirm.
+
+### Research
+
+No source was read. This layer adds a search and no mechanic a player sees.
+
+### Tests
+
+None has been run against the fewest-lines search. In `game/Source/Cataclysm/Tests/CataclysmFloorGeneratorTests.cpp`, group
+`Cataclysm.FloorSections.`. Every answer with sections is passed to one checker, `CheckEveryRule`, which works
+each rule out again with `CataclysmFloorDistancesFrom` on a copy of the plan with the boundary cells closed, and
+holds each boundary's recorded lines against its cells.
+
+- `OnTwentyHallsPlansTheSearchFindsSectionsThreeOrTwoOnEveryOne`: the twenty plans; every rule for every answer;
+  sections, three or two, on all 20, which is the requirement; three sections on at least 15, which is a pin and
+  not a requirement, the measured 17 less two. One log line a plan, beginning `FLOORSECTIONS`, with the cells in
+  each section, the cells and the lines closed by each boundary, the milliseconds, the walks made and whether the
+  limit was reached, and one summary line. None of those is asserted. The 50 milliseconds of the requirement is
+  not asserted either: a time in a test fails on a busy machine.
+- `TheSamePlanAskedTwiceGivesTheSameBoundariesAndTheSameSectionNumbers`: the twenty plans, each asked twice.
+  Control: the plans do not all give one answer.
+- `APlanThatIsNotHallsHasNoSections`: twenty Caverns plans and twenty Arena plans. Control: a Halls plan with
+  sections, copied and called Caverns, has none.
+- `ThreeRoomsInARowGiveThreeSectionsWithTheBoundariesInTheCorridors`: three rooms of 25 cells and two corridors.
+  The first boundary is asserted at the corridor's first column, by the last tie-break. That assertion passed in
+  the run of the second search; for this search it rests on the Python model.
+- `ARoomUnderATenthOfTheCellsIsNeverASectionOfItsOwn`: a middle room of 9 cells in a plan of 111 gives two
+  sections or none. A last room of 9 cells holding the exit, in a plan of 136, gives none. Control: a last room of
+  16, in a plan of 143, gives two, divided in the corridor.
+- `TwoRoomsJoinedByTwoCorridorsGiveOneBoundaryOfTwoLines`. Control: either line alone leaves the exit reached.
+- `ASingleRoomHasNoSections`. Control: two rooms and a corridor give two.
+- `ALineThatHoldsTheExitIsNeverClosed`. Control: the same cells with the exit moved off the line give two.
+- `ALineThatDoesNotPartTheEntranceFromTheExitIsNoBoundary`. Control: the same cells with the exit in the other
+  room give two.
+- `APlanWithACarvedShortcutIsDividedByTheRulesWithItsGateOpenAndWithItClosed`: the gate's two cells are passed as
+  cells that may close; every rule on the plan as asked about, and again on a copy with those two cells rock.
+- `ASectionJoinedOnlyThroughAShortcutIsNotTakenWhenItsGateMayClose`: a plan made by hand in which two rooms are
+  joined only by a shortcut. Control: with nothing passed the division with both rooms in its middle section is
+  returned, and closing the gate then leaves four areas. With the gate's cells passed the answer is another
+  division or fewer sections, obeys every rule with the gate open and shut, and the two rooms are in different
+  sections. Rock passed as cells that may close changes nothing. By the Python model the answer with the gate
+  passed is now three sections, where under the second search it was two.
+- `OnAPlanWithARoomOffToOneSideNoPocketPairingIsFormed`: a plan made by hand with a room joined to the entrance's
+  room by two doors. Set-up shows the pocket by the rules: two boundaries, three areas together, the room on the
+  entrance's side of each. The room is in the entrance's section and no boundary closes one of its doors. It
+  shows that the two boundaries of the set-up are never formed: the fewest lines that part this plan are the
+  corridor alone. It does not show the row rule refusing anything.
+- `NoBoundaryClosesALineThatPartsNothing`: on the twenty Halls plans and eight hand-made answers, for every
+  boundary of more than one line, taking any one line away leaves cells that are not a boundary. Set-up: at least
+  one such boundary was looked at, which the two-corridor plan gives. Control: an answer made by hand from two
+  lines that each part the plan alone is counted twice. How many such boundaries the twenty plans hold is logged.
+- `OnTwoHundredFurtherHallsPlansEveryAnswerObeysEveryRule`: 200 Halls plans that are not the twenty: dungeon
+  seed 5000 + Index * 13 for Index 0 to 99, which is 5000 to 6287, each on floors 1 and 10. It asserts, as set-up,
+  that 200 plans were built, and that every answer with sections obeys every rule. It asserts no count of floors
+  with three, two or no sections, no time, and nothing about the limit of walks, so it cannot fail on how many
+  floors have sections. It logs one summary line, beginning `FLOORSECTIONS WIDER plans=`, with the floors with
+  three, with two and with none, the slowest floor and the floors that reached the limit; and one line for each
+  plan with no sections, beginning `FLOORSECTIONS WIDER NONE`, with its seed, floor, walkable cells and walks.
+  With it the layer declares 17 new Unreal tests, one more than before: 15 in `Cataclysm.FloorSections.` and 2 in
+  `Cataclysm.DungeonEnemies.`.
+- `AnObstacleIsAskedAboutWithAClosedBarriersCellsTreatedAsOpen`: with a barrier's cell rock in the plan, an
+  obstacle that strands nothing is refused without the argument, which is the control, and allowed with it. An
+  obstacle that strands a cell with the barrier open is refused. With nothing passed, and with an empty list, the
+  answers on the plan with no barrier are the same.
+
+In `game/Source/Cataclysm/Tests/CataclysmFloorPopulationTests.cpp`, group `Cataclysm.DungeonEnemies.`:
+
+- `AnEmptySetOfBarredCellsPlacesEveryCreatureWhereItStoodWithoutOne`: the old call against the call with an
+  empty set, on seeds 1 to 120 of each layout, compared placement by placement; the same for a boss floor and
+  both kinds of wave on seeds 1 to 20. Control: two different floors differ by the same count.
+- `NoCreatureIsPlacedOnABarredCellAndEverySectionStillHoldsOne`: the first Halls floor of the sweep with sections
+  whose ordinary population stands a creature on a boundary cell, which is asserted as set-up. With the boundary
+  cells barred no creature stands on one, the count wanted has not moved, every section holds a creature, and a
+  boss floor's Gatekeeper stands on the exit.
+
+The hand-made plans' expected answers were worked out again for the fewest-lines search with a Python model of
+it, kept in the writing session's scratch folder and not committed. The model is not the C++ and proves nothing
+about it. By the model every hand-made plan keeps the answer its test expects except the redrawn one, and one
+answer changes without changing what its test asserts: the shortcut plan with its gate passed. The model has no
+generator, so it says nothing of the twenty plans.
+
+### Not covered by a test
+
+- That the two gate helpers do what `CloseTheGate` and `OpenTheGate` did. No test was added. The three gate rows'
+  existing tests are what hold it, and they were not changed.
+- That the search written into the generator gives the measured answers on the twenty plans. The test checks
+  that each answer obeys the rules and counts the floors with three sections and with two. It does not hold each
+  floor's answer against the measured one. The registering session has the measured lines to compare the log to.
+- The rule that three areas lie in a row (ruling 8). No test reaches it: see the "said first" paragraph on it.
+- The rule that each boundary alone parts the entrance from the exit, by a single line. It is held by the exit
+  being in the far part and again by the acceptance of a boundary. By the Python model, breaking either alone
+  changes no hand-made plan's answer, and breaking both makes the plan with both ends in one room give two
+  sections.
+- The limit of 3,000 walks being reached. No hand-made plan takes more than 13 walks by the model; one of the
+  twenty generated plans reached the limit in the measurement.
+- That a line touching the near or far part is never closed, by a test of its own.
+- How long the search takes. It is logged and not asserted, and the 50 milliseconds of the requirement is not asserted.
+- An answer with a shortcut's gate closed on generated plans, beyond the one plan the shortcut test uses.
+- A set of barred cells on a wave floor. Only the empty set is compared there.
+- A plan with walkable cells that cannot be reached. A built floor has none.
+
+### What the row needs, for the session that writes rows
+
+Nothing. This layer adds no stat, no condition and no scale, and neither row can be written from it. No dry run
+through the generator was made, because there is no row shape to pass.
+
+### Run
+
+Every build, run and measurement here was made by the registering session on 2026-10-08. Every figure is a line a
+run printed. Development was c17bda32 throughout.
+
+**The short turn, at `feat/floor-sections-3` df008d57: this layer alone, its own groups only.** One attempt;
+nothing was corrected during it.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 20 actions, 15 files compiled` |
+| `Cataclysm.FloorSections.` | `15 tests performed, 15 succeeded, 0 failed` |
+| `Cataclysm.FloorGenerator.` | `2 tests performed, 2 succeeded, 0 failed` |
+| `Cataclysm.DungeonEnemies.` | `13 tests performed, 13 succeeded, 0 failed` |
+| The 20 Halls floors | `FLOORSECTIONS SUMMARY three sections on 17 of 20 \| three or two on 20 of 20 \| slowest floor 34.021 ms \| floors where the search stopped at its limit 1` |
+| The 200 further Halls floors | `FLOORSECTIONS WIDER plans=200 three=178 two=18 none=4 slowest_ms=49.544 at_the_limit=9` |
+
+The answers on the 20 floors were compared, floor by floor, with the answers the temporary test had measured
+before the search was written into the generator: sections, cells in each, cells closed and lines in each
+boundary. All 20 were the same. The four of the 200 with no sections are dungeon seeds 5078 and 5390 on floor 1
+and 5780 and 5793 on floor 10.
+
+**The window of the stack, at `feat/lightforged-sections-2` fa2ebece: this layer and layer 2 above it.** It was the
+second window. The first, at 2561ed00, built, and 3 of its 3,388 tests failed, all three layer 2's; layer 2's
+entry has it. No test of this layer failed in either. In the first window's whole-suite run the two log lines
+were `three sections on 17 of 20 | three or two on 20 of 20 | slowest floor 35.421 ms` and `plans=200 three=178
+two=18 none=4 slowest_ms=51.231 at_the_limit=9`.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 14 actions, 11 files compiled` |
+| Whole Unreal suite | `3389 tests performed, 3389 succeeded, 0 failed`; `Declared: 3389 tests in the tree at fa2ebece; 3389 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 404.08s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**The second window's two log lines for the 20 and the 200 floors were not kept, and a rerun gave them.** The
+registering session's runner did not keep the engine's log, and the guard proofs that followed wrote over it. So
+the group `Cataclysm.FloorSections.` was run once more, alone, on the same binaries at fa2ebece, with the engine
+log copied the moment it ended: `Build: Succeeded - target already up to date, 0 actions, nothing compiled`, then
+`15 tests performed, 15 succeeded, 0 failed`. Its two lines:
+
+- `FLOORSECTIONS SUMMARY three sections on 17 of 20 | three or two on 20 of 20 | slowest floor 38.561 ms | floors
+  where the search stopped at its limit 1 | shared=8 no_own_cell=0`
+- `FLOORSECTIONS WIDER plans=200 three=178 two=18 none=4 slowest_ms=58.387 at_the_limit=9 shared=134
+  no_own_cell=0`
+
+`shared` is how many answers have a cell that two boundaries both hold: 8 of the 20 and 134 of the 200.
+`no_own_cell` is how many have a boundary with no cell that it alone holds: none of the 20 and none of the 200.
+**Those two counts are printed by this layer's test file, and the change that prints them is in layer 2's commit,
+not in this layer's.** A reader of this layer's pull request will not find them in it. What layer 2 does with a
+shared cell is in its entry.
+
+**Guard proofs, at fa2ebece, each with every anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| S1a | `CataclysmFloorGenerator.cpp`: a section under a tenth of the floor is accepted | `Cataclysm.FloorSections.ARoomUnderATenthOfTheCellsIsNeverASectionOfItsOwn` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| S1b | `CataclysmFloorGenerator.cpp`, two edits in one proof: a boundary need not part the entrance from the stairs. The search holds that rule twice, so one edit alone changes nothing | `Cataclysm.FloorSections.ALineThatDoesNotPartTheEntranceFromTheExitIsNoBoundary` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| S1c | `CataclysmFloorPlan.cpp`: the cells to treat as open are closed instead | `Cataclysm.FloorSections.AnObstacleIsAskedAboutWithAClosedBarriersCellsTreatedAsOpen` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+
+No proof was run for the rule that three sections lie in a row: no test reaches it, as said first above.
+
+---
+
 ## 2026-10-08 — "Projectiles ricochet 1-4 times" and "Spells pierce through all enemies in their path" are built as rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),

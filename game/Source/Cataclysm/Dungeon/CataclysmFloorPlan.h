@@ -288,9 +288,16 @@ CATACLYSM_API TArray<int32> CataclysmFloorDistancesFrom(const FCataclysmFloorPla
  * no stairs, it includes the rim the waves arrive on; and because it is asked again for every obstacle, obstacles
  * that last the floor can never add up to a cut floor. The same breadth-first search as `CataclysmFloorDistancesFrom`,
  * on a copy of the plan.
+ *
+ * `TreatedAsOpen` IS CELLS MADE WALKABLE ON THAT COPY BEFORE THE STRANDING QUESTION IS ASKED, and for that question
+ * only. It is for a barrier that is closed now and will open: with its cells Solid in the plan, everything beyond it
+ * is already out of reach of `From`, so without this every obstacle anywhere would be refused. The first paragraph's
+ * refusals still read the plan as it is, so a cell that is Solid in the plan is refused even when it is listed here.
+ * A caller that passes nothing gets exactly what it got before the argument existed.
  */
 CATACLYSM_API bool CataclysmFloorCanBlock(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells,
-										  FIntPoint From, const TSet<FIntPoint>& Held);
+										  FIntPoint From, const TSet<FIntPoint>& Held,
+										  const TArray<FIntPoint>& TreatedAsOpen = TArray<FIntPoint>());
 
 /**
  * How far every cell is from the floor's rim, in cells, walking orthogonally.

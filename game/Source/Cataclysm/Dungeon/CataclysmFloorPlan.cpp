@@ -49,13 +49,20 @@ int32 FCataclysmFloorPlan::OrthogonalNeighbours(FIntPoint Cell) const
 }
 
 bool CataclysmFloorCanBlock(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells, FIntPoint From,
-							const TSet<FIntPoint>& Held)
+							const TSet<FIntPoint>& Held, const TArray<FIntPoint>& TreatedAsOpen)
 {
 	if (Cells.IsEmpty() || !Plan.IsFloor(From))
 	{
 		return false;
 	}
 	FCataclysmFloorPlan Closed = Plan;
+
+	// A BARRIER THAT WILL OPEN IS WALKABLE FOR THE STRANDING QUESTION. Only on the copy: the refusals in the loop below
+	// read `Plan`, so a barrier's own cell, Solid in the plan, is still refused as rock.
+	for (const FIntPoint& Open : TreatedAsOpen)
+	{
+		Closed.Carve(Open);
+	}
 	for (const FIntPoint& Cell : Cells)
 	{
 		if (!Plan.IsFloor(Cell) || Cell == Plan.Entrance || Cell == Plan.Exit || Cell == From || Held.Contains(Cell))

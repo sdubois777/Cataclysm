@@ -6047,49 +6047,66 @@ bool ACataclysmDungeonGameMode::CloseTheGate(FGatedShortcut& One, bool bAsk)
 	{
 		return false;
 	}
-	for (const FIntPoint& Cell : One.Shortcut.Gate)
-	{
-		CurrentFloor->BlockCell(Cell);
-	}
-	One.GateActors.RemoveAll([](const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar) { return !Pillar.IsValid(); });
-	if (One.GateActors.IsEmpty())
-	{
-		const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
-			UCataclysmDungeonModifierTable::LoadDungeonModifierTable(), One.RowKey);
-		for (const FIntPoint& Cell : One.Shortcut.Gate)
-		{
-			// TWO ONE-CELL PILLARS, because the obstacle is a square block and a gate is two cells in a line.
-			if (ACataclysmFloorObstacle* Pillar = ACataclysmFloorObstacle::Place(
-					World, *CurrentFloor, {Cell}, ECataclysmObstacleKind::Pillar, One.RowKey,
-					Row ? FName(*Row->CataclysmType) : NAME_None))
-			{
-				Pillar->Raise();
-				One.GateActors.Add(Pillar);
-			}
-		}
-	}
+	BlockCellsWithPillars(One.Shortcut.Gate, One.RowKey, One.GateActors);
 	One.bOpen = false;
 	return true;
 }
 
+void ACataclysmDungeonGameMode::BlockCellsWithPillars(const TArray<FIntPoint>& Cells, FName RowKey,
+	TArray<TWeakObjectPtr<ACataclysmFloorObstacle>>& Pillars)
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor)
+	{
+		return;
+	}
+	for (const FIntPoint& Cell : Cells)
+	{
+		CurrentFloor->BlockCell(Cell);
+	}
+	Pillars.RemoveAll([](const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar) { return !Pillar.IsValid(); });
+	if (Pillars.IsEmpty())
+	{
+		const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+			UCataclysmDungeonModifierTable::LoadDungeonModifierTable(), RowKey);
+		for (const FIntPoint& Cell : Cells)
+		{
+			// ONE-CELL PILLARS, one a cell, because the obstacle is a square block and a gate is two cells in a line.
+			if (ACataclysmFloorObstacle* Pillar = ACataclysmFloorObstacle::Place(
+					World, *CurrentFloor, {Cell}, ECataclysmObstacleKind::Pillar, RowKey,
+					Row ? FName(*Row->CataclysmType) : NAME_None))
+			{
+				Pillar->Raise();
+				Pillars.Add(Pillar);
+			}
+		}
+	}
+}
+
 void ACataclysmDungeonGameMode::OpenTheGate(FGatedShortcut& One)
 {
-	for (const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar : One.GateActors)
+	UnblockCellsAndDestroyPillars(One.Shortcut.Gate, One.GateActors);
+	One.bOpen = true;
+}
+
+void ACataclysmDungeonGameMode::UnblockCellsAndDestroyPillars(const TArray<FIntPoint>& Cells,
+	TArray<TWeakObjectPtr<ACataclysmFloorObstacle>>& Pillars)
+{
+	for (const TWeakObjectPtr<ACataclysmFloorObstacle>& Pillar : Pillars)
 	{
 		if (ACataclysmFloorObstacle* Standing = Pillar.Get())
 		{
 			Standing->Destroy();
 		}
 	}
-	One.GateActors.Reset();
+	Pillars.Reset();
 	if (CurrentFloor)
 	{
-		for (const FIntPoint& Cell : One.Shortcut.Gate)
+		for (const FIntPoint& Cell : Cells)
 		{
 			CurrentFloor->UnblockCell(Cell);
 		}
 	}
-	One.bOpen = true;
 }
 
 void ACataclysmDungeonGameMode::PlaceTheShortcutGates()

@@ -71,6 +71,57 @@ struct CATACLYSM_API FCataclysmFloorShortcut
 	bool IsValid() const { return Gate.Num() == 2 && NewCells.Num() >= 2; }
 };
 
+/**
+ * A Halls floor divided into two or three sections, and the cells whose closing divides it. Issues #1820 and #41.
+ *
+ * WHAT IT IS FOR. Two dungeon modifier rows need a floor in parts: Lightforged Walls' "barriers seal sections until all
+ * enemies in the area are slain" and Fragmented Reality's "certain sections of the dungeon". This is only the answer
+ * to "where could the floor be divided"; nothing here closes a cell or builds a barrier.
+ *
+ * NO SECTIONS IS AN ANSWER. `Boundaries` and `Section` are then both empty and `SectionCount` is 0. See
+ * `FCataclysmFloorGenerator::FindSections` for when that happens.
+ */
+struct CATACLYSM_API FCataclysmFloorSections
+{
+	/**
+	 * The cells to close, one list for each boundary. Boundary 0 lies between sections 0 and 1, and boundary 1, when
+	 * there is one, between sections 1 and 2.
+	 */
+	TArray<TArray<FIntPoint>> Boundaries;
+
+	/**
+	 * The same cells grouped by the line they came from: `BoundaryLines[B][L]` is line `L` of boundary `B`. Kept so
+	 * a caller, and a test, can see which lines a boundary is made of without working it out again from the cells,
+	 * which cannot always be done: two lines may share a cell, and two lines side by side read as lines the other way.
+	 */
+	TArray<TArray<TArray<FIntPoint>>> BoundaryLines;
+
+	/**
+	 * How many walks the search made from the near part of the floor toward the far part, and whether it stopped at
+	 * `FCataclysmFloorGenerator::SectionMostWalks` before it had tried everything. Kept so a test can log them. A
+	 * search that stopped at the limit may have missed a division a longer search would find.
+	 */
+	int32 Walks = 0;
+	bool bReachedTheWalkLimit = false;
+
+	/**
+	 * The section of every cell of the plan, indexed the way `FCataclysmFloorPlan::Cells` is. Section 0 holds the
+	 * entrance and the last section holds the exit. `INDEX_NONE` for a cell that is not walkable and for a boundary
+	 * cell. Empty when there are no sections.
+	 */
+	TArray<int32> Section;
+
+	/** How many sections there are: one more than the boundaries, or 0 when there is no boundary. */
+	int32 SectionCount() const { return Boundaries.IsEmpty() ? 0 : Boundaries.Num() + 1; }
+
+	/** The section a cell of `Plan` is in, or `INDEX_NONE` for rock, a boundary cell, off the grid or no sections. */
+	int32 SectionOf(const FCataclysmFloorPlan& Plan, FIntPoint Cell) const
+	{
+		const int32 Index = Plan.IndexOf(Cell);
+		return Section.IsValidIndex(Index) ? Section[Index] : INDEX_NONE;
+	}
+};
+
 class CATACLYSM_API FCataclysmFloorGenerator
 {
 public:
@@ -280,4 +331,82 @@ public:
 
 	/** Carve a shortcut's corridor, through the same carving every connection uses. Its gate's cells are then floor. */
 	static void CarveShortcut(FCataclysmFloorPlan& Plan, const FCataclysmFloorShortcut& Shortcut);
+
+	// ----------------------------------------------------------------------
+	// Sections. Issues #1820 and #41. Every figure below is a judged number of 2026-10-08, by the coordinating
+	// session under the owner's delegation. None has been played.
+	// ----------------------------------------------------------------------
+
+	/** The fewest and the most walkable cells in a line that may be closed. A judged number of 2026-10-08. */
+	static constexpr int32 SectionLineLeastCells = 2;
+	static constexpr int32 SectionLineMostCells = 6;
+
+	/** The most lines closed together as one boundary. A judged number of 2026-10-08. */
+	static constexpr int32 SectionBoundaryMostLines = 3;
+
+	/** The most distinct cells one boundary may close. A judged number of 2026-10-08. */
+	static constexpr int32 SectionBoundaryMostCells = 12;
+
+	/** How many boundaries are kept for each of the two wanted shares. A judged number of 2026-10-08. */
+	static constexpr int32 SectionBoundariesKept = 8;
+
+	/**
+	 * One in this many of the plan's walkable cells: a tenth. A judged number of 2026-10-08. A whole number and not
+	 * 0.1, so the rounding is exact. IT IS USED FOR TWO THINGS, and the measurement of 2026-10-08 used one tenth for
+	 * both. Every area holds at least that many cells, rounded up. And the search runs between the NEAR part of the
+	 * floor, every cell with fewer than a tenth of the walkable cells nearer the entrance than it, and the FAR part,
+	 * every cell with nine tenths or more nearer.
+	 */
+	static constexpr int32 SectionLeastAreaOneIn = 10;
+
+	/**
+	 * The most walks the search makes from the near part toward the far part before it stops with what it has. A
+	 * judged number of 2026-10-08. Measured that day on 20 Halls floors: one floor reached it, and the slowest floor
+	 * took 35.219 milliseconds in a Development build.
+	 */
+	static constexpr int32 SectionMostWalks = 3000;
+
+	/**
+	 * Where a Halls floor can be divided into three sections, or failing that two, by closing short lines of cells.
+	 * Does not close anything. Draws nothing at random: the same plan always gives the same answer.
+	 *
+	 * IT READS THE PLAN AS IT IS GIVEN. A caller with gated shortcuts passes the plan after they are carved, with
+	 * their gate cells walkable. A plan whose layout is not Halls, or that is not built, has no sections.
+	 *
+	 * A LINE is `SectionLineLeastCells` to `SectionLineMostCells` walkable cells in a straight row, along X or along Y,
+	 * with a cell that is not walkable at each end, none of them the entrance or the exit. A line is left out when the
+	 * same line lies on both its sides, which is the inside of a corridor; the line at the corridor's end stands for it.
+	 *
+	 * THE SEARCH IS FOR THE FEWEST LINES THAT PART THE NEAR PART OF THE FLOOR FROM THE FAR PART. Ruled 2026-10-08 on a
+	 * measurement, replacing a search that offered the ten lines nearest a share. The near part is every cell with
+	 * fewer than a tenth of the walkable cells nearer the entrance; the far part is every cell with nine tenths or
+	 * more nearer, and the exit. A line with a cell in either part is never closed. With some lines closed, a walk
+	 * is looked for from the near part to the far part. No walk: those lines are a SEPARATION. A walk: every
+	 * separation must close one of the lines that walk crosses, so each is closed in turn and the walk looked for
+	 * again, to `SectionBoundaryMostLines` lines and `SectionBoundaryMostCells` cells, each set of lines once, and
+	 * `SectionMostWalks` walks in all. Only a separation that holds no smaller separation is kept, so no line is
+	 * closed that parts nothing.
+	 *
+	 * A BOUNDARY is a separation whose closing leaves exactly two areas, each a tenth of the walkable cells or more,
+	 * the entrance in one and the exit in the other.
+	 *
+	 * FROM THAT ONE COLLECTION the `SectionBoundariesKept` boundaries whose entrance side is nearest a third of the
+	 * cells are taken, and the same number nearest two thirds. Each of the first is tried with each of the second:
+	 * the pair is a division when closing both leaves exactly three areas, each a tenth or more, the entrance and
+	 * the exit in different ones, and the three areas lie in a row: the third area between the two boundaries, and
+	 * not a pocket to one side that both of them seal. The division whose smallest area is largest is taken; then
+	 * the one closing fewer cells; then the one whose lowest cell is lower, comparing Y and then X. With no division
+	 * the boundary of the collection whose smaller side is largest is the answer, in two sections. With none of
+	 * those there are no sections.
+	 *
+	 * `MayClose` IS CELLS THAT MAY BE CLOSED DURING PLAY, a shortcut gate's. The search runs on the plan as given,
+	 * with those cells open. A division, and a two-section answer, is then taken only if every rule also holds with
+	 * those cells closed: the same number of areas, each a tenth or more, the entrance and the exit apart, every
+	 * cell in the section it had, and each boundary alone leaving the same sections on the entrance's side. The two
+	 * states are enough for every mix of open and shut gates: sections stay whole because they are whole with every
+	 * gate shut, and stay apart because they are apart with every gate open. An empty list, which is the default,
+	 * changes nothing and costs nothing.
+	 */
+	static FCataclysmFloorSections FindSections(const FCataclysmFloorPlan& Plan,
+		const TArray<FIntPoint>& MayClose = TArray<FIntPoint>());
 };
