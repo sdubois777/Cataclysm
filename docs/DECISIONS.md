@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — "Projectiles ricochet 1-4 times" and "Spells pierce through all enemies in their path" are built as rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (one stat joins the
+list of stats that are a yes or a no, and the row counts), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The rows the entry "Two stats a worn row can state for a projectile skill" of 2026-10-07 left to the session
+holding the design workbook, each as that entry states it. Each stat and the place that asks for it were read in
+the merged code. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Projectiles ricochet 1-4 times | `projectile_bounces` | flat | 1 to 4 | `Type.Projectile` |
+| Spells pierce through all enemies in their path | `projectile_pierce_all` | flat | 1 | `Type.Spell` |
+
+EnchantmentEffects 563 to 565, over 476 to 478 enchantments.
+
+### THREE THINGS A READER OF THE ROWS SHOULD KNOW
+
+- **THE PIERCE ROW CARRIES `Type.Spell`, AND MUST.** The stat is asked with the tags of the skill being used, and
+  the tag is the only thing that keeps the row to spells: without it every projectile skill would pierce. The
+  test below asks with a projectile's tag alone for that reason.
+- **The pierce row is a yes or a no, written 1.** A projectile skill asks only whether the stat is above nought.
+  `projectile_pierce_all` joins `FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`, as
+  the three movement flags did, because its sentence states no number. That entry said the list might need it.
+  A labelled judgement by the writing session, on the ruling of 2026-10-08 that settled the movement flags the
+  same way.
+- **The ricochet row adds whole bounces.** The engine rounds what the row gives to a whole number and adds it to
+  the bounces the skill states; a worn item at the top of the row's range gives 4.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the two sentences is that entry's: which skills each row reaches and what each loses and gains
+by it, that a projectile that pierces never bounces, that a beam has no bounce, and where a shot that was given
+bounces sets off its blast.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheRicochetRowReachesProjectileSkillsAndTheSpellsPierceRowReachesSpellsOnly`: each real
+  row worn at the top of its range. The test first asserts that each name it wears is a row of
+  `EnchantmentsPositive.csv`. Every figure is a difference against the same wearer with the item taken off. The
+  ricochet stat is 4 higher asked with a projectile's tag, 4 higher asked with the tags of a projectile that is a
+  spell, and no higher asked with a melee skill's tag. The pierce stat is 1 higher asked with the tags of a
+  projectile that is a spell, and no higher asked with a projectile's tag alone.
+
+**Not tested here:** a shot bouncing or a spell piercing under a worn row. That entry tests each with the stat
+set by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the layer below this one, on `development` 6bc55438. The build, the whole suite
+and the Python of record are in the table of the entry of the same day on "You cannot apply CC effects to enemies
+above 50% HP" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | c1088d11 | 292 tests performed, 290 succeeded, 2 failed, this layer's among them; 3 of the 4 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 2ac95e46 | effect rows 563 to 565 |
+| Whole suite, every asset built | 2ac95e46 | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3355 tests performed, 3355 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**: the ricochet stat was no higher asked
+with a projectile's tag or with the tags of a projectile that is a spell, and the pierce stat was no higher
+asked with the tags of a projectile that is a spell. The three readings that must be no higher were no higher in
+both runs.
+
+**SAID AS RULED 2026-10-08 BY THE COORDINATING SESSION: the pierce row's value is a flag, 1, and the engine reads
+any figure above nought as a pierce of 99** (`UCataclysmProjectileSkill::PierceAllCount`), or the pierce the
+skill states if that is more. The 1 is not a count of enemies. That `projectile_pierce_all` joins `FLAG_STATS`
+was approved in the same ruling.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the
+entry that built the two stats proved, read in its table: three guard proofs, L5a (the row's bounces are added),
+L5b (the blast does not also strike the enemies the shot glanced off) and L5c (the pierce row is read as set, on a
+spell that flies), each failed with its break in and passed with it out. **That entry says "No proof was run for
+the spell beam", whose test passed in the whole suite**; a beam under the pierce row is so far tested and not
+proved.
+
+---
+
 ## 2026-10-08 — "You cannot apply CC effects to enemies above 50% HP" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
