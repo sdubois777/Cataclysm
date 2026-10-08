@@ -2,6 +2,45 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — The Spike Trap carries the tag `Type.Trap`
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one cell of the Minion Types sheet), `game/Data/MinionTypes.csv` and
+its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`. Issue
+[#2284](https://github.com/sdubois777/Cataclysm/issues/2284).
+
+### THE OWNER'S DECISION, 2026-10-07
+
+**The Spike Trap is given the tag, and nothing else about traps is decided by this.** The owner allowed the tag
+only, as relayed by the coordinating session.
+
+### WHAT WAS BUILT
+
+The Spike Trap's Tags on the Minion Types sheet gain `Type.Trap`, beside `Type.Minion`, `Type.Deployable` and
+`Minion.Machine`. The tag already existed in the game's list of tags. No engine code and no generator code is
+changed here.
+
+### WHAT THE TAG DOES TODAY, BY READING
+
+- **A summoned minion carries its row's tags**, and its summoner's rows on a minion stat are matched against them:
+  a trap's swing asks its summoner's `minion_damage` with the trap's own tags (`ACataclysmMinion`, the call of
+  `UCataclysmCommand::SummonerMultiplierAgainst`). So a row on a minion stat that requires `Type.Trap` now reaches
+  a Spike Trap and no other minion. **No authored row is of that kind yet**; the rows that are follow this entry.
+- **The rows scoped to `Type.Trap` today do not reach it through this.** "Traps deal 20%-40% increased damage" is
+  two rows on `attack_damage` and `spell_damage`, and a deployable's swing reads `attack_damage` only from a row
+  that names `Type.Deployable`. Two more rows are scoped to the tag: "Your traps ignore 20%-40% of enemy armor",
+  on `armor_penetration`, and one passive node that raises `area_of_effect`. **Whether either reaches a summoned
+  trap was not read here**; the dungeon session's layer on a trap's swing and its summoner's armour penetration
+  states the first.
+
+### Tests
+
+- `Cataclysm.Enchantments.ASummonedSpikeTrapCarriesTheTrapTagAndABallistaDoesNot`: a Spike Trap and a Ballista
+  summoned from the built table. Both are deployables; only the Spike Trap carries `Type.Trap`.
+
+**Not tested here:** any row reaching a trap by the tag.
+
+---
+
 ## 2026-10-07 — Healing that does not fit in health is kept as the temporary absorb, up to a percentage of maximum health stated by a new stat, `overheal_absorb_percent_of_maximum_health`. Engine only; no row authored
 
 **Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** The rest of this entry was

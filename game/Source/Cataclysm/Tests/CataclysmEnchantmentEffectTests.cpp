@@ -18206,4 +18206,55 @@ bool FCataclysmTrapArmourRowTest::RunTest(const FString&)
 	return true;
 }
 
+// THE SPIKE TRAP IS A TRAP. The owner allowed the tag on 2026-10-07: `Type.Trap` on the Spike Trap's row of the
+// minion types. A summoned minion carries its row's tags, and a summoner's row scoped to traps is matched against
+// them.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpikeTrapIsATrapTest,
+	"Cataclysm.Enchantments.ASummonedSpikeTrapCarriesTheTrapTagAndABallistaDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A Spike Trap and a Ballista are summoned from the built table. Both are
+ * deployables; only the Spike Trap carries `Type.Trap`.
+ */
+bool FCataclysmSpikeTrapIsATrapTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag TrapTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("set-up: the trap tag is registered"), TrapTag.IsValid()))
+	{
+		return false;
+	}
+	// THREE METRES APART, so neither spawn is refused for standing in the other.
+	ACataclysmMinion* Trap = ACataclysmMinion::Spawn(Wearer.Actor, FVector(300.0f, 0.0f, 0.0f),
+		/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("SpikeTrap"));
+	ACataclysmMinion* Ballista = ACataclysmMinion::Spawn(Wearer.Actor, FVector(600.0f, 0.0f, 0.0f),
+		/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Ballista"));
+	ON_SCOPE_EXIT
+	{
+		if (IsValid(Trap)) { Trap->Destroy(); }
+		if (IsValid(Ballista)) { Ballista->Destroy(); }
+	};
+	if (!TestNotNull(TEXT("set-up: a spike trap of the wearer's"), Trap)
+		|| !TestNotNull(TEXT("set-up: a ballista of the wearer's"), Ballista)
+		|| !TestTrue(TEXT("set-up: the spike trap is a deployable"), Trap->IsDeployable())
+		|| !TestTrue(TEXT("set-up: the ballista is a deployable"), Ballista->IsDeployable()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the spike trap carries Type.Trap. If not, DT_MinionTypes may be older than the workbook: run "
+				  "tools/generate_datatable_assets.py"),
+		Trap->TypeTags.HasTagExact(TrapTag));
+	TestFalse(TEXT("the ballista does not"), Ballista->TypeTags.HasTagExact(TrapTag));
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
