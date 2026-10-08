@@ -17,17 +17,24 @@ The search is written as ruled and no number was widened.
 Nothing calls the search or the helpers outside tests, and every existing caller of the two changed functions
 passes nothing new.
 
-**Said first: nothing in the search makes a division hold with a shortcut's gate closed.** The search reads the
-plan it is given, with gate cells walkable, as ruled. A floor begins with its gates shut. A section that is joined
-only through a shortcut would then be in two pieces. The shortcut test checks the division both ways on one plan,
-the first of ten that has a shortcut. Whether it holds there is not known, and one plan says little about the rest.
+**Said first: a floor with sections can differ from the same seed without them in every group after the first
+barred cell, because a barred site draws nothing.** The populator's new set keeps creatures off the cells a barrier
+will stand on. A candidate site that is in the set is skipped before it draws a group kind or a Succubus roll, so
+every draw after it is a different draw. Nothing passes the set yet, so no floor differs today.
+
+**Said first: the search is told which cells may close during play, and takes only an answer that holds both
+ways.** Ruled after the first version of this layer was reported. The search still reads the plan with those cells
+open. An answer is taken only if every rule also holds with them closed. One plan made by hand shows a division
+refused for it. On the one generated plan the shortcut test uses, whether any answer is left is not known.
+
+**Said first: no test reaches the rule that three areas lie in a row.** It is in the code and it is ruled. Since
+the rule that no line is closed that parts nothing, the writing session could not make a plan on which a pocket is
+even offered: none on the hand-made pocket plan, and none on 3,000 random small plans tried in a Python model of
+the search. So breaking that rule's line is not expected to fail any test here.
 
 **Said first: "the same as today" for the populator is not pinned against recorded figures.** That would need a
 run. What holds today's behaviour is the eleven existing population tests passing unchanged, plus one new test
 that compares the old call with the new call given an empty set, placement by placement.
-
-**Said first: a pair of boundaries whose third area is a pocket is not taken.** The ruling's wording for a
-division does not exclude it. Judgement 1 below says why the writing session excluded it.
 
 ### Said first: where the code did not match what the writing session was told
 
@@ -45,10 +52,10 @@ Line numbers are of the files as this change leaves them.
 
 - `game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.h`: `FCataclysmFloorShortcut`, the shortcut constants
   and `FindShortcuts`, `FindShortcutBetween`, `CarveShortcut`. The new struct is at line 84, the new constants
-  from line 326 and `FindSections` at line 372.
+  from line 333 and `FindSections` at line 389.
 - `game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.cpp`: `GenKeepLargestRegion`, `GenConnectionCells`,
-  `GenCheckShortcut` (342), `FindShortcutBetween` (1178), `FindShortcuts` (1231), `CarveShortcut` (1308) and
-  `Generate`. The new helpers are at lines 716 to 1102 and `FindSections` at 1316.
+  `GenCheckShortcut` (342), `FindShortcutBetween` (1313), `FindShortcuts` (1366), `CarveShortcut` (1443) and
+  `Generate`. The new helpers are at lines 716 to 1237 and `FindSections` at 1451.
 - `game/Source/Cataclysm/Dungeon/CataclysmFloorPlan.h` and `CataclysmFloorPlan.cpp`, whole.
   `CataclysmFloorCanBlock` is at line 51 of the `.cpp` and `CataclysmFloorDistancesFrom` at 87.
 - `game/Source/Cataclysm/Dungeon/CataclysmFloorPopulation.cpp`, whole: `CataclysmCellsNear` (128) and `Populate`
@@ -66,8 +73,8 @@ by default (`CataclysmDungeonGameMode.h` line 222). `ChooseLayout` (`CataclysmDu
 1392) answers that `Layout` unless the console variable `Cataclysm.DungeonLayout` holds a layout's number.
 `FCataclysmDungeonFloorRules::LayoutFor` (`CataclysmFloorBrief.cpp` lines 56 to 71) answers Arena for a Horde
 dungeon and the dungeon's own layout for every other. So sections on Halls reach every dungeon a player meets
-today except Horde ones, and Caverns is reached by the console variable. The writing session checked the three
-citations. It did not check whether any Blueprint class sets `Layout`, which is an `EditDefaultsOnly` property.
+today except Horde ones. That Caverns is reached only by a console setting is true of the C++ only; no Blueprint
+was checked. The writing session checked the three citations.
 
 ### What it is for
 
@@ -116,7 +123,26 @@ argument that keeps creatures off cells.
 6. **Halls only, and nothing drawn at random.** The search takes only the plan. On a plan whose layout is not
    Halls it returns no sections at once. A labelled judgement by the coordinating session under the owner's
    delegation, 2026-10-08.
-7. **The populator's cells are not closed in the plan.** The populator places only on cells reachable from the
+7. **Cells that may close during play.** `FindSections` takes one more argument, the cells that may be closed
+   during play, which are a shortcut gate's cells. A division, and a two-section boundary, is accepted only if
+   every rule holds with those cells open and with them closed. Lines, shares, offers and boundaries are still
+   found on the plan as given. The added check is made where a pairing is accepted as a division and where a
+   boundary is accepted as the two-section answer: the same count of areas, each a tenth or more with the tenth
+   still counted on the plan as given, the entrance and the exit in different areas, and the same row order.
+   Checking the two extremes is enough for every mix of open and shut gates: "sections stay whole because they are
+   whole with every gate shut, and stay apart because they are apart with every gate open". With an empty list
+   nothing changes and no extra labelling is done. The count of offers does not change. A labelled judgement by
+   the coordinating session under the owner's delegation, 2026-10-08.
+8. **Three areas in a row, never a pocket. This corrects the coordinating session's own wording in ruling 4.** A
+   pairing is accepted only when the three areas lie in a row. A third area off to one side, which both
+   boundaries seal, is rejected. Ruling 4 as first worded did not exclude it. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-08.
+9. **No line is closed that parts nothing.** An offer of two or three lines is skipped when one of its lines, or
+   two of them, is already a boundary by itself. "Already a boundary" means an earlier offer of exactly those
+   lines, among the same 10 lines for the same wanted share, was accepted as a boundary. Singles are offered
+   first, then pairs, then triples. A skipped offer is not counted as an offer. A labelled judgement by the
+   coordinating session under the owner's delegation, 2026-10-08.
+10. **The populator's cells are not closed in the plan.** The populator places only on cells reachable from the
    entrance and its wanted count comes from the plan's walkable cells, and both stay as they are. A labelled
    judgement by the coordinating session under the owner's delegation, 2026-10-08.
 
@@ -125,7 +151,10 @@ read-only measurement on 2026-10-08 made about 12,000 offers in 890 milliseconds
 70 microseconds an offer in a Development build. When a division is found this search has made at most 175
 offers twice and 64 pairings, 414 in all, and 414 at 70 microseconds is about 30 milliseconds. When none is found
 it makes up to 175 more for one half, 589 in all, which by the same arithmetic is about 41 milliseconds. How long
-this search takes is logged by its test and has not been read.
+this search takes is logged by its test and has not been read. **The 414 and the 175 are counts of offers
+made.** The second labelling of ruling 7, with the may-close cells closed, does not change either count. It does
+change the time: up to three more labellings for each pair that would otherwise be taken, and one for each
+two-section boundary that would be.
 
 **What was measured that day, by a temporary test that was never committed.** On the 20 Halls plans of seeds
 `1000 + Seed * 37` for Seed 1 to 10, floors 1 and 10: with lines of exactly the corridor's width and boundaries of
@@ -146,7 +175,9 @@ offers than this search does and had no 12-cell limit. The writing session did n
    nearer the entrance than the line's nearest cell is kept. That count over the walkable cells is its share.
 4. For one third: the lines are sorted by how far their share is from one third and the first 10 are taken. They
    are offered alone, in the order sorted; then every two of them; then every three. An offer of more than 12
-   distinct cells is skipped. Each offer is closed on a working copy of the plan, the connected areas are counted,
+   distinct cells is skipped. So is an offer of two or three lines that holds a boundary already found among
+   these 10 lines: one of its lines, or two of them. Neither kind of skipped offer is counted. Each offer is
+   closed on a working copy of the plan, the connected areas are counted,
    and the cells are opened again. It is a boundary when there are exactly two areas, each a tenth of the walkable
    cells or more, with the entrance in one and the exit in the other.
 5. The boundaries are sorted by how far the entrance's side is from a third of the walkable cells, and the first
@@ -154,15 +185,25 @@ offers than this search does and had no 12-cell limit. The writing session did n
 6. Steps 4 and 5 again for two thirds.
 7. Each kept one-third boundary is tried with each kept two-thirds boundary, the one-third boundaries outermost.
    Both are closed and the areas counted. The pair is a division when there are exactly three areas, each a tenth
-   or more, the entrance and the exit in different areas, and the third area lies between the two boundaries
-   (judgement 1). The division kept is the one whose smallest area is largest; then the one closing fewer cells;
-   then the one whose lowest cell is lower.
+   or more, the entrance and the exit in different areas, and the three areas lie in a row (ruling 8): one
+   boundary alone leaves the third area on the exit's side, and the other alone leaves it on the entrance's side.
+   The division kept is the one whose smallest area is largest; then the one closing fewer cells; then the one
+   whose lowest cell is lower. A pair that would be kept is asked one thing more when cells that may close were
+   passed (ruling 7), and is passed over if it fails.
 8. With a division: its two boundaries are the answer, the one next to the entrance's section first. Every cell of
    the entrance's area is numbered 0, the exit's 2 and the third area's 1.
 9. With none: step 4 is made again for one half, and of the boundaries found the one whose smaller side is largest is
-   the answer; then the one closing fewer cells; then the one whose lowest cell is lower. The entrance's side is
-   numbered 0 and the exit's 1.
+   the answer; then the one closing fewer cells; then the one whose lowest cell is lower. It too is passed over
+   if it fails with the may-close cells closed. The entrance's side is numbered 0 and the exit's 1.
 10. With none of those: no sections. `Boundaries` and `Section` are both empty.
+
+**With the may-close cells closed**, the question asked of an answer is, in order: with those cells and every
+boundary closed, are there as many areas as sections; does each hold a tenth or more; are the entrance and the
+exit in different areas; is every cell that is still walkable in the section it was in. Then, for three sections,
+with those cells and each boundary alone closed: does the entrance reach exactly the sections before that
+boundary. A may-close cell that is rock in the plan is left out. With no walkable may-close cell nothing is asked.
+
+**The answer also carries each boundary's lines**, `BoundaryLines`, the same cells grouped by line.
 
 Each boundary alone parts the entrance from the exit because only boundaries are kept (step 4). That rule has one
 line of code, in `GenSectionIsBoundary`. A tenth is worked out in whole numbers: the walkable cells plus 9, divided
@@ -217,14 +258,14 @@ they stand. Each is judged and none has been played.
 
 Each is a judgement by the writing session, for the coordinating session to confirm.
 
-1. **A pair whose third area does not lie between its two boundaries is not a division.** Each boundary alone
-   parts the entrance from the exit. With both closed there is a third area. If one boundary alone leaves that
-   area on the exit's side and the other alone leaves it on the entrance's side, the area lies between them, and
-   the first of those is boundary 0. If both leave it on the same side, it is a pocket off one end that both
-   boundaries seal. Then no numbering makes "boundary 0 lies between sections 0 and 1, boundary 1 between sections
-   1 and 2" true. The ruling's wording for a division does not exclude that pair. The code does. The reading not
-   taken: accept it and number the boundaries one-third first. A judgement by the writing session, for the
-   coordinating session to confirm.
+1. **With the may-close cells closed, each boundary alone is asked about as well as the section numbers.** The
+   ruling gives "every walkable cell that is open in both states has the same section number in both" as the
+   simplest sound form. The writing session could not show that this alone gives the row order: a middle section
+   can keep its number with the gates shut and still be joined to the entrance's section only through a gate,
+   when a boundary's line stands beside the gate. So the code asks both: the same numbers, and, with each boundary
+   alone closed and the gates shut, the entrance reaching exactly the sections before it. That is the ruling's
+   longer wording. It costs two more labellings for a pair that would be taken. A judgement by the writing
+   session, for the coordinating session to confirm.
 2. **Ties the ruling does not settle.** Two lines that start on the same cell: the one along X first. Boundaries
    equally near the wanted size, for the 8 kept: the fewer cells closed, then the lower first cell, then the
    earlier offer. Divisions that tie on smallest area, cells closed and lowest cell: the pair tried first. The
@@ -237,10 +278,10 @@ Each is a judgement by the writing session, for the coordinating session to conf
 5. **The rows beside a line are not asked about the entrance or the exit.** A line is left out when both rows
    beside it are the same run, even if one of those rows holds the entrance or the exit and so is not itself a
    line. A judgement by the writing session, for the coordinating session to confirm.
-6. **An offer is not made smaller.** Two or three lines closed together are a boundary when they leave two areas,
-   even if one of the lines could be left open and the rest would still part the plan. The cells of such a line
-   are closed for nothing. The ruling does not ask for a check and none was added. A judgement by the writing
-   session, for the coordinating session to confirm.
+6. **A boundary's lines are recorded in the answer, not worked out again by the test.** `BoundaryLines` holds each
+   boundary's cells grouped by line. Working lines out from the cells is not always possible: two lines may share
+   a cell, and two lines side by side read as lines the other way. A judgement by the writing session, for the
+   coordinating session to confirm.
 7. **A share counts only cells that can be walked to**, and every comparison of shares and sizes is made in whole
    numbers. A judgement by the writing session, for the coordinating session to confirm.
 8. **No sections is two empty arrays**, and a plan that is not built has none. A judgement by the writing
@@ -264,6 +305,15 @@ Each is a judgement by the writing session, for the coordinating session to conf
     reached from the entrance are exactly those of sections 0 to N. That is ruling 5 worked out. A judgement by
     the writing session, for the coordinating session to confirm.
 
+15. **The question with the may-close cells closed is asked last, and only of an answer that would otherwise be
+    taken.** A better pair that fails it is passed over and the search goes on, so the answer is the best of those
+    that hold both ways. A judgement by the writing session, for the coordinating session to confirm.
+16. **An offer that holds a boundary is skipped before its cells are counted against 12.** Either reason leaves
+    it uncounted, so the order does not change any count. A judgement by the writing session, for the coordinating
+    session to confirm.
+17. **A may-close cell that is rock in the plan is ignored**, and so is one named twice. A judgement by the
+    writing session, for the coordinating session to confirm.
+
 ### Research
 
 No source was read. This layer adds a search and no mechanic a player sees.
@@ -272,7 +322,8 @@ No source was read. This layer adds a search and no mechanic a player sees.
 
 None has been run. In `game/Source/Cataclysm/Tests/CataclysmFloorGeneratorTests.cpp`, group
 `Cataclysm.FloorSections.`. Every answer with sections is passed to one checker, `CheckEveryRule`, which works
-each rule out again with `CataclysmFloorDistancesFrom` on a copy of the plan with the boundary cells closed.
+each rule out again with `CataclysmFloorDistancesFrom` on a copy of the plan with the boundary cells closed, and
+holds each boundary's recorded lines against its cells.
 
 - `OnTwentyHallsPlansTheSearchFindsThreeSectionsOnAtLeastEighteenAndThreeOrTwoOnAll`: the twenty plans; every
   rule for every answer; three sections on at least 18; three or two on all 20. One log line a plan, beginning
@@ -282,6 +333,8 @@ each rule out again with `CataclysmFloorDistancesFrom` on a copy of the plan wit
 - `APlanThatIsNotHallsHasNoSections`: twenty Caverns plans and twenty Arena plans. Control: a Halls plan with
   sections, copied and called Caverns, has none.
 - `ThreeRoomsInARowGiveThreeSectionsWithTheBoundariesInTheCorridors`: three rooms of 25 cells and two corridors.
+  The first boundary is asserted at the corridor's first column, which by the Python model is where the rule
+  that no line is closed that parts nothing puts it; without that rule the model puts it two columns on.
 - `ARoomUnderATenthOfTheCellsIsNeverASectionOfItsOwn`: a middle room of 9 cells in a plan of 111 gives two
   sections or none. A last room of 9 cells holding the exit gives none. Control: a last room of 16 gives two.
 - `TwoRoomsJoinedByTwoCorridorsGiveOneBoundaryOfTwoLines`. Control: either line alone leaves the exit reached.
@@ -289,8 +342,21 @@ each rule out again with `CataclysmFloorDistancesFrom` on a copy of the plan wit
 - `ALineThatHoldsTheExitIsNeverClosed`. Control: the same cells with the exit moved off the line give two.
 - `ALineThatDoesNotPartTheEntranceFromTheExitIsNoBoundary`. Control: the same cells with the exit in the other
   room give two.
-- `APlanWithACarvedShortcutIsDividedByTheRulesWithItsGateOpenAndWithItClosed`: every rule on the plan as asked
-  about, and again on a copy with the gate's two cells rock.
+- `APlanWithACarvedShortcutIsDividedByTheRulesWithItsGateOpenAndWithItClosed`: the gate's two cells are passed as
+  cells that may close; every rule on the plan as asked about, and again on a copy with those two cells rock.
+- `ASectionJoinedOnlyThroughAShortcutIsNotTakenWhenItsGateMayClose`: a plan made by hand in which two rooms are
+  joined only by a shortcut. Control: with nothing passed the division with both rooms in its middle section is
+  returned, and closing the gate then leaves four areas. With the gate's cells passed the answer is another
+  division or fewer sections, obeys every rule with the gate open and shut, and the two rooms are in different
+  sections. Rock passed as cells that may close changes nothing.
+- `ARoomOffToOneSideIsNeverASectionOfItsOwn`: a plan made by hand with a room joined to the entrance's room by
+  two doors. Set-up shows the pocket by the rules: two boundaries, three areas together, the room on the
+  entrance's side of each. The room is in the entrance's section and no boundary closes one of its doors. This
+  test passes by the rule that no line is closed that parts nothing; see "Not covered by a test".
+- `NoBoundaryClosesALineThatPartsNothing`: on the twenty Halls plans and eight hand-made answers, for every
+  boundary of more than one line, taking any one line away leaves cells that are not a boundary. Set-up: at least
+  one such boundary was looked at, which the two-corridor plan gives. Control: an answer made by hand from two
+  lines that each part the plan alone is counted twice. How many such boundaries the twenty plans hold is logged.
 - `AnObstacleIsAskedAboutWithAClosedBarriersCellsTreatedAsOpen`: with a barrier's cell rock in the plan, an
   obstacle that strands nothing is refused without the argument, which is the control, and allowed with it. An
   obstacle that strands a cell with the barrier open is refused. With nothing passed, and with an empty list, the
@@ -315,9 +381,13 @@ the writing session's scratch folder and not committed. The model is not the C++
   existing tests are what hold it, and they were not changed.
 - The order of offers, the 10 lines taken and the 8 boundaries kept. The tests check that an answer obeys the
   rules. They do not check that the search took the best answer the ruling describes.
-- A pair whose third area is a pocket (judgement 1). No plan was made that has one.
+- The rule that three areas lie in a row (ruling 8). No test reaches it: see the "said first" paragraph on it.
+- The question with the may-close cells closed, for three sections on a plan made by hand. The hand-made plan's
+  answer with the gate passed is two sections by the Python model, so the three-section half of that question is
+  reached only if the generated plan of the shortcut test reaches it.
+- That an offer skipped for holding a boundary is not counted. No test counts offers.
 - How long the search takes. It is logged and not asserted.
-- A division with a shortcut's gate closed, beyond the one plan the shortcut test uses.
+- An answer with a shortcut's gate closed on generated plans, beyond the one plan the shortcut test uses.
 - A set of barred cells on a wave floor. Only the empty set is compared there.
 - A plan with walkable cells that cannot be reached. A built floor has none.
 

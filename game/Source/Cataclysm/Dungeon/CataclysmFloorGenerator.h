@@ -90,6 +90,13 @@ struct CATACLYSM_API FCataclysmFloorSections
 	TArray<TArray<FIntPoint>> Boundaries;
 
 	/**
+	 * The same cells grouped by the line they came from: `BoundaryLines[B][L]` is line `L` of boundary `B`. Kept so
+	 * a caller, and a test, can see which lines a boundary is made of without working it out again from the cells,
+	 * which cannot always be done: two lines may share a cell, and two lines side by side read as lines the other way.
+	 */
+	TArray<TArray<TArray<FIntPoint>>> BoundaryLines;
+
+	/**
 	 * The section of every cell of the plan, indexed the way `FCataclysmFloorPlan::Cells` is. Section 0 holds the
 	 * entrance and the last section holds the exit. `INDEX_NONE` for a cell that is not walkable and for a boundary
 	 * cell. Empty when there are no sections.
@@ -358,16 +365,27 @@ public:
 	 *
 	 * A BOUNDARY is one to `SectionBoundaryMostLines` lines closed together, of at most `SectionBoundaryMostCells`
 	 * cells, that leaves exactly two areas, each a tenth of the walkable cells or more, the entrance in one and the
-	 * exit in the other.
+	 * exit in the other. NO LINE IS CLOSED THAT PARTS NOTHING: two or three lines are not offered together when one
+	 * of them, or two of them, was already found to be a boundary among the same lines.
 	 *
 	 * THE ORDER. The `SectionLinesOffered` lines whose share is nearest one third are offered alone, then in twos,
 	 * then in threes, and the `SectionBoundariesKept` boundaries whose entrance side is nearest a third of the cells
 	 * are kept. The same again for two thirds. Each kept one-third boundary is tried with each kept two-thirds one:
 	 * the pair is a division when closing both leaves exactly three areas, each a tenth or more, the entrance and
-	 * the exit in different ones, and the third area lying between the two boundaries. The division whose smallest
-	 * area is largest is taken; then the one closing fewer cells; then the one whose lowest cell is lower, comparing
-	 * Y and then X. With no division the same offers are made at one half, and the boundary whose smaller side is
-	 * largest is the answer, in two sections. With none of those there are no sections.
+	 * the exit in different ones, and the three areas lie in a row: the third area between the two boundaries, and
+	 * not a pocket to one side that both of them seal. The division whose smallest area is largest is taken; then
+	 * the one closing fewer cells; then the one whose lowest cell is lower, comparing Y and then X. With no division
+	 * the same offers are made at one half, and the boundary whose smaller side is largest is the answer, in two
+	 * sections. With none of those there are no sections.
+	 *
+	 * `MayClose` IS CELLS THAT MAY BE CLOSED DURING PLAY, a shortcut gate's. Lines, shares, offers and boundaries are
+	 * still found on the plan as given, with those cells open. A division, and a two-section answer, is then taken
+	 * only if every rule also holds with those cells closed: the same number of areas, each a tenth or more, the
+	 * entrance and the exit apart, every cell in the section it had, and each boundary alone leaving the same
+	 * sections on the entrance's side. The two states are enough for every mix of open and shut gates: sections
+	 * stay whole because they are whole with every gate shut, and stay apart because they are apart with every gate
+	 * open. An empty list, which is the default, changes nothing and costs nothing.
 	 */
-	static FCataclysmFloorSections FindSections(const FCataclysmFloorPlan& Plan);
+	static FCataclysmFloorSections FindSections(const FCataclysmFloorPlan& Plan,
+		const TArray<FIntPoint>& MayClose = TArray<FIntPoint>());
 };
