@@ -4,12 +4,22 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-08 — A search finds where a Halls floor can be divided into three sections, or two, by closing short lines of cells. Engine only; nothing a player sees changes and no row changes state
 
-**Not built and not run as it now stands.** The search in this entry is the third version. The first two were
-built and run by the registering session on 2026-10-08, and every figure of a run in this entry is that session's,
-given to the writing session, which ran nothing. The third version, the fewest-lines search, was measured by the
-registering session as a temporary test and then written into the generator by the writing session. As written
-into the generator it has not been compiled and no Unreal test of it has been run. The Python suite, the lint and
-the conflict check were run before the commit; their figures are in the commit's report and not here.
+**Built and run.** The search in this entry is the third version. The first two were built and run by the
+registering session on 2026-10-08. The third, the fewest-lines search, was measured by the registering session as
+a temporary test, written into the generator by the writing session, then built and run by the registering
+session: this layer's own groups in a short turn at df008d57, and the whole suite in the window of the stack at
+fa2ebece. The Run section at the end of this entry has every printed figure. The writing session ran nothing but
+the Python suite, the lint and the conflict check. The coordinating session ruled and ran nothing.
+
+**Said first: on the slowest of 200 measured Halls floors the search took 49.544 milliseconds, and it is not under
+50 on every run.** That figure is from the short turn: a Development build, inside a test, on an otherwise idle
+machine; 9 of the 200 floors reached the limit of 3,000 walks. In the first window's run of the whole suite the
+same test printed 51.231 milliseconds. No test asserts a time. The
+figure stands and the walk limit is not lowered, a labelled judgement by the coordinating session under the
+owner's delegation, 2026-10-08, with its reasons: the search runs once when a floor is built and not during play;
+the 50 millisecond line was the coordinating session's judged number and the owner has parked performance to move
+forward; lowering the limit would cost floors their sections to buy headroom nobody has asked for. For the
+owner's play-check it is a cost when a floor loads.
 
 **Said first, for the owner: the pass line changed, and the coordinating session changed it.** A labelled judgement
 by the coordinating session under the owner's delegation, 2026-10-08, in its words. The requirement is that the
@@ -66,7 +76,7 @@ ways.** Ruled after the first version of this layer was reported. The search sti
 open. An answer is taken only if every rule also holds with them closed. One plan made by hand shows a division
 refused for it and, by the Python model, another three-section division taken in its place. The second version
 passed the shortcut test on a generated plan, gate open and gate closed, in the registering session's run; under
-the fewest-lines search that test has not been run.
+the fewest-lines search every test of this layer passed in the short turn and in the window; see Run.
 
 **Said first: "the same as today" for the populator is not pinned against recorded figures.** That would need a
 run. What holds today's behaviour is the eleven existing population tests passing unchanged, plus one new test
@@ -92,7 +102,7 @@ Line numbers are of the files as this change leaves them.
 - `game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.cpp`: `GenKeepLargestRegion`, `GenConnectionCells`,
   `GenCheckShortcut` (342), `FindShortcutBetween` (1433), `FindShortcuts` (1486), `CarveShortcut` (1563) and
   `Generate`. The new helpers are at lines 716 to 1357 and `FindSections` at 1571.
-- The coordinating session's temporary test of 2026-10-08, kept in the writing session's scratch folder and never
+- The registering session's temporary test of 2026-10-08, kept in the writing session's scratch folder and never
   committed, whole. Its two functions `Explore` and `FindByFewestLines` are the search that was measured.
 - `game/Source/Cataclysm/Dungeon/CataclysmFloorPlan.h` and `CataclysmFloorPlan.cpp`, whole.
   `CataclysmFloorCanBlock` is at line 51 of the `.cpp` and `CataclysmFloorDistancesFrom` at 87.
@@ -521,6 +531,60 @@ generator, so it says nothing of the twenty plans.
 
 Nothing. This layer adds no stat, no condition and no scale, and neither row can be written from it. No dry run
 through the generator was made, because there is no row shape to pass.
+
+### Run
+
+Every build, run and measurement here was made by the registering session on 2026-10-08. Every figure is a line a
+run printed. Development was c17bda32 throughout.
+
+**The short turn, at `feat/floor-sections-3` df008d57: this layer alone, its own groups only.** One attempt;
+nothing was corrected during it.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 20 actions, 15 files compiled` |
+| `Cataclysm.FloorSections.` | `15 tests performed, 15 succeeded, 0 failed` |
+| `Cataclysm.FloorGenerator.` | `2 tests performed, 2 succeeded, 0 failed` |
+| `Cataclysm.DungeonEnemies.` | `13 tests performed, 13 succeeded, 0 failed` |
+| The 20 Halls floors | `FLOORSECTIONS SUMMARY three sections on 17 of 20 \| three or two on 20 of 20 \| slowest floor 34.021 ms \| floors where the search stopped at its limit 1` |
+| The 200 further Halls floors | `FLOORSECTIONS WIDER plans=200 three=178 two=18 none=4 slowest_ms=49.544 at_the_limit=9` |
+
+The answers on the 20 floors were compared, floor by floor, with the answers the temporary test had measured
+before the search was written into the generator: sections, cells in each, cells closed and lines in each
+boundary. All 20 were the same. The four of the 200 with no sections are dungeon seeds 5078 and 5390 on floor 1
+and 5780 and 5793 on floor 10.
+
+**The window of the stack, at `feat/lightforged-sections-2` fa2ebece: this layer and layer 2 above it.** It was the
+second window. The first, at 2561ed00, built, and 3 of its 3,388 tests failed, all three layer 2's; layer 2's
+entry has it. No test of this layer failed in either. In the first window's whole-suite run the two log lines
+were `three sections on 17 of 20 | three or two on 20 of 20 | slowest floor 35.421 ms` and `plans=200 three=178
+two=18 none=4 slowest_ms=51.231 at_the_limit=9`.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 14 actions, 11 files compiled` |
+| Whole Unreal suite | `3389 tests performed, 3389 succeeded, 0 failed`; `Declared: 3389 tests in the tree at fa2ebece; 3389 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 404.08s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**NOT OBTAINED from the second window: its two log lines for the 20 and the 200 floors.** The registering session's
+runner did not keep the engine's log, and the guard proofs that followed wrote over it. So this run's slowest
+floor is not recorded here, and neither are the two counts layer 2's commit added to those lines (answers whose
+boundaries share a cell, and answers with a boundary that has no cell of its own). They are to be filled from a
+rerun of the group. **Those two counts are printed by this layer's test file, and the change that prints them is
+in layer 2's commit, not in this layer's.** A reader of this layer's pull request will not find them in it.
+
+**Guard proofs, at fa2ebece, each with every anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| S1a | `CataclysmFloorGenerator.cpp`: a section under a tenth of the floor is accepted | `Cataclysm.FloorSections.ARoomUnderATenthOfTheCellsIsNeverASectionOfItsOwn` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| S1b | `CataclysmFloorGenerator.cpp`, two edits in one proof: a boundary need not part the entrance from the stairs. The search holds that rule twice, so one edit alone changes nothing | `Cataclysm.FloorSections.ALineThatDoesNotPartTheEntranceFromTheExitIsNoBoundary` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| S1c | `CataclysmFloorPlan.cpp`: the cells to treat as open are closed instead | `Cataclysm.FloorSections.AnObstacleIsAskedAboutWithAClosedBarriersCellsTreatedAsOpen` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+
+No proof was run for the rule that three sections lie in a row: no test reaches it, as said first above.
 
 ---
 
