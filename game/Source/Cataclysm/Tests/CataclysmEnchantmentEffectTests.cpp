@@ -17758,6 +17758,22 @@ namespace CataclysmTrapLayerTest
 		return Made;
 	}
 
+	/**
+	 * A spike trap of this summoner's with `Type.Trap` TAKEN OFF by hand: the
+	 * control that is a machine and no trap. Since issue #2284 the minion types
+	 * table gives every summoned Spike Trap the tag, so a control that only
+	 * summoned one stopped being a control.
+	 */
+	ACataclysmMinion* SpikeTrapWithNoTrapTagOf(CataclysmDeployableTest::FSummoner& Summoner)
+	{
+		ACataclysmMinion* Made = Summoner.Make(TEXT("SpikeTrap"));
+		if (Made)
+		{
+			Made->TypeTags.RemoveTag(TheTrapTag());
+		}
+		return Made;
+	}
+
 	/** One modifier requiring `Type.Trap`, with a step of 1, as a row of this layer would be written. */
 	FCataclysmStatModifier TrapRow(ECataclysmStatBucket Bucket, float Value,
 								   ECataclysmStatScale Scale, float Offset = 0.0f)
@@ -17999,7 +18015,7 @@ bool FCataclysmTrapAndGadgetScalesOnABlowTest::RunTest(const FString&)
 		return false;
 	}
 	const float PlainBallistaBlow = Range.BlowFrom(Plain.Make(TEXT("Ballista")), /*Armour=*/0.0f);
-	Plain.Make(TEXT("SpikeTrap"));
+	SpikeTrapWithNoTrapTagOf(Plain);
 
 	// WHAT THE STATE HOLDS, on the summoner that commands a tagged trap, a
 	// ballista and a spike trap with no trap tag.
@@ -18021,7 +18037,7 @@ bool FCataclysmTrapAndGadgetScalesOnABlowTest::RunTest(const FString&)
 		TestEqual(TEXT("each other trap: two traps, one other, 1.3 times"),
 			Range.BlowFrom(First, 0.0f) / PlainBlow, 1.3f, 0.001f);
 		ACataclysmMinion* ItsBallista = EachOther.Make(TEXT("Ballista"));
-		EachOther.Make(TEXT("SpikeTrap"));
+		SpikeTrapWithNoTrapTagOf(EachOther);
 		TestEqual(TEXT("each other trap: a ballista and a spike trap with no trap tag are no traps, still 1.3"),
 			Range.BlowFrom(First, 0.0f) / PlainBlow, 1.3f, 0.001f);
 		TrapOf(EachOther);
@@ -18095,7 +18111,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapArmourRowTest,
  * so and stops.
  *
  * AND WHAT MUST NOT CHANGE. A ballista of the same summoner, which is no trap. A
- * spike trap with no trap tag, which is every spike trap in the data today. A
+ * spike trap with the trap tag taken off by hand (the data gives every Spike
+ * Trap the tag since issue #2284). A
  * trap whose summoner wears "Your skills ignore 10%-25% of enemy armor", a row
  * on the same stat with no required tag. A trap whose summoner's own armour
  * penetration attribute is 50.
@@ -18173,8 +18190,8 @@ bool FCataclysmTrapArmourRowTest::RunTest(const FString&)
 
 	TestEqual(TEXT("a ballista of the same summoner is no trap: its blow is unchanged"),
 		Range.BlowFrom(Rowed.Make(TEXT("Ballista")), Armour), PlainBallistaBlow, 0.01f);
-	TestEqual(TEXT("a spike trap with no trap tag is unchanged, which is every spike trap in the data today"),
-		Range.BlowFrom(Rowed.Make(TEXT("SpikeTrap")), Armour), PlainTrapBlow, 0.01f);
+	TestEqual(TEXT("a spike trap with the trap tag taken off by hand is unchanged"),
+		Range.BlowFrom(SpikeTrapWithNoTrapTagOf(Rowed), Armour), PlainTrapBlow, 0.01f);
 
 	// A ROW ON THE SAME STAT THAT NAMES NO TRAP. First that it is live on its
 	// wearer: it has no condition, so it stands on the attribute at 25.
@@ -18206,4 +18223,71 @@ bool FCataclysmTrapArmourRowTest::RunTest(const FString&)
 	return true;
 }
 
+// THE SPIKE TRAP IS A TRAP. The owner allowed the tag on 2026-10-07: `Type.Trap` on the Spike Trap's row of the
+// minion types. A summoned minion carries its row's tags, and a summoner's row scoped to traps is matched against
+// them.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpikeTrapIsATrapTest,
+	"Cataclysm.Enchantments.ASummonedSpikeTrapCarriesTheTrapTagAndABallistaDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A Spike Trap and a Ballista are summoned from the built table. Both are
+ * deployables; only the Spike Trap carries `Type.Trap`.
+ *
+ * AND THE CONTROL TWO OTHER TESTS USE IS SEEN FROM ITS OTHER SIDE: the helper
+ * `CataclysmTrapLayerTest::SpikeTrapWithNoTrapTagOf` summons a Spike Trap and
+ * takes the tag off by hand, and that one does not carry it.
+ */
+bool FCataclysmSpikeTrapIsATrapTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayTag TrapTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("set-up: the trap tag is registered"), TrapTag.IsValid()))
+	{
+		return false;
+	}
+	// THREE METRES APART, so neither spawn is refused for standing in the other.
+	ACataclysmMinion* Trap = ACataclysmMinion::Spawn(Wearer.Actor, FVector(300.0f, 0.0f, 0.0f),
+		/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("SpikeTrap"));
+	ACataclysmMinion* Ballista = ACataclysmMinion::Spawn(Wearer.Actor, FVector(600.0f, 0.0f, 0.0f),
+		/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Ballista"));
+	ON_SCOPE_EXIT
+	{
+		if (IsValid(Trap)) { Trap->Destroy(); }
+		if (IsValid(Ballista)) { Ballista->Destroy(); }
+	};
+	if (!TestNotNull(TEXT("set-up: a spike trap of the wearer's"), Trap)
+		|| !TestNotNull(TEXT("set-up: a ballista of the wearer's"), Ballista)
+		|| !TestTrue(TEXT("set-up: the spike trap is a deployable"), Trap->IsDeployable())
+		|| !TestTrue(TEXT("set-up: the ballista is a deployable"), Ballista->IsDeployable()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the spike trap carries Type.Trap. If not, DT_MinionTypes may be older than the workbook: run "
+				  "tools/generate_datatable_assets.py"),
+		Trap->TypeTags.HasTagExact(TrapTag));
+	TestFalse(TEXT("the ballista does not"), Ballista->TypeTags.HasTagExact(TrapTag));
+
+	// A SECOND SUMMONER, A HUNDRED METRES ALONG, so its machine stands in nobody's place.
+	CataclysmDeployableTest::FSummoner Other(World, nullptr);
+	Other.Along = 10000.0f;
+	ACataclysmMinion* Untagged = CataclysmTrapLayerTest::SpikeTrapWithNoTrapTagOf(Other);
+	ON_SCOPE_EXIT { if (IsValid(Untagged)) { Untagged->Destroy(); } };
+	if (TestNotNull(TEXT("set-up: the helper's spike trap"), Untagged))
+	{
+		TestFalse(TEXT("the helper's spike trap, with the tag taken off by hand, does not carry Type.Trap"),
+			Untagged->TypeTags.HasTagExact(TrapTag));
+		TestFalse(TEXT("and the game does not count it a trap"), Untagged->IsTrap());
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

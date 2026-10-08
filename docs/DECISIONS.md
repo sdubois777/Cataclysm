@@ -2,6 +2,74 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — The Spike Trap carries the tag `Type.Trap`
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one cell of the Minion Types sheet), `game/Data/MinionTypes.csv` and
+its asset, one new test in `CataclysmEnchantmentEffectTests.cpp` and the controls of two merged tests there. Issue
+[#2284](https://github.com/sdubois777/Cataclysm/issues/2284).
+
+### THE OWNER'S DECISION, 2026-10-07
+
+**The Spike Trap is given the tag, and nothing else about traps is decided by this.** The owner allowed the tag
+only, as relayed by the coordinating session.
+
+### FIRST, WHAT CHANGES FOR A PLAYER: A SPIKE TRAP IS NOW A TRAP AND NO LONGER A GADGET FOR `gadgets_active`
+
+From this layer a Spike Trap is counted by the scale `traps_active` and not by `gadgets_active`; the two counts
+add up to `deployables_active`, as the entry "Two count scales, `traps_active` and `gadgets_active`" of the same
+day says. **"Each active gadget increases your evasion chance" still counts a Spike Trap**, because that row
+scales by `deployables_active`. That is the inconsistency already on the owner's list. By reading; not run.
+
+### WHAT WAS BUILT
+
+The Spike Trap's Tags on the Minion Types sheet gain `Type.Trap`, beside `Type.Minion`, `Type.Deployable` and
+`Minion.Machine`. The tag already existed in the game's list of tags. No engine code and no generator code is
+changed here.
+
+### WHAT THE TAG DOES TODAY, BY READING
+
+- **A summoned minion carries its row's tags**, and its summoner's rows on a minion stat are matched against them:
+  a trap's swing asks its summoner's `minion_damage` with the trap's own tags (`ACataclysmMinion`, the call of
+  `UCataclysmCommand::SummonerMultiplierAgainst`). So a row on a minion stat that requires `Type.Trap` now reaches
+  a Spike Trap and no other minion. **No authored row is of that kind yet**; the rows that are follow this entry.
+- **The rows scoped to `Type.Trap` today do not reach it through this.** "Traps deal 20%-40% increased damage" is
+  two rows on `attack_damage` and `spell_damage`, and a deployable's swing reads `attack_damage` only from a row
+  that names `Type.Deployable`. Two more rows are scoped to the tag: "Your traps ignore 20%-40% of enemy armor",
+  on `armor_penetration`, and one passive node that raises `area_of_effect`. **Whether either reaches a summoned
+  trap was not read here**; the dungeon session's layer on a trap's swing and its summoner's armour penetration
+  states the first.
+
+### THE CONTROLS OF TWO MERGED TESTS WERE CHANGED, AND NOTHING THEY ASSERT WAS
+
+Found by reading before the window, and ruled 2026-10-07 by the coordinating session. Two tests merged with
+the layer on the two count scales (pull request
+[#2313](https://github.com/sdubois777/Cataclysm/pull/2313)) summoned a Spike Trap as "a spike trap with no trap
+tag". That was a fact about the data which this layer changes on purpose, and that layer's entry said no Spike
+Trap carried the tag on that day and that another session adds it. With no correction, five assertions would have failed, by reading:
+
+| Test | Assertion | Why |
+| :-- | :-- | :-- |
+| `Cataclysm.Enchantments.TheTrapAndGadgetScalesCountTheSummonersOwnMachinesOnATrapsBlow` | "one of them is a trap: the one carrying Type.Trap", 1 | two would be traps |
+| the same | "two are gadgets", 2 | one would be a gadget |
+| the same | "a ballista and a spike trap with no trap tag are no traps, still 1.3" | a third trap gives 1.6 |
+| the same | "three traps, two others, 1.6 times" | a fourth trap gives 1.9 |
+| `Cataclysm.Enchantments.ATrapsBlowIgnoresArmourOnlyByItsSummonersRowNamingTraps` | "a spike trap with no trap tag is unchanged" | it would be a trap and take the row |
+
+**The correction:** a helper, `SpikeTrapWithNoTrapTagOf`, beside the merged `TrapOf`, summons a Spike Trap and
+removes `Type.Trap` from its tags by hand, and the three controls call it. **Every figure the two tests assert
+is what it was.** The comment and the assertion text that said "which is every spike trap in the data today"
+now say the tag is taken off by hand.
+
+### Tests
+
+- `Cataclysm.Enchantments.ASummonedSpikeTrapCarriesTheTrapTagAndABallistaDoesNot`: a Spike Trap and a Ballista
+  summoned from the built table. Both are deployables; only the Spike Trap carries `Type.Trap`. And a Spike
+  Trap made by the helper `SpikeTrapWithNoTrapTagOf` does not carry it, and the game does not count it a trap.
+
+**Not tested here:** any row reaching a trap by the tag.
+
+---
+
 ## 2026-10-07 — Healing that does not fit in health is kept as the temporary absorb, up to a percentage of maximum health stated by a new stat, `overheal_absorb_percent_of_maximum_health`. Engine only; no row authored
 
 **Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** The rest of this entry was
