@@ -22900,6 +22900,120 @@ bool FCataclysmDotCombatLeechDrainTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechExistingDrainTest,
+	"Cataclysm.DotCombatLeech.TheExistingDrainOfFifteenPerCentEveryFiveSecondsTakesWhatItTookBeforeTheClockChanged",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `StepTimedGrants` was changed on 2026-10-07: a period that ends while a row's condition refuses is passed
+ * over. This holds ONE EXISTING timed row, by name, to what it gave before the change:
+ * `Negative_You_lose_15_of_your_max_hp_every_5_seconds#1`, "You lose 15% of your max hp every 5 seconds".
+ *
+ * ITS CELLS in `game/Data/EnchantmentEffects.csv`, read 2026-10-07: Stat empty, ValueKind empty, ValueLow -15,
+ * ValueHigh -15, RequiredTags empty, Condition empty, Scale empty, Action `health`, ActionEvent
+ * `every_seconds`, FractionOf `maximum`, EverySeconds 5, every other cell nought or empty. The action here is
+ * built by hand in that shape; the row is not loaded, so the table and the item loader are not what is tested.
+ *
+ * EVERY FIGURE IS WORKED OUT FROM THE ROW: one share is 15% of maximum health, and one is due for each whole 5
+ * seconds of the current combat. So nothing out of combat; nothing four and a half seconds in; one share five
+ * and a half seconds in; still one at nine and a half; two at ten and a half; no more once combat lapses; in a
+ * second combat, no more at four and a half seconds and a third share at five and a half. The control is a
+ * fighter with no row in the same fights, who loses nothing.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmDotCombatLeechExistingDrainTest::RunTest(const FString&)
+{
+	using namespace CataclysmDotCombatLeechTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Bare(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Bare, 0.0f, 0.0f);
+	Wearer.AbilitySystem->SetPoolActions({ADrainOnTheClock(15.0f, 5.0f, /*AfterSecondsInCombat=*/0.0f)});
+
+	const float Share = Wearer.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * 15.0f / 100.0f;
+	if (!TestTrue(TEXT("set-up: 15% of the wearer's maximum health is a real amount"), Share > 1.0f))
+	{
+		return false;
+	}
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	FScopedFighter* const Fighting[] = {&Wearer, &Bare};
+
+	// OUT OF COMBAT, however long.
+	World->TimeSeconds = 50.0f;
+	Wearer.AbilitySystem->StepTimedGrants();
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: fifty seconds out of combat take nothing"),
+			  Lost(Wearer), 0.0f, 0.001f);
+
+	float Began = 0.0f;
+	const auto BeginFight = [&]()
+	{
+		Began = World->TimeSeconds;
+		for (FScopedFighter* Each : Fighting)
+		{
+			Each->AbilitySystem->NoteHitDealt();
+		}
+		World->TimeSeconds += 0.5f;
+	};
+	const auto FightUntil = [&](float SecondsIn)
+	{
+		while (World->TimeSeconds < Began + SecondsIn - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			for (FScopedFighter* Each : Fighting)
+			{
+				Each->AbilitySystem->NoteHitDealt();
+				Each->AbilitySystem->StepTimedGrants();
+			}
+		}
+	};
+
+	BeginFight();
+	FightUntil(4.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: four and a half seconds in, nothing yet"),
+			  Lost(Wearer), 0.0f, 0.001f);
+	FightUntil(5.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: five and a half seconds in, the first share"),
+			  Lost(Wearer), Share, 0.01f);
+	FightUntil(9.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: nine and a half seconds in, still one share"),
+			  Lost(Wearer), Share, 0.01f);
+	FightUntil(10.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: ten and a half seconds in, the second share"),
+			  Lost(Wearer), Share * 2.0f, 0.01f);
+
+	// COMBAT LAPSES: four seconds with no blow, past the three second lapse.
+	World->TimeSeconds += 4.0f;
+	for (FScopedFighter* Each : Fighting)
+	{
+		Each->AbilitySystem->StepTimedGrants();
+	}
+	if (!TestTrue(TEXT("set-up: four seconds with no blow put the wearer out of combat"),
+				  Wearer.AbilitySystem->SecondsInCombat() < 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: out of combat again, nothing more"),
+			  Lost(Wearer), Share * 2.0f, 0.01f);
+
+	// A SECOND COMBAT COUNTS ITS OWN PERIODS FROM NOUGHT.
+	BeginFight();
+	FightUntil(4.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: four and a half seconds into a second combat, "
+				   "nothing more"),
+			  Lost(Wearer), Share * 2.0f, 0.01f);
+	FightUntil(5.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: five and a half seconds into it, a third share"),
+			  Lost(Wearer), Share * 3.0f, 0.01f);
+	TestEqual(TEXT("control: a fighter with no row, in the same fights, has lost nothing"), Lost(Bare), 0.0f,
+			  0.001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechScaleTest,
 	"Cataclysm.DotCombatLeech.TheResistanceCapFallsForEachWholeSecondOfUnbrokenLeechingUpToTheRowsCapAndReturnsWhenNothingIsOwed",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

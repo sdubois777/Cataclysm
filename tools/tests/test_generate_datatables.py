@@ -4770,12 +4770,38 @@ class TestTheConditionsAndTheScaleOfTheSeventhOfOctober:
             "resistance_cap", "flat", -1.0, -3.0, "seconds_leeching", 1.0, 10)
         assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
 
-    def test_the_leech_scale_has_no_cap_of_its_own(self, tmp_path):
-        """The cap is the row's. A row that leaves it out is carried through
-        with none, which is the reading the ruling did not take."""
-        row = dict(self.LEECH_ROW, **{"Scale Max Steps": None})
+    def test_the_leech_row_is_refused_without_a_cap_and_accepted_with_one(
+            self, tmp_path):
+        """Ruled 2026-10-07. The scale has no cap of its own, so a row that
+        states none would be uncapped, and is refused. The control is the
+        same row with its cap, which is carried through."""
+        out = self.out(tmp_path, "Negative", self.LEECH, self.LEECH_ROW)
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_leeching", 10)
+        with pytest.raises(gen.DataError, match="states no Scale Max Steps"):
+            self.out(tmp_path, "Negative", self.LEECH,
+                     dict(self.LEECH_ROW, **{"Scale Max Steps": None}))
+
+    def test_another_scale_still_needs_no_cap(self, tmp_path):
+        """The refusal is for the scales listed and no other: the kill
+        counter's row on the same stat states no cap and is carried through."""
+        assert gen.SCALES_THAT_NEED_A_CAP == {"seconds_leeching"}
+        row = dict(self.LEECH_ROW, **{"Scale": "character_kills",
+                                      "Scale Step": 100000,
+                                      "Scale Max Steps": None})
         out = self.out(tmp_path, "Negative", self.LEECH, row)
-        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_leeching", 0)
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("character_kills", 0)
+
+    def test_the_leech_scale_is_refused_on_a_passive_row(self, tmp_path):
+        """The Passive Effects sheet has no cap column. The control is the
+        same row on a scale that needs none."""
+        passive = TestARowCountingNearbyEnemiesCarriesItsOwnRadius()
+        gen.passive_effects(passive.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "seconds_in_combat", 1, None]]))
+        with pytest.raises(gen.DataError, match="needs a cap in Scale Max Steps"):
+            gen.passive_effects(passive.book(tmp_path, [
+                ["A_node", "armor", "increased", 3,
+                 None, None, "seconds_leeching", 1, None]]))
 
     def test_a_leech_step_of_nothing_or_past_a_minute_is_refused(self, tmp_path):
         for step in (0, 61):
