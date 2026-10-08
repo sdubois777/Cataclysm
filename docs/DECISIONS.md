@@ -762,6 +762,37 @@ generator or the engine knows, and they were not dry run.
 no entry in `CONDITIONED_STATS_WITH_AN_ASKER`** while its row states no condition; a row that put a condition on
 it would be refused until it had one.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. The build, the whole suite and the Python of record are in the table of the entry of the same day on the
+retirement of "Can’t use a basic attack" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.** It was the first time the C++ of this layer was
+compiled.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of all seven layers, the first compile of this layer's code and tests | 58367e1f | Build: Succeeded - 34 actions, 31 files compiled |
+| Whole suite, every asset built | cee98975 | 3401 tests performed, 3401 succeeded, 0 failed |
+| Proof A1, the row's seconds do not reach the wait (`RowDelay` multiplied by nought) | cee98975 | PROVED: with the break in, 8 tests performed, 6 succeeded, 2 failed: `ACastDelayRowHoldsBackATaggedStrikesBlowAndNoOtherAndItsCostIsPaidAtThePress` and `ACastDelayIsAddedToTheWindUpAndAFigureBelowNoughtAddsNothing`, 9 failed assertions; restored, 8 of 8 |
+| Proof A2, a figure below nought is not floored | cee98975 | PROVED: 8 performed, 1 failed: `ACastDelayIsAddedToTheWindUpAndAFigureBelowNoughtAddsNothing`, 2 failed assertions; restored, 8 of 8 |
+| Proof A3, the delay replaces the wind-up (the larger of the two in place of their sum) | cee98975 | PROVED: 8 performed, 1 failed: the same test, 1 failed assertion; restored, 8 of 8 |
+
+**One conflict was resolved by hand when this layer was moved onto the stack**, in
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`: this layer and the follow-up of the layer on a
+landed hit had each added tests at the end of the file. The file was made as that one's file with this layer's
+one block of 282 lines put before the closing `#endif`, and the build above is the first proof that it compiles.
+
+**The three proofs were each as stated before they ran.** A1 was stated as those two tests and at least 3 failed
+assertions with three of them named; it failed 9, the eight the writing session had counted in the first test
+and the one in the second. A2 failed "a delay below nought adds nothing: a wind-up of 0.6 is still 0.6" (it read
+-0.4) and "with no wind-up, a delay below nought is no wait" (-1.0). A3 failed "a delay of 1 second is added to a
+wind-up of 0.6: the wait is 1.6" (1.0). For every proof the broken file's hash was the same after the proof as
+before it.
+
+**No proof was run for**: that the stat is asked with the skill's own tags; that a held strike, a movement
+skill and a self buff are not delayed; that the cost and the cooldown are paid at the press. The first and the
+third are tested and passed; the second is by reading.
+
 ---
 
 ## 2026-10-08 — "Can’t use a basic attack" is retired by the owner, and "Your HP regeneration continues at 50% effectiveness during combat" already was
