@@ -66,13 +66,16 @@ import generate_datatables as gen  # noqa: E402
 
 #: Words that state a `more` multiplier without a number, and the value each
 #: one means. "Double your energy shield" is +100% more; "tripled" is +200%.
-MULTIPLYING_WORDS = {"double": 100.0, "doubled": 100.0, "twice": 100.0,
+#: "DOUBLES" JOINED ON 2026-10-07 for "Each gadget on the battlefield doubles
+#: the damage of all your traps", the one sentence in the two tables that says
+#: it. Ruled by the coordinating session under the owner's delegation.
+MULTIPLYING_WORDS = {"double": 100.0, "doubled": 100.0, "doubles": 100.0, "twice": 100.0,
                      "triple": 200.0, "tripled": 200.0, "quadrupled": 300.0,
                      "halved": -50.0}
 
 #: A sentence worded as a multiplier, which is what the `more` bucket is for.
 MULTIPLIER = re.compile(
-    r"\b(more|less|double|doubled|twice|triple|tripled|quadrupled|halved|slowed|ignore|ignores)\b",
+    r"\b(more|less|double|doubled|doubles|twice|triple|tripled|quadrupled|halved|slowed|ignore|ignores)\b",
     re.IGNORECASE)
 
 #: A sentence worded as an increase, which is the `increased` bucket.
@@ -745,8 +748,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-07, from 543 over 456: one row on one enchantment.
 #: AND 543 OVER 457 SINCE THE TRAP DAMAGE SENTENCE WAS WRITTEN AGAIN AS ONE ROW ON MINION DAMAGE,
 #: issue #1833, 2026-10-07, from 544 over 457: two rows removed and one written, on one enchantment.
-AUTHORED_ROWS = 543
-AUTHORED_ENCHANTMENTS = 457
+#: AND 546 OVER 460 SINCE THREE TRAP ROWS ON THE COUNTS OF TRAPS AND GADGETS,
+#: issue #1833, 2026-10-07, from 543 over 457: three rows on three enchantments.
+AUTHORED_ROWS = 546
+AUTHORED_ENCHANTMENTS = 460
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1438,6 +1443,21 @@ def test_applied_states_every_time_only_on_the_action_that_lays_a_status_on_its_
     for other in ("apply_status_to_self_seconds", "apply_status_to_self_sized",
                   "cooldown_use_increased_damage", "damage_over_time_taken", "max_health"):
         assert not value_is_stated(other, 100.0, sentence), other
+
+
+def test_doubles_is_a_multiplier_of_one_hundred_and_only_as_a_whole_word():
+    """Ruled 2026-10-07, on made-up sentences. "Doubles" words a `more` row and
+    states 100, as "double" and "doubled" do; it states no other number, and a
+    longer word that only begins with it is not read."""
+    sentence = "Each lantern doubles the damage of your snares"
+
+    assert MULTIPLIER.search(sentence)
+    assert value_is_stated("minion_damage", 100.0, sentence)
+    assert not value_is_stated("minion_damage", 50.0, sentence)
+    assert not value_is_stated("minion_damage", 200.0, sentence)
+    longer = "Each lantern doublespeaks the damage of your snares"
+    assert not MULTIPLIER.search(longer)
+    assert not value_is_stated("minion_damage", 100.0, longer)
 
 
 def test_every_word_stated_value_is_still_needed(effects, enchantments):

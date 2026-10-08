@@ -2,6 +2,79 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Three trap rows that scale by a count of traps or gadgets are built, and "doubles" joins the wording check
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (three rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the word "doubles",
+one new test, the row counts),
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` (the two scales leave the list of
+scales built ahead of their rows, and the count of scales a row names moves from 36 to 38), `docs/README.md`. Issue
+[#2284](https://github.com/sdubois777/Cataclysm/issues/2284).
+
+### WHAT WAS BUILT
+
+Three of the rows the entry "Two count scales, `traps_active` and `gadgets_active`" of 2026-10-07 left to the
+session holding the design workbook, each as that entry's table states it. The two scales and the stat were read
+in the merged code. No engine code and no generator code is changed here.
+
+| Sentence | Kind | Value | Scale | Offset |
+| :-- | :-- | :-- | :-- | :-- |
+| Traps deal 15%-30% increased damage for each other trap currently active on the battlefield | increased | 15 to 30 | `traps_active`, step 1 | 1 |
+| Each active gadget increases trap damage by 10%-20% | increased | 10 to 20 | `gadgets_active`, step 1 | none |
+| Each gadget on the battlefield doubles the damage of all your traps | more | 100 | `gadgets_active`, step 1 | none |
+
+Each is on `minion_damage` and requires `Type.Trap`. EnchantmentEffects 543 to 546, over 457 to 460 enchantments.
+
+### "DOUBLES" JOINS THE WORDING CHECK
+
+The row-text check reads "double", "doubled" and "twice" as a multiplier of 100 and did not read "doubles". Ruled
+2026-10-07 by the coordinating session: "doubles" joins both lists, the words that make a row a `more` row and
+the words that state 100. `test_doubles_is_a_multiplier_of_one_hundred_and_only_as_a_whole_word` holds it on
+made-up sentences: it states 100 and no other number, and a longer word that begins with it is not read. One
+sentence in the two tables says "doubles".
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the three sentences is that entry's. Three a reader of the rows should have in hand: a trap is a
+machine that carries `Type.Trap`, and a gadget is a machine that does not; "each other trap" leaves out the trap
+that is striking, by the offset; and **"doubles" is additive**: one gadget is twice, two are three times, three
+are four times, and not twice, four times, eight times.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheThreeTrapRowsOnOtherTrapsAndGadgetsEachRaiseWhatASpikeTrapDealsByItsCount`: each real
+  row worn at its best roll by a wearer that then commands three Spike Traps and two Ballistas from the built
+  table. The test first asserts that each name it wears is a row of `EnchantmentsPositive.csv`, and that three
+  traps and two gadgets are counted. The summoner's multiplier on minion damage asked with a Spike Trap's tags,
+  over the same asked with a Ballista's, is 1.6, 1.4 and 3 for the three rows; with the item taken off the two
+  are equal and the Ballista's is unchanged.
+- The probe of the entry below this one first runs here, since these are the first shipped rows that scale
+  `minion_damage`.
+
+**Not tested here:** a real swing of a trap under a worn row; the probe of the entry below measures a swing with
+the first row's shape made by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other six layers of the stack, on `development` 8c44c278. The build, the
+whole suite and the Python of record are in the table of the entry "The Spike Trap carries the tag `Type.Trap`"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 8b40633f | 284 tests performed, 278 succeeded, 6 failed, this layer's among them; 1 of the 10 failed assertions is this layer's |
+| The enchantment assets, regenerated with the editor | 1a56f340 | effect rows 543 to 546 |
+| Whole suite, every asset built | 6ba718d2 | 3325 tests performed, 3325 succeeded, 0 failed |
+
+**The test fails against assets without the tag and passes with them**: its set-up assertion "the spike trap
+carries Type.Trap" was false against the older minion types asset at the first of the three rows, so against
+those assets no row's figure was read. With every asset built the three ratios were 1.6, 1.4 and 3.0.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The generator's list and the wording check are covered by the Python of record.
+
+---
+
 ## 2026-10-07 — `minion_damage` joins the stats a data row may scale, with the probe that measures its asker; no row authored here
 
 **Affects:** `tools/generate_datatables.py` (`STATS_WITH_AN_ASKER`),
