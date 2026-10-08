@@ -77,6 +77,31 @@ which is what a skill tagged `Type.Channel` calls when it is paid for; no skill 
 **Not tested here:** Pyroclasm used under any of the worn rows; a step refused in play; health lost over a
 real spin. The entry that built the condition tests each with the row made by hand, except the step.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the layer below this one and the two above it, on `development` c17bda32. The
+build, the whole suite and the Python of record are in the table of the entry of the same day "A character knows
+it is channelling" and were run with this layer in the stack. **The ids are the commits as they stood when each
+step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 41e03c74 | 297 tests performed, 292 succeeded, 5 failed, this layer's three among them; 9 of the 13 failed assertions are this layer's: the drain row 4, the cannot-move rows 3, the less-damage rows 2 |
+| The enchantment assets, regenerated with the editor | 1077315d | effect rows 565 to 570 |
+| Whole suite, every asset built | c7aa4e58 | 3379 tests performed, 3379 succeeded, 0 failed |
+
+**Each of the three tests fails against a table without its rows and passes with them.** Without the rows the
+wearer held no timed action on health that acts while channelling; `cannot_walk` answered nought while
+channelling, the function the player controller asks said the wearer could walk, and a movement skill carried no
+lock; and a channelled skill's attack damage and spell damage were not halved half a second into a channel.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the entry
+that built the mechanism proved, read in its table: three guard proofs, each failed with its break in and passed
+with it out: a timed row counted under its own key, the window not admitting the second it ends on, and the
+change told when a channel ends. **That table says no proof was run for the condition `while_channelling`
+itself, the flag `cannot_walk` and the function the player controller asks, the drain's count of whole seconds,
+or the refusal of a movement skill while channelling**; those are tested and not proved.
+
 ---
 
 ## 2026-10-08 — A character knows it is channelling: two conditions, `while_channelling` and `channelling_for_under_seconds`, and one flag stat, `cannot_walk`, for three enchantment sentences that have no row, and a fault in the timed-row clock is fixed. Engine and generator only; no row authored
