@@ -2,6 +2,376 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — A worn row makes a movement skill do four things: pull nearby enemies to its user where it arrives, hit every enemy a charge's path crossed, go in a random direction, and explode where it began and where it arrived. Engine only; no row authored
+
+**Built and run on 2026-10-07 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
+
+**Not built and not run.** No Unreal build and no automation test was run by the writing session. The Python suite
+under `tools/tests`, `ruff` and `tools/check_resolved_cpp.py` were run; their last lines are in the commit report.
+One Python dry run of the four row shapes was made and is described under "What the row needs".
+
+**Said first: the hit along the path reaches a CHARGE only.** In this code only a charge has a path. A leap
+"touches nothing under the arc" and a blink strikes "both ends, nothing between" (the movement skill's own
+comments). So a wearer whose movement skill is a leap, a blink or a trade gets nothing from "deals 50%-100% of your
+weapon damage to all enemies along its path". Of the fourteen skills in the Movement slot today, seven are
+charges and seven are not. **The seven that get the hit:** Flashpoint, Inexorable, Emberhaul, Lunge, Nail Down,
+Cinder Rush and Reel. **The seven that do not:** Ashwalk, Whip Swing and Foul Wake (blinks), Shockwave Leap,
+Infernal Plunge and Crater (leaps), and Vesselstep (a trade). **Confirmed on 2026-10-07**, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07:
+"A leap or a blink has no path in this game." Both sevens are on the owner's play-check list.
+
+**Also said first: a pull in this game does more than move.** The pull is `UCataclysmSkillEffects::ApplyPull`, so
+it leaves each enemy it moved **staggered for one second**, counts as crowd control applied by the wearer, is
+shortened by the enemy's crowd control resistance, and moves an enemy **half as far** if that enemy was displaced
+in the last five seconds. None of that was changed. **Accepted with all of it on 2026-10-07**, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+The reason recorded: one pull rule for the game is worth more than a bare move.
+
+**"1.5 metres" holds for an enemy's FIRST displacement in that five second window.** An enemy displaced in the
+last five seconds is moved half of the way a first pull would move it, a quarter on the next, and so ends further
+than 1.5 metres from the wearer. An enemy with crowd control resistance is also moved a shorter way.
+
+**A later layer's rule, "cannot apply crowd control to enemies above 50% health", refuses this pull on such
+enemies for a wearer of both rows**, because a pull is displacement and displacement is crowd control. Stated
+here by the same ruling; that rule is not built in this layer.
+
+**Also said first: nothing here can be tested at the end of a walked charge.** A walked charge (Inexorable,
+Cinder Rush) ends from a timer, and a timer never fires in an automation-test world. The explosions and the pull
+at the end of a walked charge are written and are not covered by a test.
+
+### Said first: where the code did not match what the writing session was told
+
+1. **The line numbers in the brief were close and not exact; every site was re-read.** Before this change, in
+   `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`: `End = ConditionalDestination(Start)` at
+   line 2741; the zone at the point left at 2865; the zones at the arrival at 2927-2928; the zones at the end of
+   a walked charge at 3222-3224; `FindEnemiesInLine` at 2811 (an instant charge) and 3174 (each step of a walked
+   charge). These matched the brief.
+2. **Recall and Swap are not the only modes that take a target.** `ConditionalDestination` itself sends a skill
+   whose row states `Requires=Burning` or `Requires=Target` to an enemy and not to the aimed point (Flashpoint,
+   Emberhaul, Nail Down). Those are left alone by the random direction, with Recall, Swap and the Flicker.
+3. **`ApplyPull` cannot be told "to 1.5 metres"; it is told a distance.** It hauls a target a stated distance
+   toward the instigator, never further than the gap, and a distance of nought or less means the whole way. So
+   the movement skill asks for the gap less 1.5 metres, and an enemy already within 1.5 metres is never passed to
+   it. The code did not settle what happens to such an enemy; the ruling given for that case is used: it is not
+   moved.
+4. **The generator's dry run cannot refuse a wrong stat name on a `flat` row.** A control row naming a stat no
+   code knows was accepted too. See "What the row needs".
+
+### What was read before writing
+
+Line numbers are those before this change.
+
+- `CataclysmSkillTemplates.cpp`: `UCataclysmMovementSkill::ConditionalDestination` (2497), `ActivateAbility`
+  (2535-2941), `FlickerOnce` (2949), `BeginAdvance` (3047), `AdvanceOneStep` (3144), `FinishAdvance` (3203).
+- `CataclysmSkillTemplate.cpp`: `LeaveRowZoneAt` (2944), `LeaveZoneAlong` (2966), `LeaveAZoneFor` (3038),
+  `HitScaled` (1873), `HitTargets` (2057), `AimedPointWithin` (2026), `GetDamagePercent` (96), `IsImmuneTo` (989).
+- `CataclysmSkillTemplate.h`: `RowZoneRadiusCm = 150` and `RowZonePercentPerSweep = 10` (1327-1328).
+- `CataclysmSkillEffects.cpp`: `ApplyHit` (656-997), the one body every displacement passes through,
+  `CataclysmDisplace` (2812), `ApplyPull` (3125), `IsAreaDamage` (1161).
+- `CataclysmSkillEffects.h`: `FCataclysmHitDelivery` (41), the comment on `ApplyPull` (2387-2413).
+- `CataclysmTargeting.cpp`: `Gather`, `FindEnemiesInSphere`, `FindEnemiesInLine` (186-313).
+- `CataclysmAbilitySystemComponent.cpp`: `ActOnEvent` (4699) and the pinned rolls beside it (3876-3910);
+  `CataclysmVitalAttributeSet.cpp`: `Cataclysm.CritRoll` (83).
+- This file's entry of 2026-10-06, "A row gives a ground zone to a skill that states none".
+- `game/Data/WeaponSkills.csv`, for the mode, the `Requires` and the tags of each Movement skill.
+- `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`: `ZonesLeftByOneUse` and the two zone probes.
+
+### What it is for
+
+Four sentences that have no row. Each is quoted as it stands in `game/Data/`.
+
+| Name | Sentence | File |
+|---|---|---|
+| `Positive_Your_movement_abilities_pull_all_nearby_enemies` | "Your movement abilities pull all nearby enemies to you on arrival" | `EnchantmentsPositive.csv` |
+| `Positive_Your_movement_ability_deals_50_100_of_your_wea` | "Your movement ability deals 50%-100% of your weapon damage to all enemies along its path" | `EnchantmentsPositive.csv` |
+| `Negative_Your_movement_abilities_now_move_you_in_a_random` | "Your movement abilities now move you in a random direction" | `EnchantmentsNegative.csv` |
+| `Positive_Your_movement_abilities_cause_an_explosion_at_th` | "Your movement abilities cause an explosion at the starting and end locations" | `EnchantmentsPositive.csv` |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+- **The pull.** Enemies within 5 metres are moved to stand 1.5 metres from the wearer. A creature immune to
+  displacement is not moved. No damage. An enemy already nearer than 1.5 metres is not moved.
+- **The hit along the path.** 50% to 100% of weapon damage, once to each enemy the path crosses, an ordinary hit
+  of the wearer's with the skill's tags. The width is the width the movement skill's own path hit already uses
+  where one exists. A mode with no path crosses no enemy unless the code already treats its line as a path.
+- **The random direction.** It covers every mode that takes a direction from the player, and not one that takes a
+  target. The roll can be pinned in a test. The distance is the skill's own, and the usual rules for a blocked
+  destination still apply.
+- **The explosions.** Each deals 10 of the skill's hit (10 per cent of the skill's own hit, the share a row's
+  zone deals a sweep), within 3 metres, in the skill's damage type. It is a stat of the wearer read where the
+  skill began and where it arrived, and not a nearby smite. The start follows the same test as the end, so a
+  skill moved to another key explodes at both ends or at neither.
+
+**Ruled on 2026-10-07 after the layer was written, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.**
+
+- **The hit along the path reaches the seven charges and not the seven leaps, blinks and the trade: confirmed.**
+  "A leap or a blink has no path in this game."
+- **The pull is the game's pull, accepted with all it does**: the 1 second stagger, counting as crowd control
+  applied, shortened by crowd control resistance, halved for an enemy displaced in the last 5 seconds. One pull
+  rule for the game is worth more than a bare move. "1.5 metres" holds for an enemy's first displacement in that
+  window.
+- **The random direction on the ten skills, skipping the six: accepted.** The ten and the six are named under
+  "Which skills each row reaches".
+- **The two explosions as built are accepted**: area damage, may critically strike, both may strike one enemy,
+  widened by area of effect. **The order where the skill arrives is accepted.**
+
+### How it is built
+
+- **Four stats with no gameplay attribute**, each added to `UCataclysmPlayerClassStats::StatsWithNoAttribute`:
+  `movement_pulls_nearby_on_arrival` (a flag), `movement_path_damage_percent` (a per cent of weapon damage),
+  `movement_random_direction` (a flag) and `movement_explodes_at_both_ends` (a flag). A flag is "above nought".
+- **One helper asks all four**, `UCataclysmMovementSkill::WornRowStat`, with the skill's own tags. That is the
+  test `LeaveRowZoneAt` makes for the zone stats. A row restricted to `Slot.Movement` reaches a skill that
+  carries that tag, on whatever key it sits, and reaches no other skill. Both ends of the explosion read the same
+  stat with the same tags, so a skill explodes at both ends or at neither.
+- **A movement skill used with no row does exactly what it did.** Each stat reads nought and each of the four
+  functions returns before it searches for anybody.
+- **Where each is read, by mode.**
+
+  | Mode | Random direction | Hit along the path | Explosions | Pull |
+  |---|---|---|---|---|
+  | Leap, Blink (aimed) | yes | no: no path | where it began and where it arrived | where it arrived |
+  | Charge that arrives at once (aimed) | yes | the line from where it began to where it stopped | the same | the same |
+  | Charge that arrives at once at an enemy (`Requires=Burning`, `Requires=Target`) | no | yes | the same | the same |
+  | Charge that is walked (it states a `Duration`) | yes, rolled once when the walk begins | each step, to what that step newly crossed | when the walk ends: where it began and where it ended | when the walk ends |
+  | Recall (the return), Swap | no | no: no path | where it began and where it arrived | where it arrived |
+  | Flicker | no | no | no | no |
+
+  **The Flicker reads none of the four**, as it reads neither zone stat: it has no one start and no one arrival.
+- **The pull.** After everything else the skill does where it arrives. `FindEnemiesInSphere` at 5 metres around
+  the wearer; each enemy further than 1.5 metres along the ground is passed to `ApplyPull` with the gap less
+  1.5 metres. The 5 metres is not widened by area of effect.
+- **The hit along the path.** `ApplyHit` at the row's per cent, with the skill's tags, naming the skill, with the
+  skill's own critical strike chance where the skill states one. The half-width is `ScaledRadiusCm()`, which is
+  the half-width the charge's own blow uses in both kinds of charge. It is dealt after the skill's own blow, to
+  enemies still alive. It is not held to the skill's `MaxTargets`. For a walked charge it is dealt to the enemies
+  each step newly caught; the charge already remembers whom it has struck, so nobody is hit twice.
+- **The random direction.** A direction along the ground, every direction as likely as any other. For a move
+  that arrives at once the end point becomes the start plus that direction times the distance the player aimed.
+  For a walked charge the direction of the walk is replaced when the walk begins; the distance is the row's
+  `Range` as before. The move is still swept, so it stops at a wall as any move does.
+  `Cataclysm.MovementDirectionRoll` pins the direction in degrees, from the world's X axis toward its Y axis;
+  negative, the default, rolls for real. It follows `Cataclysm.CritRoll`.
+- **The explosions.** Two searches with `FindEnemiesInSphere`, one at each end, at 3 metres times the skill's area
+  of effect multiplier, as a row's zone radius is widened. Each enemy found takes `ApplyHit` at the skill's own
+  per cent (`GetDamagePercent()`, the figure `LeaveZoneAlong` prices a zone from) times 10 over 100, with the
+  skill's tags, so the damage type is the skill's. They are dealt after the skill's own blow.
+- **Order where the skill arrives:** the skill's own blow and what follows from it; its ground and a row's
+  zones; the hit along the path; the explosion where it began; the explosion where it arrived; the pull; the
+  skill's terrain.
+- **On an event raised from inside a row loop.** A movement skill can be started from inside one, by a row that
+  triggers a held skill. All four still happen: they are read from stats and are not actions. The hits they deal
+  are raised as events while the wearer is already acting on one, and `ActOnEvent` drops an event raised at that
+  depth, so they fire none of the wearer's rows. That is the existing rule for any hit dealt in that state.
+- **Whether the hits raise the wearer's on-hit rows.** Yes, when the skill is used in the ordinary way. The hit
+  along the path and each explosion hit is a hit dealt by the wearer's skill, outside any event, and is announced
+  as one. Neither is marked as a row's answer to an event or as the consequence of a death.
+
+### Which skills each row reaches, of the skills built today
+
+Read from `game/Data/WeaponSkills.csv`; none of this is run. Each row is restricted to `Slot.Movement`. Echo and
+Everywhere at Once are Movement skills in other slots, do not carry the tag, and are reached by none of the four.
+
+- **The pull and the explosions:** all fourteen skills in the Movement slot.
+- **The hit along the path:** the seven charges: Flashpoint, Inexorable, Emberhaul, Lunge, Nail Down, Cinder Rush
+  and Reel. **Not** Ashwalk, Whip Swing or Foul Wake (blinks), Shockwave Leap, Infernal Plunge or Crater (leaps),
+  or Vesselstep (a trade).
+- **The random direction:** the ten that go where the player pointed: Inexorable, Ashwalk, Shockwave Leap,
+  Infernal Plunge, Lunge, Whip Swing, Cinder Rush, Foul Wake, Reel and Crater. **The six it skips:** Flashpoint,
+  Emberhaul and Nail Down, which travel to an enemy; Vesselstep, which travels to a commanded creature; and Echo
+  and Everywhere at Once, which are Movement skills outside the Movement slot and are reached by no row here.
+  Accepted on 2026-10-07.
+
+### For the owner's play-check
+
+What a player sees: with the pull worn, enemies within 5 metres of where a movement skill lands slide to 1.5
+metres from the character and are staggered for a second. With the path row, a charge hits everything it ran
+through a second time for 50% to 100% of weapon damage. With the drawback, an aimed movement skill goes the aimed
+distance in a direction the player did not choose. With the explosion row, enemies within 3 metres of where the
+skill began and of where it landed each take a tenth of the skill's hit.
+
+Every judged number, with the reading not taken:
+
+- **5 metres**, the reach of the pull. Not taken: the skill's own radius; a reach widened by area of effect.
+- **1.5 metres**, where a pulled enemy is put. Not taken: at the character's feet, which is what the two skills
+  that pull (The Gathering, Reel) do.
+- **10 per cent of the skill's own hit**, each explosion. Not taken: a share of weapon damage that ignores the
+  skill; the skill's whole hit a second time.
+- **3 metres**, the radius of each explosion, widened by area of effect. Not taken: the skill's own radius; a
+  radius area of effect does not widen.
+- **The hit along the path reaches a charge only.** It reaches Flashpoint, Inexorable, Emberhaul, Lunge, Nail
+  Down, Cinder Rush and Reel. It does nothing for Ashwalk, Whip Swing, Foul Wake, Shockwave Leap, Infernal
+  Plunge, Crater and Vesselstep. Not taken: a leap or a blink also striking along the straight line between its
+  two ends, at a width that would have to be judged.
+- **The random direction keeps the distance the player aimed.** Not taken: always the skill's full range. A
+  player can aim close to the character to make the move short, with or without the drawback.
+- **An enemy within 3 metres of both ends of a short move takes both explosions.** Not taken: once.
+- **The pull is last**, after the hits. Not taken: the pull first, so that pulled enemies are caught by the
+  explosion where the skill arrived.
+- **The pull staggers and is halved on repeat**, because it is this game's pull. So a pulled enemy ends 1.5
+  metres away only on its first displacement in five seconds. Not taken: a bare move.
+- **A wearer who also wears "cannot apply crowd control to enemies above 50% health" pulls no enemy above half
+  health**, once that later rule is built.
+
+### Judgements by the writing session
+
+Each is a judgement by the writing session. Each was confirmed by the coordinating session on 2026-10-07.
+
+1. **The hit along the path is a charge's only**, as said first. The ruling's own test, "unless the code already
+   treats its line as a path", gives that answer for every other mode.
+2. **The path is from where the charge began to where it actually stopped**, not to where it meant to go. A charge
+   stopped by a wall strikes what it reached.
+3. **The hit along the path is not held to the skill's `MaxTargets`.** The sentence says "all enemies". Nail Down
+   states `MaxTargets=1` for its own blow.
+4. **The hit along the path carries none of what the skill's own row states**: no burn, no shove, no stun, no
+   forced movement, no repeat by minions, no mana on hit, no Fervour. It is `ApplyHit` and not `HitTargets`. It
+   is area damage only when the skill's own tags make its blows area damage, as for the skill's own blow, and so
+   can be evaded otherwise. It can critically strike.
+5. **Each explosion is area damage**: it cannot be evaded and can be blocked. Each sweeps a circle and strikes
+   what is inside, which is this code's own rule for area damage.
+6. **Each explosion can critically strike**, as any hit the skill deals can, at the skill's own chance where the
+   skill states one.
+7. **A movement skill whose own hit is nought explodes for nothing.** The explosion is a tenth of
+   `GetDamagePercent()`, as a row's zone is priced from it, and `ApplyHit` deals no blow at nought. Every Movement
+   skill built today takes its slot's figure, which is above nought.
+8. **Each explosion carries what the use spent from next-use charges**, as the skill's own hit and a row's zone
+   do, so that it stays a tenth of that hit. The hit along the path does not: its size is the row's.
+9. **Each explosion's radius is widened by area of effect and the pull's reach is not.** The first follows a
+   row's zone. The second is a reach in which enemies are moved and is not an area of damage.
+10. **Two explosions and not one merged search.** An enemy within reach of both is struck by each.
+11. **The hits come after the skill's own blow and the pull comes last.** So a kill made by a row's hit is not
+    counted as the arrival's (Emberhaul's returned cooldown), and who the hits reach does not depend on whether
+    the pull is worn.
+12. **The random direction keeps the aimed distance**, and is measured from the world's axes and not from where
+    the player pointed.
+13. **A skill that travels to an enemy its `Requires` names is not sent in a random direction**, with Recall and
+    Swap. If such a skill finds no enemy and falls back to the aimed point, it is still not randomised.
+14. **The Flicker reads none of the four**, following the zone stats.
+15. **The pull is horizontal**: the gap is measured along the ground, as `ApplyPull` measures it.
+16. **The pull's reach is `FindEnemiesInSphere` at 5 metres**, which finds a creature whose body touches the
+    sphere, as every "within N metres" search in this code does. A wide creature a little further than 5 metres
+    from centre to centre is found.
+
+### Research
+
+One mechanic here has a shape new to a worn row in this game: the pull. Two pages were read on 2026-10-07.
+
+- **Path of Exile, Vaal Cyclone**, from `https://poedb.tw/us/Vaal_Cyclone`: "Spin and attack in place, damaging
+  nearby enemies and pulling others towards you."
+- **Diablo IV, Steel Grasp**, from `https://diablo4.wiki.fextralife.com/Steel+Grasp`: "Throw out a trio of chains
+  that deal [100%] damage and Pull in enemies."
+- **Two fetches failed**: `https://www.poewiki.net/wiki/Vaal_Cyclone` and `https://www.poewiki.net/wiki/Knockback`
+  each returned an "Access Denied" page with no content.
+
+**What the pages settle:** that a shipped game in the genre gives a pull to a skill as a movement of the enemy
+toward the player, stated in one sentence with no distance and no end point. **What they do not settle, and is
+this game's own judgement:** the 5 metres, the 1.5 metres, that the pull deals no damage, and that it staggers
+and is halved on repeat. Neither page says how far an enemy is pulled, where it ends, or which enemies cannot be
+pulled. The last two come from this game's own rule for displacement, section VI of
+`docs/Cataclysm_GDD_v2.md`, and were not chosen here. For the other three sentences no source was read.
+
+### Tests
+
+All in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`. Each uses a real Movement skill granted to
+a user at the origin facing +X, among plain enemies, and a second user without the stat as the control. The
+rig is `UseAMovementSkillAmong`; it follows `ZonesLeftByOneUse`, the rig of the zone rows.
+
+Four probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, one for each stat, and four
+automation tests:
+
+- `Cataclysm.StatExemption.AMovementSkillPullsNearbyEnemiesToStandOneAndAHalfMetresFromItsUser`: enemies 3 m
+  and 4.5 m from where a blink lands end 1.5 m from the user; one 8 m away, one immune to displacement and one
+  already 1 m away do not move; none loses health. Control: with no stat nobody moves.
+- `Cataclysm.StatExemption.AChargeDealsTheRowsHitOnceToEachEnemyItsPathCrossed`: two enemies on a charge's path
+  each lose, beyond what the same charge takes with no stat, what one plain hit of 75 per cent takes from a
+  control enemy; one beside the path loses nothing; a leap adds nothing; a walked charge driven two steps adds
+  one such hit to an enemy on both steps' lines, not two.
+- `Cataclysm.StatExemption.ARowSendsAnAimedMovementSkillInARolledDirectionAndLeavesATargetedOneAlone`: with the
+  roll pinned at 90 and at 180 a blink ends in two different places, each as far from the start as the control's
+  aimed blink; a skill that travels to an enemy arrives at it with the stat as without; a walked charge takes the
+  rolled direction.
+- `Cataclysm.StatExemption.AMovementSkillExplodesWhereItBeganAndWhereItArrivedForATenthOfItsHit`: an enemy
+  2.8 m from the start and one 2.8 m from the end each lose a tenth of what the leap's own blow takes from a
+  control enemy; one 5 m from both loses nothing; the control enemy loses the blow and a tenth of it. Control:
+  with no stat the first three lose nothing.
+
+**Python.** No new test. `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gained the one new lookup.
+
+### Not covered by a test
+
+- **THE ARRIVAL OF A WALKED CHARGE IS WRITTEN AND UNTESTED. THE EXPLOSIONS AND THE PULL AT THE END OF A WALKED
+  CHARGE (INEXORABLE, CINDER RUSH) ARE NOT COVERED BY ANY TEST.** A walked charge ends from a timer, and a timer
+  never fires in an automation-test world.
+- Recall and Swap under the random direction. They are excluded by the same line that the tested case uses.
+- The explosions and the pull on Recall and Swap.
+- The crowd control resistance, the halving on a repeated displacement and the stagger of a pulled enemy. They
+  are `ApplyPull`'s and have their own tests.
+- Pulled creatures that collide. The test's enemies do not block each other; creatures in play do, and a swept
+  pull stops a creature where it meets another.
+- That an explosion is not evaded, that it can be blocked, and that it can critically strike.
+- That a skill in a slot whose damage is nought explodes for nothing.
+- That the hits raise the wearer's on-hit rows, and that they raise none from inside a row loop.
+- The real roll of the direction, with nothing pinned.
+- A row worn as an item: every test sets the stat by hand.
+
+### What the row needs, for the session that writes rows
+
+Each is one `flat` row with Required Tags `Slot.Movement`, as the zone row
+`Positive_Your_movement_ability_leaves_a_persistent_AOE_zo` is.
+
+| Enchantment | Stat | Value Kind | Value Low | Value High | Required Tags |
+|---|---|---|---|---|---|
+| `Positive_Your_movement_abilities_pull_all_nearby_enemies` | `movement_pulls_nearby_on_arrival` | flat | 1 | 1 | `Slot.Movement` |
+| `Positive_Your_movement_ability_deals_50_100_of_your_wea` | `movement_path_damage_percent` | flat | 50 | 100 | `Slot.Movement` |
+| `Negative_Your_movement_abilities_now_move_you_in_a_random` | `movement_random_direction` | flat | 1 | 1 | `Slot.Movement` |
+| `Positive_Your_movement_abilities_cause_an_explosion_at_th` | `movement_explodes_at_both_ends` | flat | 1 | 1 | `Slot.Movement` |
+
+**The dry run.** Each of the four was passed, alone, through `enchantment_effects` and then
+`validate_enchantment_effects` in a temporary workbook built in the scratch folder, never the real workbook. All
+four were accepted and the validator reported no problem. **That acceptance is weak evidence about the stat
+name**: a fifth, control row naming a stat that no code knows was accepted the same way, because a `flat` row
+supplies its own stat. What polices the name is the engine test
+`Cataclysm.Enchantments.EveryStatAnEnchantmentGrantsHasAnAttributeBehindIt`, which was not run. Separately, the
+generator's own reading of `StatsWithNoAttribute` out of the C++ source was run and returned all four names.
+No scaled and no conditioned row is proposed, so `STATS_WITH_AN_ASKER` and `CONDITIONED_STATS_WITH_AN_ASKER`
+needed nothing.
+
+**Not determined:** whether the two flags should be written `1` to `1` or in another form the rows session
+prefers; the engine reads only "above nought".
+
+### Run
+
+One window on 2026-10-07 for a stack of three, at `feat/movement-skill-riders-3` 7b601c3c: the two conditions and
+the scale, the four stats read at one place each, and the movement skill rows, in that order. Development was
+8025764e. One attempt; nothing was corrected during it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3338 tests performed, 3338 succeeded, 0 failed`; `Declared: 3338 tests in the tree at 7b601c3c; 3338 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 336.62s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**How the three layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the Python
+changes to the generator and its tests beyond the lists they add to, and the eight probes in the stat-exemption
+tables; their tests passed.
+
+**Guard proofs, at 7b601c3c, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| L3a | `CataclysmSkillTemplates.cpp`: the pull drags an enemy onto its user | `Cataclysm.StatExemption.AMovementSkillPullsNearbyEnemiesToStandOneAndAHalfMetresFromItsUser` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| L3b | `CataclysmSkillTemplates.cpp`: the charge hits nothing along its path | `Cataclysm.StatExemption.AChargeDealsTheRowsHitOnceToEachEnemyItsPathCrossed` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| L3c | `CataclysmSkillTemplates.cpp`: each explosion deals a fifth of the hit | `Cataclysm.StatExemption.AMovementSkillExplodesWhereItBeganAndWhereItArrivedForATenthOfItsHit` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+
+**No proof was run for the random direction.** Its test passed in the whole suite.
+
+**Not run:** any of the four rows read from the effect table, since no row exists.
+
+---
+
 ## 2026-10-07 — Four stats, each read at one existing place: an energy shield that loses more to a blow, a leech payment that takes longer, a heavy strike that hits every enemy in a half circle, and a stagger that also roots. Engine only; no row authored
 
 **Built and run on 2026-10-07 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.

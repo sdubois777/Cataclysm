@@ -38,6 +38,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagsManager.h"
+#include "HAL/IConsoleManager.h"
 // For which weapon type a planted sword records as being in the ground.
 // Issue #1141.
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -2521,6 +2522,151 @@ void UCataclysmSelfBuffSkill::RevokeIncrease()
 // Movement -- Infernal Plunge, Cinder Rush, Emberstep
 // ==========================================================================
 
+const TCHAR* UCataclysmMovementSkill::PullsNearbyOnArrivalStat = TEXT("movement_pulls_nearby_on_arrival");
+const TCHAR* UCataclysmMovementSkill::PathDamagePercentStat = TEXT("movement_path_damage_percent");
+const TCHAR* UCataclysmMovementSkill::RandomDirectionStat = TEXT("movement_random_direction");
+const TCHAR* UCataclysmMovementSkill::ExplodesAtBothEndsStat = TEXT("movement_explodes_at_both_ends");
+
+/**
+ * Pins the direction a movement skill is sent under `movement_random_direction`, in degrees from the world's X axis
+ * toward its Y axis, for tests. Negative, the default, rolls for real. The same shape as `Cataclysm.CritRoll`.
+ */
+static TAutoConsoleVariable<float> CVarMovementDirectionRoll(
+	TEXT("Cataclysm.MovementDirectionRoll"), -1.0f,
+	TEXT("Pins the direction, 0-360 degrees, a random-direction enchantment sends a movement skill. Negative rolls for real."),
+	ECVF_Default);
+
+float UCataclysmMovementSkill::WornRowStat(const TCHAR* RiderStat) const
+{
+	const AActor* Self = Avatar();
+	const UCataclysmAbilitySystemComponent* Asking =
+		Self ? Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)) : nullptr;
+	// WITH THE SKILL'S TAGS, so a row restricted to `Slot.Movement` reaches a skill that carries the tag and no
+	// other. The test `LeaveRowZoneAt` makes for the two zone stats.
+	return Asking ? Asking->StatForSkill(FName(RiderStat), SkillTags, 0.0f) : 0.0f;
+}
+
+bool UCataclysmMovementSkill::RolledDirection(FVector& OutDirection) const
+{
+	if (WornRowStat(RandomDirectionStat) <= 0.0f)
+	{
+		return false;
+	}
+
+	// ANY DIRECTION ALONG THE GROUND, EACH AS LIKELY AS ANY OTHER. Measured from the world's axes and not from
+	// where the player pointed: the sentence says the direction is random, so where the player pointed decides
+	// nothing about it.
+	const float Pinned = CVarMovementDirectionRoll.GetValueOnAnyThread();
+	const float Degrees = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 360.0f);
+	const float Radians = FMath::DegreesToRadians(Degrees);
+	OutDirection = FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f);
+	return true;
+}
+
+void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed)
+{
+	AActor* Self = Avatar();
+	const float Percent = (Self && !Crossed.IsEmpty()) ? WornRowStat(PathDamagePercentStat) : 0.0f;
+	if (Percent <= 0.0f)
+	{
+		return;
+	}
+
+	// AN ORDINARY HIT OF THE WEARER'S WITH THE SKILL'S TAGS, at the row's per cent of weapon damage. Ruled
+	// 2026-10-07. It is dealt by `ApplyHit` and not by `HitTargets`, so it carries none of what the skill's own
+	// row states: no burn, no shove, no stun, no forced movement. It names the skill, and takes the skill's own
+	// critical strike chance where the skill states one.
+	FCataclysmHitDelivery PathDelivery;
+	PathDelivery.CritChancePercent = CritChancePercent;
+	PathDelivery.Skill = this;
+	for (AActor* OnThePath : Crossed)
+	{
+		// The skill's own blow came first and may have killed it.
+		if (IsValid(OnThePath) && !UCataclysmSkillEffects::IsDead(OnThePath))
+		{
+			UCataclysmSkillEffects::ApplyHit(Self, OnThePath, Percent, SkillTags, PathDelivery);
+		}
+	}
+}
+
+void UCataclysmMovementSkill::HitAlongThePath(const FVector& From, const FVector& To)
+{
+	// ONLY A CHARGE HAS A PATH. "A run along the ground, hitting everything on the way" is the charge; a leap
+	// touches nothing under its arc and a blink, a return and a trade nothing between their ends.
+	if (Params.MovementMode != ECataclysmMovementMode::Charge || WornRowStat(PathDamagePercentStat) <= 0.0f)
+	{
+		return;
+	}
+
+	// THE HALF-WIDTH THE CHARGE'S OWN BLOW USES, and every enemy on the line: the sentence says "all enemies", so
+	// the row's hit is not held to the skill's `MaxTargets`. From where it began to where it actually stopped.
+	HitWhatThePathCrossed(UCataclysmTargeting::FindEnemiesInLine(GetWorld(), Avatar(), From, To, ScaledRadiusCm()));
+}
+
+void UCataclysmMovementSkill::ExplodeAtBothEnds(const FVector& Began, const FVector& Ended)
+{
+	AActor* Self = Avatar();
+	if (!Self || WornRowStat(ExplodesAtBothEndsStat) <= 0.0f)
+	{
+		return;
+	}
+
+	// A TENTH OF THE SKILL'S OWN HIT, the share a row's zone deals a sweep. Ruled 2026-10-07. The skill's own per
+	// cent is read as `LeaveZoneAlong` reads it, so a skill in a slot whose damage is nought explodes for nothing:
+	// `ApplyHit` deals no blow at a per cent of nought.
+	const float Percent = GetDamagePercent() * EndExplosionPercentOfTheHit / 100.0f;
+
+	// AREA DAMAGE, because each explosion sweeps a circle and strikes whatever is inside: it cannot be evaded and
+	// can be blocked. It can critically strike, as any hit of the skill can. It carries what the use spent from
+	// next-use charges, as the skill's own hit and a row's zone do, so it stays a tenth of that hit.
+	FCataclysmHitDelivery BlastDelivery = FCataclysmHitDelivery::Area();
+	BlastDelivery.CritChancePercent = CritChancePercent;
+	BlastDelivery.Skill = this;
+	BlastDelivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+	BlastDelivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
+
+	// TWO EXPLOSIONS AND NOT ONE MERGED SEARCH: an enemy within reach of both ends of a short move is struck by
+	// each. Widened by area of effect, as a row's zone is.
+	const float BlastRadiusCm = EndExplosionRadiusCm * AreaOfEffectMultiplier();
+	const FVector BothEnds[] = {Began, Ended};
+	for (const FVector& BlastAt : BothEnds)
+	{
+		for (AActor* InTheBlast : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, BlastAt, BlastRadiusCm))
+		{
+			UCataclysmSkillEffects::ApplyHit(Self, InTheBlast, Percent, SkillTags, BlastDelivery);
+		}
+	}
+}
+
+void UCataclysmMovementSkill::PullNearbyToWhereItArrived()
+{
+	AActor* Self = Avatar();
+	if (!Self || WornRowStat(PullsNearbyOnArrivalStat) <= 0.0f)
+	{
+		return;
+	}
+
+	const FVector Here = Self->GetActorLocation();
+	for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, Here, PullReachCm))
+	{
+		// TO 1.5 METRES FROM THE USER AND NOT ONTO IT. `ApplyPull` hauls a target a stated distance toward its
+		// instigator, so the distance asked for is the gap less 1.5 metres.
+		//
+		// ONE ALREADY NEARER THAN THAT IS NOT MOVED. It must not reach `ApplyPull` at all: a distance of nought
+		// or less means the whole way there.
+		const float GapCm = static_cast<float>(FVector::Dist2D(Near->GetActorLocation(), Here));
+		if (GapCm <= PullStandsAtCm)
+		{
+			continue;
+		}
+
+		// EVERYTHING A PULL IN THIS GAME DOES, AND NO DAMAGE. A target immune to displacement is not moved; its
+		// crowd control resistance shortens the haul; a second displacement inside five seconds moves it half
+		// as far; and a pull that landed leaves it staggered for a second.
+		UCataclysmSkillEffects::ApplyPull(Self, Near, GapCm - PullStandsAtCm);
+	}
+}
+
 FVector UCataclysmMovementSkill::ConditionalDestination(const FVector& Start) const
 {
 	const bool bToBurning = RequiresCondition(TEXT("Burning"));
@@ -2767,6 +2913,20 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// your axe in the FIRST enemy within 12 meters and haul yourself to it".
 	FVector End = ConditionalDestination(Start);
 
+	// AND A ROW MAY SEND IT IN A RANDOM DIRECTION INSTEAD: "Your movement abilities now move you in a random
+	// direction". Ruled 2026-10-07. ONLY A MOVE THAT GOES WHERE THE PLAYER POINTED. One that travels to a creature
+	// its `Requires` names takes a target and not a direction, and a return and a trade replace the end point
+	// just below. THE DISTANCE IS THE ONE THE PLAYER AIMED, so only the direction is taken from them. The move
+	// below still sweeps, so it stops at a wall as any other does.
+	FVector RolledWay;
+	if (Params.MovementMode != ECataclysmMovementMode::Recall
+		&& Params.MovementMode != ECataclysmMovementMode::Swap
+		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target"))
+		&& RolledDirection(RolledWay))
+	{
+		End = Start + RolledWay * FVector::Dist2D(Start, End);
+	}
+
 	// AND A RETURN GOES WHERE THE MARK IS, WHICH IS THE WHOLE OF WHAT SEPARATES
 	// `Recall` FROM `Blink`. Both arrive somewhere and burst; a blink picks the
 	// destination now, and a recall picked it on the press that left the mark.
@@ -2954,6 +3114,13 @@ void UCataclysmMovementSkill::ActivateAbility(
 	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt);
 	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, ArrivedAt);
 
+	// AND THREE MORE THINGS A ROW MAKES A MOVEMENT SKILL DO, each nothing for a character with no such row. Ruled
+	// 2026-10-07. AFTER THE SKILL'S OWN BLOW AND WHAT FOLLOWS FROM IT, so a kill one of these makes is not counted
+	// as the arrival's. THE PULL IS LAST, so who the two hits reach does not depend on whether the pull is worn.
+	HitAlongThePath(Start, ArrivedAt);
+	ExplodeAtBothEnds(Start, ArrivedAt);
+	PullNearbyToWhereItArrived();
+
 	// AND THE TERRAIN, WHERE IT LANDED. The Warhammer's Crater is the only
 	// Movement row that leaves any: "Rise and fall on a point up to 9 meters
 	// away, breaking the ground open into a pit 5 meters across."
@@ -3109,6 +3276,14 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 		Advance = Advance.GetSafeNormal();
 	}
 
+	// AND A ROW MAY SEND THE WALK IN A RANDOM DIRECTION, as it does a move that arrives at once. Ruled 2026-10-07.
+	// Rolled once, here, and never again: the walk still cannot be turned aside.
+	FVector RolledWay;
+	if (RolledDirection(RolledWay))
+	{
+		Advance = RolledWay;
+	}
+
 	// HOW FAR EACH STEP GOES. `Range` is how far the advance travels in total and
 	// `Duration` is how long it takes, so the two together are its speed, and the
 	// row states both. Inexorable's fourteen metres in one and a half seconds is
@@ -3225,6 +3400,10 @@ void UCataclysmMovementSkill::AdvanceOneStep()
 	// ScalingSource=Meter`. `HitScaled` reads the skill's own damage percent, so
 	// the multiplier is applied to that rather than to the character.
 	HitScaled(Caught, TArray<AActor*>());
+
+	// AND THE HIT A ROW GIVES EVERYTHING ON THE PATH, once each: `Caught` holds only what no earlier step struck.
+	// Ruled 2026-10-07.
+	HitWhatThePathCrossed(Caught);
 }
 
 void UCataclysmMovementSkill::FinishAdvance()
@@ -3249,6 +3428,11 @@ void UCataclysmMovementSkill::FinishAdvance()
 	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt - Advance * WalkedCm);
 	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt);
 	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, ArrivedAt);
+
+	// AND A ROW'S EXPLOSIONS AND ITS PULL, where the walk began and where it ended, as an instant move makes them.
+	// Ruled 2026-10-07.
+	ExplodeAtBothEnds(ArrivedAt - Advance * WalkedCm, ArrivedAt);
+	PullNearbyToWhereItArrived();
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("'%s' advanced %.0fcm over %d steps and struck %d."),

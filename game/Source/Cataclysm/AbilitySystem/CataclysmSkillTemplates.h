@@ -1068,6 +1068,50 @@ public:
 	int32 EnemiesHit = 0;
 
 	/**
+	 * FOUR STATS A WORN ROW STATES AND ONLY THIS SKILL READS. Each a labelled judgement by the coordinating session
+	 * under the owner's delegation, 2026-10-07. Each is asked with the skill's own tags, as
+	 * `UCataclysmSkillTemplate::LeaveRowZoneAt` asks its two, so a row restricted to `Slot.Movement` reaches a skill
+	 * that carries that tag whatever key it sits on, and reaches no other. Nought, which is every character with no
+	 * such row, changes nothing. None has a gameplay attribute; all four are in `StatsWithNoAttribute()`.
+	 *
+	 * `movement_pulls_nearby_on_arrival`, a flag: "Your movement abilities pull all nearby enemies to you on
+	 * arrival". Enemies within `PullReachCm` of where the skill arrived are hauled to stand `PullStandsAtCm` from its
+	 * user, by `UCataclysmSkillEffects::ApplyPull`. No damage.
+	 *
+	 * `movement_path_damage_percent`, a per cent of weapon damage: "Your movement ability deals 50%-100% of your
+	 * weapon damage to all enemies along its path". One hit to each enemy a CHARGE crossed, at the charge's own
+	 * half-width. No other mode has a path in this code: a leap touches nothing under its arc and a blink nothing
+	 * between its ends.
+	 *
+	 * `movement_random_direction`, a flag: "Your movement abilities now move you in a random direction". The modes
+	 * that go where the player pointed go the same distance along a rolled direction instead. A skill that travels
+	 * to a creature (`Requires=Burning` or `Requires=Target`), to a mark (Recall), to a commanded creature (Swap) or
+	 * between enemies (Flicker) is unchanged.
+	 *
+	 * `movement_explodes_at_both_ends`, a flag: "Your movement abilities cause an explosion at the starting and end
+	 * locations". Where the skill began and where it arrived, each enemy within `EndExplosionRadiusCm` takes one
+	 * area hit of `EndExplosionPercentOfTheHit` per cent of the skill's own hit, in the skill's damage type.
+	 *
+	 * THE FLICKER READS NONE OF THEM, as it reads neither zone stat: it has no one start and no one arrival.
+	 */
+	static const TCHAR* PullsNearbyOnArrivalStat;
+	static const TCHAR* PathDamagePercentStat;
+	static const TCHAR* RandomDirectionStat;
+	static const TCHAR* ExplodesAtBothEndsStat;
+
+	/** How near an enemy must be to where the skill arrived to be pulled: 5 metres. A judged figure. */
+	static constexpr float PullReachCm = 500.0f;
+
+	/** How far from the user a pulled enemy is put: 1.5 metres. One already nearer is not moved. A judged figure. */
+	static constexpr float PullStandsAtCm = 150.0f;
+
+	/** The radius of each of the two explosions: 3 metres, widened by area of effect as a row's zone is. Judged. */
+	static constexpr float EndExplosionRadiusCm = 300.0f;
+
+	/** What each explosion deals, as a per cent of the skill's own hit: the share a row's zone deals a sweep. */
+	static constexpr float EndExplosionPercentOfTheHit = 10.0f;
+
+	/**
 	 * Where this move ends: an enemy its `Requires` names, or the aimed point.
 	 *
 	 * TWO SKILLS TRAVEL TO A CREATURE RATHER THAN TO A PLACE. The Sword's
@@ -1292,6 +1336,27 @@ private:
 
 	/** Ends a flicker when its duration runs out. */
 	void FinishFlicker();
+
+	/** What a worn row gives this skill for `RiderStat`, asked with the skill's own tags. Nought with no row. */
+	float WornRowStat(const TCHAR* RiderStat) const;
+
+	/**
+	 * The direction a wearer of `movement_random_direction` is sent, along the ground and of length one.
+	 * `Cataclysm.MovementDirectionRoll` pins it for a test. @return false, and nothing written, with no row.
+	 */
+	bool RolledDirection(FVector& OutDirection) const;
+
+	/** `movement_path_damage_percent`: one hit of the row's per cent to each of `Crossed` still alive. */
+	void HitWhatThePathCrossed(const TArray<AActor*>& Crossed);
+
+	/** The same, for a charge that arrived at once: finds what the line from `From` to `To` crossed. */
+	void HitAlongThePath(const FVector& From, const FVector& To);
+
+	/** `movement_explodes_at_both_ends`: the two explosions, where the skill began and where it arrived. */
+	void ExplodeAtBothEnds(const FVector& Began, const FVector& Ended);
+
+	/** `movement_pulls_nearby_on_arrival`: hauls the enemies near where the user now stands to 1.5 metres from it. */
+	void PullNearbyToWhereItArrived();
 
 	/**
 	 * How often a lasting charge looks for what it has run through, in seconds.

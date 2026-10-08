@@ -456,6 +456,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmSkillTemplate::LeaveRowZoneAt. Ruled 2026-10-06.
 		TEXT("zone_at_start_and_end_seconds"),
 		TEXT("zone_at_impact_seconds"),
+		// And four a worn row states that only a Movement skill reads, with
+		// its own tags: a pull where it arrived, a hit along a charge's
+		// path, a random direction, and an explosion at both ends. Read by
+		// UCataclysmMovementSkill::WornRowStat. Ruled 2026-10-07.
+		TEXT("movement_pulls_nearby_on_arrival"),
+		TEXT("movement_path_damage_percent"),
+		TEXT("movement_random_direction"),
+		TEXT("movement_explodes_at_both_ends"),
 		// And two flags by which a zone reaches the character who left it:
 		// its damage, and its effects. Read where the zone is left. The
 		// owner's decision of 2026-10-06.
