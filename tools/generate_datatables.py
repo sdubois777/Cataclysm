@@ -7788,6 +7788,16 @@ STATS_WITH_AN_ASKER = frozenset({
     # the quarter-second step for any scaled row; `ProbeScaledMovementSpeed`
     # measures that on a spawned player character.
     "movement_speed",
+    # ADDED 2026-10-07 FOR THE THREE TRAP ROWS THAT SCALE BY A COUNT, issue
+    # #2284: "for each other trap currently active", "Each active gadget
+    # increases trap damage" and "Each gadget on the battlefield doubles the
+    # damage of all your traps". A machine's swing has asked this stat through
+    # the pipeline since it was written, in `ACataclysmMinion::AttackTarget` by
+    # `UCataclysmCommand::SummonerMultiplierAgainst`, with the summoner's
+    # state; the list is brought up to the code. `ProbeScaledMinionDamage`
+    # measures it on a trap's blow with the scale and the offset the first of
+    # those rows carries.
+    "minion_damage",
 })
 
 
