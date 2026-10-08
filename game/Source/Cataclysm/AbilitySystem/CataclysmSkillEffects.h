@@ -2235,6 +2235,17 @@ public:
 	static const TCHAR* StaggerHealthCeilingStat;
 
 	/**
+	 * `stagger_root_seconds`: "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds". Ruled 2026-10-07.
+	 * Seconds, flat, nought for no root. No gameplay attribute: read by `ApplyStagger` from the staggering
+	 * character once the stagger has landed.
+	 *
+	 * ROOTED IS A PIN. `ApplyPin` with no damage taken increase: the enemy cannot walk and can still turn and
+	 * attack. Refused for a target whose crowd control resistance is 100 or more and for one a running skill makes
+	 * immune to `Pin` or to `CrowdControl`. Only on an enemy of the staggering character.
+	 */
+	static const TCHAR* StaggerRootSecondsStat;
+
+	/**
 	 * Seconds a skill this character lands knocks its target down for. #45.
 	 *
 	 * NO KEYWORD IN THE NAME. The row that grants it scopes itself with
