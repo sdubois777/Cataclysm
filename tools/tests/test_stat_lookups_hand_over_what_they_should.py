@@ -95,6 +95,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: of leech arrives, the least width of a strike's arc, and the seconds a
 #: staggered enemy is rooted. The fourth, the energy shield's own damage taken,
 #: is asked through `DefenderStat`, whose one call was already here.
+#: Four things a worn row makes a movement skill do added one more on
+#: 2026-10-07: one helper on the movement skill asks all four stats.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -470,6 +472,12 @@ INVENTORY = {
      'FName(UCataclysmDamageCalculation::ZoneSlowPercentStat), SkillTags, 0.0f'):
         "the slow a zone lays on those inside (ruled 2026-10-06), asked "
         "where the zone is left; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(RiderStat), SkillTags, 0.0f'):
+        "one of four things a worn row makes a Movement skill do (ruled "
+        "2026-10-07): a pull where it arrived, a hit along a charge's path, "
+        "a random direction, an explosion at both ends; asked by the "
+        "movement skill with its own tags before any blow is in hand",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(SecondsStat), SkillTags, 0.0f'):
         "how long the zone a row gives a skill lasts (ruled 2026-10-06), one "
