@@ -718,24 +718,12 @@ namespace
 	// Sections. See `FCataclysmFloorGenerator::FindSections`, whose comment states the rules these follow.
 	// ------------------------------------------------------------------------------------------------------------
 
-	/** A line that may be closed: its cells from the lowest up, which way it runs, and what its share is counted from. */
-	struct FGenSectionLine
-	{
-		/** In order along the line, so `Cells[0]` is its lowest cell, comparing Y and then X. */
-		TArray<FIntPoint> Cells;
-
-		bool bAlongX = true;
-
-		/** How many walkable cells are nearer the entrance, walked, than the nearest of this line's own. */
-		int32 Before = 0;
-	};
-
 	/** Lines that, closed together, leave exactly two areas with the entrance in one and the exit in the other. */
 	struct FGenSectionBoundary
 	{
 		TArray<FIntPoint> Cells;
 
-		/** The same cells, line by line, in the order the lines were offered. */
+		/** The same cells, line by line, the lower-numbered line first. */
 		TArray<TArray<FIntPoint>> Lines;
 
 		/** The lowest of `Cells`, comparing Y and then X. */
@@ -748,9 +736,6 @@ namespace
 		/** The area of every cell with this boundary alone closed, and which of the two holds the entrance. */
 		TArray<int32> AreaOf;
 		int32 EntranceArea = INDEX_NONE;
-
-		/** Which offer this was, counted from 0. The last thing a tie is settled by. */
-		int32 Offer = 0;
 	};
 
 	/** Whether `One` is the lower cell: the lower Y, and on the same row the lower X. */
@@ -821,136 +806,6 @@ namespace
 	}
 
 	/**
-	 * Adds a row of walkable cells to `Out` when it is a line. `Length` cells from `Start`, along X or along Y; the
-	 * caller has already found a cell that is not walkable at each end.
-	 */
-	void GenSectionConsiderRun(const FCataclysmFloorPlan& Plan, FIntPoint Start, int32 Length, bool bAlongX,
-							   TArray<FGenSectionLine>& Out)
-	{
-		if (Length < FGen::SectionLineLeastCells || Length > FGen::SectionLineMostCells)
-		{
-			return;
-		}
-		const FIntPoint Along = bAlongX ? FIntPoint(1, 0) : FIntPoint(0, 1);
-		const FIntPoint Sideways = bAlongX ? FIntPoint(0, 1) : FIntPoint(1, 0);
-
-		FGenSectionLine Line;
-		Line.bAlongX = bAlongX;
-		for (int32 Offset = 0; Offset < Length; ++Offset)
-		{
-			const FIntPoint Cell = Start + Along * Offset;
-			if (Cell == Plan.Entrance || Cell == Plan.Exit)
-			{
-				return;
-			}
-			Line.Cells.Add(Cell);
-		}
-
-		// LEFT OUT WHEN THE SAME LINE LIES ON BOTH ITS SIDES: shifted one cell sideways each way it is a row of the same
-		// length, all walkable, with a cell that is not walkable at each end. That is the inside of a corridor.
-		int32 SameBeside = 0;
-		for (const int32 Sign : {-1, 1})
-		{
-			const FIntPoint Shifted = Start + Sideways * Sign;
-			bool bSame = !Plan.IsFloor(Shifted - Along) && !Plan.IsFloor(Shifted + Along * Length);
-			for (int32 Offset = 0; Offset < Length && bSame; ++Offset)
-			{
-				bSame = Plan.IsFloor(Shifted + Along * Offset);
-			}
-			SameBeside += bSame ? 1 : 0;
-		}
-		if (SameBeside == 2)
-		{
-			return;
-		}
-		Out.Add(MoveTemp(Line));
-	}
-
-	/** Every line of a plan: along X row by row, then along Y column by column. */
-	TArray<FGenSectionLine> GenSectionLines(const FCataclysmFloorPlan& Plan)
-	{
-		TArray<FGenSectionLine> Lines;
-		for (int32 Y = 0; Y < Plan.Height; ++Y)
-		{
-			int32 X = 0;
-			while (X < Plan.Width)
-			{
-				if (!Plan.IsFloor(FIntPoint(X, Y)))
-				{
-					++X;
-					continue;
-				}
-				const int32 RunStart = X;
-				while (X < Plan.Width && Plan.IsFloor(FIntPoint(X, Y)))
-				{
-					++X;
-				}
-				GenSectionConsiderRun(Plan, FIntPoint(RunStart, Y), X - RunStart, /*bAlongX=*/true, Lines);
-			}
-		}
-		for (int32 X = 0; X < Plan.Width; ++X)
-		{
-			int32 Y = 0;
-			while (Y < Plan.Height)
-			{
-				if (!Plan.IsFloor(FIntPoint(X, Y)))
-				{
-					++Y;
-					continue;
-				}
-				const int32 RunStart = Y;
-				while (Y < Plan.Height && Plan.IsFloor(FIntPoint(X, Y)))
-				{
-					++Y;
-				}
-				GenSectionConsiderRun(Plan, FIntPoint(X, RunStart), Y - RunStart, /*bAlongX=*/false, Lines);
-			}
-		}
-		return Lines;
-	}
-
-	/** Fills every line's `Before` from how far each cell is from the entrance, walked. */
-	void GenSectionCountBefore(const FCataclysmFloorPlan& Plan, const TArray<int32>& FromEntrance,
-							   TArray<FGenSectionLine>& Lines)
-	{
-		int32 Furthest = 0;
-		for (const int32 Away : FromEntrance)
-		{
-			Furthest = FMath::Max(Furthest, Away);
-		}
-
-		// `Nearer[D]` IS HOW MANY WALKABLE CELLS ARE LESS THAN `D` FROM THE ENTRANCE. A cell that cannot be walked to
-		// is counted nowhere.
-		TArray<int32> Nearer;
-		Nearer.Init(0, Furthest + 2);
-		for (const int32 Away : FromEntrance)
-		{
-			if (Away != INDEX_NONE)
-			{
-				++Nearer[Away + 1];
-			}
-		}
-		for (int32 Index = 1; Index < Nearer.Num(); ++Index)
-		{
-			Nearer[Index] += Nearer[Index - 1];
-		}
-
-		for (FGenSectionLine& Line : Lines)
-		{
-			int32 Nearest = INDEX_NONE;
-			for (const FIntPoint& Cell : Line.Cells)
-			{
-				const int32 Away = FromEntrance[Plan.IndexOf(Cell)];
-				if (Away != INDEX_NONE && (Nearest == INDEX_NONE || Away < Nearest))
-				{
-					Nearest = Away;
-				}
-			}
-			Line.Before = (Nearest == INDEX_NONE) ? 0 : Nearer[Nearest];
-		}
-	}
-
-	/**
 	 * Whether closing `One.Cells` is a boundary, filling the rest of `One` when it is. `Work` is the plan; its cells
 	 * are closed, asked about and opened again, so it leaves as it came. `Sizes` is scratch space.
 	 */
@@ -984,148 +839,6 @@ namespace
 		One.ExitSide = Sizes[1 - One.EntranceArea];
 		One.First = GenSectionLowestCell(One.Cells);
 		return true;
-	}
-
-	/**
-	 * Every boundary among the offers made for one wanted share, `Numerator` over `Denominator`, in the order offered:
-	 * the lines whose share is nearest it, each alone, then each two, then each three, leaving out any two or three
-	 * that hold a boundary already found.
-	 */
-	TArray<FGenSectionBoundary> GenSectionBoundariesNear(FCataclysmFloorPlan& Work, const TArray<FGenSectionLine>& Lines,
-														 int32 Walkable, int32 LeastArea, int32 Numerator,
-														 int32 Denominator)
-	{
-		// NEAREST SHARE FIRST, in whole numbers: `Before / Walkable` against `Numerator / Denominator`, both multiplied
-		// through. Ties by the lower first cell, and two lines that start on one cell by the one along X, so the order
-		// is total and `TArray::Sort`, which is not stable, cannot change it.
-		TArray<FGenSectionLine> Nearest = Lines;
-		Nearest.Sort([Walkable, Numerator, Denominator](const FGenSectionLine& One, const FGenSectionLine& Two)
-		{
-			const int32 OffOne = FMath::Abs(One.Before * Denominator - Numerator * Walkable);
-			const int32 OffTwo = FMath::Abs(Two.Before * Denominator - Numerator * Walkable);
-			if (OffOne != OffTwo)
-			{
-				return OffOne < OffTwo;
-			}
-			if (One.Cells[0] != Two.Cells[0])
-			{
-				return GenSectionCellIsLower(One.Cells[0], Two.Cells[0]);
-			}
-			return One.bAlongX && !Two.bAlongX;
-		});
-		if (Nearest.Num() > FGen::SectionLinesOffered)
-		{
-			Nearest.SetNum(FGen::SectionLinesOffered);
-		}
-
-		TArray<FGenSectionBoundary> Found;
-		TArray<int32> Sizes;
-		const int32 Count = Nearest.Num();
-		int32 Offers = 0;
-
-		// WHICH LINES EACH BOUNDARY FOUND SO FAR IS MADE OF, one bit a line: bit 0 is the nearest line. Ruled
-		// 2026-10-08: two or three lines are not offered together when one of them, or two of them, is already a
-		// boundary, so that no line is closed that parts nothing. Singles are offered before pairs and pairs before
-		// threes, so every smaller choice has been answered by the time a larger one is reached.
-		TArray<int32> AlreadyBoundaries;
-		for (int32 Together = 1; Together <= FGen::SectionBoundaryMostLines && Together <= Count; ++Together)
-		{
-			// EVERY CHOICE OF `Together` LINES, in the order a row of nested loops would give: 0 1 2, 0 1 3, ...
-			TArray<int32> Pick;
-			for (int32 Fill = 0; Fill < Together; ++Fill)
-			{
-				Pick.Add(Fill);
-			}
-			while (true)
-			{
-				int32 PickedLines = 0;
-				for (const int32 Which : Pick)
-				{
-					PickedLines |= 1 << Which;
-				}
-				bool bHoldsABoundary = false;
-				for (const int32 Already : AlreadyBoundaries)
-				{
-					bHoldsABoundary = bHoldsABoundary || (Already & PickedLines) == Already;
-				}
-
-				// A SKIPPED OFFER IS NOT COUNTED AS AN OFFER, whichever of the two reasons skipped it.
-				if (!bHoldsABoundary)
-				{
-					FGenSectionBoundary One;
-					for (const int32 Which : Pick)
-					{
-						One.Lines.Add(Nearest[Which].Cells);
-						for (const FIntPoint& Cell : Nearest[Which].Cells)
-						{
-							One.Cells.AddUnique(Cell);
-						}
-					}
-					if (One.Cells.Num() <= FGen::SectionBoundaryMostCells)
-					{
-						One.Offer = Offers++;
-						if (GenSectionIsBoundary(Work, LeastArea, One, Sizes))
-						{
-							AlreadyBoundaries.Add(PickedLines);
-							Found.Add(MoveTemp(One));
-						}
-					}
-				}
-
-				// THE NEXT CHOICE: the last place that can still move up moves up, and every place after it follows.
-				int32 Slot = Together - 1;
-				while (Slot >= 0 && Pick[Slot] == Count - Together + Slot)
-				{
-					--Slot;
-				}
-				if (Slot < 0)
-				{
-					break;
-				}
-				++Pick[Slot];
-				for (int32 After = Slot + 1; After < Together; ++After)
-				{
-					Pick[After] = Pick[After - 1] + 1;
-				}
-			}
-		}
-		return Found;
-	}
-
-	/**
-	 * The `SectionBoundariesKept` boundaries, among the offers for one wanted share, whose entrance side is nearest
-	 * that share of the walkable cells. Ties by the fewer cells closed, then the lower first cell, then the earlier
-	 * offer.
-	 */
-	TArray<FGenSectionBoundary> GenSectionBoundariesKept(FCataclysmFloorPlan& Work, const TArray<FGenSectionLine>& Lines,
-														 int32 Walkable, int32 LeastArea, int32 Numerator,
-														 int32 Denominator)
-	{
-		TArray<FGenSectionBoundary> Kept =
-			GenSectionBoundariesNear(Work, Lines, Walkable, LeastArea, Numerator, Denominator);
-		Kept.Sort([Walkable, Numerator, Denominator](const FGenSectionBoundary& One, const FGenSectionBoundary& Two)
-		{
-			const int32 OffOne = FMath::Abs(One.EntranceSide * Denominator - Numerator * Walkable);
-			const int32 OffTwo = FMath::Abs(Two.EntranceSide * Denominator - Numerator * Walkable);
-			if (OffOne != OffTwo)
-			{
-				return OffOne < OffTwo;
-			}
-			if (One.Cells.Num() != Two.Cells.Num())
-			{
-				return One.Cells.Num() < Two.Cells.Num();
-			}
-			if (One.First != Two.First)
-			{
-				return GenSectionCellIsLower(One.First, Two.First);
-			}
-			return One.Offer < Two.Offer;
-		});
-		if (Kept.Num() > FGen::SectionBoundariesKept)
-		{
-			Kept.SetNum(FGen::SectionBoundariesKept);
-		}
-		return Kept;
 	}
 
 	/**
@@ -1234,6 +947,413 @@ namespace
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * What the one search for the fewest lines between the near part of a floor and the far part works with.
+	 *
+	 * PORTED FROM THE MEASUREMENT OF 2026-10-08, AND THE ORDER IN IT IS PART OF THE ANSWER. The search stops at a
+	 * limit, so which separations it has found by then depends on the order cells are walked and lines are tried.
+	 * The figures recorded for 20 Halls floors are the figures of this order: lines numbered as they are met, cell by
+	 * cell in index order and along X before along Y; the walk started from every near cell in index order and
+	 * stepping in `GenSteps`' order; a cell's first line tried before its second.
+	 */
+	struct FGenSectionSearch
+	{
+		const FCataclysmFloorPlan* Plan = nullptr;
+
+		/** Every line of the plan, numbered in the order it was met. */
+		TArray<TArray<FIntPoint>> Lines;
+
+		/** For every cell, the first line met that holds it and the second, or `INDEX_NONE`. A cell is in two at most. */
+		TArray<int32> FirstLineOfCell;
+		TArray<int32> SecondLineOfCell;
+
+		/** For every cell, whether it is in the near part and whether it is in the far part. */
+		TArray<bool> bInNear;
+		TArray<bool> bInFar;
+
+		/** For every line, whether it may be closed: none of its cells is in the near part or the far part. */
+		TArray<bool> bLineMayClose;
+
+		/** Every set of lines found with no walk from the near part to the far part, each sorted by line number. */
+		TArray<TArray<int32>> Separations;
+
+		/** Every set of lines already walked with, so that none is walked with twice. See `GenSectionKeyOfLines`. */
+		TSet<int64> Tried;
+
+		int32 Walks = 0;
+		bool bReachedTheLimit = false;
+	};
+
+	/**
+	 * Finds every line of the plan and which lines each cell is in.
+	 *
+	 * CELL BY CELL IN INDEX ORDER, AND ALONG X BEFORE ALONG Y FROM ONE CELL. A line starts at a walkable cell whose
+	 * neighbour before it is not walkable. It is a line when it is `SectionLineLeastCells` to `SectionLineMostCells`
+	 * cells, none of them the entrance or the exit, and it is not left out.
+	 */
+	void GenSectionFindLines(const FCataclysmFloorPlan& Plan, FGenSectionSearch& Search)
+	{
+		const int32 Total = Plan.Cells.Num();
+		Search.FirstLineOfCell.Init(INDEX_NONE, Total);
+		Search.SecondLineOfCell.Init(INDEX_NONE, Total);
+		for (int32 Index = 0; Index < Total; ++Index)
+		{
+			const FIntPoint Cell = Plan.CellAt(Index);
+			if (!Plan.IsFloor(Cell))
+			{
+				continue;
+			}
+			for (const FIntPoint& Along : {FIntPoint(1, 0), FIntPoint(0, 1)})
+			{
+				if (Plan.IsFloor(Cell - Along))
+				{
+					continue;
+				}
+				int32 Length = 0;
+				while (Length <= FGen::SectionLineMostCells && Plan.IsFloor(Cell + Along * Length))
+				{
+					++Length;
+				}
+				if (Length < FGen::SectionLineLeastCells || Length > FGen::SectionLineMostCells)
+				{
+					continue;
+				}
+				TArray<FIntPoint> Line;
+				bool bUsable = true;
+				for (int32 Offset = 0; Offset < Length; ++Offset)
+				{
+					const FIntPoint OnTheLine = Cell + Along * Offset;
+					bUsable = bUsable && OnTheLine != Plan.Entrance && OnTheLine != Plan.Exit;
+					Line.Add(OnTheLine);
+				}
+
+				// LEFT OUT WHEN THE SAME LINE LIES ON BOTH ITS SIDES: shifted one cell sideways each way it is a row of
+				// the same length, all walkable, with a cell that is not walkable at each end. The inside of a corridor.
+				const FIntPoint Across(Along.Y, Along.X);
+				bool bSameOnBothSides = true;
+				for (const int32 Side : {-1, 1})
+				{
+					bool bSame = !Plan.IsFloor(Cell - Along + Across * Side)
+						&& !Plan.IsFloor(Cell + Along * Length + Across * Side);
+					for (const FIntPoint& OnTheLine : Line)
+					{
+						bSame = bSame && Plan.IsFloor(OnTheLine + Across * Side);
+					}
+					bSameOnBothSides = bSameOnBothSides && bSame;
+				}
+				if (!bUsable || bSameOnBothSides)
+				{
+					continue;
+				}
+				const int32 LineId = Search.Lines.Add(Line);
+				for (const FIntPoint& OnTheLine : Line)
+				{
+					const int32 CellIndex = Plan.IndexOf(OnTheLine);
+					if (Search.FirstLineOfCell[CellIndex] == INDEX_NONE)
+					{
+						Search.FirstLineOfCell[CellIndex] = LineId;
+					}
+					else
+					{
+						Search.SecondLineOfCell[CellIndex] = LineId;
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Marks the near part and the far part of the plan, and which lines may be closed.
+	 *
+	 * NEAR is every walkable cell with fewer than one in `SectionLeastAreaOneIn` of the walkable cells nearer the
+	 * entrance, walked, than it. FAR is every cell with all but one in that many nearer, and the exit whatever its
+	 * distance. A cell that cannot be walked to is in neither.
+	 */
+	void GenSectionMarkNearAndFar(const FCataclysmFloorPlan& Plan, FGenSectionSearch& Search)
+	{
+		const int32 Total = Plan.Cells.Num();
+		const int32 Walkable = Plan.FloorCount();
+		const int32 ExitIndex = Plan.IndexOf(Plan.Exit);
+		const TArray<int32> FromEntrance = CataclysmFloorDistancesFrom(Plan, Plan.Entrance);
+
+		// `Nearer[D]` IS HOW MANY WALKABLE CELLS ARE LESS THAN `D` FROM THE ENTRANCE.
+		int32 Furthest = 0;
+		for (const int32 Away : FromEntrance)
+		{
+			Furthest = FMath::Max(Furthest, Away);
+		}
+		TArray<int32> Nearer;
+		Nearer.Init(0, Furthest + 2);
+		for (int32 Index = 0; Index < Total; ++Index)
+		{
+			if (Plan.Cells[Index] == ECataclysmFloorCell::Floor && FromEntrance[Index] != INDEX_NONE)
+			{
+				++Nearer[FromEntrance[Index] + 1];
+			}
+		}
+		for (int32 Index = 1; Index < Nearer.Num(); ++Index)
+		{
+			Nearer[Index] += Nearer[Index - 1];
+		}
+
+		Search.bInNear.Init(false, Total);
+		Search.bInFar.Init(false, Total);
+		for (int32 Index = 0; Index < Total; ++Index)
+		{
+			if (Plan.Cells[Index] != ECataclysmFloorCell::Floor || FromEntrance[Index] == INDEX_NONE)
+			{
+				continue;
+			}
+			const int32 Before = Nearer[FromEntrance[Index]];
+			Search.bInNear[Index] = Before * FGen::SectionLeastAreaOneIn < Walkable;
+			Search.bInFar[Index] = Before * FGen::SectionLeastAreaOneIn >= (FGen::SectionLeastAreaOneIn - 1) * Walkable
+				|| Index == ExitIndex;
+		}
+
+		Search.bLineMayClose.Init(true, Search.Lines.Num());
+		for (int32 LineId = 0; LineId < Search.Lines.Num(); ++LineId)
+		{
+			for (const FIntPoint& OnTheLine : Search.Lines[LineId])
+			{
+				const int32 CellIndex = Plan.IndexOf(OnTheLine);
+				if (Search.bInNear[CellIndex] || Search.bInFar[CellIndex])
+				{
+					Search.bLineMayClose[LineId] = false;
+				}
+			}
+		}
+	}
+
+	/**
+	 * One number for a set of lines sorted by line number, the same for the same set. Each line takes eleven bits, so
+	 * it tells sets apart on any plan of fewer than 2,047 lines; three lines fit an `int64` many times over.
+	 */
+	int64 GenSectionKeyOfLines(const TArray<int32>& SortedIds)
+	{
+		int64 Key = 0;
+		for (const int32 Id : SortedIds)
+		{
+			Key = Key * 2048 + (Id + 1);
+		}
+		return Key;
+	}
+
+	/** How many distinct cells these lines hold between them. */
+	int32 GenSectionCellsOfLines(const FGenSectionSearch& Search, const TArray<int32>& Ids)
+	{
+		TArray<FIntPoint> Cells;
+		for (const int32 Id : Ids)
+		{
+			for (const FIntPoint& Cell : Search.Lines[Id])
+			{
+				Cells.AddUnique(Cell);
+			}
+		}
+		return Cells.Num();
+	}
+
+	/**
+	 * With these lines closed, walks from the near part toward the far part. No walk: the lines are a separation. A
+	 * walk: every separation must close one of the lines that walk crosses, so each is tried in turn, to
+	 * `SectionBoundaryMostLines` lines. Calls itself, three deep at most.
+	 */
+	void GenSectionWalk(FGenSectionSearch& Search, const TArray<int32>& Closed)
+	{
+		if (Search.Walks >= FGen::SectionMostWalks)
+		{
+			Search.bReachedTheLimit = true;
+			return;
+		}
+		++Search.Walks;
+
+		const FCataclysmFloorPlan& Plan = *Search.Plan;
+		const int32 Total = Plan.Cells.Num();
+		TArray<bool> bBlocked;
+		bBlocked.Init(false, Total);
+		for (const int32 Id : Closed)
+		{
+			for (const FIntPoint& Cell : Search.Lines[Id])
+			{
+				bBlocked[Plan.IndexOf(Cell)] = true;
+			}
+		}
+
+		// A BREADTH-FIRST WALK FROM EVERY NEAR CELL AT ONCE, in index order. `Parent` is -1 for a cell not reached, -2
+		// for a cell the walk started on, and otherwise the cell it was reached from.
+		TArray<int32> Parent;
+		Parent.Init(-1, Total);
+		TArray<int32> Queue;
+		Queue.Reserve(Total);
+		for (int32 Index = 0; Index < Total; ++Index)
+		{
+			if (Search.bInNear[Index] && !bBlocked[Index])
+			{
+				Parent[Index] = -2;
+				Queue.Add(Index);
+			}
+		}
+		int32 Reached = -1;
+		for (int32 Read = 0; Read < Queue.Num() && Reached == -1; ++Read)
+		{
+			const int32 Here = Queue[Read];
+			if (Search.bInFar[Here])
+			{
+				Reached = Here;
+				break;
+			}
+			const FIntPoint HereCell = Plan.CellAt(Here);
+			for (const FIntPoint& Step : GenSteps)
+			{
+				const int32 There = Plan.IndexOf(HereCell + Step);
+				if (There == INDEX_NONE || Plan.Cells[There] != ECataclysmFloorCell::Floor || bBlocked[There]
+					|| Parent[There] != -1)
+				{
+					continue;
+				}
+				Parent[There] = Here;
+				Queue.Add(There);
+			}
+		}
+		if (Reached == -1)
+		{
+			if (!Closed.IsEmpty())
+			{
+				Search.Separations.Add(Closed);
+			}
+			return;
+		}
+		if (Closed.Num() >= FGen::SectionBoundaryMostLines)
+		{
+			return;
+		}
+
+		// THE LINES THE WALK CROSSES THAT MAY BE CLOSED, from the far cell back to where the walk started, a cell's
+		// first line before its second.
+		TArray<int32> Crossed;
+		for (int32 At = Reached; At >= 0; At = Parent[At])
+		{
+			for (const int32 Id : {Search.FirstLineOfCell[At], Search.SecondLineOfCell[At]})
+			{
+				if (Id != INDEX_NONE && Search.bLineMayClose[Id])
+				{
+					Crossed.AddUnique(Id);
+				}
+			}
+		}
+		for (const int32 Id : Crossed)
+		{
+			TArray<int32> Next = Closed;
+			Next.Add(Id);
+			Next.Sort();
+			if (GenSectionCellsOfLines(Search, Next) > FGen::SectionBoundaryMostCells)
+			{
+				continue;
+			}
+			const int64 Key = GenSectionKeyOfLines(Next);
+			if (Search.Tried.Contains(Key))
+			{
+				continue;
+			}
+			Search.Tried.Add(Key);
+			GenSectionWalk(Search, Next);
+		}
+	}
+
+	/**
+	 * The boundaries among the separations the search found, in the order they are met.
+	 *
+	 * THE SMALLEST SEPARATIONS FIRST, AND NONE THAT HOLDS A SMALLER ONE, so no line is closed that parts nothing. Each
+	 * is then a boundary or it is not, by `GenSectionIsBoundary`. A boundary is left out when one already taken has
+	 * the same entrance side, the same lowest cell and as many cells: it parts the plan in the same place.
+	 *
+	 * THE SORT IS BY THE NUMBER OF LINES ALONE AND `TArray::Sort` IS NOT STABLE. It is the same for the same input,
+	 * so the same plan still gives the same answer. The order it leaves separations of one size in is the order the
+	 * measured figures came from, and a tie-break added here would change which of two like boundaries is kept.
+	 */
+	TArray<FGenSectionBoundary> GenSectionBoundariesFound(FCataclysmFloorPlan& Work, FGenSectionSearch& Search,
+														  int32 LeastArea)
+	{
+		Search.Separations.Sort([](const TArray<int32>& One, const TArray<int32>& Two) { return One.Num() < Two.Num(); });
+		TArray<TArray<int32>> Smallest;
+		for (const TArray<int32>& Separation : Search.Separations)
+		{
+			bool bHoldsASmaller = false;
+			for (const TArray<int32>& Had : Smallest)
+			{
+				bool bAllIn = true;
+				for (const int32 Id : Had)
+				{
+					bAllIn = bAllIn && Separation.Contains(Id);
+				}
+				bHoldsASmaller = bHoldsASmaller || bAllIn;
+			}
+			if (!bHoldsASmaller)
+			{
+				Smallest.Add(Separation);
+			}
+		}
+
+		TArray<FGenSectionBoundary> Found;
+		TArray<int32> Sizes;
+		for (const TArray<int32>& Separation : Smallest)
+		{
+			FGenSectionBoundary One;
+			for (const int32 Id : Separation)
+			{
+				One.Lines.Add(Search.Lines[Id]);
+				for (const FIntPoint& OnTheLine : Search.Lines[Id])
+				{
+					One.Cells.AddUnique(OnTheLine);
+				}
+			}
+			if (!GenSectionIsBoundary(Work, LeastArea, One, Sizes))
+			{
+				continue;
+			}
+			bool bHadIt = false;
+			for (const FGenSectionBoundary& Had : Found)
+			{
+				bHadIt = bHadIt || (Had.EntranceSide == One.EntranceSide && Had.First == One.First
+					&& Had.Cells.Num() == One.Cells.Num());
+			}
+			if (!bHadIt)
+			{
+				Found.Add(MoveTemp(One));
+			}
+		}
+		return Found;
+	}
+
+	/**
+	 * Sorts boundaries by how near the entrance's side is to `Numerator` over `Denominator` of the walkable cells,
+	 * then by the fewer cells closed, then by the lower lowest cell, and keeps the first `SectionBoundariesKept`.
+	 * Two boundaries cannot tie on all three and be different in size, lowest cell and count, because such a pair
+	 * was not both taken; two that tie with entrance sides equally far either side of the share are left in the
+	 * order the sort gives, which is the same for the same input.
+	 */
+	void GenSectionKeepNearest(TArray<FGenSectionBoundary>& Boundaries, int32 Walkable, int32 Numerator,
+							   int32 Denominator)
+	{
+		Boundaries.Sort([Walkable, Numerator, Denominator](const FGenSectionBoundary& One, const FGenSectionBoundary& Two)
+		{
+			const int32 OffOne = FMath::Abs(One.EntranceSide * Denominator - Numerator * Walkable);
+			const int32 OffTwo = FMath::Abs(Two.EntranceSide * Denominator - Numerator * Walkable);
+			if (OffOne != OffTwo)
+			{
+				return OffOne < OffTwo;
+			}
+			if (One.Cells.Num() != Two.Cells.Num())
+			{
+				return One.Cells.Num() < Two.Cells.Num();
+			}
+			return GenSectionCellIsLower(One.First, Two.First);
+		});
+		if (Boundaries.Num() > FGen::SectionBoundariesKept)
+		{
+			Boundaries.SetNum(FGen::SectionBoundariesKept);
+		}
 	}
 }
 
@@ -1460,13 +1580,6 @@ FCataclysmFloorSections FCataclysmFloorGenerator::FindSections(const FCataclysmF
 	const int32 Walkable = Plan.FloorCount();
 	const int32 LeastArea = (Walkable + SectionLeastAreaOneIn - 1) / SectionLeastAreaOneIn;
 
-	TArray<FGenSectionLine> Lines = GenSectionLines(Plan);
-	if (Lines.IsEmpty())
-	{
-		return Out;
-	}
-	GenSectionCountBefore(Plan, CataclysmFloorDistancesFrom(Plan, Plan.Entrance), Lines);
-
 	// THE MAY-CLOSE CELLS THAT ARE WALKABLE. One that is rock already is closed in both states and asks nothing.
 	TArray<FIntPoint> Closable;
 	for (const FIntPoint& Cell : MayClose)
@@ -1477,14 +1590,27 @@ FCataclysmFloorSections FCataclysmFloorGenerator::FindSections(const FCataclysmF
 		}
 	}
 
-	// ONE COPY, CLOSED AND OPENED AGAIN FOR EVERY OFFER, rather than a copy of the plan for each.
+	// THE ONE SEARCH: the fewest lines between the near part of the floor and the far part.
+	FGenSectionSearch Search;
+	Search.Plan = &Plan;
+	GenSectionFindLines(Plan, Search);
+	GenSectionMarkNearAndFar(Plan, Search);
+	GenSectionWalk(Search, TArray<int32>());
+	Out.Walks = Search.Walks;
+	Out.bReachedTheWalkLimit = Search.bReachedTheLimit;
+
+	// ONE COPY, CLOSED AND OPENED AGAIN FOR EVERY QUESTION, rather than a copy of the plan for each.
 	FCataclysmFloorPlan Work = Plan;
 	const int32 EntranceIndex = Plan.IndexOf(Plan.Entrance);
 	const int32 ExitIndex = Plan.IndexOf(Plan.Exit);
 
-	// THREE SECTIONS: a boundary near one third with a boundary near two thirds.
-	const TArray<FGenSectionBoundary> NearOneThird = GenSectionBoundariesKept(Work, Lines, Walkable, LeastArea, 1, 3);
-	const TArray<FGenSectionBoundary> NearTwoThirds = GenSectionBoundariesKept(Work, Lines, Walkable, LeastArea, 2, 3);
+	// ONE COLLECTION OF BOUNDARIES. THREE SECTIONS: one of the boundaries nearest one third with one of those nearest
+	// two thirds.
+	const TArray<FGenSectionBoundary> All = GenSectionBoundariesFound(Work, Search, LeastArea);
+	TArray<FGenSectionBoundary> NearOneThird = All;
+	TArray<FGenSectionBoundary> NearTwoThirds = All;
+	GenSectionKeepNearest(NearOneThird, Walkable, 1, 3);
+	GenSectionKeepNearest(NearTwoThirds, Walkable, 2, 3);
 
 	const FGenSectionBoundary* BestFirst = nullptr;
 	const FGenSectionBoundary* BestSecond = nullptr;
@@ -1583,12 +1709,11 @@ FCataclysmFloorSections FCataclysmFloorGenerator::FindSections(const FCataclysmF
 		return Out;
 	}
 
-	// TWO SECTIONS: the boundary near one half whose smaller side is largest; then the fewer cells closed; then the
-	// lower first cell. A boundary that ties on all three loses to the one offered first. It too must hold with the
-	// may-close cells closed.
-	const TArray<FGenSectionBoundary> NearOneHalf = GenSectionBoundariesNear(Work, Lines, Walkable, LeastArea, 1, 2);
+	// TWO SECTIONS: the boundary of the same collection whose smaller side is largest; then the fewer cells closed;
+	// then the lower lowest cell. A boundary that ties on all three loses to the one met first. It too must hold
+	// with the may-close cells closed.
 	const FGenSectionBoundary* Half = nullptr;
-	for (const FGenSectionBoundary& One : NearOneHalf)
+	for (const FGenSectionBoundary& One : All)
 	{
 		const int32 Smaller = FMath::Min(One.EntranceSide, One.ExitSide);
 		const int32 HalfSmaller = Half ? FMath::Min(Half->EntranceSide, Half->ExitSide) : 0;

@@ -1231,18 +1231,24 @@ namespace CataclysmFloorSectionsTest
 	}
 
 	/**
-	 * A room ten by ten, a corridor one cell long and two wide, and a last room `LastSide` cells square that holds
-	 * the exit. With a last room of 3 the plan has 111 walkable cells and the room 9, under a tenth; with 4 it has
-	 * 118 and the room 16, over a tenth.
+	 * A room eleven by eleven at X 1-11, Y 1-11, with the entrance in its corner at (1, 1); a corridor three cells
+	 * long and two wide leaving its far corner, at X 12-14, Y 10-11; and a last room `LastSide` cells square that
+	 * holds the exit, from X 15, its bottom row at Y 11. With a last room of 3 the plan has 136 walkable cells, a
+	 * tenth is 14, and the room and the two corridor columns nearest it hold 13. With 4 it has 143, a tenth is 15,
+	 * and they hold 20.
+	 *
+	 * THE CORRIDOR LEAVES THE FAR CORNER ON PURPOSE. The search parts the nearest tenth of the floor from the
+	 * farthest tenth. With the corridor in the middle of a wall, the big room's own far corners are in the farthest
+	 * tenth, no line parts them from the entrance, and the search finds nothing whatever the last room's size.
 	 */
 	FCataclysmFloorPlan BigRoomAndLastRoom(int32 LastSide)
 	{
-		FCataclysmFloorPlan Plan = Rock(18, 12);
-		CarveBlock(Plan, 1, 1, 10, 10);
-		CarveBlock(Plan, 11, 5, 11, 6);
-		CarveBlock(Plan, 12, 4, 12 + LastSide - 1, 4 + LastSide - 1);
-		Plan.Entrance = FIntPoint(1, 5);
-		Plan.Exit = FIntPoint(12 + LastSide - 1, 5);
+		FCataclysmFloorPlan Plan = Rock(20, 13);
+		CarveBlock(Plan, 1, 1, 11, 11);
+		CarveBlock(Plan, 12, 10, 14, 11);
+		CarveBlock(Plan, 15, 12 - LastSide, 15 + LastSide - 1, 11);
+		Plan.Entrance = FIntPoint(1, 1);
+		Plan.Exit = FIntPoint(15 + LastSide - 1, 10);
 		return Plan;
 	}
 
@@ -1279,19 +1285,27 @@ namespace CataclysmFloorSectionsTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorSectionsTwentyPlansTest,
-	"Cataclysm.FloorSections.OnTwentyHallsPlansTheSearchFindsThreeSectionsOnAtLeastEighteenAndThreeOrTwoOnAll",
+	"Cataclysm.FloorSections.OnTwentyHallsPlansTheSearchFindsSectionsThreeOrTwoOnEveryOne",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmFloorSectionsTwentyPlansTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmFloorSectionsTest;
 
-	// THE TWENTY HALLS PLANS THE MEASUREMENT OF 2026-10-08 USED: seeds 1 to 10, floors 1 and 10. That measurement
-	// tried far more offers than the search does, so whether the search reaches 18 was not known when this was
-	// written. The time is logged and not asserted.
+	// THE TWENTY HALLS PLANS EVERY MEASUREMENT OF 2026-10-08 USED: seeds 1 to 10, floors 1 and 10.
+	//
+	// THE REQUIREMENT, ruled 2026-10-08, is sections on every one of them, three or two, and every answer obeying
+	// every rule. "Three sections on at least 18" was withdrawn as a requirement. The fewest-lines search was
+	// measured that day at three sections on 17 of the 20 and two on the other 3, slowest floor 35.219 ms.
+	//
+	// THE 15 BELOW IS A PIN AND NOT A REQUIREMENT: the measured 17 less two, so that a change which makes the search
+	// find three sections on fewer floors is seen. The time, the walks made and whether the search stopped at its
+	// limit are logged and not asserted.
 	int32 Plans = 0;
 	int32 WithThree = 0;
 	int32 WithTwoOrThree = 0;
+	int32 AtTheLimit = 0;
+	double Slowest = 0.0;
 	for (const int32 FloorNumber : {1, 10})
 	{
 		for (int32 Seed = 1; Seed <= 10; ++Seed)
@@ -1307,6 +1321,8 @@ bool FCataclysmFloorSectionsTwentyPlansTest::RunTest(const FString& Parameters)
 			const double Began = FPlatformTime::Seconds();
 			const FCataclysmFloorSections Sections = FCataclysmFloorGenerator::FindSections(Plan);
 			const double Milliseconds = (FPlatformTime::Seconds() - Began) * 1000.0;
+			Slowest = FMath::Max(Slowest, Milliseconds);
+			AtTheLimit += Sections.bReachedTheWalkLimit ? 1 : 0;
 
 			const int32 Count = Sections.SectionCount();
 			WithThree += (Count == 3) ? 1 : 0;
@@ -1319,20 +1335,30 @@ bool FCataclysmFloorSectionsTwentyPlansTest::RunTest(const FString& Parameters)
 											  Plan, Sections);
 			}
 			TArray<int32> ClosedCells;
+			TArray<int32> LinesClosed;
 			for (const TArray<FIntPoint>& Boundary : Sections.Boundaries)
 			{
 				ClosedCells.Add(Boundary.Num());
 			}
+			for (const TArray<TArray<FIntPoint>>& Lines : Sections.BoundaryLines)
+			{
+				LinesClosed.Add(Lines.Num());
+			}
 			UE_LOG(LogTemp, Display,
-				TEXT("FLOORSECTIONS seed=%d floor=%d dungeonseed=%d walkable=%d sections=%d cells=%s closed=%s ms=%.3f"),
-				Seed, FloorNumber, 1000 + Seed * 37, Plan.FloorCount(), Count, *Joined(SectionSizes),
-				*Joined(ClosedCells), Milliseconds);
+				TEXT("FLOORSECTIONS seed=%d floor=%d walkable=%d sections=%d cells=%s closed=%s lines=%s ms=%.3f walks=%d limit=%d"),
+				1000 + Seed * 37, FloorNumber, Plan.FloorCount(), Count, *Joined(SectionSizes), *Joined(ClosedCells),
+				*Joined(LinesClosed), Milliseconds, Sections.Walks, Sections.bReachedTheWalkLimit ? 1 : 0);
 		}
 	}
+	UE_LOG(LogTemp, Display,
+		TEXT("FLOORSECTIONS SUMMARY three sections on %d of %d | three or two on %d of %d | slowest floor %.3f ms | floors "
+			 "where the search stopped at its limit %d"),
+		WithThree, Plans, WithTwoOrThree, Plans, Slowest, AtTheLimit);
 
 	TestEqual(TEXT("set-up: twenty plans were asked about"), Plans, 20);
-	TestTrue(FString::Printf(TEXT("three sections on at least 18 of the 20 plans (%d)"), WithThree), WithThree >= 18);
-	TestEqual(TEXT("three sections or two on all 20 plans"), WithTwoOrThree, 20);
+	TestEqual(TEXT("the requirement: sections, three or two, on all 20 plans"), WithTwoOrThree, 20);
+	TestTrue(FString::Printf(TEXT("the pin, not a requirement: three sections on at least 15 of the 20, which is the "
+								  "17 measured on 2026-10-08 less two (%d)"), WithThree), WithThree >= 15);
 	return true;
 }
 
@@ -1446,11 +1472,10 @@ bool FCataclysmFloorSectionsThreeRoomsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("boundary 0 closes two cells"), Sections.Boundaries[0].Num(), 2);
 	TestTrue(TEXT("both in the first corridor"), AllWithin(Sections.Boundaries[0], 6, 3, 8, 4));
 
-	// AT THE CORRIDOR'S FIRST COLUMN, X 6, AND THAT IS THE RULE OF 2026-10-08 THAT NO LINE IS CLOSED THAT PARTS NOTHING.
-	// Closing X 6 or X 8 with X 14 both leave a smallest section of 25 cells and close four cells, and X 6 is the
-	// lower cell. Before that rule the eight boundaries kept near one third were the line at X 8 and seven offers
-	// of X 8 with a line that parted nothing, each exactly a third, so X 6 was never tried and the answer was X 8.
-	// Worked out with the writing session's Python model of the search, not from a run.
+	// AT THE CORRIDOR'S FIRST COLUMN, X 6, BY THE LAST TIE-BREAK. The lines at X 6 and at X 8 are both found; with the
+	// line at X 14 each leaves a smallest section of 25 cells and closes four cells, and X 6 is the lower cell.
+	// Asserted when the search was the ten lines nearest a share, where it passed in the run of 2026-10-08; kept for
+	// the fewest-lines search, for which it is worked out with the writing session's Python model and not from a run.
 	TestTrue(TEXT("and at its first column, X 6"), AllWithin(Sections.Boundaries[0], 6, 3, 6, 4));
 	TestEqual(TEXT("boundary 1 closes two cells"), Sections.Boundaries[1].Num(), 2);
 	TestTrue(TEXT("both in the second corridor"), AllWithin(Sections.Boundaries[1], 14, 3, 16, 4));
@@ -1490,23 +1515,27 @@ bool FCataclysmFloorSectionsTenthTest::RunTest(const FString& Parameters)
 		CheckEveryRule(*this, TEXT("a tiny middle room"), Middle, Middle, MiddleSections);
 	}
 
-	// A LAST ROOM OF 9 CELLS HOLDING THE EXIT, off a room of 100: the only place to divide leaves 9 on the exit's
-	// side, so there are no sections.
+	// A LAST ROOM OF 9 CELLS HOLDING THE EXIT, off a room of 121 by a corridor of 6. The one line that may be closed
+	// is the corridor's first column, and closing it leaves 13 cells on the exit's side against a tenth of 14, so
+	// there are no sections.
 	const FCataclysmFloorPlan Last = BigRoomAndLastRoom(3);
-	TestEqual(TEXT("set-up: this plan has 111 walkable cells too"), Last.FloorCount(), 111);
+	TestEqual(TEXT("set-up: this plan has 136 walkable cells, so a tenth is 14"), Last.FloorCount(), 136);
 	TestEqual(TEXT("a tiny last room: no sections"), FCataclysmFloorGenerator::FindSections(Last).SectionCount(), 0);
 
-	// THE CONTROL: THE SAME PLAN WITH A LAST ROOM OF 16 CELLS, over a tenth of its 118, is divided at that corridor.
+	// THE CONTROL: THE SAME PLAN WITH A LAST ROOM OF 16 CELLS is divided in the corridor: 20 cells on the exit's
+	// side against a tenth of 15.
 	const FCataclysmFloorPlan Larger = BigRoomAndLastRoom(4);
+	TestEqual(TEXT("set-up: this plan has 143 walkable cells, so a tenth is 15"), Larger.FloorCount(), 143);
 	const FCataclysmFloorSections LargerSections = FCataclysmFloorGenerator::FindSections(Larger);
 	if (TestEqual(TEXT("a last room of 16 cells: two sections"), LargerSections.SectionCount(), 2))
 	{
 		const TArray<int32> SectionSizes = CheckEveryRule(*this, TEXT("a last room of 16"), Larger, Larger, LargerSections);
-		TestTrue(TEXT("the boundary is the corridor's two cells"),
-				 LargerSections.Boundaries[0].Num() == 2 && AllWithin(LargerSections.Boundaries[0], 11, 5, 11, 6));
+		TestTrue(TEXT("the boundary is two cells across the corridor"),
+				 LargerSections.Boundaries[0].Num() == 2 && AllWithin(LargerSections.Boundaries[0], 12, 10, 14, 11));
 		if (TestEqual(TEXT("a size for each section"), SectionSizes.Num(), 2))
 		{
-			TestEqual(TEXT("the exit's section is the last room's 16 cells"), SectionSizes[1], 16);
+			TestTrue(FString::Printf(TEXT("the exit's section holds the last room's 16 cells (%d)"), SectionSizes[1]),
+					 SectionSizes[1] >= 16);
 		}
 	}
 	return true;
@@ -1617,7 +1646,9 @@ bool FCataclysmFloorSectionsBothEndsOneSideTest::RunTest(const FString& Paramete
 	using namespace CataclysmFloorSectionsTest;
 
 	// TWO ROOMS OF 49 CELLS AND ONE LINE BETWEEN THEM, WITH THE ENTRANCE AT (1, 1) AND THE EXIT AT (7, 7), BOTH IN THE
-	// FIRST ROOM. Closing the line leaves two areas, each far over a tenth, and does not part the two ends.
+	// FIRST ROOM. Closing the line leaves two areas, each far over a tenth, and does not part the two ends. THE SEARCH
+	// NEVER REACHES THAT LINE: the exit is always in the far part, the walk from the entrance to it crosses no line,
+	// and so no separation is found. The acceptance of a boundary asks the same thing a second time.
 	const FCataclysmFloorPlan SameRoom = TwoRooms(FIntPoint(1, 1), FIntPoint(7, 7));
 	TestTrue(TEXT("set-up: closing the corridor leaves the exit reached from the entrance"),
 			 CataclysmFloorDistancesFrom(WithClosed(SameRoom, {FIntPoint(8, 4), FIntPoint(8, 5)}), SameRoom.Entrance)
@@ -1906,7 +1937,7 @@ bool FCataclysmFloorSectionsMayCloseTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorSectionsPocketTest,
-	"Cataclysm.FloorSections.ARoomOffToOneSideIsNeverASectionOfItsOwn",
+	"Cataclysm.FloorSections.OnAPlanWithARoomOffToOneSideNoPocketPairingIsFormed",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmFloorSectionsPocketTest::RunTest(const FString& Parameters)
@@ -1942,12 +1973,15 @@ bool FCataclysmFloorSectionsPocketTest::RunTest(const FString& Parameters)
 			 CataclysmFloorDistancesFrom(WithClosed(Plan, CorridorAndTheOther), Plan.Entrance)[Plan.IndexOf(InTheSideRoom)]
 				 != INDEX_NONE);
 
-	// THE SIDE ROOM IS NOT A SECTION OF ITS OWN: it is in the entrance's section, whatever the answer.
+	// THE SIDE ROOM IS NOT A SECTION OF ITS OWN: it is in the entrance's section, and no boundary closes a door.
 	//
-	// WHAT THIS TEST DOES NOT SHOW. Since the rule that no line is closed that parts nothing, the search does not
-	// offer the corridor together with a door at all, because the corridor is a boundary by itself. So on this plan
-	// the pairing above is never formed, and this test passes by that rule and not by the rule that three areas lie
-	// in a row. The writing session found no plan on which the second rule is the one that refuses a pocket.
+	// WHAT THIS TEST SHOWS, AND WHAT IT DOES NOT. It shows that on this plan the two boundaries of the set-up are
+	// never formed, so they are never paired. The search keeps only the fewest lines that part the near part of the
+	// floor from the far part, and here that is the corridor alone: the corridor with a door holds the corridor,
+	// which is a separation already, so it is never kept. It does NOT show the rule that three areas lie in a row
+	// refusing a pocket. No test does. The writing session found no plan on which a pocket pairing is formed: not
+	// this one, and none of about 2,700 random small plans tried in a Python model of this search. That is a search
+	// that found nothing and not a proof. The rule's line stays in the search as a guard that nothing reaches.
 	const FCataclysmFloorSections Sections = FCataclysmFloorGenerator::FindSections(Plan);
 	if (!TestTrue(FString::Printf(TEXT("the plan has sections (%d)"), Sections.SectionCount()),
 				  Sections.SectionCount() >= 2))
