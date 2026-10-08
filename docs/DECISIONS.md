@@ -12,13 +12,16 @@ The Run section at the end of this entry has every printed figure. The coordinat
 nothing. Every build, run and measurement named here was made by the registering session. The writing session
 ran the Python suite, the lint and the conflict check before each commit and nothing else.
 
-**Said first: three figures of the second window were lost, and one of them decides how often this row has
-sections.** The suite prints, for the 200 measured Halls floors, how many answers have boundaries that share a
-cell and how many have a boundary with no cell of its own; a floor of the second kind gets no sections under
-ruling 17. The registering session's runner did not keep the engine's log, and the guard proofs that followed
-wrote over it. So those two counts and that run's slowest floor are **NOT OBTAINED: the runner did not keep the
-engine log; to be filled from a rerun of the group**. Until they are, the share of Halls floors on which
-Lightforged Walls has sections is known only for layer 1's search (196 of 200) and not for the row as built.
+**Said first: boundaries that share a cell are common, on 134 of 200 measured Halls floors, and no measured floor
+has a boundary with no cell of its own.** The suite prints both counts for the 200 floors. A floor of the second
+kind gets no sections under ruling 17, and there is none among the 200 or the 20. So the row as built has sections
+on the same floors layer 1's search does: 196 of the 200, with 178 in three sections and 18 in two, and none on 4.
+Shared cells are the case the first window's fault reached; 8 of the first 20 floors and 134 of the 200 have them.
+
+**Said first: those figures come from a rerun, because the second window lost them.** The registering session's
+runner did not keep the engine's log of the second window's suite, and the guard proofs that followed wrote over
+it. The group `Cataclysm.FloorSections.` was then run once more, alone, on the same binaries at fa2ebece, with the
+engine log copied the moment it ended. The Run section quotes its two lines.
 
 **Said first: the first window failed on this layer; the cause was inferred, and the second window showed it.** The registering
 session built and ran the layer at 2561ed00. It compiled. Of 3,388 tests performed, 3,385 succeeded and 3 failed,
@@ -809,16 +812,32 @@ then ruled the shared-cell rule (rulings 16 to 21), and a third commit was writt
 | Whole Unreal suite | `3389 tests performed, 3389 succeeded, 0 failed`; `Declared: 3389 tests in the tree at fa2ebece; 3389 performed, gap 0`; 40 tests skipped part of what they check |
 | Python, with continuous integration idle | `5879 passed, 8 skipped in 404.08s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
 | Ruff | `All checks passed!` |
-| The 200 Halls floors: answers that share a cell | NOT OBTAINED: the runner did not keep the engine log; to be filled from a rerun of the group |
-| The 200 Halls floors: answers with a boundary that has no cell of its own | NOT OBTAINED: the runner did not keep the engine log; to be filled from a rerun of the group |
-| The 200 Halls floors: slowest floor in this run | NOT OBTAINED: the runner did not keep the engine log; to be filled from a rerun of the group |
 
-**Those three figures are printed by layer 1's test file, `CataclysmFloorGeneratorTests.cpp`, and the change that
+**The rerun of the group `Cataclysm.FloorSections.`, at fa2ebece, on the binaries the window built.** The wrapper
+printed `Build: Succeeded - target already up to date, 0 actions, nothing compiled` and `15 tests performed, 15
+succeeded, 0 failed`. The two log lines:
+
+- `FLOORSECTIONS SUMMARY three sections on 17 of 20 | three or two on 20 of 20 | slowest floor 38.561 ms | floors
+  where the search stopped at its limit 1 | shared=8 no_own_cell=0`
+- `FLOORSECTIONS WIDER plans=200 three=178 two=18 none=4 slowest_ms=58.387 at_the_limit=9 shared=134
+  no_own_cell=0`
+
+| The 200 Halls floors | Printed |
+|---|---|
+| Answers with a cell two boundaries both hold | 134 |
+| Answers with a boundary that has no cell of its own | 0 |
+| No sections, of any cause | 4: the four the search finds none on, and none dropped for a boundary with no cell of its own |
+| Slowest floor in this run | 58.387 milliseconds |
+
+Not counted by this run: floors that lose their sections because a Warzone control point lies on a boundary
+(ruling 21). That needs Warzone Control Points on the floor and is not measured.
+
+**Those figures are printed by layer 1's test file, `CataclysmFloorGeneratorTests.cpp`, and the change that
 prints the two counts is in this layer's third commit.** Layer 1's own commits do not hold it.
 
 The three restated tests each search dungeon seeds 1 to 20 for a floor in three sections whose boundaries share
-no cell. All three passed, so such a floor is among those seeds. Which seed is not recorded, for the same reason
-the three figures are not.
+no cell. All three passed, so such a floor is among those seeds. Which seed is not recorded: the engine log of
+the window's suite was not kept, and the rerun ran layer 1's group only.
 
 **How the layer was written and checked.** A second session wrote each of the three commits under a brief carrying
 the rulings. The registering session read each commit's game-code changes and every assertion of its tests before
