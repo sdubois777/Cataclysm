@@ -1,5 +1,5 @@
 Name,Effect,EnchantmentType,Weight,Tags,IsNegative,RollsDown
-Negative_Can_t_use_a_basic_attack,Can’t use a basic attack,Generic,2.0,Scope.BasicOnly,True,
+Negative_Can_t_use_a_basic_attack,Can’t use a basic attack,Generic,0.0,Scope.BasicOnly,True,
 Negative_80_99_of_your_health_is_reserved,80%-99% of your health is reserved,Generic,1.0,Stat.Defense.Life,True,
 Negative_You_lose_1_4_max_resistances_for_every_100_000,"You lose 1-4% max resistances for every 100,000 - 500,000 kills",Generic,3.0,Stat.Defense.Resist,True,2
 Negative_Ultimate_cooldowns_increased_by_100_500,Ultimate cooldowns increased by 100%-500%,Generic,2.0,"Slot.Ultimate, Slot.Ultimate",True,
