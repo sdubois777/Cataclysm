@@ -235,7 +235,14 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # persistent AOE zones apply their effects to you if you stand in
               # them". The game asks each whether it is above nought.
               "ailment_immunity", "damage_over_time_taken_from_mana_first",
-              "zone_applies_effects_to_owner"}
+              "zone_applies_effects_to_owner",
+              # THREE MORE JOINED with their rows, issue #1833: "Your movement
+              # abilities pull all nearby enemies to you on arrival", "Your
+              # movement abilities now move you in a random direction" and "Your
+              # movement abilities cause an explosion at the starting and end
+              # locations". A movement skill asks each whether it is above nought.
+              "movement_pulls_nearby_on_arrival", "movement_random_direction",
+              "movement_explodes_at_both_ends"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -768,8 +775,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-08, from 550 over 464: four rows on three enchantments.
 #: AND 558 OVER 471 SINCE FOUR ROWS ON STATS READ AT ONE PLACE,
 #: issue #1833, 2026-10-08, from 554 over 467: four rows on four enchantments.
-AUTHORED_ROWS = 558
-AUTHORED_ENCHANTMENTS = 471
+#: AND 562 OVER 475 SINCE FOUR ROWS ON WHAT A MOVEMENT SKILL DOES,
+#: issue #1833, 2026-10-08, from 558 over 471: four rows on four enchantments.
+AUTHORED_ROWS = 562
+AUTHORED_ENCHANTMENTS = 475
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

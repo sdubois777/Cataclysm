@@ -2,6 +2,80 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — Four rows are built on what a movement skill does: pull on arrival, a hit along the path, a random direction, and an explosion at both ends
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (three stats join the
+list of stats that are a yes or a no, and the row counts), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The rows the entry "A worn row makes a movement skill do four things" of 2026-10-07 left to the session holding
+the design workbook, each as that entry's table states it. Each stat and the place that asks for it were read in
+the merged code. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Your movement abilities pull all nearby enemies to you on arrival | `movement_pulls_nearby_on_arrival` | flat | 1 | `Slot.Movement` |
+| Your movement ability deals 50%-100% of your weapon damage to all enemies along its path | `movement_path_damage_percent` | flat | 50 to 100 | `Slot.Movement` |
+| Your movement abilities now move you in a random direction | `movement_random_direction` | flat | 1 | `Slot.Movement` |
+| Your movement abilities cause an explosion at the starting and end locations | `movement_explodes_at_both_ends` | flat | 1 | `Slot.Movement` |
+
+EnchantmentEffects 558 to 562, over 471 to 475 enchantments.
+
+### A LABELLED JUDGEMENT BY THE WRITING SESSION: THREE OF THE FOUR STATS ARE A YES OR A NO, WRITTEN AS 1
+
+That entry left open how the flags should be written. **Each is written 1 to 1**, as every other yes-or-no stat
+in the sheet is, and the three, `movement_pulls_nearby_on_arrival`, `movement_random_direction` and
+`movement_explodes_at_both_ends`, join `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`: a movement skill asks each only whether it is
+above nought, and its sentence states no number. Without that, the check that every value appears in its
+sentence refuses the three rows; it was seen to, in a copy, before the list was changed. Approved 2026-10-08 by
+the coordinating session, as a labelled judgement. `FLAG_STATS` is a check's list; no generator code changes.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the four sentences is that entry's: which skills each row reaches, how far the pull reaches and
+where it leaves an enemy, that only a charge has a path, and what each explosion deals.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheFourMovementSkillRowsEachHandTheirWearerTheStatAskedWithAMovementSkillsSlot`: each
+  real row worn at the top of its range. The test first asserts that each name it wears is a row of its table.
+  Every figure is a difference against the same wearer with the item taken off: asked with a movement skill's
+  slot tag the stat is higher by the row's figure (1, 100, 1 and 1), and asked with a heavy attack's slot tag it
+  is no higher.
+
+**Not tested here:** a movement skill used under a worn row. That entry tests each of the four with the stat set
+by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the other three layers of the stack, on `development` 8a46f17f. The build, the
+whole suite and the Python of record are in the table of the entry of the same day on "Traps last 50%-100%
+longer before expiring" and were run with this layer in the stack. **The ids are the commits as they stood when
+each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 239a6647 | 290 tests performed, 284 succeeded, 6 failed, this layer's among them; 4 of the 17 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 00b537ed | effect rows 558 to 562 |
+| Whole suite, every asset built | 00b537ed | 3344 tests performed, 3344 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**: asked with a movement skill's slot,
+none of the four stats was higher. The readings asked with a heavy attack's slot were no higher in both runs, as
+they must be.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** Three of the
+four stats were proved by the session that built them: the pull, the hit along the path and the explosions.
+**`movement_random_direction` has no guard proof**: that session's entry says no proof was run for the random
+direction, and that its test passed in the whole suite. Corrected 2026-10-08: this sentence first said all four
+were proved.
+
+---
+
 ## 2026-10-08 — Four rows are built on stats that are each read at one place: the shield that loses more, the slower leech, the heavy attack's half circle and the stagger that roots
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),
@@ -66,7 +140,11 @@ each step ran.**
 leech rate was what it was taken off, the arc stat asked with a heavy attack's slot was no higher, and the root
 stat was no higher. The reading asked with a basic attack's slot was no higher in both runs, as it must be.
 
-**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The four stats were proved by the session that built them.
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** Three of the
+four stats were proved by the session that built them: the shield, the arc and the root.
+**`leech_payout_rate` has no guard proof**: that session's entry says no proof was run for the leech pay-out
+stat, and that its test passed in the whole suite. Corrected 2026-10-08: this sentence first said all four
+were proved.
 
 ---
 
