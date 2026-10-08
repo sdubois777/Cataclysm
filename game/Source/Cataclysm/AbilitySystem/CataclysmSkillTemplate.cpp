@@ -533,7 +533,44 @@ float UCataclysmSkillTemplate::SecondsUntilTheSwingConnects() const
 	// answer as "no animation played" and means the blow lands now.
 	const ACataclysmCharacterBase* Character =
 		Cast<ACataclysmCharacterBase>(Avatar());
-	return Character ? Character->SecondsUntilTheSwingConnects() : 0.0f;
+	const float WindUp = Character ? Character->SecondsUntilTheSwingConnects() : 0.0f;
+
+	// AND THE CAST DELAY A WORN ROW ADDS, AT THIS ONE PLACE. Ruled 2026-10-08,
+	// for "Point blank AOE skills have a 0.75-1.5 second cast delay before
+	// firing": `blow_delay_seconds`, asked with this skill's own tags so the
+	// row's Required Tags decide which skills it reaches.
+	//
+	// ONLY A SKILL THAT ASKS THIS IS DELAYED, and three shapes do: a strike, a
+	// projectile skill and a curse, each through `WhenTheSwingConnects`. A
+	// movement skill, a self buff, a summon, a deployable and an aura never ask,
+	// and neither does a strike that is held, so a row cannot delay them.
+	//
+	// NO BLOW IS IN HAND AND NOTHING MORE IS HANDED OVER. The skill has been
+	// paid for and has struck nothing yet.
+	//
+	// AN AVATAR THAT IS NOT ONE OF OUR CHARACTERS IS STILL ASKED. Its wind-up is
+	// nought and the row's seconds are then the whole wait, which is how an
+	// automation test's fighter comes to wait at all.
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+	const float RowDelay = Mine
+		? Mine->StatForSkill(FName(BlowDelaySecondsStat), SkillTags, 0.0f)
+		: 0.0f;
+
+	return SwingWaitWithDelay(WindUp, RowDelay);
+}
+
+const TCHAR* UCataclysmSkillTemplate::BlowDelaySecondsStat = TEXT("blow_delay_seconds");
+
+float UCataclysmSkillTemplate::SwingWaitWithDelay(float WindUpSeconds, float RowDelaySeconds)
+{
+	// ADDED, NOT IN PLACE OF. Ruled 2026-10-08: the delay lengthens the wind-up
+	// a skill already has.
+	//
+	// NEVER NEGATIVE. A figure below nought adds nothing; a row that shortened
+	// a wind-up would be a different sentence from this one, and a sum below
+	// nought would land the blow at the press and take the wind-up with it.
+	return WindUpSeconds + FMath::Max(0.0f, RowDelaySeconds);
 }
 
 bool UCataclysmSkillTemplate::IsWaitingForTheSwingToConnect() const
@@ -566,6 +603,11 @@ void UCataclysmSkillTemplate::WhenTheSwingConnects(TFunction<void()> Blow)
 	//
 	// NO WORLD MEANS THE SAME. A timer needs one, and having nowhere to put the
 	// blow is not a reason to drop it.
+	//
+	// A WEARER OF `blow_delay_seconds` IS THE EXCEPTION TO ALL OF THAT, since
+	// 2026-10-08: its wait is above nought whatever animated it, so its blow is
+	// put on the timer below. A test that gives a fighter that row runs the
+	// world's timers itself.
 	if (Delay <= 0.0f || !World)
 	{
 		Blow();
