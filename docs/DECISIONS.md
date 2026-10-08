@@ -2450,6 +2450,322 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — One status name applies each of the five damage over time ailments, and one action stuns every enemy near an enemy that died afflicted: `All DoTs` on `apply_status`, and `stun_near_the_dying` with a chance and a duration on one row. Engine and generator only; no row authored
+
+**Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
+was run by the writing session. The C++ in this entry has never been compiled. The Python checks were run; their
+output is not recorded here. The two row shapes under "What the row needs" were passed through the generator in
+a temporary workbook, by the Python tests named there.
+
+**Said first, for the play-check: the owner's rule of 2026-09-02 (#917) applies to the first-hit row.** Nothing
+is applied unless the first hit takes at least a tenth of the enemy's maximum health and leaves it alive.
+**Against a boss the first hit will seldom apply them**, for that reason and no other: the code has no rule
+about a boss here. `UCataclysmAilments::BlowCanCarryAnAilment` asks two things, that the target is alive and
+that the blow took a tenth of its maximum health, and a boss whose first hit took a tenth would receive all
+five. **And the first hit is spent either way**: an enemy struck first by a hit too small is not given the five
+by the second.
+
+**Said first, for the play-check: an afflicted enemy killed by a row's own action does not roll the
+Time-Lock.** A character that is already acting on an event hears no second event. So an afflicted enemy that
+dies to something a worn row did, a smite of the enemies nearby, a strike action, Plague Doctor's blast, does
+not freeze anybody. One that dies to the wearer's own hit, or to a tick of damage over time, does. The one
+event kept at that depth is kept for a blast and for nothing else, and that was not widened (N15).
+
+**Said first: "one of your debuffs" is narrower in the game than its word.** The Time-Lock rolls only when the
+dying enemy carried one of the wearer's SIX damage over time ailments: Bleed, Poison, Disease, Necrosis, Burn
+and Void Splinter. A Cripple, a Weaken, a Shred, a Madness or a curse from the wearer does not count. That is
+the event `afflicted_death` as it stands; it was not widened here, as ruled (N5). **And the six include Void
+Splinter, which the first-hit row's five do not.** So a wearer of both rows applies five ailments on a first hit
+and is paid a Time-Lock for six.
+
+**Said first, for the play-check: the freeze is the game's stun with every rule it has.** A boss is never
+frozen. An enemy stunned in the last five seconds, by anything, is not frozen again, and a second Time-Lock
+inside those five seconds does not lengthen the first. A wearer of "You cannot apply CC effects to enemies above
+50% HP" freezes no enemy above half health. An enemy's crowd control resistance shortens the freeze, and at 100
+refuses it. The one rule skipped is the tenth of maximum health, because no hit is dealt (N12).
+
+**Said first: "nearby" is a reused number.** `UCataclysmContagion::SpreadFromTheDyingMetres`, 5 metres, measured
+from the enemy that died. The game has THREE such figures today: 5 metres round the wearer
+(`UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`, 500), 5 metres round a dying body for Plague
+Doctor's blast and Disease's spread (`SpreadFromTheDyingMetres`), and 6 metres for the passive nodes that read
+`UCataclysmContagion::RadiusMetres`. **The brief for this layer first ruled 6 on the statement that the blast
+reaches 6. That statement was false, the writing session stopped on it, and the ruling was withdrawn for 5.**
+
+**Said first: how the first-hit row compares in strength with the sentences beside it.**
+
+| Sentence | Weight | What it applies |
+| :-- | :-- | :-- |
+| Your critical strikes always cause bleeding | 3 | one ailment, on a critical strike |
+| Your first hit against each enemy has a 50%-100% chance to stagger them | 3 | one status, at a chance, once an enemy |
+| Your first hit against each enemy deals 100%-300% bonus damage | 2 | more damage on one blow, once an enemy |
+| Your first hit against each enemy applies all your active DoTs instantly | 2 | FIVE ailments at once, on every enemy, once each |
+
+The weights are the Weight column of `game/Data/EnchantmentsPositive.csv`. By the descriptions of the five
+rows of `game/Data/StatusEffects.csv`, the five are a base of 20 a second for 5 seconds, 20 for 8, 12 for 6, 10
+for 10 and 25 for 4: 532 points if each runs out, before the wearer's own damage over time stats, and a bleed
+ticks only while its carrier moves. The writing session read the descriptions and not the columns. **It also
+gives the wearer, on every enemy it has struck once, the ailment the Time-Lock, Plague Doctor's blast and every
+row conditioned on an ailment asks for.** Nothing was tuned here; the comparison is for the owner.
+
+**Said first: a status a row applies raises no `dot_applied` row of the wearer's.** Each of the five is applied
+while the wearer is acting on `first_hit_dealt`, so the `dot_applied` each application raises is dropped, as
+every event raised at that depth is. "Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds"
+gains no stack from them, and "When you apply a DOT, 1-4 stacks are applied to you" lays nothing on the wearer.
+This is how a single ailment named on `apply_status` already behaves; it is said here because five at once
+makes it visible. Read, not run.
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`AllDotsStatus`,
+`StunNearTheDyingAction`, `ApplyStatusOf`, `ActOnEvent`), `CataclysmContagion.h` and `.cpp`
+(`StunNearTheDying`), `CataclysmStatPipeline.h` (`FCataclysmPoolAction::bStunNearTheDying`),
+`game/Source/Cataclysm/Items/CataclysmItem.cpp`, nine new tests in `CataclysmSkillTemplateTests.cpp`,
+`tools/generate_datatables.py` (`ALL_DOTS_STATUS`, `STUN_NEAR_THE_DYING_ACTION`,
+`STUN_NEAR_THE_DYING_EVENTS`), `tools/tests/test_generate_datatables.py`,
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (a comment). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### What it is for
+
+Two sentences, each this game's own, neither with a row yet:
+
+- "Your first hit against each enemy applies all your active DoTs instantly".
+- "Chronomancer's Time-Lock (6-Piece Bonus): When an enemy dies while affected by one of your debuffs, there is
+  a 25% chance for a 'Time-Lock' to occur. This freezes all nearby enemies for 2 seconds".
+
+**No row is authored in this layer.** The ten-piece bonus of the same set is not in it (N11).
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08
+
+**The owner, 2026-10-08, on the first sentence: "Go with the first"**, that is: the first hit applies each of the
+five damage over time ailments. **The owner, 2026-10-08, on the second: "Yes it acts like a stun".**
+
+- **N1.** One row, with a new status name for the action `apply_status` that means each of the five, applied in
+  turn in the one function that applies a status action. Neither duplicate rule is widened: not the generator's
+  duplicate key, not the engine's row key.
+- **N2.** The five are the generator's `AILMENTS`: Bleed, Poison, Disease, Necrosis, Burn. Not Void Splinter.
+- **N3.** The owner's rule of 2026-09-02 (#917) applies as it does to every status action.
+- **N4.** The row will state a Trigger Cooldown of 0, because the sentence says "against each enemy".
+- **N5.** The event is `afflicted_death` as it stands. It is not widened in this layer.
+- **N6.** The centre is the dying enemy.
+- **N7.** "Nearby" is 5 metres, `UCataclysmContagion::SpreadFromTheDyingMetres`, because the centre is the dying
+  enemy and the actions centred on a dying body reach the same distance. An earlier ruling of 6 is withdrawn.
+- **N8.** The stun is the game's stun, through `UCataclysmSkillEffects::ApplyStun`, with every rule it has.
+- **N9.** No trigger cooldown: each such death rolls its chance.
+- **N10.** A chance and a duration on one row: the stun's seconds ride in `Stack Seconds`, with Value Low and
+  Value High as the chance, as `apply_status` has it; the seconds are bounded by `MAX_STATUS_SECONDS`.
+- **N11.** The ten-piece bonus of the same set is not in this layer.
+- **N12.** The Time-Lock is a designed stun: it skips the tenth-of-maximum-health rule, since no hit is dealt.
+- **N13.** One roll of the chance for each death, then every enemy in reach is stunned; not a roll for each.
+- **N14.** The new status name is allowed on `apply_status` only. Its chance is rolled once for all five.
+- **N15.** The Time-Lock is built on the event as it is heard today; the queue of kept deaths is not widened.
+- **N16.** The status function answers "applied" when at least one of the five landed, so the trigger cooldown
+  starts only then; the loop does not stop at the first refusal; a second Time-Lock inside five seconds is
+  refused and does not refresh the first.
+- **N17.** A `Stack Seconds` cell on an action that neither reads nor refuses it is not refused by this layer.
+  The enchantment session opens an issue for it.
+
+### How it is built
+
+**The status name, `All DoTs`.** `UCataclysmAbilitySystemComponent::AllDotsStatus` in the engine and
+`ALL_DOTS_STATUS` in the generator, in the style of `Random Debuff` and `Applied DoT`.
+
+- **`UCataclysmAbilitySystemComponent::ApplyStatusOf`** gained one branch, after the tenth-of-maximum check and
+  after the random debuff. For this name it walks `UCataclysmAilments::RandomDamageOverTimePool()`, which is the
+  five by name, and calls `UCataclysmAilments::Apply(Applier, Other, *Each, 1.0f, nullptr, NAME_None, 0.0f)` for
+  each: the call a single name makes, at the normal magnitude and the ailment's own row's duration.
+- **The loop does not stop at a refusal**, and the function answers that it applied when at least one landed.
+- **The chance is rolled once, by the caller**, before `ApplyStatusOf` is called. That code was not changed.
+  The designed row's chance is 100; a row at 40 would apply all five on four first hits in ten and none on the
+  other six, never some of them.
+- **`apply_status_seconds` with this name applies nothing in the engine**, and the generator refuses the row.
+- **The generator keeps the name out of `APPLY_STATUSES`**, because `apply_status_to_self` reads that list too.
+  `apply_status` accepts `APPLY_STATUSES` and this one name; the three actions that lay a status on the wearer
+  and `apply_status_seconds` refuse it.
+
+**The action, `stun_near_the_dying`.** `UCataclysmAbilitySystemComponent::StunNearTheDyingAction` and
+`STUN_NEAR_THE_DYING_ACTION`; the generator accepts it on `afflicted_death` alone
+(`STUN_NEAR_THE_DYING_EVENTS`).
+
+- **`FCataclysmPoolAction::bStunNearTheDying`**, set in `Items/CataclysmItem.cpp` where a row becomes an
+  action. `Percent` is the chance. `StackSeconds`, read through `UCataclysmItemModifiers::RolledStackSeconds`
+  as every other reader of that column reads it, is how long the stun lasts.
+- **`ActOnEvent`** gained one branch beside the blast's: for an event that landed and names who died, once a row
+  an event, when the row's trigger is ready and its seconds are above nought, ONE roll against the chance (100
+  is always; the roll is the one `Cataclysm.StatusRoll` pins), and then
+  `UCataclysmContagion::StunNearTheDying(Self, Dead, StackSeconds)`.
+- **`UCataclysmContagion::StunNearTheDying`** (new, public) asks `UCataclysmTargeting::FindEnemiesInSphere` of
+  the wearer with the body as the centre and `SpreadFromTheDyingMetres` as the reach, leaves out the body and
+  any enemy dead by then, and calls `UCataclysmSkillEffects::ApplyStun(Wearer, Target, Seconds, 0, true)` on
+  each. It returns how many were stunned.
+- **The row's key is `enchantment:action:event`**, as every action's is. No key was added.
+
+**`ApplyStun`'s rules, in the order it asks them**, each kept: the crowd control health ceiling of whoever
+applies it (`CrowdControlRefusedByHealthCeiling`); the target's crowd control resistance, which shortens it and
+at 100 refuses it; "a stunned target cannot be stunned again for five seconds", counted from when the stun
+began; a skill's stated immunity to a stun; "a hit must take at least a tenth of maximum health to stun", which
+is the one a designed stun skips; and "a boss cannot be stunned at all".
+
+**What else reads the `Stack Seconds` column.** In the generator: how long an own stack lasts, required on a
+stat row scaled by `own_stacks`; the window of a placed stack, required on `PLACED_ACTIONS`; the window a nearby
+action's Every Nth counts in, on `NEARBY_ACTIONS`; refused on `consecutive_hits`, on `NTH_ACTIONS`, on a plain
+stat row and on a nearby action without Every Nth. In the engine: `RolledStackSeconds`, at the own stack, the
+placed stack and the nearby action's count window, and now here. In the wording check: `SECONDARY_PAIRS`, for
+the order of a ranged pair. **On this action it is a duration with no stack behind it**, and its bound is
+`MAX_STATUS_SECONDS`, 10, where a stack's is `MAX_STACK_SECONDS`, 60. The comment on `MAX_STACK_SECONDS` in the
+generator now lists all four uses, and the comment on `SECONDARY_PAIRS` says the same.
+
+**Where the action stands among the events that carry a dead enemy.** `afflicted_death` is in
+`EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`: `strike_target` is refused on it, because the action does not strike
+the dead. This action does not act on the event's character at all. It reads where the dead enemy stood and
+acts on the living near it, as the blast does.
+
+### The call order, traced for N15
+
+Read in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, `UCataclysmCombatEvents`,
+`ACataclysmPlayerCharacter::OnSomethingWasHit` and `ACataclysmEnemyCharacter::HandleDeath`.
+
+**A death to the wearer's own hit.** In the damage branch, `UCataclysmCombatEvents::NoteBlow` is called BEFORE
+health is written. It broadcasts to the player character, whose handler calls `ActOnEvent` for `hit_dealt`,
+then `first_hit_dealt`, then `critical_strike`, one after another; each call has returned before the next
+begins, and all have returned before `NoteBlow` does. Then health is written and `NotifyIfHealthReachedZero`
+calls `HandleDeath`. That marks the creature dead, and the mark announces the death
+(`UCataclysmSkillEffects::MarkDead` calls `NoteDeath`, whose listener raises `kill` on the killer, and returns);
+further down `HandleDeath` calls `UCataclysmContagion::AnnounceAfflictedDeath`. So the wearer is acting on
+nothing when it hears `afflicted_death`, and the Time-Lock rolls. What a `kill` row's own action does inside
+the `kill` call was not traced further than that the call returns first. **The exception is a hit dealt from inside a row's action**: the
+whole of the above then happens inside the outer `ActOnEvent`, and the event is dropped.
+
+**A death to a tick.** A tick comes through the same damage branch from the effect's own timer, which nobody's
+`ActOnEvent` is on the stack for. The player character's handler returns at once for a tick. Health is written,
+the death is handled, and the event is heard at depth nought. The Time-Lock rolls.
+
+**A death to a row's own action.** `ActOnNearby`, the strike action and the blast each deal their hit inside
+`ActOnEvent`. The death is handled inside that call, `AnnounceAfflictedDeath` calls `ActOnEvent` on the wearer
+at depth one, and it returns before reading a row. `QueueAfflictedDeath` keeps only rows that blast. The
+Time-Lock does not roll.
+
+### Judgements by the writing session
+
+Each is the writing session's own and none is the owner's.
+
+1. **The name is `All DoTs`.** The sentence's own word, in the style of `Applied DoT`.
+2. **The five are read from `UCataclysmAilments::RandomDamageOverTimePool`** and not from a second list. That
+   function names the five for the random damage over time, ruled 2026-09-30; a second list of the same five
+   could drift from it. A Python check now holds its names equal to the generator's `AILMENTS`, in order.
+   **The cost**: a sixth ailment added to that pool would be applied by this row too.
+3. **Each of the five is applied at the normal magnitude and its own row's duration**, as a single name is.
+   "Instantly" is read as "at the hit", not as dealing their damage at once.
+4. **The action is allowed a Trigger Cooldown cell**, as the blast is, though the designed row states none
+   (N9). The engine reads it, so a row that stated one would be obeyed rather than dropped.
+5. **A chance of nought is refused by the generator**, as every chance in the sheet is: above 0 and up to 100.
+   The engine test makes a row of nought by hand as its control.
+6. **The roll is the one `Cataclysm.StatusRoll` pins**, the status actions' roll, and not a new one.
+7. **The trigger is noted before the stun is laid, and whether or not anybody stood in reach**, as a nearby
+   action's is. Only a row that states a cooldown can tell the difference.
+8. **An enemy dead by the time its turn comes is passed over**, as the blast passes it over.
+9. **`Stack Seconds High` on this action is bounded by `MAX_STATUS_SECONDS` too.** A set row states one number,
+   so the designed row cannot use it; a generic row could.
+10. **The set sentence is typed Generic in the generator's test workbook**, as the Archon's Aegis sentence is in
+    `TestDamageImmunityAndTheShieldRecharge`, because a set is written whole or not at all.
+11. **Three blows at one instant stand for one swing** in the test of the trigger cooldown. No skill is used.
+
+### Research
+
+**Nothing was fetched for this layer.** Both sentences are this game's own, the shapes they are built on were
+researched by the layers that built them (the status actions, 2026-10-01; the blast from the dying,
+2026-10-07), and every figure here is either ruled above or reused from the code. No formula was proposed.
+
+### Tests
+
+Nine Unreal automation tests in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group
+`Cataclysm.StatusActions.`, which no other file uses. **None has been run.** Every row is made by hand. Every
+S1 test and the first S2 test use a possessed player character, because only `ACataclysmPlayerCharacter` raises
+`first_hit_dealt` and the events round a real hit; the other S2 tests use a bare fighter. Every creature is a
+real `ACataclysmEnemyCharacter`, because only its `HandleDeath` raises `afflicted_death`.
+
+- `AFirstHitThatTakesATenthLeavesEachOfTheFiveDamageOverTimeAilmentsOnItsTarget`: with the row each of the five
+  is on the creature and Void Splinter is not; without the row, in a world of its own, none is.
+- `AFirstHitThatTakesUnderATenthLeavesNoneOfTheFive`: the same blow on a creature of 100,000 leaves none; on a
+  creature of 500 in the same world it leaves all five.
+- `ATargetUnaffectedByOneOfTheFiveStillTakesTheOtherFour`: a creature carrying `ailment_immunity` for bleeding,
+  the first of the five, carries no bleed and the other four; a plain creature carries the bleed.
+- `SeveralFirstHitsInOneInstantEachLeaveTheFiveOnlyWhenTheRowsCooldownIsNought`: three first hits at one
+  instant leave the five on all three under a cooldown of nought, and on the first alone under 0.25.
+- `AnAfflictedEnemyKilledByTheWearersOwnHitStunsThoseWithinFiveMetresForTheRowsSeconds`: a player character's
+  own blow kills a creature it poisoned; at a chance of 100 the creatures 2, 3 and 4 metres from the body are
+  stunned and the one 7 metres from it is not, one is still stunned 1.5 seconds on and not at 2.5; at a chance
+  of nought none is.
+- `AnEnemyThatDiesCarryingNoDamageOverTimeOfTheWearersStunsNobody`: carrying nothing, nobody; carrying only the
+  wearer's Cripple, nobody, which pins N5; carrying the wearer's poison, all three.
+- `TheTimeLockStunsNoBossAndNoEnemyAboveTheWearersHealthCeiling`: a boss is not stunned and the plain creature
+  beside it is; with the ceiling at 50 a creature at four fifths of its health is not stunned and one at two
+  fifths is; without the ceiling both are.
+- `ASecondTimeLockInsideFiveSecondsNeitherStunsAgainNorLengthensTheFirst`: deaths at 0, 1.5, 2.5 and 5.5
+  seconds; the bystander is stunned by the first, not stunned at 2.5, not stunned again by the third, and
+  stunned by the fourth.
+- `ADeathToATickRollsTheTimeLockAndADeathToARowsOwnActionDoesNot`: three scenes; a tick, all three stunned; the
+  wearer's own blow, all three; a smite the wearer's row makes on an event, nobody, which pins N15.
+
+Python, run by the writing session: `TestAllDotsOnTheFirstHitAndTheStunNearTheDying` in
+`tools/tests/test_generate_datatables.py`, with both real sentences in a temporary workbook; and two new tests
+in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`, which also gained the two constants
+in its `CONSTANTS`. No existing assertion was changed.
+
+### Not covered by a test
+
+- **Any real row.** None exists.
+- **The five's damage, duration or ticks.** The tests read that each ailment is carried and nothing of what it
+  deals.
+- **A first hit by a skill.** Every blow in a test is a plain hit of 100%. "One swing" is three such blows at
+  one instant, judgement 11.
+- **A chance between nought and 100 on either row.** No test pins `Cataclysm.StatusRoll`.
+- **That `dot_applied` is not acted on for the five**, said first. Read, not run.
+- **A row at `apply_status_seconds` naming `All DoTs` in the engine.** The generator refuses it; the engine's
+  refusal is read.
+- **Crowd control resistance and a skill's stated immunity against the Time-Lock.** Two of `ApplyStun`'s rules
+  no test here asks. The creatures in the tests are taken to have no crowd control resistance; if they have,
+  the test of the row's seconds fails by name at "still stunned".
+- **Void Splinter as the one ailment on the dying enemy.** The tests use poison, and a Cripple for the refusal.
+- **A death to a strike action or to Plague Doctor's blast.** The row-killed death in the test is a smite's.
+  All three deal their hit inside `ActOnEvent`, by reading.
+- **A wearer whose own hit is dealt from inside a row's action**, the exception under "The call order".
+- **Two wearers with an ailment each on one dying enemy.** Each hears the event once and would roll its own.
+- **A Trigger Cooldown on the action in the engine**, judgement 4. The generator carries it through.
+- **The row read from a DataTable.** `CataclysmItem.cpp` sets the flag and the seconds; every test builds the
+  action by hand, so that path is read and not run.
+- **Not run in play.**
+
+### What the row needs, for the session that writes rows
+
+| Sentence | Row |
+| :-- | :-- |
+| Your first hit against each enemy applies all your active DoTs instantly | Action `apply_status`, Action Event `first_hit_dealt`, Value Low 100, Ailment `All DoTs`, Trigger Cooldown 0; nothing else |
+| Chronomancer's Time-Lock (6-Piece Bonus): When an enemy dies while affected by one of your debuffs, ... | Action `stun_near_the_dying`, Action Event `afflicted_death`, Value Low 25, Stack Seconds 2; nothing else |
+
+**Each was dry run through `gen.enchantment_effects` in a temporary workbook holding the real sentence**, by
+`test_the_first_hit_row_is_carried_through_with_no_cooldown` and
+`test_the_time_lock_row_is_carried_through_with_its_chance_and_its_seconds`, and was carried through. The first
+left as `apply_status`, `first_hit_dealt`, 100 to 100, Ailment `All DoTs`, Trigger Cooldown 0. The second left
+as `stun_near_the_dying`, `afflicted_death`, 25 to 25, Stack Seconds 2, Trigger Cooldown 0. No file in the
+repository was written.
+
+- **The Trigger Cooldown cell of the first row must say 0.** Left empty, the generator writes 0.25, because
+  `first_hit_dealt` is a hit-fired event, and one swing that first-strikes three enemies then gives the five to
+  one of them.
+- **`All DoTs` is spelled as written**, and is refused on every action but `apply_status`.
+- **The Time-Lock row was dry run typed Generic**, judgement 10. As a set row it also meets the rules a set's
+  rows meet, one number a row and a set written whole. The set's two-piece row is in
+  `game/Data/EnchantmentEffects.csv` already; what those rules ask of the six-piece row beside it was not run
+  and is for the session that writes rows to read.
+- **The wording check was not run against either row**, because no row is in `game/Data/`. The 25 and the 2 are
+  both in the sentence; a single Stack Seconds figure is compared with its words by nothing today.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-08 — "Charge skills deal 30%-60% bonus damage proportional to distance traveled" is built as two rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
