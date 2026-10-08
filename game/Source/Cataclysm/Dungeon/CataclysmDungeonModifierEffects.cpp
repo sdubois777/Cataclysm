@@ -813,6 +813,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// ECHO CHAMBER, BUILT 2026-10-05: every skill use fires a free copy of that skill in a random direction, and
 		// the copy hits the player for a tenth when they stand inside its area. Issues #1820 and #41.
 		|| RowKey == FName(EchoChamberKey)
+		// LIGHTFORGED WALLS, BUILT 2026-10-08 ON THE FLOOR'S SECTIONS: on a Halls floor a barrier of pillars seals each
+		// section but the last until the creatures the floor placed in it are slain, and the stairs seal the last.
+		// Elsewhere it is the sealed stairs alone; see the key. Issues #1820 and #41.
+		|| RowKey == FName(LightforgedWallsKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -841,10 +845,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.
 		// THE LABRYNTH. Gated shortcuts open and close in turn, so cleared paths are blocked and others open; "rooms
 		// rearrange" does nothing, because the rooms do not move. Issues #1820 and #41.
-		|| RowKey == FName(LabrynthKey)
-		// LIGHTFORGED WALLS. The stairs stay sealed until every creature the floor placed is slain; "sections" do
-		// nothing, because nothing divides a floor into areas a barrier could close. Issues #1820 and #41.
-		|| RowKey == FName(LightforgedWallsKey))
+		// LIGHTFORGED WALLS WAS HERE UNTIL 2026-10-08, for "sections"; it is built and answers above.
+		|| RowKey == FName(LabrynthKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}

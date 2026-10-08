@@ -3768,9 +3768,9 @@ def test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names
     """The phrases Lightforged Walls' readings rest on.
 
     "Radiant barriers seal sections until all enemies in the area are slain, forcing full clears." ALL ENEMIES ... ARE
-    SLAIN and FORCING FULL CLEARS are what is built, read as every creature the floor placed; SECTIONS is what is not,
-    and why `BuiltStateOf` answers Partly. If any changes, the reading built on it must be revisited; see
-    LightforgedWallsKey in CataclysmDungeonModifierEffects.h.
+    SLAIN and FORCING FULL CLEARS are read as every creature the floor placed; SEAL SECTIONS is the barriers built on
+    2026-10-08, until when it was why `BuiltStateOf` answered Partly. If any changes, the reading built on it must be
+    revisited; see LightforgedWallsKey in CataclysmDungeonModifierEffects.h.
     """
     words = flat(rows()["Celestial_Lightforged_Walls"]["Description"])
     lower = words.lower()

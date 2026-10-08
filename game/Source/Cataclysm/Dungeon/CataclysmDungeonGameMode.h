@@ -2078,6 +2078,59 @@ public:
 	int32 LightforgedWallsStanding() const;
 	bool LightforgedWallsSealTheStairs() const;
 
+	/**
+	 * Lightforged Walls' sections, for the panel, the enemy modifiers and tests. Issues #1820 and #41. Ruled
+	 * 2026-10-08, each a labelled judgement by the coordinating session under the owner's delegation.
+	 *
+	 * `FloorGetsSections` IS THE ONE CONDITION: the floor carries Lightforged Walls, its plan is Halls, it is not a
+	 * Horde arena, and it does not carry Shadowy Enemies. On every other floor the row is the sealed stairs only.
+	 * `FloorSectionsNow` is what the search found for this floor, with no boundaries when it found none or was not
+	 * asked. A BARRIER is the cells of one boundary closed with pillars: barrier i lies between sections i and i + 1,
+	 * and the last section has none, the stairs being its seal.
+	 *
+	 * `StandingInSection` counts the creatures the floor placed in a section that still stand, by
+	 * `IsOneOfTheFloorsOwnStanding`. A creature a rule adds later carries no section and is counted in none.
+	 * `LightforgedWallsSectionHeld` is the lowest-numbered section whose barrier is closed and which still holds one,
+	 * or `INDEX_NONE`. `ClosedSectionBarrierCells` is the cells of every barrier still closed.
+	 * `AClosedBarrierStandsBetween` is true when both creatures carry a section, the sections differ, and any barrier
+	 * between those two sections is closed; a creature with no section is never parted from anything.
+	 */
+	bool FloorGetsSections(const FCataclysmFloorPlan& Plan) const;
+	const FCataclysmFloorSections& FloorSectionsNow() const { return FloorSections; }
+	bool SectionBarrierIsClosed(int32 Barrier) const
+	{
+		return SectionBarrierClosed.IsValidIndex(Barrier) && SectionBarrierClosed[Barrier];
+	}
+	int32 StandingInSection(int32 Section) const;
+	int32 LightforgedWallsSectionHeld() const;
+	TArray<FIntPoint> ClosedSectionBarrierCells() const;
+
+	/**
+	 * The cells of one boundary that no other boundary of this floor holds. Issues #1820 and #41. Ruled 2026-10-08.
+	 *
+	 * TWO BOUNDARIES MAY SHARE CELLS: the search closes the cells of both together and nothing makes them apart. A
+	 * CELL TWO BARRIERS HOLD CARRIES ONE PILLAR AND STAYS CLOSED UNTIL BOTH HAVE OPENED. Opening a barrier opens only
+	 * those of its cells that no still-closed barrier holds. A FLOOR ON WHICH A BOUNDARY HAS NO CELL OF ITS OWN GETS
+	 * NO SECTIONS, because opening that barrier would open nothing. `ClosedSectionBarrierCells` names a shared cell
+	 * once.
+	 */
+	TArray<FIntPoint> CellsOnlyBarrierHolds(int32 Barrier) const;
+	bool AClosedBarrierStandsBetween(const ACataclysmEnemyCharacter* One, const ACataclysmEnemyCharacter* Other) const;
+
+	/**
+	 * The floor's plan with the cells of every section barrier still closed made walkable: the floor as it is on the
+	 * same seed without sections. A copy; the floor's own plan is not changed. Issues #1820 and #41. Ruled 2026-10-08.
+	 *
+	 * `FloorPopulationNow` IS THE ONE WAY THIS GAME MODE ASKS THE POPULATOR ANYTHING. The populator places only where
+	 * the entrance can be walked from, so asked about the plan as it stands on a floor with a sealed section it would
+	 * answer for the open sections alone. Asked through this it answers for the whole floor: when the floor's own
+	 * creatures are placed, with `NoCreatureOn` the cells of every boundary, and when a rule asks during play which
+	 * kinds the floor holds, with nothing barred. On a floor with no barrier closed it is the populator asked about
+	 * the plan, as before.
+	 */
+	FCataclysmFloorPlan PlanWithSectionBarriersOpen() const;
+	FCataclysmFloorPopulation FloorPopulationNow(const TSet<FIntPoint>& NoCreatureOn = TSet<FIntPoint>()) const;
+
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
 
@@ -3968,6 +4021,66 @@ private:
 	/** The per-cell half of opening a gate: every pillar in `Pillars` destroyed and forgotten, every cell walkable. */
 	void UnblockCellsAndDestroyPillars(const TArray<FIntPoint>& Cells,
 		TArray<TWeakObjectPtr<ACataclysmFloorObstacle>>& Pillars);
+
+	// ----------------------------------------------------------------------
+	// Lightforged Walls' sections. Issues #1820 and #41. Ruled 2026-10-08.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Where this floor is divided, as `FCataclysmFloorGenerator::FindSections` answered when its plan was made, and
+	 * empty on a floor that gets no sections. NOT IN `CellsTheFloorHolds`, as ruled: a closed barrier's cells are
+	 * Solid in the plan, which the placement rule refuses before it asks anything else, and an opened barrier's cells
+	 * are ordinary floor.
+	 */
+	FCataclysmFloorSections FloorSections;
+
+	/** Whether each barrier is closed now, one for each boundary. An opened barrier is never closed again. */
+	TArray<bool> SectionBarrierClosed;
+
+	/** Each barrier's pillars, one array for each boundary, as `BlockCellsWithPillars` keeps them. */
+	TArray<TArray<TWeakObjectPtr<ACataclysmFloorObstacle>>> SectionBarrierPillars;
+
+	/** The section and its count that the panel last showed, beside `LightforgedWallsPanelCount`. */
+	int32 LightforgedWallsPanelSection = INDEX_NONE;
+	int32 LightforgedWallsPanelSectionCount = -1;
+
+	/**
+	 * Called by `BuildFloor` after `PlanTheGatedShortcuts`: forgets the last floor's sections and barriers, and on a
+	 * floor that gets sections asks the search, passing every planned shortcut's gate cells as cells that may close.
+	 * Closes nothing.
+	 */
+	void PlanTheSections(const FCataclysmFloorPlan& Plan);
+
+	/** Open every barrier still closed and forget the sections. */
+	void ForgetTheSections();
+
+	/** Open every barrier still closed: pillars gone, cells walkable. Used before a floor is populated again. */
+	void OpenEverySectionBarrier();
+
+	/**
+	 * Open one barrier, if it is closed. THE ONE PLACE A BARRIER'S CELLS ARE OPENED. A cell that another barrier still
+	 * closed also holds is left Solid, and its pillar is handed to that barrier to destroy when it opens. Every
+	 * other cell of the barrier is made walkable and its pillar destroyed.
+	 */
+	void OpenTheSectionBarrier(int32 Barrier);
+
+	/**
+	 * Called by `PopulateFloor` BEFORE any rule chooses a cell for an object and before the creatures are placed:
+	 * every barrier is opened if it was closed and then closed, with pillars in the row's colour, raised at once, one
+	 * pillar a cell: a cell an earlier barrier already closed is not given a second. So
+	 * every picker reads a barrier's cells as Solid. Once the creatures stand, `StepTheSectionBarriers` is called at
+	 * once and opens the barrier of any section that holds none.
+	 */
+	void CloseTheSectionBarriers();
+
+	/** The beat: a closed barrier whose section holds no standing creature the floor placed opens, and stays open. */
+	void StepTheSectionBarriers();
+
+	/**
+	 * Whether an obstacle raised during play may close these cells: `CataclysmFloorCanBlockBesideBarriers` on this
+	 * floor's plan with the cells of every barrier still closed. With none closed it is `CataclysmFloorCanBlock`.
+	 */
+	bool AnObstacleMayClose(const TArray<FIntPoint>& Cells, FIntPoint From, const TSet<FIntPoint>& Held) const;
 
 	/** Open a row's shortcut by its index, if it exists and is closed. */
 	void OpenTheShortcutOf(FName RowKey, int32 Index);

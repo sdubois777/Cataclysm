@@ -42953,9 +42953,10 @@ bool FCataclysmPassageHordeTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// Celestial_Lightforged_Walls. Issues #1820 and #41. Partly built, ruled 2026-10-01: the stairs stay sealed while any
-// creature the floor placed stands -- not raised by a rule, able to be hurt, not the player's follower. "Sections" are
-// not built. A Horde dungeon has no stairs.
+// Celestial_Lightforged_Walls. Issues #1820 and #41. Ruled 2026-10-01: the stairs stay sealed while any creature the
+// floor placed stands -- not raised by a rule, able to be hurt, not the player's follower. A Horde dungeon has no
+// stairs. "Sections" were built on 2026-10-08 and the row is Built; their tests are at the end of this file. The
+// floors these four tests build have their own creatures cleared, so every barrier opens on the first beat.
 // ---------------------------------------------------------------------------
 
 namespace CataclysmDungeonModifierEffectsTest
@@ -42992,7 +42993,7 @@ namespace CataclysmDungeonModifierEffectsTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsFiguresTest,
-	"Cataclysm.DungeonModifierEffects.LightforgedWallsFiguresAndTheRowPartly",
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsFiguresAndTheRowBuilt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmWallsFiguresTest::RunTest(const FString& Parameters)
@@ -43008,8 +43009,10 @@ bool FCataclysmWallsFiguresTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	TestTrue(TEXT("the row has a rule"), Effects::KeysWithARule().Contains(WallsRow));
-	TestEqual(TEXT("partly built: \"sections\" are not"), static_cast<int32>(Effects::BuiltStateOf(WallsRow)),
-			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	// THIS ASSERTED `Partly` UNTIL 2026-10-08, when "sections" were built. The row's state changed; the reason is in
+	// the entry of that date.
+	TestEqual(TEXT("built, since \"sections\" are"), static_cast<int32>(Effects::BuiltStateOf(WallsRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 	return true;
 }
 
@@ -46584,6 +46587,1794 @@ bool FCataclysmEchoChamberWithWildMagicTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Wild Magic has nothing more to trigger"), Mode->WildMagicPendingSkill().IsNone());
 	TestEqual(TEXT("one copy"), Mode->EchoChamberCopiesFired(), 1);
 	TestEqual(TEXT("one trigger"), Mode->WildMagicTriggeredCount(), 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Celestial_Lightforged_Walls' sections. Issues #1820 and #41. Ruled 2026-10-08: on a Halls floor that carries the row,
+// is not a Horde arena and does not carry Shadowy Enemies, the floor is in two or three sections, each but the last
+// behind a barrier of pillars that opens when the creatures the floor placed in it are slain, and stays open. The
+// stairs seal the last section as they always did.
+//
+// EVERY FLOOR HERE IS FOUND BY A SEARCH OVER DUNGEON SEEDS, asserted as set-up, because how many sections a floor has
+// was measured on plans and cannot be known for a seed without the engine. EVERY KIND IS MADE COMMON, so no creature
+// draws an enemy modifier and one blow kills it. THE PLAYER STANDS AT THE ENTRANCE, where `GoToFloor` puts it, and no
+// placed creature stands within `FCataclysmFloorPopulator::LeastCellsFromEntrance` cells of that.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** How many dungeon seeds a sections test tries. Three sections were measured on 178 of 200 Halls plans. */
+	constexpr int32 SectionFloorSeedsTried = 20;
+
+	/** And for a floor of exactly two sections, measured on 18 of 200. */
+	constexpr int32 TwoSectionFloorSeedsTried = 80;
+
+	/** Every kind the population places at Common, so none draws an enemy modifier. The Gatekeeper is left alone. */
+	void MakeEveryKindCommon(ACataclysmDungeonGameMode* Mode)
+	{
+		Mode->ImpRarityStep = 0;
+		Mode->HellhoundRarityStep = 0;
+		Mode->BruteRarityStep = 0;
+		Mode->AbyssalWardenRarityStep = 0;
+		Mode->CorruptedSentinelRarityStep = 0;
+		Mode->SuccubusRarityStep = 0;
+	}
+
+	/** The floor's creatures that still stand and carry this section number. */
+	TArray<ACataclysmEnemyCharacter*> PlacedInSection(const ACataclysmDungeonGameMode* Mode, int32 Section)
+	{
+		TArray<ACataclysmEnemyCharacter*> Out;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+		{
+			if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature.Get()) && Creature->FloorSection == Section)
+			{
+				Out.Add(Creature.Get());
+			}
+		}
+		return Out;
+	}
+
+	/** How many of the floor's barriers are closed. */
+	int32 SectionBarriersStanding(const ACataclysmDungeonGameMode* Mode)
+	{
+		int32 Closed = 0;
+		for (int32 Barrier = 0; Barrier < Mode->FloorSectionsNow().Boundaries.Num(); ++Barrier)
+		{
+			Closed += Mode->SectionBarrierIsClosed(Barrier) ? 1 : 0;
+		}
+		return Closed;
+	}
+
+	/** How many raised pillars stand on these cells, counted a cell at a time. */
+	int32 SectionPillarsOn(UWorld* World, ACataclysmDungeonGameMode* Mode, const TArray<FIntPoint>& Cells)
+	{
+		int32 Pillars = 0;
+		for (const FIntPoint& Cell : Cells)
+		{
+			Pillars += PillarsOn(World, Mode, Cell);
+		}
+		return Pillars;
+	}
+
+	/** How many of these cells are walkable in the floor's plan now. */
+	int32 SectionCellsWalkable(const ACataclysmDungeonGameMode* Mode, const TArray<FIntPoint>& Cells)
+	{
+		int32 Walkable = 0;
+		for (const FIntPoint& Cell : Cells)
+		{
+			Walkable += Mode->CurrentFloor->GetPlan().IsFloor(Cell) ? 1 : 0;
+		}
+		return Walkable;
+	}
+
+	/** How many raised obstacles of any row stand in the world. */
+	int32 RaisedObstaclesInTheWorld(UWorld* World)
+	{
+		int32 Raised = 0;
+		for (TActorIterator<ACataclysmFloorObstacle> It(World); It; ++It)
+		{
+			Raised += (IsValid(*It) && !It->IsWarning()) ? 1 : 0;
+		}
+		return Raised;
+	}
+
+	/** What the floor's standing creatures say about sections. */
+	struct FSectionCensus
+	{
+		/** Standing creatures by the section of the cell each stands on. */
+		TArray<int32> OnSection;
+		int32 Creatures = 0;
+		/** How many carry any section number. */
+		int32 Carrying = 0;
+		/** How many stand on a cell that is in no section, which on a floor with sections is a boundary cell. */
+		int32 OnABoundary = 0;
+		/** How many carry a number other than the section of the cell they stand on. */
+		int32 WrongNumber = 0;
+	};
+
+	FSectionCensus CountTheSections(const ACataclysmDungeonGameMode* Mode)
+	{
+		FSectionCensus Census;
+		const FCataclysmFloorSections& Sections = Mode->FloorSectionsNow();
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		Census.OnSection.Init(0, Sections.SectionCount());
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+		{
+			if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature.Get()))
+			{
+				continue;
+			}
+			++Census.Creatures;
+			Census.Carrying += Creature->FloorSection != INDEX_NONE ? 1 : 0;
+			if (Sections.SectionCount() == 0)
+			{
+				continue;
+			}
+			const int32 Of = Sections.SectionOf(Plan, Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation()));
+			Census.OnABoundary += Of == INDEX_NONE ? 1 : 0;
+			Census.WrongNumber += Of != Creature->FloorSection ? 1 : 0;
+			if (Census.OnSection.IsValidIndex(Of))
+			{
+				++Census.OnSection[Of];
+			}
+		}
+		return Census;
+	}
+
+	/** The cells more than one boundary holds, each named once. */
+	TArray<FIntPoint> BoundaryCellsShared(const FCataclysmFloorSections& Sections)
+	{
+		TArray<FIntPoint> Shared;
+		for (int32 Barrier = 0; Barrier < Sections.Boundaries.Num(); ++Barrier)
+		{
+			for (const FIntPoint& Cell : Sections.Boundaries[Barrier])
+			{
+				for (int32 Other = Barrier + 1; Other < Sections.Boundaries.Num(); ++Other)
+				{
+					if (Sections.Boundaries[Other].Contains(Cell))
+					{
+						Shared.AddUnique(Cell);
+					}
+				}
+			}
+		}
+		return Shared;
+	}
+
+	/** The cells this boundary holds that no other boundary does. */
+	TArray<FIntPoint> BoundaryCellsOnlyOf(const FCataclysmFloorSections& Sections, int32 Barrier)
+	{
+		const TArray<FIntPoint> Shared = BoundaryCellsShared(Sections);
+		TArray<FIntPoint> Own;
+		for (const FIntPoint& Cell : Sections.Boundaries[Barrier])
+		{
+			if (!Shared.Contains(Cell))
+			{
+				Own.Add(Cell);
+			}
+		}
+		return Own;
+	}
+
+	/**
+	 * Goes to `Floor` on dungeon seeds 1, 2, ... until the floor has exactly `Sections` sections, and says which seed.
+	 * With `bEveryBarrierClosed`, also until every barrier is closed and every section holds a standing creature,
+	 * which a test of opening needs as set-up; a test of what a floor begins as passes false and asserts those.
+	 * `SharedCellsWanted` is 0 for a floor whose boundaries share no cell, 1 for one whose boundaries do, and left
+	 * alone for either: the first window showed dungeon seed 1's floor 2 is of the second kind.
+	 */
+	bool ASectionedFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32 Floor, int32 Sections,
+						 int32 Tries, bool bEveryBarrierClosed, int32 SharedCellsWanted = INDEX_NONE)
+	{
+		for (int32 Seed = 1; Seed <= Tries; ++Seed)
+		{
+			Mode->DungeonSeed = Seed;
+			if (!Mode->GoToFloor(Floor) || Mode->FloorSectionsNow().SectionCount() != Sections)
+			{
+				continue;
+			}
+			const int32 SharedCells = BoundaryCellsShared(Mode->FloorSectionsNow()).Num();
+			if ((SharedCellsWanted == 0 && SharedCells > 0) || (SharedCellsWanted == 1 && SharedCells == 0))
+			{
+				continue;
+			}
+			bool bServes = true;
+			if (bEveryBarrierClosed)
+			{
+				bServes = SectionBarriersStanding(Mode) == Sections - 1;
+				for (int32 Section = 0; Section < Sections; ++Section)
+				{
+					bServes = bServes && Mode->StandingInSection(Section) > 0;
+				}
+			}
+			if (bServes)
+			{
+				Test.AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d gives floor %d %d sections"), Seed, Floor,
+											 Sections));
+				return true;
+			}
+		}
+		Test.AddError(FString::Printf(TEXT("set-up: none of dungeon seeds 1 to %d gives floor %d %d sections"), Tries,
+									  Floor, Sections));
+		return false;
+	}
+
+	/** One certain blow of the player's: no bond, no sigil, no evasion, 100 health and no shield. */
+	bool SlayForTheSections(FAutomationTestBase& Test, const FPossessedPlayer& Player,
+							ACataclysmEnemyCharacter* Victim)
+	{
+		if (!Test.TestNotNull(TEXT("set-up: a creature to slay"), Victim) || !MakeAOneBlowKillReliable(Test, Victim))
+		{
+			return false;
+		}
+		WoundCreatureTo(Victim, 100.0f, 0.0f);
+		if (UAbilitySystemComponent* System = Victim->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		return Test.TestTrue(TEXT("set-up: the player's blow killed it"), UCataclysmSkillEffects::IsDead(Victim));
+	}
+
+	/** Slay every standing creature that carries this section number, but those in `Spared`. */
+	bool SlayTheSection(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmDungeonGameMode* Mode,
+						int32 Section, const TArray<ACataclysmEnemyCharacter*>& Spared = {})
+	{
+		for (ACataclysmEnemyCharacter* Victim : PlacedInSection(Mode, Section))
+		{
+			if (!Spared.Contains(Victim) && !SlayForTheSections(Test, Player, Victim))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * A cell of this section that nothing stands on and the floor holds no use for, and that is not one of `NotThese`,
+	 * or (-1, -1). Cell middles are four metres apart, so a creature put on one stands at least that far from every
+	 * other creature and from the player.
+	 */
+	FIntPoint AFreeCellOfSection(const ACataclysmDungeonGameMode* Mode, int32 Section,
+								 const TArray<FIntPoint>& NotThese = {})
+	{
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+		// AND NOT ON A CELL A SLAIN CREATURE LIES ON, which the floor no longer holds.
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+		{
+			if (IsValid(Creature))
+			{
+				Held.Add(Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation()));
+			}
+		}
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			const FIntPoint Cell = Plan.CellAt(Index);
+			if (Plan.IsFloor(Cell) && Mode->FloorSectionsNow().SectionOf(Plan, Cell) == Section
+				&& !Held.Contains(Cell) && !NotThese.Contains(Cell))
+			{
+				return Cell;
+			}
+		}
+		return FIntPoint(-1, -1);
+	}
+
+	/** A Common Imp of 100 health put on this cell's middle, in the floor's creatures, carrying no section. */
+	ACataclysmEnemyCharacter* PlaceOnCell(UWorld* World, ACataclysmDungeonGameMode* Mode, FIntPoint Cell)
+	{
+		return PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->WorldOfCell(Cell) + FVector(0.0f, 0.0f, 100.0f), 0);
+	}
+
+	/** A creature's health now, or -1. */
+	float SectionHealthOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* System = Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	}
+}
+
+// T1. WHAT A SECTIONED FLOOR BEGINS AS, AND THE SAME FLOOR WITHOUT THE ROW AS ITS CONTROL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsBeginTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsBarriersStandWhenAHallsFloorBeginsAndEachCreatureCarriesItsSection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsBeginTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/false,
+						 /*SharedCellsWanted=*/0))
+	{
+		return false;
+	}
+	const int32 SeedFound = Mode->DungeonSeed;
+
+	// A COPY, because the floor is built again below and the game mode's own answer goes with it.
+	const FCataclysmFloorSections WithTheRow = Mode->FloorSectionsNow();
+	TestEqual(TEXT("set-up: the boundaries of this floor share no cell"), BoundaryCellsShared(WithTheRow).Num(), 0);
+	TestEqual(TEXT("three sections lie behind two barriers"), WithTheRow.Boundaries.Num(), 2);
+	TestEqual(TEXT("both barriers stand when the floor begins"), SectionBarriersStanding(Mode), 2);
+	TSet<FIntPoint> DistinctCells;
+	for (const TArray<FIntPoint>& Boundary : WithTheRow.Boundaries)
+	{
+		DistinctCells.Append(Boundary);
+		TestEqual(TEXT("no cell of a standing barrier is walkable in the plan"), SectionCellsWalkable(Mode, Boundary), 0);
+		TestEqual(TEXT("and one pillar stands on each"), SectionPillarsOn(World, Mode, Boundary), Boundary.Num());
+	}
+	const int32 PillarsWithTheRow = RaisedObstaclesInTheWorld(World);
+	TestEqual(TEXT("the barriers' pillars are the only obstacles, one for each distinct cell"), PillarsWithTheRow,
+			  DistinctCells.Num());
+
+	const FSectionCensus Census = CountTheSections(Mode);
+	if (!TestTrue(TEXT("set-up: the floor placed creatures"), Census.Creatures > 0)
+		|| !TestEqual(TEXT("set-up: one count for each section"), Census.OnSection.Num(), 3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no creature stands on a barrier's cell"), Census.OnABoundary, 0);
+	TestEqual(TEXT("every creature carries a section"), Census.Carrying, Census.Creatures);
+	TestEqual(TEXT("and it is the section of the cell it was placed on"), Census.WrongNumber, 0);
+	for (int32 Section = 0; Section < 3; ++Section)
+	{
+		TestTrue(FString::Printf(TEXT("section %d holds creatures"), Section), Census.OnSection[Section] > 0);
+		TestEqual(FString::Printf(TEXT("and the game mode counts the same in section %d"), Section),
+				  Mode->StandingInSection(Section), Census.OnSection[Section]);
+	}
+
+	// THE CONTROL: THE SAME DUNGEON SEED AND FLOOR WITHOUT THE ROW.
+	Mode->DungeonModifiers = {};
+	Mode->DungeonSeed = SeedFound;
+	if (!TestTrue(TEXT("set-up: the same floor without the row was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const FSectionCensus Without = CountTheSections(Mode);
+	TestEqual(TEXT("without the row the floor has no sections"), Mode->FloorSectionsNow().SectionCount(), 0);
+	TestEqual(TEXT("no pillar stands"), RaisedObstaclesInTheWorld(World), 0);
+	for (const TArray<FIntPoint>& Boundary : WithTheRow.Boundaries)
+	{
+		TestEqual(TEXT("the cells that were a barrier are all walkable"), SectionCellsWalkable(Mode, Boundary),
+				  Boundary.Num());
+	}
+	TestTrue(TEXT("set-up: it placed creatures too"), Without.Creatures > 0);
+	TestEqual(TEXT("and none of them carries a section"), Without.Carrying, 0);
+
+	// A BOSS FLOOR: THE GATEKEEPER STANDS ON THE EXIT AND CARRIES THE EXIT'S SECTION, WHICH IS THE LAST.
+	Mode->DungeonModifiers = {WallsRow};
+	Mode->TotalFloors = 2;
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/false)
+		|| !TestTrue(TEXT("set-up: the last floor has a boss at its exit"), Mode->FloorBrief.bBossAtTheExit))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Boss = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+	{
+		if (IsValid(Creature) && Creature->IsA<ACataclysmGatekeeperCharacter>())
+		{
+			Boss = Creature.Get();
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: the Gatekeeper was placed"), Boss))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& BossPlan = Mode->CurrentFloor->GetPlan();
+	TestEqual(TEXT("the exit is in the last section"), Mode->FloorSectionsNow().SectionOf(BossPlan, BossPlan.Exit), 2);
+	TestEqual(TEXT("and the Gatekeeper carries it"), Boss->FloorSection, 2);
+	return true;
+}
+
+// T2 AND T11. BARRIER i OPENS ON SECTION i'S CREATURES AND ON NO OTHER'S; THE STAIRS OPEN ON THE WHOLE FLOOR'S; AND THE
+// PANEL SAYS EACH STAGE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsOpenTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsABarrierOpensWhenItsOwnSectionIsSlainAndThePanelFollows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsOpenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true,
+						 /*SharedCellsWanted=*/0)
+		|| !TestNotNull(TEXT("set-up: the floor has stairs"), Mode->Stairs.Get()))
+	{
+		return false;
+	}
+	const FCataclysmFloorSections Sections = Mode->FloorSectionsNow();
+	const TArray<FIntPoint> OnlyFirst = BoundaryCellsOnlyOf(Sections, 0);
+	const TArray<FIntPoint> SharedCells = BoundaryCellsShared(Sections);
+	TestEqual(TEXT("set-up: the boundaries of this floor share no cell"), SharedCells.Num(), 0);
+	const int32 First = PlacedInSection(Mode, 0).Num();
+	const int32 Second = PlacedInSection(Mode, 1).Num();
+	const int32 Third = PlacedInSection(Mode, 2).Num();
+	TestEqual(TEXT("the stairs' count is the three sections' together"), Mode->LightforgedWallsStanding(),
+			  First + Second + Third);
+	TestEqual(TEXT("the panel counts the first section and the floor"), WallsPanelLine(Mode),
+			  FString::Printf(TEXT("lightforged walls: %d standing in this section, %d on the floor"), First,
+							  First + Second + Third));
+
+	// SECTION 0 SLAIN: BARRIER 0 OPENS AND BARRIER 1 DOES NOT.
+	if (!SlayTheSection(*this, Player, Mode, 0))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("barrier 0 is open"), Mode->SectionBarrierIsClosed(0));
+	TestEqual(TEXT("the cells it alone holds are walkable again"), SectionCellsWalkable(Mode, OnlyFirst),
+			  OnlyFirst.Num());
+	TestEqual(TEXT("and their pillars are gone"), SectionPillarsOn(World, Mode, OnlyFirst), 0);
+	TestEqual(TEXT("a cell both barriers hold is still closed while barrier 1 stands"),
+			  SectionCellsWalkable(Mode, SharedCells), 0);
+	TestEqual(TEXT("with one pillar on it"), SectionPillarsOn(World, Mode, SharedCells), SharedCells.Num());
+	TestTrue(TEXT("barrier 1 is still closed"), Mode->SectionBarrierIsClosed(1));
+	TestEqual(TEXT("none of its cells is walkable"), SectionCellsWalkable(Mode, Sections.Boundaries[1]), 0);
+	TestEqual(TEXT("and its pillars stand"), SectionPillarsOn(World, Mode, Sections.Boundaries[1]),
+			  Sections.Boundaries[1].Num());
+	TestEqual(TEXT("the panel moves to the second section"), WallsPanelLine(Mode),
+			  FString::Printf(TEXT("lightforged walls: %d standing in this section, %d on the floor"), Second,
+							  Second + Third));
+	TestTrue(TEXT("the walls still seal the stairs"), Mode->StairsSealedBy() == TArray<FName>({WallsRow}));
+	TestEqual(TEXT("which lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	// SECTION 1 SLAIN: BARRIER 1 OPENS, AND THE STAIRS STAY SEALED BY THE LAST SECTION.
+	if (!SlayTheSection(*this, Player, Mode, 1))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("no barrier stands"), SectionBarriersStanding(Mode), 0);
+	TestEqual(TEXT("barrier 1's cells are walkable again"), SectionCellsWalkable(Mode, Sections.Boundaries[1]),
+			  Sections.Boundaries[1].Num());
+	TestEqual(TEXT("the panel is the line the row had before sections"), WallsPanelLine(Mode),
+			  FString::Printf(TEXT("lightforged walls: %d still standing"), Third));
+	TestEqual(TEXT("the stairs still lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	// THE LAST SECTION SLAIN: THE STAIRS OPEN.
+	if (!SlayTheSection(*this, Player, Mode, 2))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the panel"), WallsPanelLine(Mode), FString(TEXT("lightforged walls: open")));
+	TestTrue(TEXT("nothing seals the stairs"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("and they lead down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+// T3. A CREATURE A RULE RAISED DOES NOT HOLD A SECTION'S BARRIER, AND ONE THAT IS NOT RAISED DOES.
+//
+// WHERE EACH STANDS: the player at the entrance; `Raised` and `Plain` each on the middle of a free cell of section 0,
+// two different cells, so four metres or more from each other and from every placed creature.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsRaisedTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsACreatureARuleRaisedDoesNotHoldASectionsBarrier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsRaisedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true))
+	{
+		return false;
+	}
+	const int32 PlacedThere = Mode->StandingInSection(0);
+	const FIntPoint RaisedCell = AFreeCellOfSection(Mode, 0);
+	const FIntPoint PlainCell = AFreeCellOfSection(Mode, 0, {RaisedCell});
+	if (!TestTrue(TEXT("set-up: two free cells in section 0"),
+				  RaisedCell != FIntPoint(-1, -1) && PlainCell != FIntPoint(-1, -1)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Raised = PlaceOnCell(World, Mode, RaisedCell);
+	ACataclysmEnemyCharacter* Plain = PlaceOnCell(World, Mode, PlainCell);
+	if (!TestNotNull(TEXT("set-up: a creature to mark raised"), Raised) || !TestNotNull(TEXT("and a plain one"), Plain))
+	{
+		return false;
+	}
+	Raised->FloorSection = 0;
+	Raised->bRaisedByARule = true;
+	Plain->FloorSection = 0;
+	TestEqual(TEXT("the plain one is counted in section 0 and the raised one is not"), Mode->StandingInSection(0),
+			  PlacedThere + 1);
+
+	// EVERY CREATURE THE FLOOR PLACED IN SECTION 0 SLAIN: THE PLAIN ONE STILL HOLDS THE BARRIER.
+	if (!SlayTheSection(*this, Player, Mode, 0, {Raised, Plain}))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("one creature still holds section 0"), Mode->StandingInSection(0), 1);
+	TestTrue(TEXT("so barrier 0 is still closed"), Mode->SectionBarrierIsClosed(0));
+
+	// THE PLAIN ONE SLAIN: THE BARRIER OPENS WITH THE RAISED ONE STILL STANDING IN THE SECTION.
+	if (!SlayForTheSections(*this, Player, Plain))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("set-up: the raised creature still stands"), UCataclysmSkillEffects::IsDead(Raised));
+	TestEqual(TEXT("set-up: and still carries section 0"), Raised->FloorSection, 0);
+	TestEqual(TEXT("nothing counted holds section 0"), Mode->StandingInSection(0), 0);
+	TestFalse(TEXT("so barrier 0 is open"), Mode->SectionBarrierIsClosed(0));
+	TestTrue(TEXT("and barrier 1 is not"), Mode->SectionBarrierIsClosed(1));
+	return true;
+}
+
+// T4. AN OPENED BARRIER STAYS OPEN: AFTER THE PLAYER DIES AND RETURNS, AND AFTER A CREATURE IS ADDED TO ITS SECTION.
+//
+// WHERE EACH STANDS: the player at the entrance, and there again after `Revive`; `Late` on the middle of a free cell
+// of section 0, four metres or more from everything else.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsStayOpenTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsAnOpenedBarrierStaysOpenAfterThePlayerDiesAndReturns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsStayOpenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true,
+						 /*SharedCellsWanted=*/0))
+	{
+		return false;
+	}
+	const FCataclysmFloorSections Sections = Mode->FloorSectionsNow();
+	const TArray<FIntPoint> OnlyFirst = BoundaryCellsOnlyOf(Sections, 0);
+	const TArray<FIntPoint> SharedCells = BoundaryCellsShared(Sections);
+	TestEqual(TEXT("set-up: the boundaries of this floor share no cell"), SharedCells.Num(), 0);
+	if (!SlayTheSection(*this, Player, Mode, 0))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestFalse(TEXT("set-up: barrier 0 opened"), Mode->SectionBarrierIsClosed(0))
+		|| !TestTrue(TEXT("set-up: barrier 1 did not"), Mode->SectionBarrierIsClosed(1)))
+	{
+		return false;
+	}
+
+	// THE PLAYER DIES AND RETURNS AT THE ENTRANCE.
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	Player.Character->Revive();
+	if (!TestFalse(TEXT("set-up: the player is back"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("barrier 0 is still open"), Mode->SectionBarrierIsClosed(0));
+	TestEqual(TEXT("the cells it alone holds are still walkable"), SectionCellsWalkable(Mode, OnlyFirst),
+			  OnlyFirst.Num());
+	TestEqual(TEXT("and no pillar came back onto them"), SectionPillarsOn(World, Mode, OnlyFirst), 0);
+	TestEqual(TEXT("a cell both barriers hold is still closed while barrier 1 stands"),
+			  SectionCellsWalkable(Mode, SharedCells), 0);
+	TestEqual(TEXT("barrier 1 still stands, pillar for cell"), SectionPillarsOn(World, Mode, Sections.Boundaries[1]),
+			  Sections.Boundaries[1].Num());
+
+	// AND A CREATURE ADDED TO SECTION 0 AFTERWARDS, COUNTED THERE, DOES NOT CLOSE IT.
+	const FIntPoint LateCell = AFreeCellOfSection(Mode, 0);
+	ACataclysmEnemyCharacter* Late =
+		LateCell != FIntPoint(-1, -1) ? PlaceOnCell(World, Mode, LateCell) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a late creature on a free cell of section 0"), Late))
+	{
+		return false;
+	}
+	Late->FloorSection = 0;
+	Beat(Mode, 1);
+	TestEqual(TEXT("it is counted in section 0"), Mode->StandingInSection(0), 1);
+	TestFalse(TEXT("and barrier 0 is still open"), Mode->SectionBarrierIsClosed(0));
+	TestEqual(TEXT("with the cells it alone holds walkable"), SectionCellsWalkable(Mode, OnlyFirst),
+			  OnlyFirst.Num());
+	return true;
+}
+
+// T5. A FLOOR OF TWO SECTIONS HAS ONE BARRIER, AND SECTION 0 OPENS IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsTwoSectionsTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsAFloorOfTwoSectionsHasOneBarrierWhichItsFirstSectionOpens",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsTwoSectionsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 2, TwoSectionFloorSeedsTried, /*bEveryBarrierClosed=*/true)
+		|| !TestNotNull(TEXT("set-up: the floor has stairs"), Mode->Stairs.Get()))
+	{
+		return false;
+	}
+	const FCataclysmFloorSections Sections = Mode->FloorSectionsNow();
+	const int32 First = PlacedInSection(Mode, 0).Num();
+	const int32 Last = PlacedInSection(Mode, 1).Num();
+	TestEqual(TEXT("two sections lie behind one barrier"), Sections.Boundaries.Num(), 1);
+	TestEqual(TEXT("which stands"), SectionPillarsOn(World, Mode, Sections.Boundaries[0]), Sections.Boundaries[0].Num());
+	TestEqual(TEXT("the panel"), WallsPanelLine(Mode),
+			  FString::Printf(TEXT("lightforged walls: %d standing in this section, %d on the floor"), First,
+							  First + Last));
+
+	if (!SlayTheSection(*this, Player, Mode, 0))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the barrier is open"), SectionBarriersStanding(Mode), 0);
+	TestEqual(TEXT("its cells are walkable"), SectionCellsWalkable(Mode, Sections.Boundaries[0]),
+			  Sections.Boundaries[0].Num());
+	TestEqual(TEXT("the last section holds the stairs"), WallsPanelLine(Mode),
+			  FString::Printf(TEXT("lightforged walls: %d still standing"), Last));
+	TestEqual(TEXT("which lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	if (!SlayTheSection(*this, Player, Mode, 1))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("slain, the stairs lead down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+// T6. ON A CAVERNS FLOOR THE ROW IS THE SEALED STAIRS ONLY. CONTROL: THE SAME GAME MODE ON HALLS HAS BARRIERS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsCavernsTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsOnACavernsFloorHasNoBarrierAndSealsTheStairsAsBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsCavernsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	Mode->Layout = ECataclysmFloorLayout::Caverns;
+	if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: it is Caverns"),
+					 Mode->CurrentFloor->GetPlan().Layout == ECataclysmFloorLayout::Caverns)
+		|| !TestNotNull(TEXT("set-up: it has stairs"), Mode->Stairs.Get()))
+	{
+		return false;
+	}
+	const FSectionCensus Census = CountTheSections(Mode);
+	const int32 Standing = Mode->LightforgedWallsStanding();
+	if (!TestTrue(TEXT("set-up: the floor placed creatures"), Standing > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Caverns floor has no sections"), Mode->FloorSectionsNow().SectionCount(), 0);
+	TestEqual(TEXT("no pillar stands"), RaisedObstaclesInTheWorld(World), 0);
+	TestEqual(TEXT("no creature carries a section"), Census.Carrying, 0);
+	TestEqual(TEXT("the panel is the line the row had before sections"), WallsPanelLine(Mode),
+			  FString::Printf(TEXT("lightforged walls: %d still standing"), Standing));
+	TestTrue(TEXT("the walls seal the stairs"), Mode->StairsSealedBy() == TArray<FName>({WallsRow}));
+	TestEqual(TEXT("which lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	// THE CONTROL: HALLS.
+	Mode->Layout = ECataclysmFloorLayout::Halls;
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true))
+	{
+		return false;
+	}
+	TestTrue(TEXT("on Halls the same row raises pillars"), RaisedObstaclesInTheWorld(World) > 0);
+	return true;
+}
+
+// T7. WITH SHADOWY ENEMIES ON THE FLOOR THE ROW IS THE SEALED STAIRS ONLY. CONTROL: THE SAME SEED WITHOUT THAT ROW.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsShadowyTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsWithShadowyEnemiesHasNoBarrierAndSealsTheStairsAsBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsShadowyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+
+	// THE CONTROL FIRST: A SEED WHOSE FLOOR HAS THREE SECTIONS UNDER LIGHTFORGED WALLS ALONE.
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true))
+	{
+		return false;
+	}
+	const int32 SeedFound = Mode->DungeonSeed;
+	const int32 PillarsAlone = RaisedObstaclesInTheWorld(World);
+	if (!TestTrue(TEXT("set-up: alone, the row raises pillars on this floor"), PillarsAlone > 0)
+		|| !TestTrue(TEXT("set-up: and the floor gets sections"),
+					 Mode->FloorGetsSections(Mode->CurrentFloor->GetPlan())))
+	{
+		return false;
+	}
+
+	// THE SAME SEED AND FLOOR WITH SHADOWY ENEMIES AS WELL.
+	Mode->DungeonModifiers = {WallsRow, ShadowyRow};
+	Mode->DungeonSeed = SeedFound;
+	if (!TestTrue(TEXT("set-up: the same floor with both rows was reached"), Mode->GoToFloor(2))
+		|| !TestNotNull(TEXT("set-up: it has stairs"), Mode->Stairs.Get()))
+	{
+		return false;
+	}
+	const FSectionCensus Census = CountTheSections(Mode);
+	const int32 Standing = Mode->LightforgedWallsStanding();
+	if (!TestTrue(TEXT("set-up: the floor placed creatures"), Standing > 0))
+	{
+		return false;
+	}
+	TestFalse(TEXT("with Shadowy Enemies the floor gets no sections"),
+			  Mode->FloorGetsSections(Mode->CurrentFloor->GetPlan()));
+	TestEqual(TEXT("so it has none"), Mode->FloorSectionsNow().SectionCount(), 0);
+	TestEqual(TEXT("no pillar stands"), RaisedObstaclesInTheWorld(World), 0);
+	TestEqual(TEXT("no creature carries a section"), Census.Carrying, 0);
+	TestEqual(TEXT("the panel is the line the row had before sections"), WallsPanelLine(Mode),
+			  FString::Printf(TEXT("lightforged walls: %d still standing"), Standing));
+	TestTrue(TEXT("the walls seal the stairs"), Mode->StairsSealedBy() == TArray<FName>({WallsRow}));
+	TestEqual(TEXT("which lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	// CLEARED AWAY AND NOT SLAIN, because under Shadowy Enemies a creature out of the light takes no damage.
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestTrue(TEXT("with none standing nothing seals the stairs"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("and they lead down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+// T8. A REALITY RIFT CARRIES THE PLAYER PAST A CLOSED BARRIER, WHICH IS NOT PREVENTED, AND THE STAIRS STILL HOLD THE FLOOR
+// TO A FULL CLEAR. Ruled 2026-10-08.
+//
+// THE RIFTS ARE DRAWN ON THE GLOBAL RANDOM AND NOT ON THE FLOOR'S SEED, so the search below is over tries as much as
+// over seeds: it goes on until some pair has one end in a lower section and the other in a higher, with the barrier of
+// the lower section closed. WHERE EACH STANDS: the player on the lower rift's cell, then on the other's.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsRiftTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsARealityRiftPastAClosedBarrierStillFindsTheStairsSealed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsRiftTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow, RealityRow};
+
+	int32 StepInto = INDEX_NONE;
+	int32 SectionLeft = INDEX_NONE;
+	int32 SectionReached = INDEX_NONE;
+	for (int32 Seed = 1; Seed <= SectionFloorSeedsTried && StepInto == INDEX_NONE; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!Mode->GoToFloor(2))
+		{
+			continue;
+		}
+		const FCataclysmFloorSections& Found = Mode->FloorSectionsNow();
+		const FCataclysmFloorPlan& FoundPlan = Mode->CurrentFloor->GetPlan();
+		const TArray<FIntPoint>& Rifts = Mode->RealityRiftCellsNow();
+		const int32 Paired = FMath::Min(Rifts.Num() / 2, Effects::RealityRiftPairs) * 2;
+		for (int32 Index = 0; Index < Paired && StepInto == INDEX_NONE; ++Index)
+		{
+			const int32 Here = Found.SectionOf(FoundPlan, Rifts[Index]);
+			const int32 There = Found.SectionOf(FoundPlan, Rifts[Index ^ 1]);
+			if (Here != INDEX_NONE && There != INDEX_NONE && Here < There && Mode->SectionBarrierIsClosed(Here))
+			{
+				StepInto = Index;
+				SectionLeft = Here;
+				SectionReached = There;
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: some floor has a rift pair whose ends lie either side of a closed barrier"),
+				  StepInto != INDEX_NONE)
+		|| !TestNotNull(TEXT("set-up: the floor has stairs"), Mode->Stairs.Get()))
+	{
+		return false;
+	}
+	const FCataclysmFloorSections Sections = Mode->FloorSectionsNow();
+	const int32 BarriersBefore = SectionBarriersStanding(Mode);
+	const int32 StandingBefore = Mode->LightforgedWallsStanding();
+
+	// THE RIFTS ARE DRAWN ON THE FIRST BEAT, AS THE RIFT TESTS DRAW THEM; THEN A STEP INTO ONE.
+	Beat(Mode, 1);
+	StandOnARift(Mode, Player, StepInto);
+	Beat(Mode, 1);
+	if (!TestTrue(FString::Printf(TEXT("set-up: carried to the other rift of the pair (%.0f cm from it)"),
+								  FromARift(Mode, Player, StepInto ^ 1)),
+				  FromARift(Mode, Player, StepInto ^ 1) < 1.0f))
+	{
+		return false;
+	}
+	const int32 StandsIn = Sections.SectionOf(
+		Mode->CurrentFloor->GetPlan(), Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation()));
+	TestEqual(TEXT("the player stands in the further section"), StandsIn, SectionReached);
+	TestTrue(TEXT("which lies past the section they left"), StandsIn > SectionLeft);
+	TestTrue(TEXT("whose barrier is still closed"), Mode->SectionBarrierIsClosed(SectionLeft));
+	TestEqual(TEXT("no barrier opened for it"), SectionBarriersStanding(Mode), BarriersBefore);
+	TestEqual(TEXT("and no creature fell"), Mode->LightforgedWallsStanding(), StandingBefore);
+	TestTrue(TEXT("the walls still seal the stairs"), Mode->StairsSealedBy().Contains(WallsRow));
+	TestEqual(TEXT("which lead nowhere"), TakeTheStairs(*this, Mode), 2);
+
+	// EVERY PLACED CREATURE SLAIN, SECTION BY SECTION: ONLY THEN DO THE STAIRS OPEN.
+	for (int32 Section = 0; Section < Sections.SectionCount(); ++Section)
+	{
+		if (!SlayTheSection(*this, Player, Mode, Section))
+		{
+			return false;
+		}
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("none stands"), Mode->LightforgedWallsStanding(), 0);
+	TestFalse(TEXT("the walls no longer seal the stairs"), Mode->StairsSealedBy().Contains(WallsRow));
+	TestEqual(TEXT("and they lead down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+// T9, ON A FLOOR. AN OBSTACLE STILL RISES BESIDE A SEALED SECTION, AND ONE THAT WOULD STRAND A CELL IS REFUSED. Ruled
+// 2026-10-08.
+//
+// THE STRANDED CELL IS FOUND BY A SEARCH: a walkable cell whose walkable neighbours, closed together, leave it cut off,
+// each of those neighbours being allowed alone. Nothing is beaten, so Heaven's Quake places nothing of its own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsObstacleTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsAnObstacleStillRisesBesideASealedSectionAndOneThatStrandsIsRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsObstacleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow, HeavensQuakeRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FIntPoint From = Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation());
+	const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+	const TArray<FIntPoint> ClosedCells = Mode->ClosedSectionBarrierCells();
+	if (!TestTrue(TEXT("set-up: the player stands on the floor"), Plan.IsFloor(From))
+		|| !TestTrue(TEXT("set-up: barriers are closed"), ClosedCells.Num() > 0))
+	{
+		return false;
+	}
+
+	// THE SEARCH FOR A CELL THAT ITS NEIGHBOURS CAN CUT OFF.
+	const FIntPoint Steps[4] = {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)};
+	TArray<FIntPoint> Ring;
+	for (int32 Index = 0; Index < Plan.Cells.Num() && Ring.IsEmpty(); ++Index)
+	{
+		const FIntPoint Lone = Plan.CellAt(Index);
+		if (!Plan.IsFloor(Lone) || Lone == From || Lone == Plan.Entrance || Lone == Plan.Exit)
+		{
+			continue;
+		}
+		TArray<FIntPoint> Around;
+		bool bEachAllowedAlone = true;
+		for (const FIntPoint& Step : Steps)
+		{
+			const FIntPoint Beside = Lone + Step;
+			if (!Plan.IsFloor(Beside))
+			{
+				continue;
+			}
+			Around.Add(Beside);
+			bEachAllowedAlone = bEachAllowedAlone
+				&& CataclysmFloorCanBlockBesideBarriers(Plan, {Beside}, From, Held, ClosedCells);
+		}
+		if (!Around.IsEmpty() && bEachAllowedAlone)
+		{
+			Ring = Around;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a cell whose neighbours are each allowed alone"), !Ring.IsEmpty()))
+	{
+		return false;
+	}
+
+	// (ii) TOGETHER THEY STRAND THE CELL BETWEEN THEM, WITH THE BARRIERS TREATED AS OPEN: REFUSED.
+	TestFalse(TEXT("the stranding question refuses them with the barriers treated as open"),
+			  CataclysmFloorCanBlock(Plan, Ring, From, Held, ClosedCells));
+	TestNull(TEXT("so the game mode warns of no obstacle on them"),
+			 Mode->WarnOfAnObstacle(Ring, ECataclysmObstacleKind::Pillar, HeavensQuakeRow));
+
+	// (i) ONE OF THEM ALONE STRANDS NOTHING: IT RISES, THOUGH THE PLAN AS IT STANDS HAS EVERY CELL BEYOND THE BARRIERS
+	// OUT OF THE PLAYER'S REACH. The control is the question asked without the barriers' cells, which refuses.
+	const TArray<FIntPoint> One = {Ring[0]};
+	TestFalse(TEXT("control: asked without the barriers' cells, the same cell is refused"),
+			  CataclysmFloorCanBlock(Plan, One, From, Held));
+	ACataclysmFloorObstacle* Warning = Mode->WarnOfAnObstacle(One, ECataclysmObstacleKind::Pillar, HeavensQuakeRow);
+	if (!TestNotNull(TEXT("an obstacle is still warned of on a floor with a sealed section"), Warning))
+	{
+		return false;
+	}
+	TestTrue(TEXT("on the cell asked for"), Warning->CoveredCells() == One);
+	return true;
+}
+
+// T9, ON A PLAN MADE BY HAND. AN OBSTACLE THAT WOULD SPLIT AN AREA WITH THE BARRIERS SHUT IS REFUSED, WHILE THE SAME CELLS
+// ON THE SAME PLAN WITHOUT BARRIERS ARE ALLOWED. Ruled 2026-10-08. No world.
+//
+//   #############      Room A is columns 1 to 4 and room B columns 8 to 11, both rows 1 to 9. Two corridors join them,
+//   #AAAA###BBBB#      rows 2 and 3 and rows 7 and 8, columns 5 to 7. The entrance is (1, 1) and the exit (11, 9).
+//   #AAAA+|+BBBB#      The barrier is column 6 of both corridors: four cells, marked |.
+//   #AAAA+|+BBBB#      The obstacle is row 5 of room A: four cells, marked o. It parts A's upper half from its lower.
+//   #AAAA###BBBB#
+//   #oooo###BBBB#      With the barrier open the lower half is reached round through B, so nothing is stranded.
+//   #AAAA###BBBB#      With it shut the lower half is an area of its own: three areas where there were two.
+//   #AAAA+|+BBBB#
+//   #AAAA+|+BBBB#
+//   #AAAA###BBBB#
+//   #############
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSectionsSplitRefusedTest,
+	"Cataclysm.DungeonModifierEffects.AnObstacleThatWouldSplitAnAreaBehindClosedBarriersIsRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSectionsSplitRefusedTest::RunTest(const FString& Parameters)
+{
+	FCataclysmFloorPlan OpenPlan;
+	OpenPlan.Reset(13, 11);
+	for (int32 Y = 1; Y <= 9; ++Y)
+	{
+		for (int32 X = 1; X <= 4; ++X)
+		{
+			OpenPlan.Carve(FIntPoint(X, Y));
+			OpenPlan.Carve(FIntPoint(X + 7, Y));
+		}
+	}
+	for (int32 X = 5; X <= 7; ++X)
+	{
+		OpenPlan.Carve(FIntPoint(X, 2));
+		OpenPlan.Carve(FIntPoint(X, 3));
+		OpenPlan.Carve(FIntPoint(X, 7));
+		OpenPlan.Carve(FIntPoint(X, 8));
+	}
+	OpenPlan.Entrance = FIntPoint(1, 1);
+	OpenPlan.Exit = FIntPoint(11, 9);
+
+	const TArray<FIntPoint> BarrierCells = {FIntPoint(6, 2), FIntPoint(6, 3), FIntPoint(6, 7), FIntPoint(6, 8)};
+	FCataclysmFloorPlan SealedPlan = OpenPlan;
+	for (const FIntPoint& Cell : BarrierCells)
+	{
+		SealedPlan.Fill(Cell);
+	}
+	const TArray<FIntPoint> Across = {FIntPoint(1, 5), FIntPoint(2, 5), FIntPoint(3, 5), FIntPoint(4, 5)};
+	const TArray<FIntPoint> OneCell = {FIntPoint(2, 5)};
+	const TSet<FIntPoint> NothingHeld;
+	const TArray<FIntPoint> NoBarrier;
+
+	// SET-UP: THE PLANS ARE WHAT THE PICTURE SAYS.
+	if (!TestTrue(TEXT("set-up: the plan is built"), OpenPlan.IsBuilt())
+		|| !TestEqual(TEXT("set-up: open, the plan is one area"), CataclysmFloorAreaCount(OpenPlan), 1)
+		|| !TestEqual(TEXT("set-up: with the barrier shut it is two"), CataclysmFloorAreaCount(SealedPlan), 2))
+	{
+		return false;
+	}
+
+	// THE CONTROL: THE SAME CELLS ON THE SAME PLAN WITHOUT BARRIERS ARE ALLOWED.
+	TestTrue(TEXT("without sections the obstacle is allowed"),
+			 CataclysmFloorCanBlockBesideBarriers(OpenPlan, Across, OpenPlan.Entrance, NothingHeld, NoBarrier));
+	TestFalse(TEXT("and closing it splits no area of the open plan"),
+			  CataclysmFloorClosingSplitsAnArea(OpenPlan, Across));
+
+	// WITH THE BARRIER SHUT: THE STRANDING QUESTION STILL ALLOWS IT, AND THE SPLIT QUESTION REFUSES IT.
+	TestTrue(TEXT("with the barrier treated as open nothing is stranded"),
+			 CataclysmFloorCanBlock(SealedPlan, Across, SealedPlan.Entrance, NothingHeld, BarrierCells));
+	TestTrue(TEXT("but with it shut the obstacle splits an area"),
+			 CataclysmFloorClosingSplitsAnArea(SealedPlan, Across));
+	TestFalse(TEXT("so beside a closed barrier the obstacle is refused"),
+			  CataclysmFloorCanBlockBesideBarriers(SealedPlan, Across, SealedPlan.Entrance, NothingHeld, BarrierCells));
+
+	// AND AN OBSTACLE THAT SPLITS NOTHING IS STILL ALLOWED THERE, so the refusal above is not a refusal of everything.
+	TestTrue(TEXT("one cell of the same row is allowed beside the closed barrier"),
+			 CataclysmFloorCanBlockBesideBarriers(SealedPlan, OneCell, SealedPlan.Entrance, NothingHeld, BarrierCells));
+	return true;
+}
+
+// T10. SACRIFICIAL BOND DOES NOT REACH ACROSS A CLOSED BARRIER, AND DOES ACROSS AN OPEN ONE. Ruled 2026-10-08.
+//
+// WHERE EACH STANDS: the player at the entrance. `Keeper` is the placed creature of section 0 furthest from the
+// barrier, kept alive so barrier 0 stays closed, more than ten metres from the others. `Near` stands 2.8 m from the
+// middle of one cell of barrier 0 on section 0's side and `Far` 2.8 m from it on section 1's side: 5.6 m apart, inside
+// the bond's 6 m. `Again` later stands where `Near` stood, after `Near` is destroyed. Every other placed creature is
+// destroyed first. The control for the share changes only `Far`'s section number; nothing is moved.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsBondTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsSacrificialBondDoesNotReachAcrossAClosedBarrier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsBondTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true))
+	{
+		return false;
+	}
+	const FCataclysmFloorSections Sections = Mode->FloorSectionsNow();
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+
+	// A CELL OF BARRIER 0 WITH SECTION 0 ON ONE SIDE AND SECTION 1 STRAIGHT ACROSS.
+	const FIntPoint Steps[4] = {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)};
+	FIntPoint Through(-1, -1);
+	FIntPoint Toward(0, 0);
+	for (const FIntPoint& Cell : Sections.Boundaries[0])
+	{
+		for (const FIntPoint& Step : Steps)
+		{
+			if (Through == FIntPoint(-1, -1) && Sections.SectionOf(Plan, Cell + Step) == 0
+				&& Sections.SectionOf(Plan, Cell - Step) == 1)
+			{
+				Through = Cell;
+				Toward = Step;
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a cell of barrier 0 between section 0 and section 1"), Through != FIntPoint(-1, -1)))
+	{
+		return false;
+	}
+	const FVector Middle = Mode->CurrentFloor->WorldOfCell(Through);
+	const FVector Side(static_cast<float>(Toward.X), static_cast<float>(Toward.Y), 0.0f);
+	const FVector Up(0.0f, 0.0f, 100.0f);
+
+	// THE KEEPER, AND EVERY OTHER PLACED CREATURE GONE.
+	ACataclysmEnemyCharacter* Keeper = nullptr;
+	for (ACataclysmEnemyCharacter* Candidate : PlacedInSection(Mode, 0))
+	{
+		if (!Keeper || FVector::Dist2D(Candidate->GetActorLocation(), Middle)
+						   > FVector::Dist2D(Keeper->GetActorLocation(), Middle))
+		{
+			Keeper = Candidate;
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: a creature of section 0 to keep"), Keeper)
+		|| !TestTrue(TEXT("set-up: more than ten metres from the barrier's cell"),
+					 FVector::Dist2D(Keeper->GetActorLocation(), Middle) > 1000.0f))
+	{
+		return false;
+	}
+	const TArray<TObjectPtr<ACataclysmEnemyCharacter>> Everyone = Mode->FloorEnemies;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Everyone)
+	{
+		if (IsValid(Creature) && Creature.Get() != Keeper)
+		{
+			Creature->Destroy();
+		}
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("set-up: barrier 0 is closed, held by the keeper"), Mode->SectionBarrierIsClosed(0)))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Near = PlaceCreatureAtRung(World, Mode, Middle + Side * 280.0f + Up, 0);
+	ACataclysmEnemyCharacter* Far = PlaceCreatureAtRung(World, Mode, Middle - Side * 280.0f + Up, 0);
+	if (!TestNotNull(TEXT("set-up: a bonded creature on section 0's side"), Near)
+		|| !TestNotNull(TEXT("set-up: and an ally on section 1's side"), Far))
+	{
+		return false;
+	}
+	Near->FloorSection = 0;
+	Far->FloorSection = 1;
+	Near->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	const float Apart = FVector::Dist2D(Near->GetActorLocation(), Far->GetActorLocation());
+	if (!TestTrue(FString::Printf(TEXT("set-up: the two stand within the bond's reach and apart (%.0f cm)"), Apart),
+				  Apart > 200.0f && Apart < UCataclysmEnemyModifiers::SacrificialBondReach))
+	{
+		return false;
+	}
+
+	// THE SHARE, WITH ONLY THE SECTION NUMBER CHANGED BETWEEN THE CONTROL AND THE CASE.
+	Far->FloorSection = 0;
+	TestEqual(TEXT("control: with both in section 0 the bonded creature keeps half"),
+			  UCataclysmEnemyModifiers::ShareOfDamageKept(Near), 0.5f, 0.001f);
+	Far->FloorSection = 1;
+	TestEqual(TEXT("across the closed barrier it keeps the whole blow"),
+			  UCataclysmEnemyModifiers::ShareOfDamageKept(Near), 1.0f, 0.001f);
+
+	// A BLOW, BONDED WITHIN ONE SECTION: AS TODAY, IT DOES NOT KILL (issue #2289 asks whether that is intended).
+	Far->FloorSection = 0;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Near, 100000.0f);
+	TestFalse(TEXT("bonded within one section, the blow does not kill"), UCataclysmSkillEffects::IsDead(Near));
+	TestTrue(TEXT("and the bonded creature lost some health"), SectionHealthOf(Near) < 100.0f);
+	if (!TestFalse(TEXT("set-up: the ally still stands"), UCataclysmSkillEffects::IsDead(Far)))
+	{
+		return false;
+	}
+
+	// THE SAME BLOW, BONDED ACROSS THE CLOSED BARRIER: IT KILLS.
+	Far->FloorSection = 1;
+	WoundCreatureTo(Near, 100.0f, 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Near, 100000.0f);
+	TestTrue(TEXT("bonded across a closed barrier, the blow kills"), UCataclysmSkillEffects::IsDead(Near));
+
+	// THE BARRIER OPENS: THE KEEPER GOES, AND THE BOND REACHES ACROSS AS IT DID BEFORE SECTIONS.
+	Near->Destroy();
+	Keeper->Destroy();
+	Beat(Mode, 1);
+	if (!TestFalse(TEXT("set-up: barrier 0 opened"), Mode->SectionBarrierIsClosed(0)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Again = PlaceCreatureAtRung(World, Mode, Middle + Side * 280.0f + Up, 0);
+	if (!TestNotNull(TEXT("set-up: another bonded creature where the first stood"), Again))
+	{
+		return false;
+	}
+	Again->FloorSection = 0;
+	Again->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	WoundCreatureTo(Far, 100.0f, 0.0f);
+	TestEqual(TEXT("with the barrier open the bonded creature keeps half again"),
+			  UCataclysmEnemyModifiers::ShareOfDamageKept(Again), 0.5f, 0.001f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Again, 100000.0f);
+	TestFalse(TEXT("and the blow does not kill it"), UCataclysmSkillEffects::IsDead(Again));
+	return true;
+}
+
+// T12. REACH. ON THE TWENTY HALLS PLANS OF THE SECTIONS SEARCH, WITH THE ORDINARY POPULATION PLACED AND THE BOUNDARY CELLS
+// BARRED, EVERY PLACED CREATURE OF SECTION k CAN BE WALKED TO FROM THE ENTRANCE WITH BARRIERS 0 TO k - 1 OPEN AND EVERY
+// LATER ONE CLOSED. Ruled 2026-10-08, because three locks were found by reading.
+//
+// A PURE TEST ON THE PLAN AND THE POPULATION, WITH NO WORLD. IT DOES NOT PROVE NO LOCK EXISTS: it shows only that no
+// creature is placed where the player cannot walk before its own barrier opens. A creature that cannot be killed from
+// where the player can stand, a rule that moves a creature, and everything a rule adds are outside it.
+//
+// THE CORRUPTED SENTINEL IS THE KIND THAT NEVER MOVES: its header calls it "a turret" that "never moves". A creature's
+// section is the section of the cell it is placed on, so the turret's assertion is that it is placed on a cell of a
+// section and never on a boundary cell, and that the cell is reached as above.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSectionsReachTest,
+	"Cataclysm.DungeonModifierEffects.OnTwentyHallsPlansEveryPlacedCreatureIsReachedBeforeItsOwnBarrierOpens",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSectionsReachTest::RunTest(const FString& Parameters)
+{
+	int32 Divided = 0;
+	int32 Creatures = 0;
+	int32 Sentinels = 0;
+	int32 OnABoundary = 0;
+	int32 SentinelsOnABoundary = 0;
+	int32 NotReached = 0;
+	int32 AskedBehind = 0;
+	int32 ReachedBehind = 0;
+	const int32 FloorNumbers[2] = {1, 10};
+	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	{
+		for (const int32 FloorNumber : FloorNumbers)
+		{
+			FCataclysmFloorRequest Request;
+			Request.DungeonSeed = 1000 + Seed * 37;
+			Request.FloorNumber = FloorNumber;
+			Request.Layout = ECataclysmFloorLayout::Halls;
+			const FCataclysmFloorPlan Plan = FCataclysmFloorGenerator::Generate(Request);
+			const FCataclysmFloorSections Sections = FCataclysmFloorGenerator::FindSections(Plan);
+			if (Sections.SectionCount() == 0)
+			{
+				continue;
+			}
+			++Divided;
+
+			TSet<FIntPoint> Barred;
+			for (const TArray<FIntPoint>& Boundary : Sections.Boundaries)
+			{
+				Barred.Append(Boundary);
+			}
+			const FCataclysmFloorPopulation Population =
+				FCataclysmFloorPopulator::Populate(Plan, 1.0f, FCataclysmFloorBrief(), Barred);
+
+			// ONE WALK FOR EACH SECTION: barriers before it open, its own and every later one closed.
+			TArray<TArray<int32>> Walks;
+			for (int32 Section = 0; Section < Sections.SectionCount(); ++Section)
+			{
+				FCataclysmFloorPlan Shut = Plan;
+				for (int32 Barrier = Section; Barrier < Sections.Boundaries.Num(); ++Barrier)
+				{
+					for (const FIntPoint& Cell : Sections.Boundaries[Barrier])
+					{
+						Shut.Fill(Cell);
+					}
+				}
+				Walks.Add(CataclysmFloorDistancesFrom(Shut, Plan.Entrance));
+			}
+
+			for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+			{
+				const bool bSentinel = Placement.Creature == ECataclysmDungeonCreature::CorruptedSentinel;
+				const int32 Section = Sections.SectionOf(Plan, Placement.Cell);
+				++Creatures;
+				Sentinels += bSentinel ? 1 : 0;
+				if (Section == INDEX_NONE)
+				{
+					++OnABoundary;
+					SentinelsOnABoundary += bSentinel ? 1 : 0;
+					continue;
+				}
+				const int32 Index = Plan.IndexOf(Placement.Cell);
+				NotReached += Walks[Section][Index] == INDEX_NONE ? 1 : 0;
+
+				// THE CONTROL: with the barrier before its section closed as well, a creature past the first section
+				// is not reached, so the walk above is what the open barriers give and not the whole floor's.
+				if (Section > 0)
+				{
+					++AskedBehind;
+					ReachedBehind += Walks[Section - 1][Index] != INDEX_NONE ? 1 : 0;
+				}
+			}
+		}
+	}
+
+	if (!TestTrue(TEXT("set-up: some of the twenty plans have sections"), Divided > 0)
+		|| !TestTrue(TEXT("set-up: creatures were placed"), Creatures > 0)
+		|| !TestTrue(TEXT("set-up: Corrupted Sentinels among them"), Sentinels > 0)
+		|| !TestTrue(TEXT("set-up: creatures past the first section among them"), AskedBehind > 0))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("REACH plans=%d creatures=%d sentinels=%d pastTheFirstSection=%d"), Divided, Creatures,
+							Sentinels, AskedBehind));
+	TestEqual(TEXT("no creature is placed on a boundary cell"), OnABoundary, 0);
+	TestEqual(TEXT("no Corrupted Sentinel, which never moves, is placed outside a section"), SentinelsOnABoundary, 0);
+	TestEqual(TEXT("every creature is reached with the barriers before its section open and the rest closed"),
+			  NotReached, 0);
+	TestEqual(TEXT("control: none past the first section is reached with the barrier before it closed"),
+			  ReachedBehind, 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The order a floor in sections begins in, ruled a second time on 2026-10-08: the barriers close BEFORE any rule
+// chooses a cell for an object, the creatures are placed on a copy of the plan with the barriers' cells walkable, and
+// a barrier whose section then holds no creature opens at once. And every population asked for during play reads that
+// same copy. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** How many placements differ between two populations: the difference in their counts, and each unlike pair. */
+	int32 PlacementsThatDiffer(const FCataclysmFloorPopulation& One, const FCataclysmFloorPopulation& Other)
+	{
+		int32 Unlike = FMath::Abs(One.Enemies.Num() - Other.Enemies.Num());
+		for (int32 Index = 0; Index < FMath::Min(One.Enemies.Num(), Other.Enemies.Num()); ++Index)
+		{
+			Unlike += (One.Enemies[Index].Cell != Other.Enemies[Index].Cell
+					   || One.Enemies[Index].Creature != Other.Enemies[Index].Creature) ? 1 : 0;
+		}
+		return Unlike;
+	}
+}
+
+// NO CELL THE SHARED PICKER CHOOSES IS A CLOSED BARRIER'S, on the twenty dungeon seeds of the sections search.
+//
+// THE PICKER NEEDS A BUILT FLOOR, so this is a world test and not a pure one: `EternalChorusCells` and
+// `InfestedVeinsCells` take an `ACataclysmDungeonFloor`. Each is asked twenty times a floor, because it shuffles on the
+// global random. THE CONTROL is that closed barrier cells far enough from the entrance for the picker to take exist on
+// these floors, so "none chosen" is the closing and not the distance rule.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsPickerTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsNoCellTheObjectPickerChoosesIsAClosedBarriersCell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsPickerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+
+	int32 Sealed = 0;
+	int32 Chosen = 0;
+	int32 ChosenOnABarrier = 0;
+	int32 BarrierCellsFarEnough = 0;
+	const int32 FloorNumbers[2] = {1, 10};
+	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	{
+		for (const int32 FloorNumber : FloorNumbers)
+		{
+			Mode->DungeonSeed = 1000 + Seed * 37;
+			if (!Mode->GoToFloor(FloorNumber))
+			{
+				continue;
+			}
+			const TArray<FIntPoint> ClosedCells = Mode->ClosedSectionBarrierCells();
+			if (ClosedCells.IsEmpty())
+			{
+				continue;
+			}
+			++Sealed;
+			const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+			for (const FIntPoint& Cell : ClosedCells)
+			{
+				BarrierCellsFarEnough += FVector::Dist2D(Floor.WorldOfCell(Cell), Floor.EntranceWorld())
+					>= Effects::EternalChorusApartCm ? 1 : 0;
+			}
+			for (int32 Ask = 0; Ask < 20; ++Ask)
+			{
+				TArray<FIntPoint> Picked = ACataclysmDungeonGameMode::EternalChorusCells(Floor, 8);
+				Picked.Append(ACataclysmDungeonGameMode::InfestedVeinsCells(Floor, 8));
+				for (const FIntPoint& Cell : Picked)
+				{
+					++Chosen;
+					ChosenOnABarrier += ClosedCells.Contains(Cell) ? 1 : 0;
+				}
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: some of the twenty floors have a closed barrier"), Sealed > 0)
+		|| !TestTrue(TEXT("set-up: the picker chose cells"), Chosen > 0)
+		|| !TestTrue(TEXT("set-up: barrier cells far enough from the entrance to be chosen exist"),
+					 BarrierCellsFarEnough > 0))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("PICKER floors=%d chosen=%d barrierCellsFarEnough=%d"), Sealed, Chosen,
+							BarrierCellsFarEnough));
+	TestEqual(TEXT("no cell the picker chose is a closed barrier's"), ChosenOnABarrier, 0);
+	return true;
+}
+
+// NO REALITY RIFT IS DRAWN ON A BARRIER'S CELL, on floors that carry both rows. The rifts are the cells the player is
+// carried to, so one on a barrier's cell would put the player inside a pillar.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsRiftCellsTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsNoRealityRiftIsDrawnOnABarriersCell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsRiftCellsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow, RealityRow};
+
+	int32 Divided = 0;
+	int32 Rifts = 0;
+	int32 RiftsOnABarrier = 0;
+	int32 RiftsOffTheFloor = 0;
+	for (int32 Seed = 1; Seed <= SectionFloorSeedsTried; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!Mode->GoToFloor(2) || Mode->FloorSectionsNow().SectionCount() == 0)
+		{
+			continue;
+		}
+		++Divided;
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		for (const FIntPoint& Rift : Mode->RealityRiftCellsNow())
+		{
+			++Rifts;
+			RiftsOffTheFloor += Plan.IsFloor(Rift) ? 0 : 1;
+			for (const TArray<FIntPoint>& Boundary : Mode->FloorSectionsNow().Boundaries)
+			{
+				RiftsOnABarrier += Boundary.Contains(Rift) ? 1 : 0;
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: some floors have sections"), Divided > 0)
+		|| !TestTrue(TEXT("set-up: rifts were drawn on them"), Rifts > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no rift is on a barrier's cell"), RiftsOnABarrier, 0);
+	TestEqual(TEXT("and every rift is on a cell that is walkable now"), RiftsOffTheFloor, 0);
+	return true;
+}
+
+// A FLOOR WITHOUT SECTIONS IS POPULATED EXACTLY AS THE POPULATOR ANSWERS FOR ITS PLAN. The population asked through the
+// game mode's helper is the populator's own for the plan, placement by placement, and the creatures standing are those
+// placements in order. THE CONTROL is that two different floors differ.
+//
+// WHAT THIS CANNOT SHOW: that these are the placements the same seeds gave before the change. That needs figures
+// recorded from a run made before it, and none were. The object picker shuffles on the global random, so its cells on
+// one seed are not the same twice and cannot be compared at all.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSectionsNoSectionsSameTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithNoSectionsIsPopulatedAsThePopulatorAnswersForItsPlan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSectionsNoSectionsSameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {};
+
+	int32 Floors = 0;
+	int32 Placements = 0;
+	int32 HelperUnlike = 0;
+	int32 StandingUnlike = 0;
+	FCataclysmFloorPopulation Earlier;
+	int32 UnlikeTheFloorBefore = 0;
+	for (int32 Seed = 1; Seed <= 6; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("set-up: the floor has no sections"), Mode->FloorSectionsNow().SectionCount(), 0);
+		const FCataclysmFloorPopulation Direct = FCataclysmFloorPopulator::Populate(
+			Mode->CurrentFloor->GetPlan(), Mode->ChooseEnemyScale(), Mode->FloorBrief);
+		++Floors;
+		Placements += Direct.Enemies.Num();
+		HelperUnlike += PlacementsThatDiffer(Mode->FloorPopulationNow(), Direct);
+
+		// THE CREATURES STANDING, IN THE ORDER THEY WERE PLACED, EACH ON ITS PLACEMENT'S CELL.
+		StandingUnlike += FMath::Abs(Mode->FloorEnemies.Num() - Direct.Enemies.Num());
+		for (int32 Index = 0; Index < FMath::Min(Mode->FloorEnemies.Num(), Direct.Enemies.Num()); ++Index)
+		{
+			const ACataclysmEnemyCharacter* Creature = Mode->FloorEnemies[Index].Get();
+			StandingUnlike += (!IsValid(Creature) || Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation())
+														 != Direct.Enemies[Index].Cell) ? 1 : 0;
+		}
+		if (Seed > 1)
+		{
+			UnlikeTheFloorBefore += PlacementsThatDiffer(Earlier, Direct);
+		}
+		Earlier = Direct;
+	}
+	if (!TestTrue(TEXT("set-up: creatures were placed"), Placements > 0)
+		|| !TestTrue(TEXT("control: one floor's population differs from the next's"), UnlikeTheFloorBefore > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("asked through the helper, every placement is the populator's own for the plan"), HelperUnlike, 0);
+	TestEqual(TEXT("and every creature stands on its placement's cell, in order"), StandingUnlike, 0);
+	return true;
+}
+
+// A POPULATION ASKED FOR DURING PLAY ON A FLOOR WITH A SEALED SECTION IS THAT OF THE SAME FLOOR WITHOUT SECTIONS: the
+// same dungeon seed with the row off. THE CONTROL is the populator asked about the plan as it stands, barriers Solid,
+// which answers differently.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSectionsKindsTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsAPopulationAskedDuringPlayIsThatOfTheSameFloorWithoutSections",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSectionsKindsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	if (!ASectionedFloor(*this, Mode, 2, 3, SectionFloorSeedsTried, /*bEveryBarrierClosed=*/true))
+	{
+		return false;
+	}
+	const int32 SeedFound = Mode->DungeonSeed;
+	const FCataclysmFloorPopulation Sealed = Mode->FloorPopulationNow();
+	const FCataclysmFloorPopulation AsItStands = FCataclysmFloorPopulator::Populate(
+		Mode->CurrentFloor->GetPlan(), Mode->ChooseEnemyScale(), Mode->FloorBrief);
+
+	Mode->DungeonModifiers = {};
+	Mode->DungeonSeed = SeedFound;
+	if (!TestTrue(TEXT("set-up: the same floor without the row was reached"), Mode->GoToFloor(2))
+		|| !TestEqual(TEXT("set-up: it has no sections"), Mode->FloorSectionsNow().SectionCount(), 0))
+	{
+		return false;
+	}
+	const FCataclysmFloorPopulation Unsealed = Mode->FloorPopulationNow();
+	if (!TestTrue(TEXT("set-up: the floor without sections has a population"), Unsealed.Enemies.Num() > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("asked on the sealed floor, the population is the unsealed floor's, placement by placement"),
+			  PlacementsThatDiffer(Sealed, Unsealed), 0);
+	TestTrue(TEXT("control: the populator asked about the sealed plan as it stands answers differently"),
+			 PlacementsThatDiffer(AsItStands, Unsealed) > 0);
+	return true;
+}
+
+// THE FLOOR THE FIRST WINDOW FAILED ON: dungeon seed 1, floor 2, the row alone. Three tests failed there on five
+// assertions, and the registering session inferred from the figures that the floor's two boundaries SHARE a line of
+// cells, so that opening barrier 0 opened the shared cells and let the player walk from the entrance's section into the
+// stairs' section. THIS TEST'S SET-UP IS WHAT SHOWS THAT INFERENCE, OR SHOWS IT WRONG: it asserts the two boundaries
+// share a cell and logs both, cell by cell. Ruled 2026-10-08: a cell two barriers hold carries one pillar and stays
+// closed until both have opened.
+//
+// THE CONTROL is the walk before barrier 0 opens: no cell of section 1 is reached then, and one is afterwards.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallsSharedCellsTest,
+	"Cataclysm.DungeonModifierEffects.LightforgedWallsACellTwoBarriersHoldStaysClosedUntilBothHaveOpened",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallsSharedCellsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow};
+	Mode->DungeonSeed = 1;
+	if (!TestTrue(TEXT("set-up: floor 2 of dungeon seed 1 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const FCataclysmFloorSections Sections = Mode->FloorSectionsNow();
+	if (Sections.Boundaries.Num() != 2)
+	{
+		AddError(FString::Printf(
+			TEXT("set-up: floor 2 of dungeon seed 1 has %d boundaries and not two. Either the search's answer for this "
+				 "floor changed, or a boundary there has no cell of its own and the floor was given no sections; "
+				 "this test then says nothing about shared cells."),
+			Sections.Boundaries.Num()));
+		return false;
+	}
+	for (int32 Barrier = 0; Barrier < 2; ++Barrier)
+	{
+		FString Cells;
+		for (const FIntPoint& Cell : Sections.Boundaries[Barrier])
+		{
+			Cells += FString::Printf(TEXT(" (%d,%d)"), Cell.X, Cell.Y);
+		}
+		AddInfo(FString::Printf(TEXT("SHAREDCELLS dungeon seed 1 floor 2 boundary %d holds %d cells:%s"), Barrier,
+								Sections.Boundaries[Barrier].Num(), *Cells));
+	}
+	const TArray<FIntPoint> Shared = BoundaryCellsShared(Sections);
+	const TArray<FIntPoint> OnlyFirst = BoundaryCellsOnlyOf(Sections, 0);
+	const TArray<FIntPoint> OnlySecond = BoundaryCellsOnlyOf(Sections, 1);
+	if (Shared.IsEmpty())
+	{
+		AddError(TEXT("set-up: THE INFERENCE WAS WRONG. The two boundaries of dungeon seed 1 floor 2 share no cell, so "
+					  "shared cells are not why three tests failed on this floor in the first window, and the "
+					  "shared-cell rule this test was written for fixes nothing that was seen."));
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: each barrier holds a cell of its own"), !OnlyFirst.IsEmpty() && !OnlySecond.IsEmpty())
+		|| !TestEqual(TEXT("set-up: both barriers stand"), SectionBarriersStanding(Mode), 2)
+		|| !TestTrue(TEXT("set-up: sections 0 and 1 hold creatures"),
+					 Mode->StandingInSection(0) > 0 && Mode->StandingInSection(1) > 0))
+	{
+		return false;
+	}
+
+	// AS THE FLOOR BEGINS: ONE PILLAR ON EVERY CELL, A SHARED CELL INCLUDED, AND NO MORE PILLARS THAN CELLS.
+	TestEqual(TEXT("a cell both barriers hold carries one pillar"), SectionPillarsOn(World, Mode, Shared), Shared.Num());
+	TestEqual(TEXT("the pillars in the world are one for each distinct cell"), RaisedObstaclesInTheWorld(World),
+			  OnlyFirst.Num() + OnlySecond.Num() + Shared.Num());
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const auto ReachedOfSection = [&Sections, &Plan](int32 Section)
+	{
+		const TArray<int32> Walk = CataclysmFloorDistancesFrom(Plan, Plan.Entrance);
+		int32 Reached = 0;
+		for (int32 Index = 0; Index < Walk.Num(); ++Index)
+		{
+			Reached += (Walk[Index] != INDEX_NONE && Sections.Section.IsValidIndex(Index)
+						&& Sections.Section[Index] == Section) ? 1 : 0;
+		}
+		return Reached;
+	};
+	TestEqual(TEXT("control: before barrier 0 opens no cell of section 1 is walked to"), ReachedOfSection(1), 0);
+
+	// SECTION 0 SLAIN AND ONE BEAT: BARRIER 0 OPENS, AND THE SHARED CELLS DO NOT.
+	if (!SlayTheSection(*this, Player, Mode, 0))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestFalse(TEXT("set-up: barrier 0 opened"), Mode->SectionBarrierIsClosed(0))
+		|| !TestTrue(TEXT("set-up: barrier 1 is still closed"), Mode->SectionBarrierIsClosed(1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the cells barrier 0 alone holds are walkable"), SectionCellsWalkable(Mode, OnlyFirst),
+			  OnlyFirst.Num());
+	TestEqual(TEXT("the cells both hold are still closed in the plan"), SectionCellsWalkable(Mode, Shared), 0);
+	TestEqual(TEXT("and each carries exactly one pillar"), SectionPillarsOn(World, Mode, Shared), Shared.Num());
+	TestTrue(TEXT("section 1 can be walked to from the entrance"), ReachedOfSection(1) > 0);
+	TestEqual(TEXT("no cell of the stairs' section can"), ReachedOfSection(2), 0);
+	TestEqual(TEXT("and the exit is not reached"),
+			  CataclysmFloorDistancesFrom(Plan, Plan.Entrance)[Plan.IndexOf(Plan.Exit)], static_cast<int32>(INDEX_NONE));
+
+	// SECTION 1 SLAIN AND ONE BEAT: BARRIER 1 OPENS, AND WITH BOTH OPEN THE SHARED CELLS OPEN TOO.
+	if (!SlayTheSection(*this, Player, Mode, 1))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("no barrier stands"), SectionBarriersStanding(Mode), 0);
+	TestEqual(TEXT("the cells both held are walkable"), SectionCellsWalkable(Mode, Shared), Shared.Num());
+	TestEqual(TEXT("no pillar stands on a cell either barrier held"),
+			  SectionPillarsOn(World, Mode, Shared) + SectionPillarsOn(World, Mode, OnlyFirst)
+				  + SectionPillarsOn(World, Mode, OnlySecond), 0);
+	TestTrue(TEXT("and the exit is reached"),
+			 CataclysmFloorDistancesFrom(Plan, Plan.Entrance)[Plan.IndexOf(Plan.Exit)] != INDEX_NONE);
 	return true;
 }
 
