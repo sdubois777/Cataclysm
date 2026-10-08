@@ -68,7 +68,11 @@ each step ran.**
 none of the four stats was higher. The readings asked with a heavy attack's slot were no higher in both runs, as
 they must be.
 
-**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The four stats were proved by the session that built them.
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** Three of the
+four stats were proved by the session that built them: the pull, the hit along the path and the explosions.
+**`movement_random_direction` has no guard proof**: that session's entry says no proof was run for the random
+direction, and that its test passed in the whole suite. Corrected 2026-10-08: this sentence first said all four
+were proved.
 
 ---
 
@@ -136,7 +140,11 @@ each step ran.**
 leech rate was what it was taken off, the arc stat asked with a heavy attack's slot was no higher, and the root
 stat was no higher. The reading asked with a basic attack's slot was no higher in both runs, as it must be.
 
-**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The four stats were proved by the session that built them.
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** Three of the
+four stats were proved by the session that built them: the shield, the arc and the root.
+**`leech_payout_rate` has no guard proof**: that session's entry says no proof was run for the leech pay-out
+stat, and that its test passed in the whole suite. Corrected 2026-10-08: this sentence first said all four
+were proved.
 
 ---
 
