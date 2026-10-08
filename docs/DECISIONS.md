@@ -2,6 +2,51 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — "You cannot apply CC effects to enemies above 50% HP" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The row the entry "A character can carry a health ceiling above which it cannot apply crowd control to an enemy"
+of 2026-10-07 left to the session holding the design workbook, as that entry's table states it. The stat and the
+place that asks for it were read in the merged code. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| You cannot apply CC effects to enemies above 50% HP | `crowd_control_health_ceiling_reduction` | flat | 50 | none |
+
+EnchantmentEffects 562 to 563, over 475 to 476 enchantments.
+
+### TWO THINGS A READER OF THE ROW SHOULD KNOW
+
+- **The row's 50 is 100 less the ceiling, and it equals the sentence's 50 only because the ceiling is 50.** If
+  the sentence's number is ever changed, the row carries the complement, and the stat must then join
+  `COMPLEMENT_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`. That entry says so.
+- **The row carries no Required Tags, and must not.** The stat is asked with no tags
+  (`UCataclysmSkillEffects`, the call of `StatForSkill` with an empty tag container), so a scoped row would never
+  apply. The enchantment's own tag list holds `Keyword.CC`; it is not what a row's Required Tags are matched
+  against.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the sentence is that entry's: which seven kinds of crowd control the ceiling covers, that the
+ceiling is the applier's and reads "above" and not "at", and what it does beside the stagger's own ceiling.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheCrowdControlCeilingRowHandsItsWearerAReductionOfFiftyAskedWithNoTags`: the real row
+  worn. The test first asserts that the name it wears is a row of `EnchantmentsNegative.csv`. Asked with no
+  tags, as the game asks, the stat is 50 above what it is with the item taken off.
+
+**Not tested here:** an enemy above half health refusing a stun, a knockdown, a fear or a shove from a worn
+row's wearer. That entry tests the ceiling with the stat set by hand.
+
+---
+
 ## 2026-10-07 — Two stats a worn row can state for a projectile skill: `projectile_bounces` adds to the bounces the skill states, and `projectile_pierce_all` makes it pierce every enemy on its line. Engine only; no row authored
 
 **Built and run on 2026-10-08 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
