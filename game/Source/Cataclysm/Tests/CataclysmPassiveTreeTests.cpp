@@ -22126,4 +22126,159 @@ bool FCataclysmSetStanceAtFourPointsTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// "Your heavy attack hits all enemies in a 180 degree arc in front of you"
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavyArcAtLeastTest,
+	"Cataclysm.OneSiteStats.AHeavyStrikeUnderTheRowHitsEveryEnemyInAHalfCircleAndNoOtherStrikeChanges",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `strike_arc_at_least_degrees` at 180 on a line requiring `Slot.Heavy`. Ruled 2026-10-07: the arc becomes 180
+ * degrees AND the target limit is lifted.
+ *
+ * WHERE EACH STANDS, in metres ahead of the player and metres to its right. The player is where it spawns, and
+ * its strike reaches 6 metres across 60 degrees and takes 2 targets. Six enemies, none within 2 metres of
+ * another: `Front` at (3, 0), `InsideNear` at (4.5, 1.5) and `InsideFar` at (5, -1.5), all three inside the 60
+ * degrees; `WideRight` at (1, 3.5) and `WideLeft` at (1, -3.5), 74 degrees off the aim, outside the 60 and inside
+ * the 180; and `Behind` at (-3.5, 0), outside both.
+ *
+ * THE SAME CHARACTER AND THE SAME STRIKE THROUGHOUT. Its stat line is written by hand for each reading: empty for
+ * the control, and the one line for the wearer. Which enemies a swing hurt is read off their health.
+ */
+bool FCataclysmHeavyArcAtLeastTest::RunTest(const FString&)
+{
+	using namespace CataclysmMeleeArcTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete()))
+	{
+		return false;
+	}
+	UCataclysmStrikeSkill* Strike = GrantSwing(Player, TEXT("Type.Melee, Slot.Heavy"));
+	if (!TestNotNull(TEXT("set-up: a melee strike is granted"), Strike))
+	{
+		return false;
+	}
+	const auto Shape = [Strike](const TCHAR* ParamsCell, const TCHAR* TagCell)
+	{
+		Strike->Params = UCataclysmSkillShapes::ParseParams(ParamsCell);
+		Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+	};
+	const TCHAR* Narrow = TEXT("Radius=6; Angle=60; MaxTargets=2");
+	Shape(Narrow, TEXT("Type.Melee, Slot.Heavy"));
+	if (!TestEqual(TEXT("set-up: the strike takes two targets"), Strike->Params.MaxTargets, 2)
+		|| !TestEqual(TEXT("set-up: and carries the melee tag and the heavy slot's"), Strike->SkillTags.Num(), 2))
+	{
+		return false;
+	}
+
+	const FVector Here = Player.Character->GetActorLocation();
+	const FVector Ahead = Facing(Player.Character);
+	const FVector Right(-Ahead.Y, Ahead.X, 0.0f);
+	const auto Place = [&](float AheadMetres, float RightMetres)
+	{
+		return Enemy(World, Here + Ahead * (AheadMetres * 100.0f) + Right * (RightMetres * 100.0f));
+	};
+	// IN THIS ORDER, which is the order of the letters in every reading below.
+	const TArray<ACataclysmEnemyCharacter*> Enemies = {
+		Place(3.0f, 0.0f),    // Front
+		Place(4.5f, 1.5f),    // InsideNear
+		Place(5.0f, -1.5f),   // InsideFar
+		Place(1.0f, 3.5f),    // WideRight
+		Place(1.0f, -3.5f),   // WideLeft
+		Place(-3.5f, 0.0f),   // Behind
+	};
+	int32 Spawned = 0;
+	for (const ACataclysmEnemyCharacter* One : Enemies)
+	{
+		Spawned += One ? 1 : 0;
+	}
+	if (!TestEqual(TEXT("set-up: six enemies are spawned"), Spawned, 6))
+	{
+		return false;
+	}
+
+	// The player's stat line, written whole: nothing, or the one line a row of this sentence would give.
+	const auto Carry = [&Player](bool bTheRow)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		if (bTheRow)
+		{
+			FCataclysmStatModifier HalfCircle;
+			HalfCircle.Bucket = ECataclysmStatBucket::Flat;
+			HalfCircle.Source = ECataclysmModifierSource::Enchantment;
+			HalfCircle.Value = 180.0f;
+			HalfCircle.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Slot.Heavy"));
+			FCataclysmStatInputs& Line =
+				Inputs.FindOrAdd(FName(UCataclysmStrikeSkill::StrikeArcAtLeastDegreesStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {HalfCircle};
+		}
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	};
+
+	// One swing, read as a letter for each enemy in the order above: X for one that lost health, a dot for one
+	// that did not.
+	const auto Swing = [&Enemies, Strike]() -> FString
+	{
+		TArray<float> Before;
+		for (const ACataclysmEnemyCharacter* One : Enemies)
+		{
+			Before.Add(HealthOf(One));
+		}
+		Strike->SwingOnce();
+		FString Hurt;
+		for (int32 Index = 0; Index < Enemies.Num(); ++Index)
+		{
+			Hurt += HealthOf(Enemies[Index]) < Before[Index] ? TEXT("X") : TEXT(".");
+		}
+		return Hurt;
+	};
+
+	// THE CONTROL: the two nearest inside its own 60 degrees, and nobody else.
+	Carry(false);
+	if (!TestEqual(TEXT("control: without the row the heavy strike hurts Front and InsideNear only"),
+				   Swing(), FString(TEXT("XX...."))))
+	{
+		return false;
+	}
+
+	// THE WEARER, THE SAME STRIKE: all five inside the half circle, past its limit of two, and not the one behind.
+	Carry(true);
+	TestEqual(TEXT("with the row the heavy strike is 180 degrees wide"), Strike->ArcDegrees(), 180.0f, 0.001f);
+	TestEqual(TEXT("and it hurts every enemy in the half circle in front, and not the one behind"),
+			  Swing(), FString(TEXT("XXXXX.")));
+
+	// A STRIKE OF THE SAME WEARER THAT IS NOT THE HEAVY ATTACK is what the control was.
+	Shape(Narrow, TEXT("Type.Melee"));
+	TestEqual(TEXT("the same wearer's strike that is not the heavy attack hurts Front and InsideNear only"),
+			  Swing(), FString(TEXT("XX....")));
+
+	// A HEAVY STRIKE THAT IS NOT MELEE IS WIDENED TOO. The sentence does not say melee.
+	Shape(Narrow, TEXT("Type.Spell, Slot.Heavy"));
+	TestEqual(TEXT("the wearer's heavy strike that is a spell hurts the same five"),
+			  Swing(), FString(TEXT("XXXXX.")));
+
+	// A HEAVY STRIKE ALREADY WIDER THAN 180 IS NOT NARROWED, and its limit is lifted all the same.
+	const TCHAR* Circle = TEXT("Radius=6; Angle=360; MaxTargets=2");
+	Shape(Circle, TEXT("Type.Melee, Slot.Heavy"));
+	Carry(false);
+	TestEqual(TEXT("control: a full-circle heavy strike of two targets hurts the two nearest, Front and Behind"),
+			  Swing(), FString(TEXT("X....X")));
+	Carry(true);
+	TestEqual(TEXT("with the row it is still a full circle"), Strike->ArcDegrees(), 360.0f, 0.001f);
+	TestEqual(TEXT("and it hurts all six, the one behind included"), Swing(), FString(TEXT("XXXXXX")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -334,16 +334,38 @@ void UCataclysmStrikeSkill::ActivateAbility(
 
 const TCHAR* UCataclysmStrikeSkill::MeleeArcFullCircleStat = TEXT("melee_arc_full_circle");
 
+const TCHAR* UCataclysmStrikeSkill::StrikeArcAtLeastDegreesStat = TEXT("strike_arc_at_least_degrees");
+
+float UCataclysmStrikeSkill::ArcAtLeastDegrees() const
+{
+	// ASKED WITH THE SKILL'S OWN TAGS, which carry its slot: a weapon skill's
+	// row states `Slot.Heavy` among its tags and `UCataclysmWeaponSkills::StampOnto`
+	// copies them here. So a row requiring `Slot.Heavy` reaches the heavy attack
+	// and no other skill.
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+	return Mine
+		? FMath::Clamp(Mine->StatForSkill(FName(StrikeArcAtLeastDegreesStat), SkillTags, 0.0f), 0.0f, 360.0f)
+		: 0.0f;
+}
+
 float UCataclysmStrikeSkill::ArcDegrees() const
 {
-	// A SPELL'S CONE IS NEVER WIDENED. The sentence says "your melee arc", and a
-	// strike carries `Type.Melee` exactly when it is made with a melee weapon,
-	// which the generator has enforced since issue #944.
+	// NEVER NARROWER THAN A ROW SAYS THIS STRIKE IS. Ruled 2026-10-07. The
+	// larger of the two, so a strike already wider than the row is not narrowed.
+	// FOR A STRIKE OF ANY KIND, a judgement by the writing session: the sentence
+	// says "your heavy attack" and does not say melee.
+	const float Stated = FMath::Max(Params.AngleDegrees, ArcAtLeastDegrees());
+
+	// A SPELL'S CONE IS NEVER WIDENED BY EVERY SWING LANDS. The sentence says
+	// "your melee arc", and a strike carries `Type.Melee` exactly when it is
+	// made with a melee weapon, which the generator has enforced since issue
+	// #944.
 	static const FGameplayTag Melee = FGameplayTag::RequestGameplayTag(
 		FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
 	if (!Melee.IsValid() || !SkillTags.HasTag(Melee))
 	{
-		return Params.AngleDegrees;
+		return Stated;
 	}
 
 	const UCataclysmAbilitySystemComponent* Mine =
@@ -352,7 +374,7 @@ float UCataclysmStrikeSkill::ArcDegrees() const
 	{
 		return 360.0f;
 	}
-	return Params.AngleDegrees;
+	return Stated;
 }
 
 int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
@@ -374,12 +396,17 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// UNLESS A ROW ROLLED THAT THIS USE HITS EVERY ENEMY NEARBY. Ruled 2026-10-06. Then it is every enemy within
 	// that distance of the user, or within the skill's own reach when that is further, in every direction and with
 	// no limit on how many.
+	//
+	// AND A STRIKE A ROW GIVES A LEAST ARC HAS NO TARGET LIMIT. Ruled
+	// 2026-10-07: "hits ALL enemies in a 180 degree arc". Nought is how
+	// `FindEnemiesInCone` is told there is no limit.
+	const int32 MostTargets = ArcAtLeastDegrees() > 0.0f ? 0 : Params.MaxTargets;
 	const TArray<AActor*> Targets = ThisUseHitsAllWithinCm > 0.0f
 		? UCataclysmTargeting::FindEnemiesInSphere(
 			GetWorld(), Self, Self->GetActorLocation(), FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
 		: UCataclysmTargeting::FindEnemiesInCone(
 			GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
-			ScaledRadiusCm(), ArcDegrees(), Params.MaxTargets);
+			ScaledRadiusCm(), ArcDegrees(), MostTargets);
 
 	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
 	// than tidy. Quench gives an enemy whose fire was just put out 50% more

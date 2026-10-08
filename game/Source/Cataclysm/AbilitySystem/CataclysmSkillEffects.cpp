@@ -311,6 +311,8 @@ float UCataclysmSkillEffects::DebuffDurationMultiplierOf(const UAbilitySystemCom
 }
 const TCHAR* UCataclysmSkillEffects::StaggerHealthCeilingStat =
 	TEXT("stagger_health_ceiling_reduction");
+const TCHAR* UCataclysmSkillEffects::StaggerRootSecondsStat =
+	TEXT("stagger_root_seconds");
 const TCHAR* UCataclysmSkillEffects::KnockdownSecondsStat =
 	TEXT("knockdown_seconds");
 const TCHAR* UCataclysmSkillEffects::CrowdControlResistanceStat =
@@ -2936,6 +2938,39 @@ namespace
 	}
 }
 
+namespace
+{
+	/**
+	 * Roots an enemy its staggerer has just staggered, when the staggerer
+	 * carries `stagger_root_seconds`. Ruled 2026-10-07: "Enemies you stagger are
+	 * also briefly rooted for 0.5-1.5 seconds".
+	 *
+	 * A ROOT IS A PIN WITH NO INCREASE: the target cannot walk and can still
+	 * turn and attack. REFUSED FOR A TARGET IMMUNE TO CROWD CONTROL, which
+	 * `ApplyPin` does not ask for itself: one whose crowd control resistance
+	 * takes a hold to nothing, and one a running skill makes immune. A
+	 * resistance below a hundred does not shorten it, as it does not shorten
+	 * any other pin.
+	 */
+	void CataclysmSkillEffectsRootAfterStagger(AActor* Instigator, AActor* Target)
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Instigator));
+		const float RootSeconds = Asking
+			? Asking->StatForSkill(FName(UCataclysmSkillEffects::StaggerRootSecondsStat),
+								   FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+		if (RootSeconds <= 0.0f || !UCataclysmTargeting::IsHostileTo(Target, Instigator)
+			|| UCataclysmSkillEffects::AfterCrowdControlResistance(Target, RootSeconds) <= 0.0f
+			|| UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Pin")))
+		{
+			return;
+		}
+		UCataclysmSkillEffects::ApplyPin(Instigator, Target, RootSeconds);
+	}
+}
+
 bool UCataclysmSkillEffects::ApplyStagger(AActor* Instigator, AActor* Target,
 										  float Seconds)
 {
@@ -3018,7 +3053,15 @@ bool UCataclysmSkillEffects::ApplyStagger(AActor* Instigator, AActor* Target,
 	// file takes. `ApplyTagForDuration` also lets the target's own debuff
 	// duration stat lengthen it, which is what the Masochist branch pays for,
 	// and keeps the longer of two applications rather than cutting one short.
-	return ApplyTagForDuration(Instigator, Target, StaggeredTag(), Scaled);
+	if (!ApplyTagForDuration(Instigator, Target, StaggeredTag(), Scaled))
+	{
+		return false;
+	}
+
+	// AND A STAGGER THAT LANDED MAY ROOT. Ruled 2026-10-07. After every refusal
+	// above, so a stagger the health ceiling refused roots nobody.
+	CataclysmSkillEffectsRootAfterStagger(Instigator, Target);
+	return true;
 }
 
 namespace

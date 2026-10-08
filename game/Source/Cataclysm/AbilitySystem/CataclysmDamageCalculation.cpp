@@ -72,6 +72,9 @@ const TCHAR* UCataclysmDamageCalculation::MinionsLeaveChaosPoolsStat = TEXT("min
 const TCHAR* UCataclysmDamageCalculation::AilmentImmunityStat = TEXT("ailment_immunity");
 const TCHAR* UCataclysmDamageCalculation::BleedDamageTakenFromEnergyShieldStat =
 	TEXT("bleed_damage_taken_from_energy_shield");
+// And one about every blow the energy shield takes. Ruled 2026-10-07. See the header.
+const TCHAR* UCataclysmDamageCalculation::EnergyShieldDamageTakenStat =
+	TEXT("energy_shield_damage_taken");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenFromManaFirstStat =
 	TEXT("damage_over_time_taken_from_mana_first");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
@@ -1093,11 +1096,28 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	if (ShieldShare > 0.0f && Vitals->GetEnergyShield() > 0.0f)
 	{
 		const float Magic = Hit.bIsMagic ? 1.0f + SubtypeBonus / 100.0f : 1.0f;
+
+		// AND THE DEFENDER'S OWN SHIELD MAY TAKE MORE FOR EACH POINT IT STOPS.
+		// Ruled 2026-10-07: "Your energy shield takes 30%-50% increased damage".
+		// The same shape as the magic bonus beside it: the shield loses more
+		// points for the same blow, and the line below turns what it lost back
+		// into raw damage, so health is never sent more than the blow held.
+		//
+		// MULTIPLIED WITH THE MAGIC BONUS, a judgement by the writing session:
+		// one is the attacker's damage sub-type and the other the defender's
+		// own stat, and there is no one bracket two characters' figures add in.
+		//
+		// NO BLOW AND NO TAGS: the row is about the shield, whatever arrives. A
+		// creature carries no stat line and answers nought. Never below nought,
+		// so no sum of rows makes a shield take less than the blow.
+		const float ShieldTakes = Magic
+			* (1.0f + FMath::Max(0.0f, DefenderStat(Defender, EnergyShieldDamageTakenStat, 0.0f)) / 100.0f);
 		Result.AbsorbedByShield =
-			FMath::Min(Vitals->GetEnergyShield(), Damage * ShieldShare * Magic);
-		// Convert what the shield stopped back into raw damage, so the magic
-		// bonus never destroys more raw damage than the hit contained.
-		Damage = FMath::Max(0.0f, Damage - Result.AbsorbedByShield / Magic);
+			FMath::Min(Vitals->GetEnergyShield(), Damage * ShieldShare * ShieldTakes);
+		// Convert what the shield stopped back into raw damage, so neither the
+		// magic bonus nor the defender's stat destroys more raw damage than the
+		// hit contained.
+		Damage = FMath::Max(0.0f, Damage - Result.AbsorbedByShield / ShieldTakes);
 	}
 
 	// 9. Health takes the remainder.
