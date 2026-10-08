@@ -2104,6 +2104,17 @@ public:
 	int32 StandingInSection(int32 Section) const;
 	int32 LightforgedWallsSectionHeld() const;
 	TArray<FIntPoint> ClosedSectionBarrierCells() const;
+
+	/**
+	 * The cells of one boundary that no other boundary of this floor holds. Issues #1820 and #41. Ruled 2026-10-08.
+	 *
+	 * TWO BOUNDARIES MAY SHARE CELLS: the search closes the cells of both together and nothing makes them apart. A
+	 * CELL TWO BARRIERS HOLD CARRIES ONE PILLAR AND STAYS CLOSED UNTIL BOTH HAVE OPENED. Opening a barrier opens only
+	 * those of its cells that no still-closed barrier holds. A FLOOR ON WHICH A BOUNDARY HAS NO CELL OF ITS OWN GETS
+	 * NO SECTIONS, because opening that barrier would open nothing. `ClosedSectionBarrierCells` names a shared cell
+	 * once.
+	 */
+	TArray<FIntPoint> CellsOnlyBarrierHolds(int32 Barrier) const;
 	bool AClosedBarrierStandsBetween(const ACataclysmEnemyCharacter* One, const ACataclysmEnemyCharacter* Other) const;
 
 	/**
@@ -4047,8 +4058,16 @@ private:
 	void OpenEverySectionBarrier();
 
 	/**
+	 * Open one barrier, if it is closed. THE ONE PLACE A BARRIER'S CELLS ARE OPENED. A cell that another barrier still
+	 * closed also holds is left Solid, and its pillar is handed to that barrier to destroy when it opens. Every
+	 * other cell of the barrier is made walkable and its pillar destroyed.
+	 */
+	void OpenTheSectionBarrier(int32 Barrier);
+
+	/**
 	 * Called by `PopulateFloor` BEFORE any rule chooses a cell for an object and before the creatures are placed:
-	 * every barrier is opened if it was closed and then closed, with pillars in the row's colour, raised at once. So
+	 * every barrier is opened if it was closed and then closed, with pillars in the row's colour, raised at once, one
+	 * pillar a cell: a cell an earlier barrier already closed is not given a second. So
 	 * every picker reads a barrier's cells as Solid. Once the creatures stand, `StepTheSectionBarriers` is called at
 	 * once and opens the barrier of any section that holds none.
 	 */
