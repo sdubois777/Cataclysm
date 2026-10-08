@@ -2455,8 +2455,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	PlacedStacks.Empty();
 
-	// AND WHAT RODE ON ITS AILMENTS. Issue #1833, 2026-10-06.
+	// AND WHAT RODE ON ITS AILMENTS. Issue #1833, 2026-10-06. A maximum one of
+	// them held down returns with them, since 2026-10-08.
 	AilmentRiders.Empty();
+	RewriteMaximumHealthForAilments();
 
 	// AND EVERY "EVERY Nth" COUNT, ruled 2026-09-24. Issue #1833, phase 2.
 	NthCounts.Empty();
@@ -3709,6 +3711,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::AilmentDetonatesWhenReappliedActi
 	TEXT("ailment_detonates_when_reapplied");
 const TCHAR* UCataclysmAbilitySystemComponent::AilmentSpreadOnApplicationAction =
 	TEXT("ailment_spread_on_application");
+const TCHAR* UCataclysmAbilitySystemComponent::AilmentMaxHealthRiderAction =
+	TEXT("ailment_max_health_removed");
 
 ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const FString& Action)
 {
@@ -3747,6 +3751,10 @@ ECataclysmAilmentRider UCataclysmAbilitySystemComponent::AilmentRiderNamed(const
 	if (Action.Equals(AilmentSpreadOnApplicationAction, ESearchCase::IgnoreCase))
 	{
 		return ECataclysmAilmentRider::SpreadOnApplication;
+	}
+	if (Action.Equals(AilmentMaxHealthRiderAction, ESearchCase::IgnoreCase))
+	{
+		return ECataclysmAilmentRider::MaxHealthRemoved;
 	}
 	return ECataclysmAilmentRider::None;
 }
@@ -3801,11 +3809,114 @@ void UCataclysmAbilitySystemComponent::ReceiveAilmentRiders(
 		{
 			AilmentRiders.Remove(Ailment);
 		}
+		// AND A MAXIMUM ITS NUMBER HELD DOWN RETURNS, here and not at the
+		// ailment's end, because its number has stopped counting now.
+		RewriteMaximumHealthForAilments();
 		return;
 	}
 	FCarriedRiders& Now = AilmentRiders.FindOrAdd(Ailment);
 	Now.Applier = Applier;
 	Now.Percent = MoveTemp(Asked);
+
+	// A NUMBER THAT LOWERS MAXIMUM HEALTH IS NOT READ WHEN A BLOW IS WORKED
+	// OUT, AS THE REST ARE. Ruled 2026-10-08. The maximum is written when the
+	// ailment's tag comes and when it goes, so the tag is watched from the
+	// first time such a number is received for it, once.
+	if (Now.Percent.Contains(ECataclysmAilmentRider::MaxHealthRemoved)
+		&& !MaxHealthRiderAilmentsWatched.Contains(Ailment))
+	{
+		RegisterGameplayTagEvent(Ailment, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this,
+						&UCataclysmAbilitySystemComponent::OnMaxHealthRiderAilmentTagChanged);
+		MaxHealthRiderAilmentsWatched.Add(Ailment);
+	}
+
+	// AND WRITTEN NOW FOR AN AILMENT ALREADY CARRIED, which is a number
+	// received on a running ailment or one applier's replaced by another's. An
+	// ailment not carried yet contributes nothing here; its tag's arrival is
+	// what lowers the maximum. The same number again changes nothing.
+	RewriteMaximumHealthForAilments();
+}
+
+void UCataclysmAbilitySystemComponent::OnMaxHealthRiderAilmentTagChanged(
+	const FGameplayTag Tag, int32 NewCount)
+{
+	RewriteMaximumHealthForAilments(Tag, NewCount);
+}
+
+void UCataclysmAbilitySystemComponent::RewriteMaximumHealthForAilments(
+	const FGameplayTag& Changed, int32 ChangedCount)
+{
+	// WHAT THE AILMENTS CARRIED NOW ASK FOR, summed and held to the bound. One
+	// ailment holds one applier's number, so two wearers of a row for the same
+	// ailment never add; two rows on two different ailments do.
+	float Wanted = 0.0f;
+	for (const TPair<FGameplayTag, FCarriedRiders>& Held : AilmentRiders)
+	{
+		// THE AILMENT WHOSE TAG HAS JUST MOVED IS JUDGED BY THE COUNT HANDED
+		// OVER, and every other by asking.
+		const bool bCarried = (Changed.IsValid() && Held.Key == Changed)
+			? ChangedCount > 0
+			: HasMatchingGameplayTag(Held.Key);
+		if (!bCarried)
+		{
+			continue;
+		}
+		if (const float* Percent = Held.Value.Percent.Find(ECataclysmAilmentRider::MaxHealthRemoved))
+		{
+			Wanted += FMath::Max(0.0f, *Percent);
+		}
+	}
+	Wanted = FMath::Clamp(Wanted, 0.0f, MaxAilmentMaxHealthRemovedPercent);
+
+	// ONLY A CHANGE IS WRITTEN. A refresh of an ailment already carried, by the
+	// applier whose number it holds, arrives here with the same figure and
+	// writes nothing, so it cannot lower health a second time.
+	if (FMath::IsNearlyEqual(Wanted, AilmentMaxHealthRemovedInForce, 0.0001f))
+	{
+		return;
+	}
+
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (!HasAttributeSetForAttribute(MaxHealth))
+	{
+		return;
+	}
+
+	// THE UNLOWERED MAXIMUM. With nothing in force it is the base as it stands.
+	// With something in force it is the figure remembered when the base was
+	// lowered, plus whatever something else has added to the lowered base
+	// since, which is nothing unless the base no longer holds what was written.
+	const float Base = GetNumericAttributeBase(MaxHealth);
+	float Unlowered = Base;
+	if (AilmentMaxHealthRemovedInForce > 0.0f)
+	{
+		Unlowered = Base == LoweredMaximumHealthWritten
+			? UnloweredMaximumHealth
+			: UnloweredMaximumHealth + (Base - LoweredMaximumHealthWritten);
+	}
+
+	AilmentMaxHealthRemovedInForce = Wanted;
+	if (Wanted <= 0.0f)
+	{
+		// THE AILMENT HAS ENDED, OR ITS NUMBER HAS GONE: THE MAXIMUM RETURNS.
+		// Raising a maximum raises no health, so what was taken stays taken.
+		UnloweredMaximumHealth = 0.0f;
+		LoweredMaximumHealthWritten = 0.0f;
+		SetNumericAttributeBase(MaxHealth, Unlowered);
+		return;
+	}
+
+	// LOWERED. `UCataclysmVitalAttributeSet::PostAttributeChange` brings health
+	// above the new maximum down to it, by a write and not by a blow: no hit,
+	// no event of damage, nobody credited. The record is kept before the write,
+	// because that write can run rows of the carrier's own.
+	const float Lowered = Unlowered * (100.0f - Wanted) / 100.0f;
+	UnloweredMaximumHealth = Unlowered;
+	LoweredMaximumHealthWritten = Lowered;
+	SetNumericAttributeBase(MaxHealth, Lowered);
+	// AS THE ENGINE STORED IT, which is what a later call compares with.
+	LoweredMaximumHealthWritten = GetNumericAttributeBase(MaxHealth);
 }
 
 float UCataclysmAbilitySystemComponent::AilmentRiderPercentNow(ECataclysmAilmentRider Kind) const
