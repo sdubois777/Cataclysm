@@ -116,6 +116,7 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_Infernal_Seals");
 const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Celestial_Sanctioned_Passage");
 const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
+const TCHAR* UCataclysmDungeonModifierEffects::AngelicWardensKey = TEXT("Celestial_Angelic_Wardens");
 const TCHAR* UCataclysmDungeonModifierEffects::HeavensQuakeKey = TEXT("Celestial_Heaven_s_Quake");
 const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Cryptquake");
 const TCHAR* UCataclysmDungeonModifierEffects::SoulChainsKey = TEXT("Death_Soul_Chains");
@@ -817,6 +818,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// section but the last until the creatures the floor placed in it are slain, and the stairs seal the last.
 		// Elsewhere it is the sealed stairs alone; see the key. Issues #1820 and #41.
 		|| RowKey == FName(LightforgedWallsKey)
+		// ANGELIC WARDENS, BUILT 2026-10-08 ON THE OWNER'S READING OF WHAT WAKES A STATUE: the player coming near, or
+		// using a skill near it. "Trigger certain traps" is not built, the game having no trap a player triggers; see
+		// the key. Issues #1820 and #41.
+		|| RowKey == FName(AngelicWardensKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -994,6 +999,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfernalSealsKey),
 		FName(SanctionedPassageKey),
 		FName(LightforgedWallsKey),
+		FName(AngelicWardensKey),
 		FName(HeavensQuakeKey),
 		FName(CryptquakeKey),
 		FName(SoulChainsKey),

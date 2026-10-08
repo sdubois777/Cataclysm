@@ -36,6 +36,9 @@ HARMLESS = {
     "FloorSections": "ruled 2026-10-08: a closed section barrier's cells are Solid in the plan, which the placement "
                      "rule refuses before it asks what is held, and an opened barrier's cells are ordinary floor, so "
                      "they are not added to the cells the floor holds; nothing is placed from this list",
+    "AngelicStatues": "ruled 2026-10-08: a standing statue's cell is Solid in the plan, which the placement rule refuses "
+                      "before it asks what is held; a woken statue's cell is ordinary floor, and the warden raised "
+                      "on it is held as any living creature's cell is",
 }
 
 POSITION_FIELD = re.compile(r"\bFVector\s+\w*(Location|Where|At|Point|Middle)\b")

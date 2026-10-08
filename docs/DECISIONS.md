@@ -2,6 +2,391 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — Angelic Wardens places statues that wake into Abyssal Wardens when the player comes near one or uses a skill near it, and the row is Built
+
+**Not built and not run.** The writing session wrote the code, nine Unreal tests, two Python checks and this
+entry, in one commit. It compiled nothing and ran no Unreal test. It ran the Python tests in `tools/tests`, the
+lint and the conflict check before the commit, and nothing else. Every statement below about what the engine
+does is read from the code. No outcome of a build or of an Unreal run is recorded here.
+
+**Said first: the row's words "trigger certain traps" are not built.** The game has no trap a player triggers.
+Only the owner's two triggers are built: coming near a statue, and using a skill near one.
+
+**Said first: the game has no Celestial creature.** All seven creature kinds are the Demonic roster
+(`ECataclysmDungeonCreature`). A demon, the Abyssal Warden, stands where an angelic statue was.
+
+**Said first: how close a statue can be passed, and where the writing session's reading of the code differs
+from what it was told.** The writing session was told to say "a statue in a corridor one cell wide cannot be
+passed without waking it". Read from the code, a statue is not placed where it would close a passage: placement
+refuses any cell whose closing would leave a walkable cell unreachable (`CataclysmFloorCanBlock`,
+`CataclysmFloorPlan.cpp` line 51). So no statue stands across a passage one cell wide that leads anywhere. The
+narrowest connection a Halls floor carves is two cells (`FCataclysmFloorGenerator::LeastConnectionWidth`,
+`CataclysmFloorGenerator.h` line 182). In a corridor two cells wide, a statue against one wall leaves one lane.
+That lane's far wall is 6 metres from the statue's centre and the statue wakes at 5. A player whose centre is
+more than 5 metres from the statue's centre passes; that is a strip against the far wall less than a metre
+wide, less the half-width of the player's body. The width of the player's body was not read. A player who
+walks down the middle of that lane wakes the statue. No Caverns floor was read for its narrowest passage.
+
+**Said first: a woken warden draws one enemy modifier, as any Elite does.** The count is the rarity step
+(`UCataclysmEnemyModifiers::CountForRarityStep`, `CataclysmEnemyModifiers.cpp` line 83) and Elite is step 1 in
+`game/Data/EnemyRarities.csv`. A creature's damage type defaults to Demonic (`CataclysmEnemyCharacter.h` line
+1831), so the draw is from the 8 Demonic and 10 Generic rows of `game/Data/EnemyModifiers.csv`, counted by
+script. It does not draw Celestial rows. Two of those rows bear on being hurt: Sacrificial Bond (a large enough
+blow kills a bonded creature, since the layer under this one) and Unholy Sigils (a creature is held at one
+health only while it stands in a sigil). Neither stops a floor being finished, because a warden never holds
+the stairs sealed.
+
+**Said first: the hunt is not tested by making a warden walk.** No test here runs a creature's brain or the
+world's tick. The test asserts the distance the warden notices the player from. See Tests, T5.
+
+**Said first: walking within 5 metres across a closed barrier is not tested, because in a straight line it
+cannot happen.** A barrier's cell is 4 metres across and a player cannot stand on it while it is closed. The
+nearest a player in the next section can stand to a statue's centre straight across a barrier is 6 metres. The
+skill, which reaches 12 metres, is the trigger the test puts across a barrier. Both triggers ask the barrier
+question in one function. See Tests, T6, and Not covered by a test.
+
+**Said first: the picker named to the writing session is not the one Shadowy Enemies uses.** The writing
+session was told the statues use "`FloorSourceCells` with the beside-a-wall rule (the picker Shadowy Enemies
+uses for its light zones)". Shadowy Enemies calls `EternalChorusCells` (`CataclysmDungeonGameMode.cpp` line
+9926), which is `FloorSourceCells` without the beside-a-wall rule (line 3785). The beside-a-wall picker is
+Infested Veins' (line 3802). The ruling's words and its reason for 5 metres ("a statue against the wall") both
+say beside a wall, so the statues are placed beside a wall. The count of 3 is still the count of Shadowy
+Enemies' light zones.
+
+### The row and the owner's words
+
+`game/Data/DungeonModifiers.csv`, `Celestial_Angelic_Wardens`, danger 10: "Massive angelic statues are
+scattered throughout the dungeon. When players trigger certain traps or violate "divine laws," these statues
+animate and relentlessly hunt them for the rest of the floor."
+
+The owner, 2026-10-08, asked what wakes a statue: "I forget the exact wording of this one, but i'm pretty sure
+it was meant to be when you get close or use an ability near them?"
+
+It is part of issues #1820 and #41.
+
+### Rulings
+
+Each of these is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08,
+resting on the owner's words above. The registering session, not the coordinating session, made every reading
+of the code the rulings name. Every number is a judged number for the owner's play-check, with its reason.
+
+1. **Before it wakes a statue is a pillar on one cell** (`ACataclysmFloorObstacle`, the pillar kind, in the
+   row's colour) and not a creature. It cannot be hurt, targeted or counted. A dormant creature is not built:
+   nothing in the code stops and restarts a creature thinking, and every rule that counts or targets creatures
+   would have to learn to leave a dormant one out.
+2. **Three a floor**, picked by `FloorSourceCells` with the beside-a-wall rule, on cells at least 20 metres
+   from the entrance, each passed through the game mode's `AnObstacleMayClose`. A cell refused is skipped, so
+   a floor may have fewer. The reason for 3: the same count as the light zones of Shadowy Enemies; the row's
+   danger is 10, the lowest band.
+3. **What wakes one, either of two.** The player comes within 5 metres of the statue's centre. The reason: a
+   cell is 4 metres, so a statue against the wall of a hall two or more cells wide can be passed on the far
+   side. Or the player uses a skill other than the basic attack while within 12 metres of the statue, three
+   cells. The reason: a fight beside a statue wakes it and a fight in the next room does not. The basic attack
+   is left out as Wild Magic leaves it out. Neither has a wall test, as no target search has. The distance is
+   checked on the game mode's beat and the skill in `OnSkillWasUsed`.
+4. **Waking.** The pillar is removed, its cell becomes walkable again, and an Abyssal Warden
+   (`ECataclysmDungeonCreature::AbyssalWarden`) at the Elite rung, rarity step 1, is raised on that cell by
+   `SpawnPlacedCreature`, at once, with no warning marker. Each statue wakes once.
+5. **The hunt.** The warden is raised with a new constant for this row, set equal to
+   `VengefulWraithsSightMultiplier`, the figure that covers the largest floor corner to corner, as
+   `TheReaperSightMultiplier` is. It gets the three lines the Reaper has in `RaiseTheReaper`: added to
+   `FloorEnemies`, `bRaisedByARule = true`, added to `CreaturesRaisedByARule`.
+6. **Why the Abyssal Warden.** It is the kind every rule already uses for a single creature that comes for the
+   player (the Reaper, the Unstable Portal's mini-boss), and it walks slower than the slowest class. Not the
+   Brute.
+7. **A woken warden can be killed.** It drops as an Elite does. It does not count for any rule that seals the
+   stairs: creatures a rule raised are left out of those counts.
+8. **A woken warden stays awake and a slain one stays slain after the player dies and returns.** Nothing
+   special is built for it.
+9. **On a floor in sections** (Lightforged Walls on the same floor) a statue behind a closed barrier is not
+   woken from the other side, by the test Sacrificial Bond's ally search uses, asked of the section of the
+   statue's cell and the section of the player's cell. A woken warden carries no section and holds no barrier
+   shut. On Caverns and in a Horde arena the same rule applies and nothing needs sections.
+10. **The panel**: one line, "angelic wardens: N statues standing, M awake".
+11. **The row is Built** (`BuiltStateOf` answers Built), on the owner's reading.
+
+### What was read before writing
+
+All in `game/Source/Cataclysm/`. Line numbers are of the files as this commit leaves them.
+
+- `Dungeon/CataclysmDungeonGameMode.cpp`: `RaiseTheReaper` (line 2728) and `RaiseTheUnstablePortalsWarden`
+  (line 12662), whole; `SpawnPlacedCreature` (line 2137), whole; `ApplyDesignedStats` (line 1634), its opening
+  and the fixed-rung rule, not every creature's case; `PopulateFloor` (line 1762), whole; `ClearFloorEnemies`
+  (line 1719); `StartPlay` (line 1263); `GoToFloor` (line 20686), whole; `FloorSourceCells` (line 3807),
+  `EternalChorusCells` (line 3785), `InfestedVeinsCells` (line 3802), `PlaceTheShadowLights` (line 9913) and
+  `ForgetTheShadowLights`; `BlockCellsWithPillars` (line 6103) and `UnblockCellsAndDestroyPillars` (line
+  6140); the sections' functions from `FloorGetsSections` to `FloorPopulationNow`, whole, among them
+  `CloseTheSectionBarriers` (line 6296), `StepTheSectionBarriers` (line 6328), `AClosedBarrierStandsBetween`
+  (line 6416) and `AnObstacleMayClose` (line 6443); `CellsTheFloorHolds` (line 6946) and `CellsHeldOrWarned`
+  (line 7043); `EndTheFloorObstacles` (line 7222); `OnSkillWasUsed` (line 12370) and the opening of
+  `NoteSkillUseForEchoChamber`; `LeaveEmpireDungeon` (line 13125), its resets; the beat's list of flags and
+  its steps for the Reaper, Lightforged Walls and Shadowy Enemies; `LiveCountsForTheFloor` (line 17205), its
+  opening and the Reaper's, Lightforged Walls' and Reality Twister's lines; `IsOneOfTheFloorsOwnStanding`
+  (line 4327); the part of `ApplyFloorRulesToPlayer` that empties `CreaturesRaisedByARule` (line 20303).
+- `Dungeon/CataclysmFloorPlan.cpp`: `CataclysmFloorCanBlock` (line 51) and
+  `CataclysmFloorCanBlockBesideBarriers` (line 133), whole. `Dungeon/CataclysmFloorPlan.h`: their comments.
+- `Dungeon/CataclysmFloorObstacle.h`, whole. `Dungeon/CataclysmDungeonFloor.cpp`: `BlockCell` and
+  `UnblockCell` (lines 243 to 260). `Dungeon/CataclysmFloorContents.cpp`: that `ClearTheFloor` destroys every
+  `ACataclysmFloorObstacle` (line 139), not the whole file.
+- `Dungeon/CataclysmFloorGenerator.h`: `FCataclysmFloorSections` (line 84) and the size constants.
+- `AbilitySystem/CataclysmCombatEvents.h`: `FCataclysmSkillUsedNotice` (line 220).
+  `AbilitySystem/CataclysmCombatEvents.cpp`: `NoteSkillUsed` (line 312).
+- `Character/CataclysmPlayerCharacter.cpp`: `Revive` (line 1682).
+  `Character/CataclysmEnemyCharacter.cpp`: `DrawModifiersForRarity` (line 1533).
+- `Dungeon/CataclysmDungeonModifierEffects.cpp`: `BuiltStateOf` and `KeysWithARule`, whole.
+- `Tests/CataclysmDungeonModifierEffectsTests.cpp`: the Lightforged Walls section tests' helpers and the first
+  four of those tests, whole; the Wild Magic helpers and its no-roll test; the Reaper's first test; the tests
+  that walk `KeysWithARule` and `BuiltStateOf`.
+- `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py`, whole, and the Lightforged Walls,
+  Labrynth and War rules' cases in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`.
+
+**Not read:** any charge, blink, knockback or leap code; the save writer and what a loaded save restores; the
+floor panel's widget; the navigation mesh's rebuild; every other rule's `Place...` function beyond the ones
+named; each creature kind's case in `ApplyDesignedStats`.
+
+### What it is for
+
+`Celestial_Angelic_Wardens` in `game/Data/DungeonModifiers.csv`, quoted above. No enchantment row and no stat
+is involved.
+
+### How it is built
+
+**The figures** (`CataclysmDungeonModifierEffects.h` lines 6394 to 6405): `AngelicWardensStatuesPerFloor` 3,
+`AngelicWardensWakeWithinCm` 500, `AngelicWardensSkillWakesWithinCm` 1200, `AngelicWardensRung` 1, and
+`AngelicWardensSightMultiplier`, set equal to `VengefulWraithsSightMultiplier` (30). The key is
+`AngelicWardensKey` (line 1886). `BuiltStateOf` answers Built for it (`CataclysmDungeonModifierEffects.cpp`
+line 824) and `KeysWithARule` lists it (line 1002).
+
+**A statue** is one entry of `AngelicStatues` (`CataclysmDungeonGameMode.h` lines 4148 to 4162): its cell, the
+section of that cell, whether it has woken, its pillar, and its warden once woken.
+
+**Placing** (`PlaceTheAngelicStatues`, `CataclysmDungeonGameMode.cpp` line 6538, and `PlaceAnAngelicStatueOn`,
+line 6503). On a floor carrying the row, `FloorSourceCells` picks up to 3 cells beside a wall, at least 20
+metres from the entrance and from each other. Each is asked of `AnObstacleMayClose` and a cell refused is
+skipped. An accepted cell is closed with one pillar by `BlockCellsWithPillars`, the helper the shortcut gates
+and the section barriers use, so the cell is Solid in the plan.
+
+**When they are placed** (`PopulateFloor`, lines 1964 to 1970): where a new arena is populated, after every
+other rule's objects and before the floor's creatures. After the objects, so each object's cell is already
+held and no statue is put on it. Before the creatures, so the populator, which places only on walkable cells,
+puts none on a statue. The section barriers are already closed at that point (line 1833), so a statue is
+never placed on a barrier's cell and the question asked of each cell is the wider one a floor in sections
+asks.
+
+**The proximity trigger** (`StepAngelicWardens`, line 6648) runs on the quarter-second beat while the arena
+holds a statue, after the section barriers are stepped. **The skill trigger** (`NoteSkillUseForAngelicWardens`,
+line 6671) is called from `OnSkillWasUsed` (line 12379) before that function's Wild Magic returns. It acts for
+the player's own skill, not the basic attack. Both call `WakeTheAngelicStatuesNear` (line 6611), which wakes
+every standing statue whose centre is within the distance, flat, of where the player is, unless a closed
+barrier stands between the statue's section and the section of the player's cell. "Within" is at or within.
+
+**The barrier question** is `AClosedBarrierStandsBetweenSections` (line 6423). It is the loop that was inside
+`AClosedBarrierStandsBetween`, moved out so it can be asked of two section numbers.
+`AClosedBarrierStandsBetween` (line 6416) now calls it with its two creatures' sections. Its answers are
+unchanged: false when either has no section, otherwise whether any barrier between the two sections is closed.
+
+**Waking** (`WakeTheAngelicStatue`, line 6580). The statue is marked woken first, whether or not the spawn
+succeeds, as the Reaper is raised once. Its pillar is destroyed and its cell made walkable by
+`UnblockCellsAndDestroyPillars`. An Abyssal Warden is raised on the cell by `SpawnPlacedCreature` with the
+row's sight multiplier and the fixed rung 1. It is added to `FloorEnemies`, marked `bRaisedByARule`, and added
+to `CreaturesRaisedByARule`.
+
+**Forgetting** (`ForgetTheAngelicStatues`, line 6560) is called in two places: in `PopulateFloor` just before
+the statues are placed, and in `LeaveEmpireDungeon` (line 13209). It is not among the per-floor resets in
+`ApplyFloorRulesToPlayer`, which runs after `PopulateFloor` and on every Horde wave: a reset there would
+forget the statues just placed. A statue whose pillar still stands gives its cell back. A statue whose pillar
+went with the last floor's actors names a cell of a plan that no longer exists and touches nothing: by then
+the new floor's section barriers are closed, and `UnblockCell` on that cell could open one of them.
+
+**The panel** (`LiveCountsForTheFloor`, lines 18333 to 18337): "angelic wardens: N statues standing, M awake".
+The beat draws the panel again when either count moves.
+
+**What the code does that the rulings ask it to say:**
+
+- **After the player dies and returns.** `Revive` (`CataclysmPlayerCharacter.cpp` line 1682) clears the dead
+  mark and stands the player at the entrance. Neither the death nor the return calls `PopulateFloor` or
+  touches `AngelicStatues` or `FloorEnemies`. So a standing statue still stands, a woken warden is still
+  awake, and a slain one is still slain. A living warden notices the returned player from the entrance,
+  because its sight covers the floor.
+- **A woken warden and the stairs.** `IsOneOfTheFloorsOwnStanding` (line 4327) answers false for a creature
+  marked `bRaisedByARule` or listed in `CreaturesRaisedByARule`. Lightforged Walls, `FloorIsCleared` and the
+  sections count by it. `ApplyFloorRulesToPlayer` empties `CreaturesRaisedByARule` each time it applies a
+  floor's rules (line 20303), which the comment in `PopulateFloor` says is on every Horde wave too; the
+  creature's own mark is not emptied, so a warden kept by a Horde arena is still left out.
+- **A Horde arena.** Its later waves do not replace the arena, so its statues and its woken wardens are kept,
+  as its other rules' fixtures are. A wave whose floor does not carry the row keeps the arena's statues and
+  shows no panel line.
+- **A woken warden's drops are marked as a rule's**, so a drop of its rolls nothing for Trick or Treat. This is
+  read from the comment on `bRaisedByARule` (`CataclysmEnemyCharacter.h` lines 1429 to 1437), not from the
+  drop code.
+
+### For the owner's play-check
+
+**What a player sees.** On a floor carrying the row, up to three pillars in the row's colour stand against
+walls, none within 20 metres of the entrance or of each other. Walking within 5 metres of one, or using any
+skill but the basic attack within 12 metres of one, removes the pillar and puts an Abyssal Warden at the Elite
+rung on its cell at once. The warden notices the player from anywhere on the floor. It can be killed and drops
+as an Elite does. The floor panel reads "angelic wardens: N statues standing, M awake".
+
+**Every judged number, and the reading not taken:**
+
+- **5 metres** to wake by coming near. Not taken: a whole cell or less, which a player could pass in any hall;
+  or more, which would make a two-cell corridor impassable without waking.
+- **12 metres** for a skill. Not taken: the whole floor, which would wake every statue at the first skill; or
+  the skill's own reach, which the notice does not carry.
+- **3 statues a floor.** Not taken: a count that grows with the floor's size or the dungeon's tier.
+- **The Abyssal Warden at the Elite rung.** Not taken: the Brute; a Common, which the Reaper is; a new
+  Celestial creature, which the game does not have.
+- **The warden's one enemy modifier**, drawn from the Demonic and Generic rows. Not taken: no modifier, or a
+  Celestial draw.
+- **The corridor.** A statue against the wall of a two-cell corridor can be passed only along the far wall.
+  See the third said-first item.
+- **The basic attack never wakes a statue**, at any distance. A player can fight beside a statue with basic
+  attacks alone, from more than 5 metres.
+- **A skill wakes every statue within 12 metres at once**, so one skill used between two statues could wake
+  both. Statues are at least 20 metres apart, so that takes a place within 12 metres of each.
+- **No wall test.** A skill used in the next room wakes a statue within 12 metres through the wall, and a
+  player on the far side of a wall within 5 metres wakes one by walking. Only a closed section barrier stops
+  either.
+
+### Judgements by the writing session
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **"M awake" counts the woken wardens that still stand.** A slain warden is not counted. The ruling gives the
+   line and does not say whether a slain warden is awake. Not taken: counting every statue that has woken.
+2. **`AnObstacleMayClose` is asked from the floor's entrance, not from the player's cell.** The statues are
+   placed while the floor is populated. At the start of play there is no player's body yet, and on a later
+   floor the player still stands where they stood on the last one, so `ThePlayersCell` would answer a cell
+   that is not this floor's and every statue would be refused. The entrance is where the player is then stood.
+3. **The cells held are those `CellsHeldOrWarned` names**, which is `CellsTheFloorHolds` and every shortcut's
+   corridor. So no statue stands in a gated shortcut's corridor, as no pillar or pit of Heaven's Quake or
+   Cryptquake does. The ruling names `AnObstacleMayClose` and not which cells are held.
+4. **A cell refused is skipped and no other is tried**, as ruled, so a floor on which all three are refused
+   has no statue. Its panel line then reads "0 statues standing, 0 awake". Not measured: how often a cell is
+   refused.
+5. **`AngelicStatues` is not read by `CellsTheFloorHolds`.** It is named in the Python check's list of kept
+   cells that are safe unheld, with the reason: a standing statue's cell is Solid in the plan, which placement
+   refuses before it asks what is held, and a woken statue's cell is ordinary floor.
+6. **A statue is marked woken before its warden is raised**, so a statue whose warden could not be spawned is
+   gone and does not try again. The Reaper is raised once in the same way.
+7. **The player's skill is measured from where the player stood** (`Notice.Location`), not from where the
+   skill was aimed. The ruling says "with the player within 12 metres".
+8. **`PlaceAnAngelicStatueOn` is public** so a test can place a statue on a cell it chose. The rule's own
+   placement goes through it, so a test's statue is asked the same question.
+9. **A test puts a warden's modifier rows aside before it kills it**, after asserting what it drew. Thorns of
+   Glass, Beguiling and Shielder each change what one blow does, and the draw is random.
+
+### Research
+
+No source was read. The shape of the rule was ruled from the owner's words, and no formula is proposed here.
+
+### Tests
+
+Nine in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group
+`Cataclysm.DungeonModifierEffects`, none run. Each steps the game mode's beat by hand and moves no clock.
+Distances are flat, from the middle of the statue's cell to where the test put the player: 4.5 and 5.5 metres
+for the walk, 11.5 and 12.5 for the skill. A test that uses a statue the rule placed tries dungeon seeds 1 to
+20 for one with a walkable place at each distance that is more than 13 metres from every other statue.
+
+- `AngelicWardensFiguresAndTheRowBuilt`: the five figures, that the row has a rule, and that it is Built.
+- **T1** `AngelicWardensStatuesStandAsPillarsWhenTheFloorBeginsAndNoCreatureIsMade`: at most 3 statues; each
+  cell is not walkable and carries one pillar; each is 20 metres or more from the entrance and from the
+  others; the pillars are the only obstacles; no warden is awake, no creature was raised by a rule, none
+  stands on a statue's cell; the floor is one area and every walkable cell is reached from the entrance; the
+  panel line. Control: the same seed without the row has no statue and no pillar, each of those cells is
+  walkable and beside a wall, and the panel has no line.
+- **T2** `AngelicWardensAStatueWakesWhenThePlayerComesWithinFiveMetresAndNotFromJustOutside`: control, two
+  beats at 5.5 metres wake nothing; at 4.5 metres nothing wakes before the beat and one statue wakes on it,
+  the one the player came near, with one warden on its cell and one creature more among the floor's.
+- **T3** `AngelicWardensASkillUsedWithinTwelveMetresWakesAStatueAndTheBasicAttackDoesNot`: controls, a skill
+  at 12.5 metres, the basic attack at 11.5, a creature's skill at 8, and two beats standing at 11.5 each wake
+  nothing; then the same skill in the Heavy slot at 11.5 metres wakes the statue with no beat.
+- **T4** `AngelicWardensAWokenWardenIsAnEliteAbyssalWardenThatSealsNoStairsAndCanBeKilled`, on a floor that
+  also carries Lightforged Walls: control, a creature no rule raised is one of the floor's own and seals the
+  stairs; the warden is an Abyssal Warden at step 1, among the floor's creatures, marked raised by a rule,
+  not one of the floor's own, can be hurt, pays for its death, carries no section, and drew one modifier
+  that is a Demonic or Generic row; with the other creature slain and the warden standing nothing seals the
+  stairs; then one blow kills it and it is no longer counted awake. `CreaturesRaisedByARule` is private, so
+  that list is asserted through `IsOneOfTheFloorsOwnStanding`, which reads it.
+- **T5** `AngelicWardensAWokenWardenNoticesThePlayerFromFurtherThanTheLargestFloorIsAcross`: the warden has
+  the row's multiplier and notices from further than the largest floor, 48 cells of 4 metres, is from corner
+  to corner, and than this floor is. Control: its own sight without the multiplier is less than its distance
+  to the entrance. **This is asserted in place of the warden walking to the player.**
+- **T6** `AngelicWardensAStatueBehindAClosedBarrierIsNotWokenFromTheOtherSideAndIsOnceItOpens`: a statue
+  placed by hand on a cell of section 1 straight across barrier 0 from a free cell of section 0, where the
+  player stands 8 metres from it. Closed: the question answers true and the skill does not wake it. Section 0
+  slain and one beat: the barrier opens and the statue still stands. Open: the question answers false and the
+  same skill from the same place wakes it. Then a second statue on the same cell wakes when the player stands
+  in the opened barrier's cell 4.5 metres from it.
+- **T7** `AngelicWardensAWokenStatuesPillarIsGoneItsCellIsWalkableAndThePanelFollows`: before, the cell is
+  not walkable, one pillar stands, the panel reads N and 0; after, the cell is walkable, no pillar stands, one
+  pillar fewer is in the world, the panel reads N less 1 and 1; with the warden slain it reads N less 1 and 0.
+- **T8** `AngelicWardensEachStatueWakesOnceAndStaysWokenAfterThePlayerDiesAndReturns`: control, the first
+  approach raises one warden; four more beats, leaving and coming back, and a skill beside it raise no
+  second; after the player dies and returns the same warden is awake on the same cell, no statue came back,
+  none woke, and the woken cell is still walkable with no pillar.
+
+Two Python checks changed, both run. `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py` gains
+`AngelicStatues` in its list of kept cells that are safe unheld; before that addition the check named
+`AngelicStatues` as missing, read by running its search on the changed header.
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` gains
+`test_angelic_wardens_row_still_names_statues_that_animate_and_hunt_and_the_traps_not_built`, which pins the
+six phrases of the row the readings rest on. No existing test's assertion changed: no test pinned this row as
+not built.
+
+### The guard proofs proposed
+
+None was run. Each line is counted once in `CataclysmDungeonGameMode.cpp`.
+
+1. **The proximity distance.** Line 6658,
+   `WakeTheAngelicStatuesNear(Player->GetActorLocation(), Effects::AngelicWardensWakeWithinCm);`, with
+   `AngelicWardensWakeWithinCm` changed to `AngelicWardensSkillWakesWithinCm`. T2 should fail on 4 assertions:
+   "from 5.5 metres no statue wakes", "and no warden is raised", "its pillar still stands" and "at 4.5 metres
+   nothing wakes before the beat". The same break should also fail T3 on 2 ("standing 11.5 metres away for
+   two beats wakes nothing" and "so no warden is awake yet") and stop T6 at its set-up line "the statue still
+   stands, eight metres from the player, after that beat".
+2. **The basic-attack exclusion.** Line 6686,
+   `const bool bTheBasicAttackWakesNothing = Notice.Slot == ECataclysmAbilitySlot::BasicAttack;`, with the
+   right-hand side changed to `false`. T3 should fail on 4 assertions: "the basic attack used 11.5 metres away
+   wakes nothing", "a skill someone else used eight metres away wakes nothing", "standing 11.5 metres away for
+   two beats wakes nothing" and "so no warden is awake yet". The last three fail because each compares the
+   count of standing statues, or of wardens, with the count before the basic attack. No other test uses the
+   basic attack.
+3. **The closed-barrier exclusion.** Line 6634,
+   `const bool bAStatueIsParted = AClosedBarrierStandsBetweenSections(One.Section, PlayersSection);`, with
+   the right-hand side changed to `false`. T6 should fail on 3 assertions: "across the closed barrier a skill
+   used eight metres away does not wake the statue", "and its pillar still stands", and its set-up line "the
+   statue still stands, eight metres from the player, after that beat", where it stops. No other test has a
+   closed barrier when a trigger is asked.
+
+### Not covered by a test
+
+- A warden walking to the player. See T5.
+- The proximity trigger across a closed barrier. See the said-first item. Two sections can touch at a corner,
+  where a player could stand within 5 metres of a statue in the other section; no test looks for such a floor.
+- A statue on a Caverns floor and in a Horde arena, and a Horde arena's later waves keeping its statues.
+- A statue refused by `AnObstacleMayClose`, and a floor with fewer than 3 or with none.
+- `LeaveEmpireDungeon` giving the statues' cells back.
+- A loaded save: the save writer was not read, so what a save restores of statues and wardens is not known.
+- The warden's drops, and that a drop of its rolls nothing for Trick or Treat.
+- A charge, a blink, a knockback or a leap that ends on a statue's cell. That code was not read. A statue is
+  the same actor as a Heaven's Quake pillar and a section barrier's pillar, so it stops what those stop.
+- Whether the navigation mesh under a woken statue's cell is walkable again before the warden first asks for
+  a path. The pillar's navigation modifier goes with the pillar; when the mesh is rebuilt was not read.
+- The warden's body against a player standing beside the pillar when it wakes. A player's centre can be about
+  2 metres from the cell's centre plus the half-width of their own body; neither body's width was read.
+- A floor that Reality Twister gives this row, and any existing test whose floor now draws it because it is
+  Built: the row joins the rows Reality Twister may add (`DungeonEveryBuiltModifier`). No existing test was
+  read for that.
+
+### What the row needs, for the session that writes rows
+
+Nothing. The row is in `game/Data/DungeonModifiers.csv` already and this layer adds no stat, condition or
+scale. No dry run of the generator was made because no data row is written.
+
+---
+
 ## 2026-10-08 — Three sentences on channelling are built as five rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),
