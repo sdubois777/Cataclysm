@@ -25265,6 +25265,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsSpinStopsTest,
  * default, so the first half passes whether or not the skill clears its own. The second half turns that variable
  * off for its length and puts it back: there, only the skill's own two lines stop the spin.
  *
+ * THE VARIABLE IS PROCESS-WIDE WHILE THIS ONE TEST RUNS. It is the engine's, not this world's, so for the length of
+ * the second half every ability in the process ends without the engine's sweep. It is put back on every way out: a
+ * scope exit covers each early return, and the last line of the test puts it back itself and reads it.
+ *
  * STANDING: the spinner at the origin with its target 2 m along X; the control 20 m along Y with its target 2 m
  * along X from it. A spin reaches 3.5 m, so neither reaches the other pair.
  */
@@ -25362,6 +25366,12 @@ bool FCataclysmHitCancelsSpinStopsTest::RunTest(const FString&)
 	TestEqual(TEXT("with the engine's sweep off, the ended spin still takes nothing more from its target"),
 			  Lost(Target), FirstSwingAgain, 0.01f);
 	TestEqual(TEXT("and has still made the one swing and no other"), Spin->SwingsMade, 1);
+
+	// AND THE VARIABLE IS PUT BACK, HERE AND NOT ONLY BY THE SCOPE EXIT ABOVE, so that it can be read back. The scope
+	// exit stays for every early return; on this path it writes the same value a second time.
+	Sweep->Set(SweepWas, ECVF_SetByConsole);
+	TestEqual(TEXT("the engine's console variable is back at the value it had before this test"), Sweep->GetInt(),
+			  SweepWas);
 	return true;
 }
 
@@ -26052,6 +26062,159 @@ bool FCataclysmHitCancelsOwnSwingTest::RunTest(const FString&)
 	TestEqual(TEXT("and its target loses nothing more in the next four seconds"), Lost(Thorned), FirstSwing, 0.01f);
 	TestTrue(TEXT("control: the spin with no row went on to make at least seven swings"),
 			 PlainSpin->SwingsMade >= 7);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsOwnThrowTest,
+	"Cataclysm.HitCancels.ARackCutShortByTheRetaliationForItsOwnFirstThrowThrowsNothingMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The same cancel from inside the skill's own blow, for a rack of throws. A rack that states no speed lands each
+ * throw as it is made, so a target that retaliates strikes back inside the first throw, and the timers that throw
+ * the rest are set after that throw returns. `UCataclysmProjectileSkill::BeginEmptyingTheRack` asks whether the
+ * skill is still running before it sets them, and this is the test of that question.
+ *
+ * A RACK OF FOUR, ONE EVERY HALF SECOND. The wearer's is over as soon as it is used, and a second and three
+ * quarters later it has still made one throw and its target has lost what that one took. THE CONTROL is a fighter
+ * with no row throwing at a retaliating target of its own: it is struck back just the same and throws at least
+ * three.
+ *
+ * STANDING: the wearer at the origin with its retaliating target 3 m along X; the control 20 m along Y with its
+ * own 3 m along X from it. A rack reaches 10 m, so neither reaches the other pair.
+ */
+bool FCataclysmHitCancelsOwnThrowTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Thorned(World, FVector(3 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter PlainThorned(World, FVector(3 * M, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Thorned, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(PlainThorned, 0.0f, 0.0f);
+	Thorned.Set(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 50.0f);
+	PlainThorned.Set(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 50.0f);
+	WearTheFlag(Wearer);
+
+	const TCHAR* const RackParams = TEXT("Range=10; Radius=1; Count=4; Duration=10; Interval=0.5");
+	UCataclysmProjectileSkill* WearerRack = GrantSkill<UCataclysmProjectileSkill>(
+		Wearer, ECataclysmAbilitySlot::Special, RackParams, TEXT("Rack"));
+	UCataclysmProjectileSkill* PlainRack = GrantSkill<UCataclysmProjectileSkill>(
+		Plain, ECataclysmAbilitySlot::Special, RackParams, TEXT("Rack"));
+	if (!TestTrue(TEXT("set-up: both fighters were granted the rack"), WearerRack && PlainRack)
+		|| !TestTrue(TEXT("set-up: both racks are used"), Activate(Wearer, WearerRack) && Activate(Plain, PlainRack)))
+	{
+		return false;
+	}
+
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	const float FirstThrow = Lost(Thorned);
+	if (!TestTrue(TEXT("set-up: each rack made one throw as it began, and it hurt its target"),
+				  WearerRack->ThrowsMade == 1 && PlainRack->ThrowsMade == 1 && FirstThrow > 1.0f
+					  && Lost(PlainThorned) > 1.0f)
+		|| !TestTrue(TEXT("set-up: and each target struck back in the same call, taking health from its attacker"),
+					 Lost(Wearer) > 1.0f && Lost(Plain) > 1.0f))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a wearer struck back for its own first throw is no longer emptying its rack"),
+			  WearerRack->IsActive());
+	TestTrue(TEXT("control: a fighter with no row, struck back the same way, is still emptying its rack"),
+			 PlainRack->IsActive());
+
+	CataclysmTestWorld::RunClock(World, 1.75f);
+
+	TestEqual(TEXT("the wearer's rack makes no throw after the one that ended it"), WearerRack->ThrowsMade, 1);
+	TestEqual(TEXT("and its target loses nothing more"), Lost(Thorned), FirstThrow, 0.01f);
+	TestTrue(TEXT("control: the rack with no row went on to make at least three throws"), PlainRack->ThrowsMade >= 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHitCancelsOwnArrivalTest,
+	"Cataclysm.HitCancels.AFlickerCutShortByTheRetaliationForItsOwnFirstArrivalArrivesNowhereElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The same cancel from inside the skill's own blow, for a flicker. Its first arrival strikes as it is used, a target
+ * that retaliates strikes back inside that blow, and the timers that make the later arrivals are set after it
+ * returns. `UCataclysmMovementSkill::ActivateAbility` asks whether the skill is still running before it sets them,
+ * and this is the test of that question.
+ *
+ * THE ROW STATES NO `Untargetable`, so the flicker can be hit; with it, as the one designed flicker has it, a blow
+ * seldom lands on one at all.
+ *
+ * A FLICKER OF 4 SECONDS, ARRIVING EVERY HALF SECOND. The wearer's is over as soon as it is used, and a second and
+ * a quarter later it has still made one arrival and its target has lost what that one took. THE CONTROL is a
+ * fighter with no row flickering at a retaliating target of its own: it is struck back just the same and makes at
+ * least three arrivals.
+ *
+ * STANDING: the wearer at the origin with its retaliating target 3 m along X; the control 20 m along Y with its
+ * own 3 m along X from it. A flicker reaches 10 m, so neither reaches the other pair. EACH FLICKER ARRIVES AT ITS
+ * TARGET'S FEET, which is what the skill does; nothing is read from where anybody stands.
+ */
+bool FCataclysmHitCancelsOwnArrivalTest::RunTest(const FString&)
+{
+	using namespace CataclysmHitCancelsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Thorned(World, FVector(3 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter PlainThorned(World, FVector(3 * M, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Thorned, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(PlainThorned, 0.0f, 0.0f);
+	Thorned.Set(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 50.0f);
+	PlainThorned.Set(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 50.0f);
+	WearTheFlag(Wearer);
+
+	// IN THE HEAVY SLOT, whose blow is one the tests above already read; a slot is a key and any skill may sit in one.
+	const TCHAR* const FlickerParams = TEXT("Mode=Flicker; Range=10; Duration=4; Interval=0.5");
+	UCataclysmMovementSkill* WearerFlicker = GrantSkill<UCataclysmMovementSkill>(
+		Wearer, ECataclysmAbilitySlot::Heavy, FlickerParams, TEXT("Flicker"));
+	UCataclysmMovementSkill* PlainFlicker = GrantSkill<UCataclysmMovementSkill>(
+		Plain, ECataclysmAbilitySlot::Heavy, FlickerParams, TEXT("Flicker"));
+	if (!TestTrue(TEXT("set-up: both fighters were granted the flicker"), WearerFlicker && PlainFlicker)
+		|| !TestTrue(TEXT("set-up: both flickers are used"),
+					 Activate(Wearer, WearerFlicker) && Activate(Plain, PlainFlicker)))
+	{
+		return false;
+	}
+
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	const float FirstArrival = Lost(Thorned);
+	if (!TestTrue(TEXT("set-up: each flicker made one arrival as it began, and it hurt its target"),
+				  WearerFlicker->Arrivals == 1 && PlainFlicker->Arrivals == 1 && FirstArrival > 1.0f
+					  && Lost(PlainThorned) > 1.0f)
+		|| !TestTrue(TEXT("set-up: and each target struck back in the same call, taking health from its attacker"),
+					 Lost(Wearer) > 1.0f && Lost(Plain) > 1.0f))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a wearer struck back for its own first arrival is no longer flickering"),
+			  WearerFlicker->IsActive());
+	TestTrue(TEXT("control: a fighter with no row, struck back the same way, is still flickering"),
+			 PlainFlicker->IsActive());
+
+	CataclysmTestWorld::RunClock(World, 1.25f);
+
+	TestEqual(TEXT("the wearer's flicker makes no arrival after the one that ended it"), WearerFlicker->Arrivals, 1);
+	TestEqual(TEXT("and its target loses nothing more"), Lost(Thorned), FirstArrival, 0.01f);
+	TestTrue(TEXT("control: the flicker with no row went on to make at least three arrivals"),
+			 PlainFlicker->Arrivals >= 3);
 	return true;
 }
 
