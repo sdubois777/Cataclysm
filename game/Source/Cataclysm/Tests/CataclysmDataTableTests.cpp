@@ -761,7 +761,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 554 SINCE THREE SENTENCES ON DAMAGE OVER TIME, TIME IN COMBAT AND LEECHING, issue #1833, from 550.
 	//
 	// AND 558 SINCE FOUR ROWS ON STATS READ AT ONE PLACE, issue #1833, from 554.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    558)
+	//
+	// AND 562 SINCE FOUR ROWS ON WHAT A MOVEMENT SKILL DOES, issue #1833, from 558.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    562)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
