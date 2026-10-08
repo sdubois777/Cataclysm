@@ -4912,6 +4912,110 @@ namespace CataclysmStatExemptionTest
 		ProbeScaledLeech(Test, TEXT("energy_shield_leech"), ECataclysmLeechPool::EnergyShield);
 	}
 
+	/**
+	 * `minion_damage` under a scale, read by `ACataclysmMinion::AttackTarget`
+	 * through `UCataclysmCommand::SummonerMultiplierAgainst`. Issue #2284, ruled
+	 * 2026-10-07.
+	 *
+	 * THE SCALE THE DATA PAIRS WITH IT: 30 increased for each OTHER trap the
+	 * summoner commands, `traps_active` with an offset of 1, requiring
+	 * `Type.Trap`. One trap strikes alone; a second trap is summoned and the
+	 * first strikes again. A RATIO TO ITS OWN FIRST BLOW, never a figure: 1.3.
+	 * A ballista of the same summoner is the control: its blow is the same
+	 * before and after, because the row names traps.
+	 *
+	 * THE TRAP TAG IS PUT ON BY HAND, so this does not depend on what the
+	 * minion types table gives a Spike Trap.
+	 */
+	void ProbeScaledMinionDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FGameplayTag TrapTag =
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+		if (!Test.TestTrue(TEXT("minion_damage: the trap tag is registered"), TrapTag.IsValid()))
+		{
+			return;
+		}
+		FScopedFighter Summoner(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Target(World, /*AttackDamage=*/0.0f);
+
+		FCataclysmStatModifier PerOtherTrap;
+		PerOtherTrap.Bucket = ECataclysmStatBucket::Increased;
+		PerOtherTrap.Source = ECataclysmModifierSource::GearAffix;
+		PerOtherTrap.Value = 30.0f;
+		PerOtherTrap.Scale = ECataclysmStatScale::PerTrapActive;
+		PerOtherTrap.ScaleStep = 1.0f;
+		PerOtherTrap.ScaleOffset = 1.0f;
+		PerOtherTrap.RequiredTags.AddTag(TrapTag);
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("minion_damage")));
+		Line.Base = 0.0f;
+		Line.Modifiers = {PerOtherTrap};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		// FOUR METRES APART, so no spawn is refused for standing in another.
+		TArray<ACataclysmMinion*> Machines;
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmMinion* Made : Machines)
+			{
+				if (IsValid(Made)) { Made->Destroy(); }
+			}
+		};
+		const auto Summon = [&](const TCHAR* Type, float Metres, bool bATrap) -> ACataclysmMinion*
+		{
+			ACataclysmMinion* Made = ACataclysmMinion::Spawn(
+				Summoner.Actor, FVector(Metres * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/false, Type);
+			if (Made && bATrap)
+			{
+				Made->TypeTags.AddTag(TrapTag);
+			}
+			Machines.Add(Made);
+			return Made;
+		};
+		const auto BlowFrom = [&Target](ACataclysmMinion* Machine)
+		{
+			const float Before = Target.Health();
+			Machine->AttackTarget(Target.Actor);
+			return Before - Target.Health();
+		};
+
+		ACataclysmMinion* First = Summon(TEXT("SpikeTrap"), 4.0f, /*bATrap=*/true);
+		ACataclysmMinion* Ballista = Summon(TEXT("Ballista"), 8.0f, /*bATrap=*/false);
+		if (!Test.TestNotNull(TEXT("minion_damage: a spike trap"), First)
+			|| !Test.TestNotNull(TEXT("minion_damage: a ballista"), Ballista)
+			|| !Test.TestTrue(TEXT("minion_damage: the spike trap is a trap"), First->IsTrap())
+			|| !Test.TestFalse(TEXT("minion_damage: the ballista is not"), Ballista->IsTrap()))
+		{
+			return;
+		}
+		const float TrapAlone = BlowFrom(First);
+		const float BallistaBefore = BlowFrom(Ballista);
+		if (!Test.TestTrue(TEXT("minion_damage: one trap alone lands a blow"), TrapAlone > 0.0f)
+			|| !Test.TestTrue(TEXT("minion_damage: the ballista lands a blow"), BallistaBefore > 0.0f))
+		{
+			return;
+		}
+
+		ACataclysmMinion* Second = Summon(TEXT("SpikeTrap"), 12.0f, /*bATrap=*/true);
+		if (!Test.TestNotNull(TEXT("minion_damage: a second spike trap"), Second))
+		{
+			return;
+		}
+		Test.TestEqual(
+			TEXT("minion_damage is asked for with the summoner's count of traps, so with one other trap a "
+				 "trap's blow is 1.3 times its blow alone: ACataclysmMinion::AttackTarget really reads it"),
+			BlowFrom(First) / TrapAlone, 1.3f, 0.001f);
+		Test.TestEqual(TEXT("minion_damage: the ballista's blow is unchanged, since the row names traps"),
+			BlowFrom(Ballista) / BallistaBefore, 1.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -4941,6 +5045,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("life_leech"),                 &ProbeScaledLifeLeech},
 			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
 			{TEXT("energy_shield_leech"),        &ProbeScaledEnergyShieldLeech},
+			{TEXT("minion_damage"),              &ProbeScaledMinionDamage},
 		};
 		return Made;
 	}
