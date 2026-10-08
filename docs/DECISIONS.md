@@ -2,6 +2,57 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — `minion_damage` joins the stats a data row may scale, with the probe that measures its asker; no row authored here
+
+**Affects:** `tools/generate_datatables.py` (`STATS_WITH_AN_ASKER`),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (`ProbeScaledMinionDamage` and its line in
+`ScaledProbes()`). No game code, no workbook cell and no file under `game/Data` is changed. Issue
+[#2284](https://github.com/sdubois777/Cataclysm/issues/2284).
+
+### WHAT WAS FOUND
+
+**The generator refused the three trap rows that scale by a count.** Each is a row on `minion_damage` with a
+Scale, and a rehearsal on 2026-10-07 printed for each: "scales 'minion_damage' by 'traps_active', and nothing asks
+for that stat through the stat pipeline. A scaled row is never folded into its gameplay attribute, so this row
+would grant NOTHING and say nothing". The generator lets a row scale a stat only when the stat is in
+`STATS_WITH_AN_ASKER`, and every name on that list needs a probe.
+
+**The stat was asked through the pipeline all along; the list had not been brought up to it.** A machine's swing
+asks `minion_damage` in `ACataclysmMinion::AttackTarget`, by `UCataclysmCommand::SummonerMultiplierAgainst`, with
+its summoner's state. The layer that built the two count scales tested them on a trap's blow with modifiers made
+by hand. **No scaled data row on this stat had been through the generator until that rehearsal.**
+
+### WHAT WAS RULED, 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+**`minion_damage` is added to the list, with a probe.** A labelled judgement: the stat already has an asker in
+play, and the list is being brought up to the code.
+
+### WHAT WAS BUILT
+
+- **One name in `STATS_WITH_AN_ASKER`.**
+- **One probe, `ProbeScaledMinionDamage`.** A summoner is given a row made by hand as the first of the three rows
+  is written: 30 increased for each other trap, `traps_active` with an offset of 1, requiring `Type.Trap`. One
+  trap strikes a target alone; a second trap is summoned and the first strikes again. The second blow is 1.3
+  times the first. A ballista of the same summoner is the control: its blow is the same before and after. Ratios,
+  not figures. The trap tag is put on by hand, so the probe does not depend on the minion types table.
+- **No pinned count moves.** The table of scaled probes carries none, and
+  `tools/tests/test_every_scaled_stat_has_an_asker.py` holds the list and the table to the same set of names.
+
+### WHEN THE PROBE RUNS, WHICH A READER WOULD NOT GUESS
+
+`Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline` runs a probe only for a stat that a
+shipped row scales, read from the built table. **In this layer alone the probe is compiled and not run.** It first
+runs with the entry above this one, when the three scaled trap rows are in the built asset.
+
+### Tests
+
+- `ProbeScaledMinionDamage`, run by the test named above once a shipped row scales the stat.
+
+**Not tested here:** a scale other than `traps_active` on this stat; the three rows' own test, in the entry above,
+reads `gadgets_active` on it through the summoner's multiplier.
+
+---
+
 ## 2026-10-07 — "Traps deal 20%-40% increased damage" is written again, as one row on minion damage
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet removed, one written),
