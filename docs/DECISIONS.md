@@ -112,6 +112,11 @@ Four sentences, verbatim, each with its Name. No effect row exists for any of th
    crowd control." A stagger that was refused roots nobody. A labelled judgement by the coordinating session
    under the owner's delegation, 2026-10-07.
 
+5. **The follow-up, the same day.** After reading this entry the coordinating session accepted all four as built
+   and confirmed every judgement in "Judgements by the writing session". It added what is marked "Ruled in the
+   follow-up" below. Each is a labelled judgement by the coordinating session under the owner's delegation,
+   2026-10-07.
+
 ### How it is built
 
 Each stat has no gameplay attribute. Each is in `UCataclysmPlayerClassStats::StatsWithNoAttribute` and is asked
@@ -168,6 +173,9 @@ to `Pin` or `CrowdControl`.
 - What a player sees: the shield bar falls 30% to 50% further for each blow. While the shield lasts, health does
   not move. The shield empties sooner, and the blow that empties it lets more through to health than it would
   have (see the top of this entry).
+- **The emptied shield, accepted as built. Ruled in the follow-up.** A shield of 70 against a blow of 100: a
+  control's shield stops 70 and health takes 30; a wearer at 40% is emptied after stopping 50 and health takes
+  50. The wearer's health takes 20 more from that blow, and never more than the blow held.
 - Judged number: none new. The 30 to 50 is the sentence's.
 - Reading not taken: the blow made 30% to 50% larger before it reaches the shield, so that health also takes more
   on a blow the shield cannot stop. Ruled out by ruling 1.
@@ -182,8 +190,11 @@ to `Pin` or `CrowdControl`.
 - What a player sees: health, mana or energy shield from leech arrives at half the speed and for twice as long.
   The total is the same. A payment already running when the item is put on or taken off keeps its own time.
 - Judged number: 6 seconds, from the ruling.
-- Judged number: the floor, a rate of 10, which is a pay-out of 30 seconds. A judgement by the writing session.
-  No row reaches it.
+- **JUDGED NUMBER: the slowest pay-out is 30 seconds.** The rate is floored at 10, a tenth of normal, and 3
+  seconds at a tenth of the rate is 30. A judgement by the writing session, accepted in the follow-up. No row
+  reaches it: the one row gives 6 seconds.
+- Reading not taken: no floor. Rows that summed to a rate near nought would then make a payment that takes
+  minutes, and a rate of nought one that never arrives.
 - Reading not taken: half the amount leeched. The sentence says rate and not amount.
 - Reading not taken: a payment step every half second where it is every quarter second, with the same 3 seconds.
   That would change how the bar moves and not how fast leech arrives.
@@ -199,8 +210,16 @@ to `Pin` or `CrowdControl`.
   aim. Its reach is unchanged. The swing's drawn effect is unchanged: it is drawn from the reach and not from the
   angle.
 - "In front of you" is in front of the aim, which is toward the cursor, as every strike's cone is.
-- The four single-target heavy attacks named at the top of this entry carry their stun, pin, knockback and bonus
-  to every enemy struck.
+- **The riders that now reach every enemy in the half circle, accepted as the consequence of "hits all
+  enemies". Ruled in the follow-up.** Each of these heavy attacks states one target today, and under the row
+  lands on every enemy within its reach in the 180 degrees, with what it carries:
+  - the War Shield's heavy attack: its stun of 1.5 seconds, on each of them;
+  - the Demonic Spear's: its pin of 4 seconds, on each of them, with the 30% more damage taken its row states
+    for a pinned target;
+  - the Demonic Fist's: its knockback, on each of them, and so the stagger a knockback leaves;
+  - the Demonic Dagger's: its rider is more damage from behind, which its row states as 40. It has no hold and
+    no shove. How "from behind" is judged for several enemies at once was not read.
+  The three Demonic ones also set alight each enemy they strike, as they do their one target today.
 - Judged number: none. 180 is the sentence's.
 - A heavy attack that is not a strike (the three projectile rows, and the 67 heavy rows that state no shape yet)
   is not changed. The stat is read only by a strike.
@@ -219,8 +238,20 @@ to `Pin` or `CrowdControl`.
 - What staggers: a knockback, a pull or a knockdown that lands, a zone that staggers on entry, and a row whose
   action staggers an enemy. Each one roots. A row whose action staggers the wearer itself roots nobody. A second
   stagger while rooted renews the root and never shortens it.
-- An enemy with the modifier Unyielding is staggered and not rooted. A boss is rooted like any other enemy: a pin
-  has no boss exemption.
+- **A BOSS IS ROOTED.** A pin has no boss exemption, and the root is a pin. Accepted as built. Ruled in the
+  follow-up.
+- **Who is not rooted.** An enemy whose crowd control resistance is 100 or more, which is the modifier
+  Unyielding, and an enemy a running skill makes immune to `Pin` or to `CrowdControl`. Each is staggered and not
+  rooted. Ruled in the follow-up.
+- **Crowd control resistance below 100 does not shorten the root.** An enemy at 99 is rooted for the whole of the
+  seconds rolled. Ruled in the follow-up.
+- **The root opens no "applied crowd control" window.** The wearer gains nothing from a row that pays for
+  applying a crowd control effect. Ruled in the follow-up.
+- **A later layer's rule, "cannot apply crowd control to enemies above 50% health", does NOT stop this root.**
+  That rule follows the crowd control immunity, and the crowd control immunity is never asked for a pin. This
+  root asks two things of its own at its one call, the resistance of 100 and a running skill's immunity, and
+  neither is that rule. So a wearer of both roots an enemy at full health that it staggers. Ruled in the
+  follow-up. Not tested: that layer is not in this branch.
 - A charging creature that is rooted has its charge cancelled, as any pinned creature's is.
 - Everything that asks whether a target is pinned answers yes: a row conditioned on a crowd-controlled target,
   and a skill that acts only on pinned enemies.
@@ -237,35 +268,31 @@ to `Pin` or `CrowdControl`.
 1. **The shield stat is flat percent points with no base, floored at nought.** The precedent is
    `bleed_damage_taken_from_energy_shield`. The other form, a stat based at 100 that an `increased` row moves,
    needs a base in two more places and allows a `less` row nobody has written. A judgement by the writing
-   session, for the coordinating session to confirm.
+   session, confirmed by the coordinating session on 2026-10-07.
 2. **The shield stat multiplies with the magic sub-type bonus.** One is the attacker's damage sub-type and the
    other is the defender's own stat; there is no single bracket in which two characters' figures add. A judgement
-   by the writing session, for the coordinating session to confirm.
+   by the writing session, confirmed by the coordinating session on 2026-10-07.
 3. **The shield stat is asked with no blow and no tags.** A row on it cannot say "from spells" or name an
-   ailment. A judgement by the writing session, for the coordinating session to confirm.
+   ailment. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 4. **The leech rate is read when a payment is made, with no tags, for all three pools and for a retaliation's
    payment, and its floor is 10.** "Your leech effects" names no pool. A row on it cannot be scoped to a kind of
-   skill. A judgement by the writing session, for the coordinating session to confirm.
+   skill. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 5. **The arc stat reaches a strike of any kind, melee or not.** The sentence says "your heavy attack" and does not
    say melee. The existing rule that a spell's cone is never widened belongs to Every Swing Lands, whose sentence
-   says "your melee arc", and is kept for that node. A judgement by the writing session, for the coordinating
-   session to confirm.
+   says "your melee arc", and is kept for that node. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 6. **The arc stat is a number of degrees and not a flag, and the target limit is lifted whenever it is above
    nought for the skill,** including for a strike already wider than the figure. A judgement by the writing
-   session, for the coordinating session to confirm.
+   session, confirmed by the coordinating session on 2026-10-07.
 7. **"Immune to crowd control" is read as: crowd control resistance of 100 or more, or a running skill that makes
    the target immune to `Pin` or `CrowdControl`.** Those are the two ways the code expresses it today. A
-   resistance below 100 does not shorten the root. A judgement by the writing session, for the coordinating
-   session to confirm.
+   resistance below 100 does not shorten the root. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 8. **The root is laid only on an enemy of the staggering character.** "Enemies you stagger" is the sentence. A
-   character that staggers itself or an ally roots nobody. A judgement by the writing session, for the
-   coordinating session to confirm.
+   character that staggers itself or an ally roots nobody. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 9. **The root stat is asked with no tags,** as the two stagger stats beside it are, so a row on it cannot be
-   scoped to a kind of skill. A judgement by the writing session, for the coordinating session to confirm.
+   scoped to a kind of skill. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 10. **Two of the four tests run the probe of their stat and nothing more.** The shield's and the leech's
     assertions are written once, in the probe that `EveryStatWithNoAttributeIsActuallyRead` also runs, and each
-    is given a test of its own that calls it. A judgement by the writing session, for the coordinating session to
-    confirm.
+    is given a test of its own that calls it. A judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
 
 ### Tests
 
@@ -328,9 +355,12 @@ One stat row for each sentence. No Action, no Scale and no Condition on any of t
 | `Positive_Enemies_you_stagger_are_also_briefly_rooted_for` | `stagger_root_seconds` | `flat` | 0.5 | 1.5 | empty |
 
 The shield row is `flat` although the sentence says "increased": the stat has no base, and an `increased` row on
-it would multiply nought. The heavy attack row must state `Slot.Heavy` under Required Tags; without it every
-strike the wearer makes is widened and loses its target limit. Required Tags on the other three would do nothing
-or stop the row applying: none of the three is asked with a skill's tags.
+it would multiply nought. Required Tags on the shield, leech and root rows would do nothing or stop the row
+applying: none of the three is asked with a skill's tags.
+
+**THE HEAVY ATTACK ROW IS WRITTEN WITH REQUIRED TAGS `Slot.Heavy`. WITHOUT IT EVERY STRIKE THE WEARER MAKES IS
+WIDENED TO 180 DEGREES AND LOSES ITS TARGET LIMIT, A BASIC ATTACK THAT IS A STRIKE INCLUDED.** The stat is asked with the tags
+of the skill being swung, and a row with no required tags applies to whatever is asked. Ruled in the follow-up.
 
 Each of the four was put through `gen.enchantment_effects`, the two asker checks and
 `gen.validate_enchantment_effects` in a temporary workbook on 2026-10-07, with its sentence in that workbook's
