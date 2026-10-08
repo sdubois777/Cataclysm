@@ -51,6 +51,31 @@ before this was authored and no check objected.
 **Not tested here:** that the sentence is never drawn. The draw's skip of a weight of nought is tested by the
 tests of the draw, on other rows.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. **The ids are the commits as they stood when each step ran.** This table carries the steps the seven layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of all seven layers, the first compile of the three mechanism layers and of every test in the stack | 58367e1f | Build: Succeeded - 34 actions, 31 files compiled |
+| Cataclysm.Enchantments. against the assets built before any change of the stack, at that build | 58367e1f | 301 tests performed, 297 succeeded, 4 failed, the four row tests of the stack; 8 failed assertions, each stated before the run |
+| The enchantment assets, regenerated with the editor, the drawbacks' table among them | e6e7ac52 | "Can’t use a basic attack" at weight 0; effect rows 572, unchanged |
+| Whole suite, every asset built | cee98975 | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3401 tests performed, 3401 succeeded, 0 failed. 40 skipped part of what they check; 3401 tests in the tree, 3401 performed, gap 0 |
+| Python of record, continuous integration idle | cee98975 | 5910 passed, 8 skipped in 401.15s; JUnit tests 5918, failures 0, errors 0, skipped 8 |
+| Lint | cee98975 | All checks passed! |
+
+**Every step was as stated before it ran, and each was run once.**
+
+**What reading could not settle, the run did: the ten tests that draw enchantments from the real tables with a
+fixed seed all passed with the row retired.** They were stated before the run as a prediction, with
+`EveryCompleteSetCanBeDrawnAndNotJustSome`, `SetsShareTheWeightOneBandRatherThanAddingAFifth` and
+`ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne` named as the likeliest to fail if it was wrong. In the step
+against the older assets the retired row was still at weight 2, so the whole suite was the first run with it out
+of the draw.
+
+**This layer changes no engine code and no generator code, so it has no guard proof.**
+
 ---
 
 ## 2026-10-08 — Two sentences on a hit that cuts a skill short are built as two rows
