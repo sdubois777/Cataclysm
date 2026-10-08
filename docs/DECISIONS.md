@@ -18,7 +18,9 @@ another row says otherwise. Ruled 2026-10-07; it is on the play-check list.
 branch's code, and neither was read or tested here; both are stated as the coordinating session ruled them.
 An earlier layer roots an enemy after a stagger, by a pin. This ceiling does not stop that root, because a
 pin is not covered. A worn row that pulls enemies when a movement skill arrives IS refused by this ceiling on
-enemies above it, because a pull is a displacement.
+enemies above it, because a pull is a displacement. The movement layer's pull on arrival goes through
+`UCataclysmSkillEffects::ApplyPull`, which the registering session read in that layer's code on 2026-10-07,
+so this ceiling refuses it.
 
 **Said first: the stat holds 100 less the ceiling, not the ceiling.** The sentence says "above 50% HP" and the row
 states 50. Those are the same number only because 100 less 50 is 50. A sentence that said "above 30% HP" would be
@@ -208,7 +210,10 @@ No row exists yet, so none of this can be seen in play until one is written.
 
 ### Judgements by the writing session
 
-Each is a judgement by the writing session, confirmed by the coordinating session on 2026-10-07.
+Each is a judgement by the writing session, confirmed by the coordinating session. Judgements 1, 3, 4, 5 and
+6 were confirmed on 2026-10-07. Judgements 2, 7, 8, 9 and 10 were confirmed later on 2026-10-07, each "a labelled
+judgement by the coordinating session under the owner's delegation, 2026-10-07". This entry first marked
+those five as confirmed before they were ruled on; that was corrected when they were ruled on.
 
 1. **The stat is a reduction of the ceiling, base nought, and the row is `flat` 50.** A judgement by the writing
    session, confirmed by the coordinating session on 2026-10-07. The brief described a stat holding the ceiling itself. That
