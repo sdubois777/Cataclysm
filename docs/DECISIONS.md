@@ -588,6 +588,20 @@ ticks only while its carrier moves. The writing session read the descriptions an
 gives the wearer, on every enemy it has struck once, the ailment the Time-Lock, Plague Doctor's blast and every
 row conditioned on an ailment asks for.** Nothing was tuned here; the comparison is for the owner.
 
+**Said first: the five are read from one list, and a sixth added to it would be applied too.** The status walks
+`UCataclysmAilments::RandomDamageOverTimePool`, the list the random damage over time already uses, and not a
+second list of its own. A Python check holds that list's names equal to the generator's five, in order. **The
+cost**: an ailment added to that pool later would be applied by this row as well, with no change here.
+Judgement 2, below.
+
+**Said first: "one swing" in the test is three blows dealt at one instant, with no skill used.** The test of the
+trigger cooldown strikes three creatures with three plain hits and no clock run between them. **That a skill's
+one swing reaches each enemy it first strikes is not shown by it.** Judgement 11, below.
+
+**The coordinating session approved the writing session's judgements 1 to 11, below, as written, on
+2026-10-08.** For judgement 3, "instantly" read as "at the hit", it rests on the owner's words of that day: "Go
+with the first".
+
 **Said first: a status a row applies raises no `dot_applied` row of the wearer's.** Each of the five is applied
 while the wearer is acting on `first_hit_dealt`, so the `dot_applied` each application raises is dropped, as
 every event raised at that depth is. "Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds"
@@ -843,7 +857,71 @@ repository was written.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run 2026-10-08 in one window with the layer above this one, on top of the eleven layers of the two mechanism
+windows before it, on `development` 55961898. None of the thirteen was merged when this ran. **The ids are the
+commits as they stood when each step ran.** This table carries the steps the two layers share.
+
+**Said first: the first build of this layer FAILED, on one error in its tests, and one helper was renamed.** On
+the base before this one (`development` 9bfac4da), at 05e9cac8, the build printed "Build: Failed - 37 actions,
+32 files compiled" with one error:
+`CataclysmSkillTemplateTests.cpp(28626,29): error C2668: 'CataclysmSkillTest::StatusTag': ambiguous call to
+overloaded function`. This layer's test namespace declared a helper `StatusTag` and pulls in
+`CataclysmSkillTest`, which already had one of that name and form; one call in a test body saw both. The window
+was stopped there and the lock released. The new helper was renamed `StatusActionTag`, at its declaration and
+its six uses, in the new namespace only; no assertion changed and the older helper was not touched. A script
+then compared the namespace's other names with the one namespace it reaches and found no other clash. The
+thirteen layers were then moved onto `development` 55961898 and the window was run again from its first step,
+below.
+
+**Said first: this window's whole suite was also the first Unreal run of the eleven layers below on a
+development that had moved under them**, with the dungeon session's three layers in it. In that move two game
+files had been changed by both sides, `CataclysmVitalAttributeSet.cpp` and `CataclysmDamageCalculation.h`; git
+merged each with no conflict, each side's change was checked to be the same patch before and after, and the
+build and the suite below are what show they compile and behave.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of both layers, the first compile of this layer's code and tests that succeeded | ae3887cc | Build: Succeeded - 35 actions, 31 files compiled |
+| Cataclysm.Enchantments. against the assets built before the row layer, at that build | ae3887cc | 304 tests performed, 301 succeeded, 3 failed, the three row tests of the layer above; 3 failed assertions, each stated before the run |
+| Whole suite, every asset built | 414ea54c | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3453 tests performed, 3453 succeeded, 0 failed. 40 skipped part of what they check; 3453 tests in the tree, 3453 performed, gap 0 |
+| Python of record, continuous integration idle | 414ea54c | 5942 passed, 8 skipped in 401.54s; JUnit tests 5950, failures 0, errors 0, skipped 8 |
+| Lint | 414ea54c | All checks passed! |
+| Proof S1, the status walks no ailment (the loop over the pool made a loop over nothing) | 414ea54c | PROVED: with the break in, 9 tests performed, 5 succeeded, 4 failed, 15 failed assertions; restored, 9 of 9 |
+| Proof S2, the loop stops at the first refusal | 414ea54c | PROVED: 9 performed, 1 failed: `ATargetUnaffectedByOneOfTheFiveStillTakesTheOtherFour`, 4 failed assertions; restored, 9 of 9 |
+| Proof S3, the stun is not a designed stun | 414ea54c | PROVED: 9 performed, 4 succeeded, 5 failed, 13 failed assertions; restored, 9 of 9 |
+
+**Every step of the second run was as stated before it ran, and each was run once.** The whole suite had been
+stated as 3453 by arithmetic, the eleven layers' 3435 never having been run on a moved development; it printed
+3453.
+
+**What the run showed that the writing session could only read.** A plain creature has no crowd control
+resistance: the stun was still on at a second and a half. An ailment does not tick at the moment it is applied,
+and is still running on the body while its killing tick executes: the death to a tick stunned all three. The
+five seconds after a stun are counted from when it began: a death at five and a half seconds stunned again. A
+real player can be the applier of the ailment that raises `afflicted_death`. **Still by reading only**: that the
+five applications raise no `dot_applied` row of the wearer's; a skill's own swing; a chance between nought and
+100; a death to a strike action or to Plague Doctor's blast.
+
+**The three proofs were each as stated before they ran.** S1 was stated as
+`AFirstHitThatTakesATenthLeavesEachOfTheFiveDamageOverTimeAilmentsOnItsTarget` failing with at least 5
+assertions and three other tests expected to fail; it failed 5 there (the bleed, the poison, the disease, the
+necrosis and the burn with the row), and the three named did fail:
+`AFirstHitThatTakesUnderATenthLeavesNoneOfTheFive` (its control, 1),
+`ATargetUnaffectedByOneOfTheFiveStillTakesTheOtherFour` (5) and
+`SeveralFirstHitsInOneInstantEachLeaveTheFiveOnlyWhenTheRowsCooldownIsNought` (4). S2 failed the four ailments
+after the refused bleed and nothing else. S3 was stated as
+`AnAfflictedEnemyKilledByTheWearersOwnHitStunsThoseWithinFiveMetresForTheRowsSeconds` failing with at least 4
+assertions and four other tests expected to fail; it failed 4 there, and the four did fail:
+`AnEnemyThatDiesCarryingNoDamageOverTimeOfTheWearersStunsNobody` (its control, 1),
+`TheTimeLockStunsNoBossAndNoEnemyAboveTheWearersHealthCeiling` (4),
+`ASecondTimeLockInsideFiveSecondsNeitherStunsAgainNorLengthensTheFirst` (2) and
+`ADeathToATickRollsTheTimeLockAndADeathToARowsOwnActionDoesNot` (2). With the stun not designed, the
+tenth-of-maximum rule refused every target, as the writing session had read. For every proof the broken file's
+hash was the same after the proof as before it.
+
+**No proof was run for**: the single roll of the chance; the reach of 5 metres; that only a damage over time
+ailment of the wearer's raises the event; the stun's own rules for a boss, the health ceiling and the five
+seconds; that a row-killed death does not roll. Each is tested and passed in the whole suite; none is proved.
 
 ---
 
