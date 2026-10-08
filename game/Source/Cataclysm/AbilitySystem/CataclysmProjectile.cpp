@@ -523,6 +523,7 @@ bool ACataclysmProjectile::HitAlongStep(const FVector& Previous,
 			continue;
 		}
 		AlreadyHit.Add(Target);
+		LastTouchedEnemy = Target;
 
 		if (!bPierces)
 		{
@@ -540,7 +541,17 @@ bool ACataclysmProjectile::HitAlongStep(const FVector& Previous,
 				// AND IT NO LONGER GOES OFF WHERE IT STOPS. It has struck what
 				// it touched, so the blast a non-piercing projectile makes would
 				// hit the last enemy a second time.
-				bDetonatesWhenItStops = false;
+				//
+				// UNLESS A ROW GAVE IT ITS BOUNCES. Ruled 2026-10-07: a skill that states no bounce keeps
+				// its blast for where it finally stops, and this enemy, struck here, is left out of it.
+				if (bKeepsItsBlast)
+				{
+					StruckOnAGlance.Add(Target);
+				}
+				else
+				{
+					bDetonatesWhenItStops = false;
+				}
 
 				// "Every enemy it touches after the first adds 20% to its
 				// damage." Raised after the hit, so the enemy that was struck
@@ -727,8 +738,9 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 }
 
 void ACataclysmProjectile::GlancesOnward(int32 InBounces, float InReachCm,
-										float InDamagePercentPer)
+										float InDamagePercentPer, bool bInKeepsItsBlast)
 {
+	bKeepsItsBlast = bInKeepsItsBlast;
 	BouncesLeft = FMath::Max(0, InBounces);
 	BounceReachCm = FMath::Max(0.0f, InReachCm);
 	BounceDamagePercentPer = InDamagePercentPer;
@@ -853,6 +865,12 @@ void ACataclysmProjectile::Finish()
 			for (AActor* Target : UCataclysmTargeting::FindEnemiesInSphere(
 					GetWorld(), Firer, GetActorLocation(), RadiusCm))
 			{
+				// NOT ONE IT ALREADY STRUCK BY GLANCING FROM THEM. Ruled 2026-10-07. Empty unless a row gave
+				// the shot its bounces.
+				if (StruckOnAGlance.Contains(Target))
+				{
+					continue;
+				}
 				LandedContacts = LandedBefore;
 				HitOne(Target);
 				bAnyLanded = bAnyLanded || LandedContacts > LandedBefore;

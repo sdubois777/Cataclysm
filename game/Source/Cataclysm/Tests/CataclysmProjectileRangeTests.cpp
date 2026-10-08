@@ -481,6 +481,25 @@ bool FCataclysmRicochetRowAddsBouncesTest::RunTest(const FString&)
 		return LostBy(Row);
 	};
 
+	// THE SAME, WITH EACH ENEMY PLACED BY HAND: metres along the lane, and metres to its side.
+	const auto LostAtPlaces = [&](const TCHAR* ParamText, float Ricochets, const TArray<FVector2D>& Places,
+								  bool& bOutRan)
+	{
+		const float Y = LaneApart * LanesUsed++;
+		FBody User(World, FVector(0.0f, Y, 0.0f));
+		TArray<TUniquePtr<FBody>> Placed;
+		for (const FVector2D& Place : Places)
+		{
+			Placed.Add(MakeUnique<FBody>(World, FVector(Place.X * Metre, Y + Place.Y * Metre, 0.0)));
+		}
+		if (Ricochets > 0.0f)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileBouncesStat, Ricochets, TEXT("Type.Projectile"));
+		}
+		bOutRan = UseAndFly(User, User.Skill(ECataclysmAbilitySlot::Special, ParamText, AttackTags));
+		return LostBy(Placed);
+	};
+
 	const TCHAR* Glancing = TEXT("Range=10; Radius=1; Speed=2000; Bounces=1");
 	const TCHAR* Plain = TEXT("Range=10; Radius=1; Speed=2000");
 	bool bRan = false;
@@ -516,7 +535,8 @@ bool FCataclysmRicochetRowAddsBouncesTest::RunTest(const FString&)
 	TestEqual(TEXT("and its third unstruck, as the control's"), Scoped[2], 0.0f, 0.01f);
 
 	// A SKILL THAT STATES NO BOUNCE. Control: it stops at the first enemy and goes off in its 1 m radius, which
-	// the second enemy, 3 m on, is outside.
+	// the second enemy, 3 m on, is outside. Carrying 2, it strikes the first two by glancing from them and goes
+	// off at the third, which its 1 m blast reaches and nothing else.
 	const TArray<float> PlainControl = LostInALane(Plain, 0.0f, TEXT(""), 5, bRan);
 	TestTrue(TEXT("the plain control's shot ran"), bRan);
 	TestEqual(TEXT("control: a skill stating no bounce strikes its first enemy"), PlainControl[0], OneHit, 0.01f);
@@ -540,6 +560,57 @@ bool FCataclysmRicochetRowAddsBouncesTest::RunTest(const FString&)
 	TestEqual(TEXT("control: a lone enemy is struck once"), AloneControl[0], OneHit, 0.01f);
 	TestEqual(TEXT("with ricochets and nothing to glance to, the lone enemy is struck once and not twice"),
 			  Alone[0], AloneControl[0], 0.01f);
+
+	// THE ROW ONLY ADDS: A SKILL THAT STATES NO BOUNCE KEEPS ITS BLAST FOR WHERE IT FINALLY STOPS. Ruled
+	// 2026-10-07. A bolt stating a 2 m radius. Four enemies 3 m apart along the lane, the first 3 m from the
+	// user, and a fifth 2.1 m to the side of the THIRD. Control: the bolt goes off at the first enemy, and
+	// nothing else is within its blast. Carrying 2: it glances from the first and the second, striking each, and
+	// goes off at the third. The blast reaches the third and the one beside it, which the bolt never touched.
+	// The fourth is 3 m on and outside it. The second is glanced from and is left out of the blast.
+	const TCHAR* Blasting = TEXT("Range=10; Radius=2; Speed=2000");
+	const TArray<FVector2D> BesideTheThird = {FVector2D(3.0, 0.0), FVector2D(6.0, 0.0), FVector2D(9.0, 0.0),
+											  FVector2D(12.0, 0.0), FVector2D(9.0, 2.1)};
+	const TArray<float> BlastControl = LostAtPlaces(Blasting, 0.0f, BesideTheThird, bRan);
+	TestTrue(TEXT("the blasting control's shot ran"), bRan);
+	TestEqual(TEXT("control: a bolt with a blast strikes its first enemy"), BlastControl[0], OneHit, 0.01f);
+	TestEqual(TEXT("control: and not the second"), BlastControl[1], 0.0f, 0.01f);
+	TestEqual(TEXT("control: nor the enemy beside the third"), BlastControl[4], 0.0f, 0.01f);
+
+	const TArray<float> BlastAdded = LostAtPlaces(Blasting, 2.0f, BesideTheThird, bRan);
+	TestTrue(TEXT("the carrying user's blasting shot ran"), bRan);
+	TestEqual(TEXT("2 ricochets on a bolt with a blast: the first enemy is struck once"),
+			  BlastAdded[0], OneHit, 0.01f);
+	TestEqual(TEXT("the second is struck once, and the blast two bounces on does not strike it again"),
+			  BlastAdded[1], OneHit, 0.01f);
+	TestEqual(TEXT("the third, where the last bounce ends, is struck once"), BlastAdded[2], OneHit, 0.01f);
+	TestEqual(TEXT("the enemy beside the third, never touched, takes the blast"), BlastAdded[4], OneHit, 0.01f);
+	TestEqual(TEXT("and the fourth, outside the blast, takes nothing"), BlastAdded[3], 0.0f, 0.01f);
+
+	// CONTROL FOR THE BLAST ITSELF: with no row the same bolt goes off at its first contact, and reaches an enemy
+	// 2.1 m beside that one.
+	const TArray<FVector2D> BesideTheFirst = {FVector2D(3.0, 0.0), FVector2D(3.0, 2.1)};
+	const TArray<float> FirstBlast = LostAtPlaces(Blasting, 0.0f, BesideTheFirst, bRan);
+	TestTrue(TEXT("the first-contact control's shot ran"), bRan);
+	TestEqual(TEXT("control: with no row the blast goes off at the first contact"), FirstBlast[0], OneHit, 0.01f);
+	TestEqual(TEXT("control: and reaches the enemy beside it"), FirstBlast[1], OneHit, 0.01f);
+
+	// A SKILL THAT STATES ITS OWN BOUNCE KEEPS ITS OWN RULE: no blast, with or without the row. The same 2 m
+	// radius and one stated bounce. Four enemies along the lane and a fifth 2.1 m beside the FOURTH. Control:
+	// two struck. Carrying 2: four struck, and the one beside the fourth takes nothing, because no blast goes off.
+	const TCHAR* GlancingWide = TEXT("Range=10; Radius=2; Speed=2000; Bounces=1");
+	const TArray<FVector2D> BesideTheFourth = {FVector2D(3.0, 0.0), FVector2D(6.0, 0.0), FVector2D(9.0, 0.0),
+											   FVector2D(12.0, 0.0), FVector2D(12.0, 2.1)};
+	const TArray<float> OwnRuleControl = LostAtPlaces(GlancingWide, 0.0f, BesideTheFourth, bRan);
+	TestTrue(TEXT("the own-rule control's shot ran"), bRan);
+	TestEqual(TEXT("control: a skill stating one bounce strikes its second enemy"),
+			  OwnRuleControl[1], OneHit, 0.01f);
+	TestEqual(TEXT("control: and not its third"), OwnRuleControl[2], 0.0f, 0.01f);
+	const TArray<float> OwnRuleAdded = LostAtPlaces(GlancingWide, 2.0f, BesideTheFourth, bRan);
+	TestTrue(TEXT("the own-rule carrying user's shot ran"), bRan);
+	TestEqual(TEXT("a skill stating a bounce, carrying 2: the fourth enemy is struck once"),
+			  OwnRuleAdded[3], OneHit, 0.01f);
+	TestEqual(TEXT("and no blast goes off there: the enemy beside the fourth takes nothing"),
+			  OwnRuleAdded[4], 0.0f, 0.01f);
 	return true;
 }
 

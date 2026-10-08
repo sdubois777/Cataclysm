@@ -1247,10 +1247,14 @@ void UCataclysmProjectileSkill::LetItGlance(ACataclysmProjectile* Shot)
 	const float PerGlance = bScalesOnBounce
 		? GetDamagePercent() * Params.IncreasedDamagePer / 100.0f
 		: 0.0f;
+	// A SKILL THAT STATES NO BOUNCE KEEPS ITS BLAST. Ruled 2026-10-07: its bounces all come from a row, and the
+	// row only adds, so the shot strikes each enemy it glances from and goes off in its radius where it finally
+	// stops. A skill that states its own bounces, Carom, keeps its own rule and does not go off.
 	Shot->GlancesOnward(
 		Glances,
 		Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm(),
-		PerGlance);
+		PerGlance,
+		/*bInKeepsItsBlast=*/Params.Bounces <= 0);
 }
 
 void UCataclysmProjectileSkill::ActivateAbility(
@@ -1445,7 +1449,22 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		// BURIED IN WHAT IT STRUCK, not where it stopped. A throw that hit
 		// nothing leaves no axe, which is what "buries itself in an enemy"
 		// means.
-		BuryInStruck(Struck);
+		//
+		// ONE AXE, IN THE LAST ENEMY IT TOUCHED, when a row gave the throw its bounces. Ruled 2026-10-07:
+		// "the axe stays where it lands" is where it finally stops, once, and not at each glance.
+		if (Projectile->bKeepsItsBlast)
+		{
+			TArray<AActor*> LastOnly;
+			if (AActor* Last = Projectile->LastEnemyTouched())
+			{
+				LastOnly.Add(Last);
+			}
+			BuryInStruck(LastOnly);
+		}
+		else
+		{
+			BuryInStruck(Struck);
+		}
 	}
 	else
 	{
