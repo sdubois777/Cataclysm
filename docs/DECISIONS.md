@@ -54,6 +54,36 @@ bounces sets off its blast.
 **Not tested here:** a shot bouncing or a spell piercing under a worn row. That entry tests each with the stat
 set by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the layer below this one, on `development` 6bc55438. The build, the whole suite
+and the Python of record are in the table of the entry of the same day on "You cannot apply CC effects to enemies
+above 50% HP" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | c1088d11 | 292 tests performed, 290 succeeded, 2 failed, this layer's among them; 3 of the 4 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 2ac95e46 | effect rows 563 to 565 |
+| Whole suite, every asset built | 2ac95e46 | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3355 tests performed, 3355 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**: the ricochet stat was no higher asked
+with a projectile's tag or with the tags of a projectile that is a spell, and the pierce stat was no higher
+asked with the tags of a projectile that is a spell. The three readings that must be no higher were no higher in
+both runs.
+
+**SAID AS RULED 2026-10-08 BY THE COORDINATING SESSION: the pierce row's value is a flag, 1, and the engine reads
+any figure above nought as a pierce of 99** (`UCataclysmProjectileSkill::PierceAllCount`), or the pierce the
+skill states if that is more. The 1 is not a count of enemies. That `projectile_pierce_all` joins `FLAG_STATS`
+was approved in the same ruling.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the
+entry that built the two stats proved, read in its table: three guard proofs, L5a (the row's bounces are added),
+L5b (the blast does not also strike the enemies the shot glanced off) and L5c (the pierce row is read as set, on a
+spell that flies), each failed with its break in and passed with it out. **That entry says "No proof was run for
+the spell beam", whose test passed in the whole suite**; a beam under the pierce row is so far tested and not
+proved.
+
 ---
 
 ## 2026-10-08 — "You cannot apply CC effects to enemies above 50% HP" is built as a row
