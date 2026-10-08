@@ -2,6 +2,239 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — A cast delay on a skill's blow: one stat, `blow_delay_seconds`, added to the wind-up a skill already has. The charge's damage by the share of its range moved is NOT built: no charge tells its blow how far the charge went. Engine only; no row authored
+
+**Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
+was run by the writing session. The C++ in this entry has never been compiled. The Python checks were run; their
+output is not recorded here. The one row shape under "What the row needs" was passed through the generator in a
+temporary workbook, by the Python test named there.
+
+**Said first: half of this layer was not written, on the stop the brief set (M8).** The layer was briefed as two
+things: the cast delay, and a scale `share_of_range_moved` for "Charge skills deal 30%-60% bonus damage
+proportional to distance traveled". **No line of the scale exists**: no enumerator, no field on
+`FCataclysmStatConditions`, no entry in `SCALES`, no test. What was read is under "What a charge tells its blow
+today" below, and the coordinating session rules what happens next.
+
+**Said first: which skills the cast delay reaches today, by count, and which carry the tag and get NO delay.**
+A player will read "point blank AOE skills" as all of them, and it is not all of them. By script over
+`game/Data/WeaponSkills.csv` at `c9f30dae`, 34 of its 403 rows carry `Type.AOE.PointBlank`:
+
+| Rows | What they are | Delayed by the row |
+| :-- | :-- | :-- |
+| 9 | Demonic, shape `Strike`, not held: Molten Cleave, Pyroclasm, Touch Off, Extinction, Buried Fire, Anathema, The Gathering, Break the World, Thicket | **Yes.** Buried Fire's delay is on the plant; its second press is not a swing and is not delayed |
+| 2 | Demonic, shape `Strike`, held (`ChargeTime`): Backswing, The Whole Weight (both Greatsword) | **No.** A held strike never waits on its swing; the player decides when it lands |
+| 4 | Demonic, shape `Movement`: Flashpoint (Sword), Echo (Dagger), Infernal Plunge (Greataxe), Crater (Warhammer) | **No** |
+| 1 | Demonic, shape `SelfBuff`: Ashen Edge (Sword) | **No** |
+| 1 | War, shape `Movement`: Shockwave Leap (Warhammer) | **No** |
+| 17 | War, no shape | **No.** They have no shape and do nothing at all today |
+
+So the row delays 9 of the 34 today. Whether a movement skill or a self buff SHOULD be delayed is ruled no (M2).
+
+**How the count was made.** A script written for the purpose and not kept in the repository read
+`game/Data/WeaponSkills.csv` as it stands at commit `c9f30dae`, split each row's `Tags` cell on commas, kept the
+rows holding `Type.AOE.PointBlank`, and grouped them by `DamageType` and `Shape`. **A held strike was found by
+the substring `ChargeTime` in the row's `ShapeParams` cell, not by parsing the parameters.** An earlier ruling of
+the coordinating session quoted 11 strikes and 5 from the brief; the count from the code is the one that stands:
+9 delayed and 25 not (2 held strikes, 5 movement skills, 1 self buff, 17 War rows with no shape).
+
+**Said first, for the play-check.**
+
+- **With the row "Taking a hit interrupts any skill currently being used", a hit during the delay loses the
+  skill, its cost and its cooldown.** The skill is running for the whole delay and the blow is on the same timer
+  a cancel already clears. The delay makes that window 0.75 to 1.5 seconds longer.
+- **With the channel rows, the delay is channelling time for Pyroclasm.** A skill tagged `Type.Channel` is
+  channelling from the moment it is paid for, so "Channel skills drain 8%-15% of your maximum HP per second while
+  active" can be paid once or twice more, and "You cannot move while channeling any skill" holds through the
+  delay. In the player's favour the other way: the 2 seconds of "30%-50% less damage during the first 2 seconds
+  of channeling" are counted from the press, so the delay uses some of them up before the first swing.
+- **The burst at the caster and the attack clip both play at the press**, 0.75 to 1.5 seconds before the damage.
+  Nothing here moves either. Under the row the swing will be seen to finish and the blow to land after it.
+- **Only the first blow of a use is delayed, so a spin starts late and lasts as long as before.**
+- **Nothing stops the player walking during the delay** (M4). A strike finds its targets when the blow lands,
+  from where the character stands then; a projectile leaves from where the character stands then, toward the
+  point aimed at the press.
+- **A row with NO Required Tags would delay the basic attack**, which is a skill of one of the three shapes in
+  the basic attack's slot and is refused while its last swing is still running. The designed row requires `Type.AOE.PointBlank` and reaches
+  no basic attack. Said so that nobody writes the untagged row expecting only skills to slow.
+
+### What a charge tells its blow today (M8)
+
+**No charge skill tells its blow how far the charge went, of either kind.** The brief's stop was written for
+the four that move at once; it is true of all six.
+
+- **The one distance a blow is told is the walk BEFORE the press.** `FCataclysmHitDelivery::MetresMovedBeforeBlow`
+  is assigned at one place outside the tests, `UCataclysmSkillTemplate::HitTargets`
+  (`Delivery.MetresMovedBeforeBlow = LastMetresMovedBeforeUse;`), and `LastMetresMovedBeforeUse` is written in
+  `CommitAndBegin` from `MetresMovedSinceOwnAttack()` as the skill is paid for, before anything has moved, and
+  the tally is cleared there. It is Headlong's "your first melee attack after moving 5 metres" (issue #41), and
+  the existing test `Cataclysm.Skills.ABlowCarriesTheDistanceWalkedBeforeTheAttackNotAfter` holds it to that.
+- **A charge that moves at once** (`Demonic_Sword_Movement` Flashpoint, `Demonic_Axe_Movement` Emberhaul,
+  `Demonic_Spear_Movement` Nail Down, `Demonic_Whip_Movement` Reel): `UCataclysmMovementSkill::ActivateAbility`
+  takes `Start`, works out `End`, moves with one `SetActorLocation(End, /*bSweep=*/true)`, writes `ArrivedAt`,
+  and calls `HitScaled(Targets, Consumed)`, which reaches `HitTargets`. `Start` and `ArrivedAt` are then handed
+  to `LeaveGroundAlong`, `HitAlongThePath` and `ExplodeAtBothEnds`. **They are handed to no delivery.** Its blow
+  is told the walk before the press and nothing about the charge.
+- **A charge that walks** (`Demonic_Fist_Movement` Cinder Rush, `Demonic_Greatsword_Movement` Inexorable):
+  `AdvanceOneStep` adds the ground covered to `WalkedCm` and calls the same `HitScaled`. `WalkedCm` has one
+  reader, `UCataclysmSkillTemplate::ScalingUnits`, for a row stating `ScalingSource=Meter`, which is Inexorable
+  alone. **It is on no delivery either.** A walked charge strikes what it passes as it passes it, so the distance
+  at each blow is the walk so far and not the whole walk.
+- **A scale built on the field as it stands would pay a charge for walking before it was pressed**, and nothing
+  for charging. So it was not built.
+- The two hits a worn row gives a movement skill (`HitWhatThePathCrossed`, `ExplodeAtBothEnds`) are dealt by
+  `ApplyHit` with deliveries of their own and are told no distance at all (-1).
+- **How the row would meet Inexorable's own scaling, by reading and not built:** `MoreDamagePer=3` with
+  `ScalingSource=Meter` multiplies the skill's own damage per cent in `ScaledDamagePercent`, before the blow is
+  priced; an `increased` row is summed with the character's other increases. The two would multiply.
+
+### What it is for
+
+| Sentence | The row the mechanism makes possible |
+| :-- | :-- |
+| Point blank AOE skills have a 0.75-1.5 second cast delay before firing | `blow_delay_seconds`, flat, 0.75 to 1.5, Required Tags `Type.AOE.PointBlank` |
+| Charge skills deal 30%-60% bonus damage proportional to distance traveled | **nothing yet.** See M8 |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08
+
+- **M1.** The delay is ADDED to the wind-up a skill already has; it does not replace it.
+- **M2.** It reaches only skills that wait before a blow. A skill with no such wait gets no delay.
+- **M3.** The cost and the cooldown are paid at the press, before the delay, as today.
+- **M4.** Nothing new stops the player walking during the delay; it is a longer wind-up.
+- **M5.** (The charge; not built.) NO judged distance. The rolled figure is the bonus at the skill's FULL STATED
+  RANGE and falls in proportion below it, capped at the full figure: a 14 metre charge that travels 7 metres
+  gets half. **So the charge bonus has no distance per step.**
+- **M6.** (Not built.) "Bonus damage" is `increased`, summed with other increases.
+- **M7.** (Not built.) A scale whose count is a FRACTION is new; every scale today counts whole steps.
+- **M8.** A charge that walks counts the distance walked; a charge that moves at once must count the distance
+  from where it began to where it arrived. If a charge that moves at once tells its blow no distance today,
+  stop and write none of the charge. **It tells its blow none, so none was written.** See above.
+
+**The coordinating session approved the writing session's judgements 1 to 8, below, as written, on 2026-10-08.**
+
+**Its ruling on M8 of the same day, each a labelled judgement of the coordinating session.** None of it is built
+by this layer.
+
+- **(a) A NEW delivery field carries the metres charged, with the range the skill used.**
+  `MetresMovedBeforeBlow` is untouched: it is the distance walked before the press and belongs to Headlong and
+  to `metres_moved_before_attack`.
+- **(b) A charge that moves at once counts from where it began to where it arrived.**
+- **(c) A charge that walks counts the walk so far when the blow lands, and no blow is held.**
+- **(d) The two hits a worn row gives a movement skill carry nothing and get no bonus.**
+- **(e) It is its own layer, after the next one. So this layer is the cast delay alone.**
+
+### How it is built
+
+- **`UCataclysmSkillTemplate::SecondsUntilTheSwingConnects`** asks
+  `StatForSkill(blow_delay_seconds, <the skill's own SkillTags>, 0)` and answers through
+  **`UCataclysmSkillTemplate::SwingWaitWithDelay(WindUpSeconds, RowDelaySeconds)`**, a public static: the
+  wind-up plus the row's seconds, the row's seconds floored at nought. That is the one place the stat is asked.
+- **`WhenTheSwingConnects` is unchanged.** It already put a blow on `SwingTimer` when the wait was above nought
+  and landed it at once otherwise. Its three callers are `UCataclysmStrikeSkill`, `UCataclysmProjectileSkill`
+  and `UCataclysmDebuffSkill`; there is no fourth.
+- **No new timer.** The delayed blow is on `SwingTimer`, set while the skill is running, which
+  `UCataclysmSkillTemplate::EndAbility` already clears on a cancel.
+- **The stat's name** is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, with a probe,
+  `ProbeBlowDelaySeconds`, and its one call is in the inventory of stat lookups.
+- **No change to `tools/generate_datatables.py`.** A flat row with no condition names a stat with no attribute
+  and is carried through. The stat is a number and is on no list of flags.
+
+**What else now sees the longer wait.** `SecondsUntilTheSwingConnects` has one caller, `WhenTheSwingConnects`;
+nothing draws or times from it. `IsWaitingForTheSwingToConnect` is called only by tests. What does
+change is how long the skill is RUNNING, and these ask that of a running skill: the cancel of
+`hit_taken_cancels_skills`; the channelling state; `UCataclysmSkillTemplate::IsImmuneTo`, for an immunity a
+skill's row states while it runs; `NoteKill`, `NoteBlowTaken` and `NoteBlowLanded`, which count for running
+skills; `UCataclysmBasicAttack::Swing` and `UCataclysmFollowThrough::MakePendingRepeat`, each of which refuses
+a second start of an ability still running.
+
+### Judgements by the writing session
+
+1. **"A skill that waits before a blow" (M2) is read as the three shapes that call `WhenTheSwingConnects`**,
+   whatever their wind-up comes to. An enemy, and any character whose clips are absent, has a wind-up of nought
+   and is still delayed if it carries the row. The other reading, only a skill whose wind-up is above nought,
+   would make the row do nothing on a checkout without the attack clips and in every automation test.
+2. **A held strike is not delayed.** It leaves for its hold before it would wait on a swing, and when its blow
+   lands is the player's decision. The delay was not put inside the hold.
+3. **Only the first blow of a use is delayed.** A spin's later swings and a rack's later throws run on their own
+   timers from that first blow, so the whole of each starts late by the delay and is no longer.
+4. **A free repeat is delayed like a pressed use.** Follow Through's repeat and a skill a worn row starts go
+   through the same wait, and M1 and M2 say nothing that tells them apart.
+5. **The floor is on the row's figure and not on the sum.** A figure below nought adds nothing and the wind-up
+   stays whole. Flooring the sum would let a negative row eat the wind-up.
+6. **The sum is a static function of its own** so that a test can hold "added, never below the wind-up" without
+   a character that animates: a test fighter's wind-up is nought, and at nought a wait of nought or less lands
+   the blow at once whichever way the sum is written.
+7. **The stat is asked of whoever uses the skill**, not only a player; only a worn row grants it.
+8. **The M8 test the brief lists (the distance each kind of charge's blow was told) was not written.** It would
+   pin the walk before the press as what a charge's blow is told, which is the thing waiting on a ruling.
+
+### Research
+
+Fetched by the enchantment session on 2026-10-08 and quoted as it gave them; the fetch tool summarises with a
+small model, so the wording is close and not certified. **For the charge, which is not built:**
+
+- Path of Exile, Shield Charge, poedb.tw/us/Shield_Charge: "The further you travel, the more damage you deal, and
+  the greater your chance of stunning enemies."; "100% more Damage with Hits at Maximum Charge Distance".
+- Diablo 4, Charge, diablo4.wiki.fextralife.com/Charge: "Charge deals up to 22%[x] increased damage based on
+  distance traveled."
+- A search summary, **not a fetched page**, says Path of Exile 2's Shield Charge deals up to an additional 100%
+  more damage, based on the distance travelled.
+- **What it settles:** both games state the bonus as its maximum, reached at the skill's maximum distance.
+
+**Nothing was fetched for the cast delay.** It is this game's own drawback, taken as written.
+
+### Tests
+
+Unreal, in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group `Cataclysm.SkillStats.`, which
+no other file uses. **Neither has been run.**
+
+- `ACastDelayRowHoldsBackATaggedStrikesBlowAndNoOtherAndItsCostIsPaidAtThePress`. A fighter under a row of 1
+  second uses a strike tagged `Type.AOE.PointBlank`: at the press its target has lost nothing and it has already
+  spent what a fighter with no row spent, with its slot on cooldown; half a second on, still nothing; a strike
+  WITHOUT the tag lands at once and deals what the control's deals; a second and a half after the press the
+  tagged blow has landed, whole, and cost nothing more.
+- `ACastDelayIsAddedToTheWindUpAndAFigureBelowNoughtAddsNothing`. The sum, from the function: 0.6 and 1 is 1.6;
+  0.6 and -1 is 0.6. Then in a world: a strike under a row of -1 second lands as it is used, and a strike under
+  a row of +1 second is waiting, which is the control that the row is read.
+
+And in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, `ProbeBlowDelaySeconds`, run by the
+existing `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+Python, in `tools/tests/test_generate_datatables.py`, class `TestACastDelayOnASkillsBlow`: the row shape is
+carried through; the stat is one with no attribute and a made-up name is not.
+
+### Not covered by a test
+
+- **The animation during the delay. It is on the owner's play-check list.** The attack clip and the burst at
+  the caster play at the press, 0.75 to 1.5 seconds before the damage, and nothing checks what is seen.
+- **Any real row.** None exists. Every row in a test is built by hand.
+- **A wind-up above nought in a world.** A test fighter has none, so "added to the wind-up" and "a figure below
+  nought leaves the wind-up whole" are held by the sum's own function and not by a real player's swing.
+- **A projectile skill and a curse under the row.** Both wait through the same function; only a strike is used.
+- **A spin and a rack under the row**, and a free repeat.
+- **A hit during the delay, and a channelled skill's drain during it.** Each is the layer below's mechanism
+  meeting a longer wait; neither is run here.
+- **Walking during the delay**, and where the blow then lands.
+- **A charge on real terrain, and anything else of the charge.** It is not built.
+- **Not run in play.**
+
+### What the row needs, for the session that writes rows
+
+| Sentence | Row |
+| :-- | :-- |
+| Point blank AOE skills have a 0.75-1.5 second cast delay before firing | `blow_delay_seconds`, `flat`, Value Low 0.75, Value High 1.5, Required Tags `Type.AOE.PointBlank`, no Condition, no Scale |
+
+**It was dry run through `gen.enchantment_effects` in a temporary workbook holding the real sentence**, by the
+Python test named above, and was carried through. No file in the repository was written.
+
+**The two rows of the charge sentence cannot be written yet**: `share_of_range_moved` is not a scale the
+generator or the engine knows, and they were not dry run.
+
+**`blow_delay_seconds` belongs on no list of flags**: its values are the two figures of its sentence. **It needs
+no entry in `CONDITIONED_STATS_WITH_AN_ASKER`** while its row states no condition; a row that put a condition on
+it would be refused until it had one.
+
+---
+
 ## 2026-10-08 — "Can’t use a basic attack" is retired by the owner, and "Your HP regeneration continues at 50% effectiveness during combat" already was
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one Weight cell of the Enchantments sheet),
