@@ -757,7 +757,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 549 SINCE THE SHIELD FROM OVERHEAL, issue #1833, from 548.
 	//
 	// AND 550 SINCE THE ROW THAT MAKES TRAPS LAST LONGER, issue #1833, from 549.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    550)
+	//
+	// AND 554 SINCE THREE SENTENCES ON DAMAGE OVER TIME, TIME IN COMBAT AND LEECHING, issue #1833, from 550.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    554)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
