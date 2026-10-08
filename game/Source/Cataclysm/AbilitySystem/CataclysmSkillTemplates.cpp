@@ -1199,6 +1199,60 @@ ACataclysmTether* UCataclysmProjectileSkill::BindTether(AActor* Caster)
 	return Tethered;
 }
 
+const TCHAR* UCataclysmProjectileSkill::ProjectileBouncesStat = TEXT("projectile_bounces");
+const TCHAR* UCataclysmProjectileSkill::ProjectilePierceAllStat = TEXT("projectile_pierce_all");
+
+int32 UCataclysmProjectileSkill::BouncesWithRows() const
+{
+	// `GetCurrentActorInfo`, which does not ensure on a skill no character holds, as `ScaledRangeCm` asks.
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	const UCataclysmAbilitySystemComponent* Mine = Info
+		? Cast<UCataclysmAbilitySystemComponent>(Info->AbilitySystemComponent.Get())
+		: nullptr;
+
+	// ASKED WITH THE SKILL'S TAGS, so a row restricted to projectile skills reaches only those. ROUNDED, as
+	// `SkillChargesMaximum` rounds its bonus: the row states whole ricochets and a roll lands on one. NEVER
+	// BELOW NOUGHT, so no row can take away a bounce the skill states.
+	const float Added = Mine
+		? Mine->StatForSkill(FName(ProjectileBouncesStat), SkillTags, 0.0f)
+		: 0.0f;
+	return Params.Bounces + FMath::Max(0, FMath::RoundToInt(Added));
+}
+
+int32 UCataclysmProjectileSkill::PierceWithRows() const
+{
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	const UCataclysmAbilitySystemComponent* Mine = Info
+		? Cast<UCataclysmAbilitySystemComponent>(Info->AbilitySystemComponent.Get())
+		: nullptr;
+
+	// A FLAG, ASKED WITH THE SKILL'S TAGS, so a row restricted to spells reaches spells and nothing else. Above
+	// nought, the skill pierces all: the count the designed piercing skills state, unless it states more.
+	const float All = Mine
+		? Mine->StatForSkill(FName(ProjectilePierceAllStat), SkillTags, 0.0f)
+		: 0.0f;
+	return All > 0.0f ? FMath::Max(Params.Pierce, PierceAllCount) : Params.Pierce;
+}
+
+void UCataclysmProjectileSkill::LetItGlance(ACataclysmProjectile* Shot)
+{
+	const int32 Glances = BouncesWithRows();
+	if (!Shot || Glances <= 0)
+	{
+		return;
+	}
+
+	const bool bScalesOnBounce = Params.ScalingSource.Equals(
+		TEXT("Bounce"), ESearchCase::IgnoreCase);
+	const float PerGlance = bScalesOnBounce
+		? GetDamagePercent() * Params.IncreasedDamagePer / 100.0f
+		: 0.0f;
+	Shot->GlancesOnward(
+		Glances,
+		Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm(),
+		PerGlance);
+}
+
 void UCataclysmProjectileSkill::ActivateAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -1316,7 +1370,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 
 		InFlight = ACataclysmProjectile::Fire(
 			Caster, Origin, Destination, ScaledRadiusCm(),
-			ScaledProjectileSpeed(), Params.Pierce, Params.bReturns,
+			ScaledProjectileSpeed(), PierceWithRows(), Params.bReturns,
 			GetDamagePercent(), SkillTags, Params.bBurns,
 			/*InBodyMesh=*/nullptr, FlightSeconds,
 			CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
@@ -1348,18 +1402,13 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		// percent, so 20 on a 250% Heavy is 50 points a glance and the throw
 		// runs 250, 300, 350, 400. Adding a flat 20 instead would make the row's
 		// "adds 20% to its damage" false on every slot but a 100% one.
-		if (Params.Bounces > 0)
-		{
-			const bool bScalesOnBounce = Params.ScalingSource.Equals(
-				TEXT("Bounce"), ESearchCase::IgnoreCase);
-			const float PerGlance = bScalesOnBounce
-				? GetDamagePercent() * Params.IncreasedDamagePer / 100.0f
-				: 0.0f;
-			InFlight->GlancesOnward(
-				Params.Bounces,
-				Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm(),
-				PerGlance);
-		}
+		//
+		// AND A ROW OF THE USER'S ADDS TO THE NUMBER. Ruled 2026-10-07: "Projectiles ricochet 1-4 times" is
+		// `projectile_bounces`, added to the bounces the row states. A skill that states none glances that many
+		// times, by the rule above: it strikes what it touches and no longer goes off in its radius. A
+		// projectile that pierces never glances, whatever is added: `ACataclysmProjectile::HitAlongStep` reads a
+		// glance only for one that does not pierce.
+		LetItGlance(InFlight);
 
 		InFlight->OnFinished.AddUObject(
 			this, &UCataclysmProjectileSkill::OnProjectileFinished);
@@ -1561,10 +1610,15 @@ bool UCataclysmProjectileSkill::ThrowOne()
 
 	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
 		Self, From, Target->GetActorLocation(), ScaledRadiusCm(),
-		ScaledProjectileSpeed(), Params.Pierce, Params.bReturns,
+		ScaledProjectileSpeed(), PierceWithRows(), Params.bReturns,
 		GetDamagePercent(), SkillTags, Params.bBurns,
 		/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
 		CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
+
+	// AND EACH AXE OF A RACK GLANCES AS A SINGLE THROW DOES, when the row states bounces or a row of the
+	// user's adds them: "Projectiles ricochet 1-4 times" names no kind of projectile. Ruled 2026-10-07.
+	// Nothing for a null axe. No designed rack states bounces, so nothing changes for a user with no row.
+	LetItGlance(Axe);
 
 	// NOTHING IS HOOKED TO ITS FINISH, unlike a single throw. Thirty axes are in
 	// the air at once and the ability must not end when the first of them lands;
@@ -1734,7 +1788,10 @@ void UCataclysmProjectileSkill::LeaveGroundForFlight(const FVector& From,
 	// and Chain of Coals and Hellbrand are written the same way. One that does
 	// not pierce stopped somewhere, and Blood Pyre's pyre and Magma Quake's
 	// crater belong at that point and nowhere else.
-	if (Params.Pierce > 0)
+	//
+	// THE PIERCE A ROW GIVES COUNTS HERE TOO. Ruled 2026-10-07: a spell made to pierce by
+	// `projectile_pierce_all` travelled a line, so ground it states is left along that line.
+	if (PierceWithRows() > 0)
 	{
 		LeaveGroundAlong(From, To);
 	}
@@ -1756,12 +1813,16 @@ int32 UCataclysmProjectileSkill::Land()
 	// hits what it passes; one that does not lands and hits in a radius. See the
 	// class comment.
 	TArray<AActor*> Targets;
-	if (Params.Pierce > 0)
+	//
+	// THE PIERCE A ROW GIVES COUNTS AS THE SKILL'S OWN. Ruled 2026-10-07: "Spells pierce through all enemies in
+	// their path" makes a spell's beam hit along its line and not in a radius where it was aimed.
+	const int32 Pierces = PierceWithRows();
+	if (Pierces > 0)
 	{
 		// Pierce is how many it passes THROUGH, so it hits one more than that.
 		Targets = UCataclysmTargeting::FindEnemiesInLine(
 			GetWorld(), Self, Origin, Destination, ScaledRadiusCm(),
-			Params.Pierce + 1);
+			Pierces + 1);
 	}
 	else
 	{
