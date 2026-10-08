@@ -422,6 +422,42 @@ rows.
 **When the drain's row is written, one character can wear it with "After 10 seconds in combat you begin losing
 2%-4% of your maximum HP per second".** Both are `health` every 1 second. F1 is what lets both pay.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the three layers above this one, on `development` c17bda32. **The ids are the
+commits as they stood when each step ran.** This table carries the steps the four layers share. It was the first
+time the C++ of this layer was compiled.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of all four layers, the first compile of this layer's code and tests | 41e03c74 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, at that build | 41e03c74 | 297 tests performed, 292 succeeded, 5 failed, the five row tests of the stack; 13 failed assertions, each stated before the run |
+| Whole suite, every asset built | c7aa4e58 | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3379 tests performed, 3379 succeeded, 0 failed. 40 skipped part of what they check; 3379 tests in the tree, 3379 performed, gap 0 |
+| Python of record, continuous integration idle | c7aa4e58 | 5889 passed, 8 skipped in 400.64s; JUnit tests 5897, failures 0, errors 0, skipped 8 |
+| Lint | c7aa4e58 | All checks passed! |
+| Proof 1, a timed row is not counted under its own key (`return Action.TriggerKey;` made `(void)0;`) | c7aa4e58 | PROVED: with the break in, 7 tests performed, 6 succeeded, 1 failed: `TwoTimedRowsOnOnePoolAndPeriodEachPayEveryPeriodAndOneRefusedDoesNotStopTheOther`, 4 failed assertions; restored, 7 of 7 |
+| Proof 2, the window admits the second it ends on (`<` made `<=`) | c7aa4e58 | PROVED: 7 performed, 1 failed: `TheWindowAtTheStartOfAChannelIsUnderItsSecondsAndHalvesOnlyAChannelledSkillsEarlyBlows`, 1 failed assertion, "exactly 2.0 seconds of channelling is not under 2"; restored, 7 of 7 |
+| Proof 3, nothing is told when a channel ends (`OnChannellingChanged.Broadcast(false);` made `(void)0;`) | c7aa4e58 | PROVED: 7 performed, 1 failed: `APlayersWalkingSpeedIsWorkedOutAgainWhenChannellingBeginsAndWhenItEnds`, 2 failed assertions; restored, 7 of 7 |
+
+**Every step but one figure was as stated before it ran, and each was run once.** The figure: the whole suite was
+stated as 42 tests skipping part of what they check and printed 40. The 3379 performed, 3379 succeeded and 0
+failed were as stated. The two tests concerned belong to the entry of the same day on a landed hit cutting a
+skill short, which says why.
+
+**No test that existed before this stack failed in any run**, the tests of timed rows among them. That is said
+because this layer changes how a timed row is counted for every wearer.
+
+**What the three proofs were stated as, before they ran.** Proof 1: that one test, 4 assertions. Proofs 2 and 3:
+that one test each and "at least 1 failed assertion, including" a named sentence, because only one assertion of
+each was certain by reading. Proof 2 failed that one. Proof 3 failed the one named, "the moment a channel is
+ended from outside, the walking speed is what it was", and one more, "once the channel has ended, the walking
+speed is what it was"; each read 300 where 600 was expected. For every proof the broken file's hash was the same
+after the proof as before it.
+
+**No proof was run for**: the condition `while_channelling` itself, the flag `cannot_walk` and the function the
+player controller asks, the drain's count of whole seconds, or the refusal of a movement skill while channelling.
+Each is tested and passed in the whole suite; none is proved.
+
 ---
 
 ## 2026-10-08 — Lightforged Walls seals each section of a Halls floor behind a barrier of pillars until the creatures placed in it are slain, and the row is Built
