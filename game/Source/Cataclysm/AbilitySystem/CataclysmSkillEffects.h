@@ -423,6 +423,45 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	float MetresMovedBeforeBlow = -1.0f;
 
 	/**
+	 * How far the charge dealing this blow had gone when the blow landed, in
+	 * metres. Ruled 2026-10-08, for "Charge skills deal 30%-60% bonus damage
+	 * proportional to distance traveled".
+	 *
+	 * NOT `MetresMovedBeforeBlow` ABOVE, AND THAT FIELD IS UNTOUCHED. That one
+	 * is the distance walked BEFORE the skill was pressed and belongs to
+	 * Headlong and to the condition `metres_moved_before_attack`. This is the
+	 * ground the skill itself covered AFTER the press. A scale on the field
+	 * above would have paid a charge for walking up to the press.
+	 *
+	 * FILLED IN ONE PLACE, `UCataclysmSkillTemplate::HitTargets`, from what
+	 * `UCataclysmMovementSkill` says of its own blow, and only for a movement
+	 * skill whose mode is a charge:
+	 *
+	 *   a charge that moves at once   from where it began to where it arrived
+	 *   a charge that walks           the walk SO FAR when this blow lands
+	 *
+	 * -1 IS THE ORDINARY CASE: every blow that is not a charge's own. That is
+	 * every other skill shape and every other movement mode, a creature's
+	 * attack, a minion's blow, a tick, and the two hits a worn row gives a
+	 * movement skill (the hit along the path and the explosions at both ends),
+	 * which build deliveries of their own and are told no distance.
+	 *
+	 * ZERO IS A REAL ANSWER: a charge that struck before it had moved.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float MetresCharged = -1.0f;
+
+	/**
+	 * The range the charge dealing this blow used, in metres: its stated range
+	 * after the character's increases to skill range, which is how far it was
+	 * allowed to go. Ruled 2026-10-08. Filled with `MetresCharged` above and -1
+	 * whenever that is; `ECataclysmStatScale::ShareOfRangeMoved` divides the one
+	 * by the other.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float ChargeRangeMetres = -1.0f;
+
+	/**
 	 * How many enemies the attack this blow belongs to struck together. Issue
 	 * #1515.
 	 *
@@ -870,6 +909,10 @@ public:
 	 * @param bTargetIsStaggered     whether that character was staggered
 	 * @param EnemiesStruckTogether  how many enemies the attack struck together,
 	 *        or -1 for a blow no skill dealt as part of a group. Issue #1515.
+	 * @param MetresCharged          how far the charge dealing the blow had gone
+	 *        when it landed, or -1 for a blow that is not a charge's own. Ruled
+	 *        2026-10-08. See `FCataclysmHitDelivery::MetresCharged`.
+	 * @param ChargeRangeMetres      the range that charge used, or -1
 	 */
 	static float ModifiedDamage(const UAbilitySystemComponent* Source,
 								float BaseDamage,
@@ -879,7 +922,9 @@ public:
 								float TargetDistanceMetres = -1.0f,
 								bool bTargetIsStaggered = false,
 								const AActor* Target = nullptr,
-								int32 EnemiesStruckTogether = -1);
+								int32 EnemiesStruckTogether = -1,
+								float MetresCharged = -1.0f,
+								float ChargeRangeMetres = -1.0f);
 
 	/**
 	 * Deal a hit of an amount already worked out.
@@ -1275,6 +1320,12 @@ public:
 	 * "Point blank AOE skills deal 15%-25% less damage to a single target":
 	 * its spell damage row asks `enemies_hit_at_most`. -1 means no attack in
 	 * hand and refuses it.
+	 *
+	 * AND WITH HOW FAR A CHARGE HAD GONE AND THE RANGE IT USED, ruled
+	 * 2026-10-08, for the spell damage row of "Charge skills deal 30%-60%
+	 * bonus damage proportional to distance traveled", which is scaled by
+	 * `share_of_range_moved`. -1 for a blow that is not a charge's own, which
+	 * scales that row to nothing.
 	 */
 	static float SpellDamageOf(const UAbilitySystemComponent* Source,
 							   const FGameplayTagContainer& SkillTags,
@@ -1282,7 +1333,9 @@ public:
 							   float TargetDistanceMetres = -1.0f,
 							   bool bTargetIsStaggered = false,
 							   const AActor* Target = nullptr,
-							   int32 EnemiesStruckTogether = -1);
+							   int32 EnemiesStruckTogether = -1,
+							   float MetresCharged = -1.0f,
+							   float ChargeRangeMetres = -1.0f);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.
@@ -1325,7 +1378,9 @@ public:
 								   float TargetDistanceMetres = -1.0f,
 								   bool bTargetIsStaggered = false,
 								   const AActor* Target = nullptr,
-								   int32 EnemiesStruckTogether = -1);
+								   int32 EnemiesStruckTogether = -1,
+								   float MetresCharged = -1.0f,
+								   float ChargeRangeMetres = -1.0f);
 
 	/**
 	 * How much larger an attack should be than its attack-damage attribute
@@ -1348,7 +1403,9 @@ public:
 							  float TargetDistanceMetres = -1.0f,
 							  bool bTargetIsStaggered = false,
 							  const AActor* Target = nullptr,
-							  int32 EnemiesStruckTogether = -1);
+							  int32 EnemiesStruckTogether = -1,
+							  float MetresCharged = -1.0f,
+							  float ChargeRangeMetres = -1.0f);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;

@@ -414,7 +414,8 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
 	bool bTargetIsStaggered, const AActor* Target,
-	int32 EnemiesStruckTogether) const
+	int32 EnemiesStruckTogether, float MetresCharged,
+	float ChargeRangeMetres) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -441,7 +442,9 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 										 MetresMovedBeforeBlow,
 										 TargetDistanceMetres,
 										 bTargetIsStaggered,
-										 EnemiesStruckTogether)))).Final;
+										 EnemiesStruckTogether,
+										 MetresCharged,
+										 ChargeRangeMetres)))).Final;
 }
 
 bool UCataclysmAbilitySystemComponent::StatBreakdownForSkill(
@@ -615,7 +618,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
 	float TargetDistanceMetres, bool bTargetIsStaggered,
-	const AActor* Target, int32 EnemiesStruckTogether) const
+	const AActor* Target, int32 EnemiesStruckTogether,
+	float MetresCharged, float ChargeRangeMetres) const
 {
 	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
 	// the shared constant rather than a second spelling of the name, because a
@@ -645,7 +649,9 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 										 MetresMovedBeforeBlow,
 										 TargetDistanceMetres,
 										 bTargetIsStaggered,
-										 EnemiesStruckTogether))))
+										 EnemiesStruckTogether,
+										 MetresCharged,
+										 ChargeRangeMetres))))
 			   .SumOfIncreases / 100.0f;
 }
 
@@ -756,7 +762,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
 	float TargetDistanceMetres, bool bTargetIsStaggered,
-	const AActor* Target, int32 EnemiesStruckTogether) const
+	const AActor* Target, int32 EnemiesStruckTogether,
+	float MetresCharged, float ChargeRangeMetres) const
 {
 	// THE SAME KEY `AttackDamageIncreasesForSkill` READS, for the reason it
 	// gives: a name that did not match would fall back in silence and read as a
@@ -805,7 +812,9 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 								  MetresMovedBeforeBlow,
 								  TargetDistanceMetres,
 								  bTargetIsStaggered,
-								  EnemiesStruckTogether)))).MoreMultiplier;
+								  EnemiesStruckTogether,
+								  MetresCharged,
+								  ChargeRangeMetres)))).MoreMultiplier;
 
 	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
 	// "less" at -99 per cent, so a product of them cannot reach zero.
@@ -815,7 +824,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered, int32 EnemiesStruckTogether) const
+	bool bTargetIsStaggered, int32 EnemiesStruckTogether,
+	float MetresCharged, float ChargeRangeMetres) const
 {
 	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
 	// Issue #959. A skill asking what its critical strike chance is should not
@@ -1323,6 +1333,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// argument: a fact about the blow being dealt, passed in by the one caller
 	// that has the blow and -1 from every caller that does not. Issue #1515.
 	State.EnemiesStruckTogether = EnemiesStruckTogether;
+
+	// AND HOW FAR A CHARGE HAD GONE WHEN THE BLOW IN HAND LANDED, WITH THE RANGE
+	// IT USED. Ruled 2026-10-08. Two more facts about the blow being dealt,
+	// passed straight through with their negative defaults: only a charge's own
+	// blow has them, and the scale `share_of_range_moved` is worth nothing
+	// without both. NOT THE DISTANCE MOVED BEFORE THE BLOW, set just above,
+	// which is the walk before the skill was pressed.
+	State.MetresCharged = MetresCharged;
+	State.ChargeRangeMetres = ChargeRangeMetres;
 
 	// AND HOW FAR AWAY THE CHARACTER BEING HIT STOOD, passed straight through for
 	// the same reason, including its negative default. Issue #1596. Only a lookup

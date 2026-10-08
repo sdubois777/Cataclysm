@@ -5215,3 +5215,123 @@ class TestMinionsTakeAShareOfTheirSummonersDefences:
         made-up name that is on no list."""
         assert "minion_defences_percent_of_yours" in gen.stats_with_no_attribute()
         assert "minion_armor_percent_of_yours" not in gen.stats_with_no_attribute()
+
+
+class TestAChargesDamageByTheShareOfItsRangeMoved:
+    """`share_of_range_moved`, ruled 2026-10-08 and built ahead of its rows.
+    The rows here are the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentence. Two rows for one sentence: attack damage and spell damage, each
+    `increased`, rolled between the sentence's two figures, requiring
+    `Keyword.Charge`, on the scale with a step of 1.
+
+    THE ONE SCALE WHOSE COUNT IS A FRACTION. The value is the bonus at the
+    skill's full range, so the step is 1 and nothing else, and a row states
+    neither a cap in steps nor an offset.
+    """
+
+    WORDS = ("Charge skills deal 30%-60% bonus damage proportional to distance "
+             "traveled")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 3, "Keyword.Charge, Stat.Offense.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestEnchantmentEffects.HEADER
+    ROW = {"Value Kind": "increased", "Value Low": 30, "Value High": 60,
+           "Required Tags": "Keyword.Charge",
+           "Scale": "share_of_range_moved", "Scale Step": 1}
+    BOTH = [dict(ROW, Stat="attack_damage"), dict(ROW, Stat="spell_damage")]
+
+    def out(self, tmp_path, rows):
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "charge.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": effects})))
+
+    def test_both_rows_are_carried_through_with_the_scale_and_no_cap(
+            self, tmp_path):
+        out = self.out(tmp_path, self.BOTH)
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["ScaleStep"], row["ScaleMaxSteps"],
+                 row["ScaleOffset"], row["Action"]) for row in out] == [
+            ("attack_damage", "increased", 30.0, 60.0, "Keyword.Charge", "",
+             "share_of_range_moved", 1.0, 0, 0.0, ""),
+            ("spell_damage", "increased", 30.0, 60.0, "Keyword.Charge", "",
+             "share_of_range_moved", 1.0, 0, 0.0, "")]
+        # BOTH STATS ARE ASKED FOR WITH THE CHARGE'S DISTANCE, so neither the
+        # check on scaled stats nor the one on conditions has anything to say.
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_scale_is_the_one_that_counts_a_fraction(self):
+        """The list, by name. The controls are the two neighbouring lists: it
+        needs no cap of the row's and reads no offset."""
+        assert gen.SCALES_THAT_COUNT_A_FRACTION == {"share_of_range_moved"}
+        assert gen.SCALES_THAT_COUNT_A_FRACTION <= set(gen.SCALES)
+        assert not gen.SCALES_THAT_COUNT_A_FRACTION & gen.SCALES_THAT_NEED_A_CAP
+        assert not gen.SCALES_THAT_COUNT_A_FRACTION & gen.SCALES_THAT_TAKE_AN_OFFSET
+
+    def test_a_cap_in_steps_is_refused_and_the_same_row_without_it_is_not(
+            self, tmp_path):
+        """Scale Max Steps caps whole steps and this scale has none. The
+        control is the first line: the same row with the column empty."""
+        row = dict(self.ROW, Stat="attack_damage")
+        assert self.out(tmp_path, [row])[0]["ScaleMaxSteps"] == 0
+        with pytest.raises(gen.DataError, match="counts a fraction"):
+            self.out(tmp_path, [dict(row, **{"Scale Max Steps": 1})])
+
+    def test_a_cap_is_still_carried_on_a_scale_that_counts_whole_steps(
+            self, tmp_path):
+        """The refusal is for the scales listed and no other: the same row on
+        a scale of whole steps keeps its cap."""
+        row = dict(self.ROW, Stat="attack_damage", **{
+            "Scale": "seconds_in_combat", "Scale Step": 1,
+            "Scale Max Steps": 5})
+        out = self.out(tmp_path, [row])
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_in_combat", 5)
+
+    def test_an_offset_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="reads an offset"):
+            self.out(tmp_path, [dict(self.ROW, Stat="attack_damage",
+                                     **{"Scale Offset": 1})])
+
+    @pytest.mark.parametrize("step", [0, 0.5, 2, 14])
+    def test_a_step_other_than_one_is_refused(self, tmp_path, step):
+        """There is no distance per step: the whole range is worth one value.
+        A step of 14, the metres of the longest charge, is the mistake this
+        is for."""
+        with pytest.raises(gen.DataError, match="scaling step"):
+            self.out(tmp_path, [dict(self.ROW, Stat="attack_damage",
+                                     **{"Scale Step": step})])
+
+    def test_the_scale_is_refused_on_a_stat_not_asked_with_the_charge(self):
+        """`crit_chance` is asked for through the pipeline, so a scaled row on
+        it passes the older check; its asker is not handed how far a charge
+        went, so this scale would read nought there every time. The controls
+        are the two designed stats on this scale, and `crit_chance` on a scale
+        that reads the character."""
+        assert "crit_chance" in gen.STATS_WITH_AN_ASKER
+        assert gen.STATS_ASKED_WITH_A_CHARGES_DISTANCE == {
+            "attack_damage", "spell_damage"}
+        for stat in ("attack_damage", "spell_damage"):
+            assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", [
+                {"Name": "A#1", "Stat": stat,
+                 "Scale": "share_of_range_moved"}]) == []
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", [
+            {"Name": "A#1", "Stat": "crit_chance",
+             "Scale": "target_debuffs"}]) == []
+        problems = gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", [
+            {"Name": "A#1", "Stat": "crit_chance",
+             "Scale": "share_of_range_moved"}])
+        assert len(problems) == 1
+        assert "how far a charge had gone" in problems[0]
+        assert "crit_chance" in problems[0]
